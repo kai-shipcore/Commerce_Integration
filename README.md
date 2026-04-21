@@ -531,6 +531,7 @@ npm run db:seed
 Preferred on this project:
 
 ```bash
+npm run dev
 start-dev.cmd
 ```
 
