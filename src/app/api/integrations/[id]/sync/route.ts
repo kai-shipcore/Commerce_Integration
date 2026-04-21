@@ -8,9 +8,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getPlatformIntegrationById,
-  updatePlatformIntegration,
 } from "@/lib/db/platform-integrations";
-import { syncShopifyOrders } from "@/lib/integrations/shopify";
+import { runIntegrationSync } from "@/lib/integrations/core/sync-runner";
 
 // POST /api/integrations/[id]/sync - Trigger a sync for an integration
 export async function POST(
@@ -65,45 +64,23 @@ export async function POST(
     }
 
     // Direct sync (synchronous)
-    if (integration.platform === "shopify") {
-      const result = await syncShopifyOrders(id, { fullSync });
+    const result = await runIntegrationSync(id, { fullSync });
 
-      // Update integration stats
-      if (result.success) {
-        await updatePlatformIntegration(id, {
-          lastSyncStatus: "success",
-          lastSyncError: null,
-          incrementTotalOrdersSynced: result.ordersProcessed,
-          incrementTotalRecordsSynced: result.salesRecordsCreated,
-        });
-      } else {
-        await updatePlatformIntegration(id, {
-          lastSyncStatus: "failed",
-          lastSyncError: result.errors.join("; "),
-        });
-      }
-
-      return NextResponse.json({
-        success: result.success,
-        message: result.success
-          ? `Synced ${result.ordersProcessed} orders, created ${result.salesRecordsCreated} records`
-          : `Sync failed: ${result.errors[0]}`,
-        data: {
-          integrationId: id,
-          platform: integration.platform,
-          name: integration.name,
-          ordersProcessed: result.ordersProcessed,
-          salesRecordsCreated: result.salesRecordsCreated,
-          skusCreated: result.skusCreated,
-          errors: result.errors,
-        },
-      });
-    }
-
-    return NextResponse.json(
-      { success: false, error: `Platform ${integration.platform} not supported` },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      success: result.success,
+      message: result.success
+        ? `Synced ${result.ordersProcessed} orders, created ${result.salesRecordsCreated} records`
+        : `Sync failed: ${result.errors[0]}`,
+      data: {
+        integrationId: id,
+        platform: result.platform,
+        name: result.name,
+        ordersProcessed: result.ordersProcessed,
+        salesRecordsCreated: result.salesRecordsCreated,
+        skusCreated: result.skusCreated,
+        errors: result.errors,
+      },
+    });
   } catch (error: any) {
     console.error("Error syncing:", error);
     return NextResponse.json(

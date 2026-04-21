@@ -10,8 +10,8 @@ import { CacheManager, CacheKeys, CacheTTL } from '../redis';
 import {
   getPlatformIntegrationById,
   listActivePlatformIntegrations,
-  updatePlatformIntegration,
 } from '../db/platform-integrations';
+import { runIntegrationSync } from '../integrations/core/sync-runner';
 
 /**
  * Sync sales data from all active platform integrations
@@ -24,8 +24,6 @@ export const syncSalesData = inngest.createFunction(
   },
   { cron: '0 * * * *' }, // Every hour
   async ({ event, step }) => {
-    const { syncShopifyOrders } = await import('@/lib/integrations/shopify');
-
     // Step 1: Get all active integrations
     const integrations = await step.run('get-active-integrations', async () => {
       return await listActivePlatformIntegrations();
@@ -59,54 +57,20 @@ export const syncSalesData = inngest.createFunction(
         `sync-${integration.platform}-${integration.id}`,
         async () => {
           try {
-            if (integration.platform === 'shopify') {
-              const syncResult = await syncShopifyOrders(integration.id);
+            const syncResult = await runIntegrationSync(integration.id);
 
-              // Update integration stats
-              if (syncResult.success) {
-                await updatePlatformIntegration(integration.id, {
-                  lastSyncStatus: 'success',
-                  lastSyncError: null,
-                  incrementTotalOrdersSynced: syncResult.ordersProcessed,
-                  incrementTotalRecordsSynced: syncResult.salesRecordsCreated,
-                });
-              } else {
-                await updatePlatformIntegration(integration.id, {
-                  lastSyncStatus: 'failed',
-                  lastSyncError: syncResult.errors.join('; '),
-                });
-              }
-
-              return {
-                integrationId: integration.id,
-                platform: integration.platform,
-                name: integration.name,
-                success: syncResult.success,
-                ordersProcessed: syncResult.ordersProcessed,
-                recordsCreated: syncResult.salesRecordsCreated,
-                skusCreated: syncResult.skusCreated,
-                error: syncResult.errors.length > 0 ? syncResult.errors[0] : undefined,
-              };
-            }
-
-            // Placeholder for other platforms
             return {
               integrationId: integration.id,
               platform: integration.platform,
               name: integration.name,
-              success: false,
-              ordersProcessed: 0,
-              recordsCreated: 0,
-              skusCreated: 0,
-              error: `Platform ${integration.platform} sync not implemented`,
+              success: syncResult.success,
+              ordersProcessed: syncResult.ordersProcessed,
+              recordsCreated: syncResult.salesRecordsCreated,
+              skusCreated: syncResult.skusCreated,
+              error: syncResult.errors.length > 0 ? syncResult.errors[0] : undefined,
             };
           } catch (error: any) {
             console.error(`Error syncing ${integration.platform}:`, error);
-
-            await updatePlatformIntegration(integration.id, {
-              lastSyncStatus: 'failed',
-              lastSyncError: error.message,
-            });
 
             return {
               integrationId: integration.id,
@@ -188,8 +152,6 @@ export const manualSyncTrigger = inngest.createFunction(
       throw new Error('No integration ID provided');
     }
 
-    const { syncShopifyOrders } = await import('@/lib/integrations/shopify');
-
     // Get integration details
     const integration = await step.run('get-integration', async () => {
       return await getPlatformIntegrationById(integrationId);
@@ -203,27 +165,7 @@ export const manualSyncTrigger = inngest.createFunction(
 
     // Perform sync
     const result = await step.run('sync-integration', async () => {
-      if (integration.platform === 'shopify') {
-        return await syncShopifyOrders(integrationId, { fullSync });
-      }
-      throw new Error(`Platform ${integration.platform} sync not implemented`);
-    });
-
-    // Update integration stats
-    await step.run('update-stats', async () => {
-      if (result.success) {
-        await updatePlatformIntegration(integrationId, {
-          lastSyncStatus: 'success',
-          lastSyncError: null,
-          incrementTotalOrdersSynced: result.ordersProcessed,
-          incrementTotalRecordsSynced: result.salesRecordsCreated,
-        });
-      } else {
-        await updatePlatformIntegration(integrationId, {
-          lastSyncStatus: 'failed',
-          lastSyncError: result.errors.join('; '),
-        });
-      }
+      return await runIntegrationSync(integrationId, { fullSync });
     });
 
     // Invalidate cache
