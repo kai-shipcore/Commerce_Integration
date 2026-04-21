@@ -133,6 +133,26 @@ The implemented sync path today is Shopify:
 5. Write normalized rows into internal `SalesRecord`
 6. Save sync progress and cursor state for resumable history sync
 
+### Marketplace Integration Architecture
+
+Marketplace integrations are now split into a shared core layer plus per-platform adapter folders so Shopify, Amazon, eBay, and Walmart can be developed independently without repeatedly editing the same files.
+
+- `src/lib/integrations/core/*`
+  Shared contracts and orchestration for adapter registration, connection checks, sync execution, SKU resolution, and normalized sales persistence
+- `src/lib/integrations/shopify/*`
+  Shopify-specific config validation, API client, payload mapping, and adapter logic
+- `src/lib/integrations/amazon/*`
+  Amazon-specific adapter scaffolding and config boundary
+- `src/lib/integrations/ebay/*`
+  eBay-specific adapter scaffolding and config boundary
+- `src/lib/integrations/walmart/*`
+  Walmart-specific adapter scaffolding and config boundary
+
+Current ownership boundary for team work:
+- Shared integration workflow changes belong in `core/*` and the integration API routes
+- Platform-specific API/auth/mapping changes should stay inside that platform folder
+- `src/app/api/integrations/*` and `src/lib/inngest/functions.ts` call the adapter registry instead of hard-coding per-platform logic
+
 ## Folder Structure
 
 ```text
@@ -166,7 +186,12 @@ The implemented sync path today is Shopify:
 │     ├─ auth/                 # Password utilities
 │     ├─ db/                   # Prisma and lookup DB access
 │     ├─ inngest/              # Background workflow client/functions
-│     ├─ integrations/         # Shopify integration logic
+│     ├─ integrations/
+│     │  ├─ core/              # Shared adapter contracts, sync runner, and persistence
+│     │  ├─ shopify/           # Shopify adapter, client, mapper, config
+│     │  ├─ amazon/            # Amazon adapter scaffolding
+│     │  ├─ ebay/              # eBay adapter scaffolding
+│     │  └─ walmart/           # Walmart adapter scaffolding
 │     ├─ openapi.ts            # OpenAPI document builder
 │     └─ redis.ts              # Optional cache helpers
 ├─ prisma/
@@ -557,6 +582,7 @@ cmd /c npm.cmd run start
 - The Prisma schema no longer includes the old `Forecast` model
 - Trend-related tables still exist in the schema for future work, but current UI flows focus on historical sales and operational data
 - Shopify is the only marketplace with implemented sync logic today
+- Marketplace code is now organized around a shared adapter core so each platform can be implemented with minimal cross-team file overlap
 - Inventory and order pages depend on the external lookup database being reachable
 - Redis is optional; the app falls back when Redis is not configured
 - The repository currently has pre-existing lint issues outside the README changes
@@ -567,5 +593,7 @@ cmd /c npm.cmd run start
 2. `src/components/layout/navigation-config.ts`
 3. `src/app/dashboard/page.tsx`
 4. `src/app/settings/integrations/page.tsx`
-5. `src/lib/integrations/shopify.ts`
-6. `src/lib/db/supabase-lookup.ts`
+5. `src/lib/integrations/core/registry.ts`
+6. `src/lib/integrations/core/sync-runner.ts`
+7. `src/lib/integrations/shopify/adapter.ts`
+8. `src/lib/db/supabase-lookup.ts`

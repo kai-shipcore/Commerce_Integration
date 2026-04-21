@@ -135,6 +135,26 @@ Commerce Integration은 SKU 마스터 데이터, 과거 판매 데이터, 외부
 5. 내부 `SalesRecord`에 정규화된 판매 이력 저장
 6. 재시작 가능한 전체 동기화를 위해 커서와 상태 저장
 
+### 마켓플레이스 연동 아키텍처
+
+마켓플레이스 연동 코드는 이제 공통 `core` 레이어와 플랫폼별 adapter 폴더로 분리되어 있습니다. 목적은 Shopify, Amazon, eBay, Walmart 구현을 서로 다른 팀원이 진행하더라도 같은 파일을 반복해서 건드리지 않게 하는 것입니다.
+
+- `src/lib/integrations/core/*`
+  adapter 계약, registry, connection check, sync 실행, SKU 해석, 판매 이력 저장 같은 공통 워크플로우를 담당합니다.
+- `src/lib/integrations/shopify/*`
+  Shopify 전용 config 검증, API client, payload mapping, adapter 로직을 담당합니다.
+- `src/lib/integrations/amazon/*`
+  Amazon 전용 adapter 스캐폴딩과 config 경계를 담당합니다.
+- `src/lib/integrations/ebay/*`
+  eBay 전용 adapter 스캐폴딩과 config 경계를 담당합니다.
+- `src/lib/integrations/walmart/*`
+  Walmart 전용 adapter 스캐폴딩과 config 경계를 담당합니다.
+
+현재 팀 작업 경계는 다음과 같습니다.
+- 공통 연동 흐름 수정은 `core/*` 와 integration API route에서 처리합니다.
+- 플랫폼별 인증, API 호출, 응답 매핑 변경은 각 플랫폼 폴더 안에서만 처리하는 것을 기준으로 합니다.
+- `src/app/api/integrations/*` 와 `src/lib/inngest/functions.ts` 는 플랫폼별 분기 대신 adapter registry를 통해 연동을 호출합니다.
+
 ## 폴더 구조
 
 ```text
@@ -168,7 +188,12 @@ Commerce Integration은 SKU 마스터 데이터, 과거 판매 데이터, 외부
 │     ├─ auth/                 # 비밀번호 관련 유틸
 │     ├─ db/                   # Prisma 및 조회 DB 접근
 │     ├─ inngest/              # 백그라운드 작업
-│     ├─ integrations/         # Shopify 연동 로직
+│     ├─ integrations/
+│     │  ├─ core/              # 공통 adapter 계약, sync runner, 저장 로직
+│     │  ├─ shopify/           # Shopify adapter, client, mapper, config
+│     │  ├─ amazon/            # Amazon adapter 스캐폴딩
+│     │  ├─ ebay/              # eBay adapter 스캐폴딩
+│     │  └─ walmart/           # Walmart adapter 스캐폴딩
 │     ├─ openapi.ts            # OpenAPI 문서 생성
 │     └─ redis.ts              # 캐시 헬퍼
 ├─ prisma/
@@ -556,6 +581,7 @@ cmd /c npm.cmd run start
 - Prisma schema에도 예전 `Forecast` 모델은 제거됨
 - 다만 추후 확장을 위한 trend 관련 테이블은 schema에 남아 있음
 - 실제 마켓플레이스 동기화는 현재 Shopify만 구현됨
+- 마켓플레이스 코드는 공통 adapter core 기준으로 재구성되어 플랫폼별 구현 시 팀 간 파일 충돌을 줄이도록 정리됨
 - 재고/주문 화면은 외부 조회 DB 연결이 가능해야 동작함
 - Redis는 선택 사항이며, 없어도 앱은 동작하도록 처리되어 있음
 - README 수정과 별개로 저장소 전반에는 기존 lint 이슈가 남아 있음
@@ -566,5 +592,7 @@ cmd /c npm.cmd run start
 2. `src/components/layout/navigation-config.ts`
 3. `src/app/dashboard/page.tsx`
 4. `src/app/settings/integrations/page.tsx`
-5. `src/lib/integrations/shopify.ts`
-6. `src/lib/db/supabase-lookup.ts`
+5. `src/lib/integrations/core/registry.ts`
+6. `src/lib/integrations/core/sync-runner.ts`
+7. `src/lib/integrations/shopify/adapter.ts`
+8. `src/lib/db/supabase-lookup.ts`
