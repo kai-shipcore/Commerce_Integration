@@ -1,0 +1,157 @@
+/**
+ * Code Guide:
+ * This API route owns the integrations / [id] / sync backend workflow.
+ * It validates request data, reads or writes database records, and returns JSON to the UI.
+ * Cache invalidation and service calls usually happen here because this layer coordinates side effects.
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getPlatformIntegrationById,
+  updatePlatformIntegration,
+} from "@/lib/db/platform-integrations";
+import { syncShopifyOrders } from "@/lib/integrations/shopify";
+
+// POST /api/integrations/[id]/sync - Trigger a sync for an integration
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const fullSync = body.fullSync || false;
+    const useInngest = body.useInngest || false;
+
+    // Verify integration exists and is active
+    const integration = await getPlatformIntegrationById(id);
+
+    if (!integration) {
+      return NextResponse.json(
+        { success: false, error: "Integration not found" },
+        { status: 404 }
+      );
+    }
+
+    if (!integration.isActive) {
+      return NextResponse.json(
+        { success: false, error: "Integration is not active" },
+        { status: 400 }
+      );
+    }
+
+    // Option to use Inngest for background processing
+    if (useInngest) {
+      const { inngest } = await import("@/lib/inngest/client");
+      await inngest.send({
+        name: "app/sync.trigger",
+        data: {
+          integrationId: id,
+          fullSync,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Sync queued for ${integration.name}`,
+        data: {
+          integrationId: id,
+          platform: integration.platform,
+          name: integration.name,
+          fullSync,
+          async: true,
+        },
+      });
+    }
+
+    // Direct sync (synchronous)
+    if (integration.platform === "shopify") {
+      const result = await syncShopifyOrders(id, { fullSync });
+
+      // Update integration stats
+      if (result.success) {
+        await updatePlatformIntegration(id, {
+          lastSyncStatus: "success",
+          lastSyncError: null,
+          incrementTotalOrdersSynced: result.ordersProcessed,
+          incrementTotalRecordsSynced: result.salesRecordsCreated,
+        });
+      } else {
+        await updatePlatformIntegration(id, {
+          lastSyncStatus: "failed",
+          lastSyncError: result.errors.join("; "),
+        });
+      }
+
+      return NextResponse.json({
+        success: result.success,
+        message: result.success
+          ? `Synced ${result.ordersProcessed} orders, created ${result.salesRecordsCreated} records`
+          : `Sync failed: ${result.errors[0]}`,
+        data: {
+          integrationId: id,
+          platform: integration.platform,
+          name: integration.name,
+          ordersProcessed: result.ordersProcessed,
+          salesRecordsCreated: result.salesRecordsCreated,
+          skusCreated: result.skusCreated,
+          errors: result.errors,
+        },
+      });
+    }
+
+    return NextResponse.json(
+      { success: false, error: `Platform ${integration.platform} not supported` },
+      { status: 400 }
+    );
+  } catch (error: any) {
+    console.error("Error syncing:", error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// GET /api/integrations/[id]/sync - Get sync status
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    const integration = await getPlatformIntegrationById(id);
+
+    if (!integration) {
+      return NextResponse.json(
+        { success: false, error: "Integration not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        integrationId: id,
+        platform: integration.platform,
+        name: integration.name,
+        isActive: integration.isActive,
+        sync: {
+          lastSyncAt: integration.lastSyncAt,
+          status: integration.lastSyncStatus,
+          error: integration.lastSyncError,
+          totalOrders: integration.totalOrdersSynced,
+          totalRecords: integration.totalRecordsSynced,
+          cursor: integration.syncCursor,
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("Error getting sync status:", error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}

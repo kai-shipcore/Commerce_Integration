@@ -1,0 +1,518 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["shipcore"]
+}
+
+// ============================================
+// CORE SKU MANAGEMENT
+// ============================================
+
+model SKU {
+  id            String   @id @default(cuid())
+  skuCode       String   @unique // Web/variant SKU from Shopify
+  masterSkuCode String?           // Master SKU from Supabase lookup
+  name          String
+  description   String?
+  category      String?
+
+  // Legacy summary inventory fields. Keep these for UI compatibility while
+  // operational inventory moves into InventoryBalance by location.
+  currentStock Int     @default(0)
+  reorderPoint Int?
+
+  // SKU Hierarchy (for custom variants)
+  isCustomVariant Boolean @default(false)
+  parentSKUId     String?
+  parentSKU       SKU?    @relation("SKUVariants", fields: [parentSKUId], references: [id], onDelete: SetNull)
+  customVariants  SKU[]   @relation("SKUVariants")
+
+  // Additional metadata
+  imageUrl    String?
+  tags        String[] // For flexible categorization
+
+  // Product details
+  unitCost    Decimal? @db.Decimal(10, 2)
+  retailPrice Decimal? @db.Decimal(10, 2)
+
+  // External IDs (for integrations)
+  shopifyProductId String?
+  amazonASIN       String?
+  walmartItemId    String?
+  ebayItemId       String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  salesRecords       SalesRecord[]
+  inventoryBalances  InventoryBalance[]
+  inventorySnapshots InventorySnapshot[]
+  inventoryTransactions InventoryTransaction[]
+  poItems            POItem[]
+  collectionMembers  SKUCollectionMember[]
+  trendData          TrendData[]
+
+  @@index([skuCode])
+  @@index([masterSkuCode])
+  @@index([parentSKUId])
+  @@index([category])
+  @@index([isCustomVariant])
+  @@map("sku")
+  @@schema("shipcore")
+}
+
+// ============================================
+// SKU COLLECTIONS
+// ============================================
+
+model SKUCollection {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+
+  // Collection metadata
+  colorCode   String?  // For visual identification
+  isPinned    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  members SKUCollectionMember[]
+
+  @@index([name])
+  @@map("skucollection")
+  @@schema("shipcore")
+}
+
+model SKUCollectionMember {
+  id           String @id @default(cuid())
+  collectionId String
+  skuId        String
+
+  // Member metadata
+  sortOrder Int @default(0)
+  addedAt   DateTime @default(now())
+
+  // Relations
+  collection SKUCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  sku        SKU           @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, skuId])
+  @@index([collectionId])
+  @@index([skuId])
+  @@map("skucollectionmember")
+  @@schema("shipcore")
+}
+
+// ============================================
+// SALES DATA
+// ============================================
+
+model SalesRecord {
+  id          String   @id @default(cuid())
+  skuId       String
+  integrationId String?
+
+  // Source information
+  platform    String   // shopify, walmart, ebay, manual
+  orderId     String
+  orderType   String   @default("actual_sale") // actual_sale, pre_order
+
+  // Sales details
+  saleDate    DateTime
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  totalAmount Decimal  @db.Decimal(12, 2)
+
+  // Master SKU tracking (for aggregation by master SKU)
+  masterSkuCode String?  // Master SKU from lookup function
+
+  // Fulfillment
+  fulfilled     Boolean   @default(false)
+  fulfilledDate DateTime?
+
+  // Additional info
+  notes String?
+
+  // Metadata
+  createdAt DateTime @default(now())
+
+  // Relations
+  sku SKU @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  integration PlatformIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+
+  @@index([skuId, saleDate])
+  @@index([saleDate])
+  @@index([platform])
+  @@index([orderType])
+  @@index([masterSkuCode])
+  @@index([integrationId])
+  @@map("salesrecord")
+  @@schema("shipcore")
+}
+
+model InventorySnapshot {
+  id           String   @id @default(cuid())
+  skuId        String
+  snapshotDate DateTime
+  quantity     Int
+  isStockout   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  sku SKU @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@unique([skuId, snapshotDate])
+  @@index([skuId, snapshotDate])
+  @@index([isStockout])
+  @@map("inventorysnapshot")
+  @@schema("shipcore")
+}
+
+model InventoryLocation {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  balances     InventoryBalance[]
+  transactions InventoryTransaction[]
+
+  @@index([code])
+  @@index([isDefault])
+  @@index([isActive])
+  @@map("inventorylocation")
+  @@schema("shipcore")
+}
+
+model InventoryBalance {
+  id            String   @id @default(cuid())
+  skuId         String
+  locationId    String
+  onHandQty     Int      @default(0)
+  reservedQty   Int      @default(0)
+  allocatedQty  Int      @default(0)
+  backorderQty  Int      @default(0)
+  inboundQty    Int      @default(0)
+  availableQty  Int      @default(0)
+  lastCountedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sku      SKU               @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  location InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([skuId, locationId])
+  @@index([locationId])
+  @@index([availableQty])
+  @@index([backorderQty])
+  @@map("inventorybalance")
+  @@schema("shipcore")
+}
+
+model InventoryTransaction {
+  id             String   @id @default(cuid())
+  skuId          String
+  locationId     String
+  transactionType String
+  quantityDelta  Int
+  referenceType  String?
+  referenceId    String?
+  notes          String?
+  effectiveAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  createdBy      String?
+
+  sku      SKU               @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  location InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@index([skuId, effectiveAt])
+  @@index([locationId, effectiveAt])
+  @@index([transactionType])
+  @@index([referenceType, referenceId])
+  @@map("inventorytransaction")
+  @@schema("shipcore")
+}
+
+// ============================================
+// TREND RESEARCH
+// ============================================
+
+model TrendData {
+  id     String   @id @default(cuid())
+  skuId  String
+
+  // Research period
+  researchDate  DateTime
+  validUntil    DateTime  // Cache expiration
+
+  // Google Trends data
+  googleTrendsChange      Decimal? @db.Decimal(5, 2) // % change
+  googleTrendsConfidence  Decimal? @db.Decimal(5, 2)
+  googleTrendsRaw         Json?    // Full data
+
+  // Competitor intelligence
+  competitorStockChange   Decimal? @db.Decimal(5, 2)
+  competitorPriceChange   Decimal? @db.Decimal(5, 2)
+  competitorConfidence    Decimal? @db.Decimal(5, 2)
+  competitorRaw           Json?
+
+  // Amazon data
+  amazonBSRChange         Decimal? @db.Decimal(5, 2)
+  amazonReviewVelocity    Decimal? @db.Decimal(5, 2)
+  amazonConfidence        Decimal? @db.Decimal(5, 2)
+  amazonRaw               Json?
+
+  // Social media signals
+  socialMentionsChange    Decimal? @db.Decimal(5, 2)
+  socialConfidence        Decimal? @db.Decimal(5, 2)
+  socialRaw               Json?
+
+  // AI analysis
+  aiTrendDirection        String?  // up, down, stable
+  aiConfidence            Decimal? @db.Decimal(5, 2)
+  aiSuggestedAdjustment   Decimal? @db.Decimal(5, 2)
+  aiReasoning             String?  // 2-3 sentences
+  aiAnalysisRaw           Json?    // Full AI response
+
+  // Combined signal
+  combinedSignal          Decimal? @db.Decimal(5, 2) // Weighted average
+  combinedConfidence      Decimal? @db.Decimal(5, 2)
+
+  // Metadata
+  createdAt DateTime @default(now())
+
+  // Relations
+  sku SKU @relation(fields: [skuId], references: [id], onDelete: Cascade)
+
+  @@unique([skuId, researchDate])
+  @@index([skuId, validUntil])
+  @@index([researchDate])
+  @@map("trenddata")
+  @@schema("shipcore")
+}
+
+model TrendWeightConfig {
+  id        String @id @default(cuid())
+
+  // Config identification
+  name      String   // "Default", "Conservative", "Aggressive"
+  isDefault Boolean  @default(false)
+  skuId     String?  // Null = global config, or per-SKU
+
+  // Signal weights (must sum to 100)
+  historicalDataWeight Int @default(65)  // 65%
+  googleTrendsWeight   Int @default(15)  // 15%
+  competitorWeight     Int @default(10)  // 10%
+  aiSynthesisWeight    Int @default(10)  // 10%
+
+  // Advanced settings
+  minimumConfidence    Decimal @default(50.0) @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([skuId])
+  @@index([isDefault])
+  @@map("trendweightconfig")
+  @@schema("shipcore")
+}
+
+// ============================================
+// PURCHASE ORDERS & CONTAINERS
+// ============================================
+
+model PurchaseOrder {
+  id                    String    @id @default(cuid())
+  poNumber              String    @unique
+  supplier              String?
+  orderDate             DateTime
+  expectedDeliveryDate  DateTime?
+  actualDeliveryDate    DateTime?
+  status                String    // pending, in_transit, delivered, cancelled
+  totalAmount           Decimal?  @db.Decimal(12, 2)
+  notes                 String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items      POItem[]
+  containers Container[]
+
+  @@index([status])
+  @@index([orderDate])
+  @@map("purchaseorder")
+  @@schema("shipcore")
+}
+
+model POItem {
+  id        String  @id @default(cuid())
+  poId      String
+  skuId     String
+  quantity  Int
+  unitCost  Decimal? @db.Decimal(10, 2)
+  totalCost Decimal? @db.Decimal(12, 2)
+
+  po  PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  sku SKU           @relation(fields: [skuId], references: [id])
+
+  @@index([poId])
+  @@index([skuId])
+  @@map("poitem")
+  @@schema("shipcore")
+}
+
+model Container {
+  id                    String    @id @default(cuid())
+  containerNumber       String    @unique
+  poId                  String?
+
+  // Dates
+  bookingDate           DateTime?
+  departureDate         DateTime?
+  estimatedArrivalDate  DateTime?
+  actualArrivalDate     DateTime?
+  estimatedReleaseDate  DateTime?
+  actualReleaseDate     DateTime?
+
+  // Details
+  carrier               String?
+  vesselName            String?
+  portOfLoading         String?
+  portOfDischarge       String?
+
+  // Tracking
+  status                String    // booked, in_transit, arrived, released
+  trackingUrl           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  po PurchaseOrder? @relation(fields: [poId], references: [id])
+
+  @@index([status])
+  @@index([poId])
+  @@map("container")
+  @@schema("shipcore")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("user") // user, admin
+  passwordHash  String?
+  menuVisibility Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  @@map("sc_user")
+  @@schema("shipcore")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("account")
+  @@schema("shipcore")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("Session")
+  @@schema("shipcore")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtoken")
+  @@schema("shipcore")
+}
+
+// ============================================
+// PLATFORM INTEGRATIONS
+// ============================================
+
+model PlatformIntegration {
+  id       String @id @default(cuid())
+  platform String // shopify, walmart, ebay, amazon
+
+  // Connection info
+  name        String  // User-friendly name, e.g., "My Shopify Store"
+  isActive    Boolean @default(true)
+
+  // Platform-specific config (stored as JSON)
+  // Shopify: { shopDomain, accessToken, apiVersion }
+  // Walmart: { clientId, clientSecret }
+  // etc.
+  config Json
+
+  // Sync tracking
+  syncCursor Json?     // Platform-specific cursor for incremental sync
+  lastSyncAt DateTime?
+  lastSyncStatus String? // success, failed, partial
+  lastSyncError  String?
+
+  // Statistics
+  totalOrdersSynced Int @default(0)
+  totalRecordsSynced Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  salesRecords SalesRecord[]
+
+  @@unique([platform, name])
+  @@index([platform])
+  @@index([isActive])
+  @@map("sc_platform_integration")
+  @@schema("shipcore")
+}
