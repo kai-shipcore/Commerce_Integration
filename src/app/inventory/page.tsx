@@ -22,7 +22,7 @@ import {
   createInventoryColumns,
   type InventoryTableRow,
 } from "@/components/inventory/inventory-table-columns";
-import { Boxes, Download, Loader2 } from "lucide-react";
+import { Boxes, Download, Loader2, RefreshCw } from "lucide-react";
 
 interface InventoryRow {
   masterSku: string;
@@ -74,9 +74,11 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchInventory = useCallback(() => {
+  const fetchInventory = useCallback(async () => {
     setLoading(true);
     setError(null);
     const params = new URLSearchParams();
@@ -90,27 +92,29 @@ export default function InventoryPage() {
       params.set("warehouse", warehouseFilter);
     }
 
-    fetch(`/api/inventory?${params.toString()}`, { cache: "no-store" })
-      .then((res) => res.json())
-      .then((result) => {
-        if (result.success) {
-          setRows(result.data);
-          setSummary(result.summary);
-          setTotalRows(result.pagination.total);
-          setPageCount(result.pagination.totalPages);
-          setFilteredRows(result.data);
-          setWarehouseOptions(result.warehouses || []);
-        } else {
-          setError(result.error || "Failed to load inventory");
-        }
-        setHasLoadedOnce(true);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to load inventory");
-        setHasLoadedOnce(true);
-        setLoading(false);
+    try {
+      const response = await fetch(`/api/inventory?${params.toString()}`, {
+        cache: "no-store",
       });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setError(result.error || "Failed to load inventory");
+        return;
+      }
+
+      setRows(result.data);
+      setSummary(result.summary);
+      setTotalRows(result.pagination.total);
+      setPageCount(result.pagination.totalPages);
+      setFilteredRows(result.data);
+      setWarehouseOptions(result.warehouses || []);
+    } catch {
+      setError("Failed to load inventory");
+    } finally {
+      setHasLoadedOnce(true);
+      setLoading(false);
+    }
   }, [pagination, sorting, search, warehouseFilter, groupBy]);
 
   useEffect(() => {
@@ -237,6 +241,30 @@ export default function InventoryPage() {
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/inventory/sync", { method: "POST" });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Inventory sync failed");
+      }
+
+      await fetchInventory();
+      setSyncMessage("Sync completed");
+    } catch (syncError) {
+      setError(
+        syncError instanceof Error ? syncError.message : "Inventory sync failed"
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
@@ -284,6 +312,18 @@ export default function InventoryPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {syncing ? "Syncing..." : "Sync"}
+            </Button>
             <Button
               variant="outline"
               onClick={handleExportCsv}
@@ -352,6 +392,11 @@ export default function InventoryPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {syncMessage ? (
+              <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                {syncMessage}
+              </div>
+            ) : null}
             {groupBy === "product" && (
               <p className="mb-4 text-sm text-muted-foreground">
                 Grouped by product rolls all warehouse rows into one master SKU total.

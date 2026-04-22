@@ -5,6 +5,7 @@
  */
 
 import { Pool } from "pg";
+import { readFile } from "node:fs/promises";
 
 // Separate connection pool for the Supabase project with size_chart_dev schema
 let lookupPool: Pool | null = null;
@@ -446,6 +447,29 @@ export async function getCoverlandInventory(
         .map((row) => row.warehouse)
         .filter((value): value is string => Boolean(value)),
     };
+  } finally {
+    client.release();
+  }
+}
+
+export async function syncInventorySnapshotFromSqlFile(
+  sqlFilePath: string
+): Promise<{ filePath: string }> {
+  const pool = getLookupPool();
+
+  if (!pool) {
+    throw new Error("No lookup database connection configured");
+  }
+
+  const sqlScript = (await readFile(sqlFilePath, "utf8")).trim();
+  if (!sqlScript) {
+    throw new Error("Inventory sync SQL file is empty");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(sqlScript);
+    return { filePath: sqlFilePath };
   } finally {
     client.release();
   }
