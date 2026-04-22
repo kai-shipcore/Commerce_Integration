@@ -132,6 +132,11 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
               required
             />
           </div>
+          <div className="text-right text-sm">
+            <Link href="/auth/forgot-password" className="text-primary hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Sign In
