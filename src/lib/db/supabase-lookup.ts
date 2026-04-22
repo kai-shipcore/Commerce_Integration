@@ -347,14 +347,14 @@ export async function getCoverlandInventory(
         COALESCE(SUM(allocated), 0)::text AS total_allocated,
         COALESCE(SUM(available), 0)::text AS total_available,
         COALESCE(SUM(backorder), 0)::text AS total_backorder
-      FROM ecommerce_data.coverland_inventory
+      FROM shipcore.sc_inventory_snapshot
       ${whereClause}`,
       params
     );
 
     const warehouseResult = await client.query<{ warehouse: string | null }>(
       `SELECT DISTINCT warehouse
-      FROM ecommerce_data.coverland_inventory
+      FROM shipcore.sc_inventory_snapshot
       WHERE warehouse IS NOT NULL AND warehouse <> ''
       ORDER BY warehouse ASC`
     );
@@ -385,7 +385,7 @@ export async function getCoverlandInventory(
               COALESCE(SUM(backorder), 0) AS backorder,
               COUNT(DISTINCT NULLIF(warehouse, ''))::text AS warehouse_count,
               MAX(created_at) AS created_at
-            FROM ecommerce_data.coverland_inventory
+            FROM shipcore.sc_inventory_snapshot
             ${whereClause}
             GROUP BY master_sku
             ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
@@ -409,7 +409,7 @@ export async function getCoverlandInventory(
               backorder,
               warehouse,
               created_at
-            FROM ecommerce_data.coverland_inventory
+            FROM shipcore.sc_inventory_snapshot
             ${whereClause}
             ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
             ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,
