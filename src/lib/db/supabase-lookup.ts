@@ -287,12 +287,12 @@ export async function getCoverlandInventory(
   const groupBy = options.groupBy ?? "warehouse";
   const sortByMap = {
     masterSku: "master_sku",
-    warehouse: "warehouse",
+    warehouse: "warehouse_code",
     warehouseCount: "warehouse_count",
-    onHand: "on_hand",
-    allocated: "allocated",
-    available: "available",
-    backorder: "backorder",
+    onHand: "on_hand_qty",
+    allocated: "reserved_qty",
+    available: "available_qty",
+    backorder: "backorder_qty",
     createdAt: "created_at",
   } as const;
   const requestedSortBy =
@@ -315,16 +315,16 @@ export async function getCoverlandInventory(
     if (search) {
       params.push(`%${search}%`);
       filters.push(
-        `(master_sku ILIKE $${params.length} OR COALESCE(warehouse, '') ILIKE $${params.length})`
+        `(master_sku ILIKE $${params.length} OR COALESCE(warehouse_code, '') ILIKE $${params.length})`
       );
     }
 
     if (warehouse && warehouse !== "all") {
       if (warehouse === "Unspecified") {
-        filters.push(`(warehouse IS NULL OR warehouse = '')`);
+        filters.push(`(warehouse_code IS NULL OR warehouse_code = '')`);
       } else {
         params.push(warehouse);
-        filters.push(`warehouse = $${params.length}`);
+        filters.push(`warehouse_code = $${params.length}`);
       }
     }
 
@@ -342,21 +342,21 @@ export async function getCoverlandInventory(
       `SELECT
         COUNT(*)::text AS total_rows,
         COUNT(DISTINCT master_sku)::text AS total_products,
-        COUNT(DISTINCT NULLIF(warehouse, ''))::text AS total_warehouses,
-        COALESCE(SUM(on_hand), 0)::text AS total_on_hand,
-        COALESCE(SUM(allocated), 0)::text AS total_allocated,
-        COALESCE(SUM(available), 0)::text AS total_available,
-        COALESCE(SUM(backorder), 0)::text AS total_backorder
+        COUNT(DISTINCT NULLIF(warehouse_code, ''))::text AS total_warehouses,
+        COALESCE(SUM(on_hand_qty), 0)::text AS total_on_hand,
+        COALESCE(SUM(reserved_qty), 0)::text AS total_allocated,
+        COALESCE(SUM(available_qty), 0)::text AS total_available,
+        COALESCE(SUM(backorder_qty), 0)::text AS total_backorder
       FROM shipcore.sc_inventory_snapshot
       ${whereClause}`,
       params
     );
 
     const warehouseResult = await client.query<{ warehouse: string | null }>(
-      `SELECT DISTINCT warehouse
+      `SELECT DISTINCT warehouse_code AS warehouse
       FROM shipcore.sc_inventory_snapshot
-      WHERE warehouse IS NOT NULL AND warehouse <> ''
-      ORDER BY warehouse ASC`
+      WHERE warehouse_code IS NOT NULL AND warehouse_code <> ''
+      ORDER BY warehouse_code ASC`
     );
 
     const paginationParams = [...params];
@@ -379,11 +379,11 @@ export async function getCoverlandInventory(
           }>(
             `SELECT
               master_sku,
-              COALESCE(SUM(on_hand), 0) AS on_hand,
-              COALESCE(SUM(allocated), 0) AS allocated,
-              COALESCE(SUM(available), 0) AS available,
-              COALESCE(SUM(backorder), 0) AS backorder,
-              COUNT(DISTINCT NULLIF(warehouse, ''))::text AS warehouse_count,
+              COALESCE(SUM(on_hand_qty), 0) AS on_hand,
+              COALESCE(SUM(reserved_qty), 0) AS allocated,
+              COALESCE(SUM(available_qty), 0) AS available,
+              COALESCE(SUM(backorder_qty), 0) AS backorder,
+              COUNT(DISTINCT NULLIF(warehouse_code, ''))::text AS warehouse_count,
               MAX(created_at) AS created_at
             FROM shipcore.sc_inventory_snapshot
             ${whereClause}
@@ -403,11 +403,11 @@ export async function getCoverlandInventory(
           }>(
             `SELECT
               master_sku,
-              on_hand,
-              allocated,
-              available,
-              backorder,
-              warehouse,
+              on_hand_qty AS on_hand,
+              reserved_qty AS allocated,
+              available_qty AS available,
+              backorder_qty AS backorder,
+              warehouse_code AS warehouse,
               created_at
             FROM shipcore.sc_inventory_snapshot
             ${whereClause}
