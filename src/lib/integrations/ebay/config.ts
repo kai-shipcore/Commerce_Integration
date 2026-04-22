@@ -1,30 +1,38 @@
-import type { IntegrationConfig } from "@/lib/integrations/core/types";
+import axios from 'axios';
+import dotenv from 'dotenv';
 
-const MASKED_SECRET = "********";
+dotenv.config();
 
-export function applyEbayDefaults(config: IntegrationConfig): IntegrationConfig {
-  return {
-    clientId: String(config.clientId || ""),
-    clientSecret: String(config.clientSecret || ""),
-    refreshToken: String(config.refreshToken || ""),
-    environment: config.environment === "sandbox" ? "sandbox" : "production",
-  };
-}
+async function refreshAccessToken() {
+  const appId = process.env.EBAY_APP_ID?.trim();
+  const certId = process.env.EBAY_CERT_ID?.trim();
+  const refreshToken = process.env.EBAY_REFRESH_TOKEN?.trim();
 
-export function validateEbayConfig(config: IntegrationConfig): void {
-  const normalized = applyEbayDefaults(config);
+  if (!appId || !certId || !refreshToken) {
+    console.error("Missing credentials in .env");
+    return;
+  }
 
-  if (!normalized.clientId || !normalized.clientSecret || !normalized.refreshToken) {
-    throw new Error("eBay integration requires clientId, clientSecret, and refreshToken");
+  const authHeader = Buffer.from(`${appId}:${certId}`).toString('base64');
+
+  try {
+    const response = await axios.post('https://api.ebay.com/identity/v1/oauth2/token', 
+      new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken
+      }), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${authHeader}`
+        }
+      });
+
+    console.log("✅ ACCESS TOKEN REFRESHED");
+    console.log(response.data.access_token);
+    console.log("\nUpdate your EBAY_ACCESS_TOKEN in .env with the string above.");
+  } catch (error: any) {
+    console.error("Refresh failed:", error.response?.data || error.message);
   }
 }
 
-export function maskEbayConfig(config: IntegrationConfig): IntegrationConfig {
-  const normalized = applyEbayDefaults(config);
-
-  return {
-    ...normalized,
-    clientSecret: normalized.clientSecret ? MASKED_SECRET : undefined,
-    refreshToken: normalized.refreshToken ? MASKED_SECRET : undefined,
-  };
-}
+refreshAccessToken();
