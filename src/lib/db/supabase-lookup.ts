@@ -5,6 +5,7 @@
  */
 
 import { Pool } from "pg";
+import { readFile } from "node:fs/promises";
 
 // Separate connection pool for the Supabase project with size_chart_dev schema
 let lookupPool: Pool | null = null;
@@ -287,12 +288,12 @@ export async function getCoverlandInventory(
   const groupBy = options.groupBy ?? "warehouse";
   const sortByMap = {
     masterSku: "master_sku",
-    warehouse: "warehouse",
+    warehouse: "warehouse_code",
     warehouseCount: "warehouse_count",
-    onHand: "on_hand",
-    allocated: "allocated",
-    available: "available",
-    backorder: "backorder",
+    onHand: "on_hand_qty",
+    allocated: "reserved_qty",
+    available: "available_qty",
+    backorder: "backorder_qty",
     createdAt: "created_at",
   } as const;
   const requestedSortBy =
@@ -315,16 +316,16 @@ export async function getCoverlandInventory(
     if (search) {
       params.push(`%${search}%`);
       filters.push(
-        `(master_sku ILIKE $${params.length} OR COALESCE(warehouse, '') ILIKE $${params.length})`
+        `(master_sku ILIKE $${params.length} OR COALESCE(warehouse_code, '') ILIKE $${params.length})`
       );
     }
 
     if (warehouse && warehouse !== "all") {
       if (warehouse === "Unspecified") {
-        filters.push(`(warehouse IS NULL OR warehouse = '')`);
+        filters.push(`(warehouse_code IS NULL OR warehouse_code = '')`);
       } else {
         params.push(warehouse);
-        filters.push(`warehouse = $${params.length}`);
+        filters.push(`warehouse_code = $${params.length}`);
       }
     }
 
@@ -342,21 +343,21 @@ export async function getCoverlandInventory(
       `SELECT
         COUNT(*)::text AS total_rows,
         COUNT(DISTINCT master_sku)::text AS total_products,
-        COUNT(DISTINCT NULLIF(warehouse, ''))::text AS total_warehouses,
-        COALESCE(SUM(on_hand), 0)::text AS total_on_hand,
-        COALESCE(SUM(allocated), 0)::text AS total_allocated,
-        COALESCE(SUM(available), 0)::text AS total_available,
-        COALESCE(SUM(backorder), 0)::text AS total_backorder
-      FROM ecommerce_data.coverland_inventory
+        COUNT(DISTINCT NULLIF(warehouse_code, ''))::text AS total_warehouses,
+        COALESCE(SUM(on_hand_qty), 0)::text AS total_on_hand,
+        COALESCE(SUM(reserved_qty), 0)::text AS total_allocated,
+        COALESCE(SUM(available_qty), 0)::text AS total_available,
+        COALESCE(SUM(backorder_qty), 0)::text AS total_backorder
+      FROM shipcore.sc_inventory_snapshot
       ${whereClause}`,
       params
     );
 
     const warehouseResult = await client.query<{ warehouse: string | null }>(
-      `SELECT DISTINCT warehouse
-      FROM ecommerce_data.coverland_inventory
-      WHERE warehouse IS NOT NULL AND warehouse <> ''
-      ORDER BY warehouse ASC`
+      `SELECT DISTINCT warehouse_code AS warehouse
+      FROM shipcore.sc_inventory_snapshot
+      WHERE warehouse_code IS NOT NULL AND warehouse_code <> ''
+      ORDER BY warehouse_code ASC`
     );
 
     const paginationParams = [...params];
@@ -379,13 +380,13 @@ export async function getCoverlandInventory(
           }>(
             `SELECT
               master_sku,
-              COALESCE(SUM(on_hand), 0) AS on_hand,
-              COALESCE(SUM(allocated), 0) AS allocated,
-              COALESCE(SUM(available), 0) AS available,
-              COALESCE(SUM(backorder), 0) AS backorder,
-              COUNT(DISTINCT NULLIF(warehouse, ''))::text AS warehouse_count,
+              COALESCE(SUM(on_hand_qty), 0) AS on_hand,
+              COALESCE(SUM(reserved_qty), 0) AS allocated,
+              COALESCE(SUM(available_qty), 0) AS available,
+              COALESCE(SUM(backorder_qty), 0) AS backorder,
+              COUNT(DISTINCT NULLIF(warehouse_code, ''))::text AS warehouse_count,
               MAX(created_at) AS created_at
-            FROM ecommerce_data.coverland_inventory
+            FROM shipcore.sc_inventory_snapshot
             ${whereClause}
             GROUP BY master_sku
             ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
@@ -403,13 +404,13 @@ export async function getCoverlandInventory(
           }>(
             `SELECT
               master_sku,
-              on_hand,
-              allocated,
-              available,
-              backorder,
-              warehouse,
+              on_hand_qty AS on_hand,
+              reserved_qty AS allocated,
+              available_qty AS available,
+              backorder_qty AS backorder,
+              warehouse_code AS warehouse,
               created_at
-            FROM ecommerce_data.coverland_inventory
+            FROM shipcore.sc_inventory_snapshot
             ${whereClause}
             ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
             ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,
@@ -446,6 +447,29 @@ export async function getCoverlandInventory(
         .map((row) => row.warehouse)
         .filter((value): value is string => Boolean(value)),
     };
+  } finally {
+    client.release();
+  }
+}
+
+export async function syncInventorySnapshotFromSqlFile(
+  sqlFilePath: string
+): Promise<{ filePath: string }> {
+  const pool = getLookupPool();
+
+  if (!pool) {
+    throw new Error("No lookup database connection configured");
+  }
+
+  const sqlScript = (await readFile(sqlFilePath, "utf8")).trim();
+  if (!sqlScript) {
+    throw new Error("Inventory sync SQL file is empty");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query(sqlScript);
+    return { filePath: sqlFilePath };
   } finally {
     client.release();
   }
