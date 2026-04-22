@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import {
+  getDefaultVisibleMenuIds,
+} from "@/components/layout/navigation-config";
 import { z } from "zod";
 
 const UpdateUserRoleSchema = z.object({
-  role: z.enum(["user", "admin"]),
+  role: z.enum(["user", "admin", "dev"]),
 });
 
 export async function PATCH(
@@ -43,10 +46,12 @@ export async function PATCH(
       where: { id: userId },
       data: {
         role: parsed.role,
+        menuVisibility: getDefaultVisibleMenuIds(parsed.role),
       },
       select: {
         id: true,
         role: true,
+        menuVisibility: true,
         updatedAt: true,
       },
     });

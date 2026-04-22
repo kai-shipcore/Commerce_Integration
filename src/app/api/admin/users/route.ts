@@ -42,6 +42,7 @@ export async function GET() {
       data: {
         defaults: {
           admin: getDefaultVisibleMenuIds("admin"),
+          dev: getDefaultVisibleMenuIds("dev"),
           user: getDefaultVisibleMenuIds("user"),
         },
         users: users.map((user) => ({

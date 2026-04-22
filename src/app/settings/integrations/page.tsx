@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { AppLayout } from "@/components/layout/app-layout";
+import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -328,7 +329,7 @@ export default function IntegrationsPage() {
   };
 
   const supportsSync = (platform: string) => platform === "shopify";
-  const isAdmin = session?.user?.role === "admin";
+  const isAdmin = isAdminLikeRole(session?.user?.role);
 
   const addDialogMeta = getDialogMeta(formData.platform, "add");
   const editDialogMeta = getDialogMeta(editFormData.platform, "edit");
@@ -548,7 +549,16 @@ export default function IntegrationsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleSync(integration.id, false)}
-                      disabled={syncing === integration.id || !supportsSync(integration.platform)}
+                      disabled={
+                        !isAdmin ||
+                        syncing === integration.id ||
+                        !supportsSync(integration.platform)
+                      }
+                      title={
+                        !isAdmin
+                          ? "You need admin or dev access to sync marketplace integrations."
+                          : undefined
+                      }
                     >
                       {syncing === integration.id ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -561,7 +571,16 @@ export default function IntegrationsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleSync(integration.id, true)}
-                      disabled={syncing === integration.id || !supportsSync(integration.platform)}
+                      disabled={
+                        !isAdmin ||
+                        syncing === integration.id ||
+                        !supportsSync(integration.platform)
+                      }
+                      title={
+                        !isAdmin
+                          ? "You need admin or dev access to sync marketplace integrations."
+                          : undefined
+                      }
                     >
                       {syncing === integration.id ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -621,7 +640,7 @@ export default function IntegrationsPage() {
                   )}
                   {!isAdmin && (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Edit and Remove are visible for clarity, but only admins can use them.
+                      Edit, Sync, and Remove are visible for clarity, but only admin or dev users can use them.
                     </p>
                   )}
                   {connectionResults[integration.id] && (
