@@ -558,7 +558,7 @@ export async function getSalesOrders(
         COALESCE(SUM(so.total_price), 0)::text AS total_revenue,
         COALESCE(SUM(item_totals.unit_count), 0)::text AS total_units,
         COUNT(DISTINCT so.platform_source)::text AS total_platforms
-      FROM ecommerce_data.sales_orders so
+      FROM shipcore.sc_sales_orders so
       LEFT JOIN (
         SELECT order_id, COALESCE(SUM(net_quantity), 0) AS unit_count
         FROM ecommerce_data.sales_order_items
