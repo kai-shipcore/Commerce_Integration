@@ -6,16 +6,18 @@
  * Global React context providers are collected here so the root layout can mount them in one place.
  */
 import { SessionProvider } from "next-auth/react";
+import type { Session } from "next-auth";
 import { ThemeProvider } from "next-themes";
 
 interface ProvidersProps {
   children: React.ReactNode;
+  session?: Session | null;
 }
 
-export function Providers({ children }: ProvidersProps) {
+export function Providers({ children, session }: ProvidersProps) {
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
-      <SessionProvider>{children}</SessionProvider>
+      <SessionProvider session={session}>{children}</SessionProvider>
     </ThemeProvider>
   );
 }

@@ -5,8 +5,7 @@
  * Shared layout component used across app screens.
  * Navigation, shell structure, and session-aware controls are kept here so individual pages stay focused on their own content.
  */
-import { useEffect, useState } from "react";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,71 +19,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, LogOut } from "lucide-react";
 
-const PROFILE_FETCH_TIMEOUT_MS = 2000;
-
-interface ProfileSummary {
-  name?: string | null;
-  email?: string | null;
-  image?: string | null;
-}
-
 export function UserMenu() {
-  const [status, setStatus] = useState<"loading" | "authenticated" | "unauthenticated">(
-    "loading"
-  );
-  const [user, setUser] = useState<ProfileSummary | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadProfile = async () => {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(
-        () => controller.abort(),
-        PROFILE_FETCH_TIMEOUT_MS
-      );
-
-      try {
-        const response = await fetch("/api/settings/profile", {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          if (!cancelled) {
-            setUser(null);
-            setStatus("unauthenticated");
-          }
-          return;
-        }
-
-        const result = await response.json();
-
-        if (!cancelled) {
-          if (result.success && result.data) {
-            setUser(result.data);
-            setStatus("authenticated");
-          } else {
-            setUser(null);
-            setStatus("unauthenticated");
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setUser(null);
-          setStatus("unauthenticated");
-        }
-      } finally {
-        window.clearTimeout(timeoutId);
-      }
-    };
-
-    void loadProfile();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: session, status } = useSession();
+  const user = session?.user;
 
   if (status === "loading") {
     return (
