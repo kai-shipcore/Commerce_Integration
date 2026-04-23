@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import { Pool, PoolClient } from "pg";
 
+const PLATFORM_INTEGRATION_CONNECTION_TIMEOUT_MS = 2000;
+
 type IntegrationPlatform = "shopify" | "walmart" | "ebay" | "amazon";
 
 export interface PlatformIntegrationRecord {
@@ -76,7 +78,7 @@ function getPlatformIntegrationPool() {
           : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: PLATFORM_INTEGRATION_CONNECTION_TIMEOUT_MS,
     });
   }
 

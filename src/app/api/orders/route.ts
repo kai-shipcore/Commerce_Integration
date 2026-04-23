@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSalesOrders } from "@/lib/db/supabase-lookup";
+import { getSalesOrders, isLookupConnectionError } from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -55,6 +55,28 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error("Error fetching sales orders:", error);
+
+    if (isLookupConnectionError(error)) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        summary: {
+          totalOrders: 0,
+          totalRevenue: 0,
+          totalUnits: 0,
+          totalPlatforms: 0,
+        },
+        platformSources: [],
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0,
+        },
+        degraded: true,
+      });
+    }
+
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
       { status: 500 }

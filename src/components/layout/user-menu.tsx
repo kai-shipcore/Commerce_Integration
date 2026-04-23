@@ -20,6 +20,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, LogOut } from "lucide-react";
 
+const PROFILE_FETCH_TIMEOUT_MS = 2000;
+
 interface ProfileSummary {
   name?: string | null;
   email?: string | null;
@@ -36,8 +38,17 @@ export function UserMenu() {
     let cancelled = false;
 
     const loadProfile = async () => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        PROFILE_FETCH_TIMEOUT_MS
+      );
+
       try {
-        const response = await fetch("/api/settings/profile", { cache: "no-store" });
+        const response = await fetch("/api/settings/profile", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
           if (!cancelled) {
@@ -63,6 +74,8 @@ export function UserMenu() {
           setUser(null);
           setStatus("unauthenticated");
         }
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     };
 

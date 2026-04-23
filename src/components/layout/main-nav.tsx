@@ -17,6 +17,7 @@ import {
 } from "./navigation-config";
 
 let cachedVisibleMenuIds: string[] | null = null;
+const MENU_FETCH_TIMEOUT_MS = 2000;
 
 function readStoredVisibleMenuIds(role?: string | null): string[] | null {
   if (typeof window === "undefined") {
@@ -68,18 +69,26 @@ export function MainNav() {
   useEffect(() => {
     const loadPreferences = async () => {
       const storedVisibleMenuIds = readStoredVisibleMenuIds();
+      const defaults = getDefaultVisibleMenuIds();
 
       if (storedVisibleMenuIds) {
         setVisibleMenuIds(storedVisibleMenuIds);
+        setPreferencesReady(true);
       }
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        MENU_FETCH_TIMEOUT_MS
+      );
 
       try {
         const response = await fetch("/api/settings/menu", {
           cache: "no-store",
+          signal: controller.signal,
         });
 
         if (!response.ok) {
-          const defaults = getDefaultVisibleMenuIds();
           setVisibleMenuIds(defaults);
           storeVisibleMenuIds(defaults);
           setIsAdmin(false);
@@ -99,11 +108,12 @@ export function MainNav() {
         }
         setPreferencesReady(true);
       } catch {
-        const defaults = getDefaultVisibleMenuIds();
         setVisibleMenuIds(defaults);
         storeVisibleMenuIds(defaults);
         setIsAdmin(false);
         setPreferencesReady(true);
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     };
 

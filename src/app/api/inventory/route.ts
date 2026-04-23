@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCoverlandInventory } from "@/lib/db/supabase-lookup";
+import {
+  getCoverlandInventory,
+  isLookupConnectionError,
+} from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -55,6 +58,31 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error("Error fetching external inventory:", error);
+
+    if (isLookupConnectionError(error)) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        warehouses: [],
+        summary: {
+          totalRows: 0,
+          totalProducts: 0,
+          totalWarehouses: 0,
+          onHand: 0,
+          allocated: 0,
+          available: 0,
+          backorder: 0,
+        },
+        pagination: {
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0,
+        },
+        degraded: true,
+      });
+    }
+
     return NextResponse.json(
       {
         success: false,
