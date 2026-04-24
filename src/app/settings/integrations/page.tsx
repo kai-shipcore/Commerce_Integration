@@ -44,6 +44,8 @@ import {
 } from "lucide-react";
 import { MarketplaceIcon } from "@/components/marketplaces/marketplace-icon";
 
+type TokenStatus = "valid" | "expiring_soon" | "expired" | "none";
+
 interface Integration {
   id: string;
   platform: string;
@@ -55,6 +57,7 @@ interface Integration {
   totalOrdersSynced: number;
   totalRecordsSynced: number;
   createdAt: string;
+  tokenStatus?: TokenStatus;
 }
 
 interface ConnectionCheckResult {
@@ -251,16 +254,12 @@ export default function IntegrationsPage() {
         body: JSON.stringify({ fullSync }),
       });
 
-      const data = await res.json();
-
-      if (data.success) {
-        // Refresh to show updated status
-        fetchIntegrations();
-      }
+      await res.json();
     } catch (error) {
       console.error("Sync failed:", error);
     } finally {
       setSyncing(null);
+      fetchIntegrations();
     }
   };
 
@@ -311,6 +310,10 @@ export default function IntegrationsPage() {
           message: data.data?.message || data.error || "Connection check failed.",
         },
       }));
+
+      if (status === "connected") {
+        fetchIntegrations();
+      }
     } catch (error: any) {
       setConnectionResults((current) => ({
         ...current,
@@ -328,7 +331,7 @@ export default function IntegrationsPage() {
     return <MarketplaceIcon platform={platform} />;
   };
 
-  const supportsSync = (platform: string) => platform === "shopify";
+  const supportsSync = (platform: string) => platform === "shopify" || platform === "walmart";
   const isAdmin = isAdminLikeRole(session?.user?.role);
 
   const addDialogMeta = getDialogMeta(formData.platform, "add");
@@ -517,6 +520,34 @@ export default function IntegrationsPage() {
                     </Alert>
                   )}
 
+                  {integration.tokenStatus && (
+                    <div className="mb-4">
+                      {integration.tokenStatus === "valid" && (
+                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Access Token 유효
+                        </Badge>
+                      )}
+                      {integration.tokenStatus === "expiring_soon" && (
+                        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Access Token 곧 만료
+                        </Badge>
+                      )}
+                      {integration.tokenStatus === "expired" && (
+                        <Badge variant="destructive">
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Access Token 만료됨
+                        </Badge>
+                      )}
+                      {integration.tokenStatus === "none" && (
+                        <Badge variant="outline">
+                          Access Token 없음
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
@@ -635,7 +666,7 @@ export default function IntegrationsPage() {
                   </div>
                   {!supportsSync(integration.platform) && (
                     <p className="mt-3 text-sm text-muted-foreground">
-                      Stored successfully. Direct sync is currently available only for Shopify.
+                      Stored successfully. Automatic sync is not yet available for this platform.
                     </p>
                   )}
                   {!isAdmin && (
@@ -689,7 +720,7 @@ export default function IntegrationsPage() {
               <strong>SKU Matching:</strong> Orders are matched to existing SKUs by SKU code. New SKUs are auto-created if not found.
             </p>
             <p>
-              <strong>Current Platform Support:</strong> Shopify sync is implemented today. Amazon, eBay, and Walmart credentials can now be stored from the same screen.
+              <strong>Current Platform Support:</strong> Shopify and Walmart sync are implemented. Amazon and eBay credentials can be stored and will be supported in a future update.
             </p>
           </CardContent>
         </Card>
@@ -915,39 +946,27 @@ function renderIntegrationForm({
       {formData.platform === "walmart" && (
         <>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-consumerId`}>Consumer ID</Label>
+            <Label htmlFor={`${mode}-clientId`}>Client ID</Label>
             <Input
-              id={`${mode}-consumerId`}
-              value={formData.consumerId}
+              id={`${mode}-clientId`}
+              value={formData.clientId}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, consumerId: e.target.value }))
+                setFormData((current) => ({ ...current, clientId: e.target.value }))
               }
               required
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-privateKey`}>Private Key</Label>
+            <Label htmlFor={`${mode}-clientSecret`}>Client Secret</Label>
             <Input
-              id={`${mode}-privateKey`}
+              id={`${mode}-clientSecret`}
               type="password"
-              placeholder={isEdit ? "Leave blank to keep the current private key" : undefined}
-              value={formData.privateKey}
+              placeholder={isEdit ? "Leave blank to keep the current secret" : undefined}
+              value={formData.clientSecret}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, privateKey: e.target.value }))
+                setFormData((current) => ({ ...current, clientSecret: e.target.value }))
               }
               required={!isEdit}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor={`${mode}-channelType`}>Channel Type</Label>
-            <Input
-              id={`${mode}-channelType`}
-              placeholder="MP_ITEM"
-              value={formData.channelType}
-              onChange={(e) =>
-                setFormData((current) => ({ ...current, channelType: e.target.value }))
-              }
-              required
             />
           </div>
           <div className="grid gap-2">
@@ -1008,8 +1027,8 @@ function getDialogMeta(platform: IntegrationPlatform, mode: "add" | "edit") {
       title: `${action} Walmart Market Place`,
       description:
         mode === "add"
-          ? "Store Walmart marketplace credentials so this marketplace can be connected next."
-          : "Update the stored Walmart marketplace credentials. Leave the private key blank to keep the current value.",
+          ? "Enter your Walmart Marketplace API credentials to enable connection checks."
+          : "Update your Walmart Marketplace credentials. Leave the secret blank to keep the current value.",
     };
   }
 
@@ -1054,9 +1073,9 @@ function buildFormStateFromIntegration(integration: IntegrationDetail): Integrat
     clientId: config.clientId ?? "",
     clientSecret: "",
     refreshToken: "",
-    consumerId: config.consumerId ?? "",
+    consumerId: "",
     privateKey: "",
-    channelType: config.channelType ?? "",
+    channelType: "",
     environment:
       config.environment === "sandbox" ? "sandbox" : "production",
   };
@@ -1106,13 +1125,12 @@ function buildIntegrationPayload(
 
   if (formData.platform === "walmart") {
     const config: Record<string, string> = {
-      consumerId: formData.consumerId,
-      channelType: formData.channelType,
+      clientId: formData.clientId,
       environment: formData.environment,
     };
 
-    if (!omitEmptySecrets || formData.privateKey.trim()) {
-      config.privateKey = formData.privateKey;
+    if (!omitEmptySecrets || formData.clientSecret.trim()) {
+      config.clientSecret = formData.clientSecret;
     }
 
     return {
