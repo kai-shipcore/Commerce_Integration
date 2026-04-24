@@ -91,7 +91,15 @@ export async function GET(request: NextRequest) {
       // Total Collections
       prisma.sKUCollection.count(),
 
-      listActivePlatformIntegrations().then((integrations) => integrations.length),
+      listActivePlatformIntegrations()
+        .then((integrations) => integrations.length)
+        .catch((error) => {
+          console.warn(
+            "Dashboard integrations lookup failed, falling back to 0:",
+            getErrorMessage(error)
+          );
+          return 0;
+        }),
 
       // Low stock SKUs (below reorder point)
       prisma.sKU.findMany({

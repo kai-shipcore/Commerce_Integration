@@ -7,6 +7,8 @@
 import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
 
+const LOOKUP_CONNECTION_TIMEOUT_MS = 2000;
+
 // Separate connection pool for the Supabase project with size_chart_dev schema
 let lookupPool: Pool | null = null;
 
@@ -30,7 +32,7 @@ function getLookupPool(): Pool | null {
           : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: LOOKUP_CONNECTION_TIMEOUT_MS,
     });
   }
 
@@ -169,6 +171,24 @@ function getErrorCode(error: unknown): string | undefined {
     typeof (error as { code?: unknown }).code === "string"
     ? (error as { code: string }).code
     : undefined;
+}
+
+export function isLookupConnectionError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const code = getErrorCode(error);
+
+  return (
+    message.includes("connection timeout") ||
+    message.includes("max client connections") ||
+    message.includes("timeout expired") ||
+    message.includes("connection terminated") ||
+    message.includes("terminating connection") ||
+    code === "ETIMEDOUT" ||
+    code === "ECONNRESET" ||
+    code === "ECONNREFUSED" ||
+    code === "57P01" ||
+    code === "53300"
+  );
 }
 
 /**

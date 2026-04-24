@@ -9,7 +9,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { SKUFormDialog } from "@/components/sku/sku-form-dialog";
 import { BulkActionsBar } from "@/components/sku/bulk-actions-bar";
-import { MasterSkuBackfillBanner } from "@/components/sku/master-sku-backfill-banner";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import { createSkuColumns, SKUTableData } from "@/components/sku/sku-table-columns";
 import { Button } from "@/components/ui/button";
@@ -191,9 +190,6 @@ export default function SKUsPage() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
-        {/* Master SKU Backfill Banner - auto-triggers if needed */}
-        <MasterSkuBackfillBanner />
-
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

@@ -6,6 +6,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import {
   getPlatformIntegrationById,
 } from "@/lib/db/platform-integrations";
@@ -17,6 +19,22 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    if (!isAdminLikeRole(session.user.role)) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden" },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
     const fullSync = body.fullSync || false;
@@ -64,7 +82,9 @@ export async function POST(
     }
 
     // Direct sync (synchronous)
+    console.log(`[sync route] Starting sync for ${integration.platform} / ${integration.name}`);
     const result = await runIntegrationSync(id, { fullSync });
+    console.log(`[sync route] Sync result:`, JSON.stringify(result));
 
     return NextResponse.json({
       success: result.success,
@@ -82,7 +102,7 @@ export async function POST(
       },
     });
   } catch (error: any) {
-    console.error("Error syncing:", error);
+    console.error("[sync route] UNHANDLED ERROR:", error?.message, error?.stack);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

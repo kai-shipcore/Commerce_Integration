@@ -20,6 +20,23 @@ const CreateIntegrationSchema = z.object({
   config: z.record(z.string(), z.unknown()),
 });
 
+type TokenStatus = "valid" | "expiring_soon" | "expired" | "none";
+
+const TOKEN_BUFFER_MS = 5 * 60 * 1000;
+
+function getWalmartTokenStatus(config: Record<string, unknown>): TokenStatus {
+  const token = config.accessToken as string | undefined;
+  const expiresAt = config.accessTokenExpiresAt as string | undefined;
+
+  if (!token || !expiresAt) return "none";
+
+  const msUntilExpiry = new Date(expiresAt).getTime() - Date.now();
+
+  if (msUntilExpiry <= 0) return "expired";
+  if (msUntilExpiry <= TOKEN_BUFFER_MS) return "expiring_soon";
+  return "valid";
+}
+
 // GET /api/integrations - List all integrations
 export async function GET() {
   try {
@@ -27,7 +44,13 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      data: integrations.map(({ config, syncCursor, ...integration }) => integration),
+      data: integrations.map(({ config, syncCursor, ...integration }) => ({
+        ...integration,
+        tokenStatus:
+          integration.platform === "walmart"
+            ? getWalmartTokenStatus(config)
+            : undefined,
+      })),
     });
   } catch (error: any) {
     console.error("Error fetching integrations:", error);

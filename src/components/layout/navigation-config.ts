@@ -95,8 +95,14 @@ export const adminDefaultVisibleMenuIds = navigationItems
 
 export const userDefaultVisibleMenuIds = ["products", "inventory", "orders", "signals"];
 
+export function isAdminLikeRole(role?: string | null): boolean {
+  return role === "admin" || role === "dev";
+}
+
 export function getDefaultVisibleMenuIds(role?: string | null): string[] {
-  return role === "admin" ? adminDefaultVisibleMenuIds : userDefaultVisibleMenuIds;
+  return isAdminLikeRole(role)
+    ? adminDefaultVisibleMenuIds
+    : userDefaultVisibleMenuIds;
 }
 
 export function sanitizeVisibleMenuIds(

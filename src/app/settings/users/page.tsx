@@ -44,6 +44,7 @@ interface ManagedUser {
 
 export default function UserAccessPage() {
   const { data: session, status } = useSession();
+  const isElevatedRole = (role: string) => role === "admin" || role === "dev";
   const configurableMenus = useMemo(
     () => navigationItems.filter((item) => item.hideable !== false && !item.adminOnly),
     []
@@ -186,7 +187,10 @@ export default function UserAccessPage() {
     }
   };
 
-  const updateUserRole = async (userId: string, nextRole: "user" | "admin") => {
+  const updateUserRole = async (
+    userId: string,
+    nextRole: "user" | "admin" | "dev"
+  ) => {
     setSavingUserId(userId);
     setError(null);
     setUsers((current) =>
@@ -311,7 +315,11 @@ export default function UserAccessPage() {
                           {user.email}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                          <Badge
+                            variant={
+                              isElevatedRole(user.role) ? "default" : "secondary"
+                            }
+                          >
                             {user.role}
                           </Badge>
                         </TableCell>
@@ -343,7 +351,7 @@ export default function UserAccessPage() {
                       disabled={
                         savingUserId === selectedUser.id || session?.user?.id === selectedUser.id
                       }
-                      onValueChange={(value: "user" | "admin") => {
+                      onValueChange={(value: "user" | "admin" | "dev") => {
                         void updateUserRole(selectedUser.id, value);
                       }}
                     >
@@ -353,10 +361,15 @@ export default function UserAccessPage() {
                       <SelectContent>
                         <SelectItem value="user">user</SelectItem>
                         <SelectItem value="admin">admin</SelectItem>
+                        <SelectItem value="dev">dev</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <Badge variant={selectedUser.role === "admin" ? "default" : "secondary"}>
+                  <Badge
+                    variant={
+                      isElevatedRole(selectedUser.role) ? "default" : "secondary"
+                    }
+                  >
                     {selectedUser.role}
                   </Badge>
                 </div>
