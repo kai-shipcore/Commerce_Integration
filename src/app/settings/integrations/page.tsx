@@ -6,6 +6,7 @@
  * Most business logic lives in child components or API routes, so this file mainly wires layout and data views together.
  */
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
@@ -114,6 +115,8 @@ const initialFormState: IntegrationFormState = {
 
 export default function IntegrationsPage() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
+  const [reauthBanner, setReauthBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -150,6 +153,18 @@ export default function IntegrationsPage() {
   useEffect(() => {
     fetchIntegrations();
   }, [fetchIntegrations]);
+
+  useEffect(() => {
+    const reauth = searchParams.get("ebay_reauth");
+    const ebayError = searchParams.get("ebay_error");
+    if (reauth === "success") {
+      setReauthBanner({ type: "success", message: "eBay re-authentication successful. Your new refresh token has been saved." });
+      window.history.replaceState(null, "", window.location.pathname);
+    } else if (ebayError) {
+      setReauthBanner({ type: "error", message: `eBay re-authentication failed: ${ebayError}` });
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [searchParams]);
 
   const handleAddIntegration = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,13 +267,15 @@ export default function IntegrationsPage() {
       });
 
       const data = await res.json();
+      // Always refresh so the status badge and error message appear
+      fetchIntegrations();
 
-      if (data.success) {
-        // Refresh to show updated status
-        fetchIntegrations();
+      if (!data.success) {
+        console.error("Sync error:", data.message || data.error);
       }
     } catch (error) {
       console.error("Sync failed:", error);
+      fetchIntegrations();
     } finally {
       setSyncing(null);
     }
@@ -328,7 +345,7 @@ export default function IntegrationsPage() {
     return <MarketplaceIcon platform={platform} />;
   };
 
-  const supportsSync = (platform: string) => platform === "shopify";
+  const supportsSync = (platform: string) => platform === "shopify" || platform === "ebay";
   const isAdmin = isAdminLikeRole(session?.user?.role);
 
   const addDialogMeta = getDialogMeta(formData.platform, "add");
@@ -360,6 +377,21 @@ export default function IntegrationsPage() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
+        {/* eBay re-auth result banner */}
+        {reauthBanner && (
+          <Alert variant={reauthBanner.type === "error" ? "destructive" : "default"}>
+            {reauthBanner.type === "success" ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            <AlertDescription className="flex items-center justify-between">
+              <span>{reauthBanner.message}</span>
+              <button onClick={() => setReauthBanner(null)} className="ml-4 text-sm underline">Dismiss</button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -532,6 +564,17 @@ export default function IntegrationsPage() {
                       )}
                       Edit
                     </Button>
+                    {integration.platform === "ebay" && isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { window.location.href = `/api/integrations/${integration.id}/ebay-auth`; }}
+                        title="Get a new refresh token via eBay OAuth"
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Re-authenticate
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -635,7 +678,7 @@ export default function IntegrationsPage() {
                   </div>
                   {!supportsSync(integration.platform) && (
                     <p className="mt-3 text-sm text-muted-foreground">
-                      Stored successfully. Direct sync is currently available only for Shopify.
+                      Stored successfully. Direct sync is currently available for Shopify and eBay only.
                     </p>
                   )}
                   {!isAdmin && (
@@ -1052,8 +1095,8 @@ function buildFormStateFromIntegration(integration: IntegrationDetail): Integrat
     secretAccessKey: "",
     region: config.region ?? "us-east-1",
     clientId: config.clientId ?? "",
-    clientSecret: "",
-    refreshToken: "",
+    clientSecret: config.clientSecret ? "********" : "",
+    refreshToken: config.refreshToken ? "********" : "",
     consumerId: config.consumerId ?? "",
     privateKey: "",
     channelType: config.channelType ?? "",
@@ -1131,7 +1174,7 @@ function buildIntegrationPayload(
     ["clientSecret", formData.clientSecret],
     ["refreshToken", formData.refreshToken],
   ] as Array<[SecretFieldKey, string]>) {
-    if (!omitEmptySecrets || value.trim()) {
+    if (!omitEmptySecrets || (value.trim() && value !== "********")) {
       config[field] = value;
     }
   }

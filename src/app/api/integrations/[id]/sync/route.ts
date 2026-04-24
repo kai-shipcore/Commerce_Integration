@@ -82,7 +82,9 @@ export async function POST(
     }
 
     // Direct sync (synchronous)
+    console.log(`[sync route] Starting sync for ${integration.platform} / ${integration.name}`);
     const result = await runIntegrationSync(id, { fullSync });
+    console.log(`[sync route] Sync result:`, JSON.stringify(result));
 
     return NextResponse.json({
       success: result.success,
@@ -100,7 +102,7 @@ export async function POST(
       },
     });
   } catch (error: any) {
-    console.error("Error syncing:", error);
+    console.error("[sync route] UNHANDLED ERROR:", error?.message, error?.stack);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }
