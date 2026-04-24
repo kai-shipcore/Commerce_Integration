@@ -1257,7 +1257,7 @@ function buildIntegrationPayload(
   if (formData.platform === "shopify") {
     const config: Record<string, string> = {
       shopDomain: formData.shopDomain,
-      apiVersion: "2024-01",
+      apiVersion: "2025-01",
     };
 
     if (!omitEmptySecrets || formData.accessToken.trim()) {

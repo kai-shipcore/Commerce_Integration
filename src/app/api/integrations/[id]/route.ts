@@ -109,21 +109,6 @@ export async function PATCH(
       });
 
       adapter.validateConfig(nextConfig);
-
-      if (existing.platform === "shopify") {
-        const testResult = await adapter.checkConnection(nextConfig);
-
-        if (!testResult.success) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: `Failed to connect to Shopify: ${testResult.message}`,
-            },
-            { status: 400 }
-          );
-        }
-      }
-
       updateData.config = nextConfig;
     }
 
