@@ -135,7 +135,6 @@ export async function persistNormalizedOrders(args: {
       );
     }
 
-    result.ordersProcessed += 1;
   }
 
   if (salesRecords.length === 0) {
@@ -164,4 +163,10 @@ export async function persistNormalizedOrders(args: {
   });
 
   result.salesRecordsCreated += newRecords.length;
+
+  // Count unique orders that actually contributed new records (strip -p2/-p3 suffixes)
+  const newBaseOrderIds = new Set(
+    newRecords.map((r) => r.orderId.replace(/-p[23]$/, ""))
+  );
+  result.ordersProcessed += newBaseOrderIds.size;
 }

@@ -10,7 +10,13 @@ import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -45,6 +51,8 @@ import {
 } from "lucide-react";
 import { MarketplaceIcon } from "@/components/marketplaces/marketplace-icon";
 
+type TokenStatus = "valid" | "expiring_soon" | "expired" | "none";
+
 interface Integration {
   id: string;
   platform: string;
@@ -56,6 +64,7 @@ interface Integration {
   totalOrdersSynced: number;
   totalRecordsSynced: number;
   createdAt: string;
+  tokenStatus?: TokenStatus;
 }
 
 interface ConnectionCheckResult {
@@ -116,22 +125,31 @@ const initialFormState: IntegrationFormState = {
 export default function IntegrationsPage() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
-  const [reauthBanner, setReauthBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [reauthBanner, setReauthBanner] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<string | null>(null);
-  const [formData, setFormData] = useState<IntegrationFormState>(initialFormState);
-  const [editFormData, setEditFormData] = useState<IntegrationFormState>(initialFormState);
+  const [formData, setFormData] =
+    useState<IntegrationFormState>(initialFormState);
+  const [editFormData, setEditFormData] =
+    useState<IntegrationFormState>(initialFormState);
   const [formError, setFormError] = useState<string | null>(null);
   const [editFormError, setEditFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
-  const [editingIntegrationId, setEditingIntegrationId] = useState<string | null>(null);
-  const [checkingConnectionId, setCheckingConnectionId] = useState<string | null>(null);
+  const [editingIntegrationId, setEditingIntegrationId] = useState<
+    string | null
+  >(null);
+  const [checkingConnectionId, setCheckingConnectionId] = useState<
+    string | null
+  >(null);
   const [connectionResults, setConnectionResults] = useState<
     Record<string, ConnectionCheckResult | undefined>
   >({});
@@ -158,10 +176,17 @@ export default function IntegrationsPage() {
     const reauth = searchParams.get("ebay_reauth");
     const ebayError = searchParams.get("ebay_error");
     if (reauth === "success") {
-      setReauthBanner({ type: "success", message: "eBay re-authentication successful. Your new refresh token has been saved." });
+      setReauthBanner({
+        type: "success",
+        message:
+          "eBay re-authentication successful. Your new refresh token has been saved.",
+      });
       window.history.replaceState(null, "", window.location.pathname);
     } else if (ebayError) {
-      setReauthBanner({ type: "error", message: `eBay re-authentication failed: ${ebayError}` });
+      setReauthBanner({
+        type: "error",
+        message: `eBay re-authentication failed: ${ebayError}`,
+      });
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, [searchParams]);
@@ -234,7 +259,7 @@ export default function IntegrationsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          buildIntegrationPayload(editFormData, { omitEmptySecrets: true })
+          buildIntegrationPayload(editFormData, { omitEmptySecrets: true }),
         ),
       });
 
@@ -256,7 +281,10 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleSync = async (integrationId: string, fullSync: boolean = false) => {
+  const handleSync = async (
+    integrationId: string,
+    fullSync: boolean = false,
+  ) => {
     setSyncing(integrationId);
 
     try {
@@ -266,18 +294,13 @@ export default function IntegrationsPage() {
         body: JSON.stringify({ fullSync }),
       });
 
-      const data = await res.json();
-      // Always refresh so the status badge and error message appear
-      fetchIntegrations();
-
-      if (!data.success) {
-        console.error("Sync error:", data.message || data.error);
-      }
+      await res.json();
     } catch (error) {
       console.error("Sync failed:", error);
       fetchIntegrations();
     } finally {
       setSyncing(null);
+      fetchIntegrations();
     }
   };
 
@@ -325,9 +348,14 @@ export default function IntegrationsPage() {
         ...current,
         [integrationId]: {
           tone,
-          message: data.data?.message || data.error || "Connection check failed.",
+          message:
+            data.data?.message || data.error || "Connection check failed.",
         },
       }));
+
+      if (status === "connected") {
+        fetchIntegrations();
+      }
     } catch (error: any) {
       setConnectionResults((current) => ({
         ...current,
@@ -345,7 +373,8 @@ export default function IntegrationsPage() {
     return <MarketplaceIcon platform={platform} />;
   };
 
-  const supportsSync = (platform: string) => platform === "shopify" || platform === "ebay";
+  const supportsSync = (platform: string) =>
+    platform === "shopify" || platform === "ebay" || platform === "walmart";
   const isAdmin = isAdminLikeRole(session?.user?.role);
 
   const addDialogMeta = getDialogMeta(formData.platform, "add");
@@ -379,7 +408,9 @@ export default function IntegrationsPage() {
       <div className="flex flex-col gap-6">
         {/* eBay re-auth result banner */}
         {reauthBanner && (
-          <Alert variant={reauthBanner.type === "error" ? "destructive" : "default"}>
+          <Alert
+            variant={reauthBanner.type === "error" ? "destructive" : "default"}
+          >
             {reauthBanner.type === "success" ? (
               <CheckCircle className="h-4 w-4" />
             ) : (
@@ -387,7 +418,12 @@ export default function IntegrationsPage() {
             )}
             <AlertDescription className="flex items-center justify-between">
               <span>{reauthBanner.message}</span>
-              <button onClick={() => setReauthBanner(null)} className="ml-4 text-sm underline">Dismiss</button>
+              <button
+                onClick={() => setReauthBanner(null)}
+                className="ml-4 text-sm underline"
+              >
+                Dismiss
+              </button>
             </AlertDescription>
           </Alert>
         )}
@@ -395,7 +431,9 @@ export default function IntegrationsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Marketplace APIs</h1>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Marketplace APIs
+            </h1>
             <p className="text-muted-foreground">
               Connect e-Commerce platform accounts to sync sales data
             </p>
@@ -410,7 +448,9 @@ export default function IntegrationsPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{addDialogMeta.title}</DialogTitle>
-                <DialogDescription>{addDialogMeta.description}</DialogDescription>
+                <DialogDescription>
+                  {addDialogMeta.description}
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleAddIntegration}>
                 {renderIntegrationForm({
@@ -428,7 +468,9 @@ export default function IntegrationsPage() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={submitting}>
-                    {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {submitting && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
                     Connect Market Place
                   </Button>
                 </DialogFooter>
@@ -449,7 +491,9 @@ export default function IntegrationsPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{editDialogMeta.title}</DialogTitle>
-                <DialogDescription>{editDialogMeta.description}</DialogDescription>
+                <DialogDescription>
+                  {editDialogMeta.description}
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleUpdateIntegration}>
                 {renderIntegrationForm({
@@ -467,7 +511,9 @@ export default function IntegrationsPage() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={updating}>
-                    {updating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {updating && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
                     Save Changes
                   </Button>
                 </DialogFooter>
@@ -482,12 +528,13 @@ export default function IntegrationsPage() {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : integrations.length === 0 ? (
-            <Card>
+          <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <ShoppingBag className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No integrations yet</h3>
               <p className="text-muted-foreground text-center mb-4">
-                Connect Shopify, Amazon, eBay, or Walmart marketplace credentials to manage future sales syncs.
+                Connect Shopify, Amazon, eBay, or Walmart marketplace
+                credentials to manage future sales syncs.
               </p>
               <Button onClick={() => setAddDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -503,7 +550,9 @@ export default function IntegrationsPage() {
                   <div className="flex items-center gap-4">
                     {getPlatformIcon(integration.platform)}
                     <div>
-                      <CardTitle className="text-lg">{integration.name}</CardTitle>
+                      <CardTitle className="text-lg">
+                        {integration.name}
+                      </CardTitle>
                       <CardDescription className="capitalize">
                         {integration.platform}
                       </CardDescription>
@@ -519,12 +568,20 @@ export default function IntegrationsPage() {
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
-                      <p className="text-sm text-muted-foreground">Orders Synced</p>
-                      <p className="text-lg font-medium">{integration.totalOrdersSynced}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Orders Synced
+                      </p>
+                      <p className="text-lg font-medium">
+                        {integration.totalOrdersSynced}
+                      </p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Sales Records</p>
-                      <p className="text-lg font-medium">{integration.totalRecordsSynced}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Sales Records
+                      </p>
+                      <p className="text-lg font-medium">
+                        {integration.totalRecordsSynced}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Last Sync</p>
@@ -545,8 +602,36 @@ export default function IntegrationsPage() {
                   {integration.lastSyncError && (
                     <Alert variant="destructive" className="mb-4">
                       <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>{integration.lastSyncError}</AlertDescription>
+                      <AlertDescription>
+                        {integration.lastSyncError}
+                      </AlertDescription>
                     </Alert>
+                  )}
+
+                  {integration.tokenStatus && (
+                    <div className="mb-4">
+                      {integration.tokenStatus === "valid" && (
+                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Access Token 유효
+                        </Badge>
+                      )}
+                      {integration.tokenStatus === "expiring_soon" && (
+                        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Access Token 곧 만료
+                        </Badge>
+                      )}
+                      {integration.tokenStatus === "expired" && (
+                        <Badge variant="destructive">
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Access Token 만료됨
+                        </Badge>
+                      )}
+                      {integration.tokenStatus === "none" && (
+                        <Badge variant="outline">Access Token 없음</Badge>
+                      )}
+                    </div>
                   )}
 
                   <div className="flex items-center gap-2">
@@ -555,7 +640,11 @@ export default function IntegrationsPage() {
                       size="sm"
                       onClick={() => openEditDialog(integration.id)}
                       disabled={!isAdmin || loadingEditId === integration.id}
-                      title={!isAdmin ? "You need admin access to edit marketplace integrations." : undefined}
+                      title={
+                        !isAdmin
+                          ? "You need admin access to edit marketplace integrations."
+                          : undefined
+                      }
                     >
                       {loadingEditId === integration.id ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -568,7 +657,9 @@ export default function IntegrationsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => { window.location.href = `/api/integrations/${integration.id}/ebay-auth`; }}
+                        onClick={() => {
+                          window.location.href = `/api/integrations/${integration.id}/ebay-auth`;
+                        }}
                         title="Get a new refresh token via eBay OAuth"
                       >
                         <RefreshCw className="mr-2 h-4 w-4" />
@@ -635,7 +726,9 @@ export default function IntegrationsPage() {
                     <Dialog
                       open={deleteDialogOpen === integration.id}
                       onOpenChange={(open) =>
-                        setDeleteDialogOpen(open && isAdmin ? integration.id : null)
+                        setDeleteDialogOpen(
+                          open && isAdmin ? integration.id : null,
+                        )
                       }
                     >
                       <DialogTrigger asChild>
@@ -644,7 +737,11 @@ export default function IntegrationsPage() {
                           size="sm"
                           className="text-destructive"
                           disabled={!isAdmin}
-                          title={!isAdmin ? "You need admin access to remove marketplace integrations." : undefined}
+                          title={
+                            !isAdmin
+                              ? "You need admin access to remove marketplace integrations."
+                              : undefined
+                          }
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Remove
@@ -654,9 +751,9 @@ export default function IntegrationsPage() {
                         <DialogHeader>
                           <DialogTitle>Remove Integration</DialogTitle>
                           <DialogDescription>
-                            Are you sure you want to remove this integration? This will stop
-                            syncing sales data from this store. Existing sales records will not
-                            be deleted.
+                            Are you sure you want to remove this integration?
+                            This will stop syncing sales data from this store.
+                            Existing sales records will not be deleted.
                           </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
@@ -678,20 +775,24 @@ export default function IntegrationsPage() {
                   </div>
                   {!supportsSync(integration.platform) && (
                     <p className="mt-3 text-sm text-muted-foreground">
-                      Stored successfully. Direct sync is currently available for Shopify and eBay only.
+                      Stored successfully. Automatic sync is not yet available
+                      for this platform.
                     </p>
                   )}
                   {!isAdmin && (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Edit, Sync, and Remove are visible for clarity, but only admin or dev users can use them.
+                      Edit, Sync, and Remove are visible for clarity, but only
+                      admin or dev users can use them.
                     </p>
                   )}
                   {connectionResults[integration.id] && (
                     <div className="mt-3 flex items-start gap-2 text-sm">
-                      {connectionResults[integration.id]?.tone === "success" && (
+                      {connectionResults[integration.id]?.tone ===
+                        "success" && (
                         <CheckCircle className="mt-0.5 h-4 w-4 text-green-600" />
                       )}
-                      {connectionResults[integration.id]?.tone === "warning" && (
+                      {connectionResults[integration.id]?.tone ===
+                        "warning" && (
                         <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600" />
                       )}
                       {connectionResults[integration.id]?.tone === "error" && (
@@ -701,7 +802,8 @@ export default function IntegrationsPage() {
                         className={
                           connectionResults[integration.id]?.tone === "success"
                             ? "text-green-700"
-                            : connectionResults[integration.id]?.tone === "warning"
+                            : connectionResults[integration.id]?.tone ===
+                                "warning"
                               ? "text-amber-700"
                               : "text-destructive"
                         }
@@ -723,16 +825,21 @@ export default function IntegrationsPage() {
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              <strong>Automatic Sync:</strong> Sales data is automatically synced every hour via background jobs.
+              <strong>Automatic Sync:</strong> Sales data is automatically
+              synced every hour via background jobs.
             </p>
             <p>
-              <strong>Incremental Updates:</strong> Only new orders since the last sync are fetched to minimize API calls.
+              <strong>Incremental Updates:</strong> Only new orders since the
+              last sync are fetched to minimize API calls.
             </p>
             <p>
-              <strong>SKU Matching:</strong> Orders are matched to existing SKUs by SKU code. New SKUs are auto-created if not found.
+              <strong>SKU Matching:</strong> Orders are matched to existing SKUs
+              by SKU code. New SKUs are auto-created if not found.
             </p>
             <p>
-              <strong>Current Platform Support:</strong> Shopify sync is implemented today. Amazon, eBay, and Walmart credentials can now be stored from the same screen.
+              <strong>Current Platform Support:</strong> Shopify and Walmart
+              sync are implemented. Amazon and eBay credentials can be stored
+              and will be supported in a future update.
             </p>
           </CardContent>
         </Card>
@@ -804,7 +911,10 @@ function renderIntegrationForm({
               placeholder="mystore.myshopify.com"
               value={formData.shopDomain}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, shopDomain: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  shopDomain: e.target.value,
+                }))
               }
               required
             />
@@ -813,21 +923,29 @@ function renderIntegrationForm({
             </p>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-accessToken`}>Admin API Access Token</Label>
+            <Label htmlFor={`${mode}-accessToken`}>
+              Admin API Access Token
+            </Label>
             <Input
               id={`${mode}-accessToken`}
               type="password"
               placeholder={
-                isEdit ? "Leave blank to keep the current access token" : "shpat_xxxxxxxxxxxxx"
+                isEdit
+                  ? "Leave blank to keep the current access token"
+                  : "shpat_xxxxxxxxxxxxx"
               }
               value={formData.accessToken}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, accessToken: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  accessToken: e.target.value,
+                }))
               }
               required={!isEdit}
             />
             <p className="text-xs text-muted-foreground">
-              Create a custom app in Shopify Admin {">"} Settings {">"} Apps {">"} Develop apps
+              Create a custom app in Shopify Admin {">"} Settings {">"} Apps{" "}
+              {">"} Develop apps
             </p>
           </div>
         </>
@@ -840,7 +958,10 @@ function renderIntegrationForm({
               id={`${mode}-sellerId`}
               value={formData.sellerId}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, sellerId: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  sellerId: e.target.value,
+                }))
               }
               required
             />
@@ -852,7 +973,10 @@ function renderIntegrationForm({
               placeholder="ATVPDKIKX0DER"
               value={formData.marketplaceId}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, marketplaceId: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  marketplaceId: e.target.value,
+                }))
               }
               required
             />
@@ -863,7 +987,10 @@ function renderIntegrationForm({
               id={`${mode}-accessKeyId`}
               value={formData.accessKeyId}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, accessKeyId: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  accessKeyId: e.target.value,
+                }))
               }
               required
             />
@@ -873,7 +1000,9 @@ function renderIntegrationForm({
             <Input
               id={`${mode}-secretAccessKey`}
               type="password"
-              placeholder={isEdit ? "Leave blank to keep the current secret" : undefined}
+              placeholder={
+                isEdit ? "Leave blank to keep the current secret" : undefined
+              }
               value={formData.secretAccessKey}
               onChange={(e) =>
                 setFormData((current) => ({
@@ -891,7 +1020,10 @@ function renderIntegrationForm({
               placeholder="us-east-1"
               value={formData.region}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, region: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  region: e.target.value,
+                }))
               }
             />
           </div>
@@ -905,7 +1037,10 @@ function renderIntegrationForm({
               id={`${mode}-clientId`}
               value={formData.clientId}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, clientId: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  clientId: e.target.value,
+                }))
               }
               required
             />
@@ -915,10 +1050,15 @@ function renderIntegrationForm({
             <Input
               id={`${mode}-clientSecret`}
               type="password"
-              placeholder={isEdit ? "Leave blank to keep the current secret" : undefined}
+              placeholder={
+                isEdit ? "Leave blank to keep the current secret" : undefined
+              }
               value={formData.clientSecret}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, clientSecret: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  clientSecret: e.target.value,
+                }))
               }
               required={!isEdit}
             />
@@ -928,10 +1068,15 @@ function renderIntegrationForm({
             <Input
               id={`${mode}-refreshToken`}
               type="password"
-              placeholder={isEdit ? "Leave blank to keep the current token" : undefined}
+              placeholder={
+                isEdit ? "Leave blank to keep the current token" : undefined
+              }
               value={formData.refreshToken}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, refreshToken: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  refreshToken: e.target.value,
+                }))
               }
               required={!isEdit}
             />
@@ -958,39 +1103,35 @@ function renderIntegrationForm({
       {formData.platform === "walmart" && (
         <>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-consumerId`}>Consumer ID</Label>
+            <Label htmlFor={`${mode}-clientId`}>Client ID</Label>
             <Input
-              id={`${mode}-consumerId`}
-              value={formData.consumerId}
+              id={`${mode}-clientId`}
+              value={formData.clientId}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, consumerId: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  clientId: e.target.value,
+                }))
               }
               required
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-privateKey`}>Private Key</Label>
+            <Label htmlFor={`${mode}-clientSecret`}>Client Secret</Label>
             <Input
-              id={`${mode}-privateKey`}
+              id={`${mode}-clientSecret`}
               type="password"
-              placeholder={isEdit ? "Leave blank to keep the current private key" : undefined}
-              value={formData.privateKey}
+              placeholder={
+                isEdit ? "Leave blank to keep the current secret" : undefined
+              }
+              value={formData.clientSecret}
               onChange={(e) =>
-                setFormData((current) => ({ ...current, privateKey: e.target.value }))
+                setFormData((current) => ({
+                  ...current,
+                  clientSecret: e.target.value,
+                }))
               }
               required={!isEdit}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor={`${mode}-channelType`}>Channel Type</Label>
-            <Input
-              id={`${mode}-channelType`}
-              placeholder="MP_ITEM"
-              value={formData.channelType}
-              onChange={(e) =>
-                setFormData((current) => ({ ...current, channelType: e.target.value }))
-              }
-              required
             />
           </div>
           <div className="grid gap-2">
@@ -1015,7 +1156,8 @@ function renderIntegrationForm({
       {formData.platform !== "shopify" && (
         <Alert>
           <AlertDescription>
-            Connection info can be stored now. Automatic sync is still implemented only for Shopify.
+            Connection info can be stored now. Automatic sync is still
+            implemented only for Shopify.
           </AlertDescription>
         </Alert>
       )}
@@ -1051,8 +1193,8 @@ function getDialogMeta(platform: IntegrationPlatform, mode: "add" | "edit") {
       title: `${action} Walmart Market Place`,
       description:
         mode === "add"
-          ? "Store Walmart marketplace credentials so this marketplace can be connected next."
-          : "Update the stored Walmart marketplace credentials. Leave the private key blank to keep the current value.",
+          ? "Enter your Walmart Marketplace API credentials to enable connection checks."
+          : "Update your Walmart Marketplace credentials. Leave the secret blank to keep the current value.",
     };
   }
 
@@ -1081,7 +1223,9 @@ function getIntegrationNamePlaceholder(platform: IntegrationPlatform) {
   return "My eBay Shop";
 }
 
-function buildFormStateFromIntegration(integration: IntegrationDetail): IntegrationFormState {
+function buildFormStateFromIntegration(
+  integration: IntegrationDetail,
+): IntegrationFormState {
   const config = integration.config ?? {};
 
   return {
@@ -1095,19 +1239,18 @@ function buildFormStateFromIntegration(integration: IntegrationDetail): Integrat
     secretAccessKey: "",
     region: config.region ?? "us-east-1",
     clientId: config.clientId ?? "",
-    clientSecret: config.clientSecret ? "********" : "",
-    refreshToken: config.refreshToken ? "********" : "",
-    consumerId: config.consumerId ?? "",
+    clientSecret: "",
+    refreshToken: "",
+    consumerId: "",
     privateKey: "",
-    channelType: config.channelType ?? "",
-    environment:
-      config.environment === "sandbox" ? "sandbox" : "production",
+    channelType: "",
+    environment: config.environment === "sandbox" ? "sandbox" : "production",
   };
 }
 
 function buildIntegrationPayload(
   formData: IntegrationFormState,
-  options?: { omitEmptySecrets?: boolean }
+  options?: { omitEmptySecrets?: boolean },
 ) {
   const omitEmptySecrets = options?.omitEmptySecrets ?? false;
 
@@ -1149,13 +1292,12 @@ function buildIntegrationPayload(
 
   if (formData.platform === "walmart") {
     const config: Record<string, string> = {
-      consumerId: formData.consumerId,
-      channelType: formData.channelType,
+      clientId: formData.clientId,
       environment: formData.environment,
     };
 
-    if (!omitEmptySecrets || formData.privateKey.trim()) {
-      config.privateKey = formData.privateKey;
+    if (!omitEmptySecrets || formData.clientSecret.trim()) {
+      config.clientSecret = formData.clientSecret;
     }
 
     return {

@@ -14,6 +14,7 @@ export interface ConnectionCheckResult {
   verification: "live" | "config_only";
   message: string;
   checkedAt: string;
+  updatedConfig?: IntegrationConfig;
 }
 
 export interface SyncResult {

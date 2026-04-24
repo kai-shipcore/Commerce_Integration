@@ -1,4 +1,7 @@
-import { getPlatformIntegrationById } from "@/lib/db/platform-integrations";
+import {
+  getPlatformIntegrationById,
+  updatePlatformIntegration,
+} from "@/lib/db/platform-integrations";
 import { getIntegrationAdapter } from "@/lib/integrations/core/registry";
 import type { ConnectionCheckResult } from "@/lib/integrations/core/types";
 
@@ -16,6 +19,10 @@ export async function checkIntegrationConnection(
 
   const adapter = getIntegrationAdapter(integration.platform);
   const result = await adapter.checkConnection(integration.config);
+
+  if (result.updatedConfig) {
+    await updatePlatformIntegration(integrationId, { config: result.updatedConfig });
+  }
 
   return { integration, result };
 }
