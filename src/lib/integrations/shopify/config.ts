@@ -3,11 +3,19 @@ import type { ShopifyConfig } from "@/lib/integrations/shopify/types";
 
 const MASKED_SECRET = "********";
 
+const CURRENT_API_VERSION = "2025-01";
+
 export function applyShopifyDefaults(config: IntegrationConfig): ShopifyConfig {
+  const rawDomain = String(config.shopDomain || "");
+  const shopDomain = rawDomain
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "")
+    .trim();
+
   return {
-    shopDomain: String(config.shopDomain || ""),
+    shopDomain,
     accessToken: String(config.accessToken || ""),
-    apiVersion: String(config.apiVersion || "2024-01"),
+    apiVersion: CURRENT_API_VERSION,
   };
 }
 
