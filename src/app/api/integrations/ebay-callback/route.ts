@@ -24,17 +24,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${settingsUrl}?ebay_error=${encodeURIComponent("Missing code or state parameter")}`);
     }
 
-    const ruName = process.env.EBAY_RUNAME;
-    if (!ruName) {
-      return NextResponse.redirect(`${settingsUrl}?ebay_error=${encodeURIComponent("EBAY_RUNAME is not configured")}`);
-    }
-
     const integration = await getPlatformIntegrationById(integrationId);
     if (!integration || integration.platform !== "ebay") {
       return NextResponse.redirect(`${settingsUrl}?ebay_error=${encodeURIComponent("eBay integration not found")}`);
     }
 
     const config = applyEbayDefaults(integration.config);
+
+    // ruName is stored per-integration; fall back to global env var for legacy integrations
+    const ruName = String(config.ruName || "") || process.env.EBAY_RUNAME;
+    if (!ruName) {
+      return NextResponse.redirect(`${settingsUrl}?ebay_error=${encodeURIComponent("RuName is not configured for this integration")}`);
+    }
+
     const client = new EbayClient({
       clientId: String(config.clientId),
       clientSecret: String(config.clientSecret),

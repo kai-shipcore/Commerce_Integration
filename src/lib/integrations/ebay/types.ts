@@ -2,6 +2,7 @@ export interface EbayConfig {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
+  ruName?: string;
   environment: "production" | "sandbox";
 }
 

@@ -97,6 +97,7 @@ interface IntegrationFormState {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
+  ruName: string;
   consumerId: string;
   privateKey: string;
   channelType: string;
@@ -116,6 +117,7 @@ const initialFormState: IntegrationFormState = {
   clientId: "",
   clientSecret: "",
   refreshToken: "",
+  ruName: "",
   consumerId: "",
   privateKey: "",
   channelType: "",
@@ -1082,6 +1084,20 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
+            <Label htmlFor={`${mode}-ruName`}>RuName</Label>
+            <Input
+              id={`${mode}-ruName`}
+              placeholder="e.g. YourApp__YourApp-AppName-PRD-abcdef"
+              value={formData.ruName}
+              onChange={(e) =>
+                setFormData((current) => ({
+                  ...current,
+                  ruName: e.target.value,
+                }))
+              }
+            />
+          </div>
+          <div className="grid gap-2">
             <Label htmlFor={`${mode}-environment`}>Environment</Label>
             <Select
               value={formData.environment}
@@ -1241,6 +1257,7 @@ function buildFormStateFromIntegration(
     clientId: config.clientId ?? "",
     clientSecret: "",
     refreshToken: "",
+    ruName: config.ruName ?? "",
     consumerId: "",
     privateKey: "",
     channelType: "",
@@ -1311,6 +1328,10 @@ function buildIntegrationPayload(
     clientId: formData.clientId,
     environment: formData.environment,
   };
+
+  if (formData.ruName.trim()) {
+    config.ruName = formData.ruName;
+  }
 
   for (const [field, value] of [
     ["clientSecret", formData.clientSecret],

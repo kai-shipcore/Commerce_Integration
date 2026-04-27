@@ -19,14 +19,6 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const ruName = process.env.EBAY_RUNAME;
-    if (!ruName) {
-      return NextResponse.json(
-        { success: false, error: "EBAY_RUNAME environment variable is not configured." },
-        { status: 500 }
-      );
-    }
-
     const { id } = await params;
     const integration = await getPlatformIntegrationById(id);
 
@@ -35,6 +27,15 @@ export async function GET(
     }
 
     const config = applyEbayDefaults(integration.config);
+
+    // ruName is stored per-integration; fall back to global env var for legacy integrations
+    const ruName = String(config.ruName || "") || process.env.EBAY_RUNAME;
+    if (!ruName) {
+      return NextResponse.json(
+        { success: false, error: "RuName is not configured. Edit this integration and add the RuName from your eBay developer app." },
+        { status: 500 }
+      );
+    }
 
     try {
       validateEbayConfig(config);

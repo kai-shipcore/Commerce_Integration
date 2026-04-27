@@ -7,6 +7,7 @@ export function applyEbayDefaults(config: IntegrationConfig): IntegrationConfig 
     clientId: String(config.clientId || ""),
     clientSecret: String(config.clientSecret || ""),
     refreshToken: String(config.refreshToken || ""),
+    ruName: String(config.ruName || ""),
     environment: config.environment === "sandbox" ? "sandbox" : "production",
   };
 }
