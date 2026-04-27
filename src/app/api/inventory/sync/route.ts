@@ -1,13 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncInventorySnapshotFromSqlFile } from "@/lib/db/supabase-lookup";
-import path from "node:path";
-
-const INVENTORY_SYNC_SQL_FILE_PATH = path.join(
-  process.cwd(),
-  "src",
-  "sql",
-  "Data_sync_sc_inventory_snapshot.sql"
-);
+import { syncInventorySnapshotCrossDb } from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -15,22 +7,15 @@ function getErrorMessage(error: unknown): string {
 
 export async function POST() {
   try {
-    const result = await syncInventorySnapshotFromSqlFile(
-      INVENTORY_SYNC_SQL_FILE_PATH
-    );
-
+    const result = await syncInventorySnapshotCrossDb();
     return NextResponse.json({
       success: true,
-      message: "Sync completed",
-      filePath: result.filePath,
+      message: `Sync completed — ${result.rowsSynced} rows synced`,
     });
   } catch (error: unknown) {
     console.error("Inventory sync failed:", error);
     return NextResponse.json(
-      {
-        success: false,
-        error: getErrorMessage(error),
-      },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }

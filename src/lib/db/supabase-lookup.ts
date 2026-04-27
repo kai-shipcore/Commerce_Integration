@@ -11,6 +11,7 @@ const LOOKUP_CONNECTION_TIMEOUT_MS = 2000;
 
 // Separate connection pool for the Supabase project with size_chart_dev schema
 let lookupPool: Pool | null = null;
+let primaryPool: Pool | null = null;
 
 function getLookupConnectionString(): string | null {
   return process.env.SUPABASE_LOOKUP_DATABASE_URL || process.env.DATABASE_URL || null;
@@ -37,6 +38,21 @@ function getLookupPool(): Pool | null {
   }
 
   return lookupPool;
+}
+
+function getPrimaryPool(): Pool {
+  if (!primaryPool) {
+    primaryPool = new Pool({
+      connectionString: process.env.DATABASE_URL ?? "",
+      ssl:
+        process.env.NODE_ENV === "production"
+          ? { rejectUnauthorized: true }
+          : { rejectUnauthorized: false },
+      max: 5,
+      idleTimeoutMillis: 30000,
+    });
+  }
+  return primaryPool;
 }
 
 export interface MasterSkuResult {
@@ -828,4 +844,113 @@ export async function getSalesOrderDetail(
   } finally {
     client.release();
   }
+}
+
+export async function syncInventorySnapshotCrossDb(): Promise<{ rowsSynced: number }> {
+  // Step 1: Read from old Supabase (SUPABASE_LOOKUP_DATABASE_URL)
+  const lookup = getLookupPool();
+  if (!lookup) throw new Error("Lookup DB (SUPABASE_LOOKUP_DATABASE_URL) is not configured");
+
+  const lookupClient = await lookup.connect();
+  let rows: Array<{
+    master_sku: string;
+    warehouse: string | null;
+    on_hand: number;
+    available: number;
+    backorder: number;
+    created_at: Date | string | null;
+  }>;
+  try {
+    const result = await lookupClient.query(`
+      SELECT
+        master_sku,
+        warehouse,
+        COALESCE(on_hand, 0)   AS on_hand,
+        COALESCE(available, 0) AS available,
+        COALESCE(backorder, 0) AS backorder,
+        created_at
+      FROM ecommerce_data.coverland_inventory
+    `);
+    rows = result.rows;
+  } finally {
+    lookupClient.release();
+  }
+
+  // Step 2: Write to new DB (DATABASE_URL)
+  const primary = getPrimaryPool();
+  const primaryClient = await primary.connect();
+  try {
+    await primaryClient.query("BEGIN");
+
+    // Upsert products
+    const distinctSkus = [...new Set(rows.map((r) => r.master_sku))];
+    if (distinctSkus.length > 0) {
+      await primaryClient.query(
+        `INSERT INTO shipcore.sc_products (master_sku, product_name, status, updated_at)
+         SELECT sku, 'Product ' || sku, 'active', NOW()
+         FROM unnest($1::text[]) AS sku
+         ON CONFLICT (master_sku) DO UPDATE SET
+           product_name = EXCLUDED.product_name,
+           status       = EXCLUDED.status,
+           updated_at   = NOW()`,
+        [distinctSkus]
+      );
+    }
+
+    // Upsert warehouses
+    const distinctWarehouses = [
+      ...new Set(rows.map((r) => r.warehouse).filter(Boolean)),
+    ] as string[];
+    if (distinctWarehouses.length > 0) {
+      await primaryClient.query(
+        `INSERT INTO shipcore.sc_warehouses (warehouse_code, warehouse_name, warehouse_type, is_active, updated_at)
+         SELECT wh, wh || ' Warehouse', '3PL', true, NOW()
+         FROM unnest($1::text[]) AS wh
+         ON CONFLICT (warehouse_code) DO UPDATE SET
+           warehouse_name = EXCLUDED.warehouse_name,
+           warehouse_type = EXCLUDED.warehouse_type,
+           is_active      = EXCLUDED.is_active,
+           updated_at     = NOW()`,
+        [distinctWarehouses]
+      );
+    }
+
+    // Truncate and batch-insert inventory snapshot
+    await primaryClient.query("TRUNCATE TABLE shipcore.sc_inventory_snapshot");
+
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const batch = rows.slice(i, i + BATCH_SIZE);
+      const placeholders = batch
+        .map((_, j) => {
+          const b = j * 6;
+          return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, 0, 0, $${b + 4}, $${b + 6}, NOW())`;
+        })
+        .join(", ");
+      const params = batch.flatMap((r) => [
+        r.master_sku,
+        r.warehouse,
+        r.on_hand,
+        r.available,
+        r.backorder,
+        r.created_at,
+      ]);
+      await primaryClient.query(
+        `INSERT INTO shipcore.sc_inventory_snapshot
+           (master_sku, warehouse_code, on_hand_qty, available_qty, backorder_qty,
+            reserved_qty, manual_adjustment_qty, final_usable_qty, created_at, snapshot_at)
+         VALUES ${placeholders}`,
+        params
+      );
+    }
+
+    await primaryClient.query("COMMIT");
+  } catch (e) {
+    await primaryClient.query("ROLLBACK");
+    throw e;
+  } finally {
+    primaryClient.release();
+  }
+
+  return { rowsSynced: rows.length };
 }
