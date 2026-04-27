@@ -954,3 +954,93 @@ export async function syncInventorySnapshotCrossDb(): Promise<{ rowsSynced: numb
 
   return { rowsSynced: rows.length };
 }
+
+export async function syncProductsFromShopifyDb(): Promise<{ rowsSynced: number }> {
+  // Step 1: Read all variants from old Supabase size_chart.shopify_db
+  const lookup = getLookupPool();
+  if (!lookup) throw new Error("Lookup DB (SUPABASE_LOOKUP_DATABASE_URL) is not configured");
+
+  const lookupClient = await lookup.connect();
+  let rows: Array<{
+    master_sku: string;
+    title: string | null;
+    vendor: string | null;
+    category: string | null;
+    status: string | null;
+    variant_sku: string | null;
+    created_at: Date | string | null;
+    updated_at: Date | string | null;
+  }>;
+  try {
+    const result = await lookupClient.query(`
+      SELECT
+        master_sku,
+        title,
+        vendor,
+        category,
+        status,
+        variant_sku,
+        created_at,
+        updated_at
+      FROM size_chart.shopify_db
+      WHERE master_sku IS NOT NULL
+    `);
+    rows = result.rows;
+  } finally {
+    lookupClient.release();
+  }
+
+  // Step 2: Write to new DB (DATABASE_URL)
+  const primary = getPrimaryPool();
+  const primaryClient = await primary.connect();
+  try {
+    await primaryClient.query("BEGIN");
+
+    // Remove unique constraint on master_sku if it exists
+    await primaryClient.query(`
+      ALTER TABLE shipcore.sc_products
+      DROP CONSTRAINT IF EXISTS sc_products_master_sku_key CASCADE
+    `);
+
+    // Full overwrite
+    await primaryClient.query("TRUNCATE TABLE shipcore.sc_products RESTART IDENTITY");
+
+    // Batch insert (500 rows per batch)
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const batch = rows.slice(i, i + BATCH_SIZE);
+      const placeholders = batch
+        .map((_, j) => {
+          const b = j * 8;
+          return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, COALESCE($${b + 5}, 'active'), $${b + 6}, COALESCE($${b + 7}, NOW()), COALESCE($${b + 8}, NOW()))`;
+        })
+        .join(", ");
+      const params = batch.flatMap((r) => [
+        r.master_sku,
+        r.title ?? r.master_sku,
+        r.vendor,
+        r.category,
+        r.status,
+        r.variant_sku,
+        r.created_at,
+        r.updated_at,
+      ]);
+      await primaryClient.query(
+        `INSERT INTO shipcore.sc_products
+           (master_sku, product_name, brand, category, status,
+            source_web_sku_example, created_at, updated_at)
+         VALUES ${placeholders}`,
+        params
+      );
+    }
+
+    await primaryClient.query("COMMIT");
+  } catch (e) {
+    await primaryClient.query("ROLLBACK");
+    throw e;
+  } finally {
+    primaryClient.release();
+  }
+
+  return { rowsSynced: rows.length };
+}

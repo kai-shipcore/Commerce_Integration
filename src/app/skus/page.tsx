@@ -12,7 +12,7 @@ import { BulkActionsBar } from "@/components/sku/bulk-actions-bar";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import { createSkuColumns, SKUTableData } from "@/components/sku/sku-table-columns";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, RefreshCw, Loader2 } from "lucide-react";
 
 interface PaginationState {
   page: number;
@@ -40,6 +40,8 @@ export default function SKUsPage() {
   const [pageCount, setPageCount] = useState(0);
   const [selectedRows, setSelectedRows] = useState<SKUTableData[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const [salesPeriod, setSalesPeriod] = useState("30");
 
@@ -119,6 +121,24 @@ export default function SKUsPage() {
 
   const handleRowSelectionChange = (rows: SKUTableData[]) => {
     setSelectedRows(rows);
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const response = await fetch("/api/products/sync", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Products sync failed");
+      }
+      await fetchSKUs();
+      setSyncMessage(result.message ?? "Sync completed");
+    } catch (err) {
+      setSyncMessage(err instanceof Error ? err.message : "Products sync failed");
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -201,6 +221,18 @@ export default function SKUsPage() {
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {syncing ? "Syncing..." : "Sync"}
+            </Button>
+            <Button
+              variant="outline"
               onClick={handleExportCSV}
               disabled={skus.length === 0}
             >
@@ -210,6 +242,10 @@ export default function SKUsPage() {
             <SKUFormDialog onSuccess={fetchSKUs} />
           </div>
         </div>
+
+        {syncMessage && (
+          <p className="text-sm text-muted-foreground">{syncMessage}</p>
+        )}
 
         {/* Bulk Actions Bar */}
         <BulkActionsBar
