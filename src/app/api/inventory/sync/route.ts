@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncInventorySnapshotCrossDb } from "@/lib/db/supabase-lookup";
+import { syncInventorySnapshotCrossDb } from "@/lib/db/primary-db";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
