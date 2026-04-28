@@ -36,242 +36,118 @@ const SKUSchema = z.object({
   ebayItemId: z.string().optional(),
 });
 
-// GET /api/skus - List all SKUs aggregated by master SKU
+// GET /api/skus - List products from sc_products + sc_inventory_snapshot
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
-    // Pagination
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const skip = (page - 1) * limit;
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "50")));
+    const offset = (page - 1) * limit;
 
-    // Sorting
-    const sortBy = searchParams.get("sortBy") || "masterSkuCode";
-    const sortOrder = searchParams.get("sortOrder") || "asc";
+    const rawSortBy = searchParams.get("sortBy") || "masterSkuCode";
+    const sortOrder = searchParams.get("sortOrder") === "desc" ? "DESC" : "ASC";
+    const sortColMap: Record<string, string> = {
+      masterSkuCode: "p.master_sku",
+      name: "p.product_name",
+      available: "inv_available",
+      onHand: "inv_on_hand",
+      backorder: "inv_backorder",
+      salesRecords: "p.master_sku",
+    };
+    const sortCol = sortColMap[rawSortBy] ?? "p.master_sku";
 
-    // Filters
-    const category = searchParams.get("category");
-    const search = searchParams.get("search");
+    const search = searchParams.get("search")?.trim() || "";
+    const searchParam = search ? `%${search}%` : null;
 
     const validPeriods = [30, 60, 90, 365];
-    const salesPeriod = parseInt(searchParams.get("salesPeriod") || "30");
-    const salesPeriodDays = validPeriods.includes(salesPeriod) ? salesPeriod : 30;
+    const salesPeriodDays = validPeriods.includes(parseInt(searchParams.get("salesPeriod") || ""))
+      ? parseInt(searchParams.get("salesPeriod")!)
+      : 30;
+    const salesStartDate = new Date(Date.now() - salesPeriodDays * 24 * 60 * 60 * 1000);
 
-    // Calculate date ranges
-    const now = new Date();
-    const salesStartDate = new Date(now.getTime() - salesPeriodDays * 24 * 60 * 60 * 1000);
+    type CountRow = { count: bigint };
+    const countResult = await prisma.$queryRawUnsafe<CountRow[]>(
+      `SELECT COUNT(*)::bigint AS count
+       FROM shipcore.sc_products p
+       WHERE $1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1`,
+      searchParam
+    );
+    const total = Number(countResult[0]?.count ?? 0);
 
-    // Build where clause for master SKU filtering
-    const where: {
-      masterSkuCode: { not: null };
-      category?: string;
-      OR?: Array<
-        | { masterSkuCode: { contains: string; mode: "insensitive" } }
-        | { skuCode: { contains: string; mode: "insensitive" } }
-        | { name: { contains: string; mode: "insensitive" } }
-        | { description: { contains: string; mode: "insensitive" } }
-      >;
-    } = {
-      masterSkuCode: { not: null }, // Only include SKUs with master SKU
+    type ProductRow = {
+      master_sku: string;
+      product_name: string;
+      category: string | null;
+      inv_on_hand: string | null;
+      inv_available: string | null;
+      inv_backorder: string | null;
+      inv_reserved: string | null;
     };
-
-    if (category) where.category = category;
-    if (search) {
-      where.OR = [
-        { masterSkuCode: { contains: search, mode: "insensitive" } },
-        { skuCode: { contains: search, mode: "insensitive" } },
-        { name: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
-      ];
-    }
-
-    // Group by master SKU first so the table shows one business row per product
-    // family instead of one row per web variant.
-    const masterSkuGroups = await prisma.sKU.groupBy({
-      by: ["masterSkuCode"],
-      where,
-      _count: { id: true },
-      _sum: { currentStock: true },
-    });
-
-    const total = masterSkuGroups.length;
-    const allMasterSkuCodes = masterSkuGroups
-      .map((g) => g.masterSkuCode)
-      .filter((code): code is string => code !== null);
-
-    // Maps make it cheap to join several aggregate queries into one response
-    // object without repeatedly scanning arrays.
-    const webSkuCounts = new Map(
-      masterSkuGroups.map((g) => [g.masterSkuCode, g._count.id])
-    );
-    const stockTotals = new Map(
-      masterSkuGroups.map((g) => [g.masterSkuCode, g._sum.currentStock || 0])
+    const rows = await prisma.$queryRawUnsafe<ProductRow[]>(
+      `SELECT
+         p.master_sku,
+         p.product_name,
+         p.category,
+         COALESCE(SUM(i.on_hand_qty), 0)::text  AS inv_on_hand,
+         COALESCE(SUM(i.available_qty), 0)::text AS inv_available,
+         COALESCE(SUM(i.backorder_qty), 0)::text AS inv_backorder,
+         COALESCE(SUM(i.reserved_qty), 0)::text  AS inv_reserved
+       FROM shipcore.sc_products p
+       LEFT JOIN shipcore.sc_inventory_snapshot i ON i.master_sku = p.master_sku
+       WHERE $1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1
+       GROUP BY p.master_sku, p.product_name, p.category
+       ORDER BY ${sortCol} ${sortOrder}
+       LIMIT $2 OFFSET $3`,
+      searchParam,
+      limit,
+      offset
     );
 
-    // Fetch ALL representative SKUs for display info
-    const representativeSkus = await prisma.sKU.findMany({
-      where: {
-        masterSkuCode: { in: allMasterSkuCodes },
-      },
-      distinct: ["masterSkuCode"],
-      select: {
-        id: true,
-        masterSkuCode: true,
-        name: true,
-        description: true,
-        category: true,
-        unitCost: true,
-        retailPrice: true,
-        reorderPoint: true,
-      },
-    });
+    const masterSkuCodes = rows.map((r) => r.master_sku);
+    const salesByMasterSku =
+      masterSkuCodes.length > 0
+        ? await prisma.salesRecord.groupBy({
+            by: ["masterSkuCode"],
+            where: {
+              masterSkuCode: { in: masterSkuCodes },
+              saleDate: { gte: salesStartDate },
+            },
+            _sum: { quantity: true },
+          })
+        : [];
+    const salesMap = new Map(salesByMasterSku.map((s) => [s.masterSkuCode, s._sum.quantity || 0]));
 
-    const repSkuMap = new Map(representativeSkus.map((s) => [s.masterSkuCode, s]));
-    const skuRecords = await prisma.sKU.findMany({
-      where: {
-        masterSkuCode: { in: allMasterSkuCodes },
-      },
-      select: {
-        id: true,
-        masterSkuCode: true,
-      },
-    });
-
-    const skuIdToMaster = new Map(
-      skuRecords
-        .filter((s): s is { id: string; masterSkuCode: string } => Boolean(s.masterSkuCode))
-        .map((s) => [s.id, s.masterSkuCode])
-    );
-
-    const inventoryBalances = await prisma.inventoryBalance.findMany({
-      where: {
-        skuId: { in: skuRecords.map((s) => s.id) },
-      },
-      select: {
-        skuId: true,
-        onHandQty: true,
-        reservedQty: true,
-        allocatedQty: true,
-        backorderQty: true,
-        inboundQty: true,
-        availableQty: true,
-      },
-    });
-
-    const inventoryMap = new Map<
-      string,
-      {
-        onHand: number;
-        reserved: number;
-        allocated: number;
-        backorder: number;
-        inbound: number;
-        available: number;
-      }
-    >();
-
-    for (const balance of inventoryBalances) {
-      const masterSkuCode = skuIdToMaster.get(balance.skuId);
-      if (!masterSkuCode) continue;
-
-      const current = inventoryMap.get(masterSkuCode) ?? {
-        onHand: 0,
-        reserved: 0,
+    const data = rows.map((row) => ({
+      id: row.master_sku,
+      masterSkuCode: row.master_sku,
+      skuCode: row.master_sku,
+      name: row.product_name,
+      description: null,
+      category: row.category ?? null,
+      currentStock: Number(row.inv_available ?? 0),
+      reorderPoint: null,
+      unitCost: null,
+      retailPrice: null,
+      inventory: {
+        onHand: Number(row.inv_on_hand ?? 0),
+        reserved: Number(row.inv_reserved ?? 0),
         allocated: 0,
-        backorder: 0,
+        backorder: Number(row.inv_backorder ?? 0),
         inbound: 0,
-        available: 0,
-      };
-
-      current.onHand += balance.onHandQty;
-      current.reserved += balance.reservedQty;
-      current.allocated += balance.allocatedQty;
-      current.backorder += balance.backorderQty;
-      current.inbound += balance.inboundQty;
-      current.available += balance.availableQty;
-
-      inventoryMap.set(masterSkuCode, current);
-    }
-
-    // Sales are summed across every child SKU that shares the same master code.
-    const salesByMasterSku = await prisma.salesRecord.groupBy({
-      by: ["masterSkuCode"],
-      where: {
-        masterSkuCode: { in: allMasterSkuCodes },
-        saleDate: { gte: salesStartDate },
+        available: Number(row.inv_available ?? 0),
       },
-      _sum: { quantity: true },
-    });
-
-    const salesMap = new Map(
-      salesByMasterSku.map((s) => [s.masterSkuCode, s._sum.quantity || 0])
-    );
-
-    // Build complete data for ALL master SKUs
-    const allData = allMasterSkuCodes.map((masterSkuCode) => {
-      const rep = repSkuMap.get(masterSkuCode);
-
-      return {
-        id: rep?.id || masterSkuCode,
-        masterSkuCode,
-        skuCode: masterSkuCode,
-        name: rep?.name || masterSkuCode,
-        description: rep?.description || null,
-        category: rep?.category || null,
-        currentStock: inventoryMap.get(masterSkuCode)?.available || stockTotals.get(masterSkuCode) || 0,
-        reorderPoint: rep?.reorderPoint || null,
-        unitCost: rep?.unitCost || null,
-        retailPrice: rep?.retailPrice || null,
-        webSkuCount: webSkuCounts.get(masterSkuCode) || 0,
-        inventory: {
-          onHand: inventoryMap.get(masterSkuCode)?.onHand || 0,
-          reserved: inventoryMap.get(masterSkuCode)?.reserved || 0,
-          allocated: inventoryMap.get(masterSkuCode)?.allocated || 0,
-          backorder: inventoryMap.get(masterSkuCode)?.backorder || 0,
-          inbound: inventoryMap.get(masterSkuCode)?.inbound || 0,
-          available: inventoryMap.get(masterSkuCode)?.available || 0,
-        },
-        _count: {
-          salesRecords: salesMap.get(masterSkuCode) || 0,
-        },
-        salesSummary: {
-          totalQuantity: salesMap.get(masterSkuCode) || 0,
-          days: salesPeriodDays,
-        },
-      };
-    });
-
-    // Sorting before pagination keeps the global order stable across pages.
-    const sortedData = [...allData].sort((a, b) => {
-      let cmp = 0;
-      switch (sortBy) {
-        case "salesRecords":
-          cmp = a.salesSummary.totalQuantity - b.salesSummary.totalQuantity;
-          break;
-        case "currentStock":
-          cmp = a.inventory.available - b.inventory.available;
-          break;
-        case "name":
-          cmp = (a.name || "").localeCompare(b.name || "");
-          break;
-        case "masterSkuCode":
-        default:
-          cmp = (a.masterSkuCode || "").localeCompare(b.masterSkuCode || "");
-          break;
-      }
-      return sortOrder === "desc" ? -cmp : cmp;
-    });
-
-    // Paginate AFTER sorting
-    const paginatedData = sortedData.slice(skip, skip + limit);
+      _count: { salesRecords: salesMap.get(row.master_sku) || 0 },
+      salesSummary: {
+        totalQuantity: salesMap.get(row.master_sku) || 0,
+        days: salesPeriodDays,
+      },
+    }));
 
     return NextResponse.json({
       success: true,
-      data: paginatedData,
-      periods: {
-        sales: salesPeriodDays,
-      },
+      data,
+      periods: { sales: salesPeriodDays },
       pagination: {
         page,
         limit,
