@@ -37,6 +37,21 @@ function getWalmartTokenStatus(config: Record<string, unknown>): TokenStatus {
   return "valid";
 }
 
+const EBAY_EXPIRY_WARN_DAYS = 30;
+
+function getEbayTokenStatus(config: Record<string, unknown>): TokenStatus {
+  if (!config.refreshToken) return "none";
+
+  const expiresAt = config.refreshTokenExpiresAt as string | undefined;
+  if (expiresAt) {
+    const daysLeft = (new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    if (daysLeft < 0) return "expired";
+    if (daysLeft < EBAY_EXPIRY_WARN_DAYS) return "expiring_soon";
+  }
+
+  return "valid";
+}
+
 // GET /api/integrations - List all integrations
 export async function GET() {
   try {
@@ -49,6 +64,8 @@ export async function GET() {
         tokenStatus:
           integration.platform === "walmart"
             ? getWalmartTokenStatus(config)
+            : integration.platform === "ebay"
+            ? getEbayTokenStatus(config as Record<string, unknown>)
             : undefined,
       })),
     });

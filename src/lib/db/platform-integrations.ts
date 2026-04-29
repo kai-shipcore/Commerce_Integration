@@ -59,7 +59,7 @@ export interface UpdatePlatformIntegrationInput {
 let platformIntegrationPool: Pool | null = null;
 
 function getPlatformIntegrationConnectionString(): string | null {
-  return process.env.SUPABASE_LOOKUP_DATABASE_URL || process.env.DATABASE_URL || null;
+  return process.env.DATABASE_URL || null;
 }
 
 function getPlatformIntegrationPool() {

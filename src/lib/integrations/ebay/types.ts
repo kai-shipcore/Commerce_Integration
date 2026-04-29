@@ -2,6 +2,7 @@ export interface EbayConfig {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
+  refreshTokenExpiresAt?: string; // ISO string, set after OAuth
   ruName?: string;
   environment: "production" | "sandbox";
 }

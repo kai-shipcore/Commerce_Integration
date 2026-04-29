@@ -77,7 +77,6 @@ type SecretFieldKey =
   | "accessToken"
   | "secretAccessKey"
   | "clientSecret"
-  | "refreshToken"
   | "privateKey";
 
 interface IntegrationDetail extends Integration {
@@ -96,7 +95,6 @@ interface IntegrationFormState {
   region: string;
   clientId: string;
   clientSecret: string;
-  refreshToken: string;
   ruName: string;
   consumerId: string;
   privateKey: string;
@@ -116,7 +114,6 @@ const initialFormState: IntegrationFormState = {
   region: "us-east-1",
   clientId: "",
   clientSecret: "",
-  refreshToken: "",
   ruName: "",
   consumerId: "",
   privateKey: "",
@@ -1066,24 +1063,6 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-refreshToken`}>Refresh Token</Label>
-            <Input
-              id={`${mode}-refreshToken`}
-              type="password"
-              placeholder={
-                isEdit ? "Leave blank to keep the current token" : undefined
-              }
-              value={formData.refreshToken}
-              onChange={(e) =>
-                setFormData((current) => ({
-                  ...current,
-                  refreshToken: e.target.value,
-                }))
-              }
-              required={!isEdit}
-            />
-          </div>
-          <div className="grid gap-2">
             <Label htmlFor={`${mode}-ruName`}>RuName</Label>
             <Input
               id={`${mode}-ruName`}
@@ -1256,7 +1235,6 @@ function buildFormStateFromIntegration(
     region: config.region ?? "us-east-1",
     clientId: config.clientId ?? "",
     clientSecret: "",
-    refreshToken: "",
     ruName: config.ruName ?? "",
     consumerId: "",
     privateKey: "",
@@ -1333,13 +1311,8 @@ function buildIntegrationPayload(
     config.ruName = formData.ruName;
   }
 
-  for (const [field, value] of [
-    ["clientSecret", formData.clientSecret],
-    ["refreshToken", formData.refreshToken],
-  ] as Array<[SecretFieldKey, string]>) {
-    if (!omitEmptySecrets || (value.trim() && value !== "********")) {
-      config[field] = value;
-    }
+  if (!omitEmptySecrets || (formData.clientSecret.trim() && formData.clientSecret !== "********")) {
+    config.clientSecret = formData.clientSecret;
   }
 
   return {

@@ -3,20 +3,24 @@ import type { IntegrationConfig } from "@/lib/integrations/core/types";
 const MASKED_SECRET = "********";
 
 export function applyEbayDefaults(config: IntegrationConfig): IntegrationConfig {
-  return {
+  const result: IntegrationConfig = {
     clientId: String(config.clientId || ""),
     clientSecret: String(config.clientSecret || ""),
     refreshToken: String(config.refreshToken || ""),
     ruName: String(config.ruName || ""),
     environment: config.environment === "sandbox" ? "sandbox" : "production",
   };
+  if (config.refreshTokenExpiresAt) {
+    result.refreshTokenExpiresAt = config.refreshTokenExpiresAt;
+  }
+  return result;
 }
 
 export function validateEbayConfig(config: IntegrationConfig): void {
   const normalized = applyEbayDefaults(config);
 
-  if (!normalized.clientId || !normalized.clientSecret || !normalized.refreshToken) {
-    throw new Error("eBay integration requires clientId, clientSecret, and refreshToken");
+  if (!normalized.clientId || !normalized.clientSecret) {
+    throw new Error("eBay integration requires clientId and clientSecret");
   }
 }
 
