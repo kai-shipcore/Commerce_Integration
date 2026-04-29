@@ -12,6 +12,13 @@ import { BulkActionsBar } from "@/components/sku/bulk-actions-bar";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import { createSkuColumns, SKUTableData } from "@/components/sku/sku-table-columns";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Download, RefreshCw, Loader2 } from "lucide-react";
 
 interface PaginationState {
@@ -40,7 +47,9 @@ export default function SKUsPage() {
   const [pageCount, setPageCount] = useState(0);
   const [selectedRows, setSelectedRows] = useState<SKUTableData[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [syncing, setSyncing] = useState(false);
+  const [syncingMapping, setSyncingMapping] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const [salesPeriod, setSalesPeriod] = useState("30");
@@ -55,6 +64,7 @@ export default function SKUsPage() {
     params.set("sortBy", sorting.sortBy);
     params.set("sortOrder", sorting.sortOrder);
     params.set("salesPeriod", salesPeriod);
+    if (categoryFilter && categoryFilter !== "all") params.set("category", categoryFilter);
 
     fetch(`/api/skus?${params}`)
       .then((res) => res.json())
@@ -63,21 +73,12 @@ export default function SKUsPage() {
           setSKUs(result.data);
           setTotalRows(result.pagination.total);
           setPageCount(result.pagination.totalPages);
-
-          // Extract unique categories for filtering
-          const uniqueCategories = Array.from(
-            new Set(
-              result.data
-                .map((sku: SKUTableData) => sku.category)
-                .filter((cat: string | null) => cat !== null)
-            )
-          ) as string[];
-          setCategories(uniqueCategories);
+          if (result.categories) setCategories(result.categories);
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [search, pagination, sorting, salesPeriod]);
+  }, [search, pagination, sorting, salesPeriod, categoryFilter]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -132,12 +133,30 @@ export default function SKUsPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || "Products sync failed");
       }
-      await fetchSKUs();
+      fetchSKUs();
       setSyncMessage(result.message ?? "Sync completed");
     } catch (err) {
       setSyncMessage(err instanceof Error ? err.message : "Products sync failed");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleSyncMapping = async () => {
+    setSyncingMapping(true);
+    setSyncMessage(null);
+    try {
+      const response = await fetch("/api/sku-mappings/sync", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Mapping sync failed");
+      }
+      fetchSKUs();
+      setSyncMessage(result.message ?? "Mapping sync completed");
+    } catch (err) {
+      setSyncMessage(err instanceof Error ? err.message : "Mapping sync failed");
+    } finally {
+      setSyncingMapping(false);
     }
   };
 
@@ -201,11 +220,6 @@ export default function SKUsPage() {
     document.body.removeChild(link);
   };
 
-  // Prepare category filter options
-  const categoryFilterOptions = categories.map((cat) => ({
-    label: cat,
-    value: cat,
-  }));
 
   return (
     <AppLayout>
@@ -219,6 +233,25 @@ export default function SKUsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Select
+              value={categoryFilter}
+              onValueChange={(value) => {
+                setCategoryFilter((current) => (current === value ? current : value));
+                setPagination((current) => (current.page === 1 ? current : { ...current, page: 1 }));
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               onClick={handleSync}
@@ -230,6 +263,18 @@ export default function SKUsPage() {
                 <RefreshCw className="h-4 w-4" />
               )}
               {syncing ? "Syncing..." : "Sync"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSyncMapping}
+              disabled={syncingMapping}
+            >
+              {syncingMapping ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {syncingMapping ? "Syncing..." : "Sync Mapping"}
             </Button>
             <Button
               variant="outline"
@@ -268,19 +313,8 @@ export default function SKUsPage() {
           onSortingChange={handleSortingChange}
           onSearchChange={handleSearchChange}
           onRowSelectionChange={handleRowSelectionChange}
-          searchPlaceholder="Search products by code, name, or description..."
+          searchPlaceholder="Search products by SKU..."
           isLoading={loading}
-          filterableColumns={
-            categoryFilterOptions.length > 0
-              ? [
-                  {
-                    id: "category",
-                    title: "Category",
-                    options: categoryFilterOptions,
-                  },
-                ]
-              : []
-          }
         />
       </div>
     </AppLayout>

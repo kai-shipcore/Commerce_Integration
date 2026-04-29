@@ -54,11 +54,15 @@ export async function GET(request: NextRequest) {
       onHand: "inv_on_hand",
       backorder: "inv_backorder",
       salesRecords: "p.master_sku",
+      webSkuCount: "web_sku_count",
     };
     const sortCol = sortColMap[rawSortBy] ?? "p.master_sku";
 
     const search = searchParams.get("search")?.trim() || "";
     const searchParam = search ? `%${search}%` : null;
+
+    const category = searchParams.get("category")?.trim() || "";
+    const categoryParam = category && category !== "all" ? category : null;
 
     const validPeriods = [30, 60, 90, 365];
     const salesPeriodDays = validPeriods.includes(parseInt(searchParams.get("salesPeriod") || ""))
@@ -66,12 +70,20 @@ export async function GET(request: NextRequest) {
       : 30;
     const salesStartDate = new Date(Date.now() - salesPeriodDays * 24 * 60 * 60 * 1000);
 
+    type CategoryRow = { category: string };
+    const categoryRows = await prisma.$queryRawUnsafe<CategoryRow[]>(
+      `SELECT DISTINCT p.category FROM shipcore.sc_products p WHERE p.category IS NOT NULL ORDER BY p.category`
+    );
+    const availableCategories = categoryRows.map((r) => r.category);
+
     type CountRow = { count: bigint };
     const countResult = await prisma.$queryRawUnsafe<CountRow[]>(
       `SELECT COUNT(*)::bigint AS count
        FROM shipcore.sc_products p
-       WHERE $1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1`,
-      searchParam
+       WHERE ($1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1)
+         AND ($2::text IS NULL OR p.category = $2)`,
+      searchParam,
+      categoryParam
     );
     const total = Number(countResult[0]?.count ?? 0);
 
@@ -79,6 +91,7 @@ export async function GET(request: NextRequest) {
       master_sku: string;
       product_name: string;
       category: string | null;
+      web_sku_count: bigint;
       inv_on_hand: string | null;
       inv_available: string | null;
       inv_backorder: string | null;
@@ -89,17 +102,21 @@ export async function GET(request: NextRequest) {
          p.master_sku,
          p.product_name,
          p.category,
+         COUNT(DISTINCT sm.channel_sku)::bigint AS web_sku_count,
          COALESCE(SUM(i.on_hand_qty), 0)::text  AS inv_on_hand,
          COALESCE(SUM(i.available_qty), 0)::text AS inv_available,
          COALESCE(SUM(i.backorder_qty), 0)::text AS inv_backorder,
          COALESCE(SUM(i.reserved_qty), 0)::text  AS inv_reserved
        FROM shipcore.sc_products p
        LEFT JOIN shipcore.sc_inventory_snapshot i ON i.master_sku = p.master_sku
-       WHERE $1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1
+       LEFT JOIN shipcore.sc_sku_mappings sm ON sm.master_sku = p.master_sku
+       WHERE ($1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1)
+         AND ($2::text IS NULL OR p.category = $2)
        GROUP BY p.master_sku, p.product_name, p.category
        ORDER BY ${sortCol} ${sortOrder}
-       LIMIT $2 OFFSET $3`,
+       LIMIT $3 OFFSET $4`,
       searchParam,
+      categoryParam,
       limit,
       offset
     );
@@ -125,6 +142,7 @@ export async function GET(request: NextRequest) {
       name: row.product_name,
       description: null,
       category: row.category ?? null,
+      webSkuCount: Number(row.web_sku_count ?? 0),
       currentStock: Number(row.inv_available ?? 0),
       reorderPoint: null,
       unitCost: null,
@@ -147,6 +165,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data,
+      categories: availableCategories,
       periods: { sales: salesPeriodDays },
       pagination: {
         page,
