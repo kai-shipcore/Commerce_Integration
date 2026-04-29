@@ -44,12 +44,13 @@ export async function GET(request: NextRequest) {
       environment: config.environment === "sandbox" ? "sandbox" : "production",
     });
 
-    const { refreshToken } = await client.exchangeCodeForTokens(code, ruName);
+    const { refreshToken, refreshTokenExpiresAt } = await client.exchangeCodeForTokens(code, ruName);
 
     await updatePlatformIntegration(integrationId, {
       config: {
         ...(integration.config as Record<string, unknown>),
         refreshToken,
+        refreshTokenExpiresAt,
       },
     });
 

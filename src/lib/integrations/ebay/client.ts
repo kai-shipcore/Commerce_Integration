@@ -46,7 +46,7 @@ export class EbayClient {
   async exchangeCodeForTokens(
     code: string,
     ruName: string
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  ): Promise<{ accessToken: string; refreshToken: string; refreshTokenExpiresAt: string }> {
     const response = await fetch(this.authUrl, {
       method: "POST",
       headers: {
@@ -68,9 +68,14 @@ export class EbayClient {
       );
     }
 
+    const refreshTokenExpiresAt = new Date(
+      Date.now() + (Number(data.refresh_token_expires_in) || 0) * 1000
+    ).toISOString();
+
     return {
       accessToken: data.access_token as string,
       refreshToken: data.refresh_token as string,
+      refreshTokenExpiresAt,
     };
   }
 
