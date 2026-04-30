@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { getPrimaryPool } from "@/lib/db/primary-db";
 import { lookupMasterSkusFromSupabase, testLookupConnection } from "@/lib/db/supabase-lookup";
 
 /**
@@ -75,86 +76,46 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 2: Update SalesRecords with master SKU codes
+    // Step 2: Update sc_sales_order_items with master SKU codes
     if (!skipSalesRecords) {
-      console.log("Updating SalesRecords with master SKU codes...");
+      console.log("Updating sc_sales_order_items with master SKU codes...");
 
-      // Get all unique SKU IDs from sales records that don't have masterSkuCode
-      const salesWithoutMaster = await prisma.salesRecord.findMany({
-        where: { masterSkuCode: null },
-        select: { id: true, skuId: true },
-        distinct: ['skuId'],
-      });
+      const pool = getPrimaryPool();
 
-      const skuIds = [...new Set(salesWithoutMaster.map(s => s.skuId))];
-      console.log(`Found ${skuIds.length} unique SKUs in sales records needing master SKU`);
+      // Find distinct channel_skus in sc_sales_order_items where master_sku is NULL
+      const { rows: nullSkuRows } = await pool.query<{ channel_sku: string }>(
+        `SELECT DISTINCT channel_sku FROM shipcore.sc_sales_order_items WHERE master_sku IS NULL AND channel_sku IS NOT NULL`
+      );
 
-      // Get SKU codes for these IDs
-      const skusForSales = await prisma.sKU.findMany({
-        where: { id: { in: skuIds } },
-        select: { id: true, skuCode: true, masterSkuCode: true },
-      });
+      const channelSkus = nullSkuRows.map((r) => r.channel_sku);
+      console.log(`Found ${channelSkus.length} distinct channel SKUs needing master SKU`);
 
-      // Build map of skuId -> masterSkuCode (from SKU table)
-      const skuIdToMasterMap = new Map<string, string>();
-      const skusNeedingLookup: { id: string; skuCode: string }[] = [];
+      // Process in batches
+      for (let i = 0; i < channelSkus.length; i += batchSize) {
+        const batch = channelSkus.slice(i, i + batchSize);
 
-      for (const sku of skusForSales) {
-        if (sku.masterSkuCode) {
-          skuIdToMasterMap.set(sku.id, sku.masterSkuCode);
-        } else {
-          skusNeedingLookup.push({ id: sku.id, skuCode: sku.skuCode });
-        }
-      }
-
-      // Lookup master SKUs for any that don't have it in the SKU table
-      if (skusNeedingLookup.length > 0) {
-        for (let i = 0; i < skusNeedingLookup.length; i += batchSize) {
-          const batch = skusNeedingLookup.slice(i, i + batchSize);
-          const skuCodes = batch.map(s => s.skuCode);
-
-          try {
-            const masterSkuLookup = await lookupMasterSkusFromSupabase(skuCodes);
-            if (!masterSkuLookup) continue; // Skip if lookup not available
-
-            for (const sku of batch) {
-              const masterInfo = masterSkuLookup.get(sku.skuCode);
-              if (masterInfo?.parse1) {
-                skuIdToMasterMap.set(sku.id, masterInfo.parse1);
-              }
-            }
-          } catch (error: any) {
-            results.errors.push(`Sales lookup batch ${i}: ${error.message}`);
-          }
-        }
-      }
-
-      // Update sales records in bulk by SKU ID
-      const totalSkusToUpdate = skuIdToMasterMap.size;
-      let skusProcessed = 0;
-
-      for (const [skuId, masterSkuCode] of skuIdToMasterMap) {
         try {
-          const updateResult = await prisma.salesRecord.updateMany({
-            where: {
-              skuId: skuId,
-              masterSkuCode: null,
-            },
-            data: { masterSkuCode },
-          });
-          results.salesRecordsUpdated += updateResult.count;
-          skusProcessed++;
+          const masterSkuLookup = await lookupMasterSkusFromSupabase(batch);
+          if (!masterSkuLookup) continue;
 
-          // Log progress every 500 SKUs
-          if (skusProcessed % 500 === 0 || skusProcessed === totalSkusToUpdate) {
-            console.log(`Sales records: ${skusProcessed}/${totalSkusToUpdate} SKUs processed, ${results.salesRecordsUpdated} records updated`);
+          for (const channelSku of batch) {
+            const masterInfo = masterSkuLookup.get(channelSku);
+            if (masterInfo?.parse1) {
+              const { rowCount } = await pool.query(
+                `UPDATE shipcore.sc_sales_order_items SET master_sku = $1 WHERE channel_sku = $2 AND master_sku IS NULL`,
+                [masterInfo.parse1, channelSku]
+              );
+              results.salesRecordsUpdated += rowCount ?? 0;
+            }
           }
+
+          console.log(`Processed ${Math.min(i + batchSize, channelSkus.length)}/${channelSkus.length} channel SKUs, ${results.salesRecordsUpdated} rows updated`);
         } catch (error: any) {
-          results.errors.push(`Sales update for SKU ${skuId}: ${error.message}`);
+          results.errors.push(`Sales lookup batch ${i}: ${error.message}`);
         }
       }
 
-      console.log(`Completed: Updated ${results.salesRecordsUpdated} sales records`);
+      console.log(`Completed: Updated ${results.salesRecordsUpdated} sc_sales_order_items rows`);
     }
 
     return NextResponse.json({
@@ -177,12 +138,19 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    const [skusWithoutMaster, skusWithMaster, salesWithoutMaster, salesWithMaster] = await Promise.all([
+    const [skusWithoutMaster, skusWithMaster] = await Promise.all([
       prisma.sKU.count({ where: { masterSkuCode: null } }),
       prisma.sKU.count({ where: { masterSkuCode: { not: null } } }),
-      prisma.salesRecord.count({ where: { masterSkuCode: null } }),
-      prisma.salesRecord.count({ where: { masterSkuCode: { not: null } } }),
     ]);
+
+    const pool = getPrimaryPool();
+    const [withoutRes, withRes] = await Promise.all([
+      pool.query<{ cnt: string }>(`SELECT COUNT(*)::text AS cnt FROM shipcore.sc_sales_order_items WHERE master_sku IS NULL`),
+      pool.query<{ cnt: string }>(`SELECT COUNT(*)::text AS cnt FROM shipcore.sc_sales_order_items WHERE master_sku IS NOT NULL`),
+    ]);
+
+    const salesWithoutMaster = parseInt(withoutRes.rows[0]?.cnt ?? "0", 10);
+    const salesWithMaster = parseInt(withRes.rows[0]?.cnt ?? "0", 10);
 
     return NextResponse.json({
       success: true,

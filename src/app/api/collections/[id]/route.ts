@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { getPrimaryPool } from "@/lib/db/primary-db";
 import { z } from "zod";
 
 const UpdateCollectionSchema = z.object({
@@ -62,48 +63,48 @@ export async function GET(
       );
     }
 
-    // Get aggregate sales for collection members
-    const skuIds = collection.members.map((m) => m.skuId);
+    // Get aggregate sales for collection members via sc_sales_order_items
+    const skuCodes = collection.members.map((m) => m.sku.skuCode);
 
-    const salesStats = await prisma.salesRecord.groupBy({
-      by: ["skuId"],
-      where: {
-        skuId: { in: skuIds },
-        saleDate: {
-          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
-        },
-      },
-      _sum: {
-        quantity: true,
-        totalAmount: true,
-      },
-      _count: {
-        id: true,
-      },
-    });
+    type SalesStatRow = { master_sku: string; qty: string; revenue: string; cnt: string };
+    let salesStatRows: SalesStatRow[] = [];
+    if (skuCodes.length > 0) {
+      const pool = getPrimaryPool();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const { rows } = await pool.query<SalesStatRow>(
+        `SELECT i.master_sku,
+                COALESCE(SUM(i.quantity), 0)::text AS qty,
+                COALESCE(SUM(i.line_total), 0)::text AS revenue,
+                COUNT(*)::text AS cnt
+         FROM shipcore.sc_sales_order_items i
+         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+         WHERE i.master_sku = ANY($1::text[])
+           AND o.order_date >= $2
+           AND i.is_counted_in_demand = true
+         GROUP BY i.master_sku`,
+        [skuCodes, thirtyDaysAgo]
+      );
+      salesStatRows = rows;
+    }
+
+    const statsByMasterSku = new Map(salesStatRows.map((s) => [s.master_sku, s]));
 
     // Enhance collection data with sales stats
     const enhancedMembers = collection.members.map((member) => {
-      const stats = salesStats.find((s) => s.skuId === member.skuId);
+      const stats = statsByMasterSku.get(member.sku.skuCode);
       return {
         ...member,
-        salesLast30Days: stats?._sum.quantity || 0,
-        revenueLast30Days: stats?._sum.totalAmount || 0,
-        orderCountLast30Days: stats?._count.id || 0,
+        salesLast30Days: parseInt(stats?.qty ?? "0", 10),
+        revenueLast30Days: parseFloat(stats?.revenue ?? "0"),
+        orderCountLast30Days: parseInt(stats?.cnt ?? "0", 10),
       };
     });
 
     const response = {
       ...collection,
       members: enhancedMembers,
-      totalSalesLast30Days: salesStats.reduce(
-        (sum, s) => sum + (s._sum.quantity || 0),
-        0
-      ),
-      totalRevenueLast30Days: salesStats.reduce(
-        (sum, s) => sum + Number(s._sum.totalAmount || 0),
-        0
-      ),
+      totalSalesLast30Days: salesStatRows.reduce((sum, s) => sum + parseInt(s.qty, 10), 0),
+      totalRevenueLast30Days: salesStatRows.reduce((sum, s) => sum + parseFloat(s.revenue), 0),
       totalStock: collection.members.reduce(
         (sum, m) => sum + m.sku.currentStock,
         0

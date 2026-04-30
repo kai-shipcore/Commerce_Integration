@@ -62,11 +62,6 @@ export async function DELETE(request: NextRequest) {
         where: { skuId: { in: existingIds } },
       });
 
-      // Delete sales records
-      await tx.salesRecord.deleteMany({
-        where: { skuId: { in: existingIds } },
-      });
-
       // Delete inventory snapshots
       await tx.inventorySnapshot.deleteMany({
         where: { skuId: { in: existingIds } },

@@ -101,8 +101,15 @@ export const walmartAdapter: IntegrationAdapter = {
         | null;
 
       let createdStartDate = options.createdAtMin;
-      if (!options.fullSync && !createdStartDate) {
-        createdStartDate = buildIncrementalStart(integration.lastSyncAt);
+      if (!createdStartDate) {
+        if (options.fullSync) {
+          // Full sync: go back 180 days (Walmart max lookback)
+          const farBack = new Date();
+          farBack.setDate(farBack.getDate() - 180);
+          createdStartDate = farBack.toISOString();
+        } else {
+          createdStartDate = buildIncrementalStart(integration.lastSyncAt);
+        }
       }
 
       let pageResult =

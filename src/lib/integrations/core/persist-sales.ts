@@ -1,82 +1,12 @@
-import { prisma } from "@/lib/db/prisma";
+import { getPrimaryPool } from "@/lib/db/primary-db";
 import type {
-  NormalizedLineItem,
   NormalizedOrder,
   SyncResult,
 } from "@/lib/integrations/core/types";
 import {
-  ensureSkuMappings,
   lookupMasterSkus,
   type MasterSkuInfo,
 } from "@/lib/integrations/core/sku-resolution";
-
-function buildSalesRecordRows(args: {
-  order: NormalizedOrder;
-  item: NormalizedLineItem;
-  skuId: string;
-  platform: string;
-  integrationId: string;
-  masterInfo?: MasterSkuInfo;
-}) {
-  const { order, item, skuId, platform, integrationId, masterInfo } = args;
-  const isFulfilled = item.fulfillmentStatus === "fulfilled";
-  const fulfilledDate = isFulfilled
-    ? new Date(item.fulfilledAt || order.orderedAt)
-    : null;
-
-  const rows = [
-    {
-      skuId,
-      integrationId,
-      platform,
-      orderId: order.orderDisplayId,
-      orderType: "actual_sale",
-      saleDate: new Date(order.orderedAt),
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalAmount: item.totalAmount,
-      masterSkuCode: masterInfo?.parse1 || null,
-      fulfilled: isFulfilled,
-      fulfilledDate,
-    },
-  ];
-
-  if (masterInfo?.parse2) {
-    rows.push({
-      skuId,
-      integrationId,
-      platform,
-      orderId: `${order.orderDisplayId}-p2`,
-      orderType: "actual_sale",
-      saleDate: new Date(order.orderedAt),
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalAmount: item.totalAmount,
-      masterSkuCode: masterInfo.parse2,
-      fulfilled: isFulfilled,
-      fulfilledDate,
-    });
-  }
-
-  if (masterInfo?.parse3) {
-    rows.push({
-      skuId,
-      integrationId,
-      platform,
-      orderId: `${order.orderDisplayId}-p3`,
-      orderType: "actual_sale",
-      saleDate: new Date(order.orderedAt),
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalAmount: item.totalAmount,
-      masterSkuCode: masterInfo.parse3,
-      fulfilled: isFulfilled,
-      fulfilledDate,
-    });
-  }
-
-  return rows;
-}
 
 export async function persistNormalizedOrders(args: {
   orders: NormalizedOrder[];
@@ -86,87 +16,122 @@ export async function persistNormalizedOrders(args: {
   masterSkuCache: Map<string, MasterSkuInfo>;
   result: SyncResult;
 }): Promise<void> {
-  const { orders, integrationId, platform, skuMap, masterSkuCache, result } = args;
-  const activeOrders = orders.filter((order) => !order.cancelledAt);
+  const { orders, platform, masterSkuCache, result } = args;
+  if (orders.length === 0) return;
 
-  const batchSkuCodes = activeOrders.flatMap((order) =>
-    order.lineItems.map((item) => item.sku).filter(Boolean)
-  );
-
-  result.skusCreated += await ensureSkuMappings(batchSkuCodes, skuMap, masterSkuCache);
-
+  // Resolve master SKUs for all channel SKUs not yet cached
   const skusNeedingLookup = Array.from(
     new Set(
-      activeOrders.flatMap((order) =>
-        order.lineItems
-          .map((item) => item.sku)
-          .filter((sku) => Boolean(sku) && !masterSkuCache.has(sku))
+      orders.flatMap((o) =>
+        o.lineItems.map((i) => i.sku).filter((s) => Boolean(s) && !masterSkuCache.has(s))
       )
     )
   );
-
   if (skusNeedingLookup.length > 0) {
-    const masterSkuLookup = await lookupMasterSkus(skusNeedingLookup);
-    masterSkuLookup.forEach((value, key) => masterSkuCache.set(key, value));
+    const resolved = await lookupMasterSkus(skusNeedingLookup);
+    resolved.forEach((v, k) => masterSkuCache.set(k, v));
   }
 
-  const salesRecords = [];
+  const pool = getPrimaryPool();
 
-  for (const order of activeOrders) {
-    for (const item of order.lineItems) {
-      if (!item.sku) {
-        continue;
-      }
+  for (const order of orders) {
+    const isCanceled = Boolean(order.cancelledAt);
+    const client = await pool.connect();
 
-      const skuId = skuMap.get(item.sku);
-      if (!skuId) {
-        continue;
-      }
-
-      salesRecords.push(
-        ...buildSalesRecordRows({
-          order,
-          item,
-          skuId,
+    try {
+      const orderRes = await client.query<{ id: string; inserted: boolean }>(
+        `INSERT INTO shipcore.sc_sales_orders (
+          platform_source, external_order_id, order_number,
+          order_date, order_status,
+          total_price, currency,
+          cancelled_at, is_counted_in_demand
+        ) VALUES (
+          $1, $2, $2,
+          $3, $4,
+          $5, $6,
+          $7, $8
+        )
+        ON CONFLICT (external_order_id) DO UPDATE SET
+          order_status         = EXCLUDED.order_status,
+          total_price          = COALESCE(EXCLUDED.total_price, sc_sales_orders.total_price),
+          cancelled_at         = EXCLUDED.cancelled_at,
+          is_counted_in_demand = EXCLUDED.is_counted_in_demand,
+          updated_at           = NOW()
+        RETURNING id, (xmax = 0) AS inserted`,
+        [
           platform,
-          integrationId,
-          masterInfo: masterSkuCache.get(item.sku),
-        })
+          order.externalOrderId,
+          order.orderedAt,
+          isCanceled ? "Canceled" : "Unshipped",
+          order.lineItems.reduce((s, i) => s + i.totalAmount, 0) || null,
+          order.currency ?? null,
+          order.cancelledAt ?? null,
+          !isCanceled,
+        ]
       );
+
+      const { id: orderId, inserted: isNewOrder } = orderRes.rows[0];
+
+      for (const item of order.lineItems) {
+        if (!item.sku) continue;
+
+        const masterInfo = masterSkuCache.get(item.sku);
+        const masterSku = masterInfo?.parse1 ?? null;
+        const lineItemId = item.externalLineItemId ?? `${order.externalOrderId}-${item.sku}`;
+
+        await client.query(
+          `INSERT INTO shipcore.sc_sales_order_items (
+            order_id, platform_source, external_line_item_id,
+            master_sku, channel_sku, sku,
+            product_name,
+            quantity, unit_price, line_total,
+            fulfillment_status,
+            is_counted_in_demand
+          ) VALUES (
+            $1, $2, $3,
+            $4, $5, $5,
+            $6,
+            $7, $8, $9,
+            $10,
+            $11
+          )
+          ON CONFLICT (external_line_item_id) DO UPDATE SET
+            order_id             = EXCLUDED.order_id,
+            master_sku           = COALESCE(EXCLUDED.master_sku, sc_sales_order_items.master_sku),
+            channel_sku          = EXCLUDED.channel_sku,
+            sku                  = EXCLUDED.sku,
+            product_name         = COALESCE(EXCLUDED.product_name, sc_sales_order_items.product_name),
+            quantity             = EXCLUDED.quantity,
+            unit_price           = COALESCE(EXCLUDED.unit_price, sc_sales_order_items.unit_price),
+            line_total           = COALESCE(EXCLUDED.line_total, sc_sales_order_items.line_total),
+            fulfillment_status   = EXCLUDED.fulfillment_status,
+            is_counted_in_demand = EXCLUDED.is_counted_in_demand,
+            updated_at           = NOW()`,
+          [
+            orderId,
+            platform,
+            lineItemId,
+            masterSku,
+            item.sku,
+            item.title ?? null,
+            item.quantity,
+            item.unitPrice ?? null,
+            item.totalAmount ?? null,
+            item.fulfillmentStatus ?? null,
+            !isCanceled,
+          ]
+        );
+      }
+
+      if (isNewOrder && !isCanceled && order.lineItems.length > 0) {
+        result.ordersProcessed++;
+        result.salesRecordsCreated += order.lineItems.length;
+      }
+    } catch (e) {
+      console.error(`[persist-sales] Failed to persist order ${order.externalOrderId}:`, e);
+      throw e;
+    } finally {
+      client.release();
     }
-
   }
-
-  if (salesRecords.length === 0) {
-    return;
-  }
-
-  const existingOrderIds = await prisma.salesRecord.findMany({
-    where: {
-      platform,
-      orderId: { in: salesRecords.map((record) => record.orderId) },
-    },
-    select: { orderId: true, skuId: true },
-  });
-
-  const existingKeys = new Set(existingOrderIds.map((row) => `${row.orderId}-${row.skuId}`));
-  const newRecords = salesRecords.filter(
-    (record) => !existingKeys.has(`${record.orderId}-${record.skuId}`)
-  );
-
-  if (newRecords.length === 0) {
-    return;
-  }
-
-  await prisma.salesRecord.createMany({
-    data: newRecords,
-  });
-
-  result.salesRecordsCreated += newRecords.length;
-
-  // Count unique orders that actually contributed new records (strip -p2/-p3 suffixes)
-  const newBaseOrderIds = new Set(
-    newRecords.map((r) => r.orderId.replace(/-p[23]$/, ""))
-  );
-  result.ordersProcessed += newBaseOrderIds.size;
 }
