@@ -111,9 +111,9 @@ export const amazonAdapter: IntegrationAdapter = {
           // Use lastSyncAt minus 2 days to guarantee no gap between sync runs
           createdAfter = new Date(new Date(integration.lastSyncAt).getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
         } else {
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          createdAfter = thirtyDaysAgo.toISOString();
+          const farBack = new Date();
+          farBack.setDate(farBack.getDate() - 180);
+          createdAfter = farBack.toISOString();
         }
       }
 
