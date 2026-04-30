@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
-import { CacheManager, CacheKeys, CacheTTL } from "@/lib/redis";
+import { CacheManager } from "@/lib/redis";
 
 const DEFAULT_INVENTORY_LOCATION_CODE = "DEFAULT";
 
@@ -36,143 +36,71 @@ const UpdateSKUSchema = z.object({
   ebayItemId: z.string().optional(),
 });
 
-// GET /api/skus/[id] - Get a single SKU by ID
+// GET /api/skus/[id] - Get a single product by master_sku
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
 
-    // Check cache first
-    const cacheKey = CacheKeys.sku(id);
-    const cached = await CacheManager.get<unknown>(cacheKey);
-    if (cached) {
-      // Track query for hot SKU analysis
-      await CacheManager.incrementSKUQueryCount(id);
-      return NextResponse.json({ success: true, data: cached, cached: true });
-    }
+    type ProductRow = { master_sku: string; product_name: string; category: string | null; status: string | null };
+    const products = await prisma.$queryRawUnsafe<ProductRow[]>(
+      `SELECT master_sku, product_name, category, status FROM shipcore.sc_products WHERE master_sku = $1`,
+      id
+    );
 
-    const sku = await prisma.sKU.findUnique({
-      where: { id },
-      include: {
-        inventoryBalances: {
-          include: {
-            location: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-                isDefault: true,
-              },
-            },
-          },
-          orderBy: {
-            location: {
-              name: "asc",
-            },
-          },
-        },
-        parentSKU: {
-          select: {
-            id: true,
-            skuCode: true,
-            name: true,
-            imageUrl: true,
-          },
-        },
-        customVariants: {
-          select: {
-            id: true,
-            skuCode: true,
-            name: true,
-            currentStock: true,
-            imageUrl: true,
-          },
-        },
-        collectionMembers: {
-          include: {
-            collection: {
-              select: {
-                id: true,
-                name: true,
-                colorCode: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            salesRecords: true,
-            inventorySnapshots: true,
-          },
-        },
-      },
-    });
-
-    if (!sku) {
-      return NextResponse.json(
-        { success: false, error: "SKU not found" },
-        { status: 404 }
-      );
+    if (products.length === 0) {
+      return NextResponse.json({ success: false, error: "SKU not found" }, { status: 404 });
     }
+    const product = products[0];
 
-    // Fetch related web SKUs that share the same master SKU
-    let relatedWebSkus: { id: string; skuCode: string; salesCount: number }[] = [];
-    if (sku.masterSkuCode) {
-      const related = await prisma.sKU.findMany({
-        where: {
-          masterSkuCode: sku.masterSkuCode,
-        },
-        select: {
-          id: true,
-          skuCode: true,
-          _count: {
-            select: {
-              salesRecords: true,
-            },
-          },
-        },
-        orderBy: {
-          skuCode: "asc",
-        },
-      });
-      relatedWebSkus = related.map((r) => ({
-        id: r.id,
-        skuCode: r.skuCode,
-        salesCount: r._count.salesRecords,
-      }));
-    }
+    type InventoryRow = { warehouse_code: string; on_hand_qty: string; available_qty: string; backorder_qty: string; reserved_qty: string };
+    const inventoryRows = await prisma.$queryRawUnsafe<InventoryRow[]>(
+      `SELECT warehouse_code, on_hand_qty::text, available_qty::text, backorder_qty::text, reserved_qty::text
+       FROM shipcore.sc_inventory_snapshot
+       WHERE master_sku = $1
+       ORDER BY warehouse_code`,
+      id
+    );
+
+    type MappingRow = { channel_sku: string; channel: string };
+    const mappingRows = await prisma.$queryRawUnsafe<MappingRow[]>(
+      `SELECT channel_sku, channel FROM shipcore.sc_sku_mappings WHERE master_sku = $1 ORDER BY channel_sku`,
+      id
+    );
+
+    const salesCount = await prisma.salesRecord.count({ where: { masterSkuCode: id } });
 
     const inventory = {
-      onHand: sku.inventoryBalances.reduce((sum, balance) => sum + balance.onHandQty, 0),
-      reserved: sku.inventoryBalances.reduce((sum, balance) => sum + balance.reservedQty, 0),
-      allocated: sku.inventoryBalances.reduce((sum, balance) => sum + balance.allocatedQty, 0),
-      backorder: sku.inventoryBalances.reduce((sum, balance) => sum + balance.backorderQty, 0),
-      inbound: sku.inventoryBalances.reduce((sum, balance) => sum + balance.inboundQty, 0),
-      available: sku.inventoryBalances.reduce((sum, balance) => sum + balance.availableQty, 0),
+      onHand:    inventoryRows.reduce((s, r) => s + Number(r.on_hand_qty  ?? 0), 0),
+      available: inventoryRows.reduce((s, r) => s + Number(r.available_qty ?? 0), 0),
+      backorder: inventoryRows.reduce((s, r) => s + Number(r.backorder_qty ?? 0), 0),
+      reserved:  inventoryRows.reduce((s, r) => s + Number(r.reserved_qty  ?? 0), 0),
     };
 
-    const skuWithRelated = {
-      ...sku,
-      currentStock: inventory.available,
+    const data = {
+      id:            product.master_sku,
+      masterSkuCode: product.master_sku,
+      name:          product.product_name,
+      category:      product.category,
+      status:        product.status,
       inventory,
-      relatedWebSkus,
+      inventoryByWarehouse: inventoryRows.map((r) => ({
+        warehouse: r.warehouse_code,
+        onHand:    Number(r.on_hand_qty   ?? 0),
+        available: Number(r.available_qty ?? 0),
+        backorder: Number(r.backorder_qty ?? 0),
+        reserved:  Number(r.reserved_qty  ?? 0),
+      })),
+      webSkus: mappingRows.map((r) => ({ channelSku: r.channel_sku, channel: r.channel })),
+      salesCount,
     };
 
-    // Cache the SKU data
-    await CacheManager.set(cacheKey, skuWithRelated, CacheTTL.SKU_DATA);
-
-    // Track query for hot SKU analysis
-    await CacheManager.incrementSKUQueryCount(id);
-
-    return NextResponse.json({ success: true, data: skuWithRelated, cached: false });
+    return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     console.error("Error fetching SKU:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 

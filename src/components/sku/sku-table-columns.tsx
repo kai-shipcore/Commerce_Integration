@@ -103,10 +103,14 @@ export function createSkuColumns(options: ColumnOptions): ColumnDef<SKUTableData
       ),
       cell: ({ row }) => {
         const masterSku = row.getValue("masterSkuCode") as string | null;
+        if (!masterSku) return <span className="text-muted-foreground">-</span>;
         return (
-          <div className="font-mono text-sm font-medium">
-            {masterSku || <span className="text-muted-foreground">-</span>}
-          </div>
+          <Link
+            href={`/skus/${masterSku}`}
+            className="font-mono text-sm font-medium hover:underline"
+          >
+            {masterSku}
+          </Link>
         );
       },
       enableSorting: true,
@@ -127,7 +131,7 @@ export function createSkuColumns(options: ColumnOptions): ColumnDef<SKUTableData
           </div>
         );
       },
-      enableSorting: false,
+      enableSorting: true,
     },
     {
       accessorKey: "name",

@@ -3,7 +3,7 @@
 /**
  * Code Guide:
  * This page renders the skus / [id] screen in the Next.js App Router.
- * Most business logic lives in child components or API routes, so this file mainly wires layout and data views together.
+ * Data comes from sc_products + sc_inventory_snapshot + sc_sku_mappings via /api/skus/[id].
  */
 import { useState, useEffect, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -11,8 +11,6 @@ import { AppLayout } from "@/components/layout/app-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SKUFormDialog } from "@/components/sku/sku-form-dialog";
-import { DeleteDialog } from "@/components/ui/delete-dialog";
 import { SalesHistoryChart } from "@/components/forecast/sales-history-chart";
 import {
   Select,
@@ -21,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Package, DollarSign, AlertCircle, Edit, Trash2, ChevronDown, ChevronRight, BarChart3 } from "lucide-react";
+import { Package, AlertCircle, ChevronDown, ChevronRight, BarChart3, ArrowLeft } from "lucide-react";
 
 const SALES_PERIODS = [
   { value: "30", label: "30 days" },
@@ -31,50 +29,34 @@ const SALES_PERIODS = [
   { value: "all", label: "All time" },
 ];
 
-interface RelatedWebSku {
-  id: string;
-  skuCode: string;
-  salesCount: number;
+interface InventoryByWarehouse {
+  warehouse: string;
+  onHand: number;
+  available: number;
+  backorder: number;
+  reserved: number;
+}
+
+interface WebSku {
+  channelSku: string;
+  channel: string;
 }
 
 interface SKUDetail {
   id: string;
-  skuCode: string;
-  masterSkuCode: string | null;
+  masterSkuCode: string;
   name: string;
-  description: string | null;
   category: string | null;
-  currentStock: number;
+  status: string | null;
   inventory: {
     onHand: number;
-    reserved: number;
-    allocated: number;
-    backorder: number;
-    inbound: number;
     available: number;
+    backorder: number;
+    reserved: number;
   };
-  inventoryBalances: {
-    id: string;
-    onHandQty: number;
-    reservedQty: number;
-    allocatedQty: number;
-    backorderQty: number;
-    inboundQty: number;
-    availableQty: number;
-    location: {
-      id: string;
-      code: string;
-      name: string;
-      isDefault: boolean;
-    };
-  }[];
-  reorderPoint: number | null;
-  unitCost: string | null;
-  retailPrice: string | null;
-  relatedWebSkus: RelatedWebSku[];
-  _count: {
-    salesRecords: number;
-  };
+  inventoryByWarehouse: InventoryByWarehouse[];
+  webSkus: WebSku[];
+  salesCount: number;
 }
 
 interface SalesDataPoint {
@@ -103,9 +85,7 @@ export default function SKUDetailPage({
     fetch(`/api/skus/${id}`)
       .then((res) => res.json())
       .then((result) => {
-        if (result.success) {
-          setSKU(result.data);
-        }
+        if (result.success) setSKU(result.data);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -118,24 +98,15 @@ export default function SKUDetailPage({
   const fetchSalesHistory = useCallback(async () => {
     setSalesLoading(true);
     try {
-      const params = new URLSearchParams({
-        skuId: id,
-        groupBy: "day",
-      });
-
+      const params = new URLSearchParams({ masterSkuCode: id, groupBy: "day" });
       if (salesPeriod !== "all") {
-        const days = parseInt(salesPeriod, 10);
         const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+        startDate.setDate(startDate.getDate() - parseInt(salesPeriod, 10));
         params.set("startDate", startDate.toISOString());
       }
-
       const response = await fetch(`/api/sales?${params.toString()}`);
       const result = await response.json();
-
-      if (result.success && result.data) {
-        setSalesHistory(result.data);
-      }
+      if (result.success && result.data) setSalesHistory(result.data);
     } catch (error) {
       console.error("Error fetching sales history:", error);
     } finally {
@@ -146,17 +117,6 @@ export default function SKUDetailPage({
   useEffect(() => {
     fetchSalesHistory();
   }, [fetchSalesHistory]);
-
-  const handleDelete = async () => {
-    const response = await fetch(`/api/skus/${id}`, { method: "DELETE" });
-    const result = await response.json();
-
-    if (result.success) {
-      router.push("/skus");
-    } else {
-      throw new Error(result.error);
-    }
-  };
 
   if (loading) {
     return (
@@ -184,60 +144,34 @@ export default function SKUDetailPage({
     );
   }
 
-  const needsReorder =
-    sku.reorderPoint && sku.inventory.available <= sku.reorderPoint;
-
   return (
     <AppLayout>
       <div className="flex flex-col gap-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex flex-col gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-fit -ml-2 text-muted-foreground"
+              onClick={() => router.push("/skus")}
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Products
+            </Button>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">{sku.name}</h1>
               <Badge variant="outline" className="font-mono">
-                {sku.masterSkuCode || sku.skuCode}
+                {sku.masterSkuCode}
               </Badge>
-              {needsReorder && <Badge variant="destructive">Low Stock</Badge>}
+              {sku.category && (
+                <Badge variant="secondary">{sku.category}</Badge>
+              )}
             </div>
-            {sku.description && (
-              <p className="mt-2 text-muted-foreground">{sku.description}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <SKUFormDialog
-              editData={{
-                id: sku.id,
-                skuCode: sku.skuCode,
-                name: sku.name,
-                description: sku.description || "",
-                category: sku.category || "",
-                currentStock: sku.inventory.onHand,
-                reorderPoint: sku.reorderPoint || 0,
-                unitCost: parseFloat(sku.unitCost || "0"),
-                retailPrice: parseFloat(sku.retailPrice || "0"),
-              }}
-              onSuccess={fetchSKU}
-              trigger={
-                <Button variant="outline">
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit
-                </Button>
-              }
-            />
-            <DeleteDialog
-              title="Delete SKU"
-              description={`Are you sure you want to delete "${sku.name}"? This action cannot be undone and will also delete all associated sales records and inventory data.`}
-              onConfirm={handleDelete}
-              trigger={
-                <Button variant="outline">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-              }
-            />
           </div>
         </div>
 
+        {/* Stat Cards */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -245,12 +179,8 @@ export default function SKUDetailPage({
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{sku.inventory.available}</div>
-              {sku.reorderPoint && (
-                <p className="text-xs text-muted-foreground">
-                  Reorder at {sku.reorderPoint}
-                </p>
-              )}
+              <div className="text-2xl font-bold">{sku.inventory.available.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">Units available to sell</p>
             </CardContent>
           </Card>
 
@@ -260,9 +190,9 @@ export default function SKUDetailPage({
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{sku.inventory.onHand}</div>
+              <div className="text-2xl font-bold">{sku.inventory.onHand.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">
-                Reserved {sku.inventory.reserved} | Allocated {sku.inventory.allocated}
+                Reserved {sku.inventory.reserved.toLocaleString()}
               </p>
             </CardContent>
           </Card>
@@ -273,27 +203,8 @@ export default function SKUDetailPage({
               <AlertCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{sku.inventory.backorder}</div>
-              <p className="text-xs text-muted-foreground">
-                Inbound {sku.inventory.inbound}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Retail Price</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {sku.retailPrice ? `$${parseFloat(sku.retailPrice).toFixed(2)}` : "-"}
-              </div>
-              {sku.unitCost && (
-                <p className="text-xs text-muted-foreground">
-                  Cost: ${parseFloat(sku.unitCost).toFixed(2)}
-                </p>
-              )}
+              <div className="text-2xl font-bold">{sku.inventory.backorder.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">Units on backorder</p>
             </CardContent>
           </Card>
 
@@ -303,91 +214,60 @@ export default function SKUDetailPage({
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{sku._count.salesRecords}</div>
-              <p className="text-xs text-muted-foreground">
-                Recorded transactions for this SKU
-              </p>
+              <div className="text-2xl font-bold">{sku.salesCount.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">Total recorded transactions</p>
             </CardContent>
           </Card>
         </div>
 
+        {/* Inventory by Warehouse */}
         <Card>
           <CardHeader>
-            <CardTitle>Product Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-4">
-              <dt className="text-sm font-medium text-muted-foreground">Master SKU</dt>
-              <dd className="text-sm font-mono">
-                {sku.masterSkuCode || <span className="text-muted-foreground">-</span>}
-              </dd>
-              {sku.category && (
-                <>
-                  <dt className="text-sm font-medium text-muted-foreground">Category</dt>
-                  <dd className="text-sm">{sku.category}</dd>
-                </>
-              )}
-              <dt className="text-sm font-medium text-muted-foreground">Inventory Summary</dt>
-              <dd className="text-sm">
-                OH {sku.inventory.onHand} / AV {sku.inventory.available} / RSV {sku.inventory.reserved} / BO {sku.inventory.backorder}
-              </dd>
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Inventory by Location</CardTitle>
+            <CardTitle>Inventory by Warehouse</CardTitle>
             <CardDescription>
-              Operational inventory is tracked per location and rolled up into the SKU totals above.
+              Stock levels per warehouse from the latest inventory snapshot.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {sku.inventoryBalances.length > 0 ? (
+            {sku.inventoryByWarehouse.length > 0 ? (
               <div className="space-y-3">
-                {sku.inventoryBalances.map((balance) => (
+                {sku.inventoryByWarehouse.map((row) => (
                   <div
-                    key={balance.id}
-                    className="grid gap-2 rounded-md border p-3 md:grid-cols-6"
+                    key={row.warehouse}
+                    className="grid gap-2 rounded-md border p-3 md:grid-cols-5"
                   >
                     <div>
-                      <p className="text-sm font-medium">{balance.location.name}</p>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {balance.location.code}
-                        {balance.location.isDefault ? " (default)" : ""}
-                      </p>
+                      <p className="text-sm font-medium font-mono">{row.warehouse}</p>
+                      <p className="text-xs text-muted-foreground">Warehouse</p>
                     </div>
                     <div className="text-sm">
                       <p className="text-muted-foreground">Available</p>
-                      <p className="font-medium">{balance.availableQty}</p>
+                      <p className="font-medium">{row.available.toLocaleString()}</p>
                     </div>
                     <div className="text-sm">
-                      <p className="text-muted-foreground">On hand</p>
-                      <p className="font-medium">{balance.onHandQty}</p>
+                      <p className="text-muted-foreground">On Hand</p>
+                      <p className="font-medium">{row.onHand.toLocaleString()}</p>
                     </div>
                     <div className="text-sm">
                       <p className="text-muted-foreground">Reserved</p>
-                      <p className="font-medium">{balance.reservedQty}</p>
+                      <p className="font-medium">{row.reserved.toLocaleString()}</p>
                     </div>
                     <div className="text-sm">
                       <p className="text-muted-foreground">Backorder</p>
-                      <p className="font-medium">{balance.backorderQty}</p>
-                    </div>
-                    <div className="text-sm">
-                      <p className="text-muted-foreground">Inbound</p>
-                      <p className="font-medium">{balance.inboundQty}</p>
+                      <p className="font-medium">{row.backorder.toLocaleString()}</p>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No location-level inventory balances found for this SKU.
+                No inventory snapshot data found for this SKU.
               </p>
             )}
           </CardContent>
         </Card>
 
+        {/* Sales History */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -431,14 +311,15 @@ export default function SKUDetailPage({
                 <BarChart3 className="mb-4 h-12 w-12 text-muted-foreground" />
                 <p className="text-lg font-medium">No sales data</p>
                 <p className="text-sm text-muted-foreground">
-                  No sales have been recorded for this product in the selected period
+                  No sales recorded for this product in the selected period
                 </p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {sku.relatedWebSkus && sku.relatedWebSkus.length > 0 && (
+        {/* Web SKUs */}
+        {sku.webSkus.length > 0 && (
           <Card>
             <CardHeader
               className="cursor-pointer select-none"
@@ -451,22 +332,22 @@ export default function SKUDetailPage({
                   ) : (
                     <ChevronRight className="h-5 w-5" />
                   )}
-                  Web SKUs ({sku.relatedWebSkus.length})
+                  Web SKUs ({sku.webSkus.length})
                 </span>
               </CardTitle>
             </CardHeader>
             {webSkusExpanded && (
               <CardContent>
                 <div className="space-y-2">
-                  {sku.relatedWebSkus.map((webSku) => (
+                  {sku.webSkus.map((webSku) => (
                     <div
-                      key={webSku.id}
+                      key={webSku.channelSku}
                       className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2"
                     >
-                      <span className="font-mono text-sm">{webSku.skuCode}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {webSku.salesCount} sales
-                      </span>
+                      <span className="font-mono text-sm">{webSku.channelSku}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {webSku.channel}
+                      </Badge>
                     </div>
                   ))}
                 </div>

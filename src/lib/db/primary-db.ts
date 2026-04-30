@@ -142,26 +142,23 @@ export async function syncInventorySnapshotCrossDb(): Promise<{ rowsSynced: numb
   return { rowsSynced: rows.length };
 }
 
-export async function syncProductsAndSkuMappings(): Promise<{
+export async function syncProducts(): Promise<{
   productsUpserted: number;
   productsDeleted: number;
-  mappingsUpserted: number;
-  mappingsDeleted: number;
 }> {
-  // Step 1: Read from old Supabase via LATERAL join
+  // Step 1: Read from Supabase via LATERAL join to extract distinct master SKUs
   const lookup = getLookupPool();
   if (!lookup) throw new Error("Lookup DB (SUPABASE_LOOKUP_DATABASE_URL) is not configured");
 
   const lookupClient = await lookup.connect();
   let rows: Array<{
-    variant_sku: string;
     master_sku_parse1: string;
     master_sku_parse2: string;
     master_sku_parse3: string;
   }>;
   try {
     const result = await lookupClient.query(`
-      SELECT aa.variant_sku, d.*
+      SELECT d.*
       FROM ecommerce_data.shopify_data aa,
       LATERAL size_chart.fn_extract_master_sku_from_web_sku(aa.variant_sku) d
       WHERE aa.variant_sku IS NOT NULL
@@ -171,7 +168,7 @@ export async function syncProductsAndSkuMappings(): Promise<{
     lookupClient.release();
   }
 
-  // Collect distinct master_skus from all non-empty parses
+  // Collect distinct master SKUs from all non-empty parses
   const masterSkuSet = new Set<string>();
   for (const row of rows) {
     if (row.master_sku_parse1) masterSkuSet.add(row.master_sku_parse1);
@@ -180,41 +177,18 @@ export async function syncProductsAndSkuMappings(): Promise<{
   }
   const distinctMasterSkus = [...masterSkuSet];
 
-  // Build mapping rows: one per (variant_sku, non-empty parse)
-  const mappings: Array<{ channel_sku: string; master_sku: string }> = [];
-  for (const row of rows) {
-    for (const parse of [row.master_sku_parse1, row.master_sku_parse2, row.master_sku_parse3]) {
-      if (parse) {
-        mappings.push({ channel_sku: row.variant_sku, master_sku: parse });
-      }
-    }
-  }
-
-  // Deduplicate mappings (same channel_sku + master_sku from multiple source rows)
-  const mappingSet = new Map<string, { channel_sku: string; master_sku: string }>();
-  for (const m of mappings) {
-    mappingSet.set(`${m.channel_sku}|${m.master_sku}`, m);
-  }
-  const uniqueMappings = [...mappingSet.values()];
-
-  // Step 2: Staging-table UPSERT + DELETE in new DB (transaction)
+  // Step 2: Upsert sc_products in primary DB (transaction)
   const primary = getPrimaryPool();
   const primaryClient = await primary.connect();
   try {
     await primaryClient.query("BEGIN");
 
-    // Drop legacy index if still present
-    await primaryClient.query(`DROP INDEX IF EXISTS shipcore.uq_sku_mapping`);
-
-    // ── sc_products ──────────────────────────────────────────────
     const categories = distinctMasterSkus.map(inferCategory);
 
-    // 1. Create staging table
     await primaryClient.query(`
       CREATE TEMP TABLE stg_products (master_sku TEXT, category TEXT) ON COMMIT DROP
     `);
 
-    // 2. Bulk insert into staging
     if (distinctMasterSkus.length > 0) {
       await primaryClient.query(
         `INSERT INTO stg_products (master_sku, category)
@@ -223,16 +197,13 @@ export async function syncProductsAndSkuMappings(): Promise<{
       );
     }
 
-    // 3. Index staging for efficient DELETE
     await primaryClient.query(`CREATE INDEX ON stg_products (master_sku)`);
 
-    // 4. Delete rows no longer in source
     const delProducts = await primaryClient.query(`
       DELETE FROM shipcore.sc_products p
       WHERE NOT EXISTS (SELECT 1 FROM stg_products s WHERE s.master_sku = p.master_sku)
     `);
 
-    // 5. Upsert from staging to main
     await primaryClient.query(`
       INSERT INTO shipcore.sc_products (master_sku, product_name, status, category, created_at, updated_at)
       SELECT master_sku, master_sku, 'active', category, NOW(), NOW() FROM stg_products
@@ -241,44 +212,111 @@ export async function syncProductsAndSkuMappings(): Promise<{
         updated_at = NOW()
     `);
 
-    // ── sc_sku_mappings ──────────────────────────────────────────
-    // 1. Create staging table
+    await primaryClient.query("COMMIT");
+
+    return {
+      productsUpserted: distinctMasterSkus.length,
+      productsDeleted: delProducts.rowCount ?? 0,
+    };
+  } catch (e) {
+    await primaryClient.query("ROLLBACK");
+    throw e;
+  } finally {
+    primaryClient.release();
+  }
+}
+
+export async function syncSkuMappings(): Promise<{
+  mappingsUpserted: number;
+  mappingsDeleted: number;
+}> {
+  const lookup = getLookupPool();
+  if (!lookup) throw new Error("Lookup DB (SUPABASE_LOOKUP_DATABASE_URL) is not configured");
+
+  const lookupClient = await lookup.connect();
+  let rows: Array<{ parent_kit_sku: string; component_sku: string }>;
+  try {
+    const result = await lookupClient.query(
+      `SELECT parent_kit_sku, component_sku
+       FROM ecommerce_data.shiphero_kit_components
+       WHERE parent_kit_sku IS NOT NULL AND component_sku IS NOT NULL`
+    );
+    rows = result.rows;
+  } finally {
+    lookupClient.release();
+  }
+
+  // Deduplicate
+  const mappingSet = new Map<string, { channel_sku: string; master_sku: string }>();
+  for (const row of rows) {
+    mappingSet.set(`${row.parent_kit_sku}|${row.component_sku}`, {
+      channel_sku: row.parent_kit_sku,
+      master_sku: row.component_sku,
+    });
+  }
+  const uniqueMappings = [...mappingSet.values()];
+
+  const distinctMasterSkus = [...new Set(uniqueMappings.map((m) => m.master_sku))];
+
+  const primary = getPrimaryPool();
+
+  // Step 1: commit sc_products rows first so the FK from sc_product_mapping_history
+  // (via trg_sc_sku_mapping_history trigger) is satisfied at commit time of step 2.
+  if (distinctMasterSkus.length > 0) {
+    const preClient = await primary.connect();
+    try {
+      await preClient.query("BEGIN");
+      await preClient.query(
+        `INSERT INTO shipcore.sc_products (master_sku, product_name, status, created_at, updated_at)
+         SELECT s, s, 'active', NOW(), NOW() FROM unnest($1::text[]) AS s
+         ON CONFLICT (master_sku) DO NOTHING`,
+        [distinctMasterSkus]
+      );
+      await preClient.query("COMMIT");
+    } catch (e) {
+      await preClient.query("ROLLBACK");
+      throw e;
+    } finally {
+      preClient.release();
+    }
+  }
+
+  // Step 2: sync sc_sku_mappings
+  const primaryClient = await primary.connect();
+  try {
+    await primaryClient.query("BEGIN");
+
     await primaryClient.query(`
       CREATE TEMP TABLE stg_mappings (channel_sku TEXT, master_sku TEXT) ON COMMIT DROP
     `);
 
-    // 2. Bulk insert into staging
     let mappingsUpserted = 0;
     let mappingsDeleted = 0;
+
     if (uniqueMappings.length > 0) {
       const channelSkus = uniqueMappings.map((m) => m.channel_sku);
-      const masterSkus2 = uniqueMappings.map((m) => m.master_sku);
+      const masterSkus  = uniqueMappings.map((m) => m.master_sku);
       await primaryClient.query(
         `INSERT INTO stg_mappings (channel_sku, master_sku)
          SELECT unnest($1::text[]), unnest($2::text[])`,
-        [channelSkus, masterSkus2]
+        [channelSkus, masterSkus]
       );
 
-      // 3. Index staging for efficient DELETE
-      await primaryClient.query(
-        `CREATE INDEX ON stg_mappings (channel_sku, master_sku)`
-      );
+      await primaryClient.query(`CREATE INDEX ON stg_mappings (channel_sku, master_sku)`);
 
-      // 4. Delete shopify mappings no longer in source
-      const delMappings = await primaryClient.query(`
+      const del = await primaryClient.query(`
         DELETE FROM shipcore.sc_sku_mappings m
-        WHERE m.channel = 'shopify'
+        WHERE m.channel = 'shiphero'
           AND NOT EXISTS (
             SELECT 1 FROM stg_mappings s
             WHERE s.channel_sku = m.channel_sku AND s.master_sku = m.master_sku
           )
       `);
-      mappingsDeleted = delMappings.rowCount ?? 0;
+      mappingsDeleted = del.rowCount ?? 0;
 
-      // 5. Upsert from staging to main
       const ins = await primaryClient.query(`
         INSERT INTO shipcore.sc_sku_mappings (channel, channel_sku, master_sku)
-        SELECT 'shopify', channel_sku, master_sku FROM stg_mappings
+        SELECT 'shiphero', channel_sku, master_sku FROM stg_mappings
         ON CONFLICT DO NOTHING
       `);
       mappingsUpserted = ins.rowCount ?? 0;
@@ -286,12 +324,7 @@ export async function syncProductsAndSkuMappings(): Promise<{
 
     await primaryClient.query("COMMIT");
 
-    return {
-      productsUpserted: distinctMasterSkus.length,
-      productsDeleted: delProducts.rowCount ?? 0,
-      mappingsUpserted,
-      mappingsDeleted,
-    };
+    return { mappingsUpserted, mappingsDeleted };
   } catch (e) {
     await primaryClient.query("ROLLBACK");
     throw e;
