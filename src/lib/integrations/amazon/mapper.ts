@@ -22,9 +22,12 @@ export function mapAmazonOrders(
           fulfillmentStatus: order.OrderStatus === "Shipped" ? "fulfilled" : null,
           fulfilledAt: order.OrderStatus === "Shipped" ? order.LastUpdateDate : null,
         };
-      });
+      })
+      .filter((item) => item.totalAmount > 0);
 
     if (lineItems.length === 0) return [];
+
+    const platformSource = order.FulfillmentChannel === "AFN" ? "Amazon FBA" : "Amazon FBM";
 
     return [
       {
@@ -33,6 +36,7 @@ export function mapAmazonOrders(
         orderedAt: order.PurchaseDate,
         cancelledAt: order.OrderStatus === "Canceled" ? order.LastUpdateDate : null,
         currency: order.OrderTotal?.CurrencyCode ?? null,
+        platformSource,
         lineItems,
       },
     ];

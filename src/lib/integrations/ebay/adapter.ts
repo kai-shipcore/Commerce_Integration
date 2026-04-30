@@ -28,6 +28,14 @@ function buildIncrementalStart(lastSyncAt: string | null): string {
   return thirtyDaysAgo.toISOString();
 }
 
+function buildFullSyncWindow() {
+  const end = new Date();
+  end.setDate(end.getDate() - 2);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 89);
+  return { startDate: start.toISOString(), endDate: end.toISOString() };
+}
+
 function toEbayConfig(config: IntegrationConfig): EbayConfig {
   return {
     clientId: String(config.clientId ?? ""),
@@ -129,17 +137,27 @@ export const ebayAdapter: IntegrationAdapter = {
       const syncCursor = integration.syncCursor as { offset?: number } | null;
 
       let createdAtMin = options.createdAtMin;
-      if (!options.fullSync && !createdAtMin) {
-        createdAtMin = buildIncrementalStart(integration.lastSyncAt);
+      let createdAtMax: string;
+
+      if (options.fullSync) {
+        const window = buildFullSyncWindow();
+        if (!createdAtMin) createdAtMin = window.startDate;
+        createdAtMax = window.endDate;
+      } else {
+        if (!createdAtMin) createdAtMin = buildIncrementalStart(integration.lastSyncAt);
+        const twoDaysAgo = new Date();
+        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+        createdAtMax = twoDaysAgo.toISOString();
       }
 
       let offset = options.fullSync && syncCursor?.offset ? syncCursor.offset : 0;
-      console.log("[eBay sync] createdAtMin:", createdAtMin ?? "(none — full history)", "startOffset:", offset);
+      console.log("[eBay sync] createdAtMin:", createdAtMin, "createdAtMax:", createdAtMax, "startOffset:", offset);
 
       while (true) {
         const { orders, nextOffset } = await client.getOrders({
           accessToken,
           createdAtMin,
+          createdAtMax,
           offset,
           limit: 200,
         });

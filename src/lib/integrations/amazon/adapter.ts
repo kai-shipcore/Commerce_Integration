@@ -100,26 +100,34 @@ export const amazonAdapter: IntegrationAdapter = {
         lwaRefreshToken: String(cfg.lwaRefreshToken),
       });
 
-      // Resume from saved cursor if available (previous sync was rate-limited mid-pagination)
       const savedCursor = integration.syncCursor as { nextToken?: string } | null;
       let nextToken: string | undefined = savedCursor?.nextToken;
 
-      // Only use createdAfter for fresh starts (no resume cursor)
+      function buildFullSyncWindow() {
+        const end = new Date();
+        end.setDate(end.getDate() - 2);
+        const start = new Date(end);
+        start.setDate(start.getDate() - 89);
+        return { startDate: start.toISOString(), endDate: end.toISOString() };
+      }
+
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      const createdBefore = twoDaysAgo.toISOString();
+
       let createdAfter: string | undefined;
       if (!nextToken) {
-        if (integration.lastSyncAt) {
-          // Use lastSyncAt minus 2 days to guarantee no gap between sync runs
+        if (options.fullSync) {
+          createdAfter = buildFullSyncWindow().startDate;
+        } else if (integration.lastSyncAt) {
           createdAfter = new Date(new Date(integration.lastSyncAt).getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
         } else {
-          const farBack = new Date();
-          farBack.setDate(farBack.getDate() - 180);
-          createdAfter = farBack.toISOString();
+          createdAfter = buildFullSyncWindow().startDate;
         }
       }
 
-      // fullSync: loop all pages. Sync New: one page per run (cursor saved for resume).
       do {
-        const page = await client.getOrders({ createdAfter, nextToken });
+        const page = await client.getOrders({ createdAfter, createdBefore, nextToken });
 
         if (page.rateLimited) {
           result.errors.push("Amazon rate limit reached. Run sync again to continue from where it left off.");

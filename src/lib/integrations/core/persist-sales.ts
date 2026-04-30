@@ -59,7 +59,7 @@ export async function persistNormalizedOrders(args: {
           updated_at           = NOW()
         RETURNING id, (xmax = 0) AS inserted`,
         [
-          platform,
+          order.platformSource ?? platform,
           order.externalOrderId,
           order.orderedAt,
           isCanceled ? "Canceled" : "Unshipped",
@@ -109,7 +109,7 @@ export async function persistNormalizedOrders(args: {
             updated_at           = NOW()`,
           [
             orderId,
-            platform,
+            order.platformSource ?? platform,
             lineItemId,
             masterSku,
             item.sku,

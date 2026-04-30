@@ -57,6 +57,7 @@ export class ShopifyClient {
     created_at_min?: string;
     created_at_max?: string;
     status?: "open" | "closed" | "cancelled" | "any";
+    fulfillment_status?: string;
     limit?: number;
   }): Promise<{ orders: ShopifyOrder[]; nextPageUrl: string | null }> {
     const queryParams = new URLSearchParams();
@@ -71,6 +72,10 @@ export class ShopifyClient {
 
     if (params.status) {
       queryParams.set("status", params.status);
+    }
+
+    if (params.fulfillment_status) {
+      queryParams.set("fulfillment_status", params.fulfillment_status);
     }
 
     queryParams.set("limit", String(params.limit || 250));

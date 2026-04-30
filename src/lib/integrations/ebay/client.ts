@@ -108,6 +108,7 @@ export class EbayClient {
   async getOrders(params: {
     accessToken: string;
     createdAtMin?: string;
+    createdAtMax?: string;
     offset?: number;
     limit?: number;
   }): Promise<{ orders: EbayOrder[]; nextOffset: number | null }> {
@@ -120,9 +121,13 @@ export class EbayClient {
     });
 
     if (params.createdAtMin) {
-      const now = new Date().toISOString();
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      const maxDate = params.createdAtMax ?? twoDaysAgo.toISOString();
       // "creationdate" is the eBay API filter parameter name (not a typo)
-      query.set("filter", `creationdate:[${params.createdAtMin}..${now}]`);
+      query.set("filter", `creationdate:[${params.createdAtMin}..${maxDate}],orderfulfillmentstatus:{FULFILLED}`);
+    } else {
+      query.set("filter", "orderfulfillmentstatus:{FULFILLED}");
     }
 
     const url = `${this.baseUrl}/sell/fulfillment/v1/order?${query.toString()}`;

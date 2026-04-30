@@ -42,5 +42,6 @@ export interface NormalizedOrder {
   orderedAt: string;
   cancelledAt?: string | null;
   currency?: string | null;
+  platformSource?: string | null;
   lineItems: NormalizedLineItem[];
 }
