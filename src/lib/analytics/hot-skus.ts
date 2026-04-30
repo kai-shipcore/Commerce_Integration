@@ -5,7 +5,7 @@
  */
 
 import { CacheManager } from '../redis';
-import { prisma } from '../db/prisma';
+import { getPrimaryPool } from '../db/primary-db';
 
 /**
  * Identify hot SKUs based on query frequency and recent sales
@@ -21,23 +21,17 @@ export async function identifyHotSKUs(limit: number = 1000): Promise<string[]> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const topSellingSKUs = await prisma.salesRecord.groupBy({
-      by: ['skuId'],
-      _sum: {
-        quantity: true,
-      },
-      where: {
-        saleDate: {
-          gte: thirtyDaysAgo,
-        },
-      },
-      orderBy: {
-        _sum: {
-          quantity: 'desc',
-        },
-      },
-      take: limit,
-    });
+    const pool = getPrimaryPool();
+    const { rows: topSellingRows } = await pool.query<{ master_sku: string }>(
+      `SELECT i.master_sku
+       FROM shipcore.sc_sales_order_items i
+       JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+       WHERE o.order_date >= $1 AND i.is_counted_in_demand = true AND i.master_sku IS NOT NULL
+       GROUP BY i.master_sku
+       ORDER BY SUM(i.quantity) DESC
+       LIMIT $2`,
+      [thirtyDaysAgo, limit]
+    );
 
     // Combine and deduplicate
     const hotSKUSet = new Set<string>();
@@ -46,10 +40,8 @@ export async function identifyHotSKUs(limit: number = 1000): Promise<string[]> {
     queriedSKUs.forEach((skuId) => hotSKUSet.add(skuId));
 
     // Add top selling SKUs
-    topSellingSKUs.forEach((record) => {
-      if (record.skuId) {
-        hotSKUSet.add(record.skuId);
-      }
+    topSellingRows.forEach((record) => {
+      if (record.master_sku) hotSKUSet.add(record.master_sku);
     });
 
     // Convert to array and limit

@@ -75,7 +75,8 @@ interface ConnectionCheckResult {
 type IntegrationPlatform = "shopify" | "amazon" | "ebay" | "walmart";
 type SecretFieldKey =
   | "accessToken"
-  | "secretAccessKey"
+  | "lwaClientSecret"
+  | "lwaRefreshToken"
   | "clientSecret"
   | "privateKey";
 
@@ -90,9 +91,9 @@ interface IntegrationFormState {
   accessToken: string;
   sellerId: string;
   marketplaceId: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  region: string;
+  lwaClientId: string;
+  lwaClientSecret: string;
+  lwaRefreshToken: string;
   clientId: string;
   clientSecret: string;
   ruName: string;
@@ -109,9 +110,9 @@ const initialFormState: IntegrationFormState = {
   accessToken: "",
   sellerId: "",
   marketplaceId: "",
-  accessKeyId: "",
-  secretAccessKey: "",
-  region: "us-east-1",
+  lwaClientId: "",
+  lwaClientSecret: "",
+  lwaRefreshToken: "",
   clientId: "",
   clientSecret: "",
   ruName: "",
@@ -373,7 +374,7 @@ export default function IntegrationsPage() {
   };
 
   const supportsSync = (platform: string) =>
-    platform === "shopify" || platform === "ebay" || platform === "walmart";
+    platform === "shopify" || platform === "ebay" || platform === "walmart" || platform === "amazon";
   const isAdmin = isAdminLikeRole(session?.user?.role);
 
   const addDialogMeta = getDialogMeta(formData.platform, "add");
@@ -981,49 +982,49 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-accessKeyId`}>Access Key ID</Label>
+            <Label htmlFor={`${mode}-lwaClientId`}>LWA Client ID</Label>
             <Input
-              id={`${mode}-accessKeyId`}
-              value={formData.accessKeyId}
+              id={`${mode}-lwaClientId`}
+              value={formData.lwaClientId}
               onChange={(e) =>
                 setFormData((current) => ({
                   ...current,
-                  accessKeyId: e.target.value,
+                  lwaClientId: e.target.value,
                 }))
               }
               required
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-secretAccessKey`}>Secret Access Key</Label>
+            <Label htmlFor={`${mode}-lwaClientSecret`}>LWA Client Secret</Label>
             <Input
-              id={`${mode}-secretAccessKey`}
+              id={`${mode}-lwaClientSecret`}
               type="password"
-              placeholder={
-                isEdit ? "Leave blank to keep the current secret" : undefined
-              }
-              value={formData.secretAccessKey}
+              placeholder={isEdit ? "Leave blank to keep the current secret" : undefined}
+              value={formData.lwaClientSecret}
               onChange={(e) =>
                 setFormData((current) => ({
                   ...current,
-                  secretAccessKey: e.target.value,
+                  lwaClientSecret: e.target.value,
                 }))
               }
               required={!isEdit}
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-region`}>Region</Label>
+            <Label htmlFor={`${mode}-lwaRefreshToken`}>LWA Refresh Token</Label>
             <Input
-              id={`${mode}-region`}
-              placeholder="us-east-1"
-              value={formData.region}
+              id={`${mode}-lwaRefreshToken`}
+              type="password"
+              placeholder={isEdit ? "Leave blank to keep the current token" : undefined}
+              value={formData.lwaRefreshToken}
               onChange={(e) =>
                 setFormData((current) => ({
                   ...current,
-                  region: e.target.value,
+                  lwaRefreshToken: e.target.value,
                 }))
               }
+              required={!isEdit}
             />
           </div>
         </>
@@ -1230,9 +1231,9 @@ function buildFormStateFromIntegration(
     accessToken: "",
     sellerId: config.sellerId ?? "",
     marketplaceId: config.marketplaceId ?? "",
-    accessKeyId: config.accessKeyId ?? "",
-    secretAccessKey: "",
-    region: config.region ?? "us-east-1",
+    lwaClientId: config.lwaClientId ?? "",
+    lwaClientSecret: "",
+    lwaRefreshToken: "",
     clientId: config.clientId ?? "",
     clientSecret: "",
     ruName: config.ruName ?? "",
@@ -1270,12 +1271,14 @@ function buildIntegrationPayload(
     const config: Record<string, string> = {
       sellerId: formData.sellerId,
       marketplaceId: formData.marketplaceId,
-      accessKeyId: formData.accessKeyId,
-      region: formData.region,
+      lwaClientId: formData.lwaClientId,
     };
 
-    if (!omitEmptySecrets || formData.secretAccessKey.trim()) {
-      config.secretAccessKey = formData.secretAccessKey;
+    if (!omitEmptySecrets || formData.lwaClientSecret.trim()) {
+      config.lwaClientSecret = formData.lwaClientSecret;
+    }
+    if (!omitEmptySecrets || formData.lwaRefreshToken.trim()) {
+      config.lwaRefreshToken = formData.lwaRefreshToken;
     }
 
     return {

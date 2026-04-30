@@ -105,18 +105,21 @@ export async function GET(request: NextRequest) {
     );
 
     const masterSkuCodes = rows.map((r) => r.master_sku);
-    const salesByMasterSku =
-      masterSkuCodes.length > 0
-        ? await prisma.salesRecord.groupBy({
-            by: ["masterSkuCode"],
-            where: {
-              masterSkuCode: { in: masterSkuCodes },
-              saleDate: { gte: salesStartDate },
-            },
-            _sum: { quantity: true },
-          })
-        : [];
-    const salesMap = new Map(salesByMasterSku.map((s) => [s.masterSkuCode, s._sum.quantity || 0]));
+    let salesMap = new Map<string, number>();
+    if (masterSkuCodes.length > 0) {
+      const salesRows = await prisma.$queryRawUnsafe<{ master_sku: string; qty: string }[]>(
+        `SELECT i.master_sku, COALESCE(SUM(i.quantity), 0)::text AS qty
+         FROM shipcore.sc_sales_order_items i
+         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+         WHERE i.master_sku = ANY($1::text[])
+           AND o.order_date >= $2
+           AND i.is_counted_in_demand = true
+         GROUP BY i.master_sku`,
+        masterSkuCodes,
+        salesStartDate
+      );
+      salesMap = new Map(salesRows.map((s: { master_sku: string; qty: string }) => [s.master_sku, parseInt(s.qty, 10)]));
+    }
 
     const data = rows.map((row) => ({
       id: row.master_sku,

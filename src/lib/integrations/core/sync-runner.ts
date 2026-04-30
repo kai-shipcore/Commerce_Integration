@@ -26,11 +26,13 @@ export async function runIntegrationSync(
   const result = await adapter.sync(integration, options);
 
   if (result.success) {
+    const isPartial = result.errors.length > 0;
     await updatePlatformIntegration(integrationId, {
-      lastSyncStatus: "success",
-      lastSyncError: null,
+      lastSyncStatus: isPartial ? "partial" : "success",
+      lastSyncError: isPartial ? result.errors[0] : null,
       lastSyncAt: new Date(),
-      syncCursor: null,
+      // Only clear cursor on full completion — partial keeps cursor for resume
+      ...(isPartial ? {} : { syncCursor: null }),
       incrementTotalOrdersSynced: result.ordersProcessed,
       incrementTotalRecordsSynced: result.salesRecordsCreated,
     });

@@ -28,7 +28,7 @@ export function mapWalmartOrders(orders: WalmartOrder[]): NormalizedOrder[] {
             : null;
 
         return {
-          externalLineItemId: line.lineNumber,
+          externalLineItemId: `${order.purchaseOrderId}-${line.lineNumber}`,
           sku: line.item.sku,
           title: line.item.productName,
           quantity: qty,

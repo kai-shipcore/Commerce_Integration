@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { getPrimaryPool } from "@/lib/db/primary-db";
 import { listActivePlatformIntegrations } from "@/lib/db/platform-integrations";
 import { CacheManager } from "@/lib/redis";
 
@@ -80,10 +81,6 @@ export async function GET(request: NextRequest) {
       totalCollections,
       totalActiveIntegrations,
       lowStockSKUs,
-      salesLast30Days,
-      salesLast7Days,
-      topSellingLast30Days,
-      recentSales,
     ] = await Promise.all([
       // Total SKUs
       prisma.sKU.count(),
@@ -123,136 +120,81 @@ export async function GET(request: NextRequest) {
         take: 10,
       }),
 
-      // Sales stats - Last 30 days
-      prisma.salesRecord.aggregate({
-        where: {
-          saleDate: { gte: thirtyDaysAgo },
-        },
-        _sum: {
-          quantity: true,
-          totalAmount: true,
-        },
-        _count: {
-          id: true,
-        },
-      }),
-
-      // Sales stats - Last 7 days
-      prisma.salesRecord.aggregate({
-        where: {
-          saleDate: { gte: sevenDaysAgo },
-        },
-        _sum: {
-          quantity: true,
-          totalAmount: true,
-        },
-        _count: {
-          id: true,
-        },
-      }),
-
-      // Top selling SKUs - based on selected period
-      prisma.salesRecord.groupBy({
-        by: ["skuId"],
-        where: {
-          saleDate: { gte: periodStartDate, lte: periodEndDate },
-        },
-        _sum: {
-          quantity: true,
-          totalAmount: true,
-        },
-        _count: {
-          id: true,
-        },
-        orderBy: {
-          _sum: {
-            quantity: "desc",
-          },
-        },
-        take: 10,
-      }),
-
-      prisma.salesRecord.findMany({
-        take: 10,
-        orderBy: { createdAt: "desc" },
-        include: {
-          sku: {
-            select: {
-              skuCode: true,
-              name: true,
-            },
-          },
-        },
-      }),
     ]);
 
-    // groupBy returns IDs plus aggregates, so fetch display-friendly SKU data
-    // separately before returning the list to the UI.
-    const topSellingSkuIds = topSellingLast30Days.map((s) => s.skuId);
-    const topSellingSkus = await prisma.sKU.findMany({
-      where: { id: { in: topSellingSkuIds } },
-      select: {
-        id: true,
-        skuCode: true,
-        name: true,
-        imageUrl: true,
-        currentStock: true,
-      },
-    });
+    const pool = getPrimaryPool();
 
-    const topSelling = topSellingLast30Days.map((sale) => {
-      const sku = topSellingSkus.find((s) => s.id === sale.skuId);
-      return {
-        sku,
-        totalQuantity: sale._sum.quantity || 0,
-        totalRevenue: sale._sum.totalAmount || 0,
-        orderCount: sale._count.id,
-      };
-    });
+    type SalesAgg = { qty: string; revenue: string; cnt: string };
+    type TopSkuRow = { master_sku: string; qty: string; revenue: string; cnt: string };
+    type DayRow = { day: string; qty: string; revenue: string };
+    type RecentRow = { master_sku: string; channel_sku: string; platform_source: string; order_date: string; quantity: string };
 
-    // Calculate growth (7 days vs 30 days average)
-    const avg30Days = (salesLast30Days._sum.quantity || 0) / 30;
-    const avg7Days = (salesLast7Days._sum.quantity || 0) / 7;
-    const growthPercentage =
-      avg30Days > 0 ? ((avg7Days - avg30Days) / avg30Days) * 100 : 0;
+    const [sales30, sales7, topSkuRows, recentRows, trendRows] = await Promise.all([
+      pool.query<SalesAgg>(
+        `SELECT COALESCE(SUM(i.quantity),0)::text AS qty,
+                COALESCE(SUM(i.line_total),0)::text AS revenue,
+                COUNT(*)::text AS cnt
+         FROM shipcore.sc_sales_order_items i
+         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+         WHERE o.order_date >= $1 AND i.is_counted_in_demand = true`, [thirtyDaysAgo]),
 
-    // Get sales trend by day for the selected period
-    const dailySales = await prisma.salesRecord.groupBy({
-      by: ["saleDate"],
-      where: {
-        saleDate: {
-          gte: periodStartDate,
-          lte: periodEndDate,
-        },
-      },
-      _sum: {
-        quantity: true,
-        totalAmount: true,
-      },
-      orderBy: {
-        saleDate: "asc",
-      },
-    });
+      pool.query<SalesAgg>(
+        `SELECT COALESCE(SUM(i.quantity),0)::text AS qty,
+                COALESCE(SUM(i.line_total),0)::text AS revenue,
+                COUNT(*)::text AS cnt
+         FROM shipcore.sc_sales_order_items i
+         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+         WHERE o.order_date >= $1 AND i.is_counted_in_demand = true`, [sevenDaysAgo]),
 
-    // Prisma groups by full DateTime values, so multiple records from the same
-    // calendar day are merged one more time for chart rendering.
-    const salesByDate = new Map<string, { quantity: number; revenue: number }>();
-    for (const day of dailySales) {
-      const dateKey = day.saleDate.toISOString().split("T")[0];
-      const existing = salesByDate.get(dateKey) || { quantity: 0, revenue: 0 };
-      salesByDate.set(dateKey, {
-        quantity: existing.quantity + (day._sum.quantity || 0),
-        revenue: existing.revenue + Number(day._sum.totalAmount || 0),
-      });
-    }
+      pool.query<TopSkuRow>(
+        `SELECT i.master_sku,
+                COALESCE(SUM(i.quantity),0)::text AS qty,
+                COALESCE(SUM(i.line_total),0)::text AS revenue,
+                COUNT(*)::text AS cnt
+         FROM shipcore.sc_sales_order_items i
+         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+         WHERE o.order_date >= $1 AND o.order_date <= $2
+           AND i.is_counted_in_demand = true AND i.master_sku IS NOT NULL
+         GROUP BY i.master_sku
+         ORDER BY SUM(i.quantity) DESC
+         LIMIT 10`, [periodStartDate, periodEndDate]),
 
-    const salesTrend = Array.from(salesByDate.entries())
-      .map(([date, data]) => ({
-        date,
-        quantity: data.quantity,
-        revenue: data.revenue,
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+      pool.query<RecentRow>(
+        `SELECT i.master_sku, i.channel_sku, o.platform_source::text, o.order_date::text, i.quantity::text
+         FROM shipcore.sc_sales_order_items i
+         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+         ORDER BY o.created_at DESC LIMIT 10`),
+
+      pool.query<DayRow>(
+        `SELECT o.order_date::date::text AS day,
+                COALESCE(SUM(i.quantity),0)::text AS qty,
+                COALESCE(SUM(i.line_total),0)::text AS revenue
+         FROM shipcore.sc_sales_order_items i
+         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+         WHERE o.order_date >= $1 AND o.order_date <= $2 AND i.is_counted_in_demand = true
+         GROUP BY o.order_date::date
+         ORDER BY o.order_date::date ASC`, [periodStartDate, periodEndDate]),
+    ]);
+
+    const salesLast30Days = sales30.rows[0];
+    const salesLast7Days = sales7.rows[0];
+
+    const topSelling = topSkuRows.rows.map((row) => ({
+      sku: { skuCode: row.master_sku, name: row.master_sku },
+      totalQuantity: parseInt(row.qty, 10),
+      totalRevenue: parseFloat(row.revenue),
+      orderCount: parseInt(row.cnt, 10),
+    }));
+
+    const avg30Days = parseInt(salesLast30Days.qty, 10) / 30;
+    const avg7Days = parseInt(salesLast7Days.qty, 10) / 7;
+    const growthPercentage = avg30Days > 0 ? ((avg7Days - avg30Days) / avg30Days) * 100 : 0;
+
+    const salesTrend = trendRows.rows.map((r) => ({
+      date: r.day,
+      quantity: parseInt(r.qty, 10),
+      revenue: parseFloat(r.revenue),
+    }));
 
     const response = {
       overview: {
@@ -263,26 +205,26 @@ export async function GET(request: NextRequest) {
       },
       sales: {
         last30Days: {
-          totalQuantity: salesLast30Days._sum.quantity || 0,
-          totalRevenue: Number(salesLast30Days._sum.totalAmount || 0),
-          orderCount: salesLast30Days._count.id,
+          totalQuantity: parseInt(salesLast30Days.qty, 10),
+          totalRevenue: parseFloat(salesLast30Days.revenue),
+          orderCount: parseInt(salesLast30Days.cnt, 10),
         },
         last7Days: {
-          totalQuantity: salesLast7Days._sum.quantity || 0,
-          totalRevenue: Number(salesLast7Days._sum.totalAmount || 0),
-          orderCount: salesLast7Days._count.id,
+          totalQuantity: parseInt(salesLast7Days.qty, 10),
+          totalRevenue: parseFloat(salesLast7Days.revenue),
+          orderCount: parseInt(salesLast7Days.cnt, 10),
         },
         growthPercentage: Math.round(growthPercentage * 10) / 10,
         trend: salesTrend,
       },
       topSelling,
       lowStockSKUs,
-      recentActivity: recentSales.map((sale) => ({
+      recentActivity: recentRows.rows.map((r) => ({
         type: "sale",
-        skuCode: sale.sku.skuCode,
-        skuName: sale.sku.name,
-        createdAt: sale.createdAt,
-        details: `${sale.quantity} units sold via ${sale.platform}`,
+        skuCode: r.master_sku ?? r.channel_sku,
+        skuName: r.master_sku ?? r.channel_sku,
+        createdAt: r.order_date,
+        details: `${r.quantity} units sold via ${r.platform_source}`,
       })),
     };
 

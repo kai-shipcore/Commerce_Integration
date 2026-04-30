@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { getPrimaryPool } from "@/lib/db/primary-db";
 import { CacheManager } from "@/lib/redis";
 import { z } from "zod";
 
@@ -30,8 +31,6 @@ const SalesRowSchema = z.object({
   }),
   notes: z.string().optional(),
 });
-
-type SalesRow = z.infer<typeof SalesRowSchema>;
 
 interface ImportResult {
   row: number;
@@ -65,16 +64,16 @@ export async function POST(request: NextRequest) {
     // pass instead of failing row-by-row later.
     const skuCodes = [...new Set(rows.map((r) => r.sku_code?.trim()).filter(Boolean))];
 
-    // Look up all SKUs at once
+    // Look up all SKUs at once (Prisma SKU catalog)
     const existingSkus = await prisma.sKU.findMany({
       where: { skuCode: { in: skuCodes } },
       select: { id: true, skuCode: true },
     });
 
-    const skuMap = new Map(existingSkus.map((s) => [s.skuCode, s.id]));
+    const skuSet = new Set(existingSkus.map((s) => s.skuCode));
 
     // Find SKU codes that don't exist
-    const missingSkuCodes = skuCodes.filter((code) => !skuMap.has(code));
+    const missingSkuCodes = skuCodes.filter((code) => !skuSet.has(code));
     const createdSkuCodes: string[] = [];
 
     // Create missing SKUs
@@ -82,22 +81,21 @@ export async function POST(request: NextRequest) {
       const newSkus = await prisma.sKU.createManyAndReturn({
         data: missingSkuCodes.map((code) => ({
           skuCode: code,
-          name: code, // Use SKU code as name initially
+          name: code,
           currentStock: 0,
         })),
         select: { id: true, skuCode: true },
       });
 
-      // Add new SKUs to the map
       newSkus.forEach((s) => {
-        skuMap.set(s.skuCode, s.id);
+        skuSet.add(s.skuCode);
         createdSkuCodes.push(s.skuCode);
       });
     }
 
     const results: ImportResult[] = [];
     const validRecords: {
-      skuId: string;
+      skuCode: string;
       platform: string;
       orderId: string;
       orderType: string;
@@ -106,42 +104,27 @@ export async function POST(request: NextRequest) {
       unitPrice: number;
       totalAmount: number;
       fulfilled: boolean;
-      fulfilledDate: Date | null;
-      notes: string | null;
     }[] = [];
 
     // Validate rows independently so one malformed line does not block the rest
-    // of the CSV from importing.
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowNum = i + 2; // Account for header row and 0-index
 
       try {
-        // Parse and validate the row
         const parsed = SalesRowSchema.parse(row);
-
-        // Get SKU ID (guaranteed to exist now since we created missing ones)
         const skuCode = parsed.sku_code.trim();
-        const skuId = skuMap.get(skuCode);
-        if (!skuId) {
-          // This shouldn't happen, but handle it gracefully
-          results.push({
-            row: rowNum,
-            sku_code: parsed.sku_code,
-            success: false,
-            error: `Failed to find or create SKU "${parsed.sku_code}"`,
-          });
+
+        if (!skuSet.has(skuCode)) {
+          results.push({ row: rowNum, sku_code: parsed.sku_code, success: false, error: `Failed to find or create SKU "${parsed.sku_code}"` });
           continue;
         }
 
-        // Calculate total amount
         const totalAmount = parsed.quantity * parsed.unit_price;
-
-        // Generate order ID if not provided
         const orderId = parsed.order_id || `IMP-${Date.now()}-${i}`;
 
         validRecords.push({
-          skuId,
+          skuCode,
           platform: parsed.platform || "manual",
           orderId,
           orderType: parsed.order_type || "actual_sale",
@@ -150,58 +133,93 @@ export async function POST(request: NextRequest) {
           unitPrice: parsed.unit_price,
           totalAmount,
           fulfilled: parsed.fulfilled || false,
-          fulfilledDate: parsed.fulfilled_date || null,
-          notes: parsed.notes || null,
         });
 
-        // Check if this SKU was newly created
-        const wasCreated = createdSkuCodes.includes(skuCode);
-
-        results.push({
-          row: rowNum,
-          sku_code: parsed.sku_code,
-          success: true,
-          skuCreated: wasCreated,
-        });
+        results.push({ row: rowNum, sku_code: parsed.sku_code, success: true, skuCreated: createdSkuCodes.includes(skuCode) });
       } catch (error: any) {
         if (error instanceof z.ZodError) {
           const issues = error.issues.map((i) => i.message).join(", ");
-          results.push({
-            row: rowNum,
-            sku_code: row.sku_code || "unknown",
-            success: false,
-            error: issues,
-          });
+          results.push({ row: rowNum, sku_code: row.sku_code || "unknown", success: false, error: issues });
         } else {
-          results.push({
-            row: rowNum,
-            sku_code: row.sku_code || "unknown",
-            success: false,
-            error: error.message || "Unknown error",
-          });
+          results.push({ row: rowNum, sku_code: row.sku_code || "unknown", success: false, error: error.message || "Unknown error" });
         }
       }
     }
 
-    // Batch inserts reduce database round-trips for large uploads.
     let insertedCount = 0;
     if (validRecords.length > 0) {
-      const batchSize = 500;
-      for (let i = 0; i < validRecords.length; i += batchSize) {
-        const batch = validRecords.slice(i, i + batchSize);
-        await prisma.salesRecord.createMany({
-          data: batch,
-        });
-        insertedCount += batch.length;
+      const pool = getPrimaryPool();
+      const client = await pool.connect();
+
+      try {
+        // Group by orderId to build order-level totals
+        const orderMap = new Map<string, { platform: string; saleDate: Date; totalAmount: number; isCounted: boolean }>();
+        for (const r of validRecords) {
+          const isCounted = r.orderType === "actual_sale";
+          if (!orderMap.has(r.orderId)) {
+            orderMap.set(r.orderId, { platform: r.platform, saleDate: r.saleDate, totalAmount: 0, isCounted });
+          }
+          orderMap.get(r.orderId)!.totalAmount += r.totalAmount;
+        }
+
+        // UPSERT orders
+        const internalOrderIdMap = new Map<string, string>();
+        for (const [externalOrderId, order] of orderMap) {
+          const res = await client.query<{ id: string }>(
+            `INSERT INTO shipcore.sc_sales_orders (
+               platform_source, external_order_id, order_number,
+               order_date, order_status,
+               total_price, is_counted_in_demand
+             ) VALUES ($1, $2, $2, $3, 'completed', $4, $5)
+             ON CONFLICT (external_order_id) DO UPDATE SET
+               total_price = EXCLUDED.total_price,
+               updated_at  = NOW()
+             RETURNING id`,
+            [order.platform, externalOrderId, order.saleDate, order.totalAmount, order.isCounted]
+          );
+          internalOrderIdMap.set(externalOrderId, res.rows[0].id);
+        }
+
+        // UPSERT items
+        for (const r of validRecords) {
+          const orderId = internalOrderIdMap.get(r.orderId)!;
+          const isCounted = r.orderType === "actual_sale";
+          const lineItemId = `${r.orderId}-${r.skuCode}`;
+
+          await client.query(
+            `INSERT INTO shipcore.sc_sales_order_items (
+               order_id, platform_source, external_line_item_id,
+               master_sku, channel_sku, sku,
+               quantity, unit_price, line_total,
+               fulfillment_status,
+               is_counted_in_demand
+             ) VALUES ($1, $2, $3, $4, $4, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT (external_line_item_id) DO UPDATE SET
+               quantity             = EXCLUDED.quantity,
+               unit_price           = EXCLUDED.unit_price,
+               line_total           = EXCLUDED.line_total,
+               fulfillment_status   = EXCLUDED.fulfillment_status,
+               is_counted_in_demand = EXCLUDED.is_counted_in_demand,
+               updated_at           = NOW()`,
+            [
+              orderId, r.platform, lineItemId,
+              r.skuCode,
+              r.quantity, r.unitPrice, r.totalAmount,
+              r.fulfilled ? "Shipped" : "Unshipped",
+              isCounted,
+            ]
+          );
+          insertedCount++;
+        }
+      } finally {
+        client.release();
       }
 
-      // Invalidate relevant caches
       await CacheManager.delete("dashboard:analytics");
     }
 
     const successCount = results.filter((r) => r.success).length;
     const failCount = results.filter((r) => !r.success).length;
-    const skusCreatedCount = createdSkuCodes.length;
 
     return NextResponse.json({
       success: true,
@@ -210,10 +228,10 @@ export async function POST(request: NextRequest) {
         imported: insertedCount,
         failed: failCount,
         skipped: rows.length - successCount - failCount,
-        skusCreated: skusCreatedCount,
+        skusCreated: createdSkuCodes.length,
       },
       createdSkus: createdSkuCodes,
-      results: results.slice(0, 100), // Limit results to first 100 for response size
+      results: results.slice(0, 100),
       hasMoreResults: results.length > 100,
     });
   } catch (error: any) {
