@@ -114,6 +114,7 @@ export class WalmartClient {
   async getOrders(params: {
     createdStartDate?: string;
     createdEndDate?: string;
+    status?: string;
     limit?: number;
   }): Promise<{ orders: WalmartOrder[]; nextCursor: string | null }> {
     const { accessToken } = await this.ensureToken();
@@ -121,6 +122,7 @@ export class WalmartClient {
 
     if (params.createdStartDate) query.set("createdStartDate", params.createdStartDate);
     if (params.createdEndDate) query.set("createdEndDate", params.createdEndDate);
+    if (params.status) query.set("status", params.status);
     query.set("limit", String(params.limit ?? 200));
 
     const data = await this.request<WalmartOrdersResponse>(

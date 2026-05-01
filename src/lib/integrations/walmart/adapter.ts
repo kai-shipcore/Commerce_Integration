@@ -28,6 +28,14 @@ function buildIncrementalStart(lastSyncAt: string | null): string {
   return thirtyDaysAgo.toISOString();
 }
 
+function buildFullSyncWindow() {
+  const end = new Date();
+  end.setDate(end.getDate() - 2);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 89);
+  return { startDate: start.toISOString(), endDate: end.toISOString() };
+}
+
 export const walmartAdapter: IntegrationAdapter = {
   platform: "walmart",
 
@@ -101,21 +109,23 @@ export const walmartAdapter: IntegrationAdapter = {
         | null;
 
       let createdStartDate = options.createdAtMin;
-      if (!createdStartDate) {
-        if (options.fullSync) {
-          // Full sync: go back 180 days (Walmart max lookback)
-          const farBack = new Date();
-          farBack.setDate(farBack.getDate() - 180);
-          createdStartDate = farBack.toISOString();
-        } else {
-          createdStartDate = buildIncrementalStart(integration.lastSyncAt);
-        }
+      let createdEndDate: string;
+
+      if (options.fullSync) {
+        const window = buildFullSyncWindow();
+        if (!createdStartDate) createdStartDate = window.startDate;
+        createdEndDate = window.endDate;
+      } else {
+        if (!createdStartDate) createdStartDate = buildIncrementalStart(integration.lastSyncAt);
+        const twoDaysAgo = new Date();
+        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+        createdEndDate = twoDaysAgo.toISOString();
       }
 
       let pageResult =
         options.fullSync && syncCursor?.nextCursor
           ? await client.getOrdersFromCursor(syncCursor.nextCursor)
-          : await client.getOrders({ createdStartDate, limit: 200 });
+          : await client.getOrders({ createdStartDate, createdEndDate, status: "Shipped", limit: 200 });
 
       while (true) {
         if (pageResult.orders.length > 0) {

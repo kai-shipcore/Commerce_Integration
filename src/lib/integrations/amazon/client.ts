@@ -10,7 +10,7 @@ const MARKETPLACE_ENDPOINTS: Record<string, string> = {
   A1F83G8C2ARO7P: "https://sellingpartnerapi-eu.amazon.com", // UK
   A1PA6795UKMFR9: "https://sellingpartnerapi-eu.amazon.com", // DE
   A13V1IB3VIYZZH: "https://sellingpartnerapi-eu.amazon.com", // FR
-  APJ6JRA9NG5V4:  "https://sellingpartnerapi-eu.amazon.com", // IT
+  APJ6JRA9NG5V4: "https://sellingpartnerapi-eu.amazon.com", // IT
   A1RKKUPIHCS9HS: "https://sellingpartnerapi-eu.amazon.com", // ES
   // Far East
   A1VC38T7YXB528: "https://sellingpartnerapi-fe.amazon.com", // JP
@@ -50,7 +50,7 @@ export class AmazonClient {
       lwaClientId: string;
       lwaClientSecret: string;
       lwaRefreshToken: string;
-    }
+    },
   ) {
     this.endpoint =
       MARKETPLACE_ENDPOINTS[config.marketplaceId] ??
@@ -75,7 +75,9 @@ export class AmazonClient {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(`LWA token error: ${body.error_description ?? res.statusText}`);
+      throw new Error(
+        `LWA token error: ${body.error_description ?? res.statusText}`,
+      );
     }
 
     const data = await res.json();
@@ -86,13 +88,24 @@ export class AmazonClient {
 
   async getOrders(params: {
     createdAfter?: string;
+    createdBefore?: string;
     nextToken?: string;
-  }): Promise<{ orders: AmazonOrder[]; nextToken?: string; rateLimited?: boolean }> {
+  }): Promise<{
+    orders: AmazonOrder[];
+    nextToken?: string;
+    rateLimited?: boolean;
+  }> {
     const token = await this.getAccessToken();
     const url = new URL(`${this.endpoint}/orders/v0/orders`);
+
     url.searchParams.set("MarketplaceIds", this.config.marketplaceId);
     url.searchParams.set("MaxResultsPerPage", "100");
-    if (params.createdAfter) url.searchParams.set("CreatedAfter", params.createdAfter);
+    url.searchParams.set("OrderStatuses", "Shipped");
+
+    if (params.createdAfter)
+      url.searchParams.set("CreatedAfter", params.createdAfter);
+    if (params.createdBefore)
+      url.searchParams.set("CreatedBefore", params.createdBefore);
     if (params.nextToken) url.searchParams.set("NextToken", params.nextToken);
 
     const res = await fetch(url.toString(), {
@@ -105,7 +118,9 @@ export class AmazonClient {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(`SP-API orders error ${res.status}: ${JSON.stringify(body)}`);
+      throw new Error(
+        `SP-API orders error ${res.status}: ${JSON.stringify(body)}`,
+      );
     }
 
     const data = await res.json();
@@ -119,7 +134,7 @@ export class AmazonClient {
     const token = await this.getAccessToken();
     const res = await fetch(
       `${this.endpoint}/orders/v0/orders/${orderId}/orderItems`,
-      { headers: { "x-amz-access-token": token, Accept: "application/json" } }
+      { headers: { "x-amz-access-token": token, Accept: "application/json" } },
     );
 
     if (res.status === 429) {
@@ -128,7 +143,9 @@ export class AmazonClient {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(`SP-API order items error ${res.status}: ${JSON.stringify(body)}`);
+      throw new Error(
+        `SP-API order items error ${res.status}: ${JSON.stringify(body)}`,
+      );
     }
 
     const data = await res.json();

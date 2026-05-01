@@ -28,6 +28,14 @@ function buildIncrementalStart(lastSyncAt: string | null): string {
   return thirtyDaysAgo.toISOString();
 }
 
+function buildFullSyncWindow() {
+  const end = new Date();
+  end.setDate(end.getDate() - 2);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 89);
+  return { startDate: start.toISOString(), endDate: end.toISOString() };
+}
+
 export const shopifyAdapter: IntegrationAdapter = {
   platform: "shopify",
 
@@ -92,8 +100,17 @@ export const shopifyAdapter: IntegrationAdapter = {
         | null;
 
       let createdAtMin = options.createdAtMin;
-      if (!options.fullSync && !createdAtMin) {
-        createdAtMin = buildIncrementalStart(integration.lastSyncAt);
+      let createdAtMax: string;
+
+      if (options.fullSync) {
+        const window = buildFullSyncWindow();
+        if (!createdAtMin) createdAtMin = window.startDate;
+        createdAtMax = window.endDate;
+      } else {
+        if (!createdAtMin) createdAtMin = buildIncrementalStart(integration.lastSyncAt);
+        const twoDaysAgo = new Date();
+        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+        createdAtMax = twoDaysAgo.toISOString();
       }
 
       let pageResult =
@@ -101,7 +118,8 @@ export const shopifyAdapter: IntegrationAdapter = {
           ? await client.getOrdersFromUrl(syncCursor.nextPageUrl)
           : await client.getOrders({
               created_at_min: createdAtMin,
-              status: "any",
+              created_at_max: createdAtMax,
+              fulfillment_status: "shipped",
               limit: 250,
             });
 

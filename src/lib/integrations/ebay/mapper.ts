@@ -10,6 +10,7 @@ export function mapEbayOrders(orders: EbayOrder[]): NormalizedOrder[] {
       order.cancelStatus?.cancelState === "CANCEL_ACCEPTED"
         ? order.creationDate
         : null,
+    orderStatus: "Shipped",
     lineItems: order.lineItems
       .filter((item) => Boolean(item.sku))
       .map((item) => {

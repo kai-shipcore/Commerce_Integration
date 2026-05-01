@@ -100,26 +100,34 @@ export const amazonAdapter: IntegrationAdapter = {
         lwaRefreshToken: String(cfg.lwaRefreshToken),
       });
 
-      // Resume from saved cursor if available (previous sync was rate-limited mid-pagination)
       const savedCursor = integration.syncCursor as { nextToken?: string } | null;
       let nextToken: string | undefined = savedCursor?.nextToken;
 
-      // Only use createdAfter for fresh starts (no resume cursor)
+      function buildFullSyncWindow() {
+        const end = new Date();
+        end.setDate(end.getDate() - 2);
+        const start = new Date(end);
+        start.setDate(start.getDate() - 89);
+        return { startDate: start.toISOString(), endDate: end.toISOString() };
+      }
+
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      const createdBefore = twoDaysAgo.toISOString();
+
       let createdAfter: string | undefined;
       if (!nextToken) {
-        if (integration.lastSyncAt) {
-          // Use lastSyncAt minus 2 days to guarantee no gap between sync runs
+        if (options.fullSync) {
+          createdAfter = buildFullSyncWindow().startDate;
+        } else if (integration.lastSyncAt) {
           createdAfter = new Date(new Date(integration.lastSyncAt).getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
         } else {
-          const farBack = new Date();
-          farBack.setDate(farBack.getDate() - 180);
-          createdAfter = farBack.toISOString();
+          createdAfter = buildFullSyncWindow().startDate;
         }
       }
 
-      // fullSync: loop all pages. Sync New: one page per run (cursor saved for resume).
       do {
-        const page = await client.getOrders({ createdAfter, nextToken });
+        const page = await client.getOrders({ createdAfter, createdBefore, nextToken });
 
         if (page.rateLimited) {
           result.errors.push("Amazon rate limit reached. Run sync again to continue from where it left off.");
@@ -130,12 +138,24 @@ export const amazonAdapter: IntegrationAdapter = {
         if (page.orders.length > 0) {
           const itemsMap = new Map<string, Awaited<ReturnType<typeof client.getOrderItems>>>();
 
+          const BURST_LIMIT = 30;
+          const burstOrders = page.orders.slice(0, BURST_LIMIT);
+          const remainingOrders = page.orders.slice(BURST_LIMIT);
+
+          // Use burst allowance for first 30 orders simultaneously
           await Promise.all(
-            page.orders.map(async (order) => {
+            burstOrders.map(async (order) => {
               const items = await client.getOrderItems(order.AmazonOrderId);
               if (items.length > 0) itemsMap.set(order.AmazonOrderId, items);
             })
           );
+
+          // Remaining orders at 0.5 req/s (2s interval) to stay within rate limit
+          for (const order of remainingOrders) {
+            await new Promise((r) => setTimeout(r, 2_000));
+            const items = await client.getOrderItems(order.AmazonOrderId);
+            if (items.length > 0) itemsMap.set(order.AmazonOrderId, items);
+          }
 
           const normalized = mapAmazonOrders(page.orders, itemsMap);
           await persistNormalizedOrders({
