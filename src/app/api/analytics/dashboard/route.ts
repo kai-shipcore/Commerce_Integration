@@ -179,7 +179,7 @@ export async function GET(request: NextRequest) {
     const salesLast30Days = sales30.rows[0];
     const salesLast7Days = sales7.rows[0];
 
-    const topSelling = topSkuRows.rows.map((row) => ({
+    const topSelling = topSkuRows.rows.map((row: TopSkuRow) => ({
       sku: { skuCode: row.master_sku, name: row.master_sku },
       totalQuantity: parseInt(row.qty, 10),
       totalRevenue: parseFloat(row.revenue),
@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
     const avg7Days = parseInt(salesLast7Days.qty, 10) / 7;
     const growthPercentage = avg30Days > 0 ? ((avg7Days - avg30Days) / avg30Days) * 100 : 0;
 
-    const salesTrend = trendRows.rows.map((r) => ({
+    const salesTrend = trendRows.rows.map((r: DayRow) => ({
       date: r.day,
       quantity: parseInt(r.qty, 10),
       revenue: parseFloat(r.revenue),
@@ -219,7 +219,7 @@ export async function GET(request: NextRequest) {
       },
       topSelling,
       lowStockSKUs,
-      recentActivity: recentRows.rows.map((r) => ({
+      recentActivity: recentRows.rows.map((r: RecentRow) => ({
         type: "sale",
         skuCode: r.master_sku ?? r.channel_sku,
         skuName: r.master_sku ?? r.channel_sku,

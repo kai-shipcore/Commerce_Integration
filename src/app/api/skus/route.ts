@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     const categoryRows = await prisma.$queryRawUnsafe<CategoryRow[]>(
       `SELECT DISTINCT p.category FROM shipcore.sc_products p WHERE p.category IS NOT NULL ORDER BY p.category`
     );
-    const availableCategories = categoryRows.map((r) => r.category);
+    const availableCategories = categoryRows.map((r: CategoryRow) => r.category);
 
     type CountRow = { count: bigint };
     const countResult = await prisma.$queryRawUnsafe<CountRow[]>(
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
       salesMap = new Map(salesRows.map((s: { master_sku: string; qty: string }) => [s.master_sku, parseInt(s.qty, 10)]));
     }
 
-    const data = rows.map((row) => ({
+    const data = rows.map((row: ProductRow) => ({
       id: row.master_sku,
       masterSkuCode: row.master_sku,
       skuCode: row.master_sku,

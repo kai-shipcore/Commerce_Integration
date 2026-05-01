@@ -101,14 +101,14 @@ export async function GET(
       category:      product.category,
       status:        product.status,
       inventory,
-      inventoryByWarehouse: inventoryRows.map((r) => ({
+      inventoryByWarehouse: inventoryRows.map((r: InventoryRow) => ({
         warehouse: r.warehouse_code,
         onHand:    Number(r.on_hand_qty   ?? 0),
         available: Number(r.available_qty ?? 0),
         backorder: Number(r.backorder_qty ?? 0),
         reserved:  Number(r.reserved_qty  ?? 0),
       })),
-      webSkus: mappingRows.map((r) => ({
+      webSkus: mappingRows.map((r: MappingRow) => ({
         channelSku:  r.channel_sku,
         channel:     r.channel,
         productName: variantNameMap.get(r.channel_sku) ?? r.product_name ?? null,
