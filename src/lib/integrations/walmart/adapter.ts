@@ -30,9 +30,8 @@ function buildIncrementalStart(lastSyncAt: string | null): string {
 
 function buildFullSyncWindow() {
   const end = new Date();
-  end.setDate(end.getDate() - 2);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 89);
+  const start = new Date();
+  start.setDate(start.getDate() - 90);
   return { startDate: start.toISOString(), endDate: end.toISOString() };
 }
 
@@ -104,9 +103,6 @@ export const walmartAdapter: IntegrationAdapter = {
       const client = new WalmartClient(walmartConfig);
       const skuMap = new Map<string, string>();
       const masterSkuCache = new Map<string, MasterSkuInfo>();
-      const syncCursor = integration.syncCursor as
-        | { nextCursor?: string; lastOrderDate?: string }
-        | null;
 
       let createdStartDate = options.createdAtMin;
       let createdEndDate: string;
@@ -120,10 +116,7 @@ export const walmartAdapter: IntegrationAdapter = {
         createdEndDate = new Date().toISOString();
       }
 
-      let pageResult =
-        options.fullSync && syncCursor?.nextCursor
-          ? await client.getOrdersFromCursor(syncCursor.nextCursor)
-          : await client.getOrders({ createdStartDate, createdEndDate, limit: 200 });
+      let pageResult = await client.getOrders({ createdStartDate, createdEndDate, limit: 200 });
 
       while (true) {
         if (pageResult.orders.length > 0) {
@@ -142,7 +135,6 @@ export const walmartAdapter: IntegrationAdapter = {
               nextCursor: pageResult.nextCursor,
               lastOrderDate: new Date(lastOrder.orderDate).toISOString(),
             },
-            // Persist the refreshed token so it survives across sync pages
             config: { ...walmartConfig },
           });
         }

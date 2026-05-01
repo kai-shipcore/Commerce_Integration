@@ -141,8 +141,9 @@ export class WalmartClient {
   ): Promise<{ orders: WalmartOrder[]; nextCursor: string | null }> {
     const { accessToken } = await this.ensureToken();
 
+    // cursor is the full query string returned by Walmart (starts with "?")
     const data = await this.request<WalmartOrdersResponse>(
-      `/v3/orders?nextCursor=${encodeURIComponent(cursor)}`,
+      `/v3/orders${cursor}`,
       accessToken
     );
 
