@@ -49,7 +49,6 @@ export interface WalmartOrderLine {
 export interface WalmartOrder {
   purchaseOrderId: string;
   customerOrderId: string;
-  status: string;
   orderDate: number;
   orderLines: {
     orderLine: WalmartOrderLine[];
