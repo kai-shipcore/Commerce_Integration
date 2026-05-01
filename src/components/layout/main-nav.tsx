@@ -30,6 +30,7 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 const navigationGroups = [
   { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
   { name: "Operations", itemIds: ["orders", "signals"] },
+  { name: "Forecasting", itemIds: ["analytics", "velocity"] },
   { name: "Admin", itemIds: ["integrations", "user-access"] },
 ];
 
@@ -160,7 +161,6 @@ export function MainNav() {
     );
 
   const dashboardItem = visibleNavigation.find((item) => item.id === "dashboard");
-  const analyticsItem = visibleNavigation.find((item) => item.id === "analytics");
   const groupedNavigation = navigationGroups.map((group) => ({
     ...group,
     items: visibleNavigation.filter((item) => group.itemIds.includes(item.id)),
@@ -219,8 +219,8 @@ export function MainNav() {
       {dashboardItem ? renderNavigationLink(dashboardItem) : null}
       {renderNavigationGroup(groupedNavigation[0])}
       {renderNavigationGroup(groupedNavigation[1])}
-      {analyticsItem ? renderNavigationLink(analyticsItem) : null}
       {renderNavigationGroup(groupedNavigation[2])}
+      {renderNavigationGroup(groupedNavigation[3])}
     </nav>
   );
 }

@@ -184,7 +184,7 @@ export function AnalyticsOverview() {
           <CardContent>
             <div className="space-y-4">
               {data.topSelling.slice(0, 5).map((item, index) => (
-                <div key={item.sku.id} className="flex items-center gap-3">
+                <div key={item.sku.id ?? index} className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium">
                     {index + 1}
                   </div>
