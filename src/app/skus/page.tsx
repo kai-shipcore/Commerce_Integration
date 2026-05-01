@@ -50,6 +50,7 @@ export default function SKUsPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [syncing, setSyncing] = useState(false);
   const [syncingMapping, setSyncingMapping] = useState(false);
+  const [syncingVehicles, setSyncingVehicles] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const [salesPeriod, setSalesPeriod] = useState("30");
@@ -142,6 +143,23 @@ export default function SKUsPage() {
     }
   };
 
+  const handleSyncVehicles = async () => {
+    setSyncingVehicles(true);
+    setSyncMessage(null);
+    try {
+      const response = await fetch("/api/product-vehicles/sync", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Vehicle sync failed");
+      }
+      setSyncMessage(result.message ?? "Vehicle sync completed");
+    } catch (err) {
+      setSyncMessage(err instanceof Error ? err.message : "Vehicle sync failed");
+    } finally {
+      setSyncingVehicles(false);
+    }
+  };
+
   const handleSyncMapping = async () => {
     setSyncingMapping(true);
     setSyncMessage(null);
@@ -229,7 +247,7 @@ export default function SKUsPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Products</h1>
             <p className="text-muted-foreground">
-              Manage your product catalog ({totalRows} total)
+              Manage your product catalog ({totalRows.toLocaleString()} total)
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -262,7 +280,19 @@ export default function SKUsPage() {
               ) : (
                 <RefreshCw className="h-4 w-4" />
               )}
-              {syncing ? "Syncing..." : "Sync"}
+              {syncing ? "Syncing..." : "Sync Products"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleSyncVehicles}
+              disabled={syncingVehicles}
+            >
+              {syncingVehicles ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {syncingVehicles ? "Syncing..." : "Sync Vehicles"}
             </Button>
             <Button
               variant="outline"

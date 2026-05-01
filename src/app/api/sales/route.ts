@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     let idx = 1;
 
     if (masterSkuCode) {
-      conditions.push(`i.master_sku = $${idx++}`);
+      conditions.push(`i.product_id = (SELECT id FROM shipcore.sc_products WHERE master_sku = $${idx++})`);
       params.push(masterSkuCode);
     }
     if (platform) {
@@ -56,14 +56,15 @@ export async function GET(request: NextRequest) {
 
       const { rows } = await pool.query(
         `SELECT DATE_TRUNC('${dateTrunc}', o.order_date)::date::text AS date,
+                o.platform_source::text AS platform,
                 COALESCE(SUM(i.quantity), 0)::int AS "totalQuantity",
                 COALESCE(SUM(i.line_total), 0)::float AS "totalRevenue",
                 COUNT(*)::int AS "orderCount"
          FROM shipcore.sc_sales_order_items i
          JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
          WHERE ${where}
-         GROUP BY DATE_TRUNC('${dateTrunc}', o.order_date)
-         ORDER BY 1 ASC`,
+         GROUP BY DATE_TRUNC('${dateTrunc}', o.order_date), o.platform_source
+         ORDER BY 1 ASC, 2 ASC`,
         params
       );
 

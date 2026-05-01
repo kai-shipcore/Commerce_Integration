@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncSkuMappings } from "@/lib/db/primary-db";
+import { syncProductVehicles } from "@/lib/db/primary-db";
 
 export const maxDuration = 300;
 
@@ -9,13 +9,13 @@ function getErrorMessage(error: unknown): string {
 
 export async function POST() {
   try {
-    const result = await syncSkuMappings();
+    const result = await syncProductVehicles();
     return NextResponse.json({
       success: true,
-      message: `Mapping sync completed — +${result.mappingsUpserted.toLocaleString()} / -${result.mappingsDeleted.toLocaleString()} mappings`,
+      message: `Product vehicle sync completed — +${result.upserted.toLocaleString()} / -${result.deleted.toLocaleString()} vehicles`,
     });
   } catch (error: unknown) {
-    console.error("SKU mapping sync failed:", error);
+    console.error("Product vehicle sync failed:", error);
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
       { status: 500 }

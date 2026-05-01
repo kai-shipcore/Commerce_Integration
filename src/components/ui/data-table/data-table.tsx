@@ -118,6 +118,7 @@ export function DataTable<TData, TValue>({
     getFacetedUniqueValues: getFacetedUniqueValues(),
     manualPagination: !!pageCount,
     manualSorting: !!onSortingChange,
+    manualFiltering: !!onSearchChange,
     pageCount,
   });
 

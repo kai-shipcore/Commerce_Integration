@@ -40,6 +40,7 @@ interface InventoryByWarehouse {
 interface WebSku {
   channelSku: string;
   channel: string;
+  productName: string | null;
 }
 
 interface SKUDetail {
@@ -61,7 +62,11 @@ interface SKUDetail {
 
 interface SalesDataPoint {
   date: string;
-  totalQuantity: number;
+  shopify: number;
+  amazon: number;
+  ebay: number;
+  walmart: number;
+  total: number;
   totalRevenue: number;
   orderCount: number;
 }
@@ -106,7 +111,23 @@ export default function SKUDetailPage({
       }
       const response = await fetch(`/api/sales?${params.toString()}`);
       const result = await response.json();
-      if (result.success && result.data) setSalesHistory(result.data);
+      if (result.success && result.data) {
+        type RawRow = { date: string; platform: string; totalQuantity: number; totalRevenue: number; orderCount: number };
+        const rawRows: RawRow[] = result.data;
+        const byDate = new Map<string, SalesDataPoint>();
+        for (const row of rawRows) {
+          if (!byDate.has(row.date)) {
+            byDate.set(row.date, { date: row.date, shopify: 0, amazon: 0, ebay: 0, walmart: 0, total: 0, totalRevenue: 0, orderCount: 0 });
+          }
+          const entry = byDate.get(row.date)!;
+          const p = row.platform as "shopify" | "amazon" | "ebay" | "walmart";
+          if (p === "shopify" || p === "amazon" || p === "ebay" || p === "walmart") entry[p] += row.totalQuantity;
+          entry.total += row.totalQuantity;
+          entry.totalRevenue += row.totalRevenue;
+          entry.orderCount += row.orderCount;
+        }
+        setSalesHistory(Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date)));
+      }
     } catch (error) {
       console.error("Error fetching sales history:", error);
     } finally {
@@ -344,8 +365,15 @@ export default function SKUDetailPage({
                       key={webSku.channelSku}
                       className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2"
                     >
-                      <span className="font-mono text-sm">{webSku.channelSku}</span>
-                      <Badge variant="outline" className="text-xs">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-mono text-sm">{webSku.channelSku}</span>
+                        {webSku.productName && (
+                          <span className="text-xs text-muted-foreground">
+                            {webSku.productName}
+                          </span>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="text-xs shrink-0 ml-3">
                         {webSku.channel}
                       </Badge>
                     </div>

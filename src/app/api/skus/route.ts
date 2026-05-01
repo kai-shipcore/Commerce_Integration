@@ -80,7 +80,17 @@ export async function GET(request: NextRequest) {
     const countResult = await prisma.$queryRawUnsafe<CountRow[]>(
       `SELECT COUNT(*)::bigint AS count
        FROM shipcore.sc_products p
-       WHERE ($1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1)
+       WHERE (
+           $1::text IS NULL
+           OR p.master_sku ILIKE $1
+           OR p.product_name ILIKE $1
+           OR EXISTS (
+             SELECT 1
+             FROM shipcore.sc_sku_mappings sm_search
+             WHERE sm_search.master_sku = p.master_sku
+               AND sm_search.channel_sku ILIKE $1
+           )
+         )
          AND ($2::text IS NULL OR p.category = $2)`,
       searchParam,
       categoryParam
@@ -110,7 +120,17 @@ export async function GET(request: NextRequest) {
        FROM shipcore.sc_products p
        LEFT JOIN shipcore.sc_inventory_snapshot i ON i.master_sku = p.master_sku
        LEFT JOIN shipcore.sc_sku_mappings sm ON sm.master_sku = p.master_sku
-       WHERE ($1::text IS NULL OR p.master_sku ILIKE $1 OR p.product_name ILIKE $1)
+       WHERE (
+           $1::text IS NULL
+           OR p.master_sku ILIKE $1
+           OR p.product_name ILIKE $1
+           OR EXISTS (
+             SELECT 1
+             FROM shipcore.sc_sku_mappings sm_search
+             WHERE sm_search.master_sku = p.master_sku
+               AND sm_search.channel_sku ILIKE $1
+           )
+         )
          AND ($2::text IS NULL OR p.category = $2)
        GROUP BY p.master_sku, p.product_name, p.category
        ORDER BY ${sortCol} ${sortOrder}

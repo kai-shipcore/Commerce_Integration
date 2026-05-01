@@ -8,16 +8,30 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   MENU_VISIBILITY_STORAGE_KEY,
   getDefaultVisibleMenuIds,
+  isAdminLikeRole,
   navigationItems,
   sanitizeVisibleMenuIds,
 } from "./navigation-config";
 
 let cachedVisibleMenuIds: string[] | null = null;
 const MENU_FETCH_TIMEOUT_MS = 2000;
+
+const navigationGroups = [
+  { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
+  { name: "Operations", itemIds: ["orders", "signals"] },
+  { name: "Admin", itemIds: ["integrations", "user-access"] },
+];
 
 function readStoredVisibleMenuIds(role?: string | null): string[] | null {
   if (typeof window === "undefined") {
@@ -104,7 +118,7 @@ export function MainNav() {
           );
           setVisibleMenuIds(sanitized);
           storeVisibleMenuIds(sanitized);
-          setIsAdmin(result.data?.role === "admin");
+          setIsAdmin(isAdminLikeRole(result.data?.role));
         }
         setPreferencesReady(true);
       } catch {
@@ -136,30 +150,77 @@ export function MainNav() {
     return <nav className="h-9 flex-1" aria-hidden="true" />;
   }
 
+  const isItemActive = (href: string) => pathname?.startsWith(href) ?? false;
+  const navItemClassName = (isActive: boolean) =>
+    cn(
+      "flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors hover:text-primary dark:hover:text-white",
+      isActive
+        ? "bg-white/45 text-sky-900 shadow-sm dark:bg-slate-900/55 dark:text-white"
+        : "text-muted-foreground dark:text-slate-200"
+    );
+
+  const dashboardItem = visibleNavigation.find((item) => item.id === "dashboard");
+  const analyticsItem = visibleNavigation.find((item) => item.id === "analytics");
+  const groupedNavigation = navigationGroups.map((group) => ({
+    ...group,
+    items: visibleNavigation.filter((item) => group.itemIds.includes(item.id)),
+  }));
+
+  const renderNavigationLink = (item: (typeof visibleNavigation)[number]) => {
+    const Icon = item.icon;
+    const isActive = isItemActive(item.href);
+
+    return (
+      <Link
+        key={item.id}
+        href={item.href}
+        className={navItemClassName(isActive)}
+      >
+        <Icon className="h-4 w-4" />
+        {item.name}
+      </Link>
+    );
+  };
+
+  const renderNavigationGroup = (group: (typeof groupedNavigation)[number]) => {
+    if (group.items.length === 0) {
+      return null;
+    }
+
+    const isGroupActive = group.items.some((item) => isItemActive(item.href));
+
+    return (
+      <DropdownMenu key={group.name}>
+        <DropdownMenuTrigger asChild>
+          <button type="button" className={navItemClassName(isGroupActive)}>
+            {group.name}
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-48">
+          {group.items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <DropdownMenuItem key={item.id} asChild>
+                <Link href={item.href}>
+                  <Icon className="h-4 w-4" />
+                  {item.name}
+                </Link>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+
   return (
     <nav className="flex items-center space-x-4 lg:space-x-6">
-      {visibleNavigation.map((item) => {
-        const Icon = item.icon;
-        const isActive = item.href.startsWith("/settings")
-          ? pathname?.startsWith(item.href)
-          : pathname?.startsWith(item.href);
-
-        return (
-          <Link
-            key={item.id}
-            href={item.href}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors hover:text-primary dark:hover:text-white",
-              isActive
-                ? "bg-white/45 text-sky-900 shadow-sm dark:bg-slate-900/55 dark:text-white"
-                : "text-muted-foreground dark:text-slate-200"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            {item.name}
-          </Link>
-        );
-      })}
+      {dashboardItem ? renderNavigationLink(dashboardItem) : null}
+      {renderNavigationGroup(groupedNavigation[0])}
+      {renderNavigationGroup(groupedNavigation[1])}
+      {analyticsItem ? renderNavigationLink(analyticsItem) : null}
+      {renderNavigationGroup(groupedNavigation[2])}
     </nav>
   );
 }

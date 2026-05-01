@@ -254,6 +254,35 @@ export async function lookupMasterSkusFromSupabase(
 /**
  * Test if the lookup connection is available
  */
+export async function getVariantNames(channelSkus: string[]): Promise<Map<string, string>> {
+  const pool = getLookupPool();
+  if (!pool || channelSkus.length === 0) return new Map();
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query<{ variant_sku: string; variant_name: string }>(
+      `SELECT DISTINCT ON (variant_sku)
+         variant_sku,
+         TRIM(
+           title ||
+           CASE WHEN option_1_value IS NOT NULL AND option_1_value <> '' AND option_1_value <> 'Default Title'
+                THEN ' ' || option_1_value ELSE '' END ||
+           CASE WHEN option_2_value IS NOT NULL AND option_2_value <> ''
+                THEN ' ' || option_2_value ELSE '' END ||
+           CASE WHEN option_3_value IS NOT NULL AND option_3_value <> ''
+                THEN ' ' || option_3_value ELSE '' END
+         ) AS variant_name
+       FROM size_chart.shopify_db
+       WHERE variant_sku = ANY($1::text[])
+       ORDER BY variant_sku, updated_at DESC NULLS LAST`,
+      [channelSkus]
+    );
+    return new Map(result.rows.map((r) => [r.variant_sku, r.variant_name]));
+  } finally {
+    client.release();
+  }
+}
+
 export async function testLookupConnection(): Promise<{
   available: boolean;
   error?: string;

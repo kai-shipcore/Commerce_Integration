@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
+import { getVariantNames } from "@/lib/db/supabase-lookup";
 
 const DEFAULT_INVENTORY_LOCATION_CODE = "DEFAULT";
 
@@ -64,13 +65,27 @@ export async function GET(
       id
     );
 
-    type MappingRow = { channel_sku: string; channel: string };
+    type MappingRow = { channel_sku: string; channel: string; product_name: string | null };
     const mappingRows = await prisma.$queryRawUnsafe<MappingRow[]>(
-      `SELECT channel_sku, channel FROM shipcore.sc_sku_mappings WHERE master_sku = $1 ORDER BY channel_sku`,
+      `SELECT sm.channel_sku, sm.channel, p.product_name
+       FROM shipcore.sc_sku_mappings sm
+       LEFT JOIN shipcore.sc_products p ON p.id = sm.product_id
+       WHERE sm.master_sku = $1
+       ORDER BY sm.channel_sku`,
       id
     );
 
-    const salesCount = await prisma.salesRecord.count({ where: { masterSkuCode: id } });
+    const [salesCountRows, variantNameMap] = await Promise.all([
+      prisma.$queryRawUnsafe<{ count: number }[]>(
+        `SELECT COUNT(*)::int AS count
+         FROM shipcore.sc_sales_order_items i
+         WHERE i.product_id = (SELECT id FROM shipcore.sc_products WHERE master_sku = $1)
+           AND i.is_counted_in_demand = true`,
+        id
+      ),
+      getVariantNames(mappingRows.map((r) => r.channel_sku)).catch(() => new Map<string, string>()),
+    ]);
+    const salesCount = salesCountRows[0]?.count ?? 0;
 
     const inventory = {
       onHand:    inventoryRows.reduce((s, r) => s + Number(r.on_hand_qty  ?? 0), 0),
@@ -93,7 +108,11 @@ export async function GET(
         backorder: Number(r.backorder_qty ?? 0),
         reserved:  Number(r.reserved_qty  ?? 0),
       })),
-      webSkus: mappingRows.map((r) => ({ channelSku: r.channel_sku, channel: r.channel })),
+      webSkus: mappingRows.map((r) => ({
+        channelSku:  r.channel_sku,
+        channel:     r.channel,
+        productName: variantNameMap.get(r.channel_sku) ?? r.product_name ?? null,
+      })),
       salesCount,
     };
 
