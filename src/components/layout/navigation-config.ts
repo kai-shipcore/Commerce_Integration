@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Store,
+  TrendingUp,
   Warehouse,
 } from "lucide-react";
 import type { ComponentType } from "react";
@@ -80,6 +81,13 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "velocity",
+    name: "Velocity",
+    href: "/velocity",
+    icon: TrendingUp,
+    hideable: true,
+  },
+  {
     id: "user-access",
     name: "User Access",
     href: "/settings/users",
@@ -130,6 +138,13 @@ export function sanitizeVisibleMenuIds(
   // dedicated inventory page is introduced.
   if (filtered.includes("inventory") && !filtered.includes("products")) {
     filtered.unshift("products");
+  }
+
+  // Auto-include any newly added default-visible items not yet in stored preferences.
+  for (const id of defaultVisibleMenuIds) {
+    if (!filtered.includes(id)) {
+      filtered.push(id);
+    }
   }
 
   return filtered.length > 0 ? filtered : defaultVisibleMenuIds;
