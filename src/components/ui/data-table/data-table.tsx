@@ -51,6 +51,7 @@ interface DataTableProps<TData, TValue> {
   onRowSelectionChange?: (selectedRows: TData[]) => void;
   onFilteredRowsChange?: (filteredRows: TData[]) => void;
   onRowClick?: (row: TData) => void;
+  getRowClassName?: (row: TData) => string | undefined;
   filterableColumns?: {
     id: string;
     title: string;
@@ -72,6 +73,7 @@ export function DataTable<TData, TValue>({
   onRowSelectionChange,
   onFilteredRowsChange,
   onRowClick,
+  getRowClassName,
   filterableColumns = [],
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
@@ -214,7 +216,12 @@ export function DataTable<TData, TValue>({
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  className={onRowClick ? "cursor-pointer" : undefined}
+                  className={[
+                    onRowClick ? "cursor-pointer" : undefined,
+                    getRowClassName?.(row.original),
+                  ]
+                    .filter(Boolean)
+                    .join(" ") || undefined}
                   onClick={() => onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
