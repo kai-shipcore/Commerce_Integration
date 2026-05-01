@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const search = searchParams.get("search")?.trim() ?? "";
     const platformSource = searchParams.get("platformSource")?.trim() ?? "";
+    const fulfillmentChannel = searchParams.get("fulfillmentChannel")?.trim() ?? "";
     const sortByKey = searchParams.get("sortBy") ?? "qty90d";
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "ASC" : "DESC";
     const sortCol =
@@ -48,6 +49,11 @@ export async function GET(request: NextRequest) {
     if (platformSource) {
       params.push(platformSource);
       filters.push(`o.platform_source::text = $${params.length}`);
+    }
+
+    if (fulfillmentChannel) {
+      params.push(fulfillmentChannel);
+      filters.push(`o.fulfillment_channel::text = $${params.length}`);
     }
 
     if (search) {

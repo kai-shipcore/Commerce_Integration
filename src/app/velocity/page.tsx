@@ -151,6 +151,8 @@ const LINK_SALES_PARAMS: Record<string, string> = {};
 export default function VelocityPage() {
   const [channels, setChannels] = useState<string[]>([]);
   const [channelTab, setChannelTab] = useState<string>("");
+  const [subChannels, setSubChannels] = useState<Record<string, string[]>>({});
+  const [ebaySubTab, setEbaySubTab] = useState<string>("Total");
 
   useEffect(() => {
     fetch("/api/velocity/channels", { cache: "no-store" })
@@ -159,15 +161,26 @@ export default function VelocityPage() {
         if (result.success && result.channels.length > 0) {
           setChannels(result.channels);
           setChannelTab(result.channels[0]);
+          setSubChannels(result.subChannels ?? {});
         }
       })
       .catch(() => {});
   }, []);
 
-  const channelParams = useMemo<Record<string, string>>(
-    () => (channelTab ? { platformSource: channelTab } : ({} as Record<string, string>)),
-    [channelTab]
-  );
+  const handleChannelTabChange = useCallback((v: string) => {
+    setChannelTab(v);
+    setEbaySubTab("Total");
+  }, []);
+
+  const channelParams = useMemo<Record<string, string>>(() => {
+    if (!channelTab) return {};
+    const p: Record<string, string> = { platformSource: channelTab };
+    const subs = subChannels[channelTab];
+    if (subs?.length && ebaySubTab !== "Total") {
+      p.fulfillmentChannel = ebaySubTab;
+    }
+    return p;
+  }, [channelTab, subChannels, ebaySubTab]);
 
   return (
     <AppLayout>
@@ -216,7 +229,7 @@ export default function VelocityPage() {
                 </CardContent>
               </Card>
             ) : (
-              <Tabs value={channelTab} onValueChange={setChannelTab}>
+              <Tabs value={channelTab} onValueChange={handleChannelTabChange}>
                 <TabsList>
                   {channels.map((ch) => (
                     <TabsTrigger key={ch} value={ch}>
@@ -224,13 +237,30 @@ export default function VelocityPage() {
                     </TabsTrigger>
                   ))}
                 </TabsList>
-                {channels.map((ch) => (
-                  <TabsContent key={ch} value={ch}>
-                    {channelTab === ch && (
-                      <VelocityPane apiParams={channelParams} />
-                    )}
-                  </TabsContent>
-                ))}
+                {channels.map((ch) => {
+                  const subs = subChannels[ch];
+                  return (
+                    <TabsContent key={ch} value={ch}>
+                      {channelTab === ch && (
+                        subs?.length ? (
+                          <Tabs value={ebaySubTab} onValueChange={setEbaySubTab}>
+                            <TabsList>
+                              <TabsTrigger value="Total">Total</TabsTrigger>
+                              {subs.map((s) => (
+                                <TabsTrigger key={s} value={s}>{s}</TabsTrigger>
+                              ))}
+                            </TabsList>
+                            <TabsContent value={ebaySubTab}>
+                              <VelocityPane apiParams={channelParams} />
+                            </TabsContent>
+                          </Tabs>
+                        ) : (
+                          <VelocityPane apiParams={channelParams} />
+                        )
+                      )}
+                    </TabsContent>
+                  );
+                })}
               </Tabs>
             )}
           </TabsContent>

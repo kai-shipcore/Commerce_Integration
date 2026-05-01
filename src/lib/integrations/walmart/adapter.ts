@@ -30,8 +30,9 @@ function buildIncrementalStart(lastSyncAt: string | null): string {
 
 function buildFullSyncWindow() {
   const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - 90);
+  end.setDate(end.getDate() - 2);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 89);
   return { startDate: start.toISOString(), endDate: end.toISOString() };
 }
 
