@@ -138,12 +138,24 @@ export const amazonAdapter: IntegrationAdapter = {
         if (page.orders.length > 0) {
           const itemsMap = new Map<string, Awaited<ReturnType<typeof client.getOrderItems>>>();
 
+          const BURST_LIMIT = 30;
+          const burstOrders = page.orders.slice(0, BURST_LIMIT);
+          const remainingOrders = page.orders.slice(BURST_LIMIT);
+
+          // Use burst allowance for first 30 orders simultaneously
           await Promise.all(
-            page.orders.map(async (order) => {
+            burstOrders.map(async (order) => {
               const items = await client.getOrderItems(order.AmazonOrderId);
               if (items.length > 0) itemsMap.set(order.AmazonOrderId, items);
             })
           );
+
+          // Remaining orders at 0.5 req/s (2s interval) to stay within rate limit
+          for (const order of remainingOrders) {
+            await new Promise((r) => setTimeout(r, 2_000));
+            const items = await client.getOrderItems(order.AmazonOrderId);
+            if (items.length > 0) itemsMap.set(order.AmazonOrderId, items);
+          }
 
           const normalized = mapAmazonOrders(page.orders, itemsMap);
           await persistNormalizedOrders({

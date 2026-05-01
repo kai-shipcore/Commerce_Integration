@@ -7,6 +7,7 @@ export function mapShopifyOrders(orders: ShopifyOrder[]): NormalizedOrder[] {
     orderDisplayId: order.name,
     orderedAt: order.created_at,
     cancelledAt: order.cancelled_at,
+    orderStatus: "Shipped",
     lineItems: order.line_items
       .filter((item) => Boolean(item.sku))
       .map((item) => ({

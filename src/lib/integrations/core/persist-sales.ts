@@ -19,7 +19,7 @@ export async function persistNormalizedOrders(args: {
   const { orders, platform, masterSkuCache, result } = args;
   if (orders.length === 0) return;
 
-  // Resolve master SKUs for all channel SKUs not yet cached
+  // Resolve master SKUs for all channel SKUs not yet cached (Supabase fallback)
   const skusNeedingLookup = Array.from(
     new Set(
       orders.flatMap((o) =>
@@ -34,6 +34,35 @@ export async function persistNormalizedOrders(args: {
 
   const pool = getPrimaryPool();
 
+  // Batch lookup master_sku + product_id from sc_sku_mappings (primary DB)
+  const allChannelSkus = Array.from(
+    new Set(orders.flatMap((o) => o.lineItems.map((i) => i.sku).filter(Boolean)))
+  );
+  const skuMappingsCache = new Map<string, { masterSku: string | null; productId: string | null }>();
+  if (allChannelSkus.length > 0) {
+    const mappingClient = await pool.connect();
+    try {
+      const mappingRes = await mappingClient.query<{
+        channel_sku: string;
+        master_sku: string | null;
+        product_id: string | null;
+      }>(
+        `SELECT DISTINCT ON (channel_sku) channel_sku, master_sku, product_id
+         FROM shipcore.sc_sku_mappings
+         WHERE channel_sku = ANY($1)`,
+        [allChannelSkus]
+      );
+      mappingRes.rows.forEach((row) => {
+        skuMappingsCache.set(row.channel_sku, {
+          masterSku: row.master_sku,
+          productId: row.product_id,
+        });
+      });
+    } finally {
+      mappingClient.release();
+    }
+  }
+
   for (const order of orders) {
     const isCanceled = Boolean(order.cancelledAt);
     const client = await pool.connect();
@@ -44,29 +73,33 @@ export async function persistNormalizedOrders(args: {
           platform_source, external_order_id, order_number,
           order_date, order_status,
           total_price, currency,
-          cancelled_at, is_counted_in_demand
+          cancelled_at, is_counted_in_demand,
+          fulfillment_channel
         ) VALUES (
           $1, $2, $2,
           $3, $4,
           $5, $6,
-          $7, $8
+          $7, $8,
+          $9
         )
         ON CONFLICT (external_order_id) DO UPDATE SET
           order_status         = EXCLUDED.order_status,
           total_price          = COALESCE(EXCLUDED.total_price, sc_sales_orders.total_price),
           cancelled_at         = EXCLUDED.cancelled_at,
           is_counted_in_demand = EXCLUDED.is_counted_in_demand,
+          fulfillment_channel  = EXCLUDED.fulfillment_channel,
           updated_at           = NOW()
         RETURNING id, (xmax = 0) AS inserted`,
         [
-          order.platformSource ?? platform,
+          platform,
           order.externalOrderId,
           order.orderedAt,
-          isCanceled ? "Canceled" : "Unshipped",
+          isCanceled ? "Canceled" : (order.orderStatus ?? "Unshipped"),
           order.lineItems.reduce((s, i) => s + i.totalAmount, 0) || null,
           order.currency ?? null,
           order.cancelledAt ?? null,
           !isCanceled,
+          order.fulfillmentChannel ?? null,
         ]
       );
 
@@ -75,29 +108,31 @@ export async function persistNormalizedOrders(args: {
       for (const item of order.lineItems) {
         if (!item.sku) continue;
 
-        const masterInfo = masterSkuCache.get(item.sku);
-        const masterSku = masterInfo?.parse1 ?? null;
+        const skuMapping = skuMappingsCache.get(item.sku);
+        const masterSku = skuMapping?.masterSku ?? masterSkuCache.get(item.sku)?.parse1 ?? null;
+        const productId = skuMapping?.productId ?? null;
         const lineItemId = item.externalLineItemId ?? `${order.externalOrderId}-${item.sku}`;
 
         await client.query(
           `INSERT INTO shipcore.sc_sales_order_items (
             order_id, platform_source, external_line_item_id,
             master_sku, channel_sku, sku,
-            product_name,
+            product_name, product_id,
             quantity, unit_price, line_total,
             fulfillment_status,
             is_counted_in_demand
           ) VALUES (
             $1, $2, $3,
             $4, $5, $5,
-            $6,
-            $7, $8, $9,
-            $10,
-            $11
+            $6, $7,
+            $8, $9, $10,
+            $11,
+            $12
           )
           ON CONFLICT (external_line_item_id) DO UPDATE SET
             order_id             = EXCLUDED.order_id,
             master_sku           = COALESCE(EXCLUDED.master_sku, sc_sales_order_items.master_sku),
+            product_id           = COALESCE(EXCLUDED.product_id, sc_sales_order_items.product_id),
             channel_sku          = EXCLUDED.channel_sku,
             sku                  = EXCLUDED.sku,
             product_name         = COALESCE(EXCLUDED.product_name, sc_sales_order_items.product_name),
@@ -109,11 +144,12 @@ export async function persistNormalizedOrders(args: {
             updated_at           = NOW()`,
           [
             orderId,
-            order.platformSource ?? platform,
+            order.fulfillmentChannel ? `Amazon ${order.fulfillmentChannel}` : platform,
             lineItemId,
             masterSku,
             item.sku,
             item.title ?? null,
+            productId,
             item.quantity,
             item.unitPrice ?? null,
             item.totalAmount ?? null,

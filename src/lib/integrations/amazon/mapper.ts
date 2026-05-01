@@ -27,7 +27,7 @@ export function mapAmazonOrders(
 
     if (lineItems.length === 0) return [];
 
-    const platformSource = order.FulfillmentChannel === "AFN" ? "Amazon FBA" : "Amazon FBM";
+    const fulfillmentChannel = order.FulfillmentChannel === "AFN" ? "FBA" : "FBM";
 
     return [
       {
@@ -36,7 +36,8 @@ export function mapAmazonOrders(
         orderedAt: order.PurchaseDate,
         cancelledAt: order.OrderStatus === "Canceled" ? order.LastUpdateDate : null,
         currency: order.OrderTotal?.CurrencyCode ?? null,
-        platformSource,
+        fulfillmentChannel,
+        orderStatus: order.OrderStatus,
         lineItems,
       },
     ];

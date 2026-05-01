@@ -42,6 +42,7 @@ export interface NormalizedOrder {
   orderedAt: string;
   cancelledAt?: string | null;
   currency?: string | null;
-  platformSource?: string | null;
+  fulfillmentChannel?: string | null;
+  orderStatus?: string | null;
   lineItems: NormalizedLineItem[];
 }

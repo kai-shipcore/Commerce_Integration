@@ -44,6 +44,7 @@ export function mapWalmartOrders(orders: WalmartOrder[]): NormalizedOrder[] {
       orderDisplayId: order.customerOrderId,
       orderedAt,
       cancelledAt: isCancelled ? orderedAt : null,
+      orderStatus: "Shipped",
       lineItems,
     };
   });
