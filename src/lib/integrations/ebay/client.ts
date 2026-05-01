@@ -120,17 +120,14 @@ export class EbayClient {
       offset: String(offset),
     });
 
+    // eBay filter syntax uses {}, [], : — must NOT be URL-encoded via URLSearchParams
+    let filter = "";
     if (params.createdAtMin) {
-      const twoDaysAgo = new Date();
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-      const maxDate = params.createdAtMax ?? twoDaysAgo.toISOString();
-      // "creationdate" is the eBay API filter parameter name (not a typo)
-      query.set("filter", `creationdate:[${params.createdAtMin}..${maxDate}],orderfulfillmentstatus:{FULFILLED}`);
-    } else {
-      query.set("filter", "orderfulfillmentstatus:{FULFILLED}");
+      const maxDate = params.createdAtMax ?? new Date().toISOString();
+      filter = `creationdate:[${params.createdAtMin}..${maxDate}]`;
     }
 
-    const url = `${this.baseUrl}/sell/fulfillment/v1/order?${query.toString()}`;
+    const url = `${this.baseUrl}/sell/fulfillment/v1/order?${query.toString()}${filter ? `&filter=${filter}` : ""}`;
     console.log("[eBay] GET", url);
 
     const response = await fetch(url, {
@@ -152,14 +149,6 @@ export class EbayClient {
     const nextOffset = data.next && orders.length === limit ? offset + limit : null;
 
     console.log(`[eBay] Response: total=${data.total}, returned=${orders.length}, next=${data.next ?? "none"}`);
-    if (orders.length > 0) {
-      const sample = orders[0];
-      console.log("[eBay] First order:", {
-        orderId: sample.orderId,
-        creationDate: sample.creationDate,
-        lineItems: sample.lineItems.map((li) => ({ sku: li.sku ?? "(no sku)", title: li.title, qty: li.quantity })),
-      });
-    }
 
     return { orders, nextOffset };
   }

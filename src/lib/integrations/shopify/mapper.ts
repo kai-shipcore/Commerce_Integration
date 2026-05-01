@@ -1,13 +1,15 @@
 import type { NormalizedOrder } from "@/lib/integrations/core/types";
 import type { ShopifyOrder } from "@/lib/integrations/shopify/types";
 
-export function mapShopifyOrders(orders: ShopifyOrder[]): NormalizedOrder[] {
+export function mapShopifyOrders(orders: ShopifyOrder[], integrationName: string): NormalizedOrder[] {
   return orders.map((order) => ({
     externalOrderId: String(order.id),
     orderDisplayId: order.name,
     orderedAt: order.created_at,
     cancelledAt: order.cancelled_at,
-    orderStatus: "Shipped",
+    orderStatus: order.fulfillment_status ?? "shipped",
+    currency: order.currency ?? null,
+    fulfillmentChannel: integrationName,
     lineItems: order.line_items
       .filter((item) => Boolean(item.sku))
       .map((item) => ({
@@ -19,6 +21,7 @@ export function mapShopifyOrders(orders: ShopifyOrder[]): NormalizedOrder[] {
         totalAmount: parseFloat(item.price) * item.quantity,
         fulfillmentStatus: item.fulfillment_status,
         fulfilledAt: item.fulfillment_status === "fulfilled" ? order.created_at : null,
-      })),
+      }))
+      .filter((item) => item.totalAmount > 0),
   }));
 }
