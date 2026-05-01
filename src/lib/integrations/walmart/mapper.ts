@@ -1,8 +1,10 @@
 import type { NormalizedOrder } from "@/lib/integrations/core/types";
 import type { WalmartOrder } from "@/lib/integrations/walmart/types";
 
-export function mapWalmartOrders(orders: WalmartOrder[]): NormalizedOrder[] {
-  return orders.map((order) => {
+export function mapWalmartOrders(orders: WalmartOrder[], integrationName: string): NormalizedOrder[] {
+  return orders
+    .filter((order) => order.status === "Shipped" || order.status === "Delivered")
+    .map((order) => {
     const orderedAt = new Date(order.orderDate).toISOString();
     const isCancelled = order.status === "Cancelled";
 
@@ -37,14 +39,21 @@ export function mapWalmartOrders(orders: WalmartOrder[]): NormalizedOrder[] {
           fulfillmentStatus: isFulfilled ? "fulfilled" : "unfulfilled",
           fulfilledAt,
         };
-      });
+      })
+      .filter((item) => item.totalAmount > 0);
+
+    const firstCharge = (order.orderLines?.orderLine?.[0]?.charges?.charge ?? []).find(
+      (c) => c.chargeType === "PRODUCT"
+    );
 
     return {
       externalOrderId: order.purchaseOrderId,
       orderDisplayId: order.customerOrderId,
       orderedAt,
       cancelledAt: isCancelled ? orderedAt : null,
-      orderStatus: "Shipped",
+      orderStatus: order.status,
+      currency: firstCharge?.chargeAmount?.currency ?? null,
+      fulfillmentChannel: integrationName,
       lineItems,
     };
   });

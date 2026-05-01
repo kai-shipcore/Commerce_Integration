@@ -34,6 +34,7 @@ export interface ShopifyOrder {
   line_items: ShopifyLineItem[];
   total_price: string;
   subtotal_price: string;
+  currency: string | null;
   cancelled_at: string | null;
 }
 

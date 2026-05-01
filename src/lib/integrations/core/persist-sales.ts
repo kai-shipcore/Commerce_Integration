@@ -144,7 +144,7 @@ export async function persistNormalizedOrders(args: {
             updated_at           = NOW()`,
           [
             orderId,
-            order.fulfillmentChannel ? `Amazon ${order.fulfillmentChannel}` : platform,
+            platform === "amazon" && order.fulfillmentChannel ? `Amazon ${order.fulfillmentChannel}` : platform,
             lineItemId,
             masterSku,
             item.sku,

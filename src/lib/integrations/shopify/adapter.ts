@@ -108,9 +108,7 @@ export const shopifyAdapter: IntegrationAdapter = {
         createdAtMax = window.endDate;
       } else {
         if (!createdAtMin) createdAtMin = buildIncrementalStart(integration.lastSyncAt);
-        const twoDaysAgo = new Date();
-        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-        createdAtMax = twoDaysAgo.toISOString();
+        createdAtMax = new Date().toISOString();
       }
 
       let pageResult =
@@ -119,6 +117,7 @@ export const shopifyAdapter: IntegrationAdapter = {
           : await client.getOrders({
               created_at_min: createdAtMin,
               created_at_max: createdAtMax,
+              status: "any",
               fulfillment_status: "shipped",
               limit: 250,
             });
@@ -126,7 +125,7 @@ export const shopifyAdapter: IntegrationAdapter = {
       while (true) {
         if (pageResult.orders.length > 0) {
           await persistNormalizedOrders({
-            orders: mapShopifyOrders(pageResult.orders),
+            orders: mapShopifyOrders(pageResult.orders, integration.name),
             integrationId: integration.id,
             platform: "shopify",
             skuMap,

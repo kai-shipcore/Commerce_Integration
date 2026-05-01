@@ -145,9 +145,7 @@ export const ebayAdapter: IntegrationAdapter = {
         createdAtMax = window.endDate;
       } else {
         if (!createdAtMin) createdAtMin = buildIncrementalStart(integration.lastSyncAt);
-        const twoDaysAgo = new Date();
-        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-        createdAtMax = twoDaysAgo.toISOString();
+        createdAtMax = new Date().toISOString();
       }
 
       let offset = options.fullSync && syncCursor?.offset ? syncCursor.offset : 0;
@@ -165,7 +163,7 @@ export const ebayAdapter: IntegrationAdapter = {
         console.log(`[eBay sync] Page at offset ${offset}: ${orders.length} orders fetched`);
 
         if (orders.length > 0) {
-          const mapped = mapEbayOrders(orders);
+          const mapped = mapEbayOrders(orders, integration.name);
           console.log(`[eBay sync] Mapped ${mapped.length} orders, active (non-cancelled): ${mapped.filter(o => !o.cancelledAt).length}`);
           console.log(`[eBay sync] Line items with SKU: ${mapped.flatMap(o => o.lineItems).length}`);
 

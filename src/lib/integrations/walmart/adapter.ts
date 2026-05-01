@@ -117,20 +117,18 @@ export const walmartAdapter: IntegrationAdapter = {
         createdEndDate = window.endDate;
       } else {
         if (!createdStartDate) createdStartDate = buildIncrementalStart(integration.lastSyncAt);
-        const twoDaysAgo = new Date();
-        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-        createdEndDate = twoDaysAgo.toISOString();
+        createdEndDate = new Date().toISOString();
       }
 
       let pageResult =
         options.fullSync && syncCursor?.nextCursor
           ? await client.getOrdersFromCursor(syncCursor.nextCursor)
-          : await client.getOrders({ createdStartDate, createdEndDate, status: "Shipped", limit: 200 });
+          : await client.getOrders({ createdStartDate, createdEndDate, limit: 200 });
 
       while (true) {
         if (pageResult.orders.length > 0) {
           await persistNormalizedOrders({
-            orders: mapWalmartOrders(pageResult.orders),
+            orders: mapWalmartOrders(pageResult.orders, integration.name),
             integrationId: integration.id,
             platform: "walmart",
             skuMap,
