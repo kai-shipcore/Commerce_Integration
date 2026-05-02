@@ -90,7 +90,7 @@ export async function GET(
     const statsByMasterSku = new Map(salesStatRows.map((s: SalesStatRow) => [s.master_sku, s]));
 
     // Enhance collection data with sales stats
-    const enhancedMembers = collection.members.map((member) => {
+    const enhancedMembers = collection.members.map((member: (typeof collection.members)[number]) => {
       const stats = statsByMasterSku.get(member.sku.skuCode);
       return {
         ...member,
