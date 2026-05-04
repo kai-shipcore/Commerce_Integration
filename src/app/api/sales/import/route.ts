@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // Gather the full SKU set up front so missing SKUs can be created in one
     // pass instead of failing row-by-row later.
-    const skuCodes = [...new Set(rows.map((r) => r.sku_code?.trim()).filter(Boolean))];
+    const skuCodes = [...new Set(rows.map((r: Record<string, string>) => r.sku_code?.trim()).filter(Boolean))];
 
     // Look up all SKUs at once (Prisma SKU catalog)
     const existingSkus = await prisma.sKU.findMany({
@@ -70,16 +70,16 @@ export async function POST(request: NextRequest) {
       select: { id: true, skuCode: true },
     });
 
-    const skuSet = new Set(existingSkus.map((s) => s.skuCode));
+    const skuSet = new Set(existingSkus.map((s: typeof existingSkus[number]) => s.skuCode));
 
     // Find SKU codes that don't exist
-    const missingSkuCodes = skuCodes.filter((code) => !skuSet.has(code));
+    const missingSkuCodes = skuCodes.filter((code: string) => !skuSet.has(code));
     const createdSkuCodes: string[] = [];
 
     // Create missing SKUs
     if (missingSkuCodes.length > 0) {
       const newSkus = await prisma.sKU.createManyAndReturn({
-        data: missingSkuCodes.map((code) => ({
+        data: missingSkuCodes.map((code: string) => ({
           skuCode: code,
           name: code,
           currentStock: 0,
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         select: { id: true, skuCode: true },
       });
 
-      newSkus.forEach((s) => {
+      newSkus.forEach((s: typeof newSkus[number]) => {
         skuSet.add(s.skuCode);
         createdSkuCodes.push(s.skuCode);
       });
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
         results.push({ row: rowNum, sku_code: parsed.sku_code, success: true, skuCreated: createdSkuCodes.includes(skuCode) });
       } catch (error: any) {
         if (error instanceof z.ZodError) {
-          const issues = error.issues.map((i) => i.message).join(", ");
+          const issues = error.issues.map((i: { message: string }) => i.message).join(", ");
           results.push({ row: rowNum, sku_code: row.sku_code || "unknown", success: false, error: issues });
         } else {
           results.push({ row: rowNum, sku_code: row.sku_code || "unknown", success: false, error: error.message || "Unknown error" });
@@ -218,8 +218,8 @@ export async function POST(request: NextRequest) {
       await CacheManager.delete("dashboard:analytics");
     }
 
-    const successCount = results.filter((r) => r.success).length;
-    const failCount = results.filter((r) => !r.success).length;
+    const successCount = results.filter((r: ImportResult) => r.success).length;
+    const failCount = results.filter((r: ImportResult) => !r.success).length;
 
     return NextResponse.json({
       success: true,

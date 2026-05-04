@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
 
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
     const categoryRows = await prisma.$queryRawUnsafe<CategoryRow[]>(
       `SELECT DISTINCT p.category FROM shipcore.sc_products p WHERE p.category IS NOT NULL ORDER BY p.category`
     );
-    const availableCategories = categoryRows.map((r) => r.category);
+    const availableCategories = categoryRows.map((r: CategoryRow) => r.category);
 
     type CountRow = { count: bigint };
     const countResult = await prisma.$queryRawUnsafe<CountRow[]>(
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest) {
       offset
     );
 
-    const masterSkuCodes = rows.map((r) => r.master_sku);
+    const masterSkuCodes = rows.map((r: ProductRow) => r.master_sku);
     let salesMap = new Map<string, number>();
     if (masterSkuCodes.length > 0) {
       const salesRows = await prisma.$queryRawUnsafe<{ master_sku: string; qty: string }[]>(
@@ -158,7 +159,7 @@ export async function GET(request: NextRequest) {
       salesMap = new Map(salesRows.map((s: { master_sku: string; qty: string }) => [s.master_sku, parseInt(s.qty, 10)]));
     }
 
-    const data = rows.map((row) => ({
+    const data = rows.map((row: ProductRow) => ({
       id: row.master_sku,
       masterSkuCode: row.master_sku,
       skuCode: row.master_sku,
@@ -245,7 +246,7 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
 
-    const sku = await prisma.$transaction(async (tx) => {
+    const sku = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const createdSku = await tx.sKU.create({
         data: validatedData,
         include: {

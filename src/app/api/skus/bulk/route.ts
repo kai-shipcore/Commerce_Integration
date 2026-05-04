@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
 
@@ -32,8 +33,8 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
-    const existingIds = existingSKUs.map((s) => s.id);
-    const notFoundIds = ids.filter((id) => !existingIds.includes(id));
+    const existingIds = existingSKUs.map((s: typeof existingSKUs[number]) => s.id);
+    const notFoundIds = ids.filter((id: string) => !existingIds.includes(id));
 
     // Check for SKUs with variants
     const skusWithVariants = existingSKUs.filter(
@@ -45,7 +46,7 @@ export async function DELETE(request: NextRequest) {
         {
           success: false,
           error: "Some SKUs have custom variants and cannot be deleted",
-          skusWithVariants: skusWithVariants.map((s) => ({
+          skusWithVariants: skusWithVariants.map((s: typeof existingSKUs[number]) => ({
             id: s.id,
             skuCode: s.skuCode,
             variantCount: s.customVariants.length,
@@ -56,7 +57,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete all SKUs in a transaction
-    const deleteResult = await prisma.$transaction(async (tx) => {
+    const deleteResult = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Delete collection memberships first
       await tx.sKUCollectionMember.deleteMany({
         where: { skuId: { in: existingIds } },
@@ -82,7 +83,7 @@ export async function DELETE(request: NextRequest) {
 
     // Invalidate caches
     await Promise.all([
-      ...existingIds.map((id) => CacheManager.invalidateSKU(id)),
+      ...existingIds.map((id: string) => CacheManager.invalidateSKU(id)),
       CacheManager.delete("dashboard:analytics"),
       CacheManager.delete("dashboard:analytics:7d"),
       CacheManager.delete("dashboard:analytics:30d"),

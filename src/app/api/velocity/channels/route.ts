@@ -34,12 +34,12 @@ export async function GET() {
 
     const subChannels: Record<string, string[]> = {};
     if (ebaySubRes.rows.length > 0) {
-      subChannels["ebay"] = ebaySubRes.rows.map((r) => r.fulfillment_channel);
+      subChannels["ebay"] = ebaySubRes.rows.map((r: { fulfillment_channel: string }) => r.fulfillment_channel);
     }
 
     return NextResponse.json({
       success: true,
-      channels: channelsRes.rows.map((r) => r.platform_source),
+      channels: channelsRes.rows.map((r: { platform_source: string }) => r.platform_source),
       subChannels,
     });
   } catch (error) {

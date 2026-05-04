@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
 import { getVariantNames } from "@/lib/db/supabase-lookup";
@@ -83,15 +84,15 @@ export async function GET(
            AND i.is_counted_in_demand = true`,
         id
       ),
-      getVariantNames(mappingRows.map((r) => r.channel_sku)).catch(() => new Map<string, string>()),
+      getVariantNames(mappingRows.map((r: MappingRow) => r.channel_sku)).catch(() => new Map<string, string>()),
     ]);
     const salesCount = salesCountRows[0]?.count ?? 0;
 
     const inventory = {
-      onHand:    inventoryRows.reduce((s, r) => s + Number(r.on_hand_qty  ?? 0), 0),
-      available: inventoryRows.reduce((s, r) => s + Number(r.available_qty ?? 0), 0),
-      backorder: inventoryRows.reduce((s, r) => s + Number(r.backorder_qty ?? 0), 0),
-      reserved:  inventoryRows.reduce((s, r) => s + Number(r.reserved_qty  ?? 0), 0),
+      onHand:    inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.on_hand_qty  ?? 0), 0),
+      available: inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.available_qty ?? 0), 0),
+      backorder: inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.backorder_qty ?? 0), 0),
+      reserved:  inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.reserved_qty  ?? 0), 0),
     };
 
     const data = {
@@ -101,14 +102,14 @@ export async function GET(
       category:      product.category,
       status:        product.status,
       inventory,
-      inventoryByWarehouse: inventoryRows.map((r) => ({
+      inventoryByWarehouse: inventoryRows.map((r: InventoryRow) => ({
         warehouse: r.warehouse_code,
         onHand:    Number(r.on_hand_qty   ?? 0),
         available: Number(r.available_qty ?? 0),
         backorder: Number(r.backorder_qty ?? 0),
         reserved:  Number(r.reserved_qty  ?? 0),
       })),
-      webSkus: mappingRows.map((r) => ({
+      webSkus: mappingRows.map((r: MappingRow) => ({
         channelSku:  r.channel_sku,
         channel:     r.channel,
         productName: variantNameMap.get(r.channel_sku) ?? r.product_name ?? null,
@@ -178,7 +179,7 @@ export async function PATCH(
       select: { id: true },
     });
 
-    const sku = await prisma.$transaction(async (tx) => {
+    const sku = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updatedSku = await tx.sKU.update({
         where: { id },
         data: validatedData,

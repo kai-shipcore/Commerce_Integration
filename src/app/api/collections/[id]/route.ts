@@ -64,7 +64,7 @@ export async function GET(
     }
 
     // Get aggregate sales for collection members via sc_sales_order_items
-    const skuCodes = collection.members.map((m) => m.sku.skuCode);
+    const skuCodes = collection.members.map((m: (typeof collection.members)[number]) => m.sku.skuCode);
 
     type SalesStatRow = { master_sku: string; qty: string; revenue: string; cnt: string };
     let salesStatRows: SalesStatRow[] = [];
@@ -87,10 +87,10 @@ export async function GET(
       salesStatRows = rows;
     }
 
-    const statsByMasterSku = new Map(salesStatRows.map((s) => [s.master_sku, s]));
+    const statsByMasterSku = new Map(salesStatRows.map((s: SalesStatRow) => [s.master_sku, s]));
 
     // Enhance collection data with sales stats
-    const enhancedMembers = collection.members.map((member) => {
+    const enhancedMembers = collection.members.map((member: (typeof collection.members)[number]) => {
       const stats = statsByMasterSku.get(member.sku.skuCode);
       return {
         ...member,
@@ -103,10 +103,10 @@ export async function GET(
     const response = {
       ...collection,
       members: enhancedMembers,
-      totalSalesLast30Days: salesStatRows.reduce((sum, s) => sum + parseInt(s.qty, 10), 0),
-      totalRevenueLast30Days: salesStatRows.reduce((sum, s) => sum + parseFloat(s.revenue), 0),
+      totalSalesLast30Days: salesStatRows.reduce((sum: number, s: SalesStatRow) => sum + parseInt(s.qty, 10), 0),
+      totalRevenueLast30Days: salesStatRows.reduce((sum: number, s: SalesStatRow) => sum + parseFloat(s.revenue), 0),
       totalStock: collection.members.reduce(
-        (sum, m) => sum + m.sku.currentStock,
+        (sum: number, m: (typeof collection.members)[number]) => sum + m.sku.currentStock,
         0
       ),
     };
@@ -140,7 +140,7 @@ export async function PATCH(
       // Delete existing members and create new ones
       updateData.members = {
         deleteMany: {},
-        create: skuIds.map((skuId, index) => ({
+        create: skuIds.map((skuId: string, index: number) => ({
           skuId,
           sortOrder: index,
         })),

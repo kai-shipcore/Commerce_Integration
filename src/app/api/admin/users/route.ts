@@ -45,7 +45,7 @@ export async function GET() {
           dev: getDefaultVisibleMenuIds("dev"),
           user: getDefaultVisibleMenuIds("user"),
         },
-        users: users.map((user) => ({
+        users: users.map((user: typeof users[number]) => ({
           ...user,
           menuVisibility: sanitizeVisibleMenuIds(user.menuVisibility, user.role),
         })),
