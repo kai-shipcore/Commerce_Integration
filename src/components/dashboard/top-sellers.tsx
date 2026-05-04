@@ -92,7 +92,7 @@ export function TopSellers() {
         <div className="space-y-4">
           {data.map((item, index) => (
             <Link
-              key={item.sku.id}
+              key={item.sku.id ?? index}
               href={`/skus/${item.sku.id}`}
               className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
             >

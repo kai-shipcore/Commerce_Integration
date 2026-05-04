@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSalesOrders, isLookupConnectionError } from "@/lib/db/supabase-lookup";
+import { getSalesOrdersPrimary } from "@/lib/db/primary-db";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -13,31 +13,22 @@ export async function GET(request: NextRequest) {
     const exportAll = searchParams.get("exportAll") === "true";
     const search = searchParams.get("search") || "";
     const platformSource = searchParams.get("platformSource") || "all";
+    const orderStatus = searchParams.get("orderStatus") || "all";
     const startDate = searchParams.get("startDate") || "";
     const endDate = searchParams.get("endDate") || "";
     const sortBy = searchParams.get("sortBy") || "orderDate";
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
-    const result = await getSalesOrders({
+    const result = await getSalesOrdersPrimary({
       page,
       limit,
       exportAll,
       search,
       platformSource,
+      orderStatus,
       startDate,
       endDate,
-      sortBy: sortBy as
-        | "orderDate"
-        | "orderNumber"
-        | "platformSource"
-        | "orderStatus"
-        | "financialStatus"
-        | "totalPrice"
-        | "lineCount"
-        | "unitCount"
-        | "salesChannel"
-        | "shippingCountry"
-        | "buyerEmail",
+      sortBy,
       sortOrder,
     });
 
@@ -46,6 +37,7 @@ export async function GET(request: NextRequest) {
       data: result.rows,
       summary: result.summary,
       platformSources: result.platformSources,
+      orderStatuses: result.orderStatuses,
       pagination: {
         page,
         limit,
@@ -55,28 +47,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error("Error fetching sales orders:", error);
-
-    if (isLookupConnectionError(error)) {
-      return NextResponse.json({
-        success: true,
-        data: [],
-        summary: {
-          totalOrders: 0,
-          totalRevenue: 0,
-          totalUnits: 0,
-          totalPlatforms: 0,
-        },
-        platformSources: [],
-        pagination: {
-          page: 1,
-          limit: 20,
-          total: 0,
-          totalPages: 0,
-        },
-        degraded: true,
-      });
-    }
-
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
       { status: 500 }

@@ -131,6 +131,7 @@ export interface SalesOrdersQueryOptions {
   exportAll?: boolean;
   search?: string;
   platformSource?: string;
+  orderStatus?: string;
   startDate?: string;
   endDate?: string;
   sortBy?:
@@ -152,6 +153,7 @@ export interface SalesOrdersQueryResult {
   rows: SalesOrderRow[];
   totalRows: number;
   platformSources: string[];
+  orderStatuses: string[];
   summary: {
     totalOrders: number;
     totalRevenue: number;
@@ -584,6 +586,12 @@ export async function getSalesOrders(
       filters.push(`so.platform_source::text = $${params.length}`);
     }
 
+    const orderStatus = options.orderStatus?.trim() ?? "";
+    if (orderStatus && orderStatus !== "all") {
+      params.push(orderStatus);
+      filters.push(`so.order_status = $${params.length}`);
+    }
+
     if (startDate) {
       params.push(startDate);
       filters.push(`so.order_date >= $${params.length}::date`);
@@ -621,6 +629,13 @@ export async function getSalesOrders(
       `SELECT DISTINCT platform_source::text AS platform_source
        FROM ecommerce_data.sales_orders
        ORDER BY platform_source::text ASC`
+    );
+
+    const orderStatusResult = await client.query<{ order_status: string }>(
+      `SELECT DISTINCT order_status
+       FROM ecommerce_data.sales_orders
+       WHERE order_status IS NOT NULL
+       ORDER BY order_status ASC`
     );
 
     const queryParams = options.exportAll ? [...params] : [...params, limit, offset];
@@ -701,6 +716,7 @@ export async function getSalesOrders(
       })),
       totalRows: Number(summary?.total_orders ?? 0),
       platformSources: platformResult.rows.map((row) => row.platform_source),
+      orderStatuses: orderStatusResult.rows.map((row) => row.order_status),
       summary: {
         totalOrders: Number(summary?.total_orders ?? 0),
         totalRevenue: Number(summary?.total_revenue ?? 0),

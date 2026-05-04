@@ -11,10 +11,6 @@ export type OrderTableRow = {
   externalOrderId: string | null;
   orderDate: string | null;
   orderStatus: string | null;
-  financialStatus: string | null;
-  salesChannel: string | null;
-  shippingCountry: string | null;
-  buyerEmail: string | null;
   totalPrice: number;
   currency: string | null;
   lineCount: number;
@@ -83,15 +79,6 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
       ),
     },
     {
-      accessorKey: "financialStatus",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Financial" />
-      ),
-      cell: ({ row }) => (
-        <div className="text-sm">{row.original.financialStatus || "-"}</div>
-      ),
-    },
-    {
       accessorKey: "lineCount",
       header: ({ column }) => (
         <DataTableColumnHeader
@@ -133,37 +120,6 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
       cell: ({ row }) => (
         <div className="w-full text-right font-medium tabular-nums">
           {formatCurrency(row.original.totalPrice, row.original.currency)}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "salesChannel",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Sales Channel" />
-      ),
-      cell: ({ row }) => (
-        <div className="text-sm text-muted-foreground">
-          {row.original.salesChannel || "-"}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "shippingCountry",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Country" />
-      ),
-      cell: ({ row }) => (
-        <div className="text-sm">{row.original.shippingCountry || "-"}</div>
-      ),
-    },
-    {
-      accessorKey: "buyerEmail",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Buyer" />
-      ),
-      cell: ({ row }) => (
-        <div className="max-w-[220px] truncate text-sm text-muted-foreground">
-          {row.original.buyerEmail || "-"}
         </div>
       ),
     },

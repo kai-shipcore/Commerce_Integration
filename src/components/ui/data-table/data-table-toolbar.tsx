@@ -41,7 +41,7 @@ export function DataTableToolbar<TData>({
           placeholder={searchPlaceholder}
           value={globalFilter}
           onChange={(event) => setGlobalFilter(event.target.value)}
-          className="h-8 w-[150px] lg:w-[250px]"
+          className="h-8 w-[220px] lg:w-[380px]"
         />
         {filterableColumns.map((column) => {
           const tableColumn = table.getColumn(column.id);

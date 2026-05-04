@@ -18,18 +18,13 @@ import {
 
 export interface OrderDetailItem {
   id: number;
-  sku: string | null;
+  masterSku: string | null;
+  channelSku: string | null;
   productName: string | null;
   quantity: number;
-  netQuantity: number;
-  fulfilledQuantity: number;
-  refundedQuantity: number;
   unitPrice: number;
-  shippingPrice: number;
-  itemTax: number;
-  itemStatus: string | null;
+  lineTotal: number;
   fulfillmentStatus: string | null;
-  currency: string | null;
 }
 
 export interface OrderDetail {
@@ -39,13 +34,10 @@ export interface OrderDetail {
   externalOrderId: string | null;
   orderDate: string | null;
   orderStatus: string | null;
-  financialStatus: string | null;
   totalPrice: number;
   currency: string | null;
-  buyerEmail: string | null;
-  shippingCountry: string | null;
   fulfillmentChannel: string | null;
-  salesChannel: string | null;
+  cancelledAt: string | null;
   lineItems: OrderDetailItem[];
 }
 
@@ -93,7 +85,7 @@ export function OrderDetailDialog({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-3">
               <Card>
                 <CardHeader className="pb-2">
                   <CardDescription>Platform</CardDescription>
@@ -114,43 +106,19 @@ export function OrderDetailDialog({
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Financial</CardDescription>
+                  <CardDescription>Total</CardDescription>
                   <CardTitle className="text-base">
-                    {order.financialStatus || "-"}
+                    {formatCurrency(order.totalPrice, order.currency)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  {formatCurrency(order.totalPrice, order.currency)}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardDescription>Buyer</CardDescription>
-                  <CardTitle className="truncate text-base">
-                    {order.buyerEmail || "-"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {order.shippingCountry || "No shipping country"}
+                  {order.fulfillmentChannel ? `Fulfillment: ${order.fulfillmentChannel}` : ""}
+                  {order.cancelledAt
+                    ? ` · Cancelled ${new Date(order.cancelledAt).toLocaleDateString()}`
+                    : ""}
                 </CardContent>
               </Card>
             </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Order Context</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm md:grid-cols-2">
-                <div>
-                  <span className="text-muted-foreground">Sales channel:</span>{" "}
-                  {order.salesChannel || "-"}
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Fulfillment channel:</span>{" "}
-                  {order.fulfillmentChannel || "-"}
-                </div>
-              </CardContent>
-            </Card>
 
             <Card>
               <CardHeader>
@@ -168,26 +136,28 @@ export function OrderDetailDialog({
                   ) : (
                     order.lineItems.map((item) => (
                       <div key={item.id} className="rounded-lg border p-4">
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           <div className="min-w-0">
                             <div className="font-medium">
                               {item.productName || "Untitled item"}
                             </div>
-                            <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                              {item.sku || "-"}
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {item.itemStatus ? (
-                                <Badge variant="secondary">{item.itemStatus}</Badge>
-                              ) : null}
-                              {item.fulfillmentStatus ? (
-                                <Badge variant="outline">
-                                  {item.fulfillmentStatus}
-                                </Badge>
-                              ) : null}
-                            </div>
+                            {item.channelSku && (
+                              <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                                {item.channelSku}
+                              </div>
+                            )}
+                            {item.masterSku && item.masterSku !== item.channelSku && (
+                              <div className="mt-0.5 break-all font-mono text-xs text-muted-foreground/60">
+                                Master: {item.masterSku}
+                              </div>
+                            )}
+                            {item.fulfillmentStatus && (
+                              <div className="mt-2">
+                                <Badge variant="outline">{item.fulfillmentStatus}</Badge>
+                              </div>
+                            )}
                           </div>
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                          <div className="grid grid-cols-3 gap-3">
                             <div className="rounded-md bg-muted/40 px-3 py-2">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground">
                                 Qty
@@ -198,34 +168,18 @@ export function OrderDetailDialog({
                             </div>
                             <div className="rounded-md bg-muted/40 px-3 py-2">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                Net
-                              </div>
-                              <div className="mt-1 text-right font-medium tabular-nums">
-                                {item.netQuantity.toLocaleString()}
-                              </div>
-                            </div>
-                            <div className="rounded-md bg-muted/40 px-3 py-2">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                Fulfilled
-                              </div>
-                              <div className="mt-1 text-right font-medium tabular-nums">
-                                {item.fulfilledQuantity.toLocaleString()}
-                              </div>
-                            </div>
-                            <div className="rounded-md bg-muted/40 px-3 py-2">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                Refunded
-                              </div>
-                              <div className="mt-1 text-right font-medium tabular-nums">
-                                {item.refundedQuantity.toLocaleString()}
-                              </div>
-                            </div>
-                            <div className="rounded-md bg-muted/40 px-3 py-2 sm:col-span-2 xl:col-span-1">
-                              <div className="text-xs uppercase tracking-wide text-muted-foreground">
                                 Unit Price
                               </div>
                               <div className="mt-1 text-right font-medium tabular-nums">
-                                {formatCurrency(item.unitPrice, item.currency)}
+                                {formatCurrency(item.unitPrice, order.currency)}
+                              </div>
+                            </div>
+                            <div className="rounded-md bg-muted/40 px-3 py-2">
+                              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                                Line Total
+                              </div>
+                              <div className="mt-1 text-right font-medium tabular-nums">
+                                {formatCurrency(item.lineTotal, order.currency)}
                               </div>
                             </div>
                           </div>

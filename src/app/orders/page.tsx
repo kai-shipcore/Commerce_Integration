@@ -75,6 +75,8 @@ export default function OrdersPage() {
   const [summary, setSummary] = useState<OrdersSummary | null>(null);
   const [platformSources, setPlatformSources] = useState<string[]>([]);
   const [platformFilter, setPlatformFilter] = useState("all");
+  const [orderStatuses, setOrderStatuses] = useState<string[]>([]);
+  const [orderStatusFilter, setOrderStatusFilter] = useState("all");
   const [datePreset, setDatePreset] = useState<OrderDatePreset>("today");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
     undefined
@@ -116,6 +118,7 @@ export default function OrdersPage() {
     params.set("sortOrder", sorting.sortOrder);
     if (search) params.set("search", search);
     if (platformFilter !== "all") params.set("platformSource", platformFilter);
+    if (orderStatusFilter !== "all") params.set("orderStatus", orderStatusFilter);
     if (activeDateRange?.from) {
       params.set("startDate", format(activeDateRange.from, "yyyy-MM-dd"));
     }
@@ -131,6 +134,7 @@ export default function OrdersPage() {
           setFilteredRows(result.data);
           setSummary(result.summary);
           setPlatformSources(result.platformSources || []);
+          setOrderStatuses(result.orderStatuses || []);
           setTotalRows(result.pagination.total);
           setPageCount(result.pagination.totalPages);
         } else {
@@ -144,7 +148,7 @@ export default function OrdersPage() {
         setHasLoadedOnce(true);
         setLoading(false);
       });
-  }, [pagination, sorting, search, platformFilter, activeDateRange]);
+  }, [pagination, sorting, search, platformFilter, orderStatusFilter, activeDateRange]);
 
   useEffect(() => {
     fetchOrders();
@@ -227,6 +231,7 @@ export default function OrdersPage() {
       params.set("sortOrder", sorting.sortOrder);
       if (search) params.set("search", search);
       if (platformFilter !== "all") params.set("platformSource", platformFilter);
+      if (orderStatusFilter !== "all") params.set("orderStatus", orderStatusFilter);
       if (activeDateRange?.from) {
         params.set("startDate", format(activeDateRange.from, "yyyy-MM-dd"));
       }
@@ -251,10 +256,6 @@ export default function OrdersPage() {
         "External Order ID",
         "Order Date",
         "Order Status",
-        "Financial Status",
-        "Sales Channel",
-        "Buyer Email",
-        "Shipping Country",
         "Line Count",
         "Unit Count",
         "Currency",
@@ -268,10 +269,6 @@ export default function OrdersPage() {
         row.externalOrderId || "",
         row.orderDate ? new Date(row.orderDate).toISOString() : "",
         row.orderStatus || "",
-        row.financialStatus || "",
-        row.salesChannel || "",
-        row.buyerEmail || "",
-        row.shippingCountry || "",
         row.lineCount.toString(),
         row.unitCount.toString(),
         row.currency || "",
@@ -365,7 +362,7 @@ export default function OrdersPage() {
                 );
               }}
             >
-              <SelectTrigger className="w-[220px]">
+              <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="All platforms" />
               </SelectTrigger>
               <SelectContent>
@@ -373,6 +370,29 @@ export default function OrdersPage() {
                 {platformSources.map((platform) => (
                   <SelectItem key={platform} value={platform}>
                     {platform}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={orderStatusFilter}
+              onValueChange={(value) => {
+                setOrderStatusFilter((current) =>
+                  current === value ? current : value
+                );
+                setPagination((current) =>
+                  current.page === 1 ? current : { ...current, page: 1 }
+                );
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {orderStatuses.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status}
                   </SelectItem>
                 ))}
               </SelectContent>
