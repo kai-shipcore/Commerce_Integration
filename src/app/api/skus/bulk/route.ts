@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
 
@@ -56,7 +57,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete all SKUs in a transaction
-    const deleteResult = await prisma.$transaction(async (tx) => {
+    const deleteResult = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Delete collection memberships first
       await tx.sKUCollectionMember.deleteMany({
         where: { skuId: { in: existingIds } },

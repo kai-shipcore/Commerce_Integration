@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
 import { getVariantNames } from "@/lib/db/supabase-lookup";
@@ -178,7 +179,7 @@ export async function PATCH(
       select: { id: true },
     });
 
-    const sku = await prisma.$transaction(async (tx) => {
+    const sku = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updatedSku = await tx.sKU.update({
         where: { id },
         data: validatedData,
