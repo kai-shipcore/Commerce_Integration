@@ -100,7 +100,6 @@ export class AmazonClient {
 
     url.searchParams.set("MarketplaceIds", this.config.marketplaceId);
     url.searchParams.set("MaxResultsPerPage", "100");
-    url.searchParams.set("OrderStatuses", "Shipped");
 
     if (params.createdAfter)
       url.searchParams.set("CreatedAfter", params.createdAfter);

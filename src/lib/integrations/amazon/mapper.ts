@@ -23,7 +23,6 @@ export function mapAmazonOrders(
           fulfilledAt: order.OrderStatus === "Shipped" ? order.LastUpdateDate : null,
         };
       })
-      .filter((item) => item.totalAmount > 0);
 
     if (lineItems.length === 0) return [];
 

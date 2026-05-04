@@ -22,6 +22,5 @@ export function mapShopifyOrders(orders: ShopifyOrder[], integrationName: string
         fulfillmentStatus: item.fulfillment_status,
         fulfilledAt: item.fulfillment_status === "fulfilled" ? order.created_at : null,
       }))
-      .filter((item) => item.totalAmount > 0),
   }));
 }

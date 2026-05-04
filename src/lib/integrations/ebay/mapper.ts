@@ -3,7 +3,6 @@ import type { EbayOrder } from "@/lib/integrations/ebay/types";
 
 export function mapEbayOrders(orders: EbayOrder[], integrationName: string): NormalizedOrder[] {
   return orders
-    .filter((order) => order.orderFulfillmentStatus === "FULFILLED")
     .map((order) => ({
       externalOrderId: order.orderId,
       orderDisplayId: order.orderId,
@@ -32,7 +31,6 @@ export function mapEbayOrders(orders: EbayOrder[], integrationName: string): Nor
             fulfilledAt: isFulfilled ? (item.deliveredDate ?? order.creationDate) : null,
           };
         })
-        .filter((item) => item.totalAmount > 0),
     }));
 }
 

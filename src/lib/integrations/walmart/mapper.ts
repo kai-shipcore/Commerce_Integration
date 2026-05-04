@@ -9,7 +9,6 @@ function isLineShipped(line: WalmartOrder["orderLines"]["orderLine"][number]): b
 
 export function mapWalmartOrders(orders: WalmartOrder[], integrationName: string): NormalizedOrder[] {
   return orders
-    .filter((order) => (order.orderLines?.orderLine ?? []).some(isLineShipped))
     .map((order) => {
       const orderedAt = new Date(order.orderDate).toISOString();
 
@@ -44,7 +43,6 @@ export function mapWalmartOrders(orders: WalmartOrder[], integrationName: string
             fulfilledAt,
           };
         })
-        .filter((item) => item.totalAmount > 0);
 
       const firstCharge = (order.orderLines?.orderLine?.[0]?.charges?.charge ?? []).find(
         (c) => c.chargeType === "PRODUCT"
