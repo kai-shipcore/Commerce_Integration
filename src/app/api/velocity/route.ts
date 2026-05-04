@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -44,6 +45,8 @@ export async function GET(request: NextRequest) {
       "i.is_counted_in_demand = true",
       "i.master_sku IS NOT NULL",
       "o.order_date >= NOW() - INTERVAL '90 days'",
+      "i.fulfillment_status = 'fulfilled'",
+      "i.line_total > 0",
     ];
 
     if (platformSource) {
@@ -116,12 +119,45 @@ export async function GET(request: NextRequest) {
     const total = Number(dataRes.rows[0]?.total_count ?? 0);
     const t = totalsRes.rows[0];
 
+    // Secondary lookup: primary master_sku → channel_sku → Supabase master_sku
+    const pageMasterSkus = dataRes.rows.map((r) => r.master_sku);
+    let customMasterSkuMap = new Map<string, string>(); // primary master_sku → supabase master_sku
+    if (pageMasterSkus.length > 0) {
+      const channelSkuRes = await pool.query<{ master_sku: string; channel_sku: string }>(
+        `SELECT DISTINCT master_sku, channel_sku
+         FROM shipcore.sc_sales_order_items
+         WHERE master_sku = ANY($1)
+           AND channel_sku IS NOT NULL`,
+        [pageMasterSkus]
+      );
+      // Build master_sku → first channel_sku mapping
+      const masterToChannelSkus = new Map<string, string[]>();
+      for (const row of channelSkuRes.rows) {
+        const arr = masterToChannelSkus.get(row.master_sku) ?? [];
+        arr.push(row.channel_sku);
+        masterToChannelSkus.set(row.master_sku, arr);
+      }
+      const allChannelSkus = channelSkuRes.rows.map((r) => r.channel_sku);
+      const supabaseMap = await lookupMasterSkusByOrderSkus(allChannelSkus);
+
+      for (const [masterSku, channelSkus] of masterToChannelSkus) {
+        for (const cSku of channelSkus) {
+          const found = supabaseMap.get(cSku);
+          if (found) {
+            customMasterSkuMap.set(masterSku, found);
+            break;
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: dataRes.rows.map((r: (typeof dataRes.rows)[number]) => ({
         masterSku: r.master_sku,
         qty90d: r.qty_90d, qty60d: r.qty_60d, qty30d: r.qty_30d,
         qty15d: r.qty_15d, qty7d: r.qty_7d,
+        customMasterSku: customMasterSkuMap.get(r.master_sku) ?? null,
       })),
       totals: {
         qty90d: Number(t?.total_90d ?? 0),

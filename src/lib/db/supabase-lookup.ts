@@ -858,3 +858,23 @@ export async function getSalesOrderDetail(
     client.release();
   }
 }
+
+export async function lookupMasterSkusByOrderSkus(
+  channelSkus: string[]
+): Promise<Map<string, string>> {
+  if (!channelSkus.length) return new Map();
+  const pool = getLookupPool();
+  if (!pool) return new Map();
+  try {
+    const res = await pool.query<{ order_sku: string; master_sku: string }>(
+      `SELECT DISTINCT ON (order_sku) order_sku, master_sku
+       FROM ecommerce_data.vw_sales_order_items
+       WHERE order_sku = ANY($1)
+         AND master_sku IS NOT NULL`,
+      [channelSkus]
+    );
+    return new Map(res.rows.map((r) => [r.order_sku, r.master_sku]));
+  } catch {
+    return new Map();
+  }
+}
