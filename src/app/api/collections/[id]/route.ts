@@ -103,10 +103,10 @@ export async function GET(
     const response = {
       ...collection,
       members: enhancedMembers,
-      totalSalesLast30Days: salesStatRows.reduce((sum, s) => sum + parseInt(s.qty, 10), 0),
-      totalRevenueLast30Days: salesStatRows.reduce((sum, s) => sum + parseFloat(s.revenue), 0),
+      totalSalesLast30Days: salesStatRows.reduce((sum: number, s: SalesStatRow) => sum + parseInt(s.qty, 10), 0),
+      totalRevenueLast30Days: salesStatRows.reduce((sum: number, s: SalesStatRow) => sum + parseFloat(s.revenue), 0),
       totalStock: collection.members.reduce(
-        (sum, m) => sum + m.sku.currentStock,
+        (sum: number, m: (typeof collection.members)[number]) => sum + m.sku.currentStock,
         0
       ),
     };

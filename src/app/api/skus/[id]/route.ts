@@ -88,10 +88,10 @@ export async function GET(
     const salesCount = salesCountRows[0]?.count ?? 0;
 
     const inventory = {
-      onHand:    inventoryRows.reduce((s, r) => s + Number(r.on_hand_qty  ?? 0), 0),
-      available: inventoryRows.reduce((s, r) => s + Number(r.available_qty ?? 0), 0),
-      backorder: inventoryRows.reduce((s, r) => s + Number(r.backorder_qty ?? 0), 0),
-      reserved:  inventoryRows.reduce((s, r) => s + Number(r.reserved_qty  ?? 0), 0),
+      onHand:    inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.on_hand_qty  ?? 0), 0),
+      available: inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.available_qty ?? 0), 0),
+      backorder: inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.backorder_qty ?? 0), 0),
+      reserved:  inventoryRows.reduce((s: number, r: InventoryRow) => s + Number(r.reserved_qty  ?? 0), 0),
     };
 
     const data = {
