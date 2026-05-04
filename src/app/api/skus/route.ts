@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
       offset
     );
 
-    const masterSkuCodes = rows.map((r) => r.master_sku);
+    const masterSkuCodes = rows.map((r: ProductRow) => r.master_sku);
     let salesMap = new Map<string, number>();
     if (masterSkuCodes.length > 0) {
       const salesRows = await prisma.$queryRawUnsafe<{ master_sku: string; qty: string }[]>(

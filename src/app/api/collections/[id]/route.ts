@@ -140,7 +140,7 @@ export async function PATCH(
       // Delete existing members and create new ones
       updateData.members = {
         deleteMany: {},
-        create: skuIds.map((skuId, index) => ({
+        create: skuIds.map((skuId: string, index: number) => ({
           skuId,
           sortOrder: index,
         })),

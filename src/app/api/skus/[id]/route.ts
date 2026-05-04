@@ -83,7 +83,7 @@ export async function GET(
            AND i.is_counted_in_demand = true`,
         id
       ),
-      getVariantNames(mappingRows.map((r) => r.channel_sku)).catch(() => new Map<string, string>()),
+      getVariantNames(mappingRows.map((r: MappingRow) => r.channel_sku)).catch(() => new Map<string, string>()),
     ]);
     const salesCount = salesCountRows[0]?.count ?? 0;
 

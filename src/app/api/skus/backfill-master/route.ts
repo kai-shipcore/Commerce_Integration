@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         `SELECT DISTINCT channel_sku FROM shipcore.sc_sales_order_items WHERE master_sku IS NULL AND channel_sku IS NOT NULL`
       );
 
-      const channelSkus = nullSkuRows.map((r) => r.channel_sku);
+      const channelSkus = nullSkuRows.map((r: { channel_sku: string }) => r.channel_sku);
       console.log(`Found ${channelSkus.length} distinct channel SKUs needing master SKU`);
 
       // Process in batches

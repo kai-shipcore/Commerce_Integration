@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         ...collectionData,
         members: skuIds
           ? {
-              create: skuIds.map((skuId, index) => ({
+              create: skuIds.map((skuId: string, index: number) => ({
                 skuId,
                 sortOrder: index,
               })),
