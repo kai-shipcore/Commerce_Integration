@@ -12,6 +12,7 @@ export type VelocityRow = {
   qty30d: number;
   qty15d: number;
   qty7d: number;
+  customMasterSku?: string | null;
   isTotal?: boolean;
 };
 
@@ -110,6 +111,32 @@ export function createSalesSalesColumns(): ColumnDef<VelocityRow>[] {
       id: "customSales",
       header: "Custom Sales",
       columns: [
+        {
+          id: "cs_master_sku",
+          header: () => (
+            <div className="pl-6 border-l-2 border-border text-xs font-medium text-muted-foreground">
+              Master SKU
+            </div>
+          ),
+          cell: ({ row }: { row: { original: VelocityRow } }) => {
+            const cSku = row.original.customMasterSku;
+            const isDifferent = cSku && cSku !== row.original.masterSku;
+            return (
+              <div className="pl-6 border-l-2 border-border">
+                {row.original.isTotal ? (
+                  <span className="font-semibold text-xs">Total</span>
+                ) : cSku ? (
+                  <span className={cn("font-mono text-xs", isDifferent && "text-amber-500 font-medium")}>
+                    {cSku}
+                  </span>
+                ) : (
+                  <PlaceholderCell />
+                )}
+              </div>
+            );
+          },
+          enableSorting: false,
+        } as ColumnDef<VelocityRow>,
         makePlaceholderCol("cs_90d", "90 D"),
         makePlaceholderCol("cs_60d", "60 D"),
         makePlaceholderCol("cs_30d", "30 D"),
