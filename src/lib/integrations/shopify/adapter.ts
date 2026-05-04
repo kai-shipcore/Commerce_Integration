@@ -118,7 +118,6 @@ export const shopifyAdapter: IntegrationAdapter = {
               created_at_min: createdAtMin,
               created_at_max: createdAtMax,
               status: "any",
-              fulfillment_status: "shipped",
               limit: 250,
             });
 
