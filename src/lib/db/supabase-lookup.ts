@@ -26,10 +26,7 @@ export function getLookupPool(): Pool | null {
   if (!lookupPool) {
     lookupPool = new Pool({
       connectionString,
-      ssl:
-        process.env.NODE_ENV === "production"
-          ? { rejectUnauthorized: true }
-          : { rejectUnauthorized: false },
+      ssl: { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: LOOKUP_CONNECTION_TIMEOUT_MS,
