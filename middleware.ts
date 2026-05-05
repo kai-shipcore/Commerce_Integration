@@ -15,7 +15,7 @@ export async function middleware(req: NextRequest) {
   });
 
   // Public routes that don't require authentication
-  const publicRoutes = ["/auth/signin", "/auth/signup", "/auth/error", "/api/auth"];
+  const publicRoutes = ["/auth/signin", "/auth/signup", "/auth/forgot-password", "/auth/reset-password", "/auth/error", "/api/auth"];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
   const isAuthPage =
     pathname.startsWith("/auth/signin") || pathname.startsWith("/auth/signup");

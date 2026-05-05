@@ -140,14 +140,7 @@ export function sanitizeVisibleMenuIds(
     filtered.unshift("products");
   }
 
-  // Auto-include any newly added default-visible items not yet in stored preferences.
-  for (const id of defaultVisibleMenuIds) {
-    if (!filtered.includes(id)) {
-      filtered.push(id);
-    }
-  }
-
-  return filtered.length > 0 ? filtered : defaultVisibleMenuIds;
+  return filtered;
 }
 
 export function getDefaultLandingPath(
