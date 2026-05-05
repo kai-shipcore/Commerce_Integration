@@ -146,7 +146,7 @@ function ComingSoon({ label }: { label: string }) {
 
 // ─── main page ────────────────────────────────────────────────────────────────
 
-const LINK_SALES_PARAMS: Record<string, string> = {};
+const LINK_SALES_PARAMS: Record<string, string> = { platformSource: "shopify" };
 
 export default function VelocityPage() {
   const [channels, setChannels] = useState<string[]>([]);

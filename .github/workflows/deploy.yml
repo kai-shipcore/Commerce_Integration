@@ -18,6 +18,18 @@ jobs:
           script: |
             cd /home/coverland/app
             git pull origin main
+            printf 'DATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' > .env
+            printf 'SUPABASE_LOOKUP_DATABASE_URL=%s\n' '${{ secrets.SUPABASE_LOOKUP_DATABASE_URL }}' >> .env
+            printf 'NEXTAUTH_SECRET=%s\n' '${{ secrets.NEXTAUTH_SECRET }}' >> .env
+            printf 'NEXTAUTH_URL=%s\n' '${{ secrets.NEXTAUTH_URL }}' >> .env
+            printf 'NEXT_PUBLIC_APP_URL=%s\n' '${{ secrets.NEXT_PUBLIC_APP_URL }}' >> .env
+            printf 'GOOGLE_CLIENT_ID=%s\n' '${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
+            printf 'GOOGLE_CLIENT_SECRET=%s\n' '${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
+            printf 'EBAY_CLIENT_ID=%s\n' '${{ secrets.EBAY_CLIENT_ID }}' >> .env
+            printf 'EBAY_CLIENT_SECRET=%s\n' '${{ secrets.EBAY_CLIENT_SECRET }}' >> .env
+            printf 'EBAY_REDIRECT_URI=%s\n' '${{ secrets.EBAY_REDIRECT_URI }}' >> .env
+            printf 'EBAY_RUNAME=%s\n' '${{ secrets.EBAY_RUNAME }}' >> .env
+            printf 'NODE_ENV=production\n' >> .env
             npm install
             npx prisma generate
             npm run build
