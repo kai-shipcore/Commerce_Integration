@@ -72,10 +72,7 @@ function getPlatformIntegrationPool() {
   if (!platformIntegrationPool) {
     platformIntegrationPool = new Pool({
       connectionString,
-      ssl:
-        process.env.NODE_ENV === "production"
-          ? { rejectUnauthorized: true }
-          : { rejectUnauthorized: false },
+      ssl: { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: PLATFORM_INTEGRATION_CONNECTION_TIMEOUT_MS,
