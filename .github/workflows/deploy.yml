@@ -17,7 +17,9 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           script: |
             cd /home/coverland/app
-            git pull origin main
+            git fetch origin
+            git checkout main
+            git reset --hard origin/main
             npm install
             npx prisma generate
             npm run build
