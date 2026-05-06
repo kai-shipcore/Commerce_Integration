@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
+import { getCustomSalesVelocity, getLinkSalesVelocity, lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -25,8 +25,9 @@ const VALID_SORT_COLS = {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const isExport = searchParams.get("export") === "1";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "100", 10)));
+    const limit = isExport ? 10000 : Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "100", 10)));
     const offset = (page - 1) * limit;
     const search = searchParams.get("search")?.trim() ?? "";
     const platformSource = searchParams.get("platformSource")?.trim() ?? "";
@@ -37,6 +38,57 @@ export async function GET(request: NextRequest) {
       sortByKey in VALID_SORT_COLS
         ? VALID_SORT_COLS[sortByKey as keyof typeof VALID_SORT_COLS]
         : "qty_90d";
+    const source = searchParams.get("source")?.trim() ?? "";
+
+    if (source === "link") {
+      const result = await getLinkSalesVelocity({ search, sortCol, sortOrder, limit, offset });
+      const total = Number(result.rows[0]?.total_count ?? 0);
+      const t = result.totals;
+      return NextResponse.json({
+        success: true,
+        data: result.rows.map((r) => ({
+          masterSku: r.master_sku,
+          qty90d: r.qty_90d, qty60d: r.qty_60d, qty30d: r.qty_30d,
+          qty15d: r.qty_15d, qty7d: r.qty_7d,
+          customMasterSku: null,
+          customQty90d: null, customQty60d: null, customQty30d: null,
+          customQty15d: null, customQty7d: null,
+        })),
+        totals: {
+          qty90d: Number(t?.total_90d ?? 0),
+          qty60d: Number(t?.total_60d ?? 0),
+          qty30d: Number(t?.total_30d ?? 0),
+          qty15d: Number(t?.total_15d ?? 0),
+          qty7d:  Number(t?.total_7d  ?? 0),
+          skuCount: Number(t?.sku_count ?? 0),
+        },
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    }
+
+    if (source === "custom") {
+      const result = await getCustomSalesVelocity({ search, sortCol, sortOrder, limit, offset });
+      const total = Number(result.rows[0]?.total_count ?? 0);
+      const t = result.totals;
+      return NextResponse.json({
+        success: true,
+        data: result.rows.map((r) => ({
+          masterSku: r.master_sku,
+          qty90d: r.qty_90d, qty60d: r.qty_60d, qty30d: r.qty_30d,
+          qty15d: r.qty_15d, qty7d: r.qty_7d,
+          customMasterSku: null,
+        })),
+        totals: {
+          qty90d: Number(t?.total_90d ?? 0),
+          qty60d: Number(t?.total_60d ?? 0),
+          qty30d: Number(t?.total_30d ?? 0),
+          qty15d: Number(t?.total_15d ?? 0),
+          qty7d:  Number(t?.total_7d  ?? 0),
+          skuCount: Number(t?.sku_count ?? 0),
+        },
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    }
 
     const pool = getPrimaryPool();
 

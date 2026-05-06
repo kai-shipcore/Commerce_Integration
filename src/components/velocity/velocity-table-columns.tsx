@@ -13,6 +13,11 @@ export type VelocityRow = {
   qty15d: number;
   qty7d: number;
   customMasterSku?: string | null;
+  customQty90d?: number | null;
+  customQty60d?: number | null;
+  customQty30d?: number | null;
+  customQty15d?: number | null;
+  customQty7d?: number | null;
   isTotal?: boolean;
 };
 
@@ -70,11 +75,22 @@ function makeQtyCol(
   };
 }
 
-function makePlaceholderCol(id: string, label: string): ColumnDef<VelocityRow> {
+function makeCustomQtyCol(
+  key: keyof Pick<VelocityRow, "customQty90d" | "customQty60d" | "customQty30d" | "customQty15d" | "customQty7d">,
+  label: string
+): ColumnDef<VelocityRow> {
   return {
-    id,
-    header: () => <div className="text-right text-muted-foreground/60">{label}</div>,
-    cell: () => <div className="text-right"><PlaceholderCell /></div>,
+    id: key,
+    header: () => <div className="text-right text-xs font-medium text-muted-foreground">{label}</div>,
+    cell: ({ row }) => (
+      <div className="text-right">
+        {row.original[key] != null ? (
+          <QtyCell value={row.original[key] as number} isTotal={row.original.isTotal} />
+        ) : (
+          <PlaceholderCell />
+        )}
+      </div>
+    ),
     enableSorting: false,
   };
 }
@@ -137,11 +153,11 @@ export function createSalesSalesColumns(): ColumnDef<VelocityRow>[] {
           },
           enableSorting: false,
         } as ColumnDef<VelocityRow>,
-        makePlaceholderCol("cs_90d", "90 D"),
-        makePlaceholderCol("cs_60d", "60 D"),
-        makePlaceholderCol("cs_30d", "30 D"),
-        makePlaceholderCol("cs_15d", "15 D"),
-        makePlaceholderCol("cs_7d",  "7 D"),
+        makeCustomQtyCol("customQty90d", "90 D"),
+        makeCustomQtyCol("customQty60d", "60 D"),
+        makeCustomQtyCol("customQty30d", "30 D"),
+        makeCustomQtyCol("customQty15d", "15 D"),
+        makeCustomQtyCol("customQty7d",  "7 D"),
       ],
     },
   ];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table/data-table";
@@ -10,13 +10,15 @@ import {
   createChannelColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
-import { TrendingUp } from "lucide-react";
+import { Download, TrendingUp } from "lucide-react";
 
 // ─── shared data-fetching pane ────────────────────────────────────────────────
 
 interface VelocityTotals {
   qty90d: number; qty60d: number; qty30d: number; qty15d: number; qty7d: number;
   skuCount: number;
+  customQty90d?: number; customQty60d?: number; customQty30d?: number;
+  customQty15d?: number; customQty7d?: number;
 }
 
 interface PaneProps {
@@ -33,10 +35,14 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
   const [totalRows, setTotalRows] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [enrichDone, setEnrichDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fetchIdRef = useRef(0);
 
   const fetchData = useCallback(async () => {
+    const fetchId = ++fetchIdRef.current;
     setLoading(true);
+    setEnrichDone(false);
     setError(null);
     try {
       const params = new URLSearchParams({
@@ -51,17 +57,53 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
       const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.error || "Failed to load");
+      if (fetchId !== fetchIdRef.current) return;
 
       setRows(result.data);
       setTotals(result.totals);
       setTotalRows(result.pagination.total);
       setPageCount(result.pagination.totalPages);
+
+      if (!grouped) setEnrichDone(true);
+
+      // Phase 2: async custom enrichment for Sales > Sales tab
+      if (grouped && result.data.length > 0) {
+        const skus = (result.data as VelocityRow[]).map((r) => r.masterSku).join(",");
+        const enrichParams = new URLSearchParams({ skus });
+        if (search) enrichParams.set("search", search);
+        fetch(`/api/velocity/custom-enrich?${enrichParams}`, { cache: "no-store" })
+          .then((r) => r.json())
+          .then((enrichResult) => {
+            if (fetchId !== fetchIdRef.current) return;
+            if (!enrichResult.success) {
+              console.error("[custom-enrich] API error:", enrichResult.error);
+              setEnrichDone(true);
+              return;
+            }
+            setRows((prev) =>
+              prev.map((row) => {
+                if (row.isTotal) return row;
+                const c = enrichResult.data[row.masterSku];
+                return c ? { ...row, ...c } : row;
+              })
+            );
+            setTotals((prev) =>
+              prev ? { ...prev, ...enrichResult.customTotals } : prev
+            );
+            setEnrichDone(true);
+          })
+          .catch((err) => {
+            console.error("[custom-enrich] fetch error:", err);
+            setEnrichDone(true);
+          });
+      }
     } catch (err) {
+      if (fetchId !== fetchIdRef.current) return;
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
-      setLoading(false);
+      if (fetchId === fetchIdRef.current) setLoading(false);
     }
-  }, [apiParams, pagination, sorting, search]);
+  }, [apiParams, pagination, sorting, search, grouped]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -84,6 +126,11 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
         masterSku: "Total",
         qty90d: totals.qty90d, qty60d: totals.qty60d, qty30d: totals.qty30d,
         qty15d: totals.qty15d, qty7d: totals.qty7d,
+        customQty90d: totals.customQty90d ?? null,
+        customQty60d: totals.customQty60d ?? null,
+        customQty30d: totals.customQty30d ?? null,
+        customQty15d: totals.customQty15d ?? null,
+        customQty7d:  totals.customQty7d  ?? null,
         isTotal: true,
       }
     : null;
@@ -103,6 +150,83 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
     []
   );
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        ...apiParams,
+        export: "1",
+        page: "1",
+        limit: "10000",
+        sortBy: sorting.sortBy,
+        sortOrder: sorting.sortOrder,
+      });
+      if (search) params.set("search", search);
+
+      const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || "Export failed");
+
+      let allRows: VelocityRow[] = result.data;
+
+      if (grouped && allRows.length > 0) {
+        const skus = allRows.map((r) => r.masterSku);
+        const enrichRes = await fetch("/api/velocity/custom-enrich", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skus, search }),
+          cache: "no-store",
+        });
+        const enrichResult = await enrichRes.json();
+        if (enrichResult.success) {
+          allRows = allRows.map((row) => {
+            const c = enrichResult.data[row.masterSku];
+            return c ? { ...row, ...c } : row;
+          });
+        }
+      }
+
+      const headers = grouped
+        ? ["Master SKU", "Link 90D", "Link 60D", "Link 30D", "Link 15D", "Link 7D",
+           "Custom SKU", "Custom 90D", "Custom 60D", "Custom 30D", "Custom 15D", "Custom 7D"]
+        : ["Master SKU", "90D", "60D", "30D", "15D", "7D"];
+
+      const escape = (v: string | number | null | undefined) => {
+        const s = String(v ?? "");
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+
+      const csvRows = [
+        headers,
+        ...allRows.map((row) =>
+          grouped
+            ? [row.masterSku, row.qty90d, row.qty60d, row.qty30d, row.qty15d, row.qty7d,
+               row.customMasterSku ?? "", row.customQty90d ?? "", row.customQty60d ?? "",
+               row.customQty30d ?? "", row.customQty15d ?? "", row.customQty7d ?? ""]
+            : [row.masterSku, row.qty90d, row.qty60d, row.qty30d, row.qty15d, row.qty7d]
+        ),
+      ];
+
+      const csv = csvRows.map((r) => r.map(escape).join(",")).join("\n");
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `velocity_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[export] error:", err);
+    } finally {
+      setExporting(false);
+    }
+  }, [apiParams, grouped, sorting, search]);
+
+  const fullyLoaded = !loading && enrichDone && rows.length > 0;
+
   if (error) {
     return (
       <Card>
@@ -112,23 +236,54 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
   }
 
   return (
-    <Card>
-      <CardContent className="p-0">
-        <DataTable
-          columns={columns}
-          data={tableData}
-          totalRows={totalRows}
-          pageCount={pageCount}
-          pagination={pagination}
-          onPaginationChange={handlePaginationChange}
-          onSortingChange={handleSortingChange}
-          onSearchChange={handleSearchChange}
-          searchPlaceholder="Search Master SKU..."
-          isLoading={loading}
-          getRowClassName={getRowClassName}
-        />
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between min-h-[32px]">
+        {grouped && !enrichDone && !loading && (
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            Custom Sales 데이터 로딩 중...
+          </span>
+        )}
+        {fullyLoaded && (
+          <div className="ml-auto">
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {exporting ? (
+                <>
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+                  Export Excel
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={tableData}
+            totalRows={totalRows}
+            pageCount={pageCount}
+            pagination={pagination}
+            onPaginationChange={handlePaginationChange}
+            onSortingChange={handleSortingChange}
+            onSearchChange={handleSearchChange}
+            searchPlaceholder="Search Master SKU..."
+            isLoading={loading}
+            getRowClassName={getRowClassName}
+          />
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -146,7 +301,7 @@ function ComingSoon({ label }: { label: string }) {
 
 // ─── main page ────────────────────────────────────────────────────────────────
 
-const LINK_SALES_PARAMS: Record<string, string> = { platformSource: "shopify" };
+const LINK_SALES_PARAMS: Record<string, string> = { source: "link" };
 
 export default function VelocityPage() {
   const [channels, setChannels] = useState<string[]>([]);
