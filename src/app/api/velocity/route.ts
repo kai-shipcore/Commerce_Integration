@@ -7,7 +7,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { getCustomSalesVelocity, getLinkSalesVelocity, lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
+import { getCustomSalesVelocity, getLinkSalesVelocity, getLinkTtmVelocity, getCustomTtmVelocity, lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
+import { CacheManager } from "@/lib/redis";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -68,6 +69,62 @@ export async function GET(request: NextRequest) {
 
     if (source === "custom") {
       const result = await getCustomSalesVelocity({ search, sortCol, sortOrder, limit, offset });
+      const total = Number(result.rows[0]?.total_count ?? 0);
+      const t = result.totals;
+      return NextResponse.json({
+        success: true,
+        data: result.rows.map((r) => ({
+          masterSku: r.master_sku,
+          qty90d: r.qty_90d, qty60d: r.qty_60d, qty30d: r.qty_30d,
+          qty15d: r.qty_15d, qty7d: r.qty_7d,
+          customMasterSku: null,
+        })),
+        totals: {
+          qty90d: Number(t?.total_90d ?? 0),
+          qty60d: Number(t?.total_60d ?? 0),
+          qty30d: Number(t?.total_30d ?? 0),
+          qty15d: Number(t?.total_15d ?? 0),
+          qty7d:  Number(t?.total_7d  ?? 0),
+          skuCount: Number(t?.sku_count ?? 0),
+        },
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    }
+
+    if (source === "link-ttm") {
+      const ttmCacheKey = `velocity:link-ttm:${page}:${limit}:${search}:${sortByKey}:${sortOrder}`;
+      const ttmCached = await CacheManager.get<object>(ttmCacheKey);
+      if (ttmCached) return NextResponse.json(ttmCached);
+
+      const result = await getLinkTtmVelocity({ search, sortCol, sortOrder, limit, offset });
+      const total = Number(result.rows[0]?.total_count ?? 0);
+      const t = result.totals;
+      const ttmResponse = {
+        success: true,
+        data: result.rows.map((r) => ({
+          masterSku: r.master_sku,
+          qty90d: r.qty_90d, qty60d: r.qty_60d, qty30d: r.qty_30d,
+          qty15d: r.qty_15d, qty7d: r.qty_7d,
+          customMasterSku: null,
+          customQty90d: null, customQty60d: null, customQty30d: null,
+          customQty15d: null, customQty7d: null,
+        })),
+        totals: {
+          qty90d: Number(t?.total_90d ?? 0),
+          qty60d: Number(t?.total_60d ?? 0),
+          qty30d: Number(t?.total_30d ?? 0),
+          qty15d: Number(t?.total_15d ?? 0),
+          qty7d:  Number(t?.total_7d  ?? 0),
+          skuCount: Number(t?.sku_count ?? 0),
+        },
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      };
+      await CacheManager.set(ttmCacheKey, ttmResponse, 15 * 60);
+      return NextResponse.json(ttmResponse);
+    }
+
+    if (source === "custom-ttm") {
+      const result = await getCustomTtmVelocity({ search, sortCol, sortOrder, limit, offset });
       const total = Number(result.rows[0]?.total_count ?? 0);
       const t = result.totals;
       return NextResponse.json({

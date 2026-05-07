@@ -114,18 +114,17 @@ const linkSalesQtyCols = [
   makeQtyCol("qty7d",  "7 D"),
 ];
 
-// Sales > Sales tab: Link Sales group + Custom Sales placeholder group
-export function createSalesSalesColumns(): ColumnDef<VelocityRow>[] {
+function createGroupedVelocityColumns(linkGroupName: string, customGroupName: string): ColumnDef<VelocityRow>[] {
   return [
     masterSkuCol,
     {
-      id: "linkSales",
-      header: "Link Sales",
+      id: "linkGroup",
+      header: linkGroupName,
       columns: linkSalesQtyCols,
     },
     {
-      id: "customSales",
-      header: "Custom Sales",
+      id: "customGroup",
+      header: customGroupName,
       columns: [
         {
           id: "cs_master_sku",
@@ -161,6 +160,16 @@ export function createSalesSalesColumns(): ColumnDef<VelocityRow>[] {
       ],
     },
   ];
+}
+
+// Sales > Sales tab
+export function createSalesSalesColumns(): ColumnDef<VelocityRow>[] {
+  return createGroupedVelocityColumns("Link Sales", "Custom Sales");
+}
+
+// Sales > TTM tab
+export function createTtmColumns(): ColumnDef<VelocityRow>[] {
+  return createGroupedVelocityColumns("Link TTM", "Custom TTM");
 }
 
 // Channel tab: simple flat columns (no grouping)

@@ -7,6 +7,7 @@ import { DataTable } from "@/components/ui/data-table/data-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   createSalesSalesColumns,
+  createTtmColumns,
   createChannelColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
@@ -24,9 +25,10 @@ interface VelocityTotals {
 interface PaneProps {
   apiParams: Record<string, string>;
   grouped?: boolean;
+  mode?: "sales" | "ttm";
 }
 
-function VelocityPane({ apiParams, grouped = false }: PaneProps) {
+function VelocityPane({ apiParams, grouped = false, mode = "sales" }: PaneProps) {
   const [rows, setRows] = useState<VelocityRow[]>([]);
   const [totals, setTotals] = useState<VelocityTotals | null>(null);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 100 });
@@ -64,19 +66,24 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
       setTotalRows(result.pagination.total);
       setPageCount(result.pagination.totalPages);
 
-      if (!grouped) setEnrichDone(true);
+      if (!grouped) {
+        setEnrichDone(true);
+      } else if (result.data.length === 0) {
+        setEnrichDone(true);
+      }
 
-      // Phase 2: async custom enrichment for Sales > Sales tab
+      // Phase 2: async enrichment (Custom Sales or Custom TTM depending on mode)
       if (grouped && result.data.length > 0) {
+        const enrichEndpoint = mode === "ttm" ? "/api/velocity/ttm-enrich" : "/api/velocity/custom-enrich";
         const skus = (result.data as VelocityRow[]).map((r) => r.masterSku).join(",");
         const enrichParams = new URLSearchParams({ skus });
         if (search) enrichParams.set("search", search);
-        fetch(`/api/velocity/custom-enrich?${enrichParams}`, { cache: "no-store" })
+        fetch(`${enrichEndpoint}?${enrichParams}`, { cache: "no-store" })
           .then((r) => r.json())
           .then((enrichResult) => {
             if (fetchId !== fetchIdRef.current) return;
             if (!enrichResult.success) {
-              console.error("[custom-enrich] API error:", enrichResult.error);
+              console.error("[enrich] API error:", enrichResult.error);
               setEnrichDone(true);
               return;
             }
@@ -93,7 +100,7 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
             setEnrichDone(true);
           })
           .catch((err) => {
-            console.error("[custom-enrich] fetch error:", err);
+            console.error("[enrich] fetch error:", err);
             setEnrichDone(true);
           });
       }
@@ -103,7 +110,7 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
     } finally {
       if (fetchId === fetchIdRef.current) setLoading(false);
     }
-  }, [apiParams, pagination, sorting, search, grouped]);
+  }, [apiParams, pagination, sorting, search, grouped, mode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -141,8 +148,11 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
   );
 
   const columns = useMemo(
-    () => (grouped ? createSalesSalesColumns() : createChannelColumns()),
-    [grouped]
+    () => {
+      if (!grouped) return createChannelColumns();
+      return mode === "ttm" ? createTtmColumns() : createSalesSalesColumns();
+    },
+    [grouped, mode]
   );
 
   const getRowClassName = useCallback(
@@ -172,8 +182,9 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
       let allRows: VelocityRow[] = result.data;
 
       if (grouped && allRows.length > 0) {
+        const enrichEndpoint = mode === "ttm" ? "/api/velocity/ttm-enrich" : "/api/velocity/custom-enrich";
         const skus = allRows.map((r) => r.masterSku);
-        const enrichRes = await fetch("/api/velocity/custom-enrich", {
+        const enrichRes = await fetch(enrichEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ skus, search }),
@@ -188,9 +199,11 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
         }
       }
 
+      const linkLabel = mode === "ttm" ? "TTM" : "Link";
+      const customLabel = mode === "ttm" ? "Custom TTM" : "Custom";
       const headers = grouped
-        ? ["Master SKU", "Link 90D", "Link 60D", "Link 30D", "Link 15D", "Link 7D",
-           "Custom SKU", "Custom 90D", "Custom 60D", "Custom 30D", "Custom 15D", "Custom 7D"]
+        ? [`Master SKU`, `${linkLabel} 90D`, `${linkLabel} 60D`, `${linkLabel} 30D`, `${linkLabel} 15D`, `${linkLabel} 7D`,
+           `${customLabel} SKU`, `${customLabel} 90D`, `${customLabel} 60D`, `${customLabel} 30D`, `${customLabel} 15D`, `${customLabel} 7D`]
         : ["Master SKU", "90D", "60D", "30D", "15D", "7D"];
 
       const escape = (v: string | number | null | undefined) => {
@@ -241,7 +254,7 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
         {grouped && !enrichDone && !loading && (
           <span className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            Custom Sales 데이터 로딩 중...
+            {mode === "ttm" ? "Custom TTM" : "Custom Sales"} 데이터 로딩 중...
           </span>
         )}
         {fullyLoaded && (
@@ -366,7 +379,7 @@ export default function VelocityPage() {
               </TabsContent>
 
               <TabsContent value="ttm">
-                <ComingSoon label="TTM" />
+                <VelocityPane apiParams={{ source: "link-ttm" }} grouped mode="ttm" />
               </TabsContent>
 
               <TabsContent value="preorder">

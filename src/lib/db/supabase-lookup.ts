@@ -7,8 +7,8 @@
 
 import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
+import { CacheManager } from "@/lib/redis";
 
-const LOOKUP_CONNECTION_TIMEOUT_MS = 2000;
 
 let lookupPool: Pool | null = null;
 
@@ -29,9 +29,9 @@ export function getLookupPool(): Pool | null {
     lookupPool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
-      max: 5,
+      max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: LOOKUP_CONNECTION_TIMEOUT_MS,
+      connectionTimeoutMillis: 20000,
     });
   }
 
@@ -976,7 +976,7 @@ export async function getLinkSalesVelocity(opts: {
         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
-      FROM ecommerce_data.vw_sales_order_items_link
+      FROM ecommerce_data.vw_sales_order_items_link_new
       ${whereClause}
       GROUP BY master_sku
     )
@@ -1034,7 +1034,7 @@ export async function getCustomSalesForSkus(
     >(
       `WITH link_orders AS (
          SELECT DISTINCT master_sku AS link_master_sku, order_sku
-         FROM ecommerce_data.vw_sales_order_items_link
+         FROM ecommerce_data.vw_sales_order_items_link_new
          WHERE master_sku = ANY($1)
            AND order_date >= NOW() - INTERVAL '93 days'
            AND master_sku IS NOT NULL
@@ -1046,7 +1046,7 @@ export async function getCustomSalesForSkus(
            c.master_sku AS custom_master_sku,
            c.order_date
          FROM link_orders lo
-         JOIN ecommerce_data.vw_sales_order_items_custom c ON c.order_sku = lo.order_sku
+         JOIN ecommerce_data.vw_sales_order_items_custom_new c ON c.order_sku = lo.order_sku
          WHERE c.master_sku IS NOT NULL
            AND c.item_status IN ('FULFILLED', 'Shipped')
        )
@@ -1063,7 +1063,10 @@ export async function getCustomSalesForSkus(
       [linkMasterSkus],
     );
     if (res.rows.length > 0) {
-      console.log("[getCustomSalesForSkus] sample row:", JSON.stringify(res.rows[0]));
+      console.log(
+        "[getCustomSalesForSkus] sample row:",
+        JSON.stringify(res.rows[0]),
+      );
     } else {
       console.log("[getCustomSalesForSkus] query returned 0 rows");
     }
@@ -1103,7 +1106,7 @@ export async function getCustomSalesTotals(search?: string): Promise<{
     const res = await pool.query(
       `WITH link_orders AS (
          SELECT DISTINCT order_sku
-         FROM ecommerce_data.vw_sales_order_items_link
+         FROM ecommerce_data.vw_sales_order_items_link_new
          WHERE order_date >= NOW() - INTERVAL '93 days'
            AND master_sku IS NOT NULL
            AND master_sku LIKE 'CA-SC%'
@@ -1113,7 +1116,7 @@ export async function getCustomSalesTotals(search?: string): Promise<{
        custom_data AS (
          SELECT c.order_date
          FROM link_orders lo
-         JOIN ecommerce_data.vw_sales_order_items_custom c ON c.order_sku = lo.order_sku
+         JOIN ecommerce_data.vw_sales_order_items_custom_new c ON c.order_sku = lo.order_sku
          WHERE c.master_sku IS NOT NULL
            AND c.item_status IN ('FULFILLED', 'Shipped')
        )
@@ -1129,6 +1132,236 @@ export async function getCustomSalesTotals(search?: string): Promise<{
     return res.rows[0] ?? null;
   } catch (err) {
     console.error("[getCustomSalesTotals] query error:", err);
+    return null;
+  }
+}
+
+// In-flight deduplication: concurrent callers share the same promise, DB query runs only once.
+// Result is cached in Redis for 30 min.
+let _ttmOrderNumbersInFlight: Promise<string[]> | null = null;
+
+async function getTtmOrderNumbers(pool: Pool): Promise<string[]> {
+  if (_ttmOrderNumbersInFlight) return _ttmOrderNumbersInFlight;
+
+  _ttmOrderNumbersInFlight = (async () => {
+    try {
+      const cacheKey = "velocity:ttm-order-numbers";
+      const cached = await CacheManager.get<string[]>(cacheKey);
+      if (cached) return cached;
+
+      const res = await pool.query<{ order_number: string }>(
+        `SELECT DISTINCT order_number
+         FROM ecommerce_data.sales_orders
+         WHERE tags LIKE '%TTM%'
+           AND order_number IS NOT NULL`
+      );
+      const nums = res.rows.map((r) => r.order_number);
+      await CacheManager.set(cacheKey, nums, 30 * 60);
+      return nums;
+    } finally {
+      _ttmOrderNumbersInFlight = null;
+    }
+  })();
+
+  return _ttmOrderNumbersInFlight;
+}
+
+export async function getLinkTtmVelocity(opts: {
+  search?: string;
+  sortCol?: string;
+  sortOrder?: "ASC" | "DESC";
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  rows: Array<{
+    master_sku: string;
+    qty_90d: number;
+    qty_60d: number;
+    qty_30d: number;
+    qty_15d: number;
+    qty_7d: number;
+    total_count: string;
+  }>;
+  totals: {
+    total_90d: string;
+    total_60d: string;
+    total_30d: string;
+    total_15d: string;
+    total_7d: string;
+    sku_count: string;
+  } | null;
+}> {
+  const pool = getLookupPool();
+  if (!pool) return { rows: [], totals: null };
+
+  const ttmOrderNumbers = await getTtmOrderNumbers(pool);
+  if (ttmOrderNumbers.length === 0) return { rows: [], totals: null };
+
+  const { search = "", sortOrder = "DESC", limit = 100, offset = 0 } = opts;
+  const sortCol = (opts.sortCol ?? "qty_90d").replace(/^i\./, "");
+
+  // $1 = ttmOrderNumbers array; subsequent params start at $2
+  const params: unknown[] = [ttmOrderNumbers];
+  const filters: string[] = [
+    "v.master_sku IS NOT NULL",
+    "v.master_sku LIKE 'CA-SC%'",
+    "v.order_number = ANY($1)",
+    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'",
+    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'",
+    "v.item_status IN ('FULFILLED', 'Shipped')",
+  ];
+
+  if (search) {
+    params.push(`%${search}%`);
+    filters.push(`v.master_sku ILIKE $${params.length}`);
+  }
+
+  const whereClause = `WHERE ${filters.join(" AND ")}`;
+
+  const pivotCte = `
+    WITH velocity AS (
+      SELECT
+        v.master_sku,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+      FROM ecommerce_data.vw_sales_order_items_link_new v
+      ${whereClause}
+      GROUP BY v.master_sku
+    )
+  `;
+
+  const dataParams = [...params, limit, offset];
+  try {
+    const [dataRes, totalsRes] = await Promise.all([
+      pool.query(
+        `${pivotCte}
+        SELECT master_sku, qty_90d, qty_60d, qty_30d, qty_15d, qty_7d,
+               COUNT(*) OVER ()::text AS total_count
+        FROM velocity
+        ORDER BY ${sortCol} ${sortOrder}, master_sku ASC
+        LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+        dataParams,
+      ),
+      pool.query(
+        `${pivotCte}
+        SELECT
+          COALESCE(SUM(qty_90d), 0)::text AS total_90d,
+          COALESCE(SUM(qty_60d), 0)::text AS total_60d,
+          COALESCE(SUM(qty_30d), 0)::text AS total_30d,
+          COALESCE(SUM(qty_15d), 0)::text AS total_15d,
+          COALESCE(SUM(qty_7d),  0)::text AS total_7d,
+          COUNT(*)::text AS sku_count
+        FROM velocity`,
+        params,
+      ),
+    ]);
+    return { rows: dataRes.rows, totals: totalsRes.rows[0] ?? null };
+  } catch (err) {
+    console.error("[getLinkTtmVelocity] query error:", err);
+    return { rows: [], totals: null };
+  }
+}
+
+export async function getCustomTtmForSkus(
+  linkMasterSkus: string[],
+): Promise<Map<string, { custom_master_sku: string } & VelocityQtys>> {
+  if (!linkMasterSkus.length) return new Map();
+  const pool = getLookupPool();
+  if (!pool) return new Map();
+  const ttmOrderNumbers = await getTtmOrderNumbers(pool);
+  if (ttmOrderNumbers.length === 0) return new Map();
+  try {
+    const res = await pool.query<
+      { link_master_sku: string; custom_master_sku: string } & VelocityQtys
+    >(
+      `WITH link_orders AS (
+         SELECT DISTINCT master_sku AS link_master_sku, order_sku
+         FROM ecommerce_data.vw_sales_order_items_link_new
+         WHERE master_sku = ANY($1)
+           AND order_number = ANY($2)
+           AND order_date >= NOW() - INTERVAL '93 days'
+           AND master_sku IS NOT NULL
+           AND item_status IN ('FULFILLED', 'Shipped')
+       ),
+       custom_data AS (
+         SELECT
+           lo.link_master_sku,
+           c.master_sku AS custom_master_sku,
+           c.order_date
+         FROM link_orders lo
+         JOIN ecommerce_data.vw_sales_order_items_custom_new c ON c.order_sku = lo.order_sku
+         WHERE c.order_number = ANY($2)
+           AND c.master_sku IS NOT NULL
+           AND c.item_status IN ('FULFILLED', 'Shipped')
+       )
+       SELECT
+         link_master_sku,
+         MIN(custom_master_sku) AS custom_master_sku,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+       FROM custom_data
+       GROUP BY link_master_sku`,
+      [linkMasterSkus, ttmOrderNumbers],
+    );
+    return new Map(
+      res.rows.map((r) => [
+        r.link_master_sku,
+        {
+          custom_master_sku: r.custom_master_sku,
+          qty_90d: r.qty_90d,
+          qty_60d: r.qty_60d,
+          qty_30d: r.qty_30d,
+          qty_15d: r.qty_15d,
+          qty_7d: r.qty_7d,
+        },
+      ]),
+    );
+  } catch (err) {
+    console.error("[getCustomTtmForSkus] query error:", err);
+    return new Map();
+  }
+}
+
+export async function getCustomTtmTotals(search?: string): Promise<{
+  total_90d: string;
+  total_60d: string;
+  total_30d: string;
+  total_15d: string;
+  total_7d: string;
+} | null> {
+  const pool = getLookupPool();
+  if (!pool) return null;
+  const ttmOrderNumbers = await getTtmOrderNumbers(pool);
+  if (ttmOrderNumbers.length === 0) return null;
+  const params: unknown[] = [ttmOrderNumbers]; // $1 = ttmOrderNumbers array
+  const searchFilter = search
+    ? `AND master_sku ILIKE $${params.push(`%${search}%`)}`
+    : "";
+  try {
+    const res = await pool.query(
+      `SELECT
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_90d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_60d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_30d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_15d,
+         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_7d
+       FROM ecommerce_data.vw_sales_order_items_custom_new
+       WHERE order_number = ANY($1)
+         AND master_sku IS NOT NULL
+         AND master_sku LIKE 'CA-SC%'
+         AND item_status IN ('FULFILLED', 'Shipped')
+         ${searchFilter}`,
+      params,
+    );
+    return res.rows[0] ?? null;
+  } catch (err) {
+    console.error("[getCustomTtmTotals] query error:", err);
     return null;
   }
 }
@@ -1189,7 +1422,7 @@ export async function getCustomSalesVelocity(opts: {
         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
-      FROM ecommerce_data.vw_sales_order_items_custom
+      FROM ecommerce_data.vw_sales_order_items_custom_new
       ${whereClause}
       GROUP BY master_sku
     )
@@ -1223,6 +1456,105 @@ export async function getCustomSalesVelocity(opts: {
     return { rows: dataRes.rows, totals: totalsRes.rows[0] ?? null };
   } catch (err) {
     console.error("[getCustomSalesVelocity] query error:", err);
+    return { rows: [], totals: null };
+  }
+}
+
+export async function getCustomTtmVelocity(opts: {
+  search?: string;
+  sortCol?: string;
+  sortOrder?: "ASC" | "DESC";
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  rows: Array<{
+    master_sku: string;
+    qty_90d: number;
+    qty_60d: number;
+    qty_30d: number;
+    qty_15d: number;
+    qty_7d: number;
+    total_count: string;
+  }>;
+  totals: {
+    total_90d: string;
+    total_60d: string;
+    total_30d: string;
+    total_15d: string;
+    total_7d: string;
+    sku_count: string;
+  } | null;
+}> {
+  const pool = getLookupPool();
+  if (!pool) return { rows: [], totals: null };
+
+  const { search = "", sortOrder = "DESC", limit = 100, offset = 0 } = opts;
+  const sortCol = (opts.sortCol ?? "qty_90d").replace(/^i\./, "");
+
+  const ttmOrderNumbers = await getTtmOrderNumbers(pool);
+  if (ttmOrderNumbers.length === 0) return { rows: [], totals: null };
+
+  // $1 = ttmOrderNumbers array; subsequent params start at $2
+  const params: unknown[] = [ttmOrderNumbers];
+  const filters: string[] = [
+    "v.master_sku IS NOT NULL",
+    "v.master_sku LIKE 'CA-SC%'",
+    "v.order_number = ANY($1)",
+    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'",
+    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'",
+    "v.item_status IN ('FULFILLED', 'Shipped')",
+  ];
+
+  if (search) {
+    params.push(`%${search}%`);
+    filters.push(`v.master_sku ILIKE $${params.length}`);
+  }
+
+  const whereClause = `WHERE ${filters.join(" AND ")}`;
+
+  const pivotCte = `
+    WITH velocity AS (
+      SELECT
+        v.master_sku,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+      FROM ecommerce_data.vw_sales_order_items_custom_new v
+      ${whereClause}
+      GROUP BY v.master_sku
+    )
+  `;
+
+  const dataParams = [...params, limit, offset];
+  try {
+    const [dataRes, totalsRes] = await Promise.all([
+      pool.query(
+        `${pivotCte}
+        SELECT master_sku, qty_90d, qty_60d, qty_30d, qty_15d, qty_7d,
+               COUNT(*) OVER ()::text AS total_count
+        FROM velocity
+        ORDER BY ${sortCol} ${sortOrder}, master_sku ASC
+        LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+        dataParams,
+      ),
+      pool.query(
+        `${pivotCte}
+        SELECT
+          COALESCE(SUM(qty_90d), 0)::text AS total_90d,
+          COALESCE(SUM(qty_60d), 0)::text AS total_60d,
+          COALESCE(SUM(qty_30d), 0)::text AS total_30d,
+          COALESCE(SUM(qty_15d), 0)::text AS total_15d,
+          COALESCE(SUM(qty_7d),  0)::text AS total_7d,
+          COUNT(*)::text AS sku_count
+        FROM velocity`,
+        params,
+      ),
+    ]);
+    return { rows: dataRes.rows, totals: totalsRes.rows[0] ?? null };
+  } catch (err) {
+    console.error("[getCustomTtmVelocity] query error:", err);
     return { rows: [], totals: null };
   }
 }
