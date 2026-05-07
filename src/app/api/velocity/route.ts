@@ -1,20 +1,23 @@
 /**
  * Code Guide:
  * GET /api/velocity — Master SKU velocity: units sold per rolling window (90D~7D).
- * platformSource param filters by sc_sales_orders.platform_source (Channel tab).
- * Reads from shipcore.sc_sales_order_items + shipcore.sc_sales_orders on the primary DB.
+ * platformSource param filters by ecommerce_data.vw_sales_order_items.platform_source (Channel tab).
+ * Reads channel velocity from Supabase ecommerce_data views.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryPool } from "@/lib/db/primary-db";
-import { getCustomSalesVelocity, getLinkSalesVelocity, lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
+import {
+  getCustomSalesVelocity,
+  getLinkSalesVelocity,
+  getLookupPool,
+} from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
 const VALID_SORT_COLS = {
-  masterSku: "i.master_sku",
+  masterSku: "master_sku",
   qty90d: "qty_90d",
   qty60d: "qty_60d",
   qty30d: "qty_30d",
@@ -90,30 +93,33 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const pool = getPrimaryPool();
+    const pool = getLookupPool();
+
+    if (!pool) {
+      throw new Error("No lookup database connection configured");
+    }
 
     const params: (string | number)[] = [];
     const filters: string[] = [
-      "i.is_counted_in_demand = true",
-      "i.master_sku IS NOT NULL",
-      "o.order_date >= NOW() - INTERVAL '90 days'",
-      "i.fulfillment_status = 'fulfilled'",
-      "i.line_total > 0",
+      "master_sku IS NOT NULL",
+      "order_date >= NOW() - INTERVAL '90 days'",
+      "quantity > 0",
+      "item_status IN ('FULFILLED', 'Shipped')",
     ];
 
     if (platformSource) {
       params.push(platformSource);
-      filters.push(`o.platform_source::text = $${params.length}`);
+      filters.push(`platform_source::text = $${params.length}`);
     }
 
     if (fulfillmentChannel) {
       params.push(fulfillmentChannel);
-      filters.push(`o.fulfillment_channel::text = $${params.length}`);
+      filters.push(`fulfillment_channel::text = $${params.length}`);
     }
 
     if (search) {
       params.push(`%${search}%`);
-      filters.push(`i.master_sku ILIKE $${params.length}`);
+      filters.push(`master_sku ILIKE $${params.length}`);
     }
 
     const whereClause = `WHERE ${filters.join(" AND ")}`;
@@ -121,16 +127,15 @@ export async function GET(request: NextRequest) {
     const pivotCte = `
       WITH velocity AS (
         SELECT
-          i.master_sku,
-          SUM(CASE WHEN o.order_date >= NOW() - INTERVAL '90 days' THEN i.quantity ELSE 0 END)::int AS qty_90d,
-          SUM(CASE WHEN o.order_date >= NOW() - INTERVAL '60 days' THEN i.quantity ELSE 0 END)::int AS qty_60d,
-          SUM(CASE WHEN o.order_date >= NOW() - INTERVAL '30 days' THEN i.quantity ELSE 0 END)::int AS qty_30d,
-          SUM(CASE WHEN o.order_date >= NOW() - INTERVAL '15 days' THEN i.quantity ELSE 0 END)::int AS qty_15d,
-          SUM(CASE WHEN o.order_date >= NOW() - INTERVAL '7 days'  THEN i.quantity ELSE 0 END)::int AS qty_7d
-        FROM shipcore.sc_sales_order_items i
-        JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
+          master_sku,
+          SUM(CASE WHEN order_date >= NOW() - INTERVAL '90 days' THEN quantity ELSE 0 END)::int AS qty_90d,
+          SUM(CASE WHEN order_date >= NOW() - INTERVAL '60 days' THEN quantity ELSE 0 END)::int AS qty_60d,
+          SUM(CASE WHEN order_date >= NOW() - INTERVAL '30 days' THEN quantity ELSE 0 END)::int AS qty_30d,
+          SUM(CASE WHEN order_date >= NOW() - INTERVAL '15 days' THEN quantity ELSE 0 END)::int AS qty_15d,
+          SUM(CASE WHEN order_date >= NOW() - INTERVAL '7 days'  THEN quantity ELSE 0 END)::int AS qty_7d
+        FROM ecommerce_data.vw_sales_order_items
         ${whereClause}
-        GROUP BY i.master_sku
+        GROUP BY master_sku
       )
     `;
 
@@ -171,45 +176,13 @@ export async function GET(request: NextRequest) {
     const total = Number(dataRes.rows[0]?.total_count ?? 0);
     const t = totalsRes.rows[0];
 
-    // Secondary lookup: primary master_sku → channel_sku → Supabase master_sku
-    const pageMasterSkus = dataRes.rows.map((r) => r.master_sku);
-    let customMasterSkuMap = new Map<string, string>(); // primary master_sku → supabase master_sku
-    if (pageMasterSkus.length > 0) {
-      const channelSkuRes = await pool.query<{ master_sku: string; channel_sku: string }>(
-        `SELECT DISTINCT master_sku, channel_sku
-         FROM shipcore.sc_sales_order_items
-         WHERE master_sku = ANY($1)
-           AND channel_sku IS NOT NULL`,
-        [pageMasterSkus]
-      );
-      // Build master_sku → first channel_sku mapping
-      const masterToChannelSkus = new Map<string, string[]>();
-      for (const row of channelSkuRes.rows) {
-        const arr = masterToChannelSkus.get(row.master_sku) ?? [];
-        arr.push(row.channel_sku);
-        masterToChannelSkus.set(row.master_sku, arr);
-      }
-      const allChannelSkus = channelSkuRes.rows.map((r) => r.channel_sku);
-      const supabaseMap = await lookupMasterSkusByOrderSkus(allChannelSkus);
-
-      for (const [masterSku, channelSkus] of masterToChannelSkus) {
-        for (const cSku of channelSkus) {
-          const found = supabaseMap.get(cSku);
-          if (found) {
-            customMasterSkuMap.set(masterSku, found);
-            break;
-          }
-        }
-      }
-    }
-
     return NextResponse.json({
       success: true,
       data: dataRes.rows.map((r: (typeof dataRes.rows)[number]) => ({
         masterSku: r.master_sku,
         qty90d: r.qty_90d, qty60d: r.qty_60d, qty30d: r.qty_30d,
         qty15d: r.qty_15d, qty7d: r.qty_7d,
-        customMasterSku: customMasterSkuMap.get(r.master_sku) ?? null,
+        customMasterSku: null,
       })),
       totals: {
         qty90d: Number(t?.total_90d ?? 0),

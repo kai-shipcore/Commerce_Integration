@@ -640,7 +640,7 @@ export async function getSalesOrders(
         COALESCE(SUM(so.total_price), 0)::text AS total_revenue,
         COALESCE(SUM(item_totals.unit_count), 0)::text AS total_units,
         COUNT(DISTINCT so.platform_source)::text AS total_platforms
-      FROM shipcore.sc_sales_orders so
+      FROM ecommerce_data.sales_orders so
       LEFT JOIN (
         SELECT order_id, COALESCE(SUM(net_quantity), 0) AS unit_count
         FROM ecommerce_data.sales_order_items
@@ -770,6 +770,9 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
   shippingCountry: string | null;
   fulfillmentChannel: string | null;
   salesChannel: string | null;
+  subtotalPrice: number;
+  shippingPrice: number;
+  taxPrice: number;
   lineItems: SalesOrderItemRow[];
 } | null> {
   const pool = getLookupPool();
@@ -860,6 +863,38 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
 
     const order = orderResult.rows[0];
 
+    const lineItems = itemsResult.rows.map((item) => ({
+      id: item.id,
+      orderId: item.order_id,
+      externalLineItemId: item.external_line_item_id,
+      sku: item.sku,
+      productName: item.product_name,
+      quantity: item.quantity ?? 0,
+      unitPrice: Number(item.unit_price ?? 0),
+      currency: item.currency,
+      shippingPrice: Number(item.shipping_price ?? 0),
+      itemStatus: item.item_status,
+      itemTax: Number(item.item_tax ?? 0),
+      refundedQuantity: item.refunded_quantity ?? 0,
+      netQuantity: item.net_quantity ?? 0,
+      fulfilledQuantity: item.fulfilled_quantity ?? 0,
+      fulfillmentStatus: item.fulfillment_status,
+    }));
+    const totalPrice = Number(order.total_price ?? 0);
+    const shippingPrice = lineItems.reduce(
+      (sum, item) => sum + item.shippingPrice,
+      0,
+    );
+    const itemTaxPrice = lineItems.reduce((sum, item) => sum + item.itemTax, 0);
+    const calculatedSubtotal = lineItems.reduce(
+      (sum, item) => sum + item.unitPrice * item.quantity,
+      0,
+    );
+    const inferredTaxPrice = totalPrice - calculatedSubtotal - shippingPrice;
+    const taxPrice =
+      itemTaxPrice > 0 ? itemTaxPrice : Math.max(0, inferredTaxPrice);
+    const subtotalPrice = calculatedSubtotal;
+
     return {
       id: order.id,
       platformSource: order.platform_source,
@@ -877,23 +912,10 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
       shippingCountry: order.shipping_country,
       fulfillmentChannel: order.fulfillment_channel,
       salesChannel: order.sales_channel,
-      lineItems: itemsResult.rows.map((item) => ({
-        id: item.id,
-        orderId: item.order_id,
-        externalLineItemId: item.external_line_item_id,
-        sku: item.sku,
-        productName: item.product_name,
-        quantity: item.quantity ?? 0,
-        unitPrice: Number(item.unit_price ?? 0),
-        currency: item.currency,
-        shippingPrice: Number(item.shipping_price ?? 0),
-        itemStatus: item.item_status,
-        itemTax: Number(item.item_tax ?? 0),
-        refundedQuantity: item.refunded_quantity ?? 0,
-        netQuantity: item.net_quantity ?? 0,
-        fulfilledQuantity: item.fulfilled_quantity ?? 0,
-        fulfillmentStatus: item.fulfillment_status,
-      })),
+      subtotalPrice,
+      shippingPrice,
+      taxPrice,
+      lineItems,
     };
   } finally {
     client.release();

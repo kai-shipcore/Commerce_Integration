@@ -30,7 +30,7 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 const navigationGroups = [
   { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
   { name: "Operations", itemIds: ["orders", "signals"] },
-  { name: "Forecasting", itemIds: ["analytics", "velocity"] },
+  { name: "Forecasting", itemIds: ["analytics", "velocity", "reconciliation"] },
   { name: "Admin", itemIds: ["integrations", "user-access"] },
 ];
 

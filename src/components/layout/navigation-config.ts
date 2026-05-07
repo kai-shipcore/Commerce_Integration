@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Package,
   Plug,
+  Scale,
   ShieldCheck,
   ShoppingCart,
   Store,
@@ -88,6 +89,13 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "reconciliation",
+    name: "Reconciliation",
+    href: "/reconciliation",
+    icon: Scale,
+    hideable: true,
+  },
+  {
     id: "user-access",
     name: "User Access",
     href: "/settings/users",
@@ -138,6 +146,15 @@ export function sanitizeVisibleMenuIds(
   // dedicated inventory page is introduced.
   if (filtered.includes("inventory") && !filtered.includes("products")) {
     filtered.unshift("products");
+  }
+
+  // Merge any newly added default items that are missing from saved preferences
+  // so existing users automatically see new menu items without clearing storage.
+  const filteredSet = new Set(filtered);
+  for (const id of defaultVisibleMenuIds) {
+    if (!filteredSet.has(id)) {
+      filtered.push(id);
+    }
   }
 
   return filtered;
