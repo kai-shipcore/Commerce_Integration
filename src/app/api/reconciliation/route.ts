@@ -1,21 +1,18 @@
 /**
  * Code Guide:
- * GET /api/reconciliation — Compares velocity channel data (Primary DB, sc_sales_order_items
- * with velocity filters) against orders data (Supabase, ecommerce_data.sales_orders +
- * sales_order_items) for the same time window and platform source.
+ * GET /api/reconciliation — Compares two views of the same ecommerce_data (Supabase):
+ *   velocity_qty: fulfilled items with positive unit_price (velocity-equivalent filter)
+ *   orders_qty:   all items, net_quantity (refund-adjusted, no status filter)
+ * Both metrics come from a single query against ecommerce_data.sales_orders +
+ * sales_order_items, grouped by (platform_source, channel_sku), then master_sku is
+ * resolved via lookupMasterSkusByOrderSkus.
  *
- * Uses a dedicated Supabase pool with a higher connectionTimeoutMillis (15s) to handle
- * cold-start SSL handshake latency — the shared getLookupPool() uses only 2s which is
- * too short when the pool has no warm connections on first load.
- *
- * Velocity filters: is_counted_in_demand=true, fulfillment_status='fulfilled', line_total>0
- * Orders side: net_quantity (refund-adjusted) from all line items, master_sku resolved via
- * lookupMasterSkusByOrderSkus (queries vw_sales_order_items filtered to the actual SKU list).
+ * Uses a dedicated pool with connectionTimeoutMillis: 15s to handle cold-start
+ * Supabase SSL latency (shared getLookupPool() uses only 2s).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { Pool } from "pg";
-import { getPrimaryPool } from "@/lib/db/primary-db";
 import { lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
@@ -82,70 +79,55 @@ export async function GET(req: NextRequest) {
   const statusFilter = searchParams.get("status") ?? "";
 
   try {
-    const primaryPool = getPrimaryPool();
     const lookupPool = getReconciliationLookupPool();
-
-    // ── Primary DB: velocity channel data ────────────────────────────────────
-    const primaryParams: string[] = [];
-    const primaryFilters = [
-      "i.is_counted_in_demand = true",
-      "i.master_sku IS NOT NULL",
-      `o.order_date >= NOW() - INTERVAL '${days} days'`,
-      "i.fulfillment_status = 'fulfilled'",
-      "i.line_total > 0",
-    ];
-    if (platformSource) {
-      primaryParams.push(platformSource);
-      primaryFilters.push(`o.platform_source::text = $${primaryParams.length}`);
+    if (!lookupPool) {
+      return NextResponse.json(
+        { success: false, error: "Supabase lookup DB is not configured" },
+        { status: 503 }
+      );
     }
 
-    // ── Supabase: Step 1 — aggregate by (platform_source, channel_sku) ───────
-    const lookupParams: string[] = [];
-    const lookupFilters = [
+    // ── Single query: both velocity_qty and orders_qty from ecommerce_data ───
+    const params: string[] = [];
+    const filters = [
       `so.order_date >= NOW() - INTERVAL '${days} days'`,
       "soi.sku IS NOT NULL",
     ];
     if (platformSource) {
-      lookupParams.push(platformSource);
-      lookupFilters.push(`so.platform_source::text = $${lookupParams.length}`);
+      params.push(platformSource);
+      filters.push(`so.platform_source::text = $${params.length}`);
     }
 
-    const [velocityRes, ordersSkuRes] = await Promise.all([
-      primaryPool.query<{ platform_source: string; master_sku: string; qty: string }>(
-        `SELECT
-           o.platform_source::text AS platform_source,
-           i.master_sku,
-           SUM(i.quantity)::text AS qty
-         FROM shipcore.sc_sales_order_items i
-         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
-         WHERE ${primaryFilters.join(" AND ")}
-         GROUP BY o.platform_source, i.master_sku`,
-        primaryParams
-      ),
-      lookupPool
-        ? lookupPool.query<{ platform_source: string; sku: string; qty: string }>(
-            `SELECT
-               so.platform_source::text AS platform_source,
-               soi.sku,
-               SUM(soi.net_quantity)::text AS qty
-             FROM ecommerce_data.sales_orders so
-             JOIN ecommerce_data.sales_order_items soi ON soi.order_id = so.id
-             WHERE ${lookupFilters.join(" AND ")}
-             GROUP BY so.platform_source, soi.sku`,
-            lookupParams
-          )
-        : Promise.resolve({ rows: [] as { platform_source: string; sku: string; qty: string }[] }),
-    ]);
+    const combinedRes = await lookupPool.query<{
+      platform_source: string;
+      sku: string;
+      velocity_qty: string;
+      orders_qty: string;
+    }>(
+      `SELECT
+         so.platform_source::text AS platform_source,
+         soi.sku,
+         SUM(
+           CASE WHEN soi.fulfillment_status = 'fulfilled'
+                 AND COALESCE(soi.unit_price, 0) > 0
+                THEN soi.quantity ELSE 0 END
+         )::text AS velocity_qty,
+         SUM(soi.net_quantity)::text AS orders_qty
+       FROM ecommerce_data.sales_orders so
+       JOIN ecommerce_data.sales_order_items soi ON soi.order_id = so.id
+       WHERE ${filters.join(" AND ")}
+       GROUP BY so.platform_source, soi.sku`,
+      params
+    );
 
-    // ── Supabase: Step 2 — resolve channel SKUs to master SKUs ───────────────
-    // lookupMasterSkusByOrderSkus queries vw_sales_order_items filtered to the
-    // provided SKU list — avoids a full table scan.
-    const distinctSkus = [...new Set(ordersSkuRes.rows.map((r) => r.sku))];
+    // ── Resolve channel SKUs → master SKUs ───────────────────────────────────
+    const distinctSkus = [...new Set(combinedRes.rows.map((r) => r.sku))];
     const skuToMasterSku = distinctSkus.length > 0
       ? await lookupMasterSkusByOrderSkus(distinctSkus)
       : new Map<string, string>();
 
-    // ── Merge both sides in memory ───────────────────────────────────────────
+    // ── Aggregate by (platform_source, master_sku) ───────────────────────────
+    // Multiple channel_skus may map to the same master_sku, so we accumulate.
     const map = new Map<string, {
       platformSource: string;
       masterSku: string;
@@ -153,19 +135,7 @@ export async function GET(req: NextRequest) {
       ordersQty: number;
     }>();
 
-    for (const row of velocityRes.rows) {
-      const key = `${row.platform_source}|${row.master_sku}`;
-      const entry = map.get(key) ?? {
-        platformSource: row.platform_source,
-        masterSku: row.master_sku,
-        velocityQty: 0,
-        ordersQty: 0,
-      };
-      entry.velocityQty = Number(row.qty);
-      map.set(key, entry);
-    }
-
-    for (const row of ordersSkuRes.rows) {
+    for (const row of combinedRes.rows) {
       const masterSku = skuToMasterSku.get(row.sku);
       if (!masterSku) continue;
       const key = `${row.platform_source}|${masterSku}`;
@@ -175,7 +145,8 @@ export async function GET(req: NextRequest) {
         velocityQty: 0,
         ordersQty: 0,
       };
-      entry.ordersQty += Number(row.qty);
+      entry.velocityQty += Number(row.velocity_qty);
+      entry.ordersQty   += Number(row.orders_qty);
       map.set(key, entry);
     }
 
@@ -193,7 +164,7 @@ export async function GET(req: NextRequest) {
       rows.push({ masterSku, platformSource: ps, velocityQty, ordersQty, diff, diffPct, status });
     }
 
-    // ── Apply search and status filters ─────────────────────────────────────
+    // ── Filters, sort, paginate ──────────────────────────────────────────────
     if (search) {
       const lower = search.toLowerCase();
       rows = rows.filter((r) => r.masterSku.toLowerCase().includes(lower));
@@ -202,7 +173,6 @@ export async function GET(req: NextRequest) {
       rows = rows.filter((r) => r.status === statusFilter);
     }
 
-    // ── Sort ─────────────────────────────────────────────────────────────────
     rows.sort((a, b) => {
       let aVal: number | string;
       let bVal: number | string;
@@ -223,7 +193,6 @@ export async function GET(req: NextRequest) {
       return sortOrder === "asc" ? aVal - (bVal as number) : (bVal as number) - aVal;
     });
 
-    // ── Summary and pagination ───────────────────────────────────────────────
     const total = rows.length;
     const matchCount        = rows.filter((r) => r.status === "match").length;
     const mismatchCount     = rows.filter((r) => r.status === "mismatch").length;

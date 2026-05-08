@@ -51,6 +51,7 @@ interface DataTableProps<TData, TValue> {
   onRowSelectionChange?: (selectedRows: TData[]) => void;
   onFilteredRowsChange?: (filteredRows: TData[]) => void;
   onRowClick?: (row: TData) => void;
+  onRowMouseEnter?: (row: TData) => void;
   getRowClassName?: (row: TData) => string | undefined;
   filterableColumns?: {
     id: string;
@@ -73,6 +74,7 @@ export function DataTable<TData, TValue>({
   onRowSelectionChange,
   onFilteredRowsChange,
   onRowClick,
+  onRowMouseEnter,
   getRowClassName,
   filterableColumns = [],
 }: DataTableProps<TData, TValue>) {
@@ -224,6 +226,7 @@ export function DataTable<TData, TValue>({
                     .filter(Boolean)
                     .join(" ") || undefined}
                   onClick={() => onRowClick?.(row.original)}
+                  onMouseEnter={() => onRowMouseEnter?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

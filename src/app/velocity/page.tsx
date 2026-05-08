@@ -24,9 +24,11 @@ interface VelocityTotals {
 interface PaneProps {
   apiParams: Record<string, string>;
   grouped?: boolean;
+  autoLoad?: boolean; // true → fetch on mount (channel tabs); false → wait for user action
 }
 
-function VelocityPane({ apiParams, grouped = false }: PaneProps) {
+function VelocityPane({ apiParams, grouped = false, autoLoad = false }: PaneProps) {
+  const [everLoaded, setEverLoaded] = useState(autoLoad);
   const [rows, setRows] = useState<VelocityRow[]>([]);
   const [totals, setTotals] = useState<VelocityTotals | null>(null);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 100 });
@@ -34,7 +36,7 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
   const [search, setSearch] = useState("");
   const [totalRows, setTotalRows] = useState(0);
   const [pageCount, setPageCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(autoLoad);
   const [enrichDone, setEnrichDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fetchIdRef = useRef(0);
@@ -105,7 +107,10 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
     }
   }, [apiParams, pagination, sorting, search, grouped]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    if (!everLoaded) return;
+    void fetchData();
+  }, [fetchData, everLoaded]);
 
   const handlePaginationChange = useCallback((page: number, pageSize: number) => {
     setPagination({ page, pageSize });
@@ -226,6 +231,26 @@ function VelocityPane({ apiParams, grouped = false }: PaneProps) {
   }, [apiParams, grouped, sorting, search]);
 
   const fullyLoaded = !loading && enrichDone && rows.length > 0;
+
+  if (!everLoaded) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex justify-end min-h-[32px]">
+          <button
+            onClick={() => setEverLoaded(true)}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            데이터 불러오기
+          </button>
+        </div>
+        <Card>
+          <CardContent className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+            No data loaded.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -406,11 +431,11 @@ export default function VelocityPage() {
                               ))}
                             </TabsList>
                             <TabsContent value={ebaySubTab}>
-                              <VelocityPane apiParams={channelParams} />
+                              <VelocityPane apiParams={channelParams} autoLoad />
                             </TabsContent>
                           </Tabs>
                         ) : (
-                          <VelocityPane apiParams={channelParams} />
+                          <VelocityPane apiParams={channelParams} autoLoad />
                         )
                       )}
                     </TabsContent>

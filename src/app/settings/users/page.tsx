@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
+  filterToValidMenuIds,
   getDefaultVisibleMenuIds,
+  isAdminLikeRole,
   navigationItems,
   sanitizeVisibleMenuIds,
 } from "@/components/layout/navigation-config";
@@ -68,7 +70,7 @@ export default function UserAccessPage() {
         return;
       }
 
-      if (session?.user?.role !== "admin") {
+      if (!isAdminLikeRole(session?.user?.role)) {
         setError("Admin access required");
         setLoading(false);
         return;
@@ -146,7 +148,7 @@ export default function UserAccessPage() {
 
   const updateUserMenus = async (userId: string, nextVisibleMenuIds: string[]) => {
     const targetUser = users.find((user) => user.id === userId);
-    const sanitized = sanitizeVisibleMenuIds(nextVisibleMenuIds, targetUser?.role);
+    const sanitized = filterToValidMenuIds(nextVisibleMenuIds);
 
     setSavingUserId(userId);
     setError(null);
@@ -173,7 +175,7 @@ export default function UserAccessPage() {
           user.id === userId
             ? {
                 ...user,
-                menuVisibility: sanitizeVisibleMenuIds(result.data?.menuVisibility, user.role),
+                menuVisibility: filterToValidMenuIds(result.data?.menuVisibility),
                 updatedAt: result.data?.updatedAt ?? user.updatedAt,
               }
             : user
@@ -238,7 +240,7 @@ export default function UserAccessPage() {
     );
   }
 
-  if (session?.user?.role !== "admin") {
+  if (!isAdminLikeRole(session?.user?.role)) {
     return (
       <AppLayout>
         <Alert variant="destructive">

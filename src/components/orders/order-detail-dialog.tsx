@@ -19,6 +19,7 @@ import {
 export interface OrderDetailItem {
   id: number;
   sku: string | null;
+  masterSku?: string | null;
   productName: string | null;
   quantity: number;
   unitPrice: number;
@@ -160,11 +161,22 @@ export function OrderDetailDialog({
                             <div className="font-medium">
                               {item.productName || "Untitled item"}
                             </div>
-                            {item.sku && (
-                              <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                                {item.sku}
+                            {item.masterSku && item.masterSku !== item.sku ? (
+                              <div className="mt-1 space-y-0.5">
+                                <div className="break-all font-mono text-xs font-medium text-primary">
+                                  {item.masterSku}
+                                </div>
+                                {item.sku && (
+                                  <div className="break-all font-mono text-xs text-muted-foreground">
+                                    {item.sku}
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            ) : (item.masterSku ?? item.sku) ? (
+                              <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                                {item.masterSku ?? item.sku}
+                              </div>
+                            ) : null}
                             {item.fulfillmentStatus && (
                               <div className="mt-2">
                                 <Badge variant="outline">{item.fulfillmentStatus}</Badge>

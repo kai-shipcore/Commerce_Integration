@@ -1,6 +1,7 @@
 import {
   BarChart3,
   FolderKanban,
+  GitCompareArrows,
   LayoutDashboard,
   Package,
   Plug,
@@ -96,6 +97,13 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "compare",
+    name: "Compare",
+    href: "/compare",
+    icon: GitCompareArrows,
+    hideable: true,
+  },
+  {
     id: "user-access",
     name: "User Access",
     href: "/settings/users",
@@ -158,6 +166,17 @@ export function sanitizeVisibleMenuIds(
   }
 
   return filtered;
+}
+
+// Validates menu IDs against the known navigation items without merging role defaults.
+// Use this on the save path so explicit unchecks are preserved for all roles.
+// sanitizeVisibleMenuIds (which auto-merges defaults) is only for the read/render path.
+export function filterToValidMenuIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const allowedIds = new Set(
+    navigationItems.filter((item) => item.hideable !== false).map((item) => item.id)
+  );
+  return value.filter((id): id is string => typeof id === "string" && allowedIds.has(id));
 }
 
 export function getDefaultLandingPath(
