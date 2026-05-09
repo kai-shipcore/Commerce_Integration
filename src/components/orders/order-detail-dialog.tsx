@@ -18,12 +18,13 @@ import {
 
 export interface OrderDetailItem {
   id: number;
-  masterSku: string | null;
-  channelSku: string | null;
+  sku: string | null;
+  masterSku?: string | null;
   productName: string | null;
   quantity: number;
   unitPrice: number;
-  lineTotal: number;
+  shippingPrice: number;
+  itemTax: number;
   fulfillmentStatus: string | null;
 }
 
@@ -35,9 +36,12 @@ export interface OrderDetail {
   orderDate: string | null;
   orderStatus: string | null;
   totalPrice: number;
+  subtotalPrice: number;
+  shippingPrice: number;
+  taxPrice: number;
   currency: string | null;
   fulfillmentChannel: string | null;
-  cancelledAt: string | null;
+  cancelledAt?: string | null;
   lineItems: OrderDetailItem[];
 }
 
@@ -63,6 +67,22 @@ export function OrderDetailDialog({
   loading,
   onOpenChange,
 }: OrderDetailDialogProps) {
+  const subtotalPrice =
+    order?.subtotalPrice ??
+    order?.lineItems.reduce(
+      (sum, item) => sum + item.unitPrice * item.quantity,
+      0,
+    ) ??
+    0;
+  const shippingPrice =
+    order?.shippingPrice ??
+    order?.lineItems.reduce((sum, item) => sum + item.shippingPrice, 0) ??
+    0;
+  const taxPrice =
+    order?.taxPrice ??
+    order?.lineItems.reduce((sum, item) => sum + item.itemTax, 0) ??
+    0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="h-auto max-h-[92vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-[min(96vw,1400px)]">
@@ -141,16 +161,22 @@ export function OrderDetailDialog({
                             <div className="font-medium">
                               {item.productName || "Untitled item"}
                             </div>
-                            {item.channelSku && (
+                            {item.masterSku && item.masterSku !== item.sku ? (
+                              <div className="mt-1 space-y-0.5">
+                                <div className="break-all font-mono text-xs font-medium text-primary">
+                                  {item.masterSku}
+                                </div>
+                                {item.sku && (
+                                  <div className="break-all font-mono text-xs text-muted-foreground">
+                                    {item.sku}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (item.masterSku ?? item.sku) ? (
                               <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                                {item.channelSku}
+                                {item.masterSku ?? item.sku}
                               </div>
-                            )}
-                            {item.masterSku && item.masterSku !== item.channelSku && (
-                              <div className="mt-0.5 break-all font-mono text-xs text-muted-foreground/60">
-                                Master: {item.masterSku}
-                              </div>
-                            )}
+                            ) : null}
                             {item.fulfillmentStatus && (
                               <div className="mt-2">
                                 <Badge variant="outline">{item.fulfillmentStatus}</Badge>
@@ -179,7 +205,10 @@ export function OrderDetailDialog({
                                 Line Total
                               </div>
                               <div className="mt-1 text-right font-medium tabular-nums">
-                                {formatCurrency(item.lineTotal, order.currency)}
+                                {formatCurrency(
+                                  item.unitPrice * item.quantity,
+                                  order.currency,
+                                )}
                               </div>
                             </div>
                           </div>
@@ -187,11 +216,40 @@ export function OrderDetailDialog({
                       </div>
                     ))
                   )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="ml-auto w-full max-w-sm px-1">
+                <div className="space-y-4 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span>Subtotal</span>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(subtotalPrice, order.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Shipping</span>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(shippingPrice, order.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Sales tax*</span>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(taxPrice, order.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-4 text-base font-semibold">
+                    <span>Order total**</span>
+                    <span className="tabular-nums">
+                      {formatCurrency(order.totalPrice, order.currency)}
+                    </span>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+              </div>
+            </div>
+          )}
       </DialogContent>
     </Dialog>
   );

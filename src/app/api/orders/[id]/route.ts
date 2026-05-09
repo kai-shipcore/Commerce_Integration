@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSalesOrderDetailPrimary } from "@/lib/db/primary-db";
+import { getSalesOrderDetail } from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -20,7 +20,7 @@ export async function GET(
       );
     }
 
-    const order = await getSalesOrderDetailPrimary(orderId);
+    const order = await getSalesOrderDetail(orderId);
 
     if (!order) {
       return NextResponse.json(

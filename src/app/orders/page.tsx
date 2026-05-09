@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endOfDay, format, startOfDay, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { AppLayout } from "@/components/layout/app-layout";
@@ -100,6 +100,8 @@ export default function OrdersPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const orderDetailCache = useRef<Map<number, { data: OrderDetail; ts: number }>>(new Map());
+  const preloadingRef = useRef<Set<number>>(new Set());
 
   const columns = useMemo(() => createOrderColumns(), []);
   const activeDateRange = useMemo(
@@ -119,10 +121,11 @@ export default function OrdersPage() {
     if (search) params.set("search", search);
     if (platformFilter !== "all") params.set("platformSource", platformFilter);
     if (orderStatusFilter !== "all") params.set("orderStatus", orderStatusFilter);
-    if (activeDateRange?.from) {
+    const hasSearch = search.trim().length > 0;
+    if (!hasSearch && activeDateRange?.from) {
       params.set("startDate", format(activeDateRange.from, "yyyy-MM-dd"));
     }
-    if (activeDateRange?.to) {
+    if (!hasSearch && activeDateRange?.to) {
       params.set("endDate", format(activeDateRange.to, "yyyy-MM-dd"));
     }
 
@@ -159,11 +162,19 @@ export default function OrdersPage() {
       return;
     }
 
+    const cached = orderDetailCache.current.get(selectedOrderId);
+    if (cached && Date.now() - cached.ts < 30_000) {
+      setSelectedOrder(cached.data);
+      setDetailLoading(false);
+      return;
+    }
+
     setDetailLoading(true);
     fetch(`/api/orders/${selectedOrderId}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
+          orderDetailCache.current.set(selectedOrderId, { data: result.data as OrderDetail, ts: Date.now() });
           setSelectedOrder(result.data);
         } else {
           setSelectedOrder(null);
@@ -217,6 +228,22 @@ export default function OrdersPage() {
     setDetailOpen(true);
   };
 
+  const preloadOrderDetail = useCallback((row: OrderTableRow) => {
+    const id = row.id;
+    const cached = orderDetailCache.current.get(id);
+    if ((cached && Date.now() - cached.ts < 30_000) || preloadingRef.current.has(id)) return;
+    preloadingRef.current.add(id);
+    fetch(`/api/orders/${id}`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.success) {
+          orderDetailCache.current.set(id, { data: result.data as OrderDetail, ts: Date.now() });
+        }
+      })
+      .catch(() => {})
+      .finally(() => preloadingRef.current.delete(id));
+  }, []);
+
   const handleExportCsv = async () => {
     if (totalRows === 0) {
       return;
@@ -232,10 +259,11 @@ export default function OrdersPage() {
       if (search) params.set("search", search);
       if (platformFilter !== "all") params.set("platformSource", platformFilter);
       if (orderStatusFilter !== "all") params.set("orderStatus", orderStatusFilter);
-      if (activeDateRange?.from) {
+      const hasSearch = search.trim().length > 0;
+      if (!hasSearch && activeDateRange?.from) {
         params.set("startDate", format(activeDateRange.from, "yyyy-MM-dd"));
       }
-      if (activeDateRange?.to) {
+      if (!hasSearch && activeDateRange?.to) {
         params.set("endDate", format(activeDateRange.to, "yyyy-MM-dd"));
       }
 
@@ -481,7 +509,9 @@ export default function OrdersPage() {
                 </span>
                 <span>
                   Platform: {platformFilter === "all" ? "All" : platformFilter} | Date:{" "}
-                  {datePreset === "custom"
+                  {search.trim()
+                    ? "All dates while searching"
+                    : datePreset === "custom"
                     ? activeDateRange?.from && activeDateRange?.to
                       ? `${format(activeDateRange.from, "MMM d, yyyy")} - ${format(activeDateRange.to, "MMM d, yyyy")}`
                       : "Custom range"
@@ -518,12 +548,13 @@ export default function OrdersPage() {
                 totalRows={totalRows}
                 pageCount={pageCount}
                 pagination={pagination}
-                searchPlaceholder="Search by order number, external id, or buyer..."
+                searchPlaceholder="Search order ID, order number, buyer, master SKU, or web SKU..."
                 onPaginationChange={handlePaginationChange}
                 onSortingChange={handleSortingChange}
                 onSearchChange={handleSearchChange}
                 onFilteredRowsChange={setFilteredRows}
                 onRowClick={openOrderDetail}
+                onRowMouseEnter={preloadOrderDetail}
                 isLoading={loading}
               />
             )}

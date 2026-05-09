@@ -111,6 +111,7 @@ export interface SalesOrderItemRow {
   orderId: number;
   externalLineItemId: string | null;
   sku: string | null;
+  masterSku: string | null;
   productName: string | null;
   quantity: number;
   unitPrice: number;
@@ -593,12 +594,36 @@ export async function getSalesOrders(
 
     if (search) {
       params.push(`%${search}%`);
+      const likeParamIndex = params.length;
+      const orderIdFilter = /^\d+$/.test(search)
+        ? `OR so.id = $${params.push(Number(search))}`
+        : "";
+      const masterSkuFilter = /^[\d-]+$/.test(search)
+        ? ""
+        : `OR EXISTS (
+                  SELECT 1
+                  FROM ecommerce_data.vw_sales_order_items sku_lookup
+                  WHERE sku_lookup.order_sku = search_soi.sku
+                    AND sku_lookup.master_sku ILIKE $${likeParamIndex}
+                )`;
       filters.push(
         `(
-          COALESCE(so.order_number, '') ILIKE $${params.length}
-          OR COALESCE(so.external_order_id, '') ILIKE $${params.length}
-          OR COALESCE(so.buyer_email, '') ILIKE $${params.length}
-          OR COALESCE(so.customer_email, '') ILIKE $${params.length}
+          COALESCE(so.order_number, '') ILIKE $${likeParamIndex}
+          OR REPLACE(COALESCE(so.order_number, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
+          OR COALESCE(so.external_order_id, '') ILIKE $${likeParamIndex}
+          OR REPLACE(COALESCE(so.external_order_id, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
+          OR COALESCE(so.buyer_email, '') ILIKE $${likeParamIndex}
+          OR COALESCE(so.customer_email, '') ILIKE $${likeParamIndex}
+          ${orderIdFilter}
+          OR EXISTS (
+            SELECT 1
+            FROM ecommerce_data.sales_order_items search_soi
+            WHERE search_soi.order_id = so.id
+              AND (
+                COALESCE(search_soi.sku, '') ILIKE $${likeParamIndex}
+                ${masterSkuFilter}
+              )
+          )
         )`,
       );
     }
@@ -640,7 +665,7 @@ export async function getSalesOrders(
         COALESCE(SUM(so.total_price), 0)::text AS total_revenue,
         COALESCE(SUM(item_totals.unit_count), 0)::text AS total_units,
         COUNT(DISTINCT so.platform_source)::text AS total_platforms
-      FROM shipcore.sc_sales_orders so
+      FROM ecommerce_data.sales_orders so
       LEFT JOIN (
         SELECT order_id, COALESCE(SUM(net_quantity), 0) AS unit_count
         FROM ecommerce_data.sales_order_items
@@ -770,6 +795,9 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
   shippingCountry: string | null;
   fulfillmentChannel: string | null;
   salesChannel: string | null;
+  subtotalPrice: number;
+  shippingPrice: number;
+  taxPrice: number;
   lineItems: SalesOrderItemRow[];
 } | null> {
   const pool = getLookupPool();
@@ -781,84 +809,124 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
   const client = await pool.connect();
 
   try {
-    const orderResult = await client.query<{
-      id: number;
-      platform_source: string;
-      external_order_id: string | null;
-      order_number: string | null;
-      order_date: Date | string | null;
-      order_status: string | null;
-      total_price: string | null;
-      currency: string | null;
-      financial_status: string | null;
-      buyer_email: string | null;
-      shipping_country: string | null;
-      fulfillment_channel: string | null;
-      sales_channel: string | null;
-    }>(
-      `SELECT
-        id,
-        platform_source::text AS platform_source,
-        external_order_id,
-        order_number,
-        order_date,
-        order_status,
-        COALESCE(total_price, 0)::text AS total_price,
-        currency::text AS currency,
-        financial_status,
-        COALESCE(buyer_email, customer_email) AS buyer_email,
-        shipping_country,
-        fulfillment_channel,
-        sales_channel
-      FROM ecommerce_data.sales_orders
-      WHERE id = $1`,
-      [orderId],
-    );
+    const [orderResult, itemsResult] = await Promise.all([
+      client.query<{
+        id: number;
+        platform_source: string;
+        external_order_id: string | null;
+        order_number: string | null;
+        order_date: Date | string | null;
+        order_status: string | null;
+        total_price: string | null;
+        currency: string | null;
+        financial_status: string | null;
+        buyer_email: string | null;
+        shipping_country: string | null;
+        fulfillment_channel: string | null;
+        sales_channel: string | null;
+      }>(
+        `SELECT
+          id,
+          platform_source::text AS platform_source,
+          external_order_id,
+          order_number,
+          order_date,
+          order_status,
+          COALESCE(total_price, 0)::text AS total_price,
+          currency::text AS currency,
+          financial_status,
+          COALESCE(buyer_email, customer_email) AS buyer_email,
+          shipping_country,
+          fulfillment_channel,
+          sales_channel
+        FROM ecommerce_data.sales_orders
+        WHERE id = $1`,
+        [orderId],
+      ),
+      client.query<{
+        id: number;
+        order_id: number;
+        external_line_item_id: string | null;
+        sku: string | null;
+        master_sku: string | null;
+        product_name: string | null;
+        quantity: number | null;
+        unit_price: string | null;
+        currency: string | null;
+        shipping_price: string | null;
+        item_status: string | null;
+        item_tax: string | null;
+        refunded_quantity: number | null;
+        net_quantity: number | null;
+        fulfilled_quantity: number | null;
+        fulfillment_status: string | null;
+      }>(
+        `SELECT
+          soi.id,
+          soi.order_id,
+          soi.external_line_item_id,
+          soi.sku,
+          (SELECT v.master_sku
+           FROM ecommerce_data.vw_sales_order_items v
+           WHERE v.order_sku = soi.sku AND v.master_sku IS NOT NULL
+           LIMIT 1) AS master_sku,
+          soi.product_name,
+          soi.quantity,
+          COALESCE(soi.unit_price, 0)::text AS unit_price,
+          soi.currency::text AS currency,
+          COALESCE(soi.shipping_price, 0)::text AS shipping_price,
+          soi.item_status,
+          COALESCE(soi.item_tax, 0)::text AS item_tax,
+          soi.refunded_quantity,
+          soi.net_quantity,
+          soi.fulfilled_quantity,
+          soi.fulfillment_status
+        FROM ecommerce_data.sales_order_items soi
+        WHERE soi.order_id = $1
+        ORDER BY soi.id ASC`,
+        [orderId],
+      ),
+    ]);
 
     if (orderResult.rows.length === 0) {
       return null;
     }
 
-    const itemsResult = await client.query<{
-      id: number;
-      order_id: number;
-      external_line_item_id: string | null;
-      sku: string | null;
-      product_name: string | null;
-      quantity: number | null;
-      unit_price: string | null;
-      currency: string | null;
-      shipping_price: string | null;
-      item_status: string | null;
-      item_tax: string | null;
-      refunded_quantity: number | null;
-      net_quantity: number | null;
-      fulfilled_quantity: number | null;
-      fulfillment_status: string | null;
-    }>(
-      `SELECT
-        id,
-        order_id,
-        external_line_item_id,
-        sku,
-        product_name,
-        quantity,
-        COALESCE(unit_price, 0)::text AS unit_price,
-        currency::text AS currency,
-        COALESCE(shipping_price, 0)::text AS shipping_price,
-        item_status,
-        COALESCE(item_tax, 0)::text AS item_tax,
-        refunded_quantity,
-        net_quantity,
-        fulfilled_quantity,
-        fulfillment_status
-      FROM ecommerce_data.sales_order_items
-      WHERE order_id = $1
-      ORDER BY id ASC`,
-      [orderId],
-    );
-
     const order = orderResult.rows[0];
+
+    const lineItems = itemsResult.rows.map((item) => ({
+      id: item.id,
+      orderId: item.order_id,
+      externalLineItemId: item.external_line_item_id,
+      sku: item.sku,
+      masterSku: item.master_sku ?? null,
+      productName: item.product_name,
+      quantity: item.quantity ?? 0,
+      unitPrice: Number(item.unit_price ?? 0),
+      currency: item.currency,
+      shippingPrice: Number(item.shipping_price ?? 0),
+      itemStatus: item.item_status,
+      itemTax: Number(item.item_tax ?? 0),
+      refundedQuantity: item.refunded_quantity ?? 0,
+      netQuantity: item.net_quantity ?? 0,
+      fulfilledQuantity: item.fulfilled_quantity ?? 0,
+      fulfillmentStatus: item.fulfillment_status,
+    }));
+
+    const totalPrice = Number(order.total_price ?? 0);
+    const shippingPrice = lineItems.reduce(
+      (sum, item) => sum + item.shippingPrice,
+      0,
+    );
+    const itemTaxPrice = lineItems.reduce((sum, item) => sum + item.itemTax, 0);
+    const calculatedSubtotal = lineItems.reduce(
+      (sum, item) => sum + item.unitPrice * item.quantity,
+      0,
+    );
+    const inferredTaxPrice = totalPrice - calculatedSubtotal - shippingPrice;
+    const taxPrice =
+      itemTaxPrice > 0 ? itemTaxPrice : Math.max(0, inferredTaxPrice);
+    const subtotalPrice = calculatedSubtotal;
 
     return {
       id: order.id,
@@ -877,23 +945,10 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
       shippingCountry: order.shipping_country,
       fulfillmentChannel: order.fulfillment_channel,
       salesChannel: order.sales_channel,
-      lineItems: itemsResult.rows.map((item) => ({
-        id: item.id,
-        orderId: item.order_id,
-        externalLineItemId: item.external_line_item_id,
-        sku: item.sku,
-        productName: item.product_name,
-        quantity: item.quantity ?? 0,
-        unitPrice: Number(item.unit_price ?? 0),
-        currency: item.currency,
-        shippingPrice: Number(item.shipping_price ?? 0),
-        itemStatus: item.item_status,
-        itemTax: Number(item.item_tax ?? 0),
-        refundedQuantity: item.refunded_quantity ?? 0,
-        netQuantity: item.net_quantity ?? 0,
-        fulfilledQuantity: item.fulfilled_quantity ?? 0,
-        fulfillmentStatus: item.fulfillment_status,
-      })),
+      subtotalPrice,
+      shippingPrice,
+      taxPrice,
+      lineItems,
     };
   } finally {
     client.release();

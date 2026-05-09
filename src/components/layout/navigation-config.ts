@@ -1,9 +1,11 @@
 import {
   BarChart3,
   FolderKanban,
+  GitCompareArrows,
   LayoutDashboard,
   Package,
   Plug,
+  Scale,
   ShieldCheck,
   ShoppingCart,
   Store,
@@ -88,6 +90,20 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "reconciliation",
+    name: "Reconciliation",
+    href: "/reconciliation",
+    icon: Scale,
+    hideable: true,
+  },
+  {
+    id: "compare",
+    name: "Compare",
+    href: "/compare",
+    icon: GitCompareArrows,
+    hideable: true,
+  },
+  {
     id: "user-access",
     name: "User Access",
     href: "/settings/users",
@@ -140,7 +156,27 @@ export function sanitizeVisibleMenuIds(
     filtered.unshift("products");
   }
 
+  // Merge any newly added default items that are missing from saved preferences
+  // so existing users automatically see new menu items without clearing storage.
+  const filteredSet = new Set(filtered);
+  for (const id of defaultVisibleMenuIds) {
+    if (!filteredSet.has(id)) {
+      filtered.push(id);
+    }
+  }
+
   return filtered;
+}
+
+// Validates menu IDs against the known navigation items without merging role defaults.
+// Use this on the save path so explicit unchecks are preserved for all roles.
+// sanitizeVisibleMenuIds (which auto-merges defaults) is only for the read/render path.
+export function filterToValidMenuIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const allowedIds = new Set(
+    navigationItems.filter((item) => item.hideable !== false).map((item) => item.id)
+  );
+  return value.filter((id): id is string => typeof id === "string" && allowedIds.has(id));
 }
 
 export function getDefaultLandingPath(

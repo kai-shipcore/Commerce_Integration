@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSalesOrdersPrimary } from "@/lib/db/primary-db";
+import {
+  getSalesOrders,
+  type SalesOrdersQueryOptions,
+} from "@/lib/db/supabase-lookup";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -16,10 +19,11 @@ export async function GET(request: NextRequest) {
     const orderStatus = searchParams.get("orderStatus") || "all";
     const startDate = searchParams.get("startDate") || "";
     const endDate = searchParams.get("endDate") || "";
-    const sortBy = searchParams.get("sortBy") || "orderDate";
+    const sortBy = (searchParams.get("sortBy") ||
+      "orderDate") as SalesOrdersQueryOptions["sortBy"];
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
-    const result = await getSalesOrdersPrimary({
+    const result = await getSalesOrders({
       page,
       limit,
       exportAll,

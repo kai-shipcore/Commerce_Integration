@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import {
   getDefaultVisibleMenuIds,
+  isAdminLikeRole,
 } from "@/components/layout/navigation-config";
 import { z } from "zod";
 
@@ -24,7 +25,7 @@ export async function PATCH(
       );
     }
 
-    if (session.user.role !== "admin") {
+    if (!isAdminLikeRole(session.user.role)) {
       return NextResponse.json(
         { success: false, error: "Forbidden" },
         { status: 403 }
