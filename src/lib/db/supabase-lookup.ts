@@ -8,7 +8,7 @@
 import { Pool } from "pg";
 import { readFile } from "node:fs/promises";
 
-const LOOKUP_CONNECTION_TIMEOUT_MS = 2000;
+const LOOKUP_CONNECTION_TIMEOUT_MS = 15000;
 
 let lookupPool: Pool | null = null;
 

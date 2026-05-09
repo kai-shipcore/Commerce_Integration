@@ -178,7 +178,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: dataRes.rows.map((r: (typeof dataRes.rows)[number]) => ({
+      data: dataRes.rows.map((r) => ({
         masterSku: r.master_sku,
         qty90d: r.qty_90d, qty60d: r.qty_60d, qty30d: r.qty_30d,
         qty15d: r.qty_15d, qty7d: r.qty_7d,

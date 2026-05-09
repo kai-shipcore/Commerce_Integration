@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table/data-table";
@@ -22,6 +22,24 @@ interface VelocityTotals {
 
 interface PaneProps {
   apiParams: Record<string, string>;
+}
+
+const DEFAULT_CHANNELS = [
+  "AMAZON",
+  "EBAY",
+  "EBAY_AUTOARMOR",
+  "SHOPIFY_COVERLAND",
+  "SHOPIFY_ICARCOVER",
+  "WALMART",
+];
+
+function getChannelLabel(channel: string) {
+  const label = channel === "EBAY" ? "EBAY_ADVANCE_PARTS" : channel;
+  return label
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function ChannelVelocityPane({ apiParams }: PaneProps) {
@@ -56,7 +74,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
       });
       if (search) params.set("search", search);
 
-      const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
+      const res = await fetch(`/api/reconciliation/velocity?${params}`, { cache: "no-store" });
       const result = await res.json();
       if (!res.ok || !result.success) {
         throw new Error(result.error || "Failed to load");
@@ -90,22 +108,21 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
     setPagination((p) => ({ ...p, page: 1 }));
   }, []);
 
-  const totalsRow: VelocityRow | null = totals
-    ? {
-        masterSku: "Total",
-        qty90d: totals.qty90d,
-        qty60d: totals.qty60d,
-        qty30d: totals.qty30d,
-        qty15d: totals.qty15d,
-        qty7d: totals.qty7d,
-        isTotal: true,
-      }
-    : null;
+  const tableData = useMemo(() => {
+    if (!totals) return rows;
 
-  const tableData = useMemo(
-    () => (totalsRow ? [totalsRow, ...rows] : rows),
-    [totalsRow, rows]
-  );
+    const totalsRow: VelocityRow = {
+      masterSku: "Total",
+      qty90d: totals.qty90d,
+      qty60d: totals.qty60d,
+      qty30d: totals.qty30d,
+      qty15d: totals.qty15d,
+      qty7d: totals.qty7d,
+      isTotal: true,
+    };
+
+    return [totalsRow, ...rows];
+  }, [totals, rows]);
 
   const columns = useMemo(() => createChannelColumns(), []);
 
@@ -128,7 +145,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
       });
       if (search) params.set("search", search);
 
-      const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
+      const res = await fetch(`/api/reconciliation/velocity?${params}`, { cache: "no-store" });
       const result = await res.json();
       if (!result.success) throw new Error(result.error || "Export failed");
 
@@ -237,23 +254,10 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
 }
 
 export default function ReconciliationPage() {
-  const [channels, setChannels] = useState<string[]>([]);
-  const [channelTab, setChannelTab] = useState<string>("");
-  const [subChannels, setSubChannels] = useState<Record<string, string[]>>({});
+  const [channels] = useState<string[]>(DEFAULT_CHANNELS);
+  const [channelTab, setChannelTab] = useState<string>(DEFAULT_CHANNELS[0]);
+  const [subChannels] = useState<Record<string, string[]>>({});
   const [ebaySubTab, setEbaySubTab] = useState<string>("Total");
-
-  useEffect(() => {
-    fetch("/api/velocity/channels", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((result) => {
-        if (result.success && result.channels.length > 0) {
-          setChannels(result.channels);
-          setChannelTab(result.channels[0]);
-          setSubChannels(result.subChannels ?? {});
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   const handleChannelTabChange = useCallback((value: string) => {
     setChannelTab(value);
@@ -289,7 +293,7 @@ export default function ReconciliationPage() {
             <TabsList>
               {channels.map((channel) => (
                 <TabsTrigger key={channel} value={channel}>
-                  {channel}
+                  {getChannelLabel(channel)}
                 </TabsTrigger>
               ))}
             </TabsList>
