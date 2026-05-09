@@ -81,7 +81,13 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
       }
       if (fetchId !== fetchIdRef.current) return;
 
-      setRows(result.data);
+      setRows(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (result.data as any[]).map((r) => ({
+          masterSku: r.masterSku,
+          qtys: [r.qty90d, r.qty60d, r.qty30d, r.qty15d, r.qty7d],
+        }))
+      );
       setTotals(result.totals);
       setTotalRows(result.pagination.total);
       setPageCount(result.pagination.totalPages);
@@ -113,18 +119,14 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
 
     const totalsRow: VelocityRow = {
       masterSku: "Total",
-      qty90d: totals.qty90d,
-      qty60d: totals.qty60d,
-      qty30d: totals.qty30d,
-      qty15d: totals.qty15d,
-      qty7d: totals.qty7d,
+      qtys: [totals.qty90d, totals.qty60d, totals.qty30d, totals.qty15d, totals.qty7d],
       isTotal: true,
     };
 
     return [totalsRow, ...rows];
   }, [totals, rows]);
 
-  const columns = useMemo(() => createChannelColumns(), []);
+  const columns = useMemo(() => createChannelColumns([90, 60, 30, 15, 7]), []);
 
   const getRowClassName = useCallback(
     (row: VelocityRow) => (row.isTotal ? "bg-muted/60 font-semibold" : undefined),
@@ -159,7 +161,8 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
 
       const csvRows = [
         headers,
-        ...(result.data as VelocityRow[]).map((row) => [
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(result.data as any[]).map((row) => [
           row.masterSku,
           row.qty90d,
           row.qty60d,
