@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { getCustomSalesVelocity, getLinkSalesVelocity, getLinkTtmVelocity, getCustomTtmVelocity, lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
+import { getCustomSalesVelocity, getLinkSalesVelocity, getLinkTtmVelocity, getCustomTtmVelocity, getLinkPreOrderVelocity, lookupMasterSkusByOrderSkus } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
 function getErrorMessage(error: unknown): string {
@@ -145,6 +145,34 @@ export async function GET(request: NextRequest) {
         },
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       });
+    }
+
+    if (source === "link-preorder") {
+      const poKey = `velocity:link-preorder:${page}:${limit}:${search}:${sortByKey}:${sortOrder}`;
+      const poCached = await CacheManager.get<object>(poKey);
+      if (poCached) return NextResponse.json(poCached);
+
+      const result = await getLinkPreOrderVelocity({ search, sortCol, sortOrder, limit, offset });
+      const total = Number(result.rows[0]?.total_count ?? 0);
+      const t = result.totals;
+      const poResponse = {
+        success: true,
+        data: result.rows.map((r) => ({
+          masterSku: r.master_sku,
+          qty90d: r.qty_90d, qty60d: 0, qty30d: 0, qty15d: 0, qty7d: 0,
+          customMasterSku: null, customQty90d: null, customQty60d: null,
+          customQty30d: null, customQty15d: null, customQty7d: null,
+          ttmCount: null, ttmMasterSku: null,
+        })),
+        totals: {
+          qty90d: Number(t?.total_90d ?? 0),
+          qty60d: 0, qty30d: 0, qty15d: 0, qty7d: 0,
+          skuCount: Number(t?.sku_count ?? 0),
+        },
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      };
+      await CacheManager.set(poKey, poResponse, 15 * 60);
+      return NextResponse.json(poResponse);
     }
 
     const pool = getPrimaryPool();

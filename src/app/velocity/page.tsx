@@ -4,351 +4,270 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table/data-table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   createSalesSalesColumns,
   createTtmColumns,
-  createChannelColumns,
+  createPreOrderColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
-import { Download, TrendingUp } from "lucide-react";
+import { TrendingUp, Check, X, Plus, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-// ─── shared data-fetching pane ────────────────────────────────────────────────
+const ITEMS = ["Car Cover", "Car Seat", "Floor Mat"] as const;
+const CHANNELS = ["Coverland", "Icarcover", "Amazon", "Auto_Armor", "Advance_Parts", "Walmart"] as const;
+const DEFAULT_PERIODS = [90, 60, 30, 15, 7];
 
-interface VelocityTotals {
-  qty90d: number; qty60d: number; qty30d: number; qty15d: number; qty7d: number;
-  skuCount: number;
-  customQty90d?: number; customQty60d?: number; customQty30d?: number;
-  customQty15d?: number; customQty7d?: number;
+// ─── Period Chip Editor ───────────────────────────────────────────────────────
+
+interface PeriodEditorProps {
+  periods: number[];
+  onChange: (periods: number[]) => void;
 }
 
-interface PaneProps {
-  apiParams: Record<string, string>;
-  grouped?: boolean;
-  mode?: "sales" | "ttm";
-}
+function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
+  const [adding, setAdding] = useState(false);
+  const [pending, setPending] = useState("");
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingVal, setEditingVal] = useState("");
+  const addInputRef = useRef<HTMLInputElement>(null);
 
-function VelocityPane({ apiParams, grouped = false, mode = "sales" }: PaneProps) {
-  const [rows, setRows] = useState<VelocityRow[]>([]);
-  const [totals, setTotals] = useState<VelocityTotals | null>(null);
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 100 });
-  const [sorting, setSorting] = useState<{ sortBy: string; sortOrder: "asc" | "desc" }>({ sortBy: "qty90d", sortOrder: "desc" });
-  const [search, setSearch] = useState("");
-  const [totalRows, setTotalRows] = useState(0);
-  const [pageCount, setPageCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [enrichDone, setEnrichDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fetchIdRef = useRef(0);
-
-  const fetchData = useCallback(async () => {
-    const fetchId = ++fetchIdRef.current;
-    setLoading(true);
-    setEnrichDone(false);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        ...apiParams,
-        page: String(pagination.page),
-        limit: String(pagination.pageSize),
-        sortBy: sorting.sortBy,
-        sortOrder: sorting.sortOrder,
-      });
-      if (search) params.set("search", search);
-
-      const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
-      const result = await res.json();
-      if (!res.ok || !result.success) throw new Error(result.error || "Failed to load");
-      if (fetchId !== fetchIdRef.current) return;
-
-      setRows(result.data);
-      setTotals(result.totals);
-      setTotalRows(result.pagination.total);
-      setPageCount(result.pagination.totalPages);
-
-      if (!grouped) {
-        setEnrichDone(true);
-      } else if (result.data.length === 0) {
-        setEnrichDone(true);
-      }
-
-      // Phase 2: async enrichment (Custom Sales or Custom TTM depending on mode)
-      if (grouped && result.data.length > 0) {
-        const enrichEndpoint = mode === "ttm" ? "/api/velocity/ttm-enrich" : "/api/velocity/custom-enrich";
-        const skus = (result.data as VelocityRow[]).map((r) => r.masterSku).join(",");
-        const enrichParams = new URLSearchParams({ skus });
-        if (search) enrichParams.set("search", search);
-        fetch(`${enrichEndpoint}?${enrichParams}`, { cache: "no-store" })
-          .then((r) => r.json())
-          .then((enrichResult) => {
-            if (fetchId !== fetchIdRef.current) return;
-            if (!enrichResult.success) {
-              console.error("[enrich] API error:", enrichResult.error);
-              setEnrichDone(true);
-              return;
-            }
-            setRows((prev) =>
-              prev.map((row) => {
-                if (row.isTotal) return row;
-                const c = enrichResult.data[row.masterSku];
-                return c ? { ...row, ...c } : row;
-              })
-            );
-            setTotals((prev) =>
-              prev ? { ...prev, ...enrichResult.customTotals } : prev
-            );
-            setEnrichDone(true);
-          })
-          .catch((err) => {
-            console.error("[enrich] fetch error:", err);
-            setEnrichDone(true);
-          });
-      }
-    } catch (err) {
-      if (fetchId !== fetchIdRef.current) return;
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      if (fetchId === fetchIdRef.current) setLoading(false);
+  const commitAdd = useCallback(() => {
+    const n = parseInt(pending, 10);
+    if (n > 0 && !periods.includes(n) && periods.length < 5) {
+      onChange([...periods, n].sort((a, b) => b - a));
     }
-  }, [apiParams, pagination, sorting, search, grouped, mode]);
+    setPending("");
+    setAdding(false);
+  }, [pending, periods, onChange]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handlePaginationChange = useCallback((page: number, pageSize: number) => {
-    setPagination({ page, pageSize });
-  }, []);
-
-  const handleSortingChange = useCallback((sortBy: string, sortOrder: "asc" | "desc") => {
-    setSorting({ sortBy, sortOrder });
-    setPagination((p) => ({ ...p, page: 1 }));
-  }, []);
-
-  const handleSearchChange = useCallback((value: string) => {
-    setSearch(value);
-    setPagination((p) => ({ ...p, page: 1 }));
-  }, []);
-
-  const totalsRow: VelocityRow | null = totals
-    ? {
-        masterSku: "Total",
-        qty90d: totals.qty90d, qty60d: totals.qty60d, qty30d: totals.qty30d,
-        qty15d: totals.qty15d, qty7d: totals.qty7d,
-        customQty90d: totals.customQty90d ?? null,
-        customQty60d: totals.customQty60d ?? null,
-        customQty30d: totals.customQty30d ?? null,
-        customQty15d: totals.customQty15d ?? null,
-        customQty7d:  totals.customQty7d  ?? null,
-        isTotal: true,
-      }
-    : null;
-
-  const tableData = useMemo(
-    () => (totalsRow ? [totalsRow, ...rows] : rows),
-    [totalsRow, rows]
-  );
-
-  const columns = useMemo(
-    () => {
-      if (!grouped) return createChannelColumns();
-      return mode === "ttm" ? createTtmColumns() : createSalesSalesColumns();
-    },
-    [grouped, mode]
-  );
-
-  const getRowClassName = useCallback(
-    (row: VelocityRow) => (row.isTotal ? "bg-muted/60 font-semibold" : undefined),
-    []
-  );
-
-  const [exporting, setExporting] = useState(false);
-
-  const handleExport = useCallback(async () => {
-    setExporting(true);
-    try {
-      const params = new URLSearchParams({
-        ...apiParams,
-        export: "1",
-        page: "1",
-        limit: "10000",
-        sortBy: sorting.sortBy,
-        sortOrder: sorting.sortOrder,
-      });
-      if (search) params.set("search", search);
-
-      const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || "Export failed");
-
-      let allRows: VelocityRow[] = result.data;
-
-      if (grouped && allRows.length > 0) {
-        const enrichEndpoint = mode === "ttm" ? "/api/velocity/ttm-enrich" : "/api/velocity/custom-enrich";
-        const skus = allRows.map((r) => r.masterSku);
-        const enrichRes = await fetch(enrichEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ skus, search }),
-          cache: "no-store",
-        });
-        const enrichResult = await enrichRes.json();
-        if (enrichResult.success) {
-          allRows = allRows.map((row) => {
-            const c = enrichResult.data[row.masterSku];
-            return c ? { ...row, ...c } : row;
-          });
-        }
-      }
-
-      const linkLabel = mode === "ttm" ? "TTM" : "Link";
-      const customLabel = mode === "ttm" ? "Custom TTM" : "Custom";
-      const headers = grouped
-        ? [`Master SKU`, `${linkLabel} 90D`, `${linkLabel} 60D`, `${linkLabel} 30D`, `${linkLabel} 15D`, `${linkLabel} 7D`,
-           `${customLabel} SKU`, `${customLabel} 90D`, `${customLabel} 60D`, `${customLabel} 30D`, `${customLabel} 15D`, `${customLabel} 7D`]
-        : ["Master SKU", "90D", "60D", "30D", "15D", "7D"];
-
-      const escape = (v: string | number | null | undefined) => {
-        const s = String(v ?? "");
-        return s.includes(",") || s.includes('"') || s.includes("\n")
-          ? `"${s.replace(/"/g, '""')}"` : s;
-      };
-
-      const csvRows = [
-        headers,
-        ...allRows.map((row) =>
-          grouped
-            ? [row.masterSku, row.qty90d, row.qty60d, row.qty30d, row.qty15d, row.qty7d,
-               row.customMasterSku ?? "", row.customQty90d ?? "", row.customQty60d ?? "",
-               row.customQty30d ?? "", row.customQty15d ?? "", row.customQty7d ?? ""]
-            : [row.masterSku, row.qty90d, row.qty60d, row.qty30d, row.qty15d, row.qty7d]
-        ),
-      ];
-
-      const csv = csvRows.map((r) => r.map(escape).join(",")).join("\n");
-      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `velocity_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("[export] error:", err);
-    } finally {
-      setExporting(false);
+  const commitEdit = useCallback((idx: number) => {
+    const n = parseInt(editingVal, 10);
+    const otherPeriods = periods.filter((_, i) => i !== idx);
+    if (n > 0 && !otherPeriods.includes(n)) {
+      const next = [...periods];
+      next[idx] = n;
+      onChange(next.sort((a, b) => b - a));
     }
-  }, [apiParams, grouped, sorting, search]);
+    setEditingIdx(null);
+    setEditingVal("");
+  }, [editingVal, periods, onChange]);
 
-  const fullyLoaded = !loading && enrichDone && rows.length > 0;
-
-  if (error) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-destructive">{error}</CardContent>
-      </Card>
-    );
-  }
+  const removePeriod = useCallback((idx: number) => {
+    if (periods.length <= 1) return;
+    onChange(periods.filter((_, i) => i !== idx));
+  }, [periods, onChange]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between min-h-[32px]">
-        {grouped && !enrichDone && !loading && (
-          <span className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            {mode === "ttm" ? "Custom TTM" : "Custom Sales"} 데이터 로딩 중...
-          </span>
-        )}
-        {fullyLoaded && (
-          <div className="ml-auto">
-            <button
-              onClick={handleExport}
-              disabled={exporting}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {exporting ? (
-                <>
-                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4" />
-                  Export Excel
-                </>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-      <Card>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={tableData}
-            totalRows={totalRows}
-            pageCount={pageCount}
-            pagination={pagination}
-            onPaginationChange={handlePaginationChange}
-            onSortingChange={handleSortingChange}
-            onSearchChange={handleSearchChange}
-            searchPlaceholder="Search Master SKU..."
-            isLoading={loading}
-            getRowClassName={getRowClassName}
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-xs text-muted-foreground font-medium shrink-0">Periods:</span>
+
+      {periods.map((p, i) => (
+        <span
+          key={`${p}-${i}`}
+          className="flex items-center gap-0.5 rounded-full border border-border bg-muted px-2 py-0.5 text-xs"
+        >
+          {editingIdx === i ? (
+            <>
+              <input
+                type="number"
+                value={editingVal}
+                onChange={(e) => setEditingVal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitEdit(i);
+                  if (e.key === "Escape") { setEditingIdx(null); setEditingVal(""); }
+                }}
+                onBlur={() => commitEdit(i)}
+                className="w-10 bg-transparent text-xs outline-none tabular-nums"
+                autoFocus
+              />
+              <span className="text-muted-foreground">D</span>
+              <button
+                onMouseDown={(e) => { e.preventDefault(); commitEdit(i); }}
+                className="ml-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <Check className="h-2.5 w-2.5" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="tabular-nums hover:text-foreground"
+                onClick={() => { setEditingIdx(i); setEditingVal(String(p)); }}
+              >
+                {p}D
+              </button>
+              <button
+                onClick={() => removePeriod(i)}
+                disabled={periods.length <= 1}
+                className="ml-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </>
+          )}
+        </span>
+      ))}
+
+      {adding ? (
+        <span className="flex items-center gap-0.5 rounded-full border border-primary bg-muted px-2 py-0.5 text-xs">
+          <input
+            ref={addInputRef}
+            type="number"
+            value={pending}
+            onChange={(e) => setPending(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitAdd();
+              if (e.key === "Escape") { setAdding(false); setPending(""); }
+            }}
+            onBlur={commitAdd}
+            placeholder="___"
+            className="w-8 bg-transparent text-xs outline-none tabular-nums placeholder:text-muted-foreground"
+            autoFocus
           />
-        </CardContent>
-      </Card>
+          <span className="text-muted-foreground">D</span>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); commitAdd(); }}
+            className="ml-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <Check className="h-2.5 w-2.5" />
+          </button>
+        </span>
+      ) : periods.length < 5 ? (
+        <button
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-0.5 rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
+        >
+          <Plus className="h-2.5 w-2.5" />
+          Add
+        </button>
+      ) : null}
     </div>
   );
 }
 
-// ─── placeholder for future tabs ─────────────────────────────────────────────
+// ─── Toggle Button ────────────────────────────────────────────────────────────
 
-function ComingSoon({ label }: { label: string }) {
+function ToggleBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "border border-border bg-background text-foreground hover:bg-muted"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Velocity Pane (UI only — no data loading) ────────────────────────────────
+
+interface PaneProps {
+  mode: "sales" | "ttm" | "preorder";
+  periods: number[];
+}
+
+function VelocityPane({ mode, periods }: PaneProps) {
+  const columns = useMemo(() => {
+    if (mode === "preorder") return createPreOrderColumns(periods);
+    if (mode === "ttm") return createTtmColumns(periods);
+    return createSalesSalesColumns(periods);
+  }, [mode, periods]);
+
   return (
     <Card>
-      <CardContent className="flex items-center justify-center py-16 text-muted-foreground">
-        {label} — coming soon
+      <CardContent className="p-0">
+        <DataTable
+          columns={columns}
+          data={[] as VelocityRow[]}
+          totalRows={0}
+          pageCount={0}
+          pagination={{ page: 1, pageSize: 100 }}
+          onPaginationChange={() => {}}
+          onSortingChange={() => {}}
+          onSearchChange={() => {}}
+          searchPlaceholder="Search Master SKU..."
+          isLoading={false}
+        />
       </CardContent>
     </Card>
   );
 }
 
-// ─── main page ────────────────────────────────────────────────────────────────
-
-const LINK_SALES_PARAMS: Record<string, string> = { source: "link" };
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function VelocityPage() {
-  const [channels, setChannels] = useState<string[]>([]);
-  const [channelTab, setChannelTab] = useState<string>("");
-  const [subChannels, setSubChannels] = useState<Record<string, string[]>>({});
-  const [ebaySubTab, setEbaySubTab] = useState<string>("Total");
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
+  const [periods, setPeriods] = useState<number[]>(DEFAULT_PERIODS);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
-    fetch("/api/velocity/channels", { cache: "no-store" })
+    fetch("/api/velocity/sync")
       .then((r) => r.json())
-      .then((result) => {
-        if (result.success && result.channels.length > 0) {
-          setChannels(result.channels);
-          setChannelTab(result.channels[0]);
-          setSubChannels(result.subChannels ?? {});
-        }
-      })
+      .then((data) => { if (data.success) setLastSyncedAt(data.lastSyncedAt); })
       .catch(() => {});
   }, []);
 
-  const handleChannelTabChange = useCallback((v: string) => {
-    setChannelTab(v);
-    setEbaySubTab("Total");
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/velocity/sync", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        const refresh = await fetch("/api/velocity/sync");
+        const refreshData = await refresh.json();
+        if (refreshData.success) setLastSyncedAt(refreshData.lastSyncedAt);
+      }
+    } catch {
+      // silent
+    } finally {
+      setSyncing(false);
+    }
   }, []);
 
-  const channelParams = useMemo<Record<string, string>>(() => {
-    if (!channelTab) return {};
-    const p: Record<string, string> = { platformSource: channelTab };
-    const subs = subChannels[channelTab];
-    if (subs?.length && ebaySubTab !== "Total") {
-      p.fulfillmentChannel = ebaySubTab;
-    }
-    return p;
-  }, [channelTab, subChannels, ebaySubTab]);
+  const toggleItem = useCallback((item: string) => {
+    setSelectedItems((prev) =>
+      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+    );
+  }, []);
+
+  const toggleChannel = useCallback((ch: string) => {
+    setSelectedChannels((prev) =>
+      prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch]
+    );
+  }, []);
+
+  const formattedSyncTime = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleString("ko-KR", {
+        month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      })
+    : null;
 
   return (
     <AppLayout>
@@ -356,83 +275,102 @@ export default function VelocityPage() {
         <div className="flex items-center gap-2">
           <TrendingUp className="h-5 w-5" />
           <h1 className="text-xl font-semibold">Velocity</h1>
+          <div className="ml-auto flex items-center gap-3">
+            {formattedSyncTime && (
+              <span className="text-xs text-muted-foreground">
+                Last synced: {formattedSyncTime}
+              </span>
+            )}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  disabled={syncing}
+                  className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
+                  {syncing ? "Syncing..." : "Sync"}
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Sync Velocity Data</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Supabase에서 최신 데이터를 동기화합니다. 계속하시겠습니까?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleSync}>Sync</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
 
-        {/* Master tabs */}
-        <Tabs defaultValue="sales">
-          <TabsList>
-            <TabsTrigger value="sales">Sales</TabsTrigger>
-            <TabsTrigger value="channel">Channel</TabsTrigger>
-          </TabsList>
+        {/* Filter panel */}
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+          {/* Row 1: Item */}
+          <div className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Item</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {ITEMS.map((item) => (
+                <ToggleBtn
+                  key={item}
+                  active={selectedItems.includes(item)}
+                  onClick={() => toggleItem(item)}
+                >
+                  {item}
+                </ToggleBtn>
+              ))}
+            </div>
+          </div>
 
-          {/* ── Sales master tab ── */}
-          <TabsContent value="sales">
-            <Tabs defaultValue="sales-sales">
-              <TabsList>
-                <TabsTrigger value="sales-sales">Sales</TabsTrigger>
-                <TabsTrigger value="ttm">TTM</TabsTrigger>
-                <TabsTrigger value="preorder">Pre Order</TabsTrigger>
-              </TabsList>
+          {/* Row 2: Channel */}
+          <div className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Channel</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {CHANNELS.map((ch) => (
+                <ToggleBtn
+                  key={ch}
+                  active={selectedChannels.includes(ch)}
+                  onClick={() => toggleChannel(ch)}
+                >
+                  {ch}
+                </ToggleBtn>
+              ))}
+            </div>
+          </div>
 
-              <TabsContent value="sales-sales">
-                <VelocityPane apiParams={LINK_SALES_PARAMS} grouped />
-              </TabsContent>
+          {/* Row 3: Mode + Periods */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Mode</span>
+            <div className="flex items-center gap-2">
+              <ToggleBtn active={mode === "sales"} onClick={() => setMode("sales")}>Sales</ToggleBtn>
+              <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>TTM</ToggleBtn>
+              <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre Order</ToggleBtn>
+            </div>
+            <div className="ml-auto">
+              <PeriodEditor periods={periods} onChange={setPeriods} />
+            </div>
+          </div>
+        </div>
 
-              <TabsContent value="ttm">
-                <VelocityPane apiParams={{ source: "link-ttm" }} grouped mode="ttm" />
-              </TabsContent>
-
-              <TabsContent value="preorder">
-                <ComingSoon label="Pre Order" />
-              </TabsContent>
-            </Tabs>
-          </TabsContent>
-
-          {/* ── Channel master tab ── */}
-          <TabsContent value="channel">
-            {channels.length === 0 ? (
-              <Card>
-                <CardContent className="flex items-center justify-center py-16 text-muted-foreground">
-                  Loading channels...
-                </CardContent>
-              </Card>
-            ) : (
-              <Tabs value={channelTab} onValueChange={handleChannelTabChange}>
-                <TabsList>
-                  {channels.map((ch) => (
-                    <TabsTrigger key={ch} value={ch}>
-                      {ch}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                {channels.map((ch) => {
-                  const subs = subChannels[ch];
-                  return (
-                    <TabsContent key={ch} value={ch}>
-                      {channelTab === ch && (
-                        subs?.length ? (
-                          <Tabs value={ebaySubTab} onValueChange={setEbaySubTab}>
-                            <TabsList>
-                              <TabsTrigger value="Total">Total</TabsTrigger>
-                              {subs.map((s) => (
-                                <TabsTrigger key={s} value={s}>{s}</TabsTrigger>
-                              ))}
-                            </TabsList>
-                            <TabsContent value={ebaySubTab}>
-                              <VelocityPane apiParams={channelParams} />
-                            </TabsContent>
-                          </Tabs>
-                        ) : (
-                          <VelocityPane apiParams={channelParams} />
-                        )
-                      )}
-                    </TabsContent>
-                  );
-                })}
-              </Tabs>
-            )}
-          </TabsContent>
-        </Tabs>
+        {/* Grid */}
+        {selectedItems.length === 0 ? (
+          <Card>
+            <CardContent className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+              아이템을 하나 이상 선택하세요
+            </CardContent>
+          </Card>
+        ) : selectedChannels.length === 0 ? (
+          <Card>
+            <CardContent className="flex items-center justify-center py-16 text-muted-foreground text-sm">
+              채널을 하나 이상 선택하세요
+            </CardContent>
+          </Card>
+        ) : (
+          <VelocityPane mode={mode} periods={periods} />
+        )}
       </div>
     </AppLayout>
   );

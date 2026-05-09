@@ -7,21 +7,16 @@ import { cn } from "@/lib/utils";
 
 export type VelocityRow = {
   masterSku: string;
-  qty90d: number;
-  qty60d: number;
-  qty30d: number;
-  qty15d: number;
-  qty7d: number;
+  qtys: (number | null)[];
   customMasterSku?: string | null;
-  customQty90d?: number | null;
-  customQty60d?: number | null;
-  customQty30d?: number | null;
-  customQty15d?: number | null;
-  customQty7d?: number | null;
+  customQtys?: (number | null)[];
+  ttmCount?: number | null;
+  ttmMasterSku?: string | null;
   isTotal?: boolean;
 };
 
-function QtyCell({ value, isTotal }: { value: number; isTotal?: boolean }) {
+function QtyCell({ value, isTotal }: { value: number | null; isTotal?: boolean }) {
+  if (value == null) return <PlaceholderCell />;
   if (isTotal) {
     return <span className="font-semibold tabular-nums">{value.toLocaleString()}</span>;
   }
@@ -42,12 +37,10 @@ function PlaceholderCell() {
   return <span className="text-muted-foreground/40 tabular-nums select-none">—</span>;
 }
 
-function makeQtyCol(
-  key: keyof Pick<VelocityRow, "qty90d" | "qty60d" | "qty30d" | "qty15d" | "qty7d">,
-  label: string
-): ColumnDef<VelocityRow> {
+function makeQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
   return {
-    accessorKey: key,
+    id: `qty_${periodIdx}`,
+    accessorFn: (row) => row.qtys[periodIdx] ?? 0,
     header: ({ column }) => {
       const sorted = column.getIsSorted();
       return (
@@ -68,29 +61,30 @@ function makeQtyCol(
     },
     cell: ({ row }) => (
       <div className="text-right">
-        <QtyCell value={row.original[key]} isTotal={row.original.isTotal} />
+        <QtyCell value={row.original.qtys[periodIdx] ?? null} isTotal={row.original.isTotal} />
       </div>
     ),
     enableSorting: true,
   };
 }
 
-function makeCustomQtyCol(
-  key: keyof Pick<VelocityRow, "customQty90d" | "customQty60d" | "customQty30d" | "customQty15d" | "customQty7d">,
-  label: string
-): ColumnDef<VelocityRow> {
+function makeCustomQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
   return {
-    id: key,
+    id: `customQty_${periodIdx}`,
+    accessorFn: (row) => row.customQtys?.[periodIdx] ?? null,
     header: () => <div className="text-right text-xs font-medium text-muted-foreground">{label}</div>,
-    cell: ({ row }) => (
-      <div className="text-right">
-        {row.original[key] != null ? (
-          <QtyCell value={row.original[key] as number} isTotal={row.original.isTotal} />
-        ) : (
-          <PlaceholderCell />
-        )}
-      </div>
-    ),
+    cell: ({ row }) => {
+      const val = row.original.customQtys?.[periodIdx];
+      return (
+        <div className="text-right">
+          {val != null ? (
+            <QtyCell value={val} isTotal={row.original.isTotal} />
+          ) : (
+            <PlaceholderCell />
+          )}
+        </div>
+      );
+    },
     enableSorting: false,
   };
 }
@@ -106,21 +100,17 @@ const masterSkuCol: ColumnDef<VelocityRow> = {
   enableSorting: true,
 };
 
-const linkSalesQtyCols = [
-  makeQtyCol("qty90d", "90 D"),
-  makeQtyCol("qty60d", "60 D"),
-  makeQtyCol("qty30d", "30 D"),
-  makeQtyCol("qty15d", "15 D"),
-  makeQtyCol("qty7d",  "7 D"),
-];
-
-function createGroupedVelocityColumns(linkGroupName: string, customGroupName: string): ColumnDef<VelocityRow>[] {
+function createGroupedVelocityColumns(
+  linkGroupName: string,
+  customGroupName: string,
+  periods: number[]
+): ColumnDef<VelocityRow>[] {
   return [
     masterSkuCol,
     {
       id: "linkGroup",
       header: linkGroupName,
-      columns: linkSalesQtyCols,
+      columns: periods.map((p, i) => makeQtyCol(i, `${p}D`)),
     },
     {
       id: "customGroup",
@@ -152,27 +142,107 @@ function createGroupedVelocityColumns(linkGroupName: string, customGroupName: st
           },
           enableSorting: false,
         } as ColumnDef<VelocityRow>,
-        makeCustomQtyCol("customQty90d", "90 D"),
-        makeCustomQtyCol("customQty60d", "60 D"),
-        makeCustomQtyCol("customQty30d", "30 D"),
-        makeCustomQtyCol("customQty15d", "15 D"),
-        makeCustomQtyCol("customQty7d",  "7 D"),
+        ...periods.map((p, i) => makeCustomQtyCol(i, `${p}D`)),
       ],
     },
   ];
 }
 
-// Sales > Sales tab
-export function createSalesSalesColumns(): ColumnDef<VelocityRow>[] {
-  return createGroupedVelocityColumns("Link Sales", "Custom Sales");
+export function createSalesSalesColumns(periods: number[]): ColumnDef<VelocityRow>[] {
+  return createGroupedVelocityColumns("Link Sales", "Custom Sales", periods);
 }
 
-// Sales > TTM tab
-export function createTtmColumns(): ColumnDef<VelocityRow>[] {
-  return createGroupedVelocityColumns("Link TTM", "Custom TTM");
+export function createTtmColumns(periods: number[]): ColumnDef<VelocityRow>[] {
+  return createGroupedVelocityColumns("Link TTM", "Custom TTM", periods);
 }
 
-// Channel tab: simple flat columns (no grouping)
-export function createChannelColumns(): ColumnDef<VelocityRow>[] {
-  return [masterSkuCol, ...linkSalesQtyCols];
+export function createPreOrderColumns(_periods: number[]): ColumnDef<VelocityRow>[] {
+  return [
+    masterSkuCol,
+    {
+      id: "linkPreOrderGroup",
+      header: "Link Pre Order",
+      columns: [makeQtyCol(0, "Total")],
+    },
+    {
+      id: "customPreOrderGroup",
+      header: "Custom Pre Order",
+      columns: [
+        {
+          id: "cpo_master_sku",
+          header: () => (
+            <div className="pl-6 border-l-2 border-border text-xs font-medium text-muted-foreground">
+              Master SKU
+            </div>
+          ),
+          cell: ({ row }: { row: { original: VelocityRow } }) => {
+            const cSku = row.original.customMasterSku;
+            const isDifferent = cSku && cSku !== row.original.masterSku;
+            return (
+              <div className="pl-6 border-l-2 border-border">
+                {row.original.isTotal ? (
+                  <span className="font-semibold text-xs">Total</span>
+                ) : cSku ? (
+                  <span className={cn("font-mono text-xs", isDifferent && "text-amber-500 font-medium")}>
+                    {cSku}
+                  </span>
+                ) : (
+                  <PlaceholderCell />
+                )}
+              </div>
+            );
+          },
+          enableSorting: false,
+        } as ColumnDef<VelocityRow>,
+        makeCustomQtyCol(0, "Total"),
+      ],
+    },
+    {
+      id: "ttmPreOrderGroup",
+      header: "TTM Pre Order",
+      columns: [
+        {
+          id: "tpo_master_sku",
+          header: () => (
+            <div className="pl-6 border-l-2 border-border text-xs font-medium text-muted-foreground">
+              Master SKU
+            </div>
+          ),
+          cell: ({ row }: { row: { original: VelocityRow } }) => {
+            const tSku = row.original.ttmMasterSku;
+            return (
+              <div className="pl-6 border-l-2 border-border">
+                {row.original.isTotal ? (
+                  <span className="font-semibold text-xs">Total</span>
+                ) : tSku ? (
+                  <span className="font-mono text-xs">{tSku}</span>
+                ) : (
+                  <PlaceholderCell />
+                )}
+              </div>
+            );
+          },
+          enableSorting: false,
+        } as ColumnDef<VelocityRow>,
+        {
+          id: "ttmCount",
+          header: () => <div className="text-right text-xs font-medium text-muted-foreground">Total</div>,
+          cell: ({ row }) => (
+            <div className="text-right">
+              {row.original.ttmCount != null ? (
+                <QtyCell value={row.original.ttmCount} isTotal={row.original.isTotal} />
+              ) : (
+                <PlaceholderCell />
+              )}
+            </div>
+          ),
+          enableSorting: false,
+        } as ColumnDef<VelocityRow>,
+      ],
+    },
+  ];
+}
+
+export function createChannelColumns(periods: number[]): ColumnDef<VelocityRow>[] {
+  return [masterSkuCol, ...periods.map((p, i) => makeQtyCol(i, `${p}D`))];
 }
