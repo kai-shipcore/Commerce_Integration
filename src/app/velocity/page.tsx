@@ -21,12 +21,41 @@ import {
   createPreOrderColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
-import { TrendingUp, Check, X, Plus, RefreshCw } from "lucide-react";
+import { TrendingUp, Check, X, Plus, RefreshCw, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { exportCurrentVelocity, exportAllVelocity } from "@/lib/velocity-export";
 
-const ITEMS = ["Car Cover", "Car Seat", "Floor Mat"] as const;
-const CHANNELS = ["Coverland", "Icarcover", "Amazon", "Auto_Armor", "Advance_Parts", "Walmart"] as const;
+const ITEMS = ["Car Cover", "Seat Cover", "Floor Mat"] as const;
+const CHANNELS = ["Coverland", "Icarcover", "Amazon FBA", "Amazon FBM", "Auto_Armor", "Advance_Parts", "Walmart"] as const;
 const DEFAULT_PERIODS = [90, 60, 30, 15, 7];
+
+interface PeriodRange { from: string; to: string }
+
+function rangeDays(r: PeriodRange): number {
+  return Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000) + 1;
+}
+
+function defaultRanges(): PeriodRange[] {
+  const to = new Date();
+  to.setDate(to.getDate() - 2);
+  const toStr = to.toISOString().slice(0, 10);
+  return DEFAULT_PERIODS.map((n) => {
+    const from = new Date(to);
+    from.setDate(from.getDate() - (n - 1));
+    return { from: from.toISOString().slice(0, 10), to: toStr };
+  });
+}
+
+function periodsToRanges(periods: number[]): PeriodRange[] {
+  const to = new Date();
+  to.setDate(to.getDate() - 2);
+  const toStr = to.toISOString().slice(0, 10);
+  return periods.map((n) => {
+    const from = new Date(to);
+    from.setDate(from.getDate() - (n - 1));
+    return { from: from.toISOString().slice(0, 10), to: toStr };
+  });
+}
 
 // ─── Period Chip Editor ───────────────────────────────────────────────────────
 
@@ -75,7 +104,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
       {periods.map((p, i) => (
         <span
           key={`${p}-${i}`}
-          className="flex items-center gap-0.5 rounded-full border border-border bg-muted px-2 py-0.5 text-xs"
+          className="flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 text-sm"
         >
           {editingIdx === i ? (
             <>
@@ -88,7 +117,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
                   if (e.key === "Escape") { setEditingIdx(null); setEditingVal(""); }
                 }}
                 onBlur={() => commitEdit(i)}
-                className="w-10 bg-transparent text-xs outline-none tabular-nums"
+                className="w-10 bg-transparent text-sm outline-none tabular-nums"
                 autoFocus
               />
               <span className="text-muted-foreground">D</span>
@@ -96,7 +125,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
                 onMouseDown={(e) => { e.preventDefault(); commitEdit(i); }}
                 className="ml-0.5 text-muted-foreground hover:text-foreground"
               >
-                <Check className="h-2.5 w-2.5" />
+                <Check className="h-3.5 w-3.5" />
               </button>
             </>
           ) : (
@@ -112,7 +141,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
                 disabled={periods.length <= 1}
                 className="ml-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                <X className="h-2.5 w-2.5" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </>
           )}
@@ -120,7 +149,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
       ))}
 
       {adding ? (
-        <span className="flex items-center gap-0.5 rounded-full border border-primary bg-muted px-2 py-0.5 text-xs">
+        <span className="flex items-center gap-1 rounded-full border border-primary bg-muted px-3 py-1.5 text-sm">
           <input
             ref={addInputRef}
             type="number"
@@ -132,7 +161,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
             }}
             onBlur={commitAdd}
             placeholder="___"
-            className="w-8 bg-transparent text-xs outline-none tabular-nums placeholder:text-muted-foreground"
+            className="w-8 bg-transparent text-sm outline-none tabular-nums placeholder:text-muted-foreground"
             autoFocus
           />
           <span className="text-muted-foreground">D</span>
@@ -140,15 +169,15 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
             onMouseDown={(e) => { e.preventDefault(); commitAdd(); }}
             className="ml-0.5 text-muted-foreground hover:text-foreground"
           >
-            <Check className="h-2.5 w-2.5" />
+            <Check className="h-3.5 w-3.5" />
           </button>
         </span>
       ) : periods.length < 5 ? (
         <button
           onClick={() => setAdding(true)}
-          className="flex items-center gap-0.5 rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
         >
-          <Plus className="h-2.5 w-2.5" />
+          <Plus className="h-3.5 w-3.5" />
           Add
         </button>
       ) : null}
@@ -182,34 +211,272 @@ function ToggleBtn({
   );
 }
 
-// ─── Velocity Pane (UI only — no data loading) ────────────────────────────────
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+type ApiData = {
+  link: { masterSku: string; qtys: number[] }[];
+  custom: { masterSku: string; qtys: number[] }[];
+  ttm?: { masterSku: string; count: number }[];
+};
+
+function responseToRows(data: ApiData, count: number): VelocityRow[] {
+  const link = data.link ?? [];
+  const custom = data.custom ?? [];
+  const ttm = data.ttm;
+  const maxLen = Math.max(link.length, custom.length, ttm?.length ?? 0);
+  if (maxLen === 0) return [];
+
+  const nullQtys = () => Array(count).fill(null) as (number | null)[];
+
+  const dataRows: VelocityRow[] = Array.from({ length: maxLen }, (_, i) => ({
+    masterSku: link[i]?.masterSku ?? "",
+    qtys: link[i]?.qtys ?? nullQtys(),
+    customMasterSku: custom[i]?.masterSku ?? null,
+    customQtys: custom[i]?.qtys ?? nullQtys(),
+    ttmMasterSku: ttm?.[i]?.masterSku ?? null,
+    ttmCount: ttm?.[i]?.count ?? null,
+  }));
+
+  const totalRow: VelocityRow = {
+    masterSku: "Total",
+    qtys: Array.from({ length: count }, (_, i) => link.reduce((s, r) => s + (r.qtys[i] ?? 0), 0)),
+    customMasterSku: custom.length > 0 ? "Total" : null,
+    customQtys: Array.from({ length: count }, (_, i) => custom.reduce((s, r) => s + (r.qtys[i] ?? 0), 0)),
+    ttmMasterSku: ttm && ttm.length > 0 ? "Total" : null,
+    ttmCount: ttm ? ttm.reduce((s, r) => s + r.count, 0) : null,
+    isTotal: true,
+  };
+
+  return [totalRow, ...dataRows];
+}
+
+async function fetchModeRows(
+  mode: "sales" | "ttm" | "preorder",
+  items: string[],
+  channels: string[],
+  ranges: PeriodRange[]
+): Promise<VelocityRow[]> {
+  const params = new URLSearchParams({
+    items: items.join(","),
+    channels: channels.join(","),
+    mode,
+    ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
+  });
+  const res = await fetch(`/api/velocity/data?${params}`);
+  const data = await res.json();
+  if (!data.success) return [];
+  return responseToRows(data as ApiData, ranges.length);
+}
+
+// ─── Custom Range Editor ──────────────────────────────────────────────────────
+
+interface CustomRangeEditorProps {
+  ranges: PeriodRange[];
+  onChange: (ranges: PeriodRange[]) => void;
+}
+
+function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editFrom, setEditFrom] = useState("");
+  const [editTo, setEditTo] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addFrom, setAddFrom] = useState("");
+  const [addTo, setAddTo] = useState("");
+
+  const commitEdit = useCallback((idx: number) => {
+    if (editFrom && editTo && editFrom <= editTo) {
+      const next = [...ranges];
+      next[idx] = { from: editFrom, to: editTo };
+      onChange(next);
+    }
+    setEditingIdx(null);
+  }, [editFrom, editTo, ranges, onChange]);
+
+  const commitAdd = useCallback(() => {
+    if (addFrom && addTo && addFrom <= addTo && ranges.length < 5) {
+      onChange([...ranges, { from: addFrom, to: addTo }]);
+    }
+    setAddFrom(""); setAddTo(""); setAdding(false);
+  }, [addFrom, addTo, ranges, onChange]);
+
+  const remove = useCallback((idx: number) => {
+    if (ranges.length <= 1) return;
+    onChange(ranges.filter((_, i) => i !== idx));
+  }, [ranges, onChange]);
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="text-xs text-muted-foreground font-medium shrink-0">Periods:</span>
+      {ranges.map((r, i) => (
+        <span key={i} className="flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 text-sm">
+          {editingIdx === i ? (
+            <>
+              <input type="date" value={editFrom} onChange={(e) => setEditFrom(e.target.value)}
+                className="bg-transparent text-sm outline-none" />
+              <span className="text-muted-foreground">~</span>
+              <input type="date" value={editTo} onChange={(e) => setEditTo(e.target.value)}
+                className="bg-transparent text-sm outline-none" />
+              {editFrom && editTo && editFrom <= editTo && (
+                <span className="text-muted-foreground text-xs ml-1">
+                  ({rangeDays({ from: editFrom, to: editTo })}d)
+                </span>
+              )}
+              <button onMouseDown={(e) => { e.preventDefault(); commitEdit(i); }}
+                className="ml-1 text-muted-foreground hover:text-foreground">
+                <Check className="h-3.5 w-3.5" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="tabular-nums hover:text-foreground text-sm"
+                onClick={() => { setEditingIdx(i); setEditFrom(r.from); setEditTo(r.to); }}>
+                {rangeDays(r)}D
+                <span className="ml-1 text-muted-foreground text-xs">{r.from.slice(5)}~{r.to.slice(5)}</span>
+              </button>
+              <button onClick={() => remove(i)} disabled={ranges.length <= 1}
+                className="ml-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </span>
+      ))}
+      {adding ? (
+        <span className="flex items-center gap-1 rounded-full border border-primary bg-muted px-3 py-1.5 text-sm">
+          <input type="date" value={addFrom} onChange={(e) => setAddFrom(e.target.value)}
+            className="bg-transparent text-sm outline-none" />
+          <span className="text-muted-foreground">~</span>
+          <input type="date" value={addTo} onChange={(e) => setAddTo(e.target.value)}
+            className="bg-transparent text-sm outline-none" />
+          {addFrom && addTo && addFrom <= addTo && (
+            <span className="text-muted-foreground text-xs ml-1">
+              ({rangeDays({ from: addFrom, to: addTo })}d)
+            </span>
+          )}
+          <button onMouseDown={(e) => { e.preventDefault(); commitAdd(); }}
+            className="ml-1 text-muted-foreground hover:text-foreground">
+            <Check className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      ) : ranges.length < 5 ? (
+        <button onClick={() => setAdding(true)}
+          className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
+          <Plus className="h-3.5 w-3.5" />Add
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Velocity Pane ────────────────────────────────────────────────────────────
 
 interface PaneProps {
   mode: "sales" | "ttm" | "preorder";
-  periods: number[];
+  ranges: PeriodRange[];
+  selectedItems: string[];
+  selectedChannels: string[];
 }
 
-function VelocityPane({ mode, periods }: PaneProps) {
+function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PaneProps) {
+  const [allRows, setAllRows] = useState<VelocityRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 100 });
+  const [exportingAll, setExportingAll] = useState(false);
+
+  const labels = useMemo(() => ranges.map((r) => `${rangeDays(r)}D`), [ranges]);
+
   const columns = useMemo(() => {
-    if (mode === "preorder") return createPreOrderColumns(periods);
-    if (mode === "ttm") return createTtmColumns(periods);
-    return createSalesSalesColumns(periods);
-  }, [mode, periods]);
+    if (mode === "preorder") return createPreOrderColumns();
+    if (mode === "ttm") return createTtmColumns(labels);
+    return createSalesSalesColumns(labels);
+  }, [mode, labels]);
+
+  const rangesKey = ranges.map((r) => `${r.from}:${r.to}`).join(",");
+
+  useEffect(() => {
+    setPagination((p) => ({ ...p, page: 1 }));
+    setSearch("");
+    setLoading(true);
+    fetchModeRows(mode, selectedItems, selectedChannels, ranges)
+      .then((rows) => setAllRows(rows))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItems.join(","), selectedChannels.join(","), mode, rangesKey]);
+
+  const filtered = useMemo(() => {
+    if (!search) return allRows;
+    const q = search.toLowerCase();
+    return allRows.filter(
+      (r) =>
+        r.isTotal ||
+        r.masterSku.toLowerCase().includes(q) ||
+        (r.customMasterSku?.toLowerCase().includes(q) ?? false) ||
+        (mode === "preorder" && (r.ttmMasterSku?.toLowerCase().includes(q) ?? false))
+    );
+  }, [allRows, search, mode]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pagination.pageSize));
+  const pageData = filtered.slice(
+    (pagination.page - 1) * pagination.pageSize,
+    pagination.page * pagination.pageSize
+  );
+
+  const label = [...selectedItems, ...selectedChannels].join("_").replace(/\s+/g, "");
+
+  const handleExportCurrent = useCallback(() => {
+    exportCurrentVelocity(allRows, mode, labels, label);
+  }, [allRows, mode, labels, label]);
+
+  const handleExportAll = useCallback(async () => {
+    setExportingAll(true);
+    try {
+      const [salesRows, ttmRows, preorderRows] = await Promise.all([
+        fetchModeRows("sales",    selectedItems, selectedChannels, ranges),
+        fetchModeRows("ttm",      selectedItems, selectedChannels, ranges),
+        fetchModeRows("preorder", selectedItems, selectedChannels, ranges),
+      ]);
+      exportAllVelocity(salesRows, ttmRows, preorderRows, labels, label);
+    } catch {
+      // silent
+    } finally {
+      setExportingAll(false);
+    }
+  }, [selectedItems, selectedChannels, ranges, labels, label]);
 
   return (
     <Card>
+      <div className="flex items-center justify-end gap-2 px-4 pt-3 pb-1">
+        <button
+          onClick={handleExportCurrent}
+          disabled={loading || allRows.length === 0}
+          className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export
+        </button>
+        <button
+          onClick={handleExportAll}
+          disabled={exportingAll || selectedItems.length === 0 || selectedChannels.length === 0}
+          className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {exportingAll ? "Exporting..." : "Export All"}
+        </button>
+      </div>
       <CardContent className="p-0">
         <DataTable
           columns={columns}
-          data={[] as VelocityRow[]}
-          totalRows={0}
-          pageCount={0}
-          pagination={{ page: 1, pageSize: 100 }}
-          onPaginationChange={() => {}}
+          data={pageData}
+          totalRows={filtered.length}
+          pageCount={pageCount}
+          pagination={pagination}
+          onPaginationChange={(page, pageSize) => setPagination({ page, pageSize })}
           onSortingChange={() => {}}
-          onSearchChange={() => {}}
+          onSearchChange={(q) => { setSearch(q); setPagination((p) => ({ ...p, page: 1 })); }}
           searchPlaceholder="Search Master SKU..."
-          isLoading={false}
+          isLoading={loading}
         />
       </CardContent>
     </Card>
@@ -222,9 +489,13 @@ export default function VelocityPage() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
+  const [periodMode, setPeriodMode] = useState<"period" | "custom">("period");
   const [periods, setPeriods] = useState<number[]>(DEFAULT_PERIODS);
+  const [customRanges, setCustomRanges] = useState<PeriodRange[]>(() => defaultRanges());
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+
+  const activeRanges = periodMode === "period" ? periodsToRanges(periods) : customRanges;
 
   useEffect(() => {
     fetch("/api/velocity/sync")
@@ -313,6 +584,14 @@ export default function VelocityPage() {
           <div className="flex items-center gap-3">
             <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Item</span>
             <div className="flex items-center gap-2 flex-wrap">
+              <ToggleBtn
+                active={selectedItems.length === ITEMS.length}
+                onClick={() =>
+                  setSelectedItems(selectedItems.length === ITEMS.length ? [] : [...ITEMS])
+                }
+              >
+                All
+              </ToggleBtn>
               {ITEMS.map((item) => (
                 <ToggleBtn
                   key={item}
@@ -329,6 +608,14 @@ export default function VelocityPage() {
           <div className="flex items-center gap-3">
             <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Channel</span>
             <div className="flex items-center gap-2 flex-wrap">
+              <ToggleBtn
+                active={selectedChannels.length === CHANNELS.length}
+                onClick={() =>
+                  setSelectedChannels(selectedChannels.length === CHANNELS.length ? [] : [...CHANNELS])
+                }
+              >
+                All
+              </ToggleBtn>
               {CHANNELS.map((ch) => (
                 <ToggleBtn
                   key={ch}
@@ -349,8 +636,31 @@ export default function VelocityPage() {
               <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>TTM</ToggleBtn>
               <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre Order</ToggleBtn>
             </div>
-            <div className="ml-auto">
-              <PeriodEditor periods={periods} onChange={setPeriods} />
+            <div className="ml-auto flex items-center gap-3">
+              {/* Period type toggle */}
+              <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs">
+                <button
+                  onClick={() => setPeriodMode("period")}
+                  className={cn("rounded px-2.5 py-1 font-medium transition-colors",
+                    periodMode === "period" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Period
+                </button>
+                <button
+                  onClick={() => setPeriodMode("custom")}
+                  className={cn("rounded px-2.5 py-1 font-medium transition-colors",
+                    periodMode === "custom" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Custom
+                </button>
+              </div>
+              {periodMode === "period" ? (
+                <PeriodEditor periods={periods} onChange={setPeriods} />
+              ) : (
+                <CustomRangeEditor ranges={customRanges} onChange={setCustomRanges} />
+              )}
             </div>
           </div>
         </div>
@@ -369,7 +679,7 @@ export default function VelocityPage() {
             </CardContent>
           </Card>
         ) : (
-          <VelocityPane mode={mode} periods={periods} />
+          <VelocityPane mode={mode} ranges={activeRanges} selectedItems={selectedItems} selectedChannels={selectedChannels} />
         )}
       </div>
     </AppLayout>

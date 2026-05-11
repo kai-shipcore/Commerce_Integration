@@ -517,21 +517,36 @@ model PlatformIntegration {
   @@schema("shipcore")
 }
 
-model VelocitySnapshot {
+model VelocityLinkSnapshot {
+  id            Int      @id @default(autoincrement())
+  syncedAt      DateTime @default(now())
+  orderDate     DateTime @db.Date
+  itemCategory  String
+  channel       String
+  orderType     String
+  linkMasterSku String
+  linkQty       Int      @default(0)
+
+  @@unique([orderDate, itemCategory, channel, orderType, linkMasterSku])
+  @@index([itemCategory, channel, orderType, orderDate])
+  @@index([linkMasterSku])
+  @@map("velocity_link_snapshot")
+  @@schema("shipcore")
+}
+
+model VelocityCustomSnapshot {
   id              Int      @id @default(autoincrement())
   syncedAt        DateTime @default(now())
   orderDate       DateTime @db.Date
   itemCategory    String
   channel         String
   orderType       String
-  linkMasterSku   String
-  linkQty         Int      @default(0)
-  customMasterSku String?
-  customQty       Int?
+  customMasterSku String
+  customQty       Int      @default(0)
 
-  @@unique([orderDate, itemCategory, channel, orderType, linkMasterSku])
+  @@unique([orderDate, itemCategory, channel, orderType, customMasterSku])
   @@index([itemCategory, channel, orderType, orderDate])
-  @@index([linkMasterSku])
-  @@map("velocity_snapshot")
+  @@index([customMasterSku])
+  @@map("velocity_custom_snapshot")
   @@schema("shipcore")
 }

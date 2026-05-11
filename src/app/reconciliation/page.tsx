@@ -126,7 +126,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
     return [totalsRow, ...rows];
   }, [totals, rows]);
 
-  const columns = useMemo(() => createChannelColumns([90, 60, 30, 15, 7]), []);
+  const columns = useMemo(() => createChannelColumns(["90D", "60D", "30D", "15D", "7D"]), []);
 
   const getRowClassName = useCallback(
     (row: VelocityRow) => (row.isTotal ? "bg-muted/60 font-semibold" : undefined),
