@@ -75,9 +75,9 @@ export async function GET(req: NextRequest) {
 
     const params: string[] = [];
     const filters = [
-      `so.order_date >= NOW() - INTERVAL '90 days'`,
+      `(so.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'`,
+      `(so.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'`,
       "soi.sku IS NOT NULL",
-      "soi.fulfillment_status = 'fulfilled'",
       "COALESCE(soi.unit_price, 0) > 0",
     ];
 
@@ -92,24 +92,20 @@ export async function GET(req: NextRequest) {
       await client.query("SET statement_timeout = 30000");
       const res = await client.query<{
         sku: string;
-        qty90d: string;
-        qty60d: string;
-        qty30d: string;
-        qty15d: string;
-        qty7d: string;
+        qty90d: string; qty60d: string; qty30d: string; qty15d: string; qty7d: string;
       }>(
         `SELECT
            soi.sku,
-           SUM(CASE WHEN so.order_date >= NOW() - INTERVAL '90 days' THEN soi.quantity ELSE 0 END)::text AS qty90d,
-           SUM(CASE WHEN so.order_date >= NOW() - INTERVAL '60 days' THEN soi.quantity ELSE 0 END)::text AS qty60d,
-           SUM(CASE WHEN so.order_date >= NOW() - INTERVAL '30 days' THEN soi.quantity ELSE 0 END)::text AS qty30d,
-           SUM(CASE WHEN so.order_date >= NOW() - INTERVAL '15 days' THEN soi.quantity ELSE 0 END)::text AS qty15d,
-           SUM(CASE WHEN so.order_date >= NOW() - INTERVAL '7 days'  THEN soi.quantity ELSE 0 END)::text AS qty7d
+           SUM(CASE WHEN (so.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (so.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN soi.quantity ELSE 0 END)::text AS qty90d,
+           SUM(CASE WHEN (so.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (so.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN soi.quantity ELSE 0 END)::text AS qty60d,
+           SUM(CASE WHEN (so.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (so.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN soi.quantity ELSE 0 END)::text AS qty30d,
+           SUM(CASE WHEN (so.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (so.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN soi.quantity ELSE 0 END)::text AS qty15d,
+           SUM(CASE WHEN (so.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (so.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN soi.quantity ELSE 0 END)::text AS qty7d
          FROM ecommerce_data.sales_orders so
          JOIN ecommerce_data.sales_order_items soi ON soi.order_id = so.id
          WHERE ${filters.join(" AND ")}
          GROUP BY soi.sku`,
-        params
+        params,
       );
       rawRows = res.rows;
     } finally {
@@ -118,6 +114,7 @@ export async function GET(req: NextRequest) {
 
     // Resolve channel SKUs → master SKUs
     const distinctSkus = [...new Set(rawRows.map((r) => r.sku))];
+    console.log(`[reconciliation/velocity] distinct SKUs to resolve: ${distinctSkus.length}`);
     const skuToMaster = distinctSkus.length > 0
       ? await lookupMasterSkusByOrderSkus(distinctSkus)
       : new Map<string, string>();

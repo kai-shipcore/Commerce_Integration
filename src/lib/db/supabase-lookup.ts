@@ -970,7 +970,8 @@ export async function lookupMasterSkusByOrderSkus(
       [channelSkus],
     );
     return new Map(res.rows.map((r) => [r.order_sku, r.master_sku]));
-  } catch {
+  } catch (err) {
+    console.error("[lookupMasterSkusByOrderSkus] query error:", err);
     return new Map();
   }
 }

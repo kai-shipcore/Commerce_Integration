@@ -30,7 +30,7 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 const navigationGroups = [
   { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
   { name: "Operations", itemIds: ["orders", "signals"] },
-  { name: "Forecasting", itemIds: ["analytics", "velocity", "reconciliation", "compare"] },
+  { name: "Forecasting", itemIds: ["analytics", "velocity", "sales-link-report", "reconciliation", "compare"] },
   { name: "Admin", itemIds: ["integrations", "user-access"] },
 ];
 
@@ -151,7 +151,8 @@ export function MainNav() {
     return <nav className="h-9 flex-1" aria-hidden="true" />;
   }
 
-  const isItemActive = (href: string) => pathname?.startsWith(href) ?? false;
+  const isItemActive = (href: string) =>
+    pathname === href || pathname?.startsWith(`${href}/`) || false;
   const navItemClassName = (isActive: boolean) =>
     cn(
       "flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors hover:text-primary dark:hover:text-white",

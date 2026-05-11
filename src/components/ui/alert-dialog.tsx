@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
+import * as AlertDialogPrimitive from "@radix-ui/react-dialog"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -149,11 +149,11 @@ function AlertDialogAction({
   variant = "default",
   size = "default",
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
+}: React.ComponentProps<typeof AlertDialogPrimitive.Close> &
   Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
   return (
     <Button variant={variant} size={size} asChild>
-      <AlertDialogPrimitive.Action
+      <AlertDialogPrimitive.Close
         data-slot="alert-dialog-action"
         className={cn(className)}
         {...props}
@@ -167,11 +167,11 @@ function AlertDialogCancel({
   variant = "outline",
   size = "default",
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Cancel> &
+}: React.ComponentProps<typeof AlertDialogPrimitive.Close> &
   Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
   return (
     <Button variant={variant} size={size} asChild>
-      <AlertDialogPrimitive.Cancel
+      <AlertDialogPrimitive.Close
         data-slot="alert-dialog-cancel"
         className={cn(className)}
         {...props}

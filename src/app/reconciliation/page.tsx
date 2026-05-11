@@ -7,9 +7,22 @@ import { DataTable } from "@/components/ui/data-table/data-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   createChannelColumns,
+  createSalesSalesColumns,
+  createTtmColumns,
+  createPreOrderColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
 import { Download, RefreshCw, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const SALES_COL_TO_SORT: Record<string, string> = {
+  masterSku: "masterSku",
+  qty_0: "qty90d",
+  qty_1: "qty60d",
+  qty_2: "qty30d",
+  qty_3: "qty15d",
+  qty_4: "qty7d",
+};
 
 interface VelocityTotals {
   qty90d: number;
@@ -23,6 +36,14 @@ interface VelocityTotals {
 interface PaneProps {
   apiParams: Record<string, string>;
 }
+
+type PaginationState = { page: number; pageSize: number };
+type SortState = { sortBy: string; sortOrder: "asc" | "desc" };
+type FetchOverrides = {
+  pagination?: PaginationState;
+  sorting?: SortState;
+  search?: string;
+};
 
 const DEFAULT_CHANNELS = [
   "AMAZON",
@@ -45,8 +66,8 @@ function getChannelLabel(channel: string) {
 function ChannelVelocityPane({ apiParams }: PaneProps) {
   const [rows, setRows] = useState<VelocityRow[]>([]);
   const [totals, setTotals] = useState<VelocityTotals | null>(null);
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 100 });
-  const [sorting, setSorting] = useState<{ sortBy: string; sortOrder: "asc" | "desc" }>({
+  const [pagination, setPagination] = useState<PaginationState>({ page: 1, pageSize: 100 });
+  const [sorting, setSorting] = useState<SortState>({
     sortBy: "qty90d",
     sortOrder: "desc",
   });
@@ -59,20 +80,24 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
   const [exporting, setExporting] = useState(false);
   const fetchIdRef = useRef(0);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (overrides: FetchOverrides = {}) => {
     const fetchId = ++fetchIdRef.current;
+    const nextPagination = overrides.pagination ?? pagination;
+    const nextSorting = overrides.sorting ?? sorting;
+    const nextSearch = overrides.search ?? search;
+
     setLoading(true);
     setError(null);
 
     try {
       const params = new URLSearchParams({
         ...apiParams,
-        page: String(pagination.page),
-        limit: String(pagination.pageSize),
-        sortBy: sorting.sortBy,
-        sortOrder: sorting.sortOrder,
+        page: String(nextPagination.page),
+        limit: String(nextPagination.pageSize),
+        sortBy: nextSorting.sortBy,
+        sortOrder: nextSorting.sortOrder,
       });
-      if (search) params.set("search", search);
+      if (nextSearch) params.set("search", nextSearch);
 
       const res = await fetch(`/api/reconciliation/velocity?${params}`, { cache: "no-store" });
       const result = await res.json();
@@ -101,18 +126,25 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
   }, [apiParams, pagination, sorting, search]);
 
   const handlePaginationChange = useCallback((page: number, pageSize: number) => {
-    setPagination({ page, pageSize });
-  }, []);
+    const nextPagination = { page, pageSize };
+    setPagination(nextPagination);
+    if (hasFetched) void fetchData({ pagination: nextPagination });
+  }, [fetchData, hasFetched]);
 
   const handleSortingChange = useCallback((sortBy: string, sortOrder: "asc" | "desc") => {
-    setSorting({ sortBy, sortOrder });
-    setPagination((p) => ({ ...p, page: 1 }));
-  }, []);
+    const nextSorting = { sortBy, sortOrder };
+    const nextPagination = { ...pagination, page: 1 };
+    setSorting(nextSorting);
+    setPagination(nextPagination);
+    if (hasFetched) void fetchData({ sorting: nextSorting, pagination: nextPagination });
+  }, [fetchData, hasFetched, pagination]);
 
   const handleSearchChange = useCallback((value: string) => {
+    const nextPagination = { ...pagination, page: 1 };
     setSearch(value);
-    setPagination((p) => ({ ...p, page: 1 }));
-  }, []);
+    setPagination(nextPagination);
+    if (hasFetched) void fetchData({ search: value, pagination: nextPagination });
+  }, [fetchData, hasFetched, pagination]);
 
   const tableData = useMemo(() => {
     if (!totals) return rows;
@@ -197,7 +229,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
         )}
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={fetchData}
+            onClick={() => void fetchData()}
             disabled={loading}
             className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -256,7 +288,269 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
   );
 }
 
+// ─── Sales Data Pane ──────────────────────────────────────────────────────────
+
+function SalesDataPane() {
+  const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
+  const [rows, setRows] = useState<VelocityRow[]>([]);
+  const [pagination, setPagination] = useState<PaginationState>({ page: 1, pageSize: 100 });
+  const [sorting, setSorting] = useState<SortState>({ sortBy: "qty_0", sortOrder: "desc" });
+  const [search, setSearch] = useState("");
+  const [totalRows, setTotalRows] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const fetchIdRef = useRef(0);
+
+  const source = mode === "ttm" ? "link-ttm" : mode === "preorder" ? "link-preorder" : "link";
+  const enrichPath =
+    mode === "ttm"
+      ? "/api/velocity/ttm-enrich"
+      : mode === "preorder"
+      ? "/api/velocity/preorder-enrich"
+      : "/api/velocity/custom-enrich";
+
+  const fetchData = useCallback(async (overrides: FetchOverrides = {}) => {
+    const fetchId = ++fetchIdRef.current;
+    const nextPagination = overrides.pagination ?? pagination;
+    const nextSorting = overrides.sorting ?? sorting;
+    const nextSearch = overrides.search ?? search;
+
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        source,
+        page: String(nextPagination.page),
+        limit: String(nextPagination.pageSize),
+        sortBy: SALES_COL_TO_SORT[nextSorting.sortBy] ?? "qty90d",
+        sortOrder: nextSorting.sortOrder,
+      });
+      if (nextSearch) params.set("search", nextSearch);
+
+      const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || "Failed to load");
+      if (fetchId !== fetchIdRef.current) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mainRows: any[] = result.data;
+      const skus: string[] = mainRows.map((r) => r.masterSku);
+
+      const enrichRes = await fetch(enrichPath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skus, search: nextSearch }),
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const enrichResult: any = await enrichRes.json();
+      if (fetchId !== fetchIdRef.current) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const enrichMap: Record<string, any> = enrichResult.success ? enrichResult.data : {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ct: any = enrichResult.customTotals ?? {};
+
+      let mappedRows: VelocityRow[];
+      if (mode === "preorder") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mappedRows = mainRows.map((r: any) => {
+          const e = enrichMap[r.masterSku] ?? {};
+          return {
+            masterSku: r.masterSku,
+            qtys: [r.qty90d],
+            customMasterSku: e.customMasterSku ?? null,
+            customQtys: [e.customQty90d ?? null],
+            ttmCount: e.ttmCount ?? null,
+            ttmMasterSku: e.ttmMasterSku ?? null,
+          };
+        });
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mappedRows = mainRows.map((r: any) => {
+          const e = enrichMap[r.masterSku] ?? {};
+          return {
+            masterSku: r.masterSku,
+            qtys: [r.qty90d, r.qty60d, r.qty30d, r.qty15d, r.qty7d],
+            customMasterSku: e.customMasterSku ?? null,
+            customQtys: [
+              e.customQty90d ?? null,
+              e.customQty60d ?? null,
+              e.customQty30d ?? null,
+              e.customQty15d ?? null,
+              e.customQty7d ?? null,
+            ],
+          };
+        });
+      }
+
+      const t = result.totals;
+      const totalsRow: VelocityRow =
+        mode === "preorder"
+          ? {
+              masterSku: "Total",
+              qtys: [t.qty90d],
+              customQtys: [ct.customQty90d ?? null],
+              ttmCount: ct.ttmQty90d ?? null,
+              isTotal: true,
+            }
+          : {
+              masterSku: "Total",
+              qtys: [t.qty90d, t.qty60d, t.qty30d, t.qty15d, t.qty7d],
+              customQtys: [
+                ct.customQty90d ?? null,
+                ct.customQty60d ?? null,
+                ct.customQty30d ?? null,
+                ct.customQty15d ?? null,
+                ct.customQty7d ?? null,
+              ],
+              isTotal: true,
+            };
+
+      setRows([totalsRow, ...mappedRows]);
+      setTotalRows(result.pagination.total);
+      setPageCount(result.pagination.totalPages);
+      setHasFetched(true);
+    } catch (err) {
+      console.error("[SalesDataPane] fetch error:", err);
+    } finally {
+      if (fetchId === fetchIdRef.current) setLoading(false);
+    }
+  }, [mode, source, enrichPath, pagination, sorting, search]);
+
+  const handleModeChange = useCallback((newMode: "sales" | "ttm" | "preorder") => {
+    setMode(newMode);
+    setRows([]);
+    setTotalRows(0);
+    setPageCount(0);
+    setHasFetched(false);
+    setPagination({ page: 1, pageSize: 100 });
+  }, []);
+
+  const columns = useMemo(() => {
+    if (mode === "preorder") return createPreOrderColumns([90]);
+    if (mode === "ttm") return createTtmColumns([90, 60, 30, 15, 7]);
+    return createSalesSalesColumns([90, 60, 30, 15, 7]);
+  }, [mode]);
+
+  const getRowClassName = useCallback(
+    (row: VelocityRow) => (row.isTotal ? "bg-muted/60 font-semibold" : undefined),
+    []
+  );
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/velocity/sales-export", { cache: "no-store" });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sales-velocity-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[SalesDataPane] export error:", err);
+    } finally {
+      setExporting(false);
+    }
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          {(["sales", "ttm", "preorder"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => handleModeChange(m)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                mode === m
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border bg-background text-foreground hover:bg-muted"
+              )}
+            >
+              {m === "sales" ? "Sales" : m === "ttm" ? "TTM" : "Pre Order"}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exporting ? (
+              <>
+                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Export Sales CSV
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => void fetchData()}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          {!hasFetched && !loading ? (
+            <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+              Refresh를 눌러 데이터를 로드하세요
+            </div>
+          ) : (
+            <DataTable
+              columns={columns}
+              data={rows}
+              totalRows={totalRows}
+              pageCount={pageCount}
+              pagination={pagination}
+              onPaginationChange={(page, pageSize) => {
+                const nextPagination = { page, pageSize };
+                setPagination(nextPagination);
+                if (hasFetched) void fetchData({ pagination: nextPagination });
+              }}
+              onSortingChange={(sortBy, sortOrder) => {
+                const nextSorting = { sortBy, sortOrder };
+                const nextPagination = { ...pagination, page: 1 };
+                setSorting(nextSorting);
+                setPagination(nextPagination);
+                if (hasFetched) void fetchData({ sorting: nextSorting, pagination: nextPagination });
+              }}
+              onSearchChange={(s) => {
+                const nextPagination = { ...pagination, page: 1 };
+                setSearch(s);
+                setPagination(nextPagination);
+                if (hasFetched) void fetchData({ search: s, pagination: nextPagination });
+              }}
+              searchPlaceholder="Search Master SKU..."
+              isLoading={loading}
+              getRowClassName={getRowClassName}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function ReconciliationPage() {
+  const [view, setView] = useState<"channel" | "sales">("channel");
   const [channels] = useState<string[]>(DEFAULT_CHANNELS);
   const [channelTab, setChannelTab] = useState<string>(DEFAULT_CHANNELS[0]);
   const [subChannels] = useState<Record<string, string[]>>({});
@@ -283,9 +577,35 @@ export default function ReconciliationPage() {
         <div className="flex items-center gap-2">
           <TrendingUp className="h-5 w-5" />
           <h1 className="text-xl font-semibold">Reconciliation</h1>
+          <div className="ml-auto flex items-center gap-1 rounded-lg border border-border bg-muted p-1">
+            <button
+              onClick={() => setView("channel")}
+              className={cn(
+                "rounded-md px-3 py-1 text-sm font-medium transition-colors",
+                view === "channel"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Channel
+            </button>
+            <button
+              onClick={() => setView("sales")}
+              className={cn(
+                "rounded-md px-3 py-1 text-sm font-medium transition-colors",
+                view === "sales"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Sales
+            </button>
+          </div>
         </div>
 
-        {channels.length === 0 ? (
+        {view === "sales" ? (
+          <SalesDataPane />
+        ) : channels.length === 0 ? (
           <Card>
             <CardContent className="flex items-center justify-center py-16 text-muted-foreground">
               Loading channels...

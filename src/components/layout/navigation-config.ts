@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  FileSpreadsheet,
   FolderKanban,
   GitCompareArrows,
   LayoutDashboard,
@@ -87,6 +88,13 @@ export const navigationItems: NavigationItem[] = [
     name: "Velocity",
     href: "/velocity",
     icon: TrendingUp,
+    hideable: true,
+  },
+  {
+    id: "sales-link-report",
+    name: "Sales Link Report",
+    href: "/sales-link-report",
+    icon: FileSpreadsheet,
     hideable: true,
   },
   {
