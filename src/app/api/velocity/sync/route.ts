@@ -47,7 +47,20 @@ const ORDER_TYPE_CASE = (alias: string) => `
   END`;
 
 const DATE_EXPR = (alias: string) =>
-  `(${alias}.order_date AT TIME ZONE 'America/Los_Angeles')::date`;
+  `(${alias}.order_date)::date`;
+
+const MASTER_SKU_REMAP: Record<string, string> = {
+  "CC-CP-07-N-GR":      "CC-CP-03-M-GR-1TO",
+  "CC-CSP-03-M-GR-1TO": "CC-CS-03-M-GR-1TO",
+  "C-SJ-GR-7":          "CC-CS-03-J-GR-1TO",
+};
+
+const MASTER_SKU_REMAP_CASE = (skuExpr: string) => {
+  const whens = Object.entries(MASTER_SKU_REMAP)
+    .map(([from, to]) => `WHEN ${skuExpr} = '${from}' THEN '${to}'`)
+    .join(" ");
+  return `CASE ${whens} ELSE ${skuExpr} END`;
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -165,11 +178,11 @@ export async function POST() {
            ${CHANNEL_CASE("l")}       AS channel,
            ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("l")}    AS order_type,
-           l.master_sku               AS link_master_sku,
-           COUNT(*)::int              AS link_qty
+           ${MASTER_SKU_REMAP_CASE("l.master_sku")} AS link_master_sku,
+           SUM(l.quantity)::int       AS link_qty
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
-           AND l.item_status IN ('Delivered', 'FULFILLED', 'PARTIALLY_FULFILLED', 'Shipped', 'Shipping', 'Acknowledged')
+           AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged')
          GROUP BY 1, 2, 3, 4, 5`
       ),
       lookupPool.query<CustomRow>(
@@ -178,16 +191,19 @@ export async function POST() {
            ${CHANNEL_CASE("c")}       AS channel,
            ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("c")}    AS order_type,
-           c.master_sku               AS custom_master_sku,
-           COUNT(*)::int              AS custom_qty
+           ${MASTER_SKU_REMAP_CASE("c.master_sku")} AS custom_master_sku,
+           SUM(c.quantity)::int       AS custom_qty
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
-           AND c.item_status IN ('Delivered', 'FULFILLED', 'PARTIALLY_FULFILLED', 'Shipped', 'Shipping', 'Acknowledged')
+           AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged')
          GROUP BY 1, 2, 3, 4, 5`
       ),
     ]);
 
     const syncedAt = new Date();
+    await primaryPool().query(
+      "TRUNCATE TABLE shipcore.velocity_link_snapshot, shipcore.velocity_custom_snapshot"
+    );
     const [linkUpserted, customUpserted] = await Promise.all([
       upsertLink(linkRes.rows, syncedAt),
       upsertCustom(customRes.rows, syncedAt),

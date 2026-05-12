@@ -382,6 +382,7 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [pagination, setPagination] = useState({ page: 1, pageSize: 100 });
+  const [sorting, setSorting] = useState<{ sortBy: string; sortOrder: "asc" | "desc" } | null>(null);
   const [exportingAll, setExportingAll] = useState(false);
 
   const labels = useMemo(() => ranges.map((r) => `${rangeDays(r)}D`), [ranges]);
@@ -406,9 +407,16 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
   }, [selectedItems.join(","), selectedChannels.join(","), mode, rangesKey]);
 
   const filtered = useMemo(() => {
-    if (!search) return allRows;
+    const hasAnyQty = (r: VelocityRow) =>
+      r.isTotal ||
+      r.qtys.some((v) => (v ?? 0) > 0) ||
+      (r.customQtys ?? []).some((v) => (v ?? 0) > 0) ||
+      (r.ttmCount ?? 0) > 0;
+
+    const base = allRows.filter(hasAnyQty);
+    if (!search) return base;
     const q = search.toLowerCase();
-    return allRows.filter(
+    return base.filter(
       (r) =>
         r.isTotal ||
         r.masterSku.toLowerCase().includes(q) ||
@@ -417,8 +425,27 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
     );
   }, [allRows, search, mode]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pagination.pageSize));
-  const pageData = filtered.slice(
+  const sorted = useMemo(() => {
+    if (!sorting) return filtered;
+    const { sortBy, sortOrder } = sorting;
+    const dir = sortOrder === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      if (a.isTotal) return -1;
+      if (b.isTotal) return 1;
+      if (sortBy === "masterSku") {
+        return dir * a.masterSku.localeCompare(b.masterSku);
+      }
+      const m = sortBy.match(/^qty_(\d+)$/);
+      if (m) {
+        const i = Number(m[1]);
+        return dir * ((a.qtys[i] ?? 0) - (b.qtys[i] ?? 0));
+      }
+      return 0;
+    });
+  }, [filtered, sorting]);
+
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pagination.pageSize));
+  const pageData = sorted.slice(
     (pagination.page - 1) * pagination.pageSize,
     pagination.page * pagination.pageSize
   );
@@ -469,11 +496,14 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
         <DataTable
           columns={columns}
           data={pageData}
-          totalRows={filtered.length}
+          totalRows={sorted.length}
           pageCount={pageCount}
           pagination={pagination}
           onPaginationChange={(page, pageSize) => setPagination({ page, pageSize })}
-          onSortingChange={() => {}}
+          onSortingChange={(sortBy, sortOrder) => {
+            setSorting({ sortBy, sortOrder });
+            setPagination((p) => ({ ...p, page: 1 }));
+          }}
           onSearchChange={(q) => { setSearch(q); setPagination((p) => ({ ...p, page: 1 })); }}
           searchPlaceholder="Search Master SKU..."
           isLoading={loading}
