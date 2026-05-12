@@ -1011,8 +1011,8 @@ export async function getLinkSalesVelocity(opts: {
   const filters: string[] = [
     "master_sku IS NOT NULL",
     "master_sku LIKE 'CA-SC%'",
-    "(order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'",
-    "(order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'",
+    "order_date::date >= CURRENT_DATE - INTERVAL '91 days'",
+    "order_date::date <= CURRENT_DATE - INTERVAL '2 days'",
     "item_status IN ('FULFILLED', 'Shipped')",
   ];
 
@@ -1027,11 +1027,11 @@ export async function getLinkSalesVelocity(opts: {
     WITH velocity AS (
       SELECT
         master_sku,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
       FROM ecommerce_data.vw_sales_order_items_link_new
       ${whereClause}
       GROUP BY master_sku
@@ -1109,11 +1109,11 @@ export async function getCustomSalesForSkus(
        SELECT
          link_master_sku,
          MIN(custom_master_sku) AS custom_master_sku,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
        FROM custom_data
        GROUP BY link_master_sku`,
       [linkMasterSkus],
@@ -1177,11 +1177,11 @@ export async function getCustomSalesTotals(search?: string): Promise<{
            AND c.item_status IN ('FULFILLED', 'Shipped')
        )
        SELECT
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_90d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_60d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_30d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_15d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_7d
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_90d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_60d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_30d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_15d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_7d
        FROM custom_data`,
       params,
     );
@@ -1262,8 +1262,8 @@ export async function getLinkTtmVelocity(opts: {
     "v.master_sku IS NOT NULL",
     "v.master_sku LIKE 'CA-SC%'",
     "v.order_number = ANY($1)",
-    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'",
-    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'",
+    "v.order_date::date >= CURRENT_DATE - INTERVAL '91 days'",
+    "v.order_date::date <= CURRENT_DATE - INTERVAL '2 days'",
     "v.item_status IN ('FULFILLED', 'Shipped')",
   ];
 
@@ -1278,11 +1278,11 @@ export async function getLinkTtmVelocity(opts: {
     WITH velocity AS (
       SELECT
         v.master_sku,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
       FROM ecommerce_data.vw_sales_order_items_link_new v
       ${whereClause}
       GROUP BY v.master_sku
@@ -1356,11 +1356,11 @@ export async function getCustomTtmForSkus(
        SELECT
          link_master_sku,
          MIN(custom_master_sku) AS custom_master_sku,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
        FROM custom_data
        GROUP BY link_master_sku`,
       [linkMasterSkus, ttmOrderNumbers],
@@ -1402,11 +1402,11 @@ export async function getCustomTtmTotals(search?: string): Promise<{
   try {
     const res = await pool.query(
       `SELECT
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_90d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_60d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_30d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_15d,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::text AS total_7d
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_90d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_60d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_30d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_15d,
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::text AS total_7d
        FROM ecommerce_data.vw_sales_order_items_custom_new
        WHERE order_number = ANY($1)
          AND master_sku IS NOT NULL
@@ -1457,8 +1457,8 @@ export async function getCustomSalesVelocity(opts: {
   const filters: string[] = [
     "master_sku IS NOT NULL",
     "master_sku LIKE 'CA-SC%'",
-    "(order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'",
-    "(order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'",
+    "order_date::date >= CURRENT_DATE - INTERVAL '91 days'",
+    "order_date::date <= CURRENT_DATE - INTERVAL '2 days'",
     "item_status IN ('FULFILLED', 'Shipped')",
   ];
 
@@ -1473,11 +1473,11 @@ export async function getCustomSalesVelocity(opts: {
     WITH velocity AS (
       SELECT
         master_sku,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
-        COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+        COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
       FROM ecommerce_data.vw_sales_order_items_custom_new
       ${whereClause}
       GROUP BY master_sku
@@ -1556,8 +1556,8 @@ export async function getCustomTtmVelocity(opts: {
     "v.master_sku IS NOT NULL",
     "v.master_sku LIKE 'CA-SC%'",
     "v.order_number = ANY($1)",
-    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'",
-    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'",
+    "v.order_date::date >= CURRENT_DATE - INTERVAL '91 days'",
+    "v.order_date::date <= CURRENT_DATE - INTERVAL '2 days'",
     "v.item_status IN ('FULFILLED', 'Shipped')",
   ];
 
@@ -1572,11 +1572,11 @@ export async function getCustomTtmVelocity(opts: {
     WITH velocity AS (
       SELECT
         v.master_sku,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '61 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '31 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '16 days' AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
-        COUNT(CASE WHEN (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '8 days'  AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_90d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '61 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_60d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '31 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_30d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '16 days' AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_15d,
+        COUNT(CASE WHEN v.order_date::date >= CURRENT_DATE - INTERVAL '8 days'  AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_7d
       FROM ecommerce_data.vw_sales_order_items_custom_new v
       ${whereClause}
       GROUP BY v.master_sku
@@ -1683,8 +1683,8 @@ export async function getLinkPreOrderVelocity(opts: {
     "v.master_sku IS NOT NULL",
     "v.master_sku LIKE 'CA-SC%'",
     "v.order_number = ANY($1)",
-    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'",
-    "(v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'",
+    "v.order_date::date >= CURRENT_DATE - INTERVAL '91 days'",
+    "v.order_date::date <= CURRENT_DATE - INTERVAL '2 days'",
     "v.item_status IN ('FULFILLED', 'Shipped')",
   ];
 
@@ -1775,7 +1775,7 @@ export async function getCustomPreOrderForSkus(
        SELECT
          link_master_sku,
          MIN(custom_master_sku) AS custom_master_sku,
-         COUNT(CASE WHEN (order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days' AND (order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days' THEN 1 END)::int AS qty_90d
+         COUNT(CASE WHEN order_date::date >= CURRENT_DATE - INTERVAL '91 days' AND order_date::date <= CURRENT_DATE - INTERVAL '2 days' THEN 1 END)::int AS qty_90d
        FROM custom_data
        GROUP BY link_master_sku`,
       [linkMasterSkus],
@@ -1804,8 +1804,8 @@ export async function getTtmPreOrderForSkus(
          AND v.master_sku IS NOT NULL
          AND v.master_sku LIKE 'CA-SC%'
          AND v.item_status IN ('FULFILLED', 'Shipped')
-         AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'
-         AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'
+         AND v.order_date::date >= CURRENT_DATE - INTERVAL '91 days'
+         AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days'
        GROUP BY v.master_sku`,
       [linkMasterSkus],
     );
@@ -1836,8 +1836,8 @@ export async function getPreOrderTotals(search?: string): Promise<{
          WHERE so.tags LIKE '%STOQ-preorder%' AND so.tags NOT LIKE '%TTM%'
            AND c.master_sku IS NOT NULL
            AND c.item_status IN ('FULFILLED', 'Shipped')
-           AND (c.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'
-           AND (c.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'
+           AND c.order_date::date >= CURRENT_DATE - INTERVAL '91 days'
+           AND c.order_date::date <= CURRENT_DATE - INTERVAL '2 days'
            ${searchFilterCustom}`,
         customParams,
       ),
@@ -1849,8 +1849,8 @@ export async function getPreOrderTotals(search?: string): Promise<{
            AND v.master_sku IS NOT NULL
            AND v.master_sku LIKE 'CA-SC%'
            AND v.item_status IN ('FULFILLED', 'Shipped')
-           AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '91 days'
-           AND (v.order_date AT TIME ZONE 'America/Los_Angeles')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date - INTERVAL '2 days'
+           AND v.order_date::date >= CURRENT_DATE - INTERVAL '91 days'
+           AND v.order_date::date <= CURRENT_DATE - INTERVAL '2 days'
            ${searchFilterTtm}`,
         ttmParams,
       ),
