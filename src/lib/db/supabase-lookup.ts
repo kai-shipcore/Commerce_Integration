@@ -952,29 +952,62 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
         fulfilled_quantity: number | null;
         fulfillment_status: string | null;
       }>(
-        `SELECT
-          soi.id,
-          soi.order_id,
-          soi.external_line_item_id,
-          soi.sku,
-          (SELECT v.master_sku
-           FROM ecommerce_data.vw_sales_order_items v
-           WHERE v.order_sku = soi.sku AND v.master_sku IS NOT NULL
-           LIMIT 1) AS master_sku,
-          soi.product_name,
-          soi.quantity,
-          COALESCE(soi.unit_price, 0)::text AS unit_price,
-          soi.currency::text AS currency,
-          COALESCE(soi.shipping_price, 0)::text AS shipping_price,
-          soi.item_status,
-          COALESCE(soi.item_tax, 0)::text AS item_tax,
-          soi.refunded_quantity,
-          soi.net_quantity,
-          soi.fulfilled_quantity,
-          soi.fulfillment_status
-        FROM ecommerce_data.sales_order_items soi
-        WHERE soi.order_id = $1
-        ORDER BY soi.id ASC`,
+        `WITH normalized AS (
+           SELECT
+             soi.id, soi.order_id, soi.external_line_item_id, soi.sku, soi.product_name,
+             soi.quantity, soi.unit_price, soi.currency, soi.shipping_price, soi.item_status,
+             soi.item_tax, soi.refunded_quantity, soi.net_quantity, soi.fulfilled_quantity,
+             soi.fulfillment_status,
+             CASE
+               WHEN (length(soi.sku) >= 31) AND (soi.sku LIKE 'CL-SC-10-%') THEN
+                 'CL-SC-10-' || sz.cfront_size || '-' || sz.crear_size || '-' ||
+                 array_to_string((string_to_array(soi.sku, '-'))[8:10], '-')
+               WHEN soi.sku LIKE 'CL-SC-10-%' THEN
+                 CASE
+                   WHEN (soi.sku LIKE ('%' || sz.cfront_size || '%')
+                      OR soi.sku LIKE ('%' || sz.crear_size || '%')
+                      OR soi.sku LIKE ('%' || sz.cthird_size || '%')) THEN soi.sku
+                   WHEN (sz.crear_size NOT LIKE '%NEW%' AND sz.crear_size NOT LIKE '%INV%'
+                      AND (soi.sku LIKE 'CL-SC-10-B-%' OR soi.sku LIKE 'CL-SC-10-R-%'))
+                     THEN 'CL-SC-10-' || sz.crear_size || '-' || array_to_string((string_to_array(soi.sku, '-'))[6:8], '-')
+                   WHEN soi.sku LIKE 'CL-SC-10-F-%'
+                     THEN 'CL-SC-10-' || sz.cfront_size || '-' || array_to_string((string_to_array(soi.sku, '-'))[6:8], '-')
+                   WHEN (sz.cthird_size NOT LIKE '%NEW%' AND sz.cthird_size NOT LIKE '%INV%' AND soi.sku LIKE 'CL-SC-10-E-%')
+                     THEN 'CL-SC-10-' || sz.cthird_size || '-' || array_to_string((string_to_array(soi.sku, '-'))[6:8], '-')
+                   ELSE soi.sku
+                 END
+               ELSE NULL
+             END AS new_sku
+           FROM ecommerce_data.sales_order_items soi
+           LEFT JOIN size_chart_dev.seat_cover_size_chart_temp sz
+             ON sz.f_number = regexp_replace(soi.sku, '.*-(\\d+)$', '\\1')
+           WHERE soi.order_id = $1 AND soi.sku IS NOT NULL
+         ),
+         with_master AS (
+           SELECT n.*,
+                  COALESCE(n.new_sku, n.sku) AS forecasting_sku,
+                  fn.master_sku_parse1
+           FROM normalized n,
+           LATERAL size_chart.fn_extract_master_sku_from_web_sku(COALESCE(n.new_sku, n.sku)::varchar)
+             fn(master_sku_parse1, master_sku_parse2, master_sku_parse3)
+         )
+         SELECT
+           wm.id, wm.order_id, wm.external_line_item_id, wm.sku,
+           CASE
+             WHEN wm.master_sku_parse1 IS NOT NULL AND wm.master_sku_parse1 != ''
+               THEN wm.master_sku_parse1
+             ELSE (SELECT kc.component_sku::text FROM ecommerce_data.shiphero_kit_components kc
+                   WHERE kc.parent_kit_sku::text = wm.forecasting_sku LIMIT 1)
+           END AS master_sku,
+           wm.product_name, wm.quantity,
+           COALESCE(wm.unit_price, 0)::text AS unit_price,
+           wm.currency::text AS currency,
+           COALESCE(wm.shipping_price, 0)::text AS shipping_price,
+           wm.item_status,
+           COALESCE(wm.item_tax, 0)::text AS item_tax,
+           wm.refunded_quantity, wm.net_quantity, wm.fulfilled_quantity, wm.fulfillment_status
+         FROM with_master wm
+         ORDER BY wm.id ASC`,
         [orderId],
       ),
     ]);
