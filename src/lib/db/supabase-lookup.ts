@@ -104,6 +104,8 @@ export interface SalesOrderRow {
   salesChannel: string | null;
   lineCount: number;
   unitCount: number;
+  masterSku: string | null;
+  masterSkuCount: number;
 }
 
 export interface SalesOrderItemRow {
@@ -754,8 +756,40 @@ export async function getSalesOrders(
 
     const summary = summaryResult.rows[0];
 
+    // Post-query: resolve master SKUs for the returned page of orders.
+    // Two targeted queries (order_id list + sku list) are far cheaper than
+    // joining vw_sales_order_items in the main GROUP BY query.
+    const orderIds = result.rows.map((r) => r.id);
+    const orderMasterSkuMap = new Map<number, { first: string; count: number }>();
+    if (orderIds.length > 0) {
+      const itemSkuRows = await client.query<{ order_id: number; sku: string }>(
+        `SELECT DISTINCT order_id, sku
+         FROM ecommerce_data.sales_order_items
+         WHERE order_id = ANY($1) AND sku IS NOT NULL`,
+        [orderIds],
+      );
+      if (itemSkuRows.rows.length > 0) {
+        const distinctSkus = [...new Set(itemSkuRows.rows.map((r) => r.sku))];
+        const skuToMaster = await lookupMasterSkusByOrderSkus(distinctSkus);
+        const orderSkusMap = new Map<number, Set<string>>();
+        for (const { order_id, sku } of itemSkuRows.rows) {
+          const master = skuToMaster.get(sku);
+          if (!master) continue;
+          const set = orderSkusMap.get(order_id) ?? new Set<string>();
+          set.add(master);
+          orderSkusMap.set(order_id, set);
+        }
+        for (const [orderId, masters] of orderSkusMap) {
+          const sorted = [...masters].sort();
+          orderMasterSkuMap.set(orderId, { first: sorted[0], count: sorted.length });
+        }
+      }
+    }
+
     return {
-      rows: result.rows.map((row) => ({
+      rows: result.rows.map((row) => {
+        const msku = orderMasterSkuMap.get(row.id);
+        return {
         id: row.id,
         platformSource: row.platform_source,
         externalOrderId: row.external_order_id,
@@ -773,7 +807,10 @@ export async function getSalesOrders(
         salesChannel: row.sales_channel,
         lineCount: Number(row.line_count ?? 0),
         unitCount: Number(row.unit_count ?? 0),
-      })),
+        masterSku: msku?.first ?? null,
+        masterSkuCount: msku?.count ?? 0,
+        };
+      }),
       totalRows: Number(summary?.total_orders ?? 0),
       platformSources,
       orderStatuses,
