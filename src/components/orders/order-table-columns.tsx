@@ -45,13 +45,8 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
         <DataTableColumnHeader column={column} title="Order" />
       ),
       cell: ({ row }) => (
-        <div className="space-y-1">
-          <div className="font-medium">
-            {row.original.orderNumber || `Order ${row.original.id}`}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {row.original.externalOrderId || `Internal ID ${row.original.id}`}
-          </div>
+        <div className="font-medium">
+          {row.original.orderNumber || row.original.externalOrderId || `Order ${row.original.id}`}
         </div>
       ),
       enableHiding: false,
