@@ -24,8 +24,7 @@ function QtyCell({ value, isTotal }: { value: number | null; isTotal?: boolean }
     <span
       className={cn(
         "tabular-nums",
-        value === 0 && "text-muted-foreground",
-        value >= 1 && value <= 2 && "text-amber-600 font-medium"
+        value === 0 && "text-muted-foreground"
       )}
     >
       {value.toLocaleString()}
