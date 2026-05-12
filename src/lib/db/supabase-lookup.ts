@@ -1031,23 +1031,20 @@ export async function lookupMasterSkusByOrderSkus(
   if (uncached.length === 0) return result;
 
   try {
-    const res = await pool.query<{ order_sku: string; master_sku: string }>(
-      `SELECT DISTINCT ON (order_sku) order_sku, master_sku
-       FROM ecommerce_data.vw_sales_order_items
-       WHERE order_sku = ANY($1)
-         AND master_sku IS NOT NULL`,
+    const res = await pool.query<{ order_sku: string; master_sku: string | null }>(
+      `SELECT
+         sku AS order_sku,
+         (size_chart.fn_extract_master_sku_from_web_sku(sku)).master_sku_parse1 AS master_sku
+       FROM unnest($1::text[]) AS sku`,
       [uncached],
     );
     const expiresAt = Date.now() + SKU_CACHE_TTL_MS;
-    const found = new Set(res.rows.map((r) => r.order_sku));
     for (const row of res.rows) {
-      result.set(row.order_sku, row.master_sku);
-      _skuMasterCache.set(row.order_sku, { master: row.master_sku, expiresAt });
-    }
-    // Cache "not found" SKUs too so we don't re-query the slow view for them
-    for (const sku of uncached) {
-      if (!found.has(sku)) {
-        _skuMasterCache.set(sku, { master: null, expiresAt });
+      if (row.master_sku) {
+        result.set(row.order_sku, row.master_sku);
+        _skuMasterCache.set(row.order_sku, { master: row.master_sku, expiresAt });
+      } else {
+        _skuMasterCache.set(row.order_sku, { master: null, expiresAt });
       }
     }
     return result;
