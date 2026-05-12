@@ -144,8 +144,6 @@ export interface SalesOrdersQueryOptions {
     | "orderStatus"
     | "financialStatus"
     | "totalPrice"
-    | "lineCount"
-    | "unitCount"
     | "salesChannel"
     | "shippingCountry"
     | "buyerEmail";
@@ -575,8 +573,6 @@ export async function getSalesOrders(
     orderStatus: "so.order_status",
     financialStatus: "so.financial_status",
     totalPrice: "so.total_price",
-    lineCount: "line_count",
-    unitCount: "unit_count",
     salesChannel: "so.sales_channel",
     shippingCountry: "so.shipping_country",
     buyerEmail: "buyer_email",
@@ -658,19 +654,18 @@ export async function getSalesOrders(
       filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
 
     // Fix A+B: fire summary and meta on pool (separate connections) in parallel with main query
+    // totalUnits is intentionally omitted — joining sales_order_items for a full aggregate
+    // over all filtered orders adds 8+ seconds; the UI computes it from the displayed page rows.
     const summaryPromise = pool.query<{
       total_orders: string;
       total_revenue: string | null;
-      total_units: string | null;
       total_platforms: string;
     }>(
       `SELECT
-        COUNT(DISTINCT so.id)::text AS total_orders,
+        COUNT(*)::text AS total_orders,
         COALESCE(SUM(so.total_price), 0)::text AS total_revenue,
-        COALESCE(SUM(soi_s.net_quantity), 0)::text AS total_units,
         COUNT(DISTINCT so.platform_source)::text AS total_platforms
       FROM ecommerce_data.sales_orders so
-      LEFT JOIN ecommerce_data.sales_order_items soi_s ON soi_s.order_id = so.id
       ${whereClause}`,
       params,
     );
@@ -708,8 +703,6 @@ export async function getSalesOrders(
       buyer_email: string | null;
       shipping_country: string | null;
       sales_channel: string | null;
-      line_count: string | number;
-      unit_count: string | number;
     }>(
       `SELECT
         so.id,
@@ -723,64 +716,68 @@ export async function getSalesOrders(
         so.financial_status,
         COALESCE(so.buyer_email, so.customer_email) AS buyer_email,
         so.shipping_country,
-        so.sales_channel,
-        COUNT(soi.id) AS line_count,
-        COALESCE(SUM(soi.net_quantity), 0) AS unit_count
-      FROM ecommerce_data.sales_orders so
-      LEFT JOIN ecommerce_data.sales_order_items soi ON soi.order_id = so.id
-      ${whereClause}
-      GROUP BY
-        so.id,
-        so.platform_source,
-        so.external_order_id,
-        so.order_number,
-        so.order_date,
-        so.order_status,
-        so.total_price,
-        so.currency,
-        so.financial_status,
-        COALESCE(so.buyer_email, so.customer_email),
-        so.shipping_country,
         so.sales_channel
+      FROM ecommerce_data.sales_orders so
+      ${whereClause}
       ORDER BY ${sortBy} ${sortOrder}, so.id DESC
       ${options.exportAll ? "" : `LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`}`,
       queryParams,
     );
-
     const orderIds = result.rows.map((r) => r.id);
 
-    const resolveOrderMasterSkus = async (): Promise<Map<number, { first: string; count: number }>> => {
-      const map = new Map<number, { first: string; count: number }>();
-      if (orderIds.length === 0) return map;
-      const itemSkuRows = await client.query<{ order_id: number; sku: string }>(
-        `SELECT DISTINCT order_id, sku
+    const resolveOrderItemData = async (): Promise<{
+      masterSkuMap: Map<number, { first: string; count: number }>;
+      countsMap: Map<number, { lineCount: number; unitCount: number }>;
+    }> => {
+      const masterSkuMap = new Map<number, { first: string; count: number }>();
+      const countsMap = new Map<number, { lineCount: number; unitCount: number }>();
+      if (orderIds.length === 0) return { masterSkuMap, countsMap };
+
+      const itemRows = await client.query<{
+        order_id: number;
+        line_count: string;
+        unit_count: string;
+        skus: string[] | null;
+      }>(
+        `SELECT order_id,
+                COUNT(id)::text AS line_count,
+                COALESCE(SUM(net_quantity), 0)::text AS unit_count,
+                array_agg(DISTINCT sku) FILTER (WHERE sku IS NOT NULL) AS skus
          FROM ecommerce_data.sales_order_items
-         WHERE order_id = ANY($1) AND sku IS NOT NULL`,
+         WHERE order_id = ANY($1)
+         GROUP BY order_id`,
         [orderIds],
       );
-      if (itemSkuRows.rows.length > 0) {
-        const distinctSkus = [...new Set(itemSkuRows.rows.map((r) => r.sku))];
-        const skuToMaster = await lookupMasterSkusByOrderSkus(distinctSkus);
-        const orderSkusMap = new Map<number, Set<string>>();
-        for (const { order_id, sku } of itemSkuRows.rows) {
-          const master = skuToMaster.get(sku);
-          if (!master) continue;
-          const set = orderSkusMap.get(order_id) ?? new Set<string>();
-          set.add(master);
-          orderSkusMap.set(order_id, set);
-        }
-        for (const [orderId, masters] of orderSkusMap) {
-          const sorted = [...masters].sort();
-          map.set(orderId, { first: sorted[0], count: sorted.length });
+      for (const row of itemRows.rows) {
+        countsMap.set(row.order_id, {
+          lineCount: Number(row.line_count),
+          unitCount: Number(row.unit_count),
+        });
+      }
+
+      const allSkus = itemRows.rows.flatMap((r) => r.skus ?? []);
+      if (allSkus.length > 0) {
+        const skuToMaster = await lookupMasterSkusByOrderSkus([...new Set(allSkus)]);
+        for (const row of itemRows.rows) {
+          const masters = new Set<string>();
+          for (const sku of row.skus ?? []) {
+            const master = skuToMaster.get(sku);
+            if (master) masters.add(master);
+          }
+          if (masters.size > 0) {
+            const sorted = [...masters].sort();
+            masterSkuMap.set(row.order_id, { first: sorted[0], count: sorted.length });
+          }
         }
       }
-      return map;
+
+      return { masterSkuMap, countsMap };
     };
 
-    const [summaryResult, metaResult, orderMasterSkuMap] = await Promise.all([
+    const [summaryResult, metaResult, { masterSkuMap: orderMasterSkuMap, countsMap: orderCountsMap }] = await Promise.all([
       summaryPromise,
       metaPromise,
-      resolveOrderMasterSkus(),
+      resolveOrderItemData(),
     ]);
 
     let platformSources: string[] = [];
@@ -811,8 +808,8 @@ export async function getSalesOrders(
         buyerEmail: row.buyer_email,
         shippingCountry: row.shipping_country,
         salesChannel: row.sales_channel,
-        lineCount: Number(row.line_count ?? 0),
-        unitCount: Number(row.unit_count ?? 0),
+        lineCount: orderCountsMap.get(row.id)?.lineCount ?? 0,
+        unitCount: orderCountsMap.get(row.id)?.unitCount ?? 0,
         masterSku: msku?.first ?? null,
         masterSkuCount: msku?.count ?? 0,
         };
@@ -823,7 +820,7 @@ export async function getSalesOrders(
       summary: {
         totalOrders: Number(summary?.total_orders ?? 0),
         totalRevenue: Number(summary?.total_revenue ?? 0),
-        totalUnits: Number(summary?.total_units ?? 0),
+        totalUnits: 0,
         totalPlatforms: Number(summary?.total_platforms ?? 0),
       },
     };
@@ -1006,24 +1003,57 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
   }
 }
 
+// In-memory SKU→master cache. vw_sales_order_items is expensive (~7s per query);
+// caching per-SKU (including null for "not found") avoids re-querying on repeated page loads.
+const _skuMasterCache = new Map<string, { master: string | null; expiresAt: number }>();
+const SKU_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
 export async function lookupMasterSkusByOrderSkus(
   channelSkus: string[],
 ): Promise<Map<string, string>> {
   if (!channelSkus.length) return new Map();
   const pool = getLookupPool();
   if (!pool) return new Map();
+
+  const result = new Map<string, string>();
+  const now = Date.now();
+  const uncached: string[] = [];
+
+  for (const sku of channelSkus) {
+    const entry = _skuMasterCache.get(sku);
+    if (entry && entry.expiresAt > now) {
+      if (entry.master !== null) result.set(sku, entry.master);
+    } else {
+      uncached.push(sku);
+    }
+  }
+
+  if (uncached.length === 0) return result;
+
   try {
     const res = await pool.query<{ order_sku: string; master_sku: string }>(
       `SELECT DISTINCT ON (order_sku) order_sku, master_sku
        FROM ecommerce_data.vw_sales_order_items
        WHERE order_sku = ANY($1)
          AND master_sku IS NOT NULL`,
-      [channelSkus],
+      [uncached],
     );
-    return new Map(res.rows.map((r) => [r.order_sku, r.master_sku]));
+    const expiresAt = Date.now() + SKU_CACHE_TTL_MS;
+    const found = new Set(res.rows.map((r) => r.order_sku));
+    for (const row of res.rows) {
+      result.set(row.order_sku, row.master_sku);
+      _skuMasterCache.set(row.order_sku, { master: row.master_sku, expiresAt });
+    }
+    // Cache "not found" SKUs too so we don't re-query the slow view for them
+    for (const sku of uncached) {
+      if (!found.has(sku)) {
+        _skuMasterCache.set(sku, { master: null, expiresAt });
+      }
+    }
+    return result;
   } catch (err) {
     console.error("[lookupMasterSkusByOrderSkus] query error:", err);
-    return new Map();
+    return result;
   }
 }
 

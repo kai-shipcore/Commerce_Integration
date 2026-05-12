@@ -477,11 +477,13 @@ export default function OrdersPage() {
             <CardHeader>
               <CardDescription>Units</CardDescription>
               <CardTitle className="text-3xl">
-                {summary?.totalUnits.toLocaleString() ?? "-"}
+                {rows.length > 0
+                  ? rows.reduce((s, r) => s + r.unitCount, 0).toLocaleString()
+                  : (summary ? "0" : "-")}
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Net quantity from order items
+              Net quantity on this page
             </CardContent>
           </Card>
           <Card>
