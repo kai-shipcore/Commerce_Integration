@@ -733,41 +733,84 @@ export async function getSalesOrders(
       const countsMap = new Map<number, { lineCount: number; unitCount: number }>();
       if (orderIds.length === 0) return { masterSkuMap, countsMap };
 
-      const itemRows = await client.query<{
+      // Inline the view logic with an upfront order_id filter so only the
+      // 20 returned rows are processed — avoids a full vw_sales_order_items scan.
+      const rows = await client.query<{
         order_id: number;
         line_count: string;
         unit_count: string;
-        skus: string[] | null;
+        master_skus: string[] | null;
       }>(
-        `SELECT order_id,
-                COUNT(id)::text AS line_count,
-                COALESCE(SUM(net_quantity), 0)::text AS unit_count,
-                array_agg(DISTINCT sku) FILTER (WHERE sku IS NOT NULL) AS skus
-         FROM ecommerce_data.sales_order_items
-         WHERE order_id = ANY($1)
-         GROUP BY order_id`,
+        `WITH order_items AS (
+           SELECT soi.order_id, soi.id, COALESCE(soi.net_quantity, 0) AS net_quantity, soi.sku AS order_sku
+           FROM ecommerce_data.sales_order_items soi
+           WHERE soi.order_id = ANY($1)
+         ),
+         item_counts AS (
+           SELECT order_id, COUNT(id)::text AS line_count, SUM(net_quantity)::text AS unit_count
+           FROM order_items GROUP BY order_id
+         ),
+         normalized AS (
+           SELECT
+             oi.order_id, oi.order_sku,
+             CASE
+               WHEN (length(oi.order_sku) >= 31) AND (oi.order_sku LIKE 'CL-SC-10-%') THEN
+                 'CL-SC-10-' || sz.cfront_size || '-' || sz.crear_size || '-' ||
+                 array_to_string((string_to_array(oi.order_sku, '-'))[8:10], '-')
+               WHEN oi.order_sku LIKE 'CL-SC-10-%' THEN
+                 CASE
+                   WHEN (oi.order_sku LIKE ('%' || sz.cfront_size || '%')
+                      OR oi.order_sku LIKE ('%' || sz.crear_size || '%')
+                      OR oi.order_sku LIKE ('%' || sz.cthird_size || '%')) THEN oi.order_sku
+                   WHEN (sz.crear_size NOT LIKE '%NEW%' AND sz.crear_size NOT LIKE '%INV%'
+                      AND (oi.order_sku LIKE 'CL-SC-10-B-%' OR oi.order_sku LIKE 'CL-SC-10-R-%'))
+                     THEN 'CL-SC-10-' || sz.crear_size || '-' || array_to_string((string_to_array(oi.order_sku, '-'))[6:8], '-')
+                   WHEN oi.order_sku LIKE 'CL-SC-10-F-%'
+                     THEN 'CL-SC-10-' || sz.cfront_size || '-' || array_to_string((string_to_array(oi.order_sku, '-'))[6:8], '-')
+                   WHEN (sz.cthird_size NOT LIKE '%NEW%' AND sz.cthird_size NOT LIKE '%INV%' AND oi.order_sku LIKE 'CL-SC-10-E-%')
+                     THEN 'CL-SC-10-' || sz.cthird_size || '-' || array_to_string((string_to_array(oi.order_sku, '-'))[6:8], '-')
+                   ELSE oi.order_sku
+                 END
+               ELSE NULL
+             END AS new_sku
+           FROM order_items oi
+           LEFT JOIN size_chart_dev.seat_cover_size_chart_temp sz
+             ON sz.f_number = regexp_replace(oi.order_sku, '.*-(\\d+)$', '\\1')
+           WHERE oi.order_sku IS NOT NULL
+         ),
+         with_master AS (
+           SELECT n.order_id, n.order_sku, COALESCE(n.new_sku, n.order_sku) AS forecasting_sku,
+                  fn.master_sku_parse1
+           FROM normalized n,
+           LATERAL size_chart.fn_extract_master_sku_from_web_sku(COALESCE(n.new_sku, n.order_sku)::varchar)
+             fn(master_sku_parse1, master_sku_parse2, master_sku_parse3)
+         ),
+         master_final AS (
+           SELECT DISTINCT order_id, master_sku_parse1 AS master_sku
+           FROM with_master WHERE master_sku_parse1 IS NOT NULL AND master_sku_parse1 != ''
+           UNION
+           SELECT DISTINCT wm.order_id, kc.component_sku::text AS master_sku
+           FROM with_master wm
+           JOIN ecommerce_data.shiphero_kit_components kc ON wm.forecasting_sku = kc.parent_kit_sku::text
+           WHERE (wm.master_sku_parse1 IS NULL OR wm.master_sku_parse1 = '')
+         )
+         SELECT ic.order_id, ic.line_count, ic.unit_count,
+                array_agg(mf.master_sku) FILTER (WHERE mf.master_sku IS NOT NULL) AS master_skus
+         FROM item_counts ic
+         LEFT JOIN master_final mf ON mf.order_id = ic.order_id
+         GROUP BY ic.order_id, ic.line_count, ic.unit_count`,
         [orderIds],
       );
-      for (const row of itemRows.rows) {
+
+      for (const row of rows.rows) {
         countsMap.set(row.order_id, {
           lineCount: Number(row.line_count),
           unitCount: Number(row.unit_count),
         });
-      }
-
-      const allSkus = itemRows.rows.flatMap((r) => r.skus ?? []);
-      if (allSkus.length > 0) {
-        const skuToMaster = await lookupMasterSkusByOrderSkus([...new Set(allSkus)]);
-        for (const row of itemRows.rows) {
-          const masters = new Set<string>();
-          for (const sku of row.skus ?? []) {
-            const master = skuToMaster.get(sku);
-            if (master) masters.add(master);
-          }
-          if (masters.size > 0) {
-            const sorted = [...masters].sort();
-            masterSkuMap.set(row.order_id, { first: sorted[0], count: sorted.length });
-          }
+        const skus = row.master_skus;
+        if (skus && skus.length > 0) {
+          const sorted = [...skus].sort();
+          masterSkuMap.set(row.order_id, { first: sorted[0], count: sorted.length });
         }
       }
 
