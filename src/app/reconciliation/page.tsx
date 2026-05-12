@@ -430,8 +430,8 @@ function SalesDataPane() {
 
   const columns = useMemo(() => {
     if (mode === "preorder") return createPreOrderColumns();
-    if (mode === "ttm") return createTtmColumns([90, 60, 30, 15, 7]);
-    return createSalesSalesColumns([90, 60, 30, 15, 7]);
+    if (mode === "ttm") return createTtmColumns(["90D", "60D", "30D", "15D", "7D"]);
+    return createSalesSalesColumns(["90D", "60D", "30D", "15D", "7D"]);
   }, [mode]);
 
   const getRowClassName = useCallback(
