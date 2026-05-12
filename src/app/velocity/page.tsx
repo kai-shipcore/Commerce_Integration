@@ -31,6 +31,10 @@ const DEFAULT_PERIODS = [90, 60, 30, 15, 7];
 
 interface PeriodRange { from: string; to: string }
 
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function rangeDays(r: PeriodRange): number {
   return Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000) + 1;
 }
@@ -38,22 +42,22 @@ function rangeDays(r: PeriodRange): number {
 function defaultRanges(): PeriodRange[] {
   const to = new Date();
   to.setDate(to.getDate() - 2);
-  const toStr = to.toISOString().slice(0, 10);
+  const toStr = toLocalDateStr(to);
   return DEFAULT_PERIODS.map((n) => {
     const from = new Date(to);
     from.setDate(from.getDate() - (n - 1));
-    return { from: from.toISOString().slice(0, 10), to: toStr };
+    return { from: toLocalDateStr(from), to: toStr };
   });
 }
 
 function periodsToRanges(periods: number[]): PeriodRange[] {
   const to = new Date();
   to.setDate(to.getDate() - 2);
-  const toStr = to.toISOString().slice(0, 10);
+  const toStr = toLocalDateStr(to);
   return periods.map((n) => {
     const from = new Date(to);
     from.setDate(from.getDate() - (n - 1));
-    return { from: from.toISOString().slice(0, 10), to: toStr };
+    return { from: toLocalDateStr(from), to: toStr };
   });
 }
 
