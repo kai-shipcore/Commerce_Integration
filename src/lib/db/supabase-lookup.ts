@@ -104,6 +104,8 @@ export interface SalesOrderRow {
   salesChannel: string | null;
   lineCount: number;
   unitCount: number;
+  webSku: string | null;
+  webSkuCount: number;
   masterSku: string | null;
   masterSkuCount: number;
 }
@@ -356,12 +358,12 @@ export async function getCoverlandInventory(
   const groupBy = options.groupBy ?? "warehouse";
   const sortByMap = {
     masterSku: "master_sku",
-    warehouse: "warehouse_code",
+    warehouse: "warehouse",
     warehouseCount: "warehouse_count",
-    onHand: "on_hand_qty",
-    allocated: "reserved_qty",
-    available: "available_qty",
-    backorder: "backorder_qty",
+    onHand: "on_hand",
+    allocated: "allocated",
+    available: "available",
+    backorder: "backorder",
     createdAt: "created_at",
   } as const;
   const requestedSortBy =
@@ -377,32 +379,42 @@ export async function getCoverlandInventory(
   const sortBy = sortByMap[normalizedSortBy];
   const sortOrder = options.sortOrder === "desc" ? "DESC" : "ASC";
 
-  const client = await pool.connect();
+  const filters: string[] = [];
+  const params: Array<string | number> = [];
 
-  try {
-    const filters: string[] = [];
-    const params: Array<string | number> = [];
+  if (search) {
+    params.push(`%${search}%`);
+    filters.push(
+      `(master_sku ILIKE $${params.length} OR COALESCE(warehouse, '') ILIKE $${params.length})`,
+    );
+  }
 
-    if (search) {
-      params.push(`%${search}%`);
-      filters.push(
-        `(master_sku ILIKE $${params.length} OR COALESCE(warehouse_code, '') ILIKE $${params.length})`,
-      );
+  if (warehouse && warehouse !== "all") {
+    if (warehouse === "Unspecified") {
+      filters.push(`(warehouse IS NULL OR warehouse = '')`);
+    } else {
+      params.push(warehouse);
+      filters.push(`warehouse = $${params.length}`);
     }
+  }
 
-    if (warehouse && warehouse !== "all") {
-      if (warehouse === "Unspecified") {
-        filters.push(`(warehouse_code IS NULL OR warehouse_code = '')`);
-      } else {
-        params.push(warehouse);
-        filters.push(`warehouse_code = $${params.length}`);
-      }
-    }
+  const whereClause =
+    filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
 
-    const whereClause =
-      filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+  const paginationParams = [...params];
+  if (!options.exportAll) {
+    paginationParams.push(limit);
+    paginationParams.push(offset);
+  }
 
-    const summaryResult = await client.query<{
+  const cacheKey = `inventory:v1:${groupBy}:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${warehouse}`;
+  if (!options.exportAll) {
+    const cached = await CacheManager.get<CoverlandInventoryQueryResult>(cacheKey);
+    if (cached) return cached;
+  }
+
+  const [summaryResult, warehouseResult, result] = await Promise.all([
+    pool.query<{
       total_rows: string;
       total_products: string;
       total_warehouses: string;
@@ -414,115 +426,109 @@ export async function getCoverlandInventory(
       `SELECT
         COUNT(*)::text AS total_rows,
         COUNT(DISTINCT master_sku)::text AS total_products,
-        COUNT(DISTINCT NULLIF(warehouse_code, ''))::text AS total_warehouses,
-        COALESCE(SUM(on_hand_qty), 0)::text AS total_on_hand,
-        COALESCE(SUM(reserved_qty), 0)::text AS total_allocated,
-        COALESCE(SUM(available_qty), 0)::text AS total_available,
-        COALESCE(SUM(backorder_qty), 0)::text AS total_backorder
-      FROM shipcore.sc_inventory_snapshot
+        COUNT(DISTINCT NULLIF(warehouse, ''))::text AS total_warehouses,
+        COALESCE(SUM(on_hand), 0)::text AS total_on_hand,
+        COALESCE(SUM(allocated), 0)::text AS total_allocated,
+        COALESCE(SUM(available), 0)::text AS total_available,
+        COALESCE(SUM(backorder), 0)::text AS total_backorder
+      FROM ecommerce_data.coverland_inventory
       ${whereClause}`,
       params,
-    );
+    ),
+    pool.query<{ warehouse: string | null }>(
+      `SELECT DISTINCT warehouse
+      FROM ecommerce_data.coverland_inventory
+      WHERE warehouse IS NOT NULL AND warehouse <> ''
+      ORDER BY warehouse ASC`,
+    ),
+    groupBy === "product"
+      ? pool.query<{
+          master_sku: string;
+          on_hand: number | null;
+          allocated: number | null;
+          available: number | null;
+          backorder: number | null;
+          warehouse_count: string;
+          created_at: Date | string | null;
+        }>(
+          `SELECT
+            master_sku,
+            COALESCE(SUM(on_hand), 0) AS on_hand,
+            COALESCE(SUM(allocated), 0) AS allocated,
+            COALESCE(SUM(available), 0) AS available,
+            COALESCE(SUM(backorder), 0) AS backorder,
+            COUNT(DISTINCT NULLIF(warehouse, ''))::text AS warehouse_count,
+            MAX(created_at) AS created_at
+          FROM ecommerce_data.coverland_inventory
+          ${whereClause}
+          GROUP BY master_sku
+          ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
+          ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,
+          paginationParams,
+        )
+      : pool.query<{
+          master_sku: string;
+          on_hand: number | null;
+          allocated: number | null;
+          available: number | null;
+          backorder: number | null;
+          warehouse: string | null;
+          created_at: Date | string | null;
+        }>(
+          `SELECT
+            master_sku,
+            on_hand,
+            allocated,
+            available,
+            backorder,
+            warehouse,
+            created_at
+          FROM ecommerce_data.coverland_inventory
+          ${whereClause}
+          ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
+          ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,
+          paginationParams,
+        ),
+  ]);
 
-    const warehouseResult = await client.query<{ warehouse: string | null }>(
-      `SELECT DISTINCT warehouse_code AS warehouse
-      FROM shipcore.sc_inventory_snapshot
-      WHERE warehouse_code IS NOT NULL AND warehouse_code <> ''
-      ORDER BY warehouse_code ASC`,
-    );
+  const summary = summaryResult.rows[0];
 
-    const paginationParams = [...params];
+  const response: CoverlandInventoryQueryResult = {
+    rows: result.rows.map((row) => ({
+      masterSku: row.master_sku,
+      onHand: row.on_hand ?? 0,
+      allocated: row.allocated ?? 0,
+      available: row.available ?? 0,
+      backorder: row.backorder ?? 0,
+      warehouse: "warehouse" in row ? row.warehouse : null,
+      warehouseCount:
+        "warehouse_count" in row
+          ? Number(row.warehouse_count ?? 0)
+          : undefined,
+      createdAt:
+        row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : row.created_at,
+    })),
+    totalRows: Number(summary?.total_rows ?? 0),
+    totalProducts: Number(summary?.total_products ?? 0),
+    totalWarehouses: Number(summary?.total_warehouses ?? 0),
+    totals: {
+      onHand: Number(summary?.total_on_hand ?? 0),
+      allocated: Number(summary?.total_allocated ?? 0),
+      available: Number(summary?.total_available ?? 0),
+      backorder: Number(summary?.total_backorder ?? 0),
+    },
+    warehouses: warehouseResult.rows
+      .map((row) => row.warehouse)
+      .filter((value): value is string => Boolean(value)),
+  };
 
-    if (!options.exportAll) {
-      paginationParams.push(limit);
-      paginationParams.push(offset);
-    }
-
-    const result =
-      groupBy === "product"
-        ? await client.query<{
-            master_sku: string;
-            on_hand: number | null;
-            allocated: number | null;
-            available: number | null;
-            backorder: number | null;
-            warehouse_count: string;
-            created_at: Date | string | null;
-          }>(
-            `SELECT
-              master_sku,
-              COALESCE(SUM(on_hand_qty), 0) AS on_hand,
-              COALESCE(SUM(reserved_qty), 0) AS allocated,
-              COALESCE(SUM(available_qty), 0) AS available,
-              COALESCE(SUM(backorder_qty), 0) AS backorder,
-              COUNT(DISTINCT NULLIF(warehouse_code, ''))::text AS warehouse_count,
-              MAX(created_at) AS created_at
-            FROM shipcore.sc_inventory_snapshot
-            ${whereClause}
-            GROUP BY master_sku
-            ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
-            ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,
-            paginationParams,
-          )
-        : await client.query<{
-            master_sku: string;
-            on_hand: number | null;
-            allocated: number | null;
-            available: number | null;
-            backorder: number | null;
-            warehouse: string | null;
-            created_at: Date | string | null;
-          }>(
-            `SELECT
-              master_sku,
-              on_hand_qty AS on_hand,
-              reserved_qty AS allocated,
-              available_qty AS available,
-              backorder_qty AS backorder,
-              warehouse_code AS warehouse,
-              created_at
-            FROM shipcore.sc_inventory_snapshot
-            ${whereClause}
-            ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
-            ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,
-            paginationParams,
-          );
-
-    const summary = summaryResult.rows[0];
-
-    return {
-      rows: result.rows.map((row) => ({
-        masterSku: row.master_sku,
-        onHand: row.on_hand ?? 0,
-        allocated: row.allocated ?? 0,
-        available: row.available ?? 0,
-        backorder: row.backorder ?? 0,
-        warehouse: "warehouse" in row ? row.warehouse : null,
-        warehouseCount:
-          "warehouse_count" in row
-            ? Number(row.warehouse_count ?? 0)
-            : undefined,
-        createdAt:
-          row.created_at instanceof Date
-            ? row.created_at.toISOString()
-            : row.created_at,
-      })),
-      totalRows: Number(summary?.total_rows ?? 0),
-      totalProducts: Number(summary?.total_products ?? 0),
-      totalWarehouses: Number(summary?.total_warehouses ?? 0),
-      totals: {
-        onHand: Number(summary?.total_on_hand ?? 0),
-        allocated: Number(summary?.total_allocated ?? 0),
-        available: Number(summary?.total_available ?? 0),
-        backorder: Number(summary?.total_backorder ?? 0),
-      },
-      warehouses: warehouseResult.rows
-        .map((row) => row.warehouse)
-        .filter((value): value is string => Boolean(value)),
-    };
-  } finally {
-    client.release();
+  if (!options.exportAll) {
+    await CacheManager.set(cacheKey, response, 120);
   }
+
+  return response;
 }
 
 export async function syncInventorySnapshotFromSqlFile(
@@ -728,10 +734,12 @@ export async function getSalesOrders(
     const resolveOrderItemData = async (): Promise<{
       masterSkuMap: Map<number, { first: string; count: number }>;
       countsMap: Map<number, { lineCount: number; unitCount: number }>;
+      webSkuMap: Map<number, { first: string; count: number }>;
     }> => {
       const masterSkuMap = new Map<number, { first: string; count: number }>();
       const countsMap = new Map<number, { lineCount: number; unitCount: number }>();
-      if (orderIds.length === 0) return { masterSkuMap, countsMap };
+      const webSkuMap = new Map<number, { first: string; count: number }>();
+      if (orderIds.length === 0) return { masterSkuMap, countsMap, webSkuMap };
 
       // Inline the view logic with an upfront order_id filter so only the
       // 20 returned rows are processed — avoids a full vw_sales_order_items scan.
@@ -739,6 +747,7 @@ export async function getSalesOrders(
         order_id: number;
         line_count: string;
         unit_count: string;
+        order_skus: string[] | null;
         master_skus: string[] | null;
       }>(
         `WITH order_items AS (
@@ -795,8 +804,10 @@ export async function getSalesOrders(
            WHERE (wm.master_sku_parse1 IS NULL OR wm.master_sku_parse1 = '')
          )
          SELECT ic.order_id, ic.line_count, ic.unit_count,
-                array_agg(mf.master_sku) FILTER (WHERE mf.master_sku IS NOT NULL) AS master_skus
+                array_agg(DISTINCT n.order_sku) FILTER (WHERE n.order_sku IS NOT NULL) AS order_skus,
+                array_agg(DISTINCT mf.master_sku) FILTER (WHERE mf.master_sku IS NOT NULL) AS master_skus
          FROM item_counts ic
+         LEFT JOIN normalized n ON n.order_id = ic.order_id
          LEFT JOIN master_final mf ON mf.order_id = ic.order_id
          GROUP BY ic.order_id, ic.line_count, ic.unit_count`,
         [orderIds],
@@ -807,6 +818,11 @@ export async function getSalesOrders(
           lineCount: Number(row.line_count),
           unitCount: Number(row.unit_count),
         });
+        const wskus = row.order_skus;
+        if (wskus && wskus.length > 0) {
+          const sorted = [...wskus].sort();
+          webSkuMap.set(row.order_id, { first: sorted[0], count: sorted.length });
+        }
         const skus = row.master_skus;
         if (skus && skus.length > 0) {
           const sorted = [...skus].sort();
@@ -814,10 +830,10 @@ export async function getSalesOrders(
         }
       }
 
-      return { masterSkuMap, countsMap };
+      return { masterSkuMap, countsMap, webSkuMap };
     };
 
-    const [summaryResult, metaResult, { masterSkuMap: orderMasterSkuMap, countsMap: orderCountsMap }] = await Promise.all([
+    const [summaryResult, metaResult, { masterSkuMap: orderMasterSkuMap, countsMap: orderCountsMap, webSkuMap: orderWebSkuMap }] = await Promise.all([
       summaryPromise,
       metaPromise,
       resolveOrderItemData(),
@@ -835,6 +851,7 @@ export async function getSalesOrders(
     return {
       rows: result.rows.map((row) => {
         const msku = orderMasterSkuMap.get(row.id);
+        const wsku = orderWebSkuMap.get(row.id);
         return {
         id: row.id,
         platformSource: row.platform_source,
@@ -853,6 +870,8 @@ export async function getSalesOrders(
         salesChannel: row.sales_channel,
         lineCount: orderCountsMap.get(row.id)?.lineCount ?? 0,
         unitCount: orderCountsMap.get(row.id)?.unitCount ?? 0,
+        webSku: wsku?.first ?? null,
+        webSkuCount: wsku?.count ?? 0,
         masterSku: msku?.first ?? null,
         masterSkuCount: msku?.count ?? 0,
         };

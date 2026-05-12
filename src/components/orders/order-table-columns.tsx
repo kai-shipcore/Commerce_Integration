@@ -15,6 +15,8 @@ export type OrderTableRow = {
   currency: string | null;
   lineCount: number;
   unitCount: number;
+  webSku: string | null;
+  webSkuCount: number;
   masterSku: string | null;
   masterSkuCount: number;
 };
@@ -50,6 +52,26 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
         </div>
       ),
       enableHiding: false,
+    },
+    {
+      accessorKey: "webSku",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Web SKU" />
+      ),
+      cell: ({ row }) => {
+        const { webSku, webSkuCount } = row.original;
+        if (!webSku) return <span className="text-muted-foreground">—</span>;
+        return (
+          <div className="flex items-center gap-1">
+            <span className="font-medium tabular-nums">{webSku}</span>
+            {webSkuCount > 1 && (
+              <Badge variant="secondary" className="text-xs px-1 py-0">
+                +{webSkuCount - 1}
+              </Badge>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "masterSku",

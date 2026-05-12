@@ -125,7 +125,7 @@ export const adminDefaultVisibleMenuIds = navigationItems
   .filter((item) => item.hideable !== false)
   .map((item) => item.id);
 
-export const userDefaultVisibleMenuIds = ["products", "inventory", "orders", "signals"];
+export const userDefaultVisibleMenuIds = ["velocity"];
 
 export function isAdminLikeRole(role?: string | null): boolean {
   return role === "admin" || role === "dev";
