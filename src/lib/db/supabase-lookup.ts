@@ -657,7 +657,8 @@ export async function getSalesOrders(
     const whereClause =
       filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
 
-    const summaryResult = await client.query<{
+    // Fix A+B: fire summary and meta on pool (separate connections) in parallel with main query
+    const summaryPromise = pool.query<{
       total_orders: string;
       total_revenue: string | null;
       total_units: string | null;
@@ -666,37 +667,29 @@ export async function getSalesOrders(
       `SELECT
         COUNT(DISTINCT so.id)::text AS total_orders,
         COALESCE(SUM(so.total_price), 0)::text AS total_revenue,
-        COALESCE(SUM(item_totals.unit_count), 0)::text AS total_units,
+        COALESCE(SUM(soi_s.net_quantity), 0)::text AS total_units,
         COUNT(DISTINCT so.platform_source)::text AS total_platforms
       FROM ecommerce_data.sales_orders so
-      LEFT JOIN (
-        SELECT order_id, COALESCE(SUM(net_quantity), 0) AS unit_count
-        FROM ecommerce_data.sales_order_items
-        GROUP BY order_id
-      ) item_totals ON item_totals.order_id = so.id
+      LEFT JOIN ecommerce_data.sales_order_items soi_s ON soi_s.order_id = so.id
       ${whereClause}`,
       params,
     );
 
-    let platformSources: string[] = [];
-    let orderStatuses: string[] = [];
-    if (!options.skipMeta) {
-      const [platformResult, orderStatusResult] = await Promise.all([
-        client.query<{ platform_source: string }>(
-          `SELECT DISTINCT platform_source::text AS platform_source
-           FROM ecommerce_data.sales_orders
-           ORDER BY platform_source::text ASC`,
-        ),
-        client.query<{ order_status: string }>(
-          `SELECT DISTINCT order_status
-           FROM ecommerce_data.sales_orders
-           WHERE order_status IS NOT NULL
-           ORDER BY order_status ASC`,
-        ),
-      ]);
-      platformSources = platformResult.rows.map((r) => r.platform_source);
-      orderStatuses = orderStatusResult.rows.map((r) => r.order_status);
-    }
+    const metaPromise = options.skipMeta
+      ? Promise.resolve(null)
+      : Promise.all([
+          pool.query<{ platform_source: string }>(
+            `SELECT DISTINCT platform_source::text AS platform_source
+             FROM ecommerce_data.sales_orders
+             ORDER BY platform_source::text ASC`,
+          ),
+          pool.query<{ order_status: string }>(
+            `SELECT DISTINCT order_status
+             FROM ecommerce_data.sales_orders
+             WHERE order_status IS NOT NULL
+             ORDER BY order_status ASC`,
+          ),
+        ]);
 
     const queryParams = options.exportAll
       ? [...params]
@@ -754,14 +747,11 @@ export async function getSalesOrders(
       queryParams,
     );
 
-    const summary = summaryResult.rows[0];
-
-    // Post-query: resolve master SKUs for the returned page of orders.
-    // Two targeted queries (order_id list + sku list) are far cheaper than
-    // joining vw_sales_order_items in the main GROUP BY query.
     const orderIds = result.rows.map((r) => r.id);
-    const orderMasterSkuMap = new Map<number, { first: string; count: number }>();
-    if (orderIds.length > 0) {
+
+    const resolveOrderMasterSkus = async (): Promise<Map<number, { first: string; count: number }>> => {
+      const map = new Map<number, { first: string; count: number }>();
+      if (orderIds.length === 0) return map;
       const itemSkuRows = await client.query<{ order_id: number; sku: string }>(
         `SELECT DISTINCT order_id, sku
          FROM ecommerce_data.sales_order_items
@@ -781,10 +771,26 @@ export async function getSalesOrders(
         }
         for (const [orderId, masters] of orderSkusMap) {
           const sorted = [...masters].sort();
-          orderMasterSkuMap.set(orderId, { first: sorted[0], count: sorted.length });
+          map.set(orderId, { first: sorted[0], count: sorted.length });
         }
       }
+      return map;
+    };
+
+    const [summaryResult, metaResult, orderMasterSkuMap] = await Promise.all([
+      summaryPromise,
+      metaPromise,
+      resolveOrderMasterSkus(),
+    ]);
+
+    let platformSources: string[] = [];
+    let orderStatuses: string[] = [];
+    if (metaResult) {
+      platformSources = metaResult[0].rows.map((r) => r.platform_source);
+      orderStatuses = metaResult[1].rows.map((r) => r.order_status);
     }
+
+    const summary = summaryResult.rows[0];
 
     return {
       rows: result.rows.map((row) => {

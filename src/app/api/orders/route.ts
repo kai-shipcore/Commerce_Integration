@@ -3,6 +3,7 @@ import {
   getSalesOrders,
   type SalesOrdersQueryOptions,
 } from "@/lib/db/supabase-lookup";
+import { CacheManager } from "@/lib/redis";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -24,6 +25,13 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
     const skipMeta = searchParams.get("skipMeta") === "true";
 
+    const cacheKey = `orders:v1:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${platformSource}:${orderStatus}:${startDate}:${endDate}`;
+
+    if (!exportAll) {
+      const cached = await CacheManager.get<object>(cacheKey);
+      if (cached) return NextResponse.json(cached);
+    }
+
     const result = await getSalesOrders({
       page,
       limit,
@@ -38,7 +46,7 @@ export async function GET(request: NextRequest) {
       skipMeta,
     });
 
-    return NextResponse.json({
+    const response = {
       success: true,
       data: result.rows,
       summary: result.summary,
@@ -50,7 +58,13 @@ export async function GET(request: NextRequest) {
         total: result.totalRows,
         totalPages: Math.ceil(result.totalRows / limit),
       },
-    });
+    };
+
+    if (!exportAll) {
+      await CacheManager.set(cacheKey, response, 120);
+    }
+
+    return NextResponse.json(response);
   } catch (error: unknown) {
     console.error("Error fetching sales orders:", error);
     return NextResponse.json(
