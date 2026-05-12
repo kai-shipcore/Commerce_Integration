@@ -15,6 +15,8 @@ export type OrderTableRow = {
   currency: string | null;
   lineCount: number;
   unitCount: number;
+  masterSku: string | null;
+  masterSkuCount: number;
 };
 
 function formatCurrency(value: number, currency: string | null) {
@@ -28,6 +30,15 @@ function formatCurrency(value: number, currency: string | null) {
 
 export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
   return [
+    {
+      accessorKey: "platformSource",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Platform" />
+      ),
+      cell: ({ row }) => (
+        <Badge variant="outline">{row.original.platformSource}</Badge>
+      ),
+    },
     {
       accessorKey: "orderNumber",
       header: ({ column }) => (
@@ -46,13 +57,24 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
       enableHiding: false,
     },
     {
-      accessorKey: "platformSource",
+      accessorKey: "masterSku",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Platform" />
+        <DataTableColumnHeader column={column} title="Master SKU" />
       ),
-      cell: ({ row }) => (
-        <Badge variant="outline">{row.original.platformSource}</Badge>
-      ),
+      cell: ({ row }) => {
+        const { masterSku, masterSkuCount } = row.original;
+        if (!masterSku) return <span className="text-muted-foreground">—</span>;
+        return (
+          <div className="flex items-center gap-1">
+            <span className="font-medium tabular-nums">{masterSku}</span>
+            {masterSkuCount > 1 && (
+              <Badge variant="secondary" className="text-xs px-1 py-0">
+                +{masterSkuCount - 1}
+              </Badge>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "orderDate",

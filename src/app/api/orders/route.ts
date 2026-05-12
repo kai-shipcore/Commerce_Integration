@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const sortBy = (searchParams.get("sortBy") ||
       "orderDate") as SalesOrdersQueryOptions["sortBy"];
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
+    const skipMeta = searchParams.get("skipMeta") === "true";
 
     const result = await getSalesOrders({
       page,
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
       endDate,
       sortBy,
       sortOrder,
+      skipMeta,
     });
 
     return NextResponse.json({

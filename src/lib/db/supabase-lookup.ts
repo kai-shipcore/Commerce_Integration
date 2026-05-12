@@ -104,6 +104,8 @@ export interface SalesOrderRow {
   salesChannel: string | null;
   lineCount: number;
   unitCount: number;
+  masterSku: string | null;
+  masterSkuCount: number;
 }
 
 export interface SalesOrderItemRow {
@@ -134,6 +136,7 @@ export interface SalesOrdersQueryOptions {
   orderStatus?: string;
   startDate?: string;
   endDate?: string;
+  skipMeta?: boolean;
   sortBy?:
     | "orderDate"
     | "orderNumber"
@@ -675,18 +678,25 @@ export async function getSalesOrders(
       params,
     );
 
-    const platformResult = await client.query<{ platform_source: string }>(
-      `SELECT DISTINCT platform_source::text AS platform_source
-       FROM ecommerce_data.sales_orders
-       ORDER BY platform_source::text ASC`,
-    );
-
-    const orderStatusResult = await client.query<{ order_status: string }>(
-      `SELECT DISTINCT order_status
-       FROM ecommerce_data.sales_orders
-       WHERE order_status IS NOT NULL
-       ORDER BY order_status ASC`,
-    );
+    let platformSources: string[] = [];
+    let orderStatuses: string[] = [];
+    if (!options.skipMeta) {
+      const [platformResult, orderStatusResult] = await Promise.all([
+        client.query<{ platform_source: string }>(
+          `SELECT DISTINCT platform_source::text AS platform_source
+           FROM ecommerce_data.sales_orders
+           ORDER BY platform_source::text ASC`,
+        ),
+        client.query<{ order_status: string }>(
+          `SELECT DISTINCT order_status
+           FROM ecommerce_data.sales_orders
+           WHERE order_status IS NOT NULL
+           ORDER BY order_status ASC`,
+        ),
+      ]);
+      platformSources = platformResult.rows.map((r) => r.platform_source);
+      orderStatuses = orderStatusResult.rows.map((r) => r.order_status);
+    }
 
     const queryParams = options.exportAll
       ? [...params]
@@ -707,6 +717,8 @@ export async function getSalesOrders(
       sales_channel: string | null;
       line_count: string | number;
       unit_count: string | number;
+      master_sku: string | null;
+      master_sku_count: string | number;
     }>(
       `SELECT
         so.id,
@@ -722,9 +734,20 @@ export async function getSalesOrders(
         so.shipping_country,
         so.sales_channel,
         COUNT(soi.id) AS line_count,
-        COALESCE(SUM(soi.net_quantity), 0) AS unit_count
+        COALESCE(SUM(soi.net_quantity), 0) AS unit_count,
+        msku.first_master_sku AS master_sku,
+        msku.master_sku_count AS master_sku_count
       FROM ecommerce_data.sales_orders so
       LEFT JOIN ecommerce_data.sales_order_items soi ON soi.order_id = so.id
+      CROSS JOIN LATERAL (
+        SELECT
+          MIN(v.master_sku)                AS first_master_sku,
+          COUNT(DISTINCT v.master_sku)::int AS master_sku_count
+        FROM ecommerce_data.sales_order_items soi2
+        JOIN ecommerce_data.vw_sales_order_items v ON v.order_sku = soi2.sku
+        WHERE soi2.order_id = so.id
+          AND v.master_sku IS NOT NULL
+      ) msku
       ${whereClause}
       GROUP BY
         so.id,
@@ -765,10 +788,12 @@ export async function getSalesOrders(
         salesChannel: row.sales_channel,
         lineCount: Number(row.line_count ?? 0),
         unitCount: Number(row.unit_count ?? 0),
+        masterSku: row.master_sku ?? null,
+        masterSkuCount: Number(row.master_sku_count ?? 0),
       })),
       totalRows: Number(summary?.total_orders ?? 0),
-      platformSources: platformResult.rows.map((row) => row.platform_source),
-      orderStatuses: orderStatusResult.rows.map((row) => row.order_status),
+      platformSources,
+      orderStatuses,
       summary: {
         totalOrders: Number(summary?.total_orders ?? 0),
         totalRevenue: Number(summary?.total_revenue ?? 0),

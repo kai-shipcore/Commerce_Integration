@@ -90,6 +90,9 @@ export default function OrdersPage() {
     sortOrder: "desc",
   });
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hasLoadedMeta, setHasLoadedMeta] = useState(false);
   const [totalRows, setTotalRows] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -118,10 +121,11 @@ export default function OrdersPage() {
     params.set("limit", pagination.pageSize.toString());
     params.set("sortBy", sorting.sortBy);
     params.set("sortOrder", sorting.sortOrder);
-    if (search) params.set("search", search);
+    if (debouncedSearch) params.set("search", debouncedSearch);
     if (platformFilter !== "all") params.set("platformSource", platformFilter);
     if (orderStatusFilter !== "all") params.set("orderStatus", orderStatusFilter);
-    const hasSearch = search.trim().length > 0;
+    if (hasLoadedMeta) params.set("skipMeta", "true");
+    const hasSearch = debouncedSearch.trim().length > 0;
     if (!hasSearch && activeDateRange?.from) {
       params.set("startDate", format(activeDateRange.from, "yyyy-MM-dd"));
     }
@@ -136,8 +140,11 @@ export default function OrdersPage() {
           setRows(result.data);
           setFilteredRows(result.data);
           setSummary(result.summary);
-          setPlatformSources(result.platformSources || []);
-          setOrderStatuses(result.orderStatuses || []);
+          if (!hasLoadedMeta && result.platformSources?.length) {
+            setPlatformSources(result.platformSources);
+            setOrderStatuses(result.orderStatuses || []);
+            setHasLoadedMeta(true);
+          }
           setTotalRows(result.pagination.total);
           setPageCount(result.pagination.totalPages);
         } else {
@@ -151,7 +158,7 @@ export default function OrdersPage() {
         setHasLoadedOnce(true);
         setLoading(false);
       });
-  }, [pagination, sorting, search, platformFilter, orderStatusFilter, activeDateRange]);
+  }, [pagination, sorting, debouncedSearch, platformFilter, orderStatusFilter, activeDateRange, hasLoadedMeta]);
 
   useEffect(() => {
     fetchOrders();
@@ -209,17 +216,14 @@ export default function OrdersPage() {
   };
 
   const handleSearchChange = (searchValue: string) => {
-    let changed = false;
-
-    setSearch((current) => {
-      changed = current !== searchValue;
-      return changed ? searchValue : current;
-    });
-    if (changed) {
+    setSearch(searchValue);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(searchValue);
       setPagination((current) =>
         current.page === 1 ? current : { ...current, page: 1 }
       );
-    }
+    }, 300);
   };
 
   const openOrderDetail = (row: OrderTableRow) => {
