@@ -735,8 +735,8 @@ export async function getSalesOrders(
         so.sales_channel,
         COUNT(soi.id) AS line_count,
         COALESCE(SUM(soi.net_quantity), 0) AS unit_count,
-        msku.first_master_sku AS master_sku,
-        msku.master_sku_count AS master_sku_count
+        MIN(msku.first_master_sku) AS master_sku,
+        MAX(msku.master_sku_count) AS master_sku_count
       FROM ecommerce_data.sales_orders so
       LEFT JOIN ecommerce_data.sales_order_items soi ON soi.order_id = so.id
       CROSS JOIN LATERAL (
