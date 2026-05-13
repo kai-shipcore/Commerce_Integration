@@ -430,14 +430,19 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels }: PaneProp
     const base = allRows.filter(hasAnyQty);
     if (!search) return base;
     const q = search.toLowerCase();
-    return base.filter(
-      (r) =>
-        r.isTotal ||
-        r.masterSku.toLowerCase().includes(q) ||
-        (r.customMasterSku?.toLowerCase().includes(q) ?? false) ||
-        (mode === "preorder" && (r.ttmMasterSku?.toLowerCase().includes(q) ?? false))
-    );
-  }, [allRows, search, mode]);
+    return base.filter((r) => {
+      if (r.isTotal) return true;
+      if (r.masterSku.toLowerCase().includes(q)) return true;
+      if (selectedItem === "Car Cover") {
+        return r.masterSku.replace("BKGR", "BKLG").toLowerCase().includes(q);
+      }
+      if (selectedItem === "Floor Mat") return false;
+      // Seat Cover
+      if (r.customMasterSku?.toLowerCase().includes(q)) return true;
+      if (mode === "preorder" && (r.ttmMasterSku?.toLowerCase().includes(q) ?? false)) return true;
+      return false;
+    });
+  }, [allRows, search, mode, selectedItem]);
 
   const sorted = useMemo(() => {
     if (!sorting) return filtered;
