@@ -152,6 +152,70 @@ export function createTtmColumns(labels: string[]): ColumnDef<VelocityRow>[] {
   return createGroupedVelocityColumns("Link TTM", "Custom TTM", labels);
 }
 
+function makeFinalCarCoverQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
+  return {
+    id: `fcc_qty_${periodIdx}`,
+    accessorFn: (row) => row.qtys[periodIdx] ?? 0,
+    header: () => <div className="text-right text-xs font-medium text-muted-foreground">{label}</div>,
+    cell: ({ row }) => (
+      <div className="text-right">
+        <QtyCell value={row.original.qtys[periodIdx] ?? null} isTotal={row.original.isTotal} />
+      </div>
+    ),
+    enableSorting: false,
+  };
+}
+
+export function createCarCoverColumns(labels: string[]): ColumnDef<VelocityRow>[] {
+  return [
+    masterSkuCol,
+    {
+      id: "totalSalesGroup",
+      header: "Total Sales",
+      columns: labels.map((label, i) => makeQtyCol(i, label)),
+    },
+    {
+      id: "finalCarCoverGroup",
+      header: "Final Car Cover Sales",
+      columns: [
+        {
+          id: "fcc_master_sku",
+          header: () => (
+            <div className="pl-6 border-l-2 border-border text-xs font-medium text-muted-foreground">
+              Master SKU
+            </div>
+          ),
+          cell: ({ row }: { row: { original: VelocityRow } }) => {
+            const finalSku = row.original.masterSku.replace("BKGR", "BKLG");
+            return (
+              <div className="pl-6 border-l-2 border-border">
+                {row.original.isTotal ? (
+                  <span className="font-semibold text-xs">Total</span>
+                ) : (
+                  <span className="font-mono text-xs">{finalSku}</span>
+                )}
+              </div>
+            );
+          },
+          enableSorting: false,
+        } as ColumnDef<VelocityRow>,
+        ...labels.map((label, i) => makeFinalCarCoverQtyCol(i, label)),
+      ],
+    },
+  ];
+}
+
+export function createFloorMatColumns(labels: string[]): ColumnDef<VelocityRow>[] {
+  return [
+    masterSkuCol,
+    {
+      id: "totalSalesGroup",
+      header: "Total Sales",
+      columns: labels.map((label, i) => makeQtyCol(i, label)),
+    },
+  ];
+}
+
 export function createPreOrderColumns(): ColumnDef<VelocityRow>[] {
   return [
     masterSkuCol,

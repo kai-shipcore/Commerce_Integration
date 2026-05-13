@@ -19,6 +19,8 @@ import {
   createSalesSalesColumns,
   createTtmColumns,
   createPreOrderColumns,
+  createCarCoverColumns,
+  createFloorMatColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
 import { TrendingUp, Check, X, Plus, RefreshCw, Download } from "lucide-react";
@@ -256,12 +258,12 @@ function responseToRows(data: ApiData, count: number): VelocityRow[] {
 
 async function fetchModeRows(
   mode: "sales" | "ttm" | "preorder",
-  items: string[],
+  item: string,
   channels: string[],
   ranges: PeriodRange[]
 ): Promise<VelocityRow[]> {
   const params = new URLSearchParams({
-    items: items.join(","),
+    items: item,
     channels: channels.join(","),
     mode,
     ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
@@ -377,11 +379,11 @@ function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
 interface PaneProps {
   mode: "sales" | "ttm" | "preorder";
   ranges: PeriodRange[];
-  selectedItems: string[];
+  selectedItem: string;
   selectedChannels: string[];
 }
 
-function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PaneProps) {
+function VelocityPane({ mode, ranges, selectedItem, selectedChannels }: PaneProps) {
   const [allRows, setAllRows] = useState<VelocityRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -392,10 +394,18 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
   const labels = useMemo(() => ranges.map((r) => `${rangeDays(r)}D`), [ranges]);
 
   const columns = useMemo(() => {
+    if (selectedItem === "Car Cover") {
+      if (mode === "preorder") return createCarCoverColumns(["Total"]);
+      return createCarCoverColumns(labels);
+    }
+    if (selectedItem === "Floor Mat") {
+      if (mode === "preorder") return createFloorMatColumns(["Total"]);
+      return createFloorMatColumns(labels);
+    }
     if (mode === "preorder") return createPreOrderColumns();
     if (mode === "ttm") return createTtmColumns(labels);
     return createSalesSalesColumns(labels);
-  }, [mode, labels]);
+  }, [mode, labels, selectedItem]);
 
   const rangesKey = ranges.map((r) => `${r.from}:${r.to}`).join(",");
 
@@ -403,12 +413,12 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
     setPagination((p) => ({ ...p, page: 1 }));
     setSearch("");
     setLoading(true);
-    fetchModeRows(mode, selectedItems, selectedChannels, ranges)
+    fetchModeRows(mode, selectedItem, selectedChannels, ranges)
       .then((rows) => setAllRows(rows))
       .catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItems.join(","), selectedChannels.join(","), mode, rangesKey]);
+  }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
 
   const filtered = useMemo(() => {
     const hasAnyQty = (r: VelocityRow) =>
@@ -454,27 +464,27 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
     pagination.page * pagination.pageSize
   );
 
-  const label = [...selectedItems, ...selectedChannels].join("_").replace(/\s+/g, "");
+  const label = [selectedItem, ...selectedChannels].join("_").replace(/\s+/g, "");
 
   const handleExportCurrent = useCallback(() => {
-    exportCurrentVelocity(allRows, mode, labels, label);
-  }, [allRows, mode, labels, label]);
+    exportCurrentVelocity(allRows, mode, labels, label, selectedItem);
+  }, [allRows, mode, labels, label, selectedItem]);
 
   const handleExportAll = useCallback(async () => {
     setExportingAll(true);
     try {
       const [salesRows, ttmRows, preorderRows] = await Promise.all([
-        fetchModeRows("sales",    selectedItems, selectedChannels, ranges),
-        fetchModeRows("ttm",      selectedItems, selectedChannels, ranges),
-        fetchModeRows("preorder", selectedItems, selectedChannels, ranges),
+        fetchModeRows("sales",    selectedItem, selectedChannels, ranges),
+        fetchModeRows("ttm",      selectedItem, selectedChannels, ranges),
+        fetchModeRows("preorder", selectedItem, selectedChannels, ranges),
       ]);
-      exportAllVelocity(salesRows, ttmRows, preorderRows, labels, label);
+      exportAllVelocity(salesRows, ttmRows, preorderRows, labels, label, selectedItem);
     } catch {
       // silent
     } finally {
       setExportingAll(false);
     }
-  }, [selectedItems, selectedChannels, ranges, labels, label]);
+  }, [selectedItem, selectedChannels, ranges, labels, label]);
 
   return (
     <Card>
@@ -489,7 +499,7 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
         </button>
         <button
           onClick={handleExportAll}
-          disabled={exportingAll || selectedItems.length === 0 || selectedChannels.length === 0}
+          disabled={exportingAll || selectedItem === "" || selectedChannels.length === 0}
           className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="h-3.5 w-3.5" />
@@ -520,7 +530,7 @@ function VelocityPane({ mode, ranges, selectedItems, selectedChannels }: PanePro
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function VelocityPage() {
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [selectedItem, setSelectedItem] = useState<string>("");
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
   const [periodMode, setPeriodMode] = useState<"period" | "custom">("period");
@@ -555,10 +565,8 @@ export default function VelocityPage() {
     }
   }, []);
 
-  const toggleItem = useCallback((item: string) => {
-    setSelectedItems((prev) =>
-      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
-    );
+  const selectItem = useCallback((item: string) => {
+    setSelectedItem(item);
   }, []);
 
   const toggleChannel = useCallback((ch: string) => {
@@ -618,19 +626,11 @@ export default function VelocityPage() {
           <div className="flex items-center gap-3">
             <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Item</span>
             <div className="flex items-center gap-2 flex-wrap">
-              <ToggleBtn
-                active={selectedItems.length === ITEMS.length}
-                onClick={() =>
-                  setSelectedItems(selectedItems.length === ITEMS.length ? [] : [...ITEMS])
-                }
-              >
-                All
-              </ToggleBtn>
               {ITEMS.map((item) => (
                 <ToggleBtn
                   key={item}
-                  active={selectedItems.includes(item)}
-                  onClick={() => toggleItem(item)}
+                  active={selectedItem === item}
+                  onClick={() => selectItem(item)}
                 >
                   {item}
                 </ToggleBtn>
@@ -700,10 +700,10 @@ export default function VelocityPage() {
         </div>
 
         {/* Grid */}
-        {selectedItems.length === 0 ? (
+        {selectedItem === "" ? (
           <Card>
             <CardContent className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-              아이템을 하나 이상 선택하세요
+              아이템을 선택하세요
             </CardContent>
           </Card>
         ) : selectedChannels.length === 0 ? (
@@ -713,7 +713,7 @@ export default function VelocityPage() {
             </CardContent>
           </Card>
         ) : (
-          <VelocityPane mode={mode} ranges={activeRanges} selectedItems={selectedItems} selectedChannels={selectedChannels} />
+          <VelocityPane mode={mode} ranges={activeRanges} selectedItem={selectedItem} selectedChannels={selectedChannels} />
         )}
       </div>
     </AppLayout>

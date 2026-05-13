@@ -48,31 +48,35 @@ export async function GET(req: NextRequest) {
   try {
     const pool = getPrimaryPool();
 
+    const needsCustom = items.includes("Seat Cover");
+
     // ── Pre Order mode ────────────────────────────────────────────────────────
     if (mode === "preorder") {
-      const [linkRes, customRes, ttmRes] = await Promise.all([
-        pool.query<{ master_sku: string; qty: number }>(
-          `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
-           FROM shipcore.velocity_link_snapshot
-           WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
-           GROUP BY link_master_sku ORDER BY qty DESC`,
-          [items, channels]
-        ),
-        pool.query<{ master_sku: string; qty: number }>(
-          `SELECT custom_master_sku AS master_sku, SUM(custom_qty)::int AS qty
-           FROM shipcore.velocity_custom_snapshot
-           WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
-           GROUP BY custom_master_sku ORDER BY qty DESC`,
-          [items, channels]
-        ),
-        pool.query<{ master_sku: string; qty: number }>(
-          `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
-           FROM shipcore.velocity_link_snapshot
-           WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'ttm_preorder'
-           GROUP BY link_master_sku ORDER BY qty DESC`,
-          [items, channels]
-        ),
-      ]);
+      const linkQuery = pool.query<{ master_sku: string; qty: number }>(
+        `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
+         FROM shipcore.velocity_link_snapshot
+         WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
+         GROUP BY link_master_sku ORDER BY qty DESC`,
+        [items, channels]
+      );
+      const ttmQuery = pool.query<{ master_sku: string; qty: number }>(
+        `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
+         FROM shipcore.velocity_link_snapshot
+         WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'ttm_preorder'
+         GROUP BY link_master_sku ORDER BY qty DESC`,
+        [items, channels]
+      );
+      const customQuery = needsCustom
+        ? pool.query<{ master_sku: string; qty: number }>(
+            `SELECT custom_master_sku AS master_sku, SUM(custom_qty)::int AS qty
+             FROM shipcore.velocity_custom_snapshot
+             WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
+             GROUP BY custom_master_sku ORDER BY qty DESC`,
+            [items, channels]
+          )
+        : Promise.resolve({ rows: [] as { master_sku: string; qty: number }[] });
+
+      const [linkRes, customRes, ttmRes] = await Promise.all([linkQuery, customQuery, ttmQuery]);
 
       return NextResponse.json({
         success: true,
@@ -97,31 +101,32 @@ export async function GET(req: NextRequest) {
       )
       .join(", ");
 
-    const customCols = ranges
-      .map(
-        ({ from, to }, i) =>
-          `SUM(CASE WHEN order_date >= '${from}' AND order_date <= '${to}' THEN custom_qty ELSE 0 END)::int AS qty_${i}`
-      )
-      .join(", ");
+    const linkQuery = pool.query(
+      `SELECT link_master_sku AS master_sku, ${linkCols}
+       FROM shipcore.velocity_link_snapshot
+       WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = $3
+       GROUP BY link_master_sku
+       ORDER BY qty_0 DESC`,
+      [items, channels, orderType]
+    );
 
-    const [linkRes, customRes] = await Promise.all([
-      pool.query(
-        `SELECT link_master_sku AS master_sku, ${linkCols}
-         FROM shipcore.velocity_link_snapshot
-         WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = $3
-         GROUP BY link_master_sku
-         ORDER BY qty_0 DESC`,
-        [items, channels, orderType]
-      ),
-      pool.query(
-        `SELECT custom_master_sku AS master_sku, ${customCols}
-         FROM shipcore.velocity_custom_snapshot
-         WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = $3
-         GROUP BY custom_master_sku
-         ORDER BY qty_0 DESC`,
-        [items, channels, orderType]
-      ),
-    ]);
+    const customQuery = needsCustom
+      ? pool.query(
+          `SELECT custom_master_sku AS master_sku, ${ranges
+            .map(
+              ({ from, to }, i) =>
+                `SUM(CASE WHEN order_date >= '${from}' AND order_date <= '${to}' THEN custom_qty ELSE 0 END)::int AS qty_${i}`
+            )
+            .join(", ")}
+           FROM shipcore.velocity_custom_snapshot
+           WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = $3
+           GROUP BY custom_master_sku
+           ORDER BY qty_0 DESC`,
+          [items, channels, orderType]
+        )
+      : Promise.resolve({ rows: [] as Record<string, unknown>[] });
+
+    const [linkRes, customRes] = await Promise.all([linkQuery, customQuery]);
 
     const toRows = (rows: Record<string, unknown>[]) =>
       rows.map((r) => ({

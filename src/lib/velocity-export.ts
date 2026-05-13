@@ -8,31 +8,69 @@ function today(): string {
 function buildSection(
   rows: VelocityRow[],
   mode: "sales" | "ttm" | "preorder",
-  labels: string[]
+  labels: string[],
+  selectedItem: string
 ): (string | number | null)[][] {
   const result: (string | number | null)[][] = [];
 
   if (mode === "preorder") {
-    result.push(["Master SKU", "Total", "Custom SKU", "Total", "TTM SKU", "Total"]);
-    for (const r of rows) {
-      result.push([
-        r.masterSku || null,
-        r.qtys[0] ?? null,
-        r.customMasterSku ?? null,
-        r.customQtys?.[0] ?? null,
-        r.ttmMasterSku ?? null,
-        r.ttmCount ?? null,
-      ]);
+    if (selectedItem === "Car Cover") {
+      result.push(["Master SKU", "Total", "Final Master SKU", "Total"]);
+      for (const r of rows) {
+        result.push([
+          r.masterSku || null,
+          r.qtys[0] ?? null,
+          r.masterSku ? r.masterSku.replace("BKGR", "BKLG") : null,
+          r.qtys[0] ?? null,
+        ]);
+      }
+    } else if (selectedItem === "Floor Mat") {
+      result.push(["Master SKU", "Total"]);
+      for (const r of rows) {
+        result.push([r.masterSku || null, r.qtys[0] ?? null]);
+      }
+    } else {
+      // Seat Cover
+      result.push(["Master SKU", "Total", "Custom SKU", "Total", "TTM SKU", "Total"]);
+      for (const r of rows) {
+        result.push([
+          r.masterSku || null,
+          r.qtys[0] ?? null,
+          r.customMasterSku ?? null,
+          r.customQtys?.[0] ?? null,
+          r.ttmMasterSku ?? null,
+          r.ttmCount ?? null,
+        ]);
+      }
     }
   } else {
-    result.push(["Master SKU", ...labels, "Custom SKU", ...labels]);
-    for (const r of rows) {
-      result.push([
-        r.masterSku || null,
-        ...labels.map((_, i) => r.qtys[i] ?? null),
-        r.customMasterSku ?? null,
-        ...labels.map((_, i) => r.customQtys?.[i] ?? null),
-      ]);
+    if (selectedItem === "Car Cover") {
+      result.push(["Master SKU", ...labels, "Final Master SKU", ...labels]);
+      for (const r of rows) {
+        const qtys = labels.map((_, i) => r.qtys[i] ?? null);
+        result.push([
+          r.masterSku || null,
+          ...qtys,
+          r.masterSku ? r.masterSku.replace("BKGR", "BKLG") : null,
+          ...qtys,
+        ]);
+      }
+    } else if (selectedItem === "Floor Mat") {
+      result.push(["Master SKU", ...labels]);
+      for (const r of rows) {
+        result.push([r.masterSku || null, ...labels.map((_, i) => r.qtys[i] ?? null)]);
+      }
+    } else {
+      // Seat Cover
+      result.push(["Master SKU", ...labels, "Custom SKU", ...labels]);
+      for (const r of rows) {
+        result.push([
+          r.masterSku || null,
+          ...labels.map((_, i) => r.qtys[i] ?? null),
+          r.customMasterSku ?? null,
+          ...labels.map((_, i) => r.customQtys?.[i] ?? null),
+        ]);
+      }
     }
   }
 
@@ -43,9 +81,10 @@ export function exportCurrentVelocity(
   allRows: VelocityRow[],
   mode: "sales" | "ttm" | "preorder",
   labels: string[],
-  label: string
+  label: string,
+  selectedItem: string
 ): void {
-  const ws = XLSX.utils.aoa_to_sheet(buildSection(allRows, mode, labels));
+  const ws = XLSX.utils.aoa_to_sheet(buildSection(allRows, mode, labels, selectedItem));
   const wb = XLSX.utils.book_new();
   const sheetName = mode === "preorder" ? "Pre Order" : mode === "ttm" ? "TTM" : "Sales";
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -57,14 +96,14 @@ export function exportAllVelocity(
   ttmRows: VelocityRow[],
   preorderRows: VelocityRow[],
   labels: string[],
-  label: string
+  label: string,
+  selectedItem: string
 ): void {
-  const GAP = [null]; // 섹션 구분용 빈 열
-  const sales    = buildSection(salesRows,    "sales",    labels);
-  const ttm      = buildSection(ttmRows,      "ttm",      labels);
-  const preorder = buildSection(preorderRows, "preorder", labels);
+  const GAP = [null];
+  const sales    = buildSection(salesRows,    "sales",    labels, selectedItem);
+  const ttm      = buildSection(ttmRows,      "ttm",      labels, selectedItem);
+  const preorder = buildSection(preorderRows, "preorder", labels, selectedItem);
 
-  // 섹션 타이틀 행 (헤더 위)
   const salesCols    = sales[0]?.length    ?? 0;
   const ttmCols      = ttm[0]?.length      ?? 0;
   const preorderCols = preorder[0]?.length ?? 0;
