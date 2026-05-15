@@ -19,7 +19,8 @@ function getErrorMessage(error: unknown): string {
 
 const CHANNEL_CASE = (alias: string) => `
   CASE
-    WHEN ${alias}.platform_source::text = 'SHOPIFY_COVERLAND' THEN 'Coverland'
+    WHEN ${alias}.platform_source::text = 'SHOPIFY_COVERLAND' AND ${alias}.tags ILIKE '%B2B%' THEN 'Coverland B2B'
+    WHEN ${alias}.platform_source::text = 'SHOPIFY_COVERLAND' THEN 'Coverland B2C'
     WHEN ${alias}.platform_source::text = 'SHOPIFY_ICARCOVER' THEN 'Icarcover'
     WHEN ${alias}.platform_source::text = 'AMAZON' AND ${alias}.fulfillment_channel::text = 'Amazon'   THEN 'Amazon FBA'
     WHEN ${alias}.platform_source::text = 'AMAZON' AND ${alias}.fulfillment_channel::text = 'Merchant' THEN 'Amazon FBM'

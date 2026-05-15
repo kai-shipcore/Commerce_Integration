@@ -28,7 +28,28 @@ import { cn } from "@/lib/utils";
 import { exportCurrentVelocity, exportAllVelocity } from "@/lib/velocity-export";
 
 const ITEMS = ["Car Cover", "Seat Cover", "Floor Mat"] as const;
-const CHANNELS = ["Coverland", "Icarcover", "Amazon FBA", "Amazon FBM", "Auto_Armor", "Advance_Parts", "Walmart"] as const;
+const CHANNELS = [
+  "Shopify Coverland B2B",
+  "Shopify Coverland B2C",
+  "Shopify Icarcover",
+  "Amazon FBA",
+  "Amazon FBM",
+  "Ebay Auto_Armor",
+  "Ebay Advance_Parts",
+  "Walmart",
+] as const;
+
+const CHANNEL_DB_KEY: Record<string, string> = {
+  "Shopify Coverland B2B": "Coverland B2B",
+  "Shopify Coverland B2C": "Coverland B2C",
+  "Shopify Icarcover":     "Icarcover",
+  "Amazon FBA":            "Amazon FBA",
+  "Amazon FBM":            "Amazon FBM",
+  "Ebay Auto_Armor":       "Auto_Armor",
+  "Ebay Advance_Parts":    "Advance_Parts",
+  "Walmart":               "Walmart",
+};
+
 const DEFAULT_PERIODS = [90, 60, 30, 15, 7];
 
 interface PeriodRange { from: string; to: string }
@@ -262,9 +283,10 @@ async function fetchModeRows(
   channels: string[],
   ranges: PeriodRange[]
 ): Promise<VelocityRow[]> {
+  const dbChannels = [...new Set(channels.map((ch) => CHANNEL_DB_KEY[ch] ?? ch))];
   const params = new URLSearchParams({
     items: item,
-    channels: channels.join(","),
+    channels: dbChannels.join(","),
     mode,
     ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
   });
