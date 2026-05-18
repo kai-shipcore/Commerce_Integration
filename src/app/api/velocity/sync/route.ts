@@ -48,7 +48,7 @@ const ORDER_TYPE_CASE = (alias: string) => `
   END`;
 
 const DATE_EXPR = (alias: string) =>
-  `(${alias}.order_date)::date`;
+  `(${alias}.order_date AT TIME ZONE 'UTC')::date`;
 
 const MASTER_SKU_REMAP: Record<string, string> = {
   "CC-CP-07-N-GR":      "CC-CP-03-M-GR-1TO",
