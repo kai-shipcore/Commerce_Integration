@@ -31,6 +31,7 @@ const navigationGroups = [
   { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
   { name: "Operations", itemIds: ["orders", "signals"] },
   { name: "Forecasting", itemIds: ["analytics", "velocity", "sales-link-report", "reconciliation", "compare"] },
+  { name: "Planning", itemIds: ["sku-forecasts", "container-planning", "purchase-orders", "sku-master"] },
   { name: "Admin", itemIds: ["integrations", "user-access"] },
 ];
 
@@ -222,6 +223,7 @@ export function MainNav() {
       {renderNavigationGroup(groupedNavigation[1])}
       {renderNavigationGroup(groupedNavigation[2])}
       {renderNavigationGroup(groupedNavigation[3])}
+      {renderNavigationGroup(groupedNavigation[4])}
     </nav>
   );
 }
