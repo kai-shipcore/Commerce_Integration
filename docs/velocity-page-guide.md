@@ -552,4 +552,3 @@ When changing the Velocity page, verify:
    - snapshot refresh behavior
 5. `src/lib/velocity-export.ts`
    - export layout still matches the visible page model
-
