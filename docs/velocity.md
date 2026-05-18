@@ -1,198 +1,555 @@
-# Velocity — Sales Velocity Dashboard
+# Velocity Page Guide
 
-> 판매 채널·카테고리·기간별 판매 속도를 한눈에 파악하는 내부 대시보드
-
----
-
-## 개요
-
-| | |
-|---|---|
-| **목적** | Master SKU 단위 판매 수량을 채널·기간별로 비교 분석 |
-| **데이터 소스** | Supabase (Shopify / Amazon / Walmart / eBay 주문 통합) |
-| **갱신 방식** | 수동 Sync — 버튼 클릭 시 최신 데이터 반영 |
-| **검증 상태** | ✅ 전 채널·카테고리·모드 완전 일치 확인 (2026-05-13) |
+> URL: `http://localhost:3000/velocity`  
+> Page file: `src/app/velocity/page.tsx`  
+> Last reviewed: 2026-05-18
 
 ---
 
-## 화면 구성
+## 1. Purpose
 
+The Velocity page is a SKU-level demand view. It lets a user answer questions such as:
+
+- How many units of a product family sold over the last 90, 60, 30, 15, or 7 days?
+- How do `Link`, `Custom`, and `TTM` demand compare for the same business area?
+- What does demand look like across selected sales channels?
+- What preorder demand exists, separate from regular sales?
+
+The page is built around three choices:
+
+1. **Item**: `Car Cover`, `Seat Cover`, or `Floor Mat`
+2. **Channel**: one or more normalized selling channels
+3. **Mode**: `Sales`, `TTM`, or `Pre Order`
+
+Until both an item and at least one channel are selected, the table is intentionally hidden.
+
+---
+
+## 2. Main Source Files
+
+```text
+Page
+└── src/app/velocity/page.tsx
+
+Table definitions
+└── src/components/velocity/velocity-table-columns.tsx
+
+Excel export helpers
+└── src/lib/velocity-export.ts
+
+API routes
+├── src/app/api/velocity/data/route.ts
+└── src/app/api/velocity/sync/route.ts
+
+Database schema
+└── prisma/schema.prisma
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Velocity                          Last synced: 05/13 14:22   [Sync] │
-├─────────────────────────────────────────────────────────┤
-│  Item     [ Car Cover ]  [ Seat Cover ]  [ Floor Mat ]          │
-│  Channel  [ All ]  [ Coverland ]  [ Amazon FBA ]  [ ... ]      │
-│  Mode     [ Sales ]  [ TTM ]  [ Pre Order ]    Period ▾        │
-├─────────────────────────────────────────────────────────┤
-│  [ Export ]  [ Export All ]                                      │
-│                                                                   │
-│  Master SKU │ Total Sales          │ Final Car Cover Sales       │
-│             │ 90D  60D  30D  15D  7D│ Final SKU  90D  60D  ...  │
-│  ─────────────────────────────────────────────────────  │
-│  Total      │ 3,412 ...            │ Total  3,412 ...            │
-│  CC-CC-15-… │   241 ...            │ CC-CC-15-…  241 ...         │
-└─────────────────────────────────────────────────────────┘
+
+---
+
+## 3. What the User Sees
+
+### Header
+
+The top-right area contains:
+
+- **Last synced**: the latest `synced_at` value found in `shipcore.velocity_link_snapshot`
+- **Sync** button: refreshes snapshot tables from the Supabase lookup views
+
+The displayed sync timestamp is formatted with the Korean locale (`ko-KR`) as `MM.DD HH:mm`.
+
+### Filter panel
+
+| Control | Behavior |
+|---|---|
+| **Item** | Exactly one item can be selected: `Car Cover`, `Seat Cover`, or `Floor Mat`. |
+| **Channel** | Multiple channels can be selected. `All` toggles every channel on or off. |
+| **Mode** | Switches between `Sales`, `TTM`, and `Pre Order`. |
+| **Period / Custom** | Chooses rolling-day windows or explicit date ranges. |
+
+Available channels are fixed in the page code:
+
+- `Coverland`
+- `Icarcover`
+- `Amazon FBA`
+- `Amazon FBM`
+- `Auto_Armor`
+- `Advance_Parts`
+- `Walmart`
+
+### Empty states
+
+- No item selected: `아이템을 선택하세요` ("Select an item")
+- No channel selected: `채널을 하나 이상 선택하세요` ("Select at least one channel")
+
+### Table tools
+
+- **Search Master SKU...**
+- **Export**: exports the currently selected mode
+- **Export All**: exports `Sales`, `TTM`, and `Pre Order` side by side
+- Pagination starts at `100` rows per page
+
+---
+
+## 4. Date Logic
+
+### Default period mode
+
+The default period chips are:
+
+```text
+90D, 60D, 30D, 15D, 7D
 ```
 
+These are **rolling windows**, and they all end at **today minus 2 days**.
+
+Example:
+
+- If today is `2026-05-18`, then the default windows end on `2026-05-16`.
+- The 7D window would be `2026-05-10` through `2026-05-16`, inclusive.
+
+This two-day offset is implemented in both `defaultRanges()` and `periodsToRanges()`.
+
+### Editing rolling periods
+
+The user can:
+
+- Edit an existing day count
+- Remove a day count
+- Add a new day count
+
+Rules:
+
+- At least one period must remain
+- At most five periods can exist
+- Periods are sorted descending after edits
+- Duplicate period lengths are rejected
+
+### Custom range mode
+
+The user can define up to five explicit date ranges.
+
+Rules:
+
+- `from` must be less than or equal to `to`
+- At least one custom range must remain
+- Range labels display the number of inclusive days plus `MM-DD~MM-DD`
+
 ---
 
-## 필터 옵션
+## 5. Mode Behavior
 
-### Item (단일 선택)
+### Sales mode
 
-| 선택값 | 표시 데이터 |
-|---|---|
-| **Car Cover** | Total Sales + Final Car Cover Sales (BKGR → BKLG 변환 표시) |
-| **Seat Cover** | Link Sales/TTM + Custom Sales/TTM |
-| **Floor Mat** | Total Sales |
+Uses rows with:
 
-### Channel (다중 선택)
+```text
+order_type = 'sales'
+```
 
-`Coverland` · `Icarcover` · `Amazon FBA` · `Amazon FBM` · `Auto_Armor` · `Advance_Parts` · `Walmart`
+The table shows demand over each selected date window.
 
-### Mode
+### TTM mode
 
-| 모드 | 집계 대상 |
-|---|---|
-| **Sales** | 일반 판매 주문 |
-| **TTM** | TTM(To The Market) 주문 |
-| **Pre Order** | 선주문 — 기간 필터 없이 전체 합산 |
+Uses rows with:
 
-### 기간 설정
+```text
+order_type = 'ttm'
+```
 
-- **Period 모드** — N일 chip으로 지정 (기본: 90 · 60 · 30 · 15 · 7D, 최대 5개)
-- **Custom 모드** — 날짜 범위 직접 입력 (최대 5개)
-- 기준일: 항상 오늘 −2일 (당일·전일 데이터 제외)
+The table structure is similar to Sales mode, but column group labels change from `Sales` to `TTM`.
+
+### Pre Order mode
+
+Uses:
+
+- `order_type = 'preorder'` for regular preorder demand
+- `order_type = 'ttm_preorder'` for TTM preorder demand
+
+Unlike Sales and TTM:
+
+- Date ranges are ignored by the API
+- The table shows total preorder quantity, not rolling date windows
 
 ---
 
-## 테이블 컬럼 구조
+## 6. Item-Specific Table Layouts
 
 ### Car Cover
 
-```
-Master SKU │ ←── Total Sales ──→ │ ←──── Final Car Cover Sales ────→
-           │ 90D  60D  30D  15D  7D│ Final SKU          90D  60D  ...
+| Section | Meaning |
+|---|---|
+| `Master SKU` | The stored link master SKU |
+| `Total Sales` / `Total` | Quantity from the link snapshot |
+| `Final Car Cover Sales` | Same quantity repeated beside a display-only remapped SKU |
+
+For the display-only final SKU, the page converts:
+
+```text
+BKGR -> BKLG
 ```
 
-> Final SKU는 Total SKU에서 `BKGR` → `BKLG`로 치환하여 표시. 수치는 동일.
+The quantity is not recalculated for the final SKU column; it is the same value shown in the total column.
 
 ### Seat Cover
 
-```
-Master SKU │ ←── Link Sales/TTM ──→ │ ←── Custom Sales/TTM ──→
-           │ 90D  60D  30D  15D  7D  │ Custom SKU  90D  60D  ...
-```
+| Mode | Sections |
+|---|---|
+| Sales | `Link Sales` and `Custom Sales` |
+| TTM | `Link TTM` and `Custom TTM` |
+| Pre Order | `Link Pre Order`, `Custom Pre Order`, and `TTM Pre Order` |
 
-Pre Order 모드에서는 Link / Custom / TTM Pre Order 3개 그룹으로 표시.
+Seat Cover is the only item that queries `velocity_custom_snapshot`.
 
 ### Floor Mat
 
-```
-Master SKU │ ←── Total Sales ──→
-           │ 90D  60D  30D  15D  7D
-```
-
----
-
-## 데이터 흐름
-
-```
-각 판매 채널 (Shopify · Amazon · Walmart · eBay)
-          │
-          ▼
-  Supabase — ecommerce_data
-  ┌─────────────────────────────────────────────────────────────────┐
-  │ vw_sales_order_items_link_new                                   │
-  │  • sales_orders + sales_order_items를 기반으로 주문 SKU를       │
-  │    Master SKU로 해석                                            │
-  │  • Shopify(COVERLAND): fn_extract_master_sku_from_web_sku()로  │
-  │    Web SKU → m1/m2/m3 최대 3개 Master SKU 추출 (UNION ALL)     │
-  │  • Non-Shopify(Amazon/Walmart/eBay): shiphero_kit_components   │
-  │    INNER JOIN으로 kit 구성 SKU 해석                             │
-  │  • CL-SC-10-* SKU는 size_chart_dev로 size 코드 정규화          │
-  │  • unit_price > 0 필터, Non-Amazon 채널 제외                    │
-  ├─────────────────────────────────────────────────────────────────┤
-  │ vw_sales_order_items_custom_new                                 │
-  │  • Seat Cover Custom SKU 전용 뷰                                │
-  │  • Link 뷰와 동일한 주문 소스에서 Custom Master SKU 경로로 해석 │
-  │  • velocity_custom_snapshot 에만 사용됨                         │
-  └─────────────────────────────────────────────────────────────────┘
-          │
-          │  [ Sync 버튼 ]  POST /api/velocity/sync
-          │  • item_status 필터: delivered / fulfilled / shipped 등
-          │  • channel / item_category / order_type CASE 매핑
-          │  • SKU remap 3건 정규화
-          │  • SUM(quantity) 집계
-          │  • 두 테이블 TRUNCATE → 전체 데이터를 500행씩 나눠 upsert
-          ▼
-  Primary DB — shipcore
-  ┌──────────────────────────────────────────────────────┐
-  │ velocity_link_snapshot                               │
-  │  (order_date, item_category, channel,                │
-  │   order_type, link_master_sku, link_qty)             │
-  ├──────────────────────────────────────────────────────┤
-  │ velocity_custom_snapshot                             │
-  │  (order_date, item_category, channel,                │
-  │   order_type, custom_master_sku, custom_qty)         │
-  └──────────────────────────────────────────────────────┘
-          │
-          │  GET /api/velocity/data
-          │  • 기간별 CASE WHEN SUM 피벗 (최대 5개 컬럼)
-          │  • custom_snapshot은 Seat Cover 선택 시에만 조회
-          ▼
-  Velocity 대시보드
-  (기간별 피벗, 검색, 정렬, XLSX 내보내기)
-```
-
----
-
-## Export
-
-| 버튼 | 파일 내용 |
+| Mode | Sections |
 |---|---|
-| **Export** | 현재 모드(Sales 또는 TTM 또는 Pre Order) 단일 시트 |
-| **Export All** | Sales + TTM + Pre Order 3개 모드를 하나의 파일에 나란히 |
+| Sales / TTM | `Total Sales` |
+| Pre Order | `Total` |
 
-파일명: `velocity_{item}_{channels}_{날짜}.xlsx`
+Floor Mat does not show custom-side columns.
 
 ---
 
-## 채널 매핑
+## 7. Row Construction and Interaction Details
 
-| 플랫폼 소스 | 이행 채널 | Velocity 채널명 |
+### Total row
+
+The first visible row is a synthetic `Total` row built on the client from the API result arrays.
+
+It sums:
+
+- each `link` period quantity
+- each `custom` period quantity, when present
+- the preorder TTM total, when present
+
+### Visible rows
+
+Rows with no positive quantity anywhere are filtered out before display. The total row is always kept.
+
+### Search
+
+Search behavior depends on item:
+
+- All items: searches the primary `masterSku`
+- Car Cover: also searches the display-only final SKU after `BKGR -> BKLG`
+- Seat Cover: also searches `customMasterSku`; in preorder mode it also searches `ttmMasterSku`
+- Floor Mat: only the primary `masterSku` is searchable
+
+Search input is debounced by `300ms`.
+
+### Sorting
+
+Supported interactive sorting:
+
+- `Master SKU`
+- Link-side period columns such as `90D`, `60D`, etc.
+
+Not sortable:
+
+- Custom-side quantity columns
+- Car Cover final-side duplicate quantity columns
+- TTM preorder quantity column
+
+The total row is always pinned to the top during client-side sorting.
+
+### Important implementation detail: rows are paired by rank, not by SKU
+
+The page builds visible rows by taking the `link`, `custom`, and `ttm` result arrays and placing entries with the same array index on the same screen row.
+
+That means:
+
+- `link[0]` is displayed beside `custom[0]`
+- `link[1]` is displayed beside `custom[1]`
+- and so on
+
+The page does **not** join these sections by SKU. This is fine if the intent is side-by-side ranked lists, but it is important not to read one screen row as a guaranteed crosswalk between Link and Custom SKUs.
+
+---
+
+## 8. Data Flow
+
+```text
+Supabase lookup views
+├── ecommerce_data.vw_sales_order_items_link_new
+└── ecommerce_data.vw_sales_order_items_custom_new
+          |
+          | POST /api/velocity/sync
+          v
+Internal snapshot tables
+├── shipcore.velocity_link_snapshot
+└── shipcore.velocity_custom_snapshot
+          |
+          | GET /api/velocity/data
+          v
+Velocity page table
+```
+
+### Snapshot tables
+
+#### `shipcore.velocity_link_snapshot`
+
+| Field | Purpose |
+|---|---|
+| `order_date` | Sales date |
+| `item_category` | Normalized product family |
+| `channel` | Normalized sales channel |
+| `order_type` | `sales`, `ttm`, `preorder`, or `ttm_preorder` |
+| `link_master_sku` | Link-side master SKU |
+| `link_qty` | Aggregated quantity |
+| `synced_at` | Snapshot refresh timestamp |
+
+Unique key:
+
+```text
+(order_date, item_category, channel, order_type, link_master_sku)
+```
+
+#### `shipcore.velocity_custom_snapshot`
+
+Same structure, but with:
+
+- `custom_master_sku`
+- `custom_qty`
+
+Unique key:
+
+```text
+(order_date, item_category, channel, order_type, custom_master_sku)
+```
+
+---
+
+## 9. How Sync Works
+
+`POST /api/velocity/sync` performs the refresh.
+
+### Source views
+
+- `ecommerce_data.vw_sales_order_items_link_new`
+- `ecommerce_data.vw_sales_order_items_custom_new`
+
+### Included statuses
+
+Rows are included when `LOWER(item_status)` is one of:
+
+```text
+delivered
+fulfilled
+partially_fulfilled
+shipped
+shipping
+acknowledged
+```
+
+### Channel normalization
+
+| Source condition | Stored channel |
+|---|---|
+| `SHOPIFY_COVERLAND` | `Coverland` |
+| `SHOPIFY_ICARCOVER` | `Icarcover` |
+| `AMAZON` + `Amazon` fulfillment | `Amazon FBA` |
+| `AMAZON` + `Merchant` fulfillment | `Amazon FBM` |
+| Other `AMAZON` | `Amazon FBA` |
+| `WALMART` | `Walmart` |
+| `EBAY_AUTOARMOR` | `Auto_Armor` |
+| `EBAY` | `Advance_Parts` |
+
+### Item normalization
+
+| SKU pattern | Stored item category |
+|---|---|
+| `C-SJ-GR-7` or `CC%` | `Car Cover` |
+| `CA-SC%` or `CL-SC%` | `Seat Cover` |
+| `CA-FM%` | `Floor Mat` |
+| Everything else | `Miscellaneous` |
+
+### Order-type normalization
+
+| `is_ttm` | `is_preorder` | Stored order type |
 |---|---|---|
-| Shopify Coverland | — | Coverland |
-| Shopify Icarcover | — | Icarcover |
-| Amazon | FBA | Amazon FBA |
-| Amazon | Merchant (FBM) | Amazon FBM |
-| Walmart | — | Walmart |
-| eBay (AutoArmor) | — | Auto_Armor |
-| eBay | — | Advance_Parts |
+| true | true | `ttm_preorder` |
+| true | false | `ttm` |
+| false | true | `preorder` |
+| false | false | `sales` |
+
+### Master SKU remaps during sync
+
+Before storage, these source master SKUs are remapped:
+
+| From | To |
+|---|---|
+| `CC-CP-07-N-GR` | `CC-CP-03-M-GR-1TO` |
+| `CC-CSP-03-M-GR-1TO` | `CC-CS-03-M-GR-1TO` |
+| `C-SJ-GR-7` | `CC-CS-03-J-GR-1TO` |
+
+### Refresh strategy
+
+The sync route:
+
+1. Queries both source views
+2. Aggregates quantities in SQL
+3. Truncates both snapshot tables
+4. Batch-upserts fresh rows in groups of `500`
+
+One small but important note: the route comment says it pulls "400 days" of data, but the current SQL shown in the implementation has no date filter. As written, it loads all qualifying rows returned by the source views.
 
 ---
 
-## 검증 결과
+## 10. How `/api/velocity/data` Works
 
-| 검증 항목 | 결과 |
-|---|---|
-| velocity_link_snapshot ↔ Supabase 뷰 수치 대조 | ✅ 완전 일치 |
-| 검증 채널 | Coverland · Icarcover · Amazon FBA/FBM · Walmart · Auto_Armor · Advance_Parts |
-| 검증 카테고리 | Car Cover · Seat Cover · Floor Mat |
-| 검증 모드 | sales · ttm · preorder · ttm_preorder 전체 |
-| 검증 기준일 | 2026-05-13 |
+### Request parameters
 
-**미검증**: 채널 raw export 파일 (Shopify Admin, Amazon Seller Central 등) → DB 원본 직접 대조
+| Parameter | Example | Meaning |
+|---|---|---|
+| `items` | `Seat Cover` | Comma-separated item categories |
+| `channels` | `Coverland,Amazon FBA` | Comma-separated normalized channels |
+| `mode` | `sales` | `sales`, `ttm`, or `preorder` |
+| `ranges` | `2026-02-17:2026-05-16,...` | Comma-separated inclusive date ranges |
+
+### Sales and TTM responses
+
+For each selected range, the API creates a conditional aggregate such as:
+
+```sql
+SUM(CASE WHEN order_date >= :from AND order_date <= :to THEN qty ELSE 0 END)
+```
+
+Returned shape:
+
+```json
+{
+  "success": true,
+  "link": [
+    { "masterSku": "SKU-A", "qtys": [120, 80, 40] }
+  ],
+  "custom": [
+    { "masterSku": "SKU-B", "qtys": [90, 60, 25] }
+  ]
+}
+```
+
+`custom` is only queried when the selected items include `Seat Cover`.
+
+### Preorder responses
+
+Returned shape:
+
+```json
+{
+  "success": true,
+  "link": [
+    { "masterSku": "SKU-A", "qtys": [12] }
+  ],
+  "custom": [
+    { "masterSku": "SKU-B", "qtys": [7] }
+  ],
+  "ttm": [
+    { "masterSku": "SKU-C", "count": 4 }
+  ]
+}
+```
 
 ---
 
-## 관련 파일
+## 11. Export Behavior
 
-| 파일 | 설명 |
+### Export
+
+Creates one workbook sheet for the current mode:
+
+- `Sales`
+- `TTM`
+- `Pre Order`
+
+Filename pattern:
+
+```text
+velocity_<item_and_channels>_<YYYY-MM-DD>.xlsx
+```
+
+### Export All
+
+Creates one sheet named `Velocity` with three sections placed side by side:
+
+```text
+SALES | TTM | PRE ORDER
+```
+
+Filename pattern:
+
+```text
+velocity_all_<item_and_channels>_<YYYY-MM-DD>.xlsx
+```
+
+The exported shape follows the same item-specific layouts used on screen.
+
+---
+
+## 12. Practical Reading Guide
+
+### To read the page correctly
+
+1. Pick the product family first.
+2. Select the channel set you actually want to compare.
+3. Confirm whether you are looking at:
+   - regular sales
+   - TTM demand
+   - preorder demand
+4. Check the date basis:
+   - rolling periods end two days before today
+   - custom ranges are inclusive
+5. Treat side-by-side Link and Custom rows as ranked lists unless you have separately verified a SKU relationship.
+
+### Good use cases
+
+- Fast velocity checks by product family
+- Comparing current demand across several rolling windows
+- Looking at preorder demand separately from shipped demand
+- Exporting a filtered view for offline analysis
+
+### Things this page does not currently do
+
+- It does not automatically load data before an item and channel are selected.
+- It does not merge Link and Custom records by SKU.
+- It does not expose arbitrary channels from the database; the channel buttons are hard-coded in the page.
+- It does not show raw orders; it shows aggregated snapshot quantities.
+
+---
+
+## 13. Troubleshooting Notes
+
+| Symptom | Likely cause |
 |---|---|
-| `src/app/velocity/page.tsx` | 메인 페이지, 필터 UI |
-| `src/components/velocity/velocity-table-columns.tsx` | 테이블 컬럼 정의 |
-| `src/lib/velocity-export.ts` | XLSX 내보내기 |
-| `src/app/api/velocity/sync/route.ts` | Supabase 동기화 API |
-| `src/app/api/velocity/data/route.ts` | 집계 데이터 조회 API |
+| No table appears | No item or no channel is selected yet |
+| Table is empty | No positive quantity matched the selected filters, or the snapshot tables are stale/empty |
+| Last synced looks old | `/api/velocity/sync` has not been run recently |
+| Expected custom columns are missing | Only `Seat Cover` uses the custom snapshot query |
+| A row seems to pair unrelated Link and Custom SKUs | The screen aligns arrays by rank/index, not by SKU |
+| Recent days appear absent from default windows | Default windows intentionally end at today minus 2 days |
+
+---
+
+## 14. Quick Developer Checklist
+
+When changing the Velocity page, verify:
+
+1. `src/app/velocity/page.tsx`
+   - item/channel/mode state transitions
+   - period range generation
+   - search, sorting, pagination, export actions
+2. `src/components/velocity/velocity-table-columns.tsx`
+   - item-specific table shapes
+   - grouping labels
+3. `src/app/api/velocity/data/route.ts`
+   - filter semantics
+   - inclusive date aggregation
+   - preorder response shape
+4. `src/app/api/velocity/sync/route.ts`
+   - status filter
+   - channel/category/order-type normalization
+   - snapshot refresh behavior
+5. `src/lib/velocity-export.ts`
+   - export layout still matches the visible page model
+
