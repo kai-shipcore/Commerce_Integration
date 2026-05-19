@@ -135,3 +135,139 @@
     @apply bg-[#f0eee9];
   }
 }
+
+/* ── Demand Planning Grid ── */
+.dp-grid-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: #f5f4ef;
+}
+.dp-grid-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+.dp-grid-wrap::-webkit-scrollbar-thumb { background: #c2bfb5; border-radius: 4px; }
+.dp-grid-wrap::-webkit-scrollbar-track { background: #f5f4ef; }
+.dp-grid-wrap::-webkit-scrollbar-corner { background: #f5f4ef; }
+
+table.dp-grid {
+  border-collapse: collapse;
+  font-size: 10px;
+  min-width: max-content;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+}
+table.dp-grid thead { position: sticky; top: 0; z-index: 40; }
+
+table.dp-grid thead tr.hr1 th {
+  background: #1e1c19;
+  color: rgba(255,255,255,.85);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 3px 4px;
+  border-right: 1px solid #3a3835;
+  border-bottom: 1px solid #555;
+  white-space: nowrap;
+  text-align: center;
+  height: 20px;
+}
+table.dp-grid thead tr.hr2 th {
+  background: #2a2825;
+  color: rgba(255,255,255,.55);
+  font-size: 8px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-right: 1px solid #3a3835;
+  border-bottom: 1px solid #555;
+  text-align: center;
+  white-space: nowrap;
+  height: 16px;
+}
+table.dp-grid thead tr.hr3 th {
+  background: #34312d;
+  color: rgba(255,255,255,.7);
+  font-size: 9px;
+  font-weight: 500;
+  padding: 2px 4px;
+  border-right: 1px solid #3a3835;
+  border-bottom: 2px solid #555;
+  text-align: center;
+  white-space: nowrap;
+  height: 30px;
+  line-height: 1.25;
+}
+
+/* Group header colors */
+.gh-fix    { background: #1e1c19 !important; }
+.gh-stock  { background: #1a3555 !important; }
+.gh-wsales { background: #153028 !important; }
+.gh-esales { background: #2a1e42 !important; }
+.gh-avg    { background: #303010 !important; }
+.gh-total  { background: #182828 !important; }
+.gh-inb    { background: #281828 !important; }
+.gh-con    { background: #0d2535 !important; }
+
+/* Sticky columns */
+th.col-sticky, td.col-sticky { position: sticky; z-index: 15; }
+th.col-sticky { z-index: 45; }
+th.col-freeze-end, td.col-freeze-end {
+  border-right: 3px solid #4acce0 !important;
+  box-shadow: 3px 0 8px rgba(74,200,220,.25);
+}
+th.col-freeze-end { box-shadow: 3px 0 10px rgba(74,200,220,.3); }
+
+/* Data rows */
+table.dp-grid tbody tr { height: 24px; cursor: pointer; }
+table.dp-grid tbody tr:nth-child(even) td { background: #fafaf7; }
+table.dp-grid tbody tr:nth-child(even) td.col-sticky { background: #fafaf7; }
+table.dp-grid tbody tr:hover td { background: #eaf0ff !important; }
+table.dp-grid tbody tr.urg-crit td { background: #fff5f5; }
+table.dp-grid tbody tr.urg-crit td.col-sticky { background: #fff5f5; }
+
+/* Base cell */
+table.dp-grid td {
+  padding: 1px 5px;
+  border-right: 1px solid #d8d6ce;
+  border-bottom: 1px solid #d8d6ce;
+  vertical-align: middle;
+  white-space: nowrap;
+  height: 24px;
+  background: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+table.dp-grid td.col-sticky { background: #fff; }
+
+/* Column tints */
+td.t-stock  { background: #f5f9ff; }
+td.t-wsales { background: #f5fbf7; }
+td.t-esales { background: #faf5ff; }
+td.t-avg    { background: #fffef0; }
+td.t-total  { background: #f5fcfc; }
+td.t-inb    { background: #fdf5ff; }
+td.t-cn     { background: #f0f9ff; }
+td.t-cn-life{ background: #eaf6ff; }
+td.t-cn-sod { background: #e5f3ff; }
+
+/* Value styles */
+.dp-num  { text-align: right; font-family: 'Courier New', Consolas, monospace; font-size: 10px; }
+.dp-ctr  { text-align: center; }
+.dp-left { text-align: left; }
+.dp-bold { font-weight: 700; }
+.sku-cell { font-family: 'Courier New', Consolas, monospace; font-size: 10px; font-weight: 600; color: #1238a0; }
+.lv-crit { color: #c42020; font-weight: 700; }
+.lv-warn { color: #9a5200; font-weight: 600; }
+.lv-ok   { color: #0a6a45; font-weight: 500; }
+.lv-over { color: #6b3db8; font-size: 9px; }
+.lv-dim  { color: #9a9790; }
+.bo-pos  { color: #c42020; font-weight: 600; }
+.inb-pos { color: #1a4fc0; font-weight: 600; }
+.sod-crit { color: #c42020; font-weight: 700; font-size: 9px; }
+.sod-warn { color: #9a5200; font-weight: 600; font-size: 9px; }
+.sod-ok   { color: #5a5750; font-size: 9px; }
+.sc-badge { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 8px; white-space: nowrap; }
+.sc-orig  { background: #e5eeff; color: #1238a0; }
+.sc-cust  { background: #e3f5ec; color: #0a6a45; }
+.dp-dot   { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; vertical-align: middle; }
+.d-crit   { background: #c42020; }
+.d-warn   { background: #9a5200; }
+.d-ok     { background: #0a6a45; }

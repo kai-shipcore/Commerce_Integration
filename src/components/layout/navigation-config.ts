@@ -112,6 +112,13 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "demand-planning",
+    name: "Dashboard",
+    href: "/planning/dashboard",
+    icon: LayoutDashboard,
+    hideable: true,
+  },
+  {
     id: "sku-forecasts",
     name: "SKU Forecasts",
     href: "/planning/sku-forecasts",
