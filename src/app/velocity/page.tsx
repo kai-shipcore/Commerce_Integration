@@ -436,7 +436,6 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
 
   useEffect(() => {
     setPagination((p) => ({ ...p, page: 1 }));
-    setSearch("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
 
