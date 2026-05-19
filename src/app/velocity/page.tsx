@@ -59,7 +59,7 @@ function toLocalDateStr(d: Date): string {
 }
 
 function rangeDays(r: PeriodRange): number {
-  return Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000) + 1;
+  return Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000);
 }
 
 function defaultRanges(): PeriodRange[] {
@@ -68,7 +68,7 @@ function defaultRanges(): PeriodRange[] {
   const toStr = toLocalDateStr(to);
   return DEFAULT_PERIODS.map((n) => {
     const from = new Date(to);
-    from.setDate(from.getDate() - (n - 1));
+    from.setDate(from.getDate() - n);
     return { from: toLocalDateStr(from), to: toStr };
   });
 }
@@ -79,7 +79,7 @@ function periodsToRanges(periods: number[]): PeriodRange[] {
   const toStr = toLocalDateStr(to);
   return periods.map((n) => {
     const from = new Date(to);
-    from.setDate(from.getDate() - (n - 1));
+    from.setDate(from.getDate() - n);
     return { from: toLocalDateStr(from), to: toStr };
   });
 }
