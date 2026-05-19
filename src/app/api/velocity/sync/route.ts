@@ -186,7 +186,7 @@ export async function POST() {
            SUM(l.quantity)::int       AS link_qty
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
-           AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged')
+           AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
          GROUP BY 1, 2, 3, 4, 5, 6`
       ),
       lookupPool.query<CustomRow>(
@@ -200,7 +200,7 @@ export async function POST() {
            SUM(c.quantity)::int       AS custom_qty
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
-           AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged')
+           AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
          GROUP BY 1, 2, 3, 4, 5, 6`
       ),
     ]);
