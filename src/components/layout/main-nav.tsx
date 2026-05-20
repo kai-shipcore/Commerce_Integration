@@ -32,7 +32,7 @@ const navigationGroups = [
   { name: "Operations", itemIds: ["orders", "signals"] },
   { name: "Forecasting", itemIds: ["analytics", "velocity", "sales-link-report", "reconciliation", "compare"] },
   { name: "Planning", itemIds: ["sku-forecasts", "container-planning", "purchase-orders", "sku-master"] },
-  { name: "Admin", itemIds: ["integrations", "user-access"] },
+  { name: "Admin", itemIds: ["integrations", "warehouse-admin", "user-access"] },
 ];
 
 function readStoredVisibleMenuIds(role?: string | null): string[] | null {

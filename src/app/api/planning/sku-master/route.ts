@@ -1,0 +1,313 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getPrimaryPool } from "@/lib/db/primary-db";
+import { getLookupPool } from "@/lib/db/supabase-lookup";
+
+type ProductKey = "cc" | "fm" | "sc";
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+function inferProduct(masterSku: string): {
+  productKey: ProductKey;
+  category: string;
+  categoryCode: string;
+  moq: number;
+  cbmPerUnit: number;
+  caseQty: number;
+  weightKg: number;
+} {
+  const sku = masterSku.toUpperCase();
+  const parts = sku.split("-");
+
+  if (sku.startsWith("CC-")) {
+    return {
+      productKey: "cc",
+      category: "Car Cover",
+      categoryCode: "CC",
+      moq: 3,
+      cbmPerUnit: 0.078,
+      caseQty: 3,
+      weightKg: 2.8,
+    };
+  }
+
+  if (sku.startsWith("CA-FM-") || parts.includes("FM")) {
+    return {
+      productKey: "fm",
+      category: "Floor Mat",
+      categoryCode: "FM",
+      moq: 5,
+      cbmPerUnit: 0.125,
+      caseQty: 1,
+      weightKg: 1.4,
+    };
+  }
+
+  return {
+    productKey: "sc",
+    category: "Seat Cover",
+    categoryCode: "SC",
+    moq: 5,
+    cbmPerUnit: 0.048,
+    caseQty: 1,
+    weightKg: 0.9,
+  };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get("search")?.trim() ?? "";
+    const product = searchParams.get("product")?.trim() ?? "all";
+    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+    const limit = Math.min(200, Math.max(20, Number(searchParams.get("limit") ?? 50)));
+    const offset = (page - 1) * limit;
+
+    const filters = ["status = 'active'"];
+    const params: unknown[] = [];
+
+    if (search) {
+      params.push(`%${search}%`);
+      filters.push(`master_sku ILIKE $${params.length}`);
+    }
+
+    if (product !== "all") {
+      const productMap: Record<string, string> = {
+        cc: "CC",
+        fm: "FM",
+        sc: "SC",
+      };
+      const code = productMap[product];
+      if (code) {
+        params.push(code);
+        filters.push(`category_code = $${params.length}`);
+      }
+    }
+
+    const pool = getPrimaryPool();
+    const countResult = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM shipcore.fc_products
+       WHERE ${filters.join(" AND ")}`,
+      params
+    );
+    const total = Number(countResult.rows[0]?.count ?? 0);
+
+    const dataParams = [...params, limit, offset];
+    const limitParam = dataParams.length - 1;
+    const offsetParam = dataParams.length;
+
+    const result = await pool.query(
+      `SELECT
+         master_sku,
+         product_name,
+         category,
+         category_code,
+         moq,
+         order_multiple,
+         cbm_per_unit::text AS cbm_per_unit,
+         case_qty,
+         weight_kg::text AS weight_kg
+       FROM shipcore.fc_products
+       WHERE ${filters.join(" AND ")}
+       ORDER BY category_code NULLS LAST, master_sku
+       LIMIT $${limitParam} OFFSET $${offsetParam}`,
+      dataParams
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: result.rows.map((row) => {
+        const inferred = inferProduct(row.master_sku);
+        return {
+          masterSku: row.master_sku,
+          productName: row.product_name,
+          productKey: (row.category_code?.toLowerCase() ?? inferred.productKey) as ProductKey,
+          category: row.category ?? inferred.category,
+          categoryCode: row.category_code ?? inferred.categoryCode,
+          moq: Number(row.moq ?? inferred.moq),
+          orderMultiple: Number(row.order_multiple ?? inferred.moq),
+          cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
+          caseQty: Number(row.case_qty ?? inferred.caseQty),
+          weightKg: Number(row.weight_kg ?? inferred.weightKg),
+        };
+      }),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (error) {
+    console.error("SKU master GET failed:", error);
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  }
+}
+
+export async function POST() {
+  const lookup = getLookupPool();
+  if (!lookup) {
+    return NextResponse.json(
+      { success: false, error: "SUPABASE_LOOKUP_DATABASE_URL is not configured" },
+      { status: 500 }
+    );
+  }
+
+  const primary = getPrimaryPool();
+  const lookupClient = await lookup.connect();
+  const primaryClient = await primary.connect();
+
+  try {
+    const source = await lookupClient.query<{ master_sku: string }>(
+      `SELECT DISTINCT btrim(master_sku) AS master_sku
+       FROM ecommerce_data.coverland_inventory
+       WHERE master_sku IS NOT NULL AND btrim(master_sku) <> ''
+       ORDER BY btrim(master_sku)`
+    );
+
+    const rows = source.rows.map((row) => {
+      const masterSku = row.master_sku.trim();
+      return { masterSku, ...inferProduct(masterSku) };
+    });
+
+    await primaryClient.query("BEGIN");
+    await primaryClient.query(`
+      CREATE TEMP TABLE stg_fc_products (
+        master_sku TEXT,
+        product_name TEXT,
+        category TEXT,
+        category_code TEXT,
+        moq INT,
+        order_multiple INT,
+        cbm_per_unit NUMERIC,
+        case_qty INT,
+        weight_kg NUMERIC
+      ) ON COMMIT DROP
+    `);
+
+    if (rows.length > 0) {
+      await primaryClient.query(
+        `INSERT INTO stg_fc_products
+           (master_sku, product_name, category, category_code, moq, order_multiple, cbm_per_unit, case_qty, weight_kg)
+         SELECT
+           unnest($1::text[]),
+           unnest($2::text[]),
+           unnest($3::text[]),
+           unnest($4::text[]),
+           unnest($5::int[]),
+           unnest($6::int[]),
+           unnest($7::numeric[]),
+           unnest($8::int[]),
+           unnest($9::numeric[])`,
+        [
+          rows.map((row) => row.masterSku),
+          rows.map((row) => row.masterSku),
+          rows.map((row) => row.category),
+          rows.map((row) => row.categoryCode),
+          rows.map((row) => row.moq),
+          rows.map((row) => row.moq),
+          rows.map((row) => row.cbmPerUnit),
+          rows.map((row) => row.caseQty),
+          rows.map((row) => row.weightKg),
+        ]
+      );
+    }
+
+    const upsert = await primaryClient.query(`
+      INSERT INTO shipcore.fc_products (
+        master_sku, product_name, category, category_code, status,
+        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
+        created_at, updated_at
+      )
+      SELECT
+        master_sku, product_name, category, category_code, 'active',
+        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
+        NOW(), NOW()
+      FROM stg_fc_products
+      ON CONFLICT (master_sku) DO UPDATE SET
+        product_name = COALESCE(NULLIF(shipcore.fc_products.product_name, ''), EXCLUDED.product_name),
+        category = COALESCE(shipcore.fc_products.category, EXCLUDED.category),
+        category_code = COALESCE(shipcore.fc_products.category_code, EXCLUDED.category_code),
+        status = 'active',
+        updated_at = NOW()
+    `);
+
+    await primaryClient.query("COMMIT");
+
+    return NextResponse.json({
+      success: true,
+      sourceRows: source.rowCount,
+      upserted: upsert.rowCount,
+    });
+  } catch (error) {
+    await primaryClient.query("ROLLBACK");
+    console.error("SKU master sync failed:", error);
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  } finally {
+    lookupClient.release();
+    primaryClient.release();
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const masterSku = String(body.masterSku ?? "").trim();
+    if (!masterSku) {
+      return NextResponse.json({ success: false, error: "masterSku is required" }, { status: 400 });
+    }
+
+    const moq = Math.max(1, Number(body.moq ?? 1));
+    const caseQty = Math.max(1, Number(body.caseQty ?? 1));
+    const cbmPerUnit = Math.max(0.0001, Number(body.cbmPerUnit ?? 0.0001));
+    const weightKg = Math.max(0, Number(body.weightKg ?? 0));
+
+    const pool = getPrimaryPool();
+    const result = await pool.query(
+      `UPDATE shipcore.fc_products
+       SET moq = $2,
+           order_multiple = $2,
+           cbm_per_unit = $3,
+           case_qty = $4,
+           weight_kg = $5,
+           updated_at = NOW()
+       WHERE master_sku = $1
+       RETURNING master_sku`,
+      [masterSku, moq, cbmPerUnit, caseQty, weightKg]
+    );
+
+    if (result.rowCount === 0) {
+      return NextResponse.json({ success: false, error: "SKU not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("SKU master PATCH failed:", error);
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const masterSku = searchParams.get("masterSku")?.trim() ?? "";
+    if (!masterSku) {
+      return NextResponse.json({ success: false, error: "masterSku is required" }, { status: 400 });
+    }
+
+    const pool = getPrimaryPool();
+    await pool.query(
+      `UPDATE shipcore.fc_products
+       SET status = 'inactive', updated_at = NOW()
+       WHERE master_sku = $1`,
+      [masterSku]
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("SKU master DELETE failed:", error);
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  }
+}

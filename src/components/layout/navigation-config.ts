@@ -147,6 +147,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: false,
     adminOnly: true,
   },
+  {
+    id: "warehouse-admin",
+    name: "Warehouse",
+    href: "/warehouse",
+    icon: Warehouse,
+    hideable: true,
+    adminOnly: true,
+  },
 ];
 
 export const adminDefaultVisibleMenuIds = navigationItems

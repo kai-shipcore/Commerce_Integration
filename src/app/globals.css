@@ -127,11 +127,25 @@
     @apply rounded-2xl border bg-[#f5f4f0] p-4 shadow-sm md:p-5;
   }
 
+  .planning-surface:has(.container-planning-fullbleed),
+  .planning-surface:has(.purchase-orders-fullbleed),
+  .planning-surface:has(.sku-master-fullbleed) {
+    @apply border-0 bg-transparent p-0 shadow-none md:p-0;
+  }
+
   .planning-panel {
     @apply border-[#e2dfd8] bg-white;
   }
 
   .planning-muted {
     @apply bg-[#f0eee9];
+  }
+
+  .form-input {
+    @apply w-full rounded-md border border-[#cccac4] bg-white px-3 py-2 text-sm text-foreground outline-none transition-colors;
+  }
+
+  .form-input:focus {
+    @apply border-[#1a5cdb];
   }
 }
