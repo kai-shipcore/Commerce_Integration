@@ -64,6 +64,11 @@ type InlineEditDraft = {
   cbm: string;
 };
 
+type SkuMasterLookup = {
+  masterSku: string;
+  cbmPerUnit: number;
+};
+
 type ApiContainer = {
   id: string;
   containerNumber: string;
@@ -89,10 +94,6 @@ const productBadgeClasses: Record<ProductKey, string> = {
   cc: "bg-[#ebf0fd] text-[#1a4db0]",
   fm: "bg-[#fef3e2] text-[#8a5300]",
 };
-
-function inferCbm(sku: string) {
-  return mockSkus.find((item) => item.id === sku)?.cbmUnit ?? 0.048;
-}
 
 function inferProductKey(sku: string): ProductKey {
   const matchedSku = mockSkus.find((item) => item.id === sku);
@@ -308,15 +309,97 @@ export function ContainerPlanningPage() {
     });
   }
 
-  function addSkuToDraft() {
-    const sku = skuInput.trim();
+  async function lookupSkuMaster(masterSku: string): Promise<SkuMasterLookup | null> {
+    const sku = masterSku.trim().toUpperCase();
+    if (!sku) return null;
+
+    try {
+      const response = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`, {
+        cache: "no-store",
+      });
+      const json = await response.json();
+      return response.ok && json.success ? (json.data as SkuMasterLookup) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function updateSkuMasterCbm(masterSku: string, cbm: number): Promise<string | null> {
+    const sku = masterSku.trim().toUpperCase();
+    if (!sku) return "Master SKU is required.";
+    if (!Number.isFinite(cbm) || cbm <= 0) return "CBM must be greater than 0.";
+
+    try {
+      const response = await fetch("/api/planning/sku-master", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          masterSku: sku,
+          cbmPerUnit: cbm,
+        }),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        return json.error ?? `Failed to update SKU master CBM for ${sku}`;
+      }
+
+      return null;
+    } catch {
+      return `Failed to update SKU master CBM for ${sku}`;
+    }
+  }
+
+  async function validateContainerSkus(items: Array<{ sku: string }>) {
+    const distinctSkus = [...new Set(items.map((item) => item.sku.trim().toUpperCase()).filter(Boolean))];
+    const results = await Promise.all(
+      distinctSkus.map(async (sku) => ((await lookupSkuMaster(sku)) ? null : sku))
+    );
+    return results.filter((sku): sku is string => Boolean(sku));
+  }
+
+  async function fillCreateSkuCbm() {
+    const sku = skuInput.trim().toUpperCase();
+    if (!sku) return;
+
+    const found = await lookupSkuMaster(sku);
+    if (!found) {
+      setSkuInput(sku);
+      setCbmInput("");
+      setFormError(`SKU not found in SKU Master: ${sku}`);
+      return;
+    }
+
+    setSkuInput(found.masterSku);
+    setCbmInput(found.cbmPerUnit ? String(found.cbmPerUnit) : "");
+    setFormError(null);
+  }
+
+  async function updateCreateSkuCbm() {
+    const sku = skuInput.trim().toUpperCase();
+    const cbm = Number.parseFloat(cbmInput);
+    if (!sku || !cbmInput) return;
+
+    const error = await updateSkuMasterCbm(sku, cbm);
+    setFormError(error);
+  }
+
+  async function addSkuToDraft() {
+    const sku = skuInput.trim().toUpperCase();
     const qty = Number.parseInt(qtyInput, 10);
-    const cbm = cbmInput ? Number.parseFloat(cbmInput) : inferCbm(sku);
 
     if (!sku) {
       setFormError("Master SKU를 입력하세요.");
       return;
     }
+
+    const found = await lookupSkuMaster(sku);
+    if (!found) {
+      setFormError(`SKU not found in SKU Master: ${sku}`);
+      return;
+    }
+
+    const cbm = cbmInput ? Number.parseFloat(cbmInput) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
       setFormError("수량은 1개 이상이어야 합니다.");
@@ -328,14 +411,20 @@ export function ContainerPlanningPage() {
       return;
     }
 
+    const cbmUpdateError = await updateSkuMasterCbm(found.masterSku, cbm);
+    if (cbmUpdateError) {
+      setFormError(cbmUpdateError);
+      return;
+    }
+
     setDraftItems((items) => {
-      const existing = items.find((item) => item.sku === sku);
+      const existing = items.find((item) => item.sku === found.masterSku);
       if (existing) {
         return items.map((item) =>
-          item.sku === sku ? { ...item, qty: item.qty + qty, cbm } : item
+          item.sku === found.masterSku ? { ...item, qty: item.qty + qty, cbm } : item
         );
       }
-      return [...items, { sku, qty, cbm }];
+      return [...items, { sku: found.masterSku, qty, cbm }];
     });
     setSkuInput("");
     setQtyInput("");
@@ -347,7 +436,7 @@ export function ContainerPlanningPage() {
     setDraftItems((items) => items.filter((item) => item.sku !== sku));
   }
 
-  function saveContainer() {
+  async function saveContainer() {
     const number = form.number.trim();
     const eta = form.eta.trim();
 
@@ -363,6 +452,12 @@ export function ContainerPlanningPage() {
 
     if (draftItems.length === 0) {
       setFormError("SKU를 하나 이상 추가하세요.");
+      return;
+    }
+
+    const missingSkus = await validateContainerSkus(draftItems);
+    if (missingSkus.length > 0) {
+      setFormError(`Cannot save container. SKU not found in SKU Master: ${missingSkus.join(", ")}`);
       return;
     }
 
@@ -428,19 +523,26 @@ export function ContainerPlanningPage() {
     });
   }
 
-  function saveInlineEdit(containerId: string, originalSku: string) {
+  async function saveInlineEdit(containerId: string, originalSku: string) {
     const key = editDraftKey(containerId, originalSku);
     const draft = inlineEditDrafts[key];
     if (!draft) return;
 
-    const nextSku = draft.sku.trim();
+    const nextSku = draft.sku.trim().toUpperCase();
     const qty = Number.parseInt(draft.qty, 10);
-    const cbm = Number.parseFloat(draft.cbm);
 
     if (!nextSku) {
       window.alert("Master SKU를 입력하세요.");
       return;
     }
+
+    const found = await lookupSkuMaster(nextSku);
+    if (!found) {
+      window.alert(`SKU not found in SKU Master: ${nextSku}`);
+      return;
+    }
+
+    const cbm = draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
       window.alert("수량은 1개 이상이어야 합니다.");
@@ -452,13 +554,19 @@ export function ContainerPlanningPage() {
       return;
     }
 
+    const cbmUpdateError = await updateSkuMasterCbm(found.masterSku, cbm);
+    if (cbmUpdateError) {
+      window.alert(cbmUpdateError);
+      return;
+    }
+
     setContainers((current) =>
       current.map((container) =>
         container.id === containerId
           ? {
               ...container,
               items: container.items.map((item) =>
-                item.sku === originalSku ? { sku: nextSku, qty, cbm } : item
+                item.sku === originalSku ? { sku: found.masterSku, qty, cbm } : item
               ),
             }
           : container
@@ -505,6 +613,64 @@ export function ContainerPlanningPage() {
     }));
   }
 
+  async function fillInlineSkuCbm(containerId: string) {
+    const draft = inlineSkuDrafts[containerId];
+    const sku = draft?.sku.trim().toUpperCase();
+    if (!sku) return;
+
+    const found = await lookupSkuMaster(sku);
+    if (!found) {
+      window.alert(`SKU not found in SKU Master: ${sku}`);
+      updateInlineSkuDraft(containerId, { sku, cbm: "" });
+      return;
+    }
+
+    updateInlineSkuDraft(containerId, {
+      sku: found.masterSku,
+      cbm: found.cbmPerUnit ? String(found.cbmPerUnit) : "",
+    });
+  }
+
+  async function updateInlineSkuCbm(containerId: string) {
+    const draft = inlineSkuDrafts[containerId];
+    const sku = draft?.sku.trim().toUpperCase();
+    const cbm = Number.parseFloat(draft?.cbm ?? "");
+    if (!sku || !draft?.cbm) return;
+
+    const error = await updateSkuMasterCbm(sku, cbm);
+    if (error) window.alert(error);
+  }
+
+  async function fillInlineEditCbm(containerId: string, originalSku: string) {
+    const key = editDraftKey(containerId, originalSku);
+    const draft = inlineEditDrafts[key];
+    const sku = draft?.sku.trim().toUpperCase();
+    if (!sku) return;
+
+    const found = await lookupSkuMaster(sku);
+    if (!found) {
+      window.alert(`SKU not found in SKU Master: ${sku}`);
+      updateInlineEditDraft(containerId, originalSku, { sku, cbm: "" });
+      return;
+    }
+
+    updateInlineEditDraft(containerId, originalSku, {
+      sku: found.masterSku,
+      cbm: found.cbmPerUnit ? String(found.cbmPerUnit) : "",
+    });
+  }
+
+  async function updateInlineEditCbm(containerId: string, originalSku: string) {
+    const key = editDraftKey(containerId, originalSku);
+    const draft = inlineEditDrafts[key];
+    const sku = draft?.sku.trim().toUpperCase();
+    const cbm = Number.parseFloat(draft?.cbm ?? "");
+    if (!sku || !draft?.cbm) return;
+
+    const error = await updateSkuMasterCbm(sku, cbm);
+    if (error) window.alert(error);
+  }
+
   function cancelInlineSkuAdd(containerId: string) {
     setInlineSkuDrafts((current) => {
       const next = { ...current };
@@ -513,18 +679,25 @@ export function ContainerPlanningPage() {
     });
   }
 
-  function saveInlineSkuAdd(containerId: string) {
+  async function saveInlineSkuAdd(containerId: string) {
     const draft = inlineSkuDrafts[containerId];
     if (!draft) return;
 
-    const sku = draft.sku.trim();
+    const sku = draft.sku.trim().toUpperCase();
     const qty = Number.parseInt(draft.qty, 10);
-    const cbm = draft.cbm ? Number.parseFloat(draft.cbm) : inferCbm(sku);
 
     if (!sku) {
       window.alert("Master SKU를 입력하세요.");
       return;
     }
+
+    const found = await lookupSkuMaster(sku);
+    if (!found) {
+      window.alert(`SKU not found in SKU Master: ${sku}`);
+      return;
+    }
+
+    const cbm = draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
       window.alert("수량은 1개 이상이어야 합니다.");
@@ -536,7 +709,13 @@ export function ContainerPlanningPage() {
       return;
     }
 
-    mergeContainerItems(containerId, [{ sku, qty, cbm }]);
+    const cbmUpdateError = await updateSkuMasterCbm(found.masterSku, cbm);
+    if (cbmUpdateError) {
+      window.alert(cbmUpdateError);
+      return;
+    }
+
+    mergeContainerItems(containerId, [{ sku: found.masterSku, qty, cbm }]);
     cancelInlineSkuAdd(containerId);
   }
 
@@ -557,23 +736,41 @@ export function ContainerPlanningPage() {
       rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as unknown[][];
     }
 
-    const importedItems = rows
+    const parsedItems = rows
       .slice(1)
       .map((row) => {
-        const sku = String(row[0] ?? "").trim();
+        const sku = String(row[0] ?? "").trim().toUpperCase();
         const qty = Math.trunc(parseNumberCell(row[1]));
-        const cbm = parseNumberCell(row[2]) || inferCbm(sku);
+        const cbm = parseNumberCell(row[2]);
         return { sku, qty, cbm };
       })
-      .filter((item): item is ContainerItem => Boolean(item.sku) && item.qty > 0 && item.cbm > 0);
+      .filter((item) => Boolean(item.sku) && item.qty > 0);
 
-    if (importedItems.length === 0) {
+    const importedItems = await Promise.all(
+      parsedItems.map(async (item) => {
+        const found = await lookupSkuMaster(item.sku);
+        if (!found) return null;
+        const cbm = item.cbm > 0 ? item.cbm : found.cbmPerUnit;
+        return cbm > 0 ? { sku: found.masterSku, qty: item.qty, cbm } : null;
+      })
+    );
+    const validImportedItems = importedItems.filter((item): item is ContainerItem => Boolean(item));
+    const missingSkus = parsedItems
+      .filter((item) => !validImportedItems.some((validItem) => validItem.sku === item.sku))
+      .map((item) => item.sku);
+
+    if (missingSkus.length > 0) {
+      window.alert(`Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`);
+      return;
+    }
+
+    if (validImportedItems.length === 0) {
       window.alert("가져올 SKU가 없습니다. 첫 행은 헤더, 컬럼은 SKU / Qty / CBM 순서로 넣어주세요.");
       return;
     }
 
-    mergeContainerItems(containerId, importedItems);
-    window.alert(`${importedItems.length}개 SKU를 가져왔습니다.`);
+    mergeContainerItems(containerId, validImportedItems);
+    window.alert(`${validImportedItems.length}개 SKU를 가져왔습니다.`);
   }
 
   return (
@@ -712,8 +909,10 @@ export function ContainerPlanningPage() {
                 onUpdateForm={updateForm}
                 onRemoveDraftItem={removeDraftItem}
                 onSkuInputChange={setSkuInput}
+                onSkuInputBlur={fillCreateSkuCbm}
                 onQtyInputChange={setQtyInput}
                 onCbmInputChange={setCbmInput}
+                onCbmInputBlur={updateCreateSkuCbm}
                 onAddSkuToDraft={addSkuToDraft}
               />
             </div>
@@ -732,12 +931,16 @@ export function ContainerPlanningPage() {
                 onStartEditItem={startInlineEdit}
                 onUpdateInlineEditDraft={updateInlineEditDraft}
                 onSaveInlineEditDraft={saveInlineEdit}
+                onFillInlineEditCbm={fillInlineEditCbm}
+                onUpdateInlineEditCbm={updateInlineEditCbm}
                 onCancelInlineEditDraft={cancelInlineEdit}
                 onDeleteItem={deleteContainerItem}
                 inlineSkuDraft={inlineSkuDrafts[selectedContainer.id]}
                 onStartAddItem={startInlineSkuAdd}
                 onUpdateInlineSkuDraft={updateInlineSkuDraft}
                 onSaveInlineSkuDraft={saveInlineSkuAdd}
+                onFillInlineSkuCbm={fillInlineSkuCbm}
+                onUpdateInlineSkuCbm={updateInlineSkuCbm}
                 onCancelInlineSkuDraft={cancelInlineSkuAdd}
                 onImportItems={importContainerItems}
                 warehouseNameByCode={warehouseNameByCode}
@@ -795,8 +998,10 @@ function ContainerCreateForm({
   onUpdateForm,
   onRemoveDraftItem,
   onSkuInputChange,
+  onSkuInputBlur,
   onQtyInputChange,
   onCbmInputChange,
+  onCbmInputBlur,
   onAddSkuToDraft,
 }: {
   form: ContainerFormState;
@@ -813,14 +1018,16 @@ function ContainerCreateForm({
   warehouses: WarehouseOption[];
   loadingWarehouses: boolean;
   onClose: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onTogglePurchaseOrder: (poId: string) => void;
   onUpdateForm: <K extends keyof ContainerFormState>(key: K, value: ContainerFormState[K]) => void;
   onRemoveDraftItem: (sku: string) => void;
   onSkuInputChange: (value: string) => void;
+  onSkuInputBlur: () => void | Promise<void>;
   onQtyInputChange: (value: string) => void;
   onCbmInputChange: (value: string) => void;
-  onAddSkuToDraft: () => void;
+  onCbmInputBlur: () => void | Promise<void>;
+  onAddSkuToDraft: () => void | Promise<void>;
 }) {
   return (
     <div className="relative rounded-xl border-2 border-dashed border-[#cccac4] bg-white p-5">
@@ -924,9 +1131,10 @@ function ContainerCreateForm({
         {draftItems.length > 0 ? (
           <div className="mb-3 space-y-2">
             {draftItems.map((item) => (
-              <div key={item.sku} className="grid grid-cols-[2fr_1fr_1fr_auto] items-center gap-2 rounded-lg bg-[#f0eee9] px-3 py-2 text-sm">
+              <div key={item.sku} className="grid grid-cols-[2fr_0.8fr_0.8fr_1fr_auto] items-center gap-2 rounded-lg bg-[#f0eee9] px-3 py-2 text-sm">
                 <span className="font-mono text-xs font-medium">{item.sku}</span>
                 <span>{item.qty} units</span>
+                <span>{item.cbm.toFixed(4)} CBM/unit</span>
                 <span>{(item.qty * item.cbm).toFixed(2)} CBM</span>
                 <button type="button" onClick={() => onRemoveDraftItem(item.sku)} className="text-sm font-semibold text-[#c42b2b]">×</button>
               </div>
@@ -938,29 +1146,22 @@ function ContainerCreateForm({
           <Field label="Master SKU">
             <input
               className="form-input bg-white font-mono"
-              list="planning-sku-list"
               value={skuInput}
               onChange={(event) => {
                 const nextSku = event.target.value;
                 onSkuInputChange(nextSku);
-                if (!cbmInput) {
-                  const nextCbm = mockSkus.find((item) => item.id === nextSku)?.cbmUnit;
-                  if (nextCbm) onCbmInputChange(String(nextCbm));
-                }
               }}
+              onBlur={() => void onSkuInputBlur()}
               placeholder="CA-SC-10-F-10-BK-1TO"
             />
-            <datalist id="planning-sku-list">
-              {mockSkus.map((sku) => <option key={sku.id} value={sku.id} />)}
-            </datalist>
           </Field>
           <Field label="Quantity">
             <input className="form-input bg-white" type="number" value={qtyInput} onChange={(event) => onQtyInputChange(event.target.value)} placeholder="50" />
           </Field>
           <Field label="CBM (auto-detect)">
-            <input className="form-input bg-white" type="number" step="0.001" value={cbmInput} onChange={(event) => onCbmInputChange(event.target.value)} placeholder="Auto" />
+            <input className="form-input bg-white" type="number" step="0.001" value={cbmInput} onChange={(event) => onCbmInputChange(event.target.value)} onBlur={() => void onCbmInputBlur()} placeholder="Auto" />
           </Field>
-          <button type="button" onClick={onAddSkuToDraft} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]">
+          <button type="button" onClick={() => void onAddSkuToDraft()} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]">
             + Add
           </button>
         </div>
@@ -976,7 +1177,7 @@ function ContainerCreateForm({
         <button type="button" onClick={onClose} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">
           Cancel
         </button>
-        <button type="button" onClick={onSave} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]">
+        <button type="button" onClick={() => void onSave()} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]">
           Save
         </button>
       </div>
@@ -1001,12 +1202,16 @@ function ContainerCard({
   onStartEditItem,
   onUpdateInlineEditDraft,
   onSaveInlineEditDraft,
+  onFillInlineEditCbm,
+  onUpdateInlineEditCbm,
   onCancelInlineEditDraft,
   onDeleteItem,
   inlineSkuDraft,
   onStartAddItem,
   onUpdateInlineSkuDraft,
   onSaveInlineSkuDraft,
+  onFillInlineSkuCbm,
+  onUpdateInlineSkuCbm,
   onCancelInlineSkuDraft,
   onImportItems,
   warehouseNameByCode,
@@ -1018,13 +1223,17 @@ function ContainerCard({
   inlineEditDrafts: Record<string, InlineEditDraft | undefined>;
   onStartEditItem: (containerId: string, item: ContainerItem) => void;
   onUpdateInlineEditDraft: (containerId: string, sku: string, patch: Partial<InlineEditDraft>) => void;
-  onSaveInlineEditDraft: (containerId: string, sku: string) => void;
+  onSaveInlineEditDraft: (containerId: string, sku: string) => void | Promise<void>;
+  onFillInlineEditCbm: (containerId: string, sku: string) => void | Promise<void>;
+  onUpdateInlineEditCbm: (containerId: string, sku: string) => void | Promise<void>;
   onCancelInlineEditDraft: (containerId: string, sku: string) => void;
   onDeleteItem: (containerId: string, sku: string) => void;
   inlineSkuDraft?: InlineSkuDraft;
   onStartAddItem: (containerId: string) => void;
   onUpdateInlineSkuDraft: (containerId: string, patch: Partial<InlineSkuDraft>) => void;
-  onSaveInlineSkuDraft: (containerId: string) => void;
+  onSaveInlineSkuDraft: (containerId: string) => void | Promise<void>;
+  onFillInlineSkuCbm: (containerId: string) => void | Promise<void>;
+  onUpdateInlineSkuCbm: (containerId: string) => void | Promise<void>;
   onCancelInlineSkuDraft: (containerId: string) => void;
   onImportItems: (containerId: string, file: File) => void | Promise<void>;
   warehouseNameByCode?: Map<string, string>;
@@ -1097,11 +1306,10 @@ function ContainerCard({
 
       {expanded ? (
         <div className="border-t">
-          <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_1fr_110px] bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+          <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
             <div>Master SKU</div>
             <div>Qty</div>
             <div>CBM</div>
-            <div>Status</div>
             <div className="text-right">Actions</div>
           </div>
 
@@ -1111,34 +1319,31 @@ function ContainerCard({
                 key={item.sku}
                 containerId={container.id}
                 item={item}
-                status={container.status}
                 editDraft={getEditDraft(item.sku)}
                 onStartEdit={onStartEditItem}
                 onUpdateDraft={onUpdateInlineEditDraft}
                 onSaveDraft={onSaveInlineEditDraft}
+                onFillCbm={onFillInlineEditCbm}
+                onUpdateCbm={onUpdateInlineEditCbm}
                 onCancelDraft={onCancelInlineEditDraft}
                 onDelete={onDeleteItem}
               />
             ))}
             {inlineSkuDraft ? (
-              <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_1fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+              <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
                 <div className="pr-3">
                   <input
                     className="form-input font-mono text-xs"
-                    list="planning-inline-sku-list"
                     value={inlineSkuDraft.sku}
                     onChange={(event) => {
                       const sku = event.target.value;
                       onUpdateInlineSkuDraft(container.id, {
                         sku,
-                        cbm: inlineSkuDraft.cbm || String(inferCbm(sku)),
                       });
                     }}
+                    onBlur={() => void onFillInlineSkuCbm(container.id)}
                     placeholder="Master SKU"
                   />
-                  <datalist id="planning-inline-sku-list">
-                    {mockSkus.map((sku) => <option key={sku.id} value={sku.id} />)}
-                  </datalist>
                   {inlineSkuDraft.sku ? (
                     <div className="mt-1 flex items-center gap-2">
                       <ProductBadge product={inferProductKey(inlineSkuDraft.sku)} />
@@ -1164,14 +1369,14 @@ function ContainerCard({
                     step="0.001"
                     value={inlineSkuDraft.cbm}
                     onChange={(event) => onUpdateInlineSkuDraft(container.id, { cbm: event.target.value })}
+                    onBlur={() => void onUpdateInlineSkuCbm(container.id)}
                     placeholder="CBM"
                   />
                 </div>
-                <div className="text-xs text-muted-foreground">New SKU</div>
                 <div className="flex justify-end gap-1">
                   <button
                     type="button"
-                    onClick={() => onSaveInlineSkuDraft(container.id)}
+                    onClick={() => void onSaveInlineSkuDraft(container.id)}
                     className="rounded-md border border-[#1a5cdb] px-2.5 py-1 text-xs font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
                   >
                     저장
@@ -1257,33 +1462,35 @@ function ProductBadge({ product }: { product: ProductKey }) {
 function SkuRow({
   containerId,
   item,
-  status,
   editDraft,
   onStartEdit,
   onUpdateDraft,
   onSaveDraft,
+  onFillCbm,
+  onUpdateCbm,
   onCancelDraft,
   onDelete,
 }: {
   containerId: string;
   item: ContainerItem;
-  status: ContainerStatus;
   editDraft?: InlineEditDraft;
   onStartEdit: (containerId: string, item: ContainerItem) => void;
   onUpdateDraft: (containerId: string, sku: string, patch: Partial<InlineEditDraft>) => void;
-  onSaveDraft: (containerId: string, sku: string) => void;
+  onSaveDraft: (containerId: string, sku: string) => void | Promise<void>;
+  onFillCbm: (containerId: string, sku: string) => void | Promise<void>;
+  onUpdateCbm: (containerId: string, sku: string) => void | Promise<void>;
   onCancelDraft: (containerId: string, sku: string) => void;
   onDelete: (containerId: string, sku: string) => void;
 }) {
   if (editDraft) {
     return (
-      <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_1fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+      <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
         <div className="pr-3">
           <input
             className="form-input font-mono text-xs"
-            list="planning-inline-sku-list"
             value={editDraft.sku}
             onChange={(event) => onUpdateDraft(containerId, item.sku, { sku: event.target.value })}
+            onBlur={() => void onFillCbm(containerId, item.sku)}
             placeholder="Master SKU"
           />
           <div className="mt-1 flex items-center gap-2">
@@ -1307,14 +1514,14 @@ function SkuRow({
             step="0.001"
             value={editDraft.cbm}
             onChange={(event) => onUpdateDraft(containerId, item.sku, { cbm: event.target.value })}
+            onBlur={() => void onUpdateCbm(containerId, item.sku)}
             placeholder="CBM"
           />
         </div>
-        <div className="text-xs text-muted-foreground">Editing</div>
         <div className="flex justify-end gap-1">
           <button
             type="button"
-            onClick={() => onSaveDraft(containerId, item.sku)}
+            onClick={() => void onSaveDraft(containerId, item.sku)}
             className="rounded-md border border-[#1a5cdb] px-2.5 py-1 text-xs font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
           >
             저장
@@ -1332,18 +1539,13 @@ function SkuRow({
   }
 
   return (
-    <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_1fr_110px] items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4]">
+    <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4]">
       <div className="flex min-w-0 items-center gap-2">
         <ProductBadge product={inferProductKey(item.sku)} />
         <span className="truncate font-mono text-xs font-medium">{item.sku}</span>
       </div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
       <div className="text-xs text-muted-foreground">{(item.qty * item.cbm).toFixed(3)} m3</div>
-      <div>
-        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusPillClasses[status]}`}>
-          {containerStatusLabels[status]}
-        </span>
-      </div>
       <div className="flex justify-end gap-1">
         <button
           type="button"

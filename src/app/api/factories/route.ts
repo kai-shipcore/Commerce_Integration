@@ -37,6 +37,41 @@ type FactoryRow = {
   updated_at: Date | string;
 };
 
+async function ensureFactoryCodes() {
+  const pool = getPrimaryPool();
+
+  await pool.query("CREATE SEQUENCE IF NOT EXISTS shipcore.fc_factory_code_seq START 1");
+  await pool.query(`
+    WITH code_state AS (
+      SELECT COALESCE((
+          SELECT MAX((regexp_match(factory_code, '^FC-([0-9]+)$'))[1]::bigint)
+          FROM shipcore.fc_factories
+          WHERE factory_code ~ '^FC-[0-9]+$'
+        ), 0) AS max_code
+    )
+    SELECT setval(
+      'shipcore.fc_factory_code_seq',
+      GREATEST(code_state.max_code, shipcore.fc_factory_code_seq.last_value, 1),
+      code_state.max_code > 0 OR shipcore.fc_factory_code_seq.is_called
+    )
+    FROM code_state, shipcore.fc_factory_code_seq
+  `);
+  await pool.query(`
+    WITH missing AS (
+      SELECT id
+      FROM shipcore.fc_factories
+      WHERE factory_code IS NULL OR btrim(factory_code) = ''
+      ORDER BY id
+      FOR UPDATE
+    )
+    UPDATE shipcore.fc_factories factory
+    SET factory_code = 'FC-' || LPAD(nextval('shipcore.fc_factory_code_seq')::text, 4, '0'),
+        updated_at = now()
+    FROM missing
+    WHERE factory.id = missing.id
+  `);
+}
+
 function serializeFactory(row: FactoryRow) {
   return {
     id: row.id,
@@ -54,6 +89,8 @@ function serializeFactory(row: FactoryRow) {
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureFactoryCodes();
+
     const { searchParams } = new URL(request.url);
     const activeParam = searchParams.get("active");
     const search = searchParams.get("search")?.trim() ?? "";
@@ -107,12 +144,21 @@ export async function POST(request: NextRequest) {
     const factoryName = validated.factoryName.trim();
     const factoryCode = validated.factoryCode?.trim() || null;
 
+    await ensureFactoryCodes();
+
     const result = await getPrimaryPool().query<FactoryRow>(
       `INSERT INTO shipcore.fc_factories
          (factory_code, factory_name, origin, contact_name, email, phone)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES (
+         COALESCE($1, 'FC-' || LPAD(nextval('shipcore.fc_factory_code_seq')::text, 4, '0')),
+         $2,
+         $3,
+         $4,
+         $5,
+         $6
+       )
        ON CONFLICT (factory_name) DO UPDATE SET
-         factory_code = COALESCE(EXCLUDED.factory_code, shipcore.fc_factories.factory_code),
+         factory_code = COALESCE(shipcore.fc_factories.factory_code, EXCLUDED.factory_code),
          origin = COALESCE(EXCLUDED.origin, shipcore.fc_factories.origin),
          contact_name = COALESCE(EXCLUDED.contact_name, shipcore.fc_factories.contact_name),
          email = COALESCE(EXCLUDED.email, shipcore.fc_factories.email),

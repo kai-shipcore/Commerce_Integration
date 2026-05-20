@@ -40,6 +40,8 @@ const productMeta: Record<
   },
 };
 
+const numberFormatter = new Intl.NumberFormat("en-US");
+
 export function SkuMasterPage() {
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [query, setQuery] = useState("");
@@ -117,20 +119,6 @@ export function SkuMasterPage() {
     if (!json.success) throw new Error(json.error ?? "Failed to save SKU");
   }
 
-  async function deleteRow(masterSku: string) {
-    if (!window.confirm(`Delete ${masterSku} from SKU Master?`)) return;
-    const res = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(masterSku)}`, {
-      method: "DELETE",
-    });
-    const json = await res.json();
-    if (!json.success) {
-      window.alert(json.error ?? "Failed to delete SKU");
-      return;
-    }
-    setRows((current) => current.filter((sku) => sku.masterSku !== masterSku));
-    if (editingSku === masterSku) setEditingSku(null);
-  }
-
   async function syncFromInventory() {
     setSyncing(true);
     setMessage("");
@@ -199,7 +187,11 @@ export function SkuMasterPage() {
       </header>
 
       <div className="grid grid-cols-2 border-b border-[#e2dfd8] bg-[#f0eee9] md:grid-cols-4">
-        <SkuStat label="Total SKUs" value={pagination.total.toString()} sub={loading ? "Loading..." : `${visibleSkus.length} on this page`} />
+        <SkuStat
+          label="Total SKUs"
+          value={numberFormatter.format(pagination.total)}
+          sub={loading ? "Loading..." : `${numberFormatter.format(visibleSkus.length)} on this page`}
+        />
         <SkuStat
           label="Missing CBM"
           value={stats.missingCbm.toString()}
@@ -256,7 +248,7 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[1040px] grid-cols-[230px_360px_150px_110px_210px_130px_160px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[980px] grid-cols-[230px_360px_150px_110px_210px_130px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">Product</div>
           <div className="px-4 py-3">Master SKU</div>
           <div className="px-4 py-3">CBM / Unit</div>
@@ -272,7 +264,7 @@ export function SkuMasterPage() {
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[1040px] grid-cols-[230px_360px_150px_110px_210px_130px_160px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            className="grid min-w-[980px] grid-cols-[230px_360px_150px_110px_210px_130px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
@@ -313,7 +305,7 @@ export function SkuMasterPage() {
               suffix="kg"
               onChange={(value) => updateRow(sku.masterSku, { weightKg: value })}
             />
-            <div className="flex min-w-0 flex-nowrap justify-end gap-1.5 px-4 py-3">
+            <div className="flex min-w-0 flex-nowrap justify-end px-4 py-3">
               <button
                 type="button"
                 onClick={async () => {
@@ -332,13 +324,6 @@ export function SkuMasterPage() {
                 className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
               >
                 {editingSku === sku.masterSku ? "Done" : "Edit"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void deleteRow(sku.masterSku)}
-                className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
-              >
-                Delete
               </button>
             </div>
           </div>
@@ -375,7 +360,6 @@ function ProductBadge({ product }: { product: ProductKey }) {
   const meta = productMeta[product];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[11px] font-semibold ${meta.badgeClass}`}>
-      <span className="font-mono text-[10px]">{meta.icon}</span>
       {meta.label}
     </span>
   );

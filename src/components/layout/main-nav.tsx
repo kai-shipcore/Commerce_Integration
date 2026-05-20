@@ -32,7 +32,7 @@ const navigationGroups = [
   { name: "Operations", itemIds: ["orders", "signals"] },
   { name: "Forecasting", itemIds: ["analytics", "velocity", "sales-link-report", "reconciliation", "compare"] },
   { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "purchase-orders", "sku-master"] },
-  { name: "Admin", itemIds: ["integrations", "warehouse-admin", "user-access"] },
+  { name: "Admin", itemIds: ["integrations", "warehouse-admin", "factories", "user-access"] },
 ];
 
 function readStoredVisibleMenuIds(role?: string | null): string[] | null {
@@ -165,7 +165,9 @@ export function MainNav() {
   const dashboardItem = visibleNavigation.find((item) => item.id === "dashboard");
   const groupedNavigation = navigationGroups.map((group) => ({
     ...group,
-    items: visibleNavigation.filter((item) => group.itemIds.includes(item.id)),
+    items: group.itemIds
+      .map((itemId) => visibleNavigation.find((item) => item.id === itemId))
+      .filter((item): item is (typeof visibleNavigation)[number] => Boolean(item)),
   }));
 
   const renderNavigationLink = (item: (typeof visibleNavigation)[number]) => {

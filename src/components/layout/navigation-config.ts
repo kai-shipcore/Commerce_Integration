@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Building2,
   FileSpreadsheet,
   FolderKanban,
   GitCompareArrows,
@@ -161,6 +162,13 @@ export const navigationItems: NavigationItem[] = [
     icon: Warehouse,
     hideable: true,
     adminOnly: true,
+  },
+  {
+    id: "factories",
+    name: "Factories",
+    href: "/planning/factories",
+    icon: Building2,
+    hideable: true,
   },
 ];
 

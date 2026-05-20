@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  mockSkus,
-} from "@/features/planning/mock-data";
+import { useSession } from "next-auth/react";
+import { isAdminLikeRole } from "@/components/layout/navigation-config";
 
 type PurchaseOrderStatus = "draft" | "pending" | "approved" | "sent";
 
@@ -59,6 +58,12 @@ type PoDraftItem = {
   cbm: string;
 };
 
+type SkuMasterLookup = {
+  masterSku: string;
+  moq: number;
+  cbmPerUnit: number;
+};
+
 type PoFormState = {
   number: string;
   date: string;
@@ -108,6 +113,7 @@ const statusClasses: Record<PurchaseOrderStatus, string> = {
 };
 
 export function PurchaseOrdersPage() {
+  const { data: session } = useSession();
   const [orders, setOrders] = useState<PurchaseOrderRecord[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -118,8 +124,10 @@ export function PurchaseOrdersPage() {
   const [loadingFactories, setLoadingFactories] = useState(true);
   const [savingFactory, setSavingFactory] = useState(false);
   const [savingPo, setSavingPo] = useState(false);
+  const [deletingPoId, setDeletingPoId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [editingPoId, setEditingPoId] = useState<string | null>(null);
   const [form, setForm] = useState<PoFormState>(defaultPoForm);
   const [draftItems, setDraftItems] = useState<PoDraftItem[]>([
     { sku: "", moq: "5", qty: "", dailyAvg: "", stock: "", cbm: "" },
@@ -148,12 +156,13 @@ export function PurchaseOrdersPage() {
     orders.find((order) => order.id === selectedId) ??
     filteredOrders[0] ??
     null;
+  const canDeletePurchaseOrders = isAdminLikeRole(session?.user?.role);
 
   const draftTotals = useMemo(() => {
     const validItems = draftItems.filter((item) => item.sku.trim() || parseNumber(item.qty) > 0);
     const totalQty = draftItems.reduce((sum, item) => sum + parseNumber(item.qty), 0);
     const totalCbm = draftItems.reduce(
-      (sum, item) => sum + parseNumber(item.qty) * (parseNumber(item.cbm) || inferSkuCbm(item.sku)),
+      (sum, item) => sum + parseNumber(item.qty) * parseNumber(item.cbm),
       0
     );
     return { validCount: validItems.length, totalQty, totalCbm };
@@ -263,7 +272,7 @@ export function PurchaseOrdersPage() {
         const sku = item.sku.trim();
         const qty = Math.trunc(parseNumber(item.qty));
         const moq = Math.trunc(parseNumber(item.moq)) || 5;
-        const cbm = parseNumber(item.cbm) || inferSkuCbm(sku);
+        const cbm = parseNumber(item.cbm);
         return { sku, qty, moq, cbm };
       })
       .filter((item) => item.sku && item.qty > 0);
@@ -301,16 +310,26 @@ export function PurchaseOrdersPage() {
       return;
     }
 
+    const missingSkus = await validateDraftSkus(payload.items.map((item) => item.sku));
+    if (missingSkus.length > 0) {
+      window.alert(`Cannot save PO. SKU not found in SKU Master: ${missingSkus.join(", ")}`);
+      return;
+    }
+
     setSavingPo(true);
     try {
-      const response = await fetch("/api/purchase-orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const isEditing = Boolean(editingPoId);
+      const response = await fetch(
+        isEditing ? `/api/purchase-orders?id=${encodeURIComponent(editingPoId ?? "")}` : "/api/purchase-orders",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
       const json = await response.json();
 
-      if (!json.success) {
+      if (!response.ok || !json.success) {
         window.alert(json.error ?? "Failed to save purchase order.");
         return;
       }
@@ -318,10 +337,59 @@ export function PurchaseOrdersPage() {
       await fetchOrders();
       await fetchFactories();
       setSelectedId(json.data.id);
+      setEditingPoId(null);
       setIsCreating(false);
     } finally {
       setSavingPo(false);
     }
+  }
+
+  async function deletePurchaseOrder(order: PurchaseOrderRecord) {
+    if (!canDeletePurchaseOrders || deletingPoId) return;
+
+    const confirmed = window.confirm(
+      `Delete purchase order ${order.number}? This will also remove its PO item rows and container links.`
+    );
+    if (!confirmed) return;
+
+    setDeletingPoId(order.id);
+    try {
+      const response = await fetch(`/api/purchase-orders?id=${encodeURIComponent(order.id)}`, {
+        method: "DELETE",
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        window.alert(json.error ?? "Failed to delete purchase order.");
+        return;
+      }
+
+      const nextOrders = orders.filter((currentOrder) => currentOrder.id !== order.id);
+      setOrders(nextOrders);
+      setSelectedId(nextOrders[0]?.id ?? "");
+      setIsCreating(false);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to delete purchase order.");
+    } finally {
+      setDeletingPoId(null);
+    }
+  }
+
+  async function validateDraftSkus(skus: string[]) {
+    const distinctSkus = [...new Set(skus.map((sku) => sku.trim().toUpperCase()).filter(Boolean))];
+    const results = await Promise.all(
+      distinctSkus.map(async (sku) => {
+        try {
+          const response = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`, {
+            cache: "no-store",
+          });
+          return response.ok ? null : sku;
+        } catch {
+          return sku;
+        }
+      })
+    );
+    return results.filter((sku): sku is string => Boolean(sku));
   }
 
   useEffect(() => {
@@ -339,11 +407,47 @@ export function PurchaseOrdersPage() {
 
   function startCreate() {
     setIsCreating(true);
+    setEditingPoId(null);
     setForm({
       ...defaultPoForm,
       destination: warehouses[0]?.warehouseCode ?? "",
     });
     setDraftItems([{ sku: "", moq: "5", qty: "", dailyAvg: "", stock: "", cbm: "" }]);
+  }
+
+  function startEdit(order: PurchaseOrderRecord) {
+    if (order.status === "sent") return;
+
+    setSelectedId(order.id);
+    setEditingPoId(order.id);
+    setIsCreating(true);
+    setForm({
+      number: order.number,
+      date: order.date ?? today,
+      eta: order.eta ?? today,
+      factory: order.factory ?? "",
+      destination: order.destination ?? warehouses[0]?.warehouseCode ?? "",
+      manager: order.manager ?? "",
+      note: order.note ?? "",
+      status: order.status,
+    });
+    setDraftItems(
+      order.items.length > 0
+        ? order.items.map((item) => ({
+            sku: item.sku,
+            moq: String(item.moq || 5),
+            qty: String(item.qty || ""),
+            dailyAvg: "",
+            stock: "",
+            cbm: item.cbm ? String(item.cbm) : "",
+          }))
+        : [{ sku: "", moq: "5", qty: "", dailyAvg: "", stock: "", cbm: "" }]
+    );
+  }
+
+  function cancelEdit() {
+    setIsCreating(false);
+    setEditingPoId(null);
   }
 
   function updateForm<K extends keyof PoFormState>(key: K, value: PoFormState[K]) {
@@ -352,13 +456,62 @@ export function PurchaseOrdersPage() {
 
   function updateDraftItem(index: number, patch: Partial<PoDraftItem>) {
     setDraftItems((current) =>
-      current.map((item, itemIndex) => {
-        if (itemIndex !== index) return item;
-        const next = { ...item, ...patch };
-        if (patch.sku && !item.cbm) next.cbm = String(inferSkuCbm(patch.sku));
-        return next;
-      })
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item))
     );
+  }
+
+  async function lookupSkuForDraftItem(index: number) {
+    const rawSku = draftItems[index]?.sku.trim();
+    if (!rawSku) return;
+    const sku = rawSku.toUpperCase();
+
+    try {
+      const response = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`, {
+        cache: "no-store",
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        window.alert(`SKU not found in SKU Master: ${sku}`);
+        updateDraftItem(index, { sku, moq: "", cbm: "" });
+        return;
+      }
+
+      const data = json.data as SkuMasterLookup;
+      updateDraftItem(index, {
+        sku: data.masterSku,
+        moq: String(data.moq),
+        cbm: data.cbmPerUnit ? data.cbmPerUnit.toFixed(4) : "",
+      });
+    } catch {
+      window.alert(`Failed to look up SKU: ${sku}`);
+    }
+  }
+
+  async function updateSkuMasterPlanningInfo(index: number) {
+    const item = draftItems[index];
+    const sku = item?.sku.trim().toUpperCase();
+    const cbm = parseNumber(item?.cbm ?? "");
+    const moq = Math.trunc(parseNumber(item?.moq ?? ""));
+    if (!sku || (cbm <= 0 && moq <= 0)) return;
+
+    try {
+      const response = await fetch("/api/planning/sku-master", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          masterSku: sku,
+          moq: moq > 0 ? moq : undefined,
+          cbmPerUnit: cbm > 0 ? cbm : undefined,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) {
+        window.alert(json.error ?? `Failed to update SKU master info for ${sku}`);
+      }
+    } catch {
+      window.alert(`Failed to update SKU master info for ${sku}`);
+    }
   }
 
   function addDraftItem() {
@@ -437,6 +590,7 @@ export function PurchaseOrdersPage() {
                     onClick={() => {
                       setSelectedId(order.id);
                       setIsCreating(false);
+                      setEditingPoId(null);
                     }}
                     className={`flex w-full items-start gap-3 border-b border-[#e2dfd8] px-4 py-3 text-left transition-colors hover:bg-[#f0eee9] ${
                       !isCreating && selectedOrder?.id === order.id ? "border-l-4 border-l-[#1a5cdb] bg-[#ebf0fd]" : ""
@@ -489,6 +643,7 @@ export function PurchaseOrdersPage() {
         <main className="min-w-0 bg-white">
           {isCreating ? (
             <PurchaseOrderCreateForm
+              mode={editingPoId ? "edit" : "create"}
               form={form}
               draftItems={draftItems}
               totals={draftTotals}
@@ -500,12 +655,14 @@ export function PurchaseOrdersPage() {
               savingPo={savingPo}
               onChange={updateForm}
               onEnsureFactory={ensureFactory}
-              onSave={() => savePurchaseOrder("draft")}
+              onSave={() => savePurchaseOrder(editingPoId ? form.status : "draft")}
               onRequestReview={() => savePurchaseOrder("pending")}
               onUpdateItem={updateDraftItem}
+              onLookupSku={lookupSkuForDraftItem}
+              onUpdateSkuMasterPlanningInfo={updateSkuMasterPlanningInfo}
               onAddItem={addDraftItem}
               onRemoveItem={removeDraftItem}
-              onCancel={() => setIsCreating(false)}
+              onCancel={cancelEdit}
             />
           ) : loadingOrders ? (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -513,7 +670,15 @@ export function PurchaseOrdersPage() {
               <div className="text-xs">Reading fc_purchase_orders and fc_purchase_order_items</div>
             </div>
           ) : selectedOrder ? (
-            <PurchaseOrderDetail order={selectedOrder} warehouseNameByCode={warehouseNameByCode} />
+            <PurchaseOrderDetail
+              order={selectedOrder}
+              warehouseNameByCode={warehouseNameByCode}
+              canDelete={canDeletePurchaseOrders}
+              isDeleting={deletingPoId === selectedOrder.id}
+              canEdit={selectedOrder.status !== "sent"}
+              onEdit={() => startEdit(selectedOrder)}
+              onDelete={() => void deletePurchaseOrder(selectedOrder)}
+            />
           ) : (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
               <div className="text-5xl opacity-50">▦</div>
@@ -532,10 +697,6 @@ export function PurchaseOrdersPage() {
       </div>
     </section>
   );
-}
-
-function inferSkuCbm(sku: string) {
-  return mockSkus.find((item) => item.id === sku)?.cbmUnit ?? 0;
 }
 
 function StatusLegend({ color, label }: { color: string; label: string }) {
@@ -558,6 +719,7 @@ function PoStat({ label, value, sub }: { label: string; value: string | number; 
 }
 
 function PurchaseOrderCreateForm({
+  mode,
   form,
   draftItems,
   totals,
@@ -572,10 +734,13 @@ function PurchaseOrderCreateForm({
   onSave,
   onRequestReview,
   onUpdateItem,
+  onLookupSku,
+  onUpdateSkuMasterPlanningInfo,
   onAddItem,
   onRemoveItem,
   onCancel,
 }: {
+  mode: "create" | "edit";
   form: PoFormState;
   draftItems: PoDraftItem[];
   totals: { validCount: number; totalQty: number; totalCbm: number };
@@ -590,12 +755,16 @@ function PurchaseOrderCreateForm({
   onSave: () => void | Promise<void>;
   onRequestReview: () => void | Promise<void>;
   onUpdateItem: (index: number, patch: Partial<PoDraftItem>) => void;
+  onLookupSku: (index: number) => void | Promise<void>;
+  onUpdateSkuMasterPlanningInfo: (index: number) => void | Promise<void>;
   onAddItem: () => void;
   onRemoveItem: (index: number) => void;
   onCancel: () => void;
 }) {
   const cbmUsage = Math.min((totals.totalCbm / 67.5) * 100, 100);
   const neededContainers = totals.totalCbm > 0 ? Math.ceil(totals.totalCbm / 67.5) : 0;
+  const title = mode === "edit" ? "Edit Purchase Order" : "Purchase Order Details";
+  const statusLabel = mode === "edit" ? form.status : "Draft";
 
   return (
     <div className="flex h-full min-h-[720px] flex-col bg-[#f5f4f0]">
@@ -613,8 +782,8 @@ function PurchaseOrderCreateForm({
 
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
         <FormCard
-          title="Purchase Order Details"
-          right={<span className="rounded-full bg-[#f0eee9] px-2 py-1 text-[11px] font-semibold text-muted-foreground">Draft</span>}
+          title={title}
+          right={<span className="rounded-full bg-[#f0eee9] px-2 py-1 text-[11px] font-semibold text-muted-foreground">{statusLabel}</span>}
         >
           <div className="grid gap-3 md:grid-cols-3">
             <FormField label="PO Number">
@@ -706,24 +875,32 @@ function PurchaseOrderCreateForm({
               <div key={index} className="grid grid-cols-[2fr_0.8fr_0.8fr_0.8fr_0.9fr_0.8fr_64px] items-center gap-2 border-t bg-white px-3 py-2 text-sm">
                 <input
                   className="form-input h-9 bg-white font-mono text-xs"
-                  list="po-sku-list"
                   value={item.sku}
                   onChange={(event) => onUpdateItem(index, { sku: event.target.value })}
+                  onBlur={() => void onLookupSku(index)}
                   placeholder="Master SKU..."
                 />
-                <input className="form-input h-9 bg-white" value={item.moq} onChange={(event) => onUpdateItem(index, { moq: event.target.value })} />
+                <input
+                  className="form-input h-9 bg-white"
+                  value={item.moq}
+                  onChange={(event) => onUpdateItem(index, { moq: event.target.value })}
+                  onBlur={() => void onUpdateSkuMasterPlanningInfo(index)}
+                />
                 <input className="form-input h-9 bg-white" value={item.qty} onChange={(event) => onUpdateItem(index, { qty: event.target.value })} placeholder="Qty" />
                 <input className="form-input h-9 bg-white" value={item.dailyAvg} onChange={(event) => onUpdateItem(index, { dailyAvg: event.target.value })} placeholder="per day" />
                 <input className="form-input h-9 bg-white" value={item.stock} onChange={(event) => onUpdateItem(index, { stock: event.target.value })} placeholder="Stock" />
-                <input className="form-input h-9 bg-white" value={item.cbm} onChange={(event) => onUpdateItem(index, { cbm: event.target.value })} placeholder="0.048" />
+                <input
+                  className="form-input h-9 bg-white"
+                  value={item.cbm}
+                  onChange={(event) => onUpdateItem(index, { cbm: event.target.value })}
+                  onBlur={() => void onUpdateSkuMasterPlanningInfo(index)}
+                  placeholder="0.048"
+                />
                 <button type="button" onClick={() => onRemoveItem(index)} className="text-right text-xs font-semibold text-[#c42b2b]">
                   Delete
                 </button>
               </div>
             ))}
-            <datalist id="po-sku-list">
-              {mockSkus.map((sku) => <option key={sku.id} value={sku.id} />)}
-            </datalist>
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-3">
@@ -751,7 +928,9 @@ function PurchaseOrderCreateForm({
       </div>
 
       <div className="flex items-center justify-between border-t border-[#e2dfd8] bg-white px-5 py-3">
-        <div className="font-mono text-xs text-muted-foreground">{form.number} · Draft</div>
+        <div className="font-mono text-xs text-muted-foreground">
+          {form.number} · {statusLabel}
+        </div>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">
             Cancel
@@ -762,7 +941,7 @@ function PurchaseOrderCreateForm({
             onClick={() => void onSave()}
             className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9] disabled:opacity-50"
           >
-            {savingPo ? "Saving..." : "Save"}
+            {savingPo ? "Saving..." : mode === "edit" ? "Save Changes" : "Save"}
           </button>
           <button
             type="button"
@@ -770,10 +949,7 @@ function PurchaseOrderCreateForm({
             onClick={() => void onRequestReview()}
             className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
           >
-            Request Review
-          </button>
-          <button type="button" onClick={onCancel} className="rounded-md bg-[#c42b2b] px-4 py-2 text-sm font-medium text-white hover:bg-[#9b2020]">
-            Delete
+            {mode === "edit" ? "Save & Request Review" : "Request Review"}
           </button>
         </div>
       </div>
@@ -822,9 +998,19 @@ function MetricBox({ label, value }: { label: string; value: string }) {
 function PurchaseOrderDetail({
   order,
   warehouseNameByCode,
+  canDelete,
+  isDeleting,
+  canEdit,
+  onEdit,
+  onDelete,
 }: {
   order: PurchaseOrderRecord;
   warehouseNameByCode: Map<string, string>;
+  canDelete: boolean;
+  isDeleting: boolean;
+  canEdit: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const totalQty = orderQty(order);
   const totalCbm = orderCbm(order);
@@ -853,6 +1039,27 @@ function PurchaseOrderDetail({
           <span className={`hidden rounded-full px-3 py-1 text-xs font-semibold xl:inline-flex ${statusClasses[order.status]}`}>
             {order.status}
           </span>
+
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-md border border-[#8fb8ff] bg-white px-3 py-2 text-xs font-semibold text-[#1a5cdb] hover:bg-[#ebf0fd]"
+            >
+              Edit SKU
+            </button>
+          ) : null}
+
+          {canDelete ? (
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={onDelete}
+              className="rounded-md border border-[#f0b4b4] bg-white px-3 py-2 text-xs font-semibold text-[#c42b2b] hover:bg-[#fff1f1] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </button>
+          ) : null}
         </div>
 
         <div className="border-t">

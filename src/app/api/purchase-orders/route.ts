@@ -4,6 +4,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { auth } from "@/lib/auth";
+import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import { z } from "zod";
 
 const PurchaseOrderCreateSchema = z.object({
@@ -32,6 +34,27 @@ function serializeDate(value: unknown): string | null {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).slice(0, 10);
+}
+
+async function ensureFactoryCodeSequence() {
+  const pool = getPrimaryPool();
+
+  await pool.query("CREATE SEQUENCE IF NOT EXISTS shipcore.fc_factory_code_seq START 1");
+  await pool.query(`
+    WITH code_state AS (
+      SELECT COALESCE((
+          SELECT MAX((regexp_match(factory_code, '^FC-([0-9]+)$'))[1]::bigint)
+          FROM shipcore.fc_factories
+          WHERE factory_code ~ '^FC-[0-9]+$'
+        ), 0) AS max_code
+    )
+    SELECT setval(
+      'shipcore.fc_factory_code_seq',
+      GREATEST(code_state.max_code, shipcore.fc_factory_code_seq.last_value, 1),
+      code_state.max_code > 0 OR shipcore.fc_factory_code_seq.is_called
+    )
+    FROM code_state, shipcore.fc_factory_code_seq
+  `);
 }
 
 export async function GET(request: NextRequest) {
@@ -160,11 +183,13 @@ export async function POST(request: NextRequest) {
     const factoryName = validated.factory.trim();
 
     await client.query("BEGIN");
+    await ensureFactoryCodeSequence();
 
     const factoryResult = await client.query<{ id: string }>(
-      `INSERT INTO shipcore.fc_factories (factory_name)
-       VALUES ($1)
+      `INSERT INTO shipcore.fc_factories (factory_code, factory_name)
+       VALUES ('FC-' || LPAD(nextval('shipcore.fc_factory_code_seq')::text, 4, '0'), $1)
        ON CONFLICT (factory_name) DO UPDATE SET
+         factory_code = COALESCE(shipcore.fc_factories.factory_code, EXCLUDED.factory_code),
          is_active = true,
          updated_at = now()
        RETURNING id::text`,
@@ -211,6 +236,16 @@ export async function POST(request: NextRequest) {
 
     for (const item of validated.items) {
       await client.query(
+        `UPDATE shipcore.fc_products
+         SET moq = $2,
+             order_multiple = $2,
+             cbm_per_unit = COALESCE(NULLIF($3, 0), cbm_per_unit),
+             updated_at = NOW()
+         WHERE master_sku = $1`,
+        [item.sku.trim(), item.moq, item.cbm]
+      );
+
+      await client.query(
         `INSERT INTO shipcore.fc_purchase_order_items
            (po_id, master_sku, moq, order_qty, cbm_unit, unit_price)
          VALUES ($1::bigint, $2, $3, $4, $5, $6)`,
@@ -242,6 +277,274 @@ export async function POST(request: NextRequest) {
     }
 
     console.error("Error creating purchase order:", error);
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const client = await getPrimaryPool().connect();
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id")?.trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Purchase order id is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!/^\d+$/.test(id)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid purchase order id" },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const validated = PurchaseOrderCreateSchema.parse(body);
+
+    if (validated.status === "sent") {
+      return NextResponse.json(
+        { success: false, error: "Sent purchase orders cannot be edited" },
+        { status: 400 }
+      );
+    }
+
+    const factoryName = validated.factory.trim();
+
+    await client.query("BEGIN");
+    await ensureFactoryCodeSequence();
+
+    const existing = await client.query<{ id: string; status: string }>(
+      `SELECT id::text, status::text
+       FROM shipcore.fc_purchase_orders
+       WHERE id = $1::bigint
+       FOR UPDATE`,
+      [id]
+    );
+
+    if (existing.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: "Purchase order not found" },
+        { status: 404 }
+      );
+    }
+
+    if (existing.rows[0].status === "sent") {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: "Sent purchase orders cannot be edited" },
+        { status: 409 }
+      );
+    }
+
+    const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim()))];
+    const existingSkuResult = await client.query<{ master_sku: string }>(
+      `SELECT master_sku
+       FROM shipcore.fc_products
+       WHERE master_sku = ANY($1::text[])`,
+      [distinctSkus]
+    );
+    const existingSkus = new Set(existingSkuResult.rows.map((row) => row.master_sku));
+    const missingSkus = distinctSkus.filter((sku) => !existingSkus.has(sku));
+
+    if (missingSkus.length > 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: `SKU does not exist in fc_products: ${missingSkus.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const factoryResult = await client.query<{ id: string }>(
+      `INSERT INTO shipcore.fc_factories (factory_code, factory_name)
+       VALUES ('FC-' || LPAD(nextval('shipcore.fc_factory_code_seq')::text, 4, '0'), $1)
+       ON CONFLICT (factory_name) DO UPDATE SET
+         factory_code = COALESCE(shipcore.fc_factories.factory_code, EXCLUDED.factory_code),
+         is_active = true,
+         updated_at = now()
+       RETURNING id::text`,
+      [factoryName]
+    );
+    const factoryId = factoryResult.rows[0].id;
+
+    await client.query(
+      `UPDATE shipcore.fc_purchase_orders
+       SET po_number = $2,
+           po_date = $3::date,
+           eta_date = $4::date,
+           factory_id = $5::bigint,
+           factory_name = $6,
+           dest_warehouse = $7,
+           manager = $8,
+           note = $9,
+           status = $10::shipcore.fc_po_status
+       WHERE id = $1::bigint`,
+      [
+        id,
+        validated.number.trim(),
+        validated.date,
+        validated.eta,
+        factoryId,
+        factoryName,
+        validated.destination?.trim() || null,
+        validated.manager?.trim() || null,
+        validated.note?.trim() || null,
+        validated.status,
+      ]
+    );
+
+    await client.query(
+      `DELETE FROM shipcore.fc_purchase_order_items
+       WHERE po_id = $1::bigint`,
+      [id]
+    );
+
+    for (const item of validated.items) {
+      await client.query(
+        `UPDATE shipcore.fc_products
+         SET moq = $2,
+             order_multiple = $2,
+             cbm_per_unit = COALESCE(NULLIF($3, 0), cbm_per_unit),
+             updated_at = NOW()
+         WHERE master_sku = $1`,
+        [item.sku.trim(), item.moq, item.cbm]
+      );
+
+      await client.query(
+        `INSERT INTO shipcore.fc_purchase_order_items
+           (po_id, master_sku, moq, order_qty, cbm_unit, unit_price)
+         VALUES ($1::bigint, $2, $3, $4, $5, $6)`,
+        [
+          id,
+          item.sku.trim(),
+          item.moq,
+          item.qty,
+          item.cbm || null,
+          item.unitPrice ?? null,
+        ]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    return NextResponse.json({
+      success: true,
+      data: { id, factoryId },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: "Validation error", details: error.issues },
+        { status: 400 }
+      );
+    }
+
+    console.error("Error updating purchase order:", error);
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const client = await getPrimaryPool().connect();
+
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    if (!isAdminLikeRole(session.user.role)) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden" },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id")?.trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Purchase order id is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!/^\d+$/.test(id)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid purchase order id" },
+        { status: 400 }
+      );
+    }
+
+    await client.query("BEGIN");
+
+    const existing = await client.query<{ id: string; po_number: string }>(
+      `SELECT id::text, po_number
+       FROM shipcore.fc_purchase_orders
+       WHERE id = $1::bigint
+       FOR UPDATE`,
+      [id]
+    );
+
+    if (existing.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: "Purchase order not found" },
+        { status: 404 }
+      );
+    }
+
+    await client.query(
+      `DELETE FROM shipcore.fc_container_po_links
+       WHERE po_id = $1::bigint`,
+      [id]
+    );
+
+    await client.query(
+      `DELETE FROM shipcore.fc_purchase_order_items
+       WHERE po_id = $1::bigint`,
+      [id]
+    );
+
+    await client.query(
+      `DELETE FROM shipcore.fc_purchase_orders
+       WHERE id = $1::bigint`,
+      [id]
+    );
+
+    await client.query("COMMIT");
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: existing.rows[0].id,
+        number: existing.rows[0].po_number,
+      },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting purchase order:", error);
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
       { status: 500 }
