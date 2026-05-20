@@ -5,12 +5,22 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function hasAnyQty(r: VelocityRow): boolean {
+  return (
+    !!r.isTotal ||
+    r.qtys.some((v) => (v ?? 0) > 0) ||
+    (r.customQtys ?? []).some((v) => (v ?? 0) > 0) ||
+    (r.ttmCount ?? 0) > 0
+  );
+}
+
 function buildSection(
   rows: VelocityRow[],
   mode: "sales" | "ttm" | "preorder",
   labels: string[],
   selectedItem: string
 ): (string | number | null)[][] {
+  rows = rows.filter(hasAnyQty);
   const result: (string | number | null)[][] = [];
 
   if (mode === "preorder") {

@@ -1,8 +1,9 @@
 /**
  * Code Guide:
  * GET  /api/velocity/sync — Returns the most recent synced_at timestamp from velocity_link_snapshot.
- * POST /api/velocity/sync — Pulls 400 days of data from two Supabase views independently.
- *                           All derivation (channel, item_category, order_type) is done in SQL.
+ * POST /api/velocity/sync — Pulls data from two Supabase views independently.
+ *                           Stores both UTC date (order_date) and LA date (order_date_la) per row,
+ *                           grouped by both dates so timezone-based filtering works without re-sync.
  *                           Batch-upserts into velocity_link_snapshot and velocity_custom_snapshot
  *                           (500 rows per batch each).
  */
@@ -47,9 +48,6 @@ const ORDER_TYPE_CASE = (alias: string) => `
     ELSE 'sales'
   END`;
 
-const DATE_EXPR = (alias: string) =>
-  `(${alias}.order_date AT TIME ZONE 'UTC')::date`;
-
 const MASTER_SKU_REMAP: Record<string, string> = {
   "CC-CP-07-N-GR":      "CC-CP-03-M-GR-1TO",
   "CC-CSP-03-M-GR-1TO": "CC-CS-03-M-GR-1TO",
@@ -67,6 +65,7 @@ const MASTER_SKU_REMAP_CASE = (skuExpr: string) => {
 
 interface LinkRow {
   order_date: Date;
+  order_date_la: Date;
   channel: string;
   item_category: string;
   order_type: string;
@@ -76,6 +75,7 @@ interface LinkRow {
 
 interface CustomRow {
   order_date: Date;
+  order_date_la: Date;
   channel: string;
   item_category: string;
   order_type: string;
@@ -94,15 +94,16 @@ async function upsertLink(rows: LinkRow[], syncedAt: Date): Promise<number> {
     const batch = rows.slice(i, i + BATCH_SIZE);
     await primaryPool().query(
       `INSERT INTO shipcore.velocity_link_snapshot
-         (order_date, item_category, channel, order_type, link_master_sku, link_qty, synced_at)
-       SELECT UNNEST($1::date[]), UNNEST($2::text[]), UNNEST($3::text[]),
-              UNNEST($4::text[]), UNNEST($5::text[]), UNNEST($6::int[]), UNNEST($7::timestamptz[])
-       ON CONFLICT (order_date, item_category, channel, order_type, link_master_sku)
+         (order_date, order_date_la, item_category, channel, order_type, link_master_sku, link_qty, synced_at)
+       SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
+              UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[])
+       ON CONFLICT (order_date, order_date_la, item_category, channel, order_type, link_master_sku)
        DO UPDATE SET
          link_qty  = EXCLUDED.link_qty,
          synced_at = EXCLUDED.synced_at`,
       [
         batch.map((r) => r.order_date.toISOString().slice(0, 10)),
+        batch.map((r) => r.order_date_la.toISOString().slice(0, 10)),
         batch.map((r) => r.item_category),
         batch.map((r) => r.channel),
         batch.map((r) => r.order_type),
@@ -122,15 +123,16 @@ async function upsertCustom(rows: CustomRow[], syncedAt: Date): Promise<number> 
     const batch = rows.slice(i, i + BATCH_SIZE);
     await primaryPool().query(
       `INSERT INTO shipcore.velocity_custom_snapshot
-         (order_date, item_category, channel, order_type, custom_master_sku, custom_qty, synced_at)
-       SELECT UNNEST($1::date[]), UNNEST($2::text[]), UNNEST($3::text[]),
-              UNNEST($4::text[]), UNNEST($5::text[]), UNNEST($6::int[]), UNNEST($7::timestamptz[])
-       ON CONFLICT (order_date, item_category, channel, order_type, custom_master_sku)
+         (order_date, order_date_la, item_category, channel, order_type, custom_master_sku, custom_qty, synced_at)
+       SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
+              UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[])
+       ON CONFLICT (order_date, order_date_la, item_category, channel, order_type, custom_master_sku)
        DO UPDATE SET
          custom_qty = EXCLUDED.custom_qty,
          synced_at  = EXCLUDED.synced_at`,
       [
         batch.map((r) => r.order_date.toISOString().slice(0, 10)),
+        batch.map((r) => r.order_date_la.toISOString().slice(0, 10)),
         batch.map((r) => r.item_category),
         batch.map((r) => r.channel),
         batch.map((r) => r.order_type),
@@ -175,7 +177,8 @@ export async function POST() {
     const [linkRes, customRes] = await Promise.all([
       lookupPool.query<LinkRow>(
         `SELECT
-           ${DATE_EXPR("l")}          AS order_date,
+           (l.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
+           (l.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
            ${CHANNEL_CASE("l")}       AS channel,
            ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("l")}    AS order_type,
@@ -183,12 +186,13 @@ export async function POST() {
            SUM(l.quantity)::int       AS link_qty
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
-           AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged')
-         GROUP BY 1, 2, 3, 4, 5`
+           AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
+         GROUP BY 1, 2, 3, 4, 5, 6`
       ),
       lookupPool.query<CustomRow>(
         `SELECT
-           ${DATE_EXPR("c")}          AS order_date,
+           (c.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
+           (c.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
            ${CHANNEL_CASE("c")}       AS channel,
            ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("c")}    AS order_type,
@@ -196,8 +200,8 @@ export async function POST() {
            SUM(c.quantity)::int       AS custom_qty
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
-           AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged')
-         GROUP BY 1, 2, 3, 4, 5`
+           AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
+         GROUP BY 1, 2, 3, 4, 5, 6`
       ),
     ]);
 

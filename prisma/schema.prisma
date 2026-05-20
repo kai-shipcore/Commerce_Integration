@@ -544,14 +544,16 @@ model VelocityLinkSnapshot {
   id            Int      @id @default(autoincrement())
   syncedAt      DateTime @default(now())
   orderDate     DateTime @db.Date
+  orderDateLa   DateTime @db.Date
   itemCategory  String
   channel       String
   orderType     String
   linkMasterSku String
   linkQty       Int      @default(0)
 
-  @@unique([orderDate, itemCategory, channel, orderType, linkMasterSku])
-  @@index([itemCategory, channel, orderType, orderDate])
+  @@unique([orderDate, orderDateLa, itemCategory, channel, orderType, linkMasterSku])
+  @@index([itemCategory, channel, orderType, orderDate], map: "vls_cat_ch_type_date_idx")
+  @@index([itemCategory, channel, orderType, orderDateLa], map: "vls_cat_ch_type_date_la_idx")
   @@index([linkMasterSku])
   @@map("velocity_link_snapshot")
   @@schema("shipcore")
@@ -561,14 +563,16 @@ model VelocityCustomSnapshot {
   id              Int      @id @default(autoincrement())
   syncedAt        DateTime @default(now())
   orderDate       DateTime @db.Date
+  orderDateLa     DateTime @db.Date
   itemCategory    String
   channel         String
   orderType       String
   customMasterSku String
   customQty       Int      @default(0)
 
-  @@unique([orderDate, itemCategory, channel, orderType, customMasterSku])
-  @@index([itemCategory, channel, orderType, orderDate])
+  @@unique([orderDate, orderDateLa, itemCategory, channel, orderType, customMasterSku])
+  @@index([itemCategory, channel, orderType, orderDate], map: "vcs_cat_ch_type_date_idx")
+  @@index([itemCategory, channel, orderType, orderDateLa], map: "vcs_cat_ch_type_date_la_idx")
   @@index([customMasterSku])
   @@map("velocity_custom_snapshot")
   @@schema("shipcore")

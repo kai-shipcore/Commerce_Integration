@@ -59,7 +59,7 @@ function toLocalDateStr(d: Date): string {
 }
 
 function rangeDays(r: PeriodRange): number {
-  return Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000) + 1;
+  return Math.round((new Date(r.to).getTime() - new Date(r.from).getTime()) / 86400000);
 }
 
 function defaultRanges(): PeriodRange[] {
@@ -68,7 +68,7 @@ function defaultRanges(): PeriodRange[] {
   const toStr = toLocalDateStr(to);
   return DEFAULT_PERIODS.map((n) => {
     const from = new Date(to);
-    from.setDate(from.getDate() - (n - 1));
+    from.setDate(from.getDate() - n);
     return { from: toLocalDateStr(from), to: toStr };
   });
 }
@@ -79,7 +79,7 @@ function periodsToRanges(periods: number[]): PeriodRange[] {
   const toStr = toLocalDateStr(to);
   return periods.map((n) => {
     const from = new Date(to);
-    from.setDate(from.getDate() - (n - 1));
+    from.setDate(from.getDate() - n);
     return { from: toLocalDateStr(from), to: toStr };
   });
 }
@@ -281,7 +281,8 @@ async function fetchModeRows(
   mode: "sales" | "ttm" | "preorder",
   item: string,
   channels: string[],
-  ranges: PeriodRange[]
+  ranges: PeriodRange[],
+  tz: "utc" | "la" = "utc"
 ): Promise<VelocityRow[]> {
   const dbChannels = [...new Set(channels.map((ch) => CHANNEL_DB_KEY[ch] ?? ch))];
   const params = new URLSearchParams({
@@ -289,6 +290,7 @@ async function fetchModeRows(
     channels: dbChannels.join(","),
     mode,
     ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
+    tz,
   });
   const res = await fetch(`/api/velocity/data?${params}`);
   const data = await res.json();
@@ -403,9 +405,10 @@ interface PaneProps {
   ranges: PeriodRange[];
   selectedItem: string;
   selectedChannels: string[];
+  timezone: "utc" | "la";
 }
 
-function VelocityPane({ mode, ranges, selectedItem, selectedChannels }: PaneProps) {
+function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }: PaneProps) {
   const [allRows, setAllRows] = useState<VelocityRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -433,14 +436,17 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels }: PaneProp
 
   useEffect(() => {
     setPagination((p) => ({ ...p, page: 1 }));
-    setSearch("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
+
+  useEffect(() => {
     setLoading(true);
-    fetchModeRows(mode, selectedItem, selectedChannels, ranges)
+    fetchModeRows(mode, selectedItem, selectedChannels, ranges, timezone)
       .then((rows) => setAllRows(rows))
       .catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
+  }, [selectedItem, selectedChannels.join(","), mode, rangesKey, timezone]);
 
   const filtered = useMemo(() => {
     const hasAnyQty = (r: VelocityRow) =>
@@ -501,9 +507,9 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels }: PaneProp
     setExportingAll(true);
     try {
       const [salesRows, ttmRows, preorderRows] = await Promise.all([
-        fetchModeRows("sales",    selectedItem, selectedChannels, ranges),
-        fetchModeRows("ttm",      selectedItem, selectedChannels, ranges),
-        fetchModeRows("preorder", selectedItem, selectedChannels, ranges),
+        fetchModeRows("sales",    selectedItem, selectedChannels, ranges, timezone),
+        fetchModeRows("ttm",      selectedItem, selectedChannels, ranges, timezone),
+        fetchModeRows("preorder", selectedItem, selectedChannels, ranges, timezone),
       ]);
       exportAllVelocity(salesRows, ttmRows, preorderRows, labels, label, selectedItem);
     } catch {
@@ -511,7 +517,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels }: PaneProp
     } finally {
       setExportingAll(false);
     }
-  }, [selectedItem, selectedChannels, ranges, labels, label]);
+  }, [selectedItem, selectedChannels, ranges, labels, label, timezone]);
 
   return (
     <Card>
@@ -565,6 +571,15 @@ export default function VelocityPage() {
   const [customRanges, setCustomRanges] = useState<PeriodRange[]>(() => defaultRanges());
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [timezone, setTimezone] = useState<"utc" | "la">(() =>
+    typeof window !== "undefined"
+      ? ((localStorage.getItem("velocity_tz") as "utc" | "la") ?? "utc")
+      : "utc"
+  );
+
+  useEffect(() => {
+    localStorage.setItem("velocity_tz", timezone);
+  }, [timezone]);
 
   const activeRanges = periodMode === "period" ? periodsToRanges(periods) : customRanges;
 
@@ -621,6 +636,22 @@ export default function VelocityPage() {
                 Last synced: {formattedSyncTime}
               </span>
             )}
+            <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs">
+              {(["utc", "la"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTimezone(t)}
+                  className={cn(
+                    "rounded px-2.5 py-1 font-medium transition-colors",
+                    timezone === t
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {t === "utc" ? "UTC" : "LA Time"}
+                </button>
+              ))}
+            </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <button
@@ -740,7 +771,7 @@ export default function VelocityPage() {
             </CardContent>
           </Card>
         ) : (
-          <VelocityPane mode={mode} ranges={activeRanges} selectedItem={selectedItem} selectedChannels={selectedChannels} />
+          <VelocityPane mode={mode} ranges={activeRanges} selectedItem={selectedItem} selectedChannels={selectedChannels} timezone={timezone} />
         )}
       </div>
     </AppLayout>

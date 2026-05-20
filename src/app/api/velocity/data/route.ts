@@ -9,6 +9,7 @@
  *   mode     — "sales" | "ttm" | "preorder"
  *   ranges   — comma-separated "from:to" date pairs (e.g. "2025-01-01:2025-03-31,2025-04-01:2025-04-30")
  *              ignored for preorder mode
+ *   tz       — "utc" (default) | "la" — which date column to filter on
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
   const channels = p.get("channels")?.split(",").filter(Boolean) ?? [];
   const mode = p.get("mode") ?? "sales";
   const ranges = parseRanges(p.get("ranges") ?? "");
+  const dateCol = p.get("tz") === "la" ? "order_date_la" : "order_date";
 
   if (!items.length || !channels.length) {
     return NextResponse.json({ success: true, link: [], custom: [] });
@@ -97,7 +99,7 @@ export async function GET(req: NextRequest) {
     const linkCols = ranges
       .map(
         ({ from, to }, i) =>
-          `SUM(CASE WHEN order_date >= '${from}' AND order_date <= '${to}' THEN link_qty ELSE 0 END)::int AS qty_${i}`
+          `SUM(CASE WHEN ${dateCol} >= '${from}' AND ${dateCol} <= '${to}' THEN link_qty ELSE 0 END)::int AS qty_${i}`
       )
       .join(", ");
 
@@ -115,7 +117,7 @@ export async function GET(req: NextRequest) {
           `SELECT custom_master_sku AS master_sku, ${ranges
             .map(
               ({ from, to }, i) =>
-                `SUM(CASE WHEN order_date >= '${from}' AND order_date <= '${to}' THEN custom_qty ELSE 0 END)::int AS qty_${i}`
+                `SUM(CASE WHEN ${dateCol} >= '${from}' AND ${dateCol} <= '${to}' THEN custom_qty ELSE 0 END)::int AS qty_${i}`
             )
             .join(", ")}
            FROM shipcore.velocity_custom_snapshot
