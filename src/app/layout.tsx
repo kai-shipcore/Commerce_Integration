@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
+import { ThemeProvider } from "next-themes";
 import { auth } from "@/lib/auth";
 import "./globals.css";
 
@@ -18,7 +19,9 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        <Providers session={session}>{children}</Providers>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+          <Providers session={session}>{children}</Providers>
+        </ThemeProvider>
       </body>
     </html>
   );

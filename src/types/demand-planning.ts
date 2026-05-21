@@ -1,0 +1,85 @@
+export type ProductFilter = "all" | "orig" | "cust";
+export type UrgencyFilter = "crit" | "warn" | "bo";
+export type UrgencyStatus = "crit" | "warn" | "ok";
+export type ColumnGroupKey =
+  | "fix"
+  | "wsales"
+  | "esales"
+  | "wavg"
+  | "eavg"
+  | "fba"
+  | "s30"
+  | "tavg"
+  | "inb"
+  | "con";
+
+export interface ContainerMeta {
+  col: number;
+  name: string;
+  eta: string;
+  cbm_cap: number;
+}
+
+export interface ContainerRowData {
+  open_orders: number | null;
+  avail_qty: number | null;
+  est_sales: number | null;
+  backorder: number | null;
+  eta: string | null;
+  inv_life: number | null;
+  est_sod: string | null;
+  plan_sod: string | null;
+  cbm: number | null;
+}
+
+export interface DemandRow {
+  container_info: string;
+  cbm: number;
+  seat: string;
+  no: number;
+  color: string;
+  tone: string;
+  back: number;
+  sales_status: "Original" | "Custom" | "Hold";
+  sku: string;
+  west_stock: number;
+  east_stock: number;
+  total_stock: number;
+  west_90d: number;
+  west_60d: number;
+  west_30d: number;
+  west_15d: number;
+  west_7d: number;
+  west_30d_pre: number;
+  east_90d: number;
+  east_60d: number;
+  east_30d: number;
+  east_15d: number;
+  east_7d: number;
+  east_30d_pre: number;
+  avg_daily_prev: number;
+  avg_daily_real: number;
+  avg_daily_curr: number;
+  east_avg_prev: number;
+  east_avg_real: number;
+  east_avg_curr: number;
+  fba_avg_real: number;
+  fba_avg_curr: number;
+  west_fbm_30d: number;
+  east_fbm_30d: number;
+  fba_30d: number;
+  total_30d: number;
+  total_avg_prev: number;
+  total_avg_real: number;
+  total_avg_curr: number;
+  total_inbound_qty: number | null;
+  containers_list: string | null;
+  next_eta: string | null;
+  sod: string | null;
+  containers: Record<string, ContainerRowData>;
+}
+
+export interface DemandPlanningData {
+  containers: ContainerMeta[];
+  rows: DemandRow[];
+}
