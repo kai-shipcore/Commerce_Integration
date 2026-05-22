@@ -129,7 +129,8 @@
 
   .planning-surface:has(.container-planning-fullbleed),
   .planning-surface:has(.purchase-orders-fullbleed),
-  .planning-surface:has(.sku-master-fullbleed) {
+  .planning-surface:has(.sku-master-fullbleed),
+  .planning-surface:has(.factories-fullbleed) {
     @apply border-0 bg-transparent p-0 shadow-none md:p-0;
   }
 
@@ -147,6 +148,162 @@
 
   .form-input:focus {
     @apply border-[#1a5cdb];
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) {
+    border-color: rgb(51 65 85 / 0.9) !important;
+    background-color: rgb(15 23 42) !important;
+    color: rgb(241 245 249);
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    .bg-white,
+    [class*="bg-[#f5f4f0]"]
+  ) {
+    background-color: rgb(17 24 39) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    .planning-muted,
+    [class*="bg-[#f0eee9]"]
+  ) {
+    background-color: rgb(30 41 59) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="border-[#e2dfd8]"],
+    [class*="border-[#cccac4]"]
+  ) {
+    border-color: rgb(51 65 85 / 0.95) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    input,
+    select,
+    textarea,
+    .form-input
+  ) {
+    border-color: rgb(71 85 105) !important;
+    background-color: rgb(15 23 42) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(input, select, textarea)::placeholder {
+    color: rgb(148 163 184) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="bg-[#ebf0fd]"],
+    [class*="hover:bg-[#ebf0fd]"]:hover
+  ) {
+    background-color: rgb(30 58 138 / 0.45) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="hover:bg-[#f0eee9]"]:hover,
+    [class*="hover:bg-[#f8f7f4]"]:hover
+  ) {
+    background-color: rgb(51 65 85 / 0.75) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="text-[#1a4db0]"],
+    [class*="text-[#1a5cdb]"],
+    [class*="text-[#2855d9]"]
+  ) {
+    color: rgb(96 165 250) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="text-[#0a5e45]"],
+    [class*="text-[#047857]"]
+  ) {
+    color: rgb(52 211 153) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="text-[#8a5300]"],
+    [class*="text-[#b56a00]"]
+  ) {
+    color: rgb(251 146 60) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="text-[#b8b5ae]"]
+  ) {
+    color: rgb(148 163 184) !important;
   }
 }
 

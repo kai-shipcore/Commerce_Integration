@@ -14,14 +14,12 @@ import {
   GROUP_LABELS,
   GROUP_BTN_COLORS,
   TINT_COLORS,
-  TODAY,
   daysTo,
   urgStatus,
 } from "./columns";
 import type { CellContent, ColDef } from "./columns";
 import type {
   ColumnGroupKey,
-  ContainerMeta,
   DemandPlanningData,
   DemandRow,
   ProductFilter,
@@ -43,11 +41,12 @@ interface DemandPlanningGridProps {
 const DEFAULT_FREEZE = "sod";
 
 const ALL_GROUP_KEYS: ColumnGroupKey[] = [
-  "wsales","esales","wavg","eavg","fba","s30","tavg","inb","con",
+  "stock","wsales","esales","wavg","eavg","fba","s30","tavg","inb","con",
 ];
 
 const GROUP_BTN_LABELS: Record<string, string> = {
   wsales: "📈 West Sales",
+  stock:  "Inventory",
   esales: "📈 East Sales",
   wavg:   "〜 W Avg",
   eavg:   "〜 E Avg",
@@ -70,16 +69,18 @@ function cellStyle(col: ColDef): React.CSSProperties {
   return {
     minWidth: col.w,
     maxWidth: col.w,
-    padding: "1px 5px",
+    width: col.w,
+    boxSizing: "border-box",
+    padding: "2px 7px",
     borderRight: "1px solid #D8D6CE",
     borderBottom: "1px solid #D8D6CE",
     verticalAlign: "middle",
     whiteSpace: "nowrap",
-    height: 24,
+    height: 28,
     background: TINT_COLORS[col.tint] || "#fff",
     textAlign: col.align === "num" ? "right" : col.align === "ctr" ? "center" : "left",
-    fontFamily: col.align === "num" ? "monospace" : undefined,
-    fontSize: 10,
+    fontFamily: col.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
+    fontSize: 11,
     fontWeight: col.bold ? 700 : 400,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -91,15 +92,12 @@ export function DemandPlanningGrid({
   productFilter,
   urgencyFilter,
   search,
-  onSearchChange,
-  onProductFilterChange,
-  onUrgencyFilterChange,
   onFilteredRowsChange,
 }: DemandPlanningGridProps) {
   const { containers: CONS, rows: ROWS } = data;
 
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>({
-    fix: true, wsales: true, esales: true, wavg: true, eavg: true,
+    fix: true, stock: true, wsales: true, esales: true, wavg: true, eavg: true,
     fba: true, s30: true, tavg: true, inb: true, con: true,
   });
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
@@ -136,11 +134,17 @@ export function DemandPlanningGrid({
     if (!table) return;
 
     const freezeIdx = visCols.findIndex((c) => c.id === freezeUntil);
+    const headerWidthByCid = new Map<string, number>();
+    table.querySelectorAll<HTMLElement>("thead tr:last-child [data-cid]").forEach((cell) => {
+      const cid = cell.getAttribute("data-cid");
+      if (cid) headerWidthByCid.set(cid, cell.offsetWidth);
+    });
+
     const leftOffsets: number[] = [];
     let cum = 0;
     visCols.forEach((col, i) => {
       leftOffsets.push(cum);
-      if (i <= freezeIdx) cum += col.w;
+      if (i <= freezeIdx) cum += headerWidthByCid.get(col.id) || col.w;
     });
 
     // Apply to all th/td with data-cid
@@ -154,12 +158,13 @@ export function DemandPlanningGrid({
       if (frozen) {
         cell.style.position = "sticky";
         cell.style.left = `${leftOffsets[idx]}px`;
-        cell.style.zIndex = cell.tagName === "TH" ? "45" : "15";
+        cell.style.zIndex = cell.tagName === "TH" ? "70" : "35";
       } else {
         cell.style.position = "";
         cell.style.left = "";
         cell.style.zIndex = "";
       }
+      cell.classList.toggle("col-frozen", frozen);
       cell.classList.toggle("col-freeze-end", isEnd);
     });
 
@@ -173,12 +178,13 @@ export function DemandPlanningGrid({
       if (anyFrozen) {
         th.style.position = "sticky";
         th.style.left = `${leftOffsets[Math.min(spanStart, leftOffsets.length - 1)]}px`;
-        th.style.zIndex = "45";
+        th.style.zIndex = "80";
       } else {
         th.style.position = "";
         th.style.left = "";
         th.style.zIndex = "";
       }
+      th.classList.toggle("col-frozen", anyFrozen);
       th.classList.toggle("col-freeze-end", isEnd);
     });
   });
@@ -208,7 +214,7 @@ export function DemandPlanningGrid({
   }, []);
 
   const handleCoreOnly = useCallback(() => {
-    const keep = new Set<string>(["fix", "s30", "tavg", "inb", "con"]);
+    const keep = new Set<string>(["fix", "stock", "s30", "tavg", "inb", "con"]);
     setGroupVis((prev) =>
       Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
     );
@@ -249,18 +255,21 @@ export function DemandPlanningGrid({
   return (
     <>
       <style>{`
-        .col-freeze-end { border-right: 3px solid #4ACCE0 !important; box-shadow: 3px 0 8px rgba(74,200,220,.25); }
+        .col-frozen { background-clip: padding-box; isolation: isolate; }
+        td.col-frozen { background-color: inherit; }
+        th.col-frozen { background-clip: padding-box; }
+        .col-freeze-end { border-right: 3px solid #4ACCE0 !important; box-shadow: 8px 0 12px rgba(15,23,42,.26), 3px 0 8px rgba(74,200,220,.28); }
         .bo-pos  { color: #C42020; font-weight: 600; }
         .inb-pos { color: #1A4FC0; font-weight: 600; }
         .lv-crit { color: #C42020; font-weight: 700; }
         .lv-warn { color: #9A5200; font-weight: 600; }
         .lv-ok   { color: #0A6A45; font-weight: 500; }
-        .lv-over { color: #6B3DB8; font-size: 9px; }
+        .lv-over { color: #6B3DB8; font-size: 10px; }
         .lv-dim  { color: #9A9790; }
-        .sod-crit { color: #C42020; font-weight: 700; font-size: 9px; }
-        .sod-warn { color: #9A5200; font-weight: 600; font-size: 9px; }
-        .sod-ok   { color: #5A5750; font-size: 9px; }
-        .sc { font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 8px; white-space: nowrap; }
+        .sod-crit { color: #C42020; font-weight: 700; font-size: 10px; }
+        .sod-warn { color: #9A5200; font-weight: 600; font-size: 10px; }
+        .sod-ok   { color: #5A5750; font-size: 10px; }
+        .sc { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; white-space: nowrap; }
         .sc-orig { background: #E5EEFF; color: #1238A0; }
         .sc-cust { background: #E3F5EC; color: #0A6A45; }
         .sc-hold { background: #FEF3D8; color: #9A5200; }
@@ -273,9 +282,9 @@ export function DemandPlanningGrid({
       {/* Column Group Toggle Bar */}
       <div
         style={{
-          background: "#252220",
-          borderBottom: "2px solid #3a3835",
-          height: 30,
+          background: "#172033",
+          borderBottom: "2px solid #334155",
+          height: 38,
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
@@ -284,10 +293,10 @@ export function DemandPlanningGrid({
           overflowX: "auto",
         }}
       >
-        <span style={{ fontSize: 8, color: "rgba(255,255,255,.22)", whiteSpace: "nowrap", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,240,.78)", whiteSpace: "nowrap", flexShrink: 0 }}>
           컬럼 그룹
         </span>
-        <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px", flexShrink: 0 }} />
+        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
         {ALL_GROUP_KEYS.filter((k) => k !== "con").map((key) => {
           const active = groupVis[key];
           return (
@@ -298,14 +307,14 @@ export function DemandPlanningGrid({
                 display: "flex",
                 alignItems: "center",
                 gap: 3,
-                fontSize: 9,
+                fontSize: 11,
                 fontWeight: 700,
                 padding: "3px 8px",
                 borderRadius: 10,
-                border: "1px solid rgba(255,255,255,.12)",
+                border: active ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)",
                 cursor: "pointer",
-                color: active ? "#fff" : "rgba(255,255,255,.45)",
-                background: active ? GROUP_BTN_COLORS[key] || "rgba(255,255,255,.04)" : "rgba(255,255,255,.04)",
+                color: active ? "#F8FAFC" : "rgba(203,213,225,.82)",
+                background: active ? GROUP_BTN_COLORS[key] || "rgba(255,255,255,.08)" : "rgba(15,23,42,.5)",
                 whiteSpace: "nowrap",
                 flexShrink: 0,
               }}
@@ -314,29 +323,29 @@ export function DemandPlanningGrid({
             </button>
           );
         })}
-        <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px", flexShrink: 0 }} />
+        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
         <button
           onClick={() => handleToggleGroup("con")}
           style={{
-            fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 10,
-            border: "1px solid rgba(255,255,255,.12)", cursor: "pointer",
-            color: groupVis["con"] ? "#fff" : "rgba(255,255,255,.45)",
-            background: groupVis["con"] ? GROUP_BTN_COLORS["con"] : "rgba(255,255,255,.04)",
+            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
+            border: groupVis["con"] ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)", cursor: "pointer",
+            color: groupVis["con"] ? "#F8FAFC" : "rgba(203,213,225,.82)",
+            background: groupVis["con"] ? GROUP_BTN_COLORS["con"] : "rgba(15,23,42,.5)",
             whiteSpace: "nowrap", flexShrink: 0,
           }}
         >
           {GROUP_BTN_LABELS["con"]}
         </button>
-        <div style={{ width: 1, height: 16, background: "rgba(255,255,255,.1)", margin: "0 2px", flexShrink: 0 }} />
+        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
         <button
           onClick={handleAllOn}
-          style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,255,255,.2)", cursor: "pointer", color: "rgba(255,255,255,.55)", background: "rgba(255,255,255,.04)", whiteSpace: "nowrap", flexShrink: 0 }}
+          style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10, border: "1px solid rgba(148,163,184,.45)", cursor: "pointer", color: "rgba(226,232,240,.86)", background: "rgba(15,23,42,.5)", whiteSpace: "nowrap", flexShrink: 0 }}
         >
           모두 표시
         </button>
         <button
           onClick={handleCoreOnly}
-          style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,255,255,.2)", cursor: "pointer", color: "rgba(255,255,255,.55)", background: "rgba(255,255,255,.04)", whiteSpace: "nowrap", flexShrink: 0 }}
+          style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10, border: "1px solid rgba(148,163,184,.45)", cursor: "pointer", color: "rgba(226,232,240,.86)", background: "rgba(15,23,42,.5)", whiteSpace: "nowrap", flexShrink: 0 }}
         >
           핵심만
         </button>
@@ -345,7 +354,7 @@ export function DemandPlanningGrid({
       {/* Freeze Selector Bar */}
       <div
         style={{
-          background: "#1A1917",
+          background: "#0F172A",
           borderBottom: "2px solid #4A8AAA",
           minHeight: 28,
           flexShrink: 0,
@@ -355,7 +364,7 @@ export function DemandPlanningGrid({
           padding: "0 10px",
         }}
       >
-        <span style={{ fontSize: 9, color: "rgba(255,255,255,.3)", whiteSpace: "nowrap", paddingRight: 8, fontFamily: "monospace", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,240,.78)", whiteSpace: "nowrap", paddingRight: 8, fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", flexShrink: 0 }}>
           📌 고정 컬럼 선택 →
         </span>
         {visCols.map((col, i) => {
@@ -367,32 +376,29 @@ export function DemandPlanningGrid({
               key={col.id}
               onClick={() => handleSetFreeze(col.id)}
               style={{
-                fontSize: 9,
+                fontSize: 11,
                 fontWeight: isEnd ? 800 : frozen ? 700 : 600,
                 padding: "3px 8px",
-                border: "none",
+                borderTop: "none",
+                borderBottom: "none",
+                borderLeft: "none",
                 borderRight: isEnd ? "3px solid #4ACCE0" : "1px solid #2A2825",
                 background: isEnd ? "rgba(74,204,220,.2)" : frozen ? "rgba(74,170,204,.1)" : "transparent",
                 cursor: "pointer",
-                color: isEnd ? "#fff" : frozen ? "#4ACCE0" : "rgba(255,255,255,.35)",
+                color: isEnd ? "#F8FAFC" : frozen ? "#67E8F9" : "rgba(203,213,225,.72)",
                 whiteSpace: "nowrap",
                 flexShrink: 0,
-                fontFamily: "monospace",
+                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
                 position: "relative",
               }}
             >
               {label}
-              {isEnd && (
-                <span style={{ fontSize: 7, position: "absolute", right: 3, top: 1, color: "#4ACCE0", opacity: 0.8, fontFamily: "monospace", fontWeight: 700 }}>
-                  ◀ FREEZE
-                </span>
-              )}
             </button>
           );
         })}
         <button
           onClick={() => setFreezeUntil(DEFAULT_FREEZE)}
-          style={{ fontSize: 9, padding: "3px 8px", marginLeft: 6, borderRadius: 4, border: "1px solid rgba(74,170,204,.4)", background: "rgba(74,170,204,.08)", color: "#4ACCE0", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+          style={{ fontSize: 10, padding: "4px 9px", marginLeft: 6, borderRadius: 4, border: "1px solid rgba(74,170,204,.4)", background: "rgba(74,170,204,.08)", color: "#4ACCE0", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
         >
           기본값 복원
         </button>
@@ -409,7 +415,7 @@ export function DemandPlanningGrid({
       >
         <table
           ref={tableRef}
-          style={{ borderCollapse: "collapse", fontSize: 10, minWidth: "max-content" }}
+          style={{ borderCollapse: "separate", borderSpacing: 0, fontSize: 11, minWidth: "max-content" }}
         >
           <thead style={{ position: "sticky", top: 0, zIndex: 40 }}>
             {/* Row 1: Group headers */}
@@ -423,16 +429,15 @@ export function DemandPlanningGrid({
                   style={{
                     background: GROUP_HEADER_COLORS[g.gh] || "#1E1C19",
                     color: "rgba(255,255,255,.85)",
-                    fontSize: 9,
+                    fontSize: 10,
                     fontWeight: 700,
-                    textTransform: "uppercase",
                     letterSpacing: "0.05em",
                     padding: "3px 4px",
                     borderRight: "1px solid #3a3835",
                     borderBottom: "1px solid #555",
                     whiteSpace: "nowrap",
                     textAlign: "center",
-                    height: 20,
+                    height: 24,
                   }}
                 >
                   {GROUP_LABELS[g.grp] || g.grp}
@@ -448,7 +453,6 @@ export function DemandPlanningGrid({
                     color: "rgba(255,255,255,.85)",
                     fontSize: 9,
                     fontWeight: 700,
-                    textTransform: "uppercase",
                     letterSpacing: "0.05em",
                     padding: "3px 4px",
                     borderRight: "1px solid #3a3835",
@@ -473,34 +477,38 @@ export function DemandPlanningGrid({
                   style={{
                     background: "#2A2825",
                     color: "rgba(255,255,255,.55)",
-                    fontSize: 8,
+                    fontSize: 9,
                     fontWeight: 600,
                     padding: "2px 4px",
                     borderRight: "1px solid #3a3835",
                     borderBottom: "1px solid #555",
                     textAlign: "center",
                     whiteSpace: "nowrap",
-                    height: 16,
+                    height: 20,
                   }}
                 />
               ))}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
+                const dt = daysTo(c.eta);
+                const etaColor =
+                  dt !== null && dt <= 7  ? "#FF9090" :
+                  dt !== null && dt <= 21 ? "#F0C060" : "#88D0FF";
                 return (
                   <th
                     key={c.name}
                     colSpan={CON_SUBCOLS.length}
                     style={{
                       background: "#2A2825",
-                      color: "rgba(255,255,255,.55)",
-                      fontSize: 8,
-                      fontWeight: 600,
+                      color: etaColor,
+                      fontSize: 10,
+                      fontWeight: 800,
                       padding: "2px 4px",
                       borderRight: isLast ? "1px solid #3a3835" : "2px solid #1A4060",
                       borderBottom: "1px solid #555",
                       textAlign: "center",
                       whiteSpace: "nowrap",
-                      height: 16,
+                      height: 20,
                     }}
                   >
                     {c.name}&nbsp;/&nbsp;Cap {c.cbm_cap.toFixed(1)}
@@ -517,17 +525,19 @@ export function DemandPlanningGrid({
                   style={{
                     background: GROUP_HEADER_COLORS[col.gh] || "#34312D",
                     color: "rgba(255,255,255,.7)",
-                    fontSize: 9,
+                    fontSize: 10,
                     fontWeight: 500,
                     padding: "2px 4px",
                     borderRight: "1px solid #3a3835",
                     borderBottom: "2px solid #555",
                     textAlign: "center",
                     whiteSpace: "nowrap",
-                    height: 30,
+                    height: 36,
                     lineHeight: 1.25,
                     minWidth: col.w,
                     maxWidth: col.w,
+                    width: col.w,
+                    boxSizing: "border-box",
                   }}
                 >
                   {col.label.split("\n").map((line, i) => (
@@ -540,10 +550,6 @@ export function DemandPlanningGrid({
               ))}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
-                const dt = daysTo(c.eta);
-                const etaColor =
-                  dt !== null && dt <= 7  ? "#FF9090" :
-                  dt !== null && dt <= 21 ? "#F0C060" : "#88D0FF";
                 return CON_SUBCOLS.map((sc, si) => {
                   const isLastSub = si === CON_SUBCOLS.length - 1;
                   return (
@@ -552,24 +558,21 @@ export function DemandPlanningGrid({
                       style={{
                         background: "#34312D",
                         color: "rgba(255,255,255,.7)",
-                        fontSize: 9,
+                        fontSize: 10,
                         fontWeight: 500,
                         padding: "2px 4px",
                         borderRight: isLastSub && !isLast ? "2px solid #1A4060" : "1px solid #3a3835",
                         borderBottom: "2px solid #555",
                         textAlign: "center",
                         whiteSpace: "nowrap",
-                        height: 30,
+                        height: 36,
                         lineHeight: 1.25,
                         minWidth: sc.w,
                         maxWidth: sc.w,
+                        width: sc.w,
+                        boxSizing: "border-box",
                       }}
                     >
-                      {si === 0 && (
-                        <span style={{ display: "block", fontSize: 8, fontWeight: 700, color: etaColor }}>
-                          {c.name}
-                        </span>
-                      )}
                       {sc.label.split("\n").map((line, i) => (
                         <span key={i}>
                           {i > 0 && <br />}
@@ -599,15 +602,23 @@ export function DemandPlanningGrid({
                 return (
                   <tr
                     key={r.sku}
-                    style={{ height: 24, cursor: "pointer" }}
+                    style={{ height: 28, cursor: "pointer" }}
                     onMouseEnter={(e) => {
                       Array.from(e.currentTarget.cells).forEach(
-                        (td) => ((td as HTMLElement).style.background = "#EAF0FF"),
+                        (td) => {
+                          const cell = td as HTMLElement;
+                          cell.dataset.originalBackground = cell.style.backgroundColor || cell.style.background || "";
+                          cell.style.background = "#EAF0FF";
+                        },
                       );
                     }}
                     onMouseLeave={(e) => {
                       Array.from(e.currentTarget.cells).forEach(
-                        (td) => ((td as HTMLElement).style.background = ""),
+                        (td) => {
+                          const cell = td as HTMLElement;
+                          cell.style.background = cell.dataset.originalBackground || "";
+                          delete cell.dataset.originalBackground;
+                        },
                       );
                     }}
                   >
@@ -638,16 +649,18 @@ export function DemandPlanningGrid({
                             style={{
                               minWidth: sc.w,
                               maxWidth: sc.w,
-                              padding: "1px 5px",
+                              width: sc.w,
+                              boxSizing: "border-box",
+                              padding: "2px 7px",
                               borderRight: isLastSub && !isLast ? "2px solid #B0D8EE" : "1px solid #D8D6CE",
                               borderBottom: "1px solid #D8D6CE",
                               verticalAlign: "middle",
                               whiteSpace: "nowrap",
-                              height: 24,
+                              height: 28,
                               background: TINT_COLORS[sc.tint] || "#fff",
                               textAlign: sc.align === "num" ? "right" : sc.align === "ctr" ? "center" : "left",
-                              fontFamily: sc.align === "num" ? "monospace" : undefined,
-                              fontSize: 10,
+                              fontFamily: sc.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
+                              fontSize: 11,
                             }}
                           >
                             {renderCell(sc.val(cd, c))}

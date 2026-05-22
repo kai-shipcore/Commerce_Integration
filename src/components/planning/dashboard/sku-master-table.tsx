@@ -20,7 +20,7 @@ export function SkuMasterTable({ rows }: SkuMasterTableProps) {
       <table
         style={{
           borderCollapse: "collapse",
-          fontSize: 10,
+          fontSize: 12,
           width: "100%",
           background: "#fff",
         }}
@@ -36,9 +36,9 @@ export function SkuMasterTable({ rows }: SkuMasterTableProps) {
                 key={h}
                 style={{
                   background: "#F5F4EF",
-                  padding: "5px 8px",
+                  padding: "7px 10px",
                   border: "1px solid #D8D6CE",
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: 700,
                   color: "#9A9790",
                   textTransform: "uppercase",
@@ -69,10 +69,10 @@ export function SkuMasterTable({ rows }: SkuMasterTableProps) {
               >
                 <td
                   style={{
-                    padding: "4px 8px",
+                    padding: "7px 10px",
                     border: "1px solid #D8D6CE",
-                    fontFamily: "monospace",
-                    fontSize: 10,
+                    fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                    fontSize: 12,
                     fontWeight: 600,
                     color: "#1238A0",
                     whiteSpace: "nowrap",
@@ -88,11 +88,11 @@ export function SkuMasterTable({ rows }: SkuMasterTableProps) {
                 <NumCell>{r.total_avg_curr || ""}</NumCell>
                 <td
                   style={{
-                    padding: "4px 8px",
+                    padding: "7px 10px",
                     border: "1px solid #D8D6CE",
                     textAlign: "center",
-                    fontFamily: "monospace",
-                    fontSize: 9,
+                    fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                    fontSize: 11,
                     color: sodCls,
                     fontWeight: u !== "ok" ? 700 : 400,
                     whiteSpace: "nowrap",
@@ -109,7 +109,7 @@ export function SkuMasterTable({ rows }: SkuMasterTableProps) {
                 >
                   <span
                     style={{
-                      fontSize: 8,
+                      fontSize: 10,
                       fontWeight: 700,
                       padding: "1px 5px",
                       borderRadius: 8,
@@ -127,9 +127,9 @@ export function SkuMasterTable({ rows }: SkuMasterTableProps) {
                 </td>
                 <td
                   style={{
-                    padding: "4px 8px",
+                    padding: "7px 10px",
                     border: "1px solid #D8D6CE",
-                    fontSize: 9,
+                    fontSize: 11,
                     color: "#5A5750",
                     maxWidth: 200,
                     overflow: "hidden",
@@ -158,11 +158,11 @@ function NumCell({
   return (
     <td
       style={{
-        padding: "4px 8px",
+        padding: "7px 10px",
         border: "1px solid #D8D6CE",
         textAlign: "right",
-        fontFamily: "monospace",
-        fontSize: 10,
+        fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+        fontSize: 12,
         fontWeight: bold ? 700 : 400,
         whiteSpace: "nowrap",
       }}

@@ -25,8 +25,8 @@ export const GROUP_HEADER_COLORS: Record<string, string> = {
 };
 
 export const GROUP_LABELS: Record<string, string> = {
-  fix:    "고정 정보",
-  stock:  "재고 현황",
+  fix:    "Core Info",
+  stock:  "Inventory",
   wsales: "West FBM Sales",
   esales: "East FBM Sales",
   wavg:   "West Avg Daily",
@@ -110,9 +110,9 @@ export const ALL_COLS: ColDef[] = [
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); } },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 52,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Hold" ? "sc-hold" : "sc-orig"}">${r.sales_status || ""}</span>` }) },
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 145, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }) },
-  { id: "west",      grp: "fix", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.west_stock || 0 },
-  { id: "east",      grp: "fix", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.east_stock || 0 },
-  { id: "total",     grp: "fix", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.total_stock || 0, bold: true },
+  { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.west_stock || 0 },
+  { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.east_stock || 0 },
+  { id: "total",     grp: "stock", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.total_stock || 0, bold: true },
   // West Sales
   { id: "w90",  grp: "wsales", label: "West\n90D",  w: 44, align: "num", tint: "t-wsales", gh: "gh-wsales", val: (r) => r.west_90d || 0 },
   { id: "w60",  grp: "wsales", label: "West\n60D",  w: 44, align: "num", tint: "t-wsales", gh: "gh-wsales", val: (r) => r.west_60d || 0 },

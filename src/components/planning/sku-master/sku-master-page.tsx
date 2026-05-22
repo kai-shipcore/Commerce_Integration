@@ -23,19 +23,19 @@ const productMeta: Record<
   cc: {
     label: "Car Cover",
     icon: "CC",
-    badgeClass: "bg-[#dcefe8] text-[#047857]",
+    badgeClass: "bg-[#dcefe8] text-[#047857] dark:bg-emerald-950/70 dark:text-emerald-300",
     cbmClass: "text-[#b56a00]",
   },
   fm: {
     label: "Floor Mat",
     icon: "FM",
-    badgeClass: "bg-[#f5ead8] text-[#b56a00]",
+    badgeClass: "bg-[#f5ead8] text-[#b56a00] dark:bg-orange-950/70 dark:text-orange-300",
     cbmClass: "text-[#d21f1f]",
   },
   sc: {
     label: "Seat Cover",
     icon: "SC",
-    badgeClass: "bg-[#e5e9ff] text-[#2855d9]",
+    badgeClass: "bg-[#e5e9ff] text-[#2855d9] dark:bg-blue-950/70 dark:text-blue-300",
     cbmClass: "text-[#b56a00]",
   },
 };

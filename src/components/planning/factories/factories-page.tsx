@@ -217,7 +217,7 @@ export function FactoriesPage() {
   }
 
   return (
-    <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
+    <section className="factories-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
 
         {/* Header */}
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4">
@@ -258,7 +258,7 @@ export function FactoriesPage() {
           <aside className="border-r border-[#e2dfd8] bg-white">
             <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
               <span className="text-sm font-semibold text-muted-foreground">
-                {loading ? "..." : filteredFactories.length}
+                {loading ? "..." : `${filteredFactories.length} Factories`}
               </span>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                 <input
@@ -302,8 +302,8 @@ export function FactoriesPage() {
                     <span
                       className={
                         f.isActive
-                          ? "rounded-md bg-[#e6f5f0] px-2 py-0.5 text-[10px] font-semibold text-[#0a5e45]"
-                          : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                          ? "rounded-md bg-[#e6f5f0] px-2 py-0.5 text-[10px] font-semibold text-[#0a5e45] dark:bg-emerald-950/70 dark:text-emerald-300"
+                          : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground dark:bg-slate-800 dark:text-slate-400"
                       }
                     >
                       {f.isActive ? "Active" : "Inactive"}

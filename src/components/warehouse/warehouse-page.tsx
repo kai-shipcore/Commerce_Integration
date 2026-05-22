@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PackageOpen } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 
@@ -309,7 +310,7 @@ export function WarehousePage() {
 
   return (
     <AppLayout>
-      <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
+      <section className="warehouse-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4">
           <div>
             <h1 className="text-lg font-semibold">🏭 Warehouse Management</h1>
@@ -356,7 +357,7 @@ export function WarehousePage() {
           <aside className="border-r border-[#e2dfd8] bg-white">
             <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
               <span className="text-sm font-semibold text-muted-foreground">
-                {loading ? "..." : filteredWarehouses.length}
+                {loading ? "..." : `${filteredWarehouses.length} Warehouses`}
               </span>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                 <input
@@ -395,7 +396,7 @@ export function WarehousePage() {
                         {w.stateRegion ? <span className="text-[10px] text-muted-foreground">{w.stateRegion}</span> : null}
                       </span>
                     </span>
-                    <span className={w.isActive ? "rounded-md bg-[#e6f5f0] px-2 py-0.5 text-[10px] font-semibold text-[#0a5e45]" : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"}>
+                    <span className={w.isActive ? "rounded-md bg-[#e6f5f0] px-2 py-0.5 text-[10px] font-semibold text-[#0a5e45] dark:bg-emerald-950/70 dark:text-emerald-300" : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground dark:bg-slate-800 dark:text-slate-400"}>
                       {w.isActive ? "Active" : "Inactive"}
                     </span>
                   </button>
@@ -628,11 +629,13 @@ function WarehouseDetail({
                   href={`/planning/container-planning?containerId=${encodeURIComponent(container.id)}`}
                   className="flex items-center gap-3 rounded-lg border border-[#e2dfd8] bg-white p-3 transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd]"
                 >
-                  <span className="text-lg">??</span>
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/70 dark:text-blue-300">
+                    <PackageOpen className="h-4 w-4" aria-hidden="true" />
+                  </span>
                   <div className="flex-1">
                     <div className="font-mono text-xs font-semibold">Container {container.containerNumber}</div>
                     <div className="text-xs text-muted-foreground">
-                      ETA: {container.etaDate ?? "-"} ? {container.itemCount} SKUs ? {formatNumber(container.totalQty)} units ? {container.totalCbm.toFixed(2)} m?
+                      ETA: {container.etaDate ?? "-"} · {container.itemCount} SKUs · {formatNumber(container.totalQty)} units · {container.totalCbm.toFixed(2)} CBM
                     </div>
                   </div>
                   <span className="rounded-lg bg-[#ebf0fd] px-2 py-0.5 text-[10px] font-semibold text-[#1a4db0]">

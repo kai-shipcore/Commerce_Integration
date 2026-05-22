@@ -1237,10 +1237,10 @@ function PoWorkflowStepper({ status }: { status: PurchaseOrderStatus }) {
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                 isActive
-                  ? "bg-[#1a5cdb] text-white"
+                  ? "bg-[#1a5cdb] text-white dark:bg-blue-700 dark:text-blue-50"
                   : isPast
-                  ? "bg-[#e6f5f0] text-[#0a5e45]"
-                  : "bg-[#f0eee9] text-muted-foreground"
+                  ? "bg-[#e6f5f0] text-[#0a5e45] dark:bg-emerald-950/70 dark:text-emerald-300"
+                  : "bg-[#f0eee9] text-muted-foreground dark:bg-slate-800 dark:text-slate-400"
               }`}
             >
               {step.label}
@@ -1351,7 +1351,7 @@ function PoWorkflowActions({
   if (status === "sent") {
     return (
       <div className="flex items-center gap-2">
-        <span className="rounded-lg bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a4db0]">
+        <span className="rounded-lg bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a4db0] dark:bg-blue-950/70 dark:text-blue-300">
           Sent to Factory
         </span>
       </div>

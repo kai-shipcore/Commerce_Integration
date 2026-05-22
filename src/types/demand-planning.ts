@@ -3,6 +3,7 @@ export type UrgencyFilter = "crit" | "warn" | "bo";
 export type UrgencyStatus = "crit" | "warn" | "ok";
 export type ColumnGroupKey =
   | "fix"
+  | "stock"
   | "wsales"
   | "esales"
   | "wavg"
