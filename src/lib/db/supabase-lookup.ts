@@ -385,7 +385,7 @@ export async function getCoverlandInventory(
   if (search) {
     params.push(`%${search}%`);
     filters.push(
-      `(master_sku ILIKE $${params.length} OR COALESCE(warehouse, '') ILIKE $${params.length})`,
+      `(btrim(master_sku) ILIKE $${params.length} OR COALESCE(warehouse, '') ILIKE $${params.length})`,
     );
   }
 
@@ -407,7 +407,7 @@ export async function getCoverlandInventory(
     paginationParams.push(offset);
   }
 
-  const cacheKey = `inventory:v1:${groupBy}:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${warehouse}`;
+  const cacheKey = `inventory:v2:${groupBy}:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${warehouse}`;
   if (!options.exportAll) {
     const cached = await CacheManager.get<CoverlandInventoryQueryResult>(cacheKey);
     if (cached) return cached;
@@ -425,7 +425,7 @@ export async function getCoverlandInventory(
     }>(
       `SELECT
         COUNT(*)::text AS total_rows,
-        COUNT(DISTINCT master_sku)::text AS total_products,
+        COUNT(DISTINCT btrim(master_sku)) FILTER (WHERE master_sku IS NOT NULL AND btrim(master_sku) <> '')::text AS total_products,
         COUNT(DISTINCT NULLIF(warehouse, ''))::text AS total_warehouses,
         COALESCE(SUM(on_hand), 0)::text AS total_on_hand,
         COALESCE(SUM(allocated), 0)::text AS total_allocated,
@@ -452,7 +452,7 @@ export async function getCoverlandInventory(
           created_at: Date | string | null;
         }>(
           `SELECT
-            master_sku,
+            btrim(master_sku) AS master_sku,
             COALESCE(SUM(on_hand), 0) AS on_hand,
             COALESCE(SUM(allocated), 0) AS allocated,
             COALESCE(SUM(available), 0) AS available,
@@ -461,7 +461,7 @@ export async function getCoverlandInventory(
             MAX(created_at) AS created_at
           FROM ecommerce_data.coverland_inventory
           ${whereClause}
-          GROUP BY master_sku
+          GROUP BY btrim(master_sku)
           ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
           ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,
           paginationParams,
@@ -476,7 +476,7 @@ export async function getCoverlandInventory(
           created_at: Date | string | null;
         }>(
           `SELECT
-            master_sku,
+            btrim(master_sku) AS master_sku,
             on_hand,
             allocated,
             available,

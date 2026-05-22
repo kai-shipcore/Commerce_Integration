@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { isAdminLikeRole, isPOApproverRole } from "@/components/layout/navigation-config";
 
 type PurchaseOrderStatus = "draft" | "pending" | "approved" | "sent";
+type PurchaseOrderStatusFilter = "draft" | "pending" | "sent";
 
 type PurchaseOrderItem = {
   id: string;
@@ -27,6 +28,7 @@ type PurchaseOrderRecord = {
   manager: string | null;
   note: string | null;
   status: PurchaseOrderStatus;
+  createdBy: string | null;
   sentAt: string | null;
   itemCount: number;
   totalQty: number;
@@ -128,6 +130,7 @@ export function PurchaseOrdersPage() {
   const [query, setQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [editingPoId, setEditingPoId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatusFilter | null>(null);
   const [form, setForm] = useState<PoFormState>(defaultPoForm);
   const [draftItems, setDraftItems] = useState<PoDraftItem[]>([
     { sku: "", moq: "5", qty: "", dailyAvg: "", stock: "", cbm: "" },
@@ -135,10 +138,13 @@ export function PurchaseOrdersPage() {
 
   const filteredOrders = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return orders;
+    return orders.filter((order) => {
+      if (statusFilter === "draft" && order.status !== "draft") return false;
+      if (statusFilter === "pending" && order.status !== "pending" && order.status !== "approved") return false;
+      if (statusFilter === "sent" && order.status !== "sent") return false;
+      if (!normalizedQuery) return true;
 
-    return orders.filter((order) =>
-      [
+      return [
         order.number,
         order.factory,
         order.destination,
@@ -148,15 +154,16 @@ export function PurchaseOrdersPage() {
       ]
         .join(" ")
         .toLowerCase()
-        .includes(normalizedQuery)
-    );
-  }, [orders, query]);
+        .includes(normalizedQuery);
+    });
+  }, [orders, query, statusFilter]);
 
   const selectedOrder =
     orders.find((order) => order.id === selectedId) ??
     filteredOrders[0] ??
     null;
   const canDeletePurchaseOrders = isAdminLikeRole(session?.user?.role);
+  const isPoApprover = isPOApproverRole(session?.user?.role);
 
   const draftTotals = useMemo(() => {
     const validItems = draftItems.filter((item) => item.sku.trim() || parseNumber(item.qty) > 0);
@@ -344,6 +351,20 @@ export function PurchaseOrdersPage() {
     }
   }
 
+  async function workflowAction(orderId: string, action: "request_review" | "approve" | "reject" | "send_to_factory") {
+    const response = await fetch(`/api/purchase-orders?id=${encodeURIComponent(orderId)}&workflow=true`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      window.alert(json.error ?? "상태 변경에 실패했습니다.");
+      return;
+    }
+    await fetchOrders();
+  }
+
   async function deletePurchaseOrder(order: PurchaseOrderRecord) {
     if (!canDeletePurchaseOrders || deletingPoId) return;
 
@@ -405,14 +426,25 @@ export function PurchaseOrdersPage() {
     setForm((current) => ({ ...current, destination: warehouses[0].warehouseCode }));
   }, [form.destination, isCreating, warehouses]);
 
-  function startCreate() {
+  async function startCreate() {
     setIsCreating(true);
     setEditingPoId(null);
+    setDraftItems([{ sku: "", moq: "5", qty: "", dailyAvg: "", stock: "", cbm: "" }]);
+
+    let nextNumber = defaultPoForm.number;
+    try {
+      const res = await fetch("/api/purchase-orders?nextNumber=true", { cache: "no-store" });
+      const json = await res.json();
+      if (json.success) nextNumber = json.data.nextNumber as string;
+    } catch {
+      // fallback to default
+    }
+
     setForm({
       ...defaultPoForm,
+      number: nextNumber,
       destination: warehouses[0]?.warehouseCode ?? "",
     });
-    setDraftItems([{ sku: "", moq: "5", qty: "", dailyAvg: "", stock: "", cbm: "" }]);
   }
 
   function startEdit(order: PurchaseOrderRecord) {
@@ -542,7 +574,7 @@ export function PurchaseOrdersPage() {
           />
           <button
             type="button"
-            onClick={startCreate}
+            onClick={() => void startCreate()}
             className="rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
           >
             + Add PO
@@ -562,11 +594,31 @@ export function PurchaseOrdersPage() {
           <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
             <span className="text-sm font-semibold text-muted-foreground">
               {filteredOrders.length} purchase orders
+              {statusFilter ? (
+                <span className="ml-1 text-[11px] font-normal text-[#1a5cdb]">
+                  (filtered)
+                </span>
+              ) : null}
             </span>
             <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
-              <StatusLegend color="#d4537e" label="Draft" />
-              <StatusLegend color="#ef9f27" label="Pending" />
-              <StatusLegend color="#378add" label="Sent" />
+              <StatusLegend
+                color="#d4537e"
+                label="Draft"
+                active={statusFilter === "draft"}
+                onClick={() => setStatusFilter(statusFilter === "draft" ? null : "draft")}
+              />
+              <StatusLegend
+                color="#ef9f27"
+                label="Pending"
+                active={statusFilter === "pending"}
+                onClick={() => setStatusFilter(statusFilter === "pending" ? null : "pending")}
+              />
+              <StatusLegend
+                color="#378add"
+                label="Sent"
+                active={statusFilter === "sent"}
+                onClick={() => setStatusFilter(statusFilter === "sent" ? null : "sent")}
+              />
             </div>
           </div>
 
@@ -628,7 +680,7 @@ export function PurchaseOrdersPage() {
               <div className="p-5">
                 <button
                   type="button"
-                  onClick={startCreate}
+                  onClick={() => void startCreate()}
                   className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                 >
                   <span className="text-3xl">+</span>
@@ -676,8 +728,10 @@ export function PurchaseOrdersPage() {
               canDelete={canDeletePurchaseOrders}
               isDeleting={deletingPoId === selectedOrder.id}
               canEdit={selectedOrder.status !== "sent"}
+              isAdmin={isPoApprover}
               onEdit={() => startEdit(selectedOrder)}
               onDelete={() => void deletePurchaseOrder(selectedOrder)}
+              onWorkflowAction={(action) => void workflowAction(selectedOrder.id, action)}
             />
           ) : (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -686,7 +740,7 @@ export function PurchaseOrdersPage() {
               <div className="text-xs">Click a PO in the left list to view SKU details</div>
               <button
                 type="button"
-                onClick={startCreate}
+                onClick={() => void startCreate()}
                 className="mt-2 rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
               >
                 + Add PO
@@ -699,12 +753,30 @@ export function PurchaseOrdersPage() {
   );
 }
 
-function StatusLegend({ color, label }: { color: string; label: string }) {
+function StatusLegend({
+  color,
+  label,
+  active,
+  onClick,
+}: {
+  color: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <span className="flex items-center gap-1.5">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors ${
+        active
+          ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4]"
+          : "hover:text-foreground"
+      }`}
+    >
       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
       {label}
-    </span>
+    </button>
   );
 }
 
@@ -1001,16 +1073,20 @@ function PurchaseOrderDetail({
   canDelete,
   isDeleting,
   canEdit,
+  isAdmin,
   onEdit,
   onDelete,
+  onWorkflowAction,
 }: {
   order: PurchaseOrderRecord;
   warehouseNameByCode: Map<string, string>;
   canDelete: boolean;
   isDeleting: boolean;
   canEdit: boolean;
+  isAdmin: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onWorkflowAction: (action: "request_review" | "approve" | "reject" | "send_to_factory") => void;
 }) {
   const totalQty = orderQty(order);
   const totalCbm = orderCbm(order);
@@ -1109,6 +1185,16 @@ function PurchaseOrderDetail({
               Recommended loading range: 80-95%
             </div>
           </div>
+
+          {/* Workflow stepper + action buttons */}
+          <div className="border-t border-[#e2dfd8] px-5 py-4">
+            <PoWorkflowStepper status={order.status} />
+            <PoWorkflowActions
+              status={order.status}
+              isAdmin={isAdmin}
+              onAction={onWorkflowAction}
+            />
+          </div>
         </div>
       </article>
     </div>
@@ -1122,4 +1208,155 @@ function PoMeta({ label, children }: { label: string; children: ReactNode }) {
       <div className="truncate font-medium text-foreground">{children}</div>
     </div>
   );
+}
+
+// ─── Workflow stepper ────────────────────────────────────────────────────────
+
+const WORKFLOW_STEPS: Array<{ status: PurchaseOrderStatus; label: string }> = [
+  { status: "draft",    label: "Drafting"    },
+  { status: "pending",  label: "In Review"   },
+  { status: "approved", label: "Approved"    },
+  { status: "sent",     label: "Sent"        },
+];
+
+const STEP_INDEX: Record<PurchaseOrderStatus, number> = {
+  draft: 0, pending: 1, approved: 2, sent: 3,
+};
+
+function PoWorkflowStepper({ status }: { status: PurchaseOrderStatus }) {
+  const current = STEP_INDEX[status] ?? 0;
+
+  return (
+    <div className="mb-3 flex items-center gap-1">
+      {WORKFLOW_STEPS.map((step, idx) => {
+        const isPast    = idx < current;
+        const isActive  = idx === current;
+        const isFuture  = idx > current;
+        return (
+          <div key={step.status} className="flex items-center gap-1">
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                isActive
+                  ? "bg-[#1a5cdb] text-white"
+                  : isPast
+                  ? "bg-[#e6f5f0] text-[#0a5e45]"
+                  : "bg-[#f0eee9] text-muted-foreground"
+              }`}
+            >
+              {step.label}
+            </span>
+            {idx < WORKFLOW_STEPS.length - 1 ? (
+              <span className={`text-[10px] ${isFuture ? "text-[#cccac4]" : "text-[#0a5e45]"}`}>→</span>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PoWorkflowActions({
+  status,
+  isAdmin,
+  onAction,
+}: {
+  status: PurchaseOrderStatus;
+  isAdmin: boolean;
+  onAction: (action: "request_review" | "approve" | "reject" | "send_to_factory") => void;
+}) {
+  if (status === "draft") {
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onAction("request_review")}
+          className="rounded-lg border border-[#8fb8ff] bg-white px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
+        >
+          Request Review
+        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => onAction("approve")}
+            className="rounded-lg bg-[#0a7c5c] px-4 py-2 text-sm font-medium text-white hover:bg-[#085e46]"
+          >
+            Approve
+          </button>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {isAdmin ? "Approve directly or submit for review." : "Submit to manager for approval."}
+        </span>
+      </div>
+    );
+  }
+
+  if (status === "pending") {
+    return (
+      <div className="flex items-center gap-2">
+        {isAdmin ? (
+          <>
+            <button
+              type="button"
+              onClick={() => onAction("approve")}
+              className="rounded-lg bg-[#0a7c5c] px-4 py-2 text-sm font-medium text-white hover:bg-[#085e46]"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction("reject")}
+              className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
+            >
+              Reject
+            </button>
+          </>
+        ) : (
+          <span className="rounded-lg bg-[#fef3e2] px-4 py-2 text-sm font-medium text-[#8a5300]">
+            Pending Manager Approval
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "approved") {
+    return (
+      <div className="flex items-center gap-2">
+        {isAdmin ? (
+          <>
+            <button
+              type="button"
+              onClick={() => onAction("send_to_factory")}
+              className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
+            >
+              Send to Factory
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction("reject")}
+              className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
+            >
+              Reject
+            </button>
+          </>
+        ) : (
+          <span className="rounded-lg bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45]">
+            Approved — pending factory dispatch by manager
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "sent") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="rounded-lg bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a4db0]">
+          Sent to Factory
+        </span>
+      </div>
+    );
+  }
+
+  return null;
 }

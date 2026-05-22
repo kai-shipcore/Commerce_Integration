@@ -2,6 +2,23 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { z } from "zod";
+
+const ContainerSaveSchema = z.object({
+  number: z.string().trim().min(1),
+  poNumbers: z.array(z.string().trim()).optional().default([]),
+  eta: z.string().trim().min(1),
+  status: z.enum(["draft", "final-list-sent", "packing-list-received"]),
+  cbmCapacity: z.number().positive().default(67.5),
+  factory: z.string().trim().optional(),
+  origin: z.string().trim().optional(),
+  destination: z.string().trim().optional(),
+  items: z.array(z.object({
+    sku: z.string().trim().min(1),
+    qty: z.number().int().positive(),
+    cbm: z.number().positive(),
+  })).default([]),
+});
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -11,6 +28,12 @@ function serializeDate(value: unknown): string | null {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).slice(0, 10);
+}
+
+function toDbStatus(status: z.infer<typeof ContainerSaveSchema>["status"]) {
+  if (status === "final-list-sent") return "shipped";
+  if (status === "packing-list-received") return "packing_received";
+  return "draft";
 }
 
 export async function GET(request: NextRequest) {
@@ -121,5 +144,136 @@ export async function GET(request: NextRequest) {
       { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const client = await getPrimaryPool().connect();
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id")?.trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Container id is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!/^\d+$/.test(id)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid container id" },
+        { status: 400 }
+      );
+    }
+
+    const validated = ContainerSaveSchema.parse(await request.json());
+    const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim().toUpperCase()))];
+
+    await client.query("BEGIN");
+
+    const existing = await client.query(
+      `SELECT id FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
+      [id]
+    );
+
+    if (existing.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: "Container not found" },
+        { status: 404 }
+      );
+    }
+
+    const skuResult = await client.query<{ master_sku: string }>(
+      `SELECT master_sku FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
+      [distinctSkus]
+    );
+    const existingSkus = new Set(skuResult.rows.map((row) => row.master_sku));
+    const missingSkus = distinctSkus.filter((sku) => !existingSkus.has(sku));
+
+    if (missingSkus.length > 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: `SKU does not exist in fc_products: ${missingSkus.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    await client.query(
+      `UPDATE shipcore.fc_containers
+       SET container_number = $2,
+           eta_date = $3::date,
+           status = $4::shipcore.fc_container_status,
+           cbm_capacity = $5::numeric,
+           factory_name = $6,
+           origin = $7,
+           dest_warehouse = $8,
+           updated_at = NOW()
+       WHERE id = $1::bigint`,
+      [
+        id,
+        validated.number.trim(),
+        validated.eta,
+        toDbStatus(validated.status),
+        validated.cbmCapacity,
+        validated.factory?.trim() || null,
+        validated.origin?.trim() || null,
+        validated.destination?.trim() || null,
+      ]
+    );
+
+    if (validated.items.length > 0) {
+      await client.query(`DELETE FROM shipcore.fc_container_items WHERE container_id = $1::bigint`, [id]);
+
+      for (const item of validated.items) {
+        await client.query(
+          `INSERT INTO shipcore.fc_container_items
+             (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
+           VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
+          [id, item.sku.trim().toUpperCase(), item.qty, item.cbm]
+        );
+      }
+    }
+
+    await client.query(`DELETE FROM shipcore.fc_container_po_links WHERE container_id = $1::bigint`, [id]);
+
+    const poNumbers = [...new Set(validated.poNumbers.map((po) => po.trim()).filter(Boolean))];
+    if (poNumbers.length > 0) {
+      const poResult = await client.query<{ id: string }>(
+        `SELECT id::text FROM shipcore.fc_purchase_orders WHERE po_number = ANY($1::text[])`,
+        [poNumbers]
+      );
+
+      for (const row of poResult.rows) {
+        await client.query(
+          `INSERT INTO shipcore.fc_container_po_links (container_id, po_id, created_at)
+           VALUES ($1::bigint, $2::bigint, NOW())
+           ON CONFLICT DO NOTHING`,
+          [id, row.id]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    return NextResponse.json({ success: true, data: { id } });
+  } catch (error) {
+    await client.query("ROLLBACK");
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: "Validation error", details: error.issues },
+        { status: 400 }
+      );
+    }
+
+    console.error("Error updating container:", error);
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
   }
 }

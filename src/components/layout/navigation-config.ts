@@ -23,6 +23,7 @@ export interface NavigationItem {
   name: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
+  group?: string;
   hideable?: boolean;
   adminOnly?: boolean;
 }
@@ -33,6 +34,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Command Center",
     href: "/dashboard",
     icon: LayoutDashboard,
+    group: "Commerce",
     hideable: true,
   },
   {
@@ -40,6 +42,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Products",
     href: "/skus",
     icon: Package,
+    group: "Commerce",
     hideable: true,
   },
   {
@@ -47,6 +50,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Inventory",
     href: "/inventory",
     icon: Warehouse,
+    group: "Commerce",
     hideable: true,
   },
   {
@@ -54,6 +58,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Orders",
     href: "/orders",
     icon: Store,
+    group: "Commerce",
     hideable: true,
   },
   {
@@ -61,6 +66,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Demand Signals",
     href: "/sales",
     icon: ShoppingCart,
+    group: "Commerce",
     hideable: true,
   },
   {
@@ -68,6 +74,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Collections",
     href: "/collections",
     icon: FolderKanban,
+    group: "Commerce",
     hideable: true,
   },
   {
@@ -75,13 +82,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Analytics",
     href: "/analytics",
     icon: BarChart3,
-    hideable: true,
-  },
-  {
-    id: "integrations",
-    name: "Marketplace APIs",
-    href: "/settings/integrations",
-    icon: Plug,
+    group: "Analytics",
     hideable: true,
   },
   {
@@ -89,6 +90,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Velocity",
     href: "/velocity",
     icon: TrendingUp,
+    group: "Analytics",
     hideable: true,
   },
   {
@@ -96,6 +98,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Sales Link Report",
     href: "/sales-link-report",
     icon: FileSpreadsheet,
+    group: "Analytics",
     hideable: true,
   },
   {
@@ -103,6 +106,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Reconciliation",
     href: "/reconciliation",
     icon: Scale,
+    group: "Analytics",
     hideable: true,
   },
   {
@@ -110,6 +114,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Compare",
     href: "/compare",
     icon: GitCompareArrows,
+    group: "Analytics",
     hideable: true,
   },
   {
@@ -117,6 +122,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Dashboard",
     href: "/planning/dashboard",
     icon: LayoutDashboard,
+    group: "Planning",
     hideable: true,
   },
   {
@@ -124,6 +130,7 @@ export const navigationItems: NavigationItem[] = [
     name: "SKU Forecasts",
     href: "/planning/sku-forecasts",
     icon: TrendingUp,
+    group: "Planning",
     hideable: true,
   },
   {
@@ -131,6 +138,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Container Planning",
     href: "/planning/container-planning",
     icon: Warehouse,
+    group: "Planning",
     hideable: true,
   },
   {
@@ -138,6 +146,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Purchase Orders",
     href: "/planning/purchase-orders",
     icon: FileSpreadsheet,
+    group: "Planning",
     hideable: true,
   },
   {
@@ -145,7 +154,33 @@ export const navigationItems: NavigationItem[] = [
     name: "SKU Master",
     href: "/planning/sku-master",
     icon: Package,
+    group: "Planning",
     hideable: true,
+  },
+  {
+    id: "factories",
+    name: "Factories",
+    href: "/planning/factories",
+    icon: Building2,
+    group: "Planning",
+    hideable: true,
+  },
+  {
+    id: "integrations",
+    name: "Marketplace APIs",
+    href: "/settings/integrations",
+    icon: Plug,
+    group: "Operations",
+    hideable: true,
+  },
+  {
+    id: "warehouse-admin",
+    name: "Warehouse",
+    href: "/warehouse",
+    icon: Warehouse,
+    group: "Operations",
+    hideable: true,
+    adminOnly: true,
   },
   {
     id: "user-access",
@@ -154,21 +189,6 @@ export const navigationItems: NavigationItem[] = [
     icon: ShieldCheck,
     hideable: false,
     adminOnly: true,
-  },
-  {
-    id: "warehouse-admin",
-    name: "Warehouse",
-    href: "/warehouse",
-    icon: Warehouse,
-    hideable: true,
-    adminOnly: true,
-  },
-  {
-    id: "factories",
-    name: "Factories",
-    href: "/planning/factories",
-    icon: Building2,
-    hideable: true,
   },
 ];
 
@@ -180,6 +200,10 @@ export const userDefaultVisibleMenuIds = ["velocity"];
 
 export function isAdminLikeRole(role?: string | null): boolean {
   return role === "admin" || role === "dev";
+}
+
+export function isPOApproverRole(role?: string | null): boolean {
+  return role === "admin" || role === "dev" || role === "planner";
 }
 
 export function getDefaultVisibleMenuIds(role?: string | null): string[] {

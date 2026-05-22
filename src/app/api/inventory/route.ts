@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         limit,
-        total: result.totalRows,
-        totalPages: Math.ceil(result.totalRows / limit),
+        total: groupBy === "product" ? result.totalProducts : result.totalRows,
+        totalPages: Math.ceil((groupBy === "product" ? result.totalProducts : result.totalRows) / limit),
       },
     });
   } catch (error: unknown) {

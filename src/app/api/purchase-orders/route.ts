@@ -5,8 +5,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { auth } from "@/lib/auth";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { isAdminLikeRole, isPOApproverRole } from "@/components/layout/navigation-config";
 import { z } from "zod";
+
+const WorkflowActionSchema = z.object({
+  action: z.enum(["request_review", "approve", "reject", "send_to_factory"]),
+});
+
+type WorkflowAction = z.infer<typeof WorkflowActionSchema>["action"];
+
+const WORKFLOW_TRANSITIONS: Record<WorkflowAction, { from: string[]; to: string; adminOnly: boolean }> = {
+  request_review:  { from: ["draft"],             to: "pending",  adminOnly: false },
+  approve:         { from: ["draft","pending"],    to: "approved", adminOnly: true  },
+  reject:          { from: ["pending","approved"], to: "draft",    adminOnly: true  },
+  send_to_factory: { from: ["approved"],           to: "sent",     adminOnly: true  },
+};
 
 const PurchaseOrderCreateSchema = z.object({
   number: z.string().trim().min(1),
@@ -36,6 +49,13 @@ function serializeDate(value: unknown): string | null {
   return String(value).slice(0, 10);
 }
 
+async function ensureCreatedByColumn() {
+  await getPrimaryPool().query(`
+    ALTER TABLE shipcore.fc_purchase_orders
+    ADD COLUMN IF NOT EXISTS created_by text
+  `);
+}
+
 async function ensureFactoryCodeSequence() {
   const pool = getPrimaryPool();
 
@@ -60,6 +80,28 @@ async function ensureFactoryCodeSequence() {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+
+    if (searchParams.get("nextNumber") === "true") {
+      const pool = getPrimaryPool();
+      const result = await pool.query<{ next_seq: string }>(`
+        SELECT COALESCE(
+          MAX(
+            CASE
+              WHEN po_number ~ '^PO-[0-9]{4}-[0-9]+$'
+              THEN (regexp_match(po_number, '^PO-[0-9]{4}-([0-9]+)$'))[1]::bigint
+            END
+          ), 0
+        ) + 1 AS next_seq
+        FROM shipcore.fc_purchase_orders
+      `);
+      const seq = Number(result.rows[0].next_seq);
+      const year = new Date().getFullYear();
+      const nextNumber = `PO-${year}-${String(seq).padStart(3, "0")}`;
+      return NextResponse.json({ success: true, data: { nextNumber } });
+    }
+
+    await ensureCreatedByColumn();
+
     const search = searchParams.get("search")?.trim() ?? "";
 
     const params: unknown[] = [];
@@ -96,6 +138,7 @@ export async function GET(request: NextRequest) {
          po.manager,
          po.note,
          po.status::text AS status,
+         po.created_by,
          po.sent_at,
          COALESCE(item_summary.item_count, 0)::int AS item_count,
          COALESCE(item_summary.total_qty, 0)::int AS total_qty,
@@ -141,6 +184,7 @@ export async function GET(request: NextRequest) {
       manager: row.manager as string | null,
       note: row.note as string | null,
       status: row.status as string,
+      createdBy: (row.created_by as string | null) ?? null,
       sentAt: serializeDate(row.sent_at),
       itemCount: Number(row.item_count ?? 0),
       totalQty: Number(row.total_qty ?? 0),
@@ -175,6 +219,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await auth();
   const client = await getPrimaryPool().connect();
 
   try {
@@ -184,6 +229,7 @@ export async function POST(request: NextRequest) {
 
     await client.query("BEGIN");
     await ensureFactoryCodeSequence();
+    await ensureCreatedByColumn();
 
     const factoryResult = await client.query<{ id: string }>(
       `INSERT INTO shipcore.fc_factories (factory_code, factory_name)
@@ -199,8 +245,8 @@ export async function POST(request: NextRequest) {
 
     const poResult = await client.query<{ id: string }>(
       `INSERT INTO shipcore.fc_purchase_orders
-         (po_number, po_date, eta_date, factory_id, factory_name, dest_warehouse, manager, note, status)
-       VALUES ($1, $2::date, $3::date, $4::bigint, $5, $6, $7, $8, $9::shipcore.fc_po_status)
+         (po_number, po_date, eta_date, factory_id, factory_name, dest_warehouse, manager, note, status, created_by)
+       VALUES ($1, $2::date, $3::date, $4::bigint, $5, $6, $7, $8, $9::shipcore.fc_po_status, $10)
        RETURNING id::text`,
       [
         validated.number.trim(),
@@ -212,6 +258,7 @@ export async function POST(request: NextRequest) {
         validated.manager?.trim() || null,
         validated.note?.trim() || null,
         validated.status,
+        session?.user?.id ?? null,
       ]
     );
     const poId = poResult.rows[0].id;
@@ -237,9 +284,9 @@ export async function POST(request: NextRequest) {
     for (const item of validated.items) {
       await client.query(
         `UPDATE shipcore.fc_products
-         SET moq = $2,
-             order_multiple = $2,
-             cbm_per_unit = COALESCE(NULLIF($3, 0), cbm_per_unit),
+         SET moq = $2::int,
+             order_multiple = $2::int,
+             cbm_per_unit = COALESCE(NULLIF($3::numeric, 0), cbm_per_unit),
              updated_at = NOW()
          WHERE master_sku = $1`,
         [item.sku.trim(), item.moq, item.cbm]
@@ -306,6 +353,53 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // ── Workflow-only status transition ──────────────────────────────────
+    if (searchParams.get("workflow") === "true") {
+      const session = await auth();
+      if (!session?.user?.id) {
+        return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      }
+
+      const body = await request.json();
+      const { action } = WorkflowActionSchema.parse(body);
+      const rule = WORKFLOW_TRANSITIONS[action];
+
+      if (rule.adminOnly && !isPOApproverRole(session.user.role)) {
+        return NextResponse.json(
+          { success: false, error: "This action requires manager (planner) or admin privileges." },
+          { status: 403 }
+        );
+      }
+
+      const existing = await client.query<{ status: string }>(
+        `SELECT status::text FROM shipcore.fc_purchase_orders WHERE id = $1::bigint`,
+        [id]
+      );
+      if (existing.rowCount === 0) {
+        return NextResponse.json({ success: false, error: "Purchase order not found" }, { status: 404 });
+      }
+
+      const currentStatus = existing.rows[0].status;
+      if (!rule.from.includes(currentStatus)) {
+        return NextResponse.json(
+          { success: false, error: `Cannot perform this action from status: ${currentStatus}` },
+          { status: 409 }
+        );
+      }
+
+      await client.query(
+        `UPDATE shipcore.fc_purchase_orders
+            SET status = $1::shipcore.fc_po_status,
+                sent_at = CASE WHEN $1 = 'sent' THEN now() ELSE sent_at END,
+                updated_at = now()
+          WHERE id = $2::bigint`,
+        [rule.to, id]
+      );
+
+      return NextResponse.json({ success: true, data: { id, status: rule.to } });
+    }
+    // ────────────────────────────────────────────────────────────────────
 
     const body = await request.json();
     const validated = PurchaseOrderCreateSchema.parse(body);
@@ -411,9 +505,9 @@ export async function PATCH(request: NextRequest) {
     for (const item of validated.items) {
       await client.query(
         `UPDATE shipcore.fc_products
-         SET moq = $2,
-             order_multiple = $2,
-             cbm_per_unit = COALESCE(NULLIF($3, 0), cbm_per_unit),
+         SET moq = $2::int,
+             order_multiple = $2::int,
+             cbm_per_unit = COALESCE(NULLIF($3::numeric, 0), cbm_per_unit),
              updated_at = NOW()
          WHERE master_sku = $1`,
         [item.sku.trim(), item.moq, item.cbm]

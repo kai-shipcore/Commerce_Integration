@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim() ?? "";
     const product = searchParams.get("product")?.trim() ?? "all";
+    const masterSku = searchParams.get("masterSku")?.trim() ?? "";
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
     const limit = Math.min(200, Math.max(20, Number(searchParams.get("limit") ?? 50)));
     const offset = (page - 1) * limit;
@@ -86,6 +87,51 @@ export async function GET(request: NextRequest) {
     }
 
     const pool = getPrimaryPool();
+
+    if (masterSku) {
+      const result = await pool.query(
+        `SELECT
+           master_sku,
+           product_name,
+           category,
+           category_code,
+           moq,
+           order_multiple,
+           cbm_per_unit::text AS cbm_per_unit,
+           case_qty,
+           weight_kg::text AS weight_kg
+         FROM shipcore.fc_products
+         WHERE master_sku = $1 AND status = 'active'
+         LIMIT 1`,
+        [masterSku]
+      );
+
+      if (result.rowCount === 0) {
+        return NextResponse.json(
+          { success: false, error: `SKU does not exist in fc_products: ${masterSku}` },
+          { status: 404 }
+        );
+      }
+
+      const row = result.rows[0];
+      const inferred = inferProduct(row.master_sku);
+      return NextResponse.json({
+        success: true,
+        data: {
+          masterSku: row.master_sku,
+          productName: row.product_name,
+          productKey: (row.category_code?.toLowerCase() ?? inferred.productKey) as ProductKey,
+          category: row.category ?? inferred.category,
+          categoryCode: row.category_code ?? inferred.categoryCode,
+          moq: Number(row.moq ?? inferred.moq),
+          orderMultiple: Number(row.order_multiple ?? inferred.moq),
+          cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
+          caseQty: Number(row.case_qty ?? inferred.caseQty),
+          weightKg: Number(row.weight_kg ?? inferred.weightKg),
+        },
+      });
+    }
+
     const countResult = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
        FROM shipcore.fc_products
@@ -259,19 +305,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: "masterSku is required" }, { status: 400 });
     }
 
-    const moq = Math.max(1, Number(body.moq ?? 1));
-    const caseQty = Math.max(1, Number(body.caseQty ?? 1));
-    const cbmPerUnit = Math.max(0.0001, Number(body.cbmPerUnit ?? 0.0001));
-    const weightKg = Math.max(0, Number(body.weightKg ?? 0));
+    const moq = body.moq == null ? null : Math.max(1, Number(body.moq));
+    const caseQty = body.caseQty == null ? null : Math.max(1, Number(body.caseQty));
+    const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.0001, Number(body.cbmPerUnit));
+    const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
 
     const pool = getPrimaryPool();
     const result = await pool.query(
       `UPDATE shipcore.fc_products
-       SET moq = $2,
-           order_multiple = $2,
-           cbm_per_unit = $3,
-           case_qty = $4,
-           weight_kg = $5,
+       SET moq = COALESCE($2, moq),
+           order_multiple = COALESCE($2, order_multiple),
+           cbm_per_unit = COALESCE($3, cbm_per_unit),
+           case_qty = COALESCE($4, case_qty),
+           weight_kg = COALESCE($5, weight_kg),
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,

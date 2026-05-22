@@ -49,6 +49,7 @@ export function SkuMasterPage() {
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [message, setMessage] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
@@ -98,9 +99,9 @@ export function SkuMasterPage() {
     const averageCbm = rows.length
       ? rows.reduce((sum, sku) => sum + sku.cbmPerUnit, 0) / rows.length
       : 0;
-    const productTypes = new Set(rows.map((sku) => sku.productKey)).size;
+    const productTypes = product === "all" ? Object.keys(productMeta).length : 1;
     return { missingCbm, averageCbm, productTypes };
-  }, [rows]);
+  }, [product, rows]);
 
   function updateRow(
     masterSku: string,
@@ -132,6 +133,75 @@ export function SkuMasterPage() {
       setMessage(error instanceof Error ? error.message : "Failed to sync SKU master");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function downloadCsv() {
+    setDownloading(true);
+    setMessage("");
+    try {
+      const exportLimit = 200;
+      const totalPages = Math.max(1, Math.ceil(pagination.total / exportLimit));
+      const exportRows: SkuMasterRow[] = [];
+
+      for (let exportPage = 1; exportPage <= totalPages; exportPage += 1) {
+        const params = new URLSearchParams();
+        if (query.trim()) params.set("search", query.trim());
+        if (product !== "all") params.set("product", product);
+        params.set("page", String(exportPage));
+        params.set("limit", String(exportLimit));
+
+        const res = await fetch(`/api/planning/sku-master?${params.toString()}`, { cache: "no-store" });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error ?? "Failed to export SKU master");
+        exportRows.push(...json.data);
+      }
+
+      const headers = [
+        "product_type",
+        "master_sku",
+        "product_name",
+        "category",
+        "category_code",
+        "cbm_per_unit",
+        "moq",
+        "order_multiple",
+        "case_qty",
+        "weight_kg",
+      ];
+      const lines = [
+        headers.join(","),
+        ...exportRows.map((sku) =>
+          [
+            productMeta[sku.productKey]?.label ?? sku.productKey,
+            sku.masterSku,
+            sku.productName,
+            sku.category,
+            sku.categoryCode,
+            sku.cbmPerUnit,
+            sku.moq,
+            sku.orderMultiple,
+            sku.caseQty,
+            sku.weightKg,
+          ]
+            .map(formatCsvCell)
+            .join(",")
+        ),
+      ];
+      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `sku-master-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setMessage(`Downloaded ${numberFormatter.format(exportRows.length)} SKUs as CSV`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to download CSV");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -171,9 +241,11 @@ export function SkuMasterPage() {
           </select>
           <button
             type="button"
+            onClick={downloadCsv}
+            disabled={downloading}
             className="h-9 rounded-md border border-[#cccac4] bg-white px-3 text-xs font-medium hover:bg-[#f0eee9]"
           >
-            Download CSV
+            {downloading ? "Downloading..." : "Download CSV"}
           </button>
           <button
             type="button"
@@ -344,6 +416,11 @@ export function SkuMasterPage() {
       ) : null}
     </section>
   );
+}
+
+function formatCsvCell(value: string | number) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function SkuStat({ label, value, sub }: { label: string; value: string; sub: string }) {

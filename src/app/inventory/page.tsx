@@ -75,6 +75,7 @@ export default function InventoryPage() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
 
   const fetchInventory = useCallback(async () => {
     setLoading(true);
@@ -116,10 +117,9 @@ export default function InventoryPage() {
   }, [pagination, sorting, search, warehouseFilter, groupBy]);
 
   useEffect(() => {
-    fetchInventory();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchInventory();
   }, [fetchInventory]);
-
-  const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
 
   const columns = useMemo(
     () => createInventoryColumns({ groupedByProduct: groupBy === "product" }),
@@ -306,8 +306,9 @@ export default function InventoryPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              {summary?.totalRows.toLocaleString() ?? "-"}{" "}
-              {groupBy === "product" ? "grouped product rows" : "warehouse rows"}
+              {groupBy === "product"
+                ? `${summary?.totalRows.toLocaleString() ?? "-"} source warehouse rows`
+                : `${summary?.totalRows.toLocaleString() ?? "-"} warehouse rows`}
             </CardContent>
           </Card>
           <Card>

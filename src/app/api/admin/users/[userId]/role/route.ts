@@ -8,7 +8,7 @@ import {
 import { z } from "zod";
 
 const UpdateUserRoleSchema = z.object({
-  role: z.enum(["user", "admin", "dev"]),
+  role: z.enum(["user", "admin", "dev", "planner"]),
 });
 
 export async function PATCH(

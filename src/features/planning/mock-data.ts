@@ -30,6 +30,7 @@ export interface MockContainer {
   status: ContainerStatus;
   cbmCapacity: number;
   factory: string;
+  origin?: string;
   destination: string;
   items: Array<{ sku: string; qty: number; cbm: number }>;
 }

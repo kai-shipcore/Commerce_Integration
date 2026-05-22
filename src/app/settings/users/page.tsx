@@ -46,11 +46,21 @@ interface ManagedUser {
 
 export default function UserAccessPage() {
   const { data: session, status } = useSession();
-  const isElevatedRole = (role: string) => role === "admin" || role === "dev";
+  const isElevatedRole = (role: string) => role === "admin" || role === "dev" || role === "planner";
   const configurableMenus = useMemo(
     () => navigationItems.filter((item) => item.hideable !== false && !item.adminOnly),
     []
   );
+
+  const menuGroups = useMemo(() => {
+    const groupMap = new Map<string, typeof configurableMenus>();
+    for (const item of configurableMenus) {
+      const g = item.group ?? "Other";
+      if (!groupMap.has(g)) groupMap.set(g, []);
+      groupMap.get(g)!.push(item);
+    }
+    return [...groupMap.entries()].map(([group, items]) => ({ group, items }));
+  }, [configurableMenus]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
@@ -191,7 +201,7 @@ export default function UserAccessPage() {
 
   const updateUserRole = async (
     userId: string,
-    nextRole: "user" | "admin" | "dev"
+    nextRole: "user" | "admin" | "dev" | "planner"
   ) => {
     setSavingUserId(userId);
     setError(null);
@@ -353,7 +363,7 @@ export default function UserAccessPage() {
                       disabled={
                         savingUserId === selectedUser.id || session?.user?.id === selectedUser.id
                       }
-                      onValueChange={(value: "user" | "admin" | "dev") => {
+                      onValueChange={(value: "user" | "admin" | "dev" | "planner") => {
                         void updateUserRole(selectedUser.id, value);
                       }}
                     >
@@ -364,6 +374,7 @@ export default function UserAccessPage() {
                         <SelectItem value="user">user</SelectItem>
                         <SelectItem value="admin">admin</SelectItem>
                         <SelectItem value="dev">dev</SelectItem>
+                        <SelectItem value="planner">planner</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -420,67 +431,135 @@ export default function UserAccessPage() {
                     </Alert>
                   )}
 
-                  <div className="space-y-3">
-                    <div>
-                      <h2 className="text-sm font-medium">Menu Permissions</h2>
-                      <p className="text-sm text-muted-foreground">
-                        Choose which top navigation menus this user can access.
-                      </p>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-sm font-medium">Menu Permissions</h2>
+                        <p className="text-xs text-muted-foreground">
+                          Choose which menus this user can access.
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={savingUserId === selectedUser.id}
+                          onClick={() =>
+                            void updateUserMenus(
+                              selectedUser.id,
+                              configurableMenus.map((item) => item.id)
+                            )
+                          }
+                        >
+                          Select All
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={savingUserId === selectedUser.id}
+                          onClick={() => void updateUserMenus(selectedUser.id, [])}
+                        >
+                          Deselect All
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={savingUserId === selectedUser.id}
+                          onClick={() =>
+                            void updateUserMenus(
+                              selectedUser.id,
+                              getDefaultVisibleMenuIds(selectedUser.role)
+                            )
+                          }
+                        >
+                          Reset Default
+                        </Button>
+                      </div>
                     </div>
 
-                    <div className="grid gap-3">
-                      {configurableMenus.map((item) => {
-                        const checked = selectedUser.menuVisibility.includes(item.id);
-                        const disabled = savingUserId === selectedUser.id;
+                    {menuGroups.map(({ group, items }) => {
+                      const groupIds = items.map((item) => item.id);
+                      const disabled = savingUserId === selectedUser.id;
+                      const allChecked = groupIds.every((id) =>
+                        selectedUser.menuVisibility.includes(id)
+                      );
 
-                        return (
-                          <div
-                            key={`${selectedUser.id}-${item.id}`}
-                            className="flex items-center justify-between rounded-lg border p-4"
-                          >
-                            <div className="space-y-1">
-                              <Label
-                                htmlFor={`${selectedUser.id}-${item.id}`}
-                                className="text-sm font-medium"
+                      return (
+                        <div key={group} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                              {group}
+                            </span>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                disabled={disabled || allChecked}
+                                onClick={() => {
+                                  const next = [...new Set([...selectedUser.menuVisibility, ...groupIds])];
+                                  void updateUserMenus(selectedUser.id, next);
+                                }}
                               >
-                                {item.name}
-                              </Label>
-                              <p className="text-sm text-muted-foreground">{item.href}</p>
+                                All
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                disabled={disabled || groupIds.every((id) => !selectedUser.menuVisibility.includes(id))}
+                                onClick={() => {
+                                  const groupIdSet = new Set(groupIds);
+                                  const next = selectedUser.menuVisibility.filter((id) => !groupIdSet.has(id));
+                                  void updateUserMenus(selectedUser.id, next);
+                                }}
+                              >
+                                None
+                              </Button>
                             </div>
-                            <Checkbox
-                              id={`${selectedUser.id}-${item.id}`}
-                              checked={checked}
-                              disabled={disabled}
-                              onCheckedChange={(value) => {
-                                const nextValue =
-                                  value === true
-                                    ? [...selectedUser.menuVisibility, item.id]
-                                    : selectedUser.menuVisibility.filter(
-                                        (menuId) => menuId !== item.id
-                                      );
-                                void updateUserMenus(selectedUser.id, nextValue);
-                              }}
-                            />
                           </div>
-                        );
-                      })}
-                    </div>
 
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={savingUserId === selectedUser.id}
-                        onClick={() =>
-                          void updateUserMenus(
-                            selectedUser.id,
-                            getDefaultVisibleMenuIds(selectedUser.role)
-                          )
-                        }
-                      >
-                        Reset Default
-                      </Button>
-                    </div>
+                          <div className="grid gap-2">
+                            {items.map((item) => {
+                              const checked = selectedUser.menuVisibility.includes(item.id);
+                              return (
+                                <div
+                                  key={`${selectedUser.id}-${item.id}`}
+                                  className="flex items-center justify-between rounded-lg border px-4 py-3"
+                                >
+                                  <div className="space-y-0.5">
+                                    <Label
+                                      htmlFor={`${selectedUser.id}-${item.id}`}
+                                      className="cursor-pointer text-sm font-medium"
+                                    >
+                                      {item.name}
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">{item.href}</p>
+                                  </div>
+                                  <Checkbox
+                                    id={`${selectedUser.id}-${item.id}`}
+                                    checked={checked}
+                                    disabled={disabled}
+                                    onCheckedChange={(value) => {
+                                      const next =
+                                        value === true
+                                          ? [...selectedUser.menuVisibility, item.id]
+                                          : selectedUser.menuVisibility.filter((id) => id !== item.id);
+                                      void updateUserMenus(selectedUser.id, next);
+                                    }}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}

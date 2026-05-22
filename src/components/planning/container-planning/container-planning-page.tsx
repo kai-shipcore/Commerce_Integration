@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   containerStatusLabels,
-  mockPurchaseOrders,
   mockSkus,
   type ContainerStatus,
   type MockContainer,
   type ProductKey,
 } from "@/features/planning/mock-data";
+import { isAdminLikeRole } from "@/components/layout/navigation-config";
 
 type ContainerItem = MockContainer["items"][number];
 
@@ -89,6 +91,17 @@ type WarehouseOption = {
   isActive: boolean;
 };
 
+type PurchaseOrderOption = {
+  id: string;
+  number: string;
+  eta: string | null;
+  factory: string | null;
+  destination: string | null;
+  status: string;
+  itemCount: number;
+  items: ContainerItem[];
+};
+
 const productBadgeClasses: Record<ProductKey, string> = {
   sc: "bg-[#e6f5f0] text-[#0a5e45]",
   cc: "bg-[#ebf0fd] text-[#1a4db0]",
@@ -116,13 +129,13 @@ function formatNumber(value: number) {
 
 function normalizeContainerStatus(status: string): ContainerStatus {
   const normalized = status.toLowerCase().replace(/_/g, "-");
-  if (normalized === "final-list-sent" || normalized === "final" || normalized === "sent") {
+  if (normalized === "final-list-sent" || normalized === "final" || normalized === "sent" || normalized === "shipped") {
     return "final-list-sent";
   }
   if (
     normalized === "packing-list-received" ||
     normalized === "packing-list" ||
-    normalized === "shipped" ||
+    normalized === "packing-received" ||
     normalized === "received"
   ) {
     return "packing-list-received";
@@ -139,6 +152,7 @@ function mapApiContainer(container: ApiContainer): MockContainer {
     status: normalizeContainerStatus(container.status),
     cbmCapacity: container.cbmCapacity || 67.5,
     factory: container.factoryName ?? "",
+    origin: container.origin ?? "",
     destination: container.destWarehouse ?? "",
     items: (container.items ?? []).map((item) => ({
       sku: item.sku,
@@ -153,14 +167,56 @@ function parseNumberCell(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function todayLabel() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function safeFilePart(value: string) {
+  return value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "_") || "container";
+}
+
+function itemsFromPurchaseOrders(orders: PurchaseOrderOption[]): ContainerItem[] {
+  const itemsBySku = new Map<string, ContainerItem>();
+
+  for (const order of orders) {
+    for (const item of order.items) {
+      const sku = item.sku.trim().toUpperCase();
+      if (!sku || item.qty <= 0) continue;
+
+      const existing = itemsBySku.get(sku);
+      if (existing) {
+        itemsBySku.set(sku, {
+          sku,
+          qty: existing.qty + item.qty,
+          cbm: item.cbm > 0 ? item.cbm : existing.cbm,
+        });
+      } else {
+        itemsBySku.set(sku, { sku, qty: item.qty, cbm: item.cbm });
+      }
+    }
+  }
+
+  return [...itemsBySku.values()];
+}
+
 export function ContainerPlanningPage() {
+  const { data: session } = useSession();
+  const isAdmin = isAdminLikeRole(session?.user?.role);
+  const searchParams = useSearchParams();
+  const targetContainerId = searchParams.get("containerId");
+
   const [containers, setContainers] = useState<MockContainer[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(targetContainerId);
   const [loadingContainers, setLoadingContainers] = useState(true);
   const [containersError, setContainersError] = useState<string | null>(null);
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [loadingWarehouses, setLoadingWarehouses] = useState(true);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderOption[]>([]);
+  const [loadingPurchaseOrders, setLoadingPurchaseOrders] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
+  const [savingContainer, setSavingContainer] = useState(false);
+  const [statusModalContainerId, setStatusModalContainerId] = useState<string | null>(null);
   const [form, setForm] = useState<ContainerFormState>(defaultFormState);
   const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
   const [draftItems, setDraftItems] = useState<ContainerItem[]>([]);
@@ -170,6 +226,7 @@ export function ContainerPlanningPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [nextContainerSeq, setNextContainerSeq] = useState(1);
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ContainerStatus | null>(null);
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
 
@@ -185,10 +242,10 @@ export function ContainerPlanningPage() {
   const activeContainers = containers.filter((container) => container.status !== "packing-list-received").length;
   const filteredContainers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return containers;
-
-    return containers.filter((container) =>
-      [
+    return containers.filter((container) => {
+      if (statusFilter && container.status !== statusFilter) return false;
+      if (!normalizedQuery) return true;
+      return [
         container.number,
         container.destination,
         container.factory,
@@ -197,13 +254,13 @@ export function ContainerPlanningPage() {
       ]
         .join(" ")
         .toLowerCase()
-        .includes(normalizedQuery)
-    );
-  }, [containers, query]);
+        .includes(normalizedQuery);
+    });
+  }, [containers, query, statusFilter]);
   const selectedContainer = containers.find((container) => container.id === expandedId) ?? null;
   const selectedPurchaseOrders = useMemo(
-    () => mockPurchaseOrders.filter((po) => selectedPoIds.includes(po.id)),
-    [selectedPoIds]
+    () => purchaseOrders.filter((po) => selectedPoIds.includes(po.id)),
+    [purchaseOrders, selectedPoIds]
   );
   const warehouseNameByCode = useMemo(
     () => new Map(warehouses.map((warehouse) => [warehouse.warehouseCode, warehouse.warehouseName])),
@@ -230,6 +287,7 @@ export function ContainerPlanningPage() {
       setContainers(nextContainers);
       setExpandedId((current) => {
         if (current && nextContainers.some((container) => container.id === current)) return current;
+        if (targetContainerId && nextContainers.some((container) => container.id === targetContainerId)) return targetContainerId;
         return nextContainers[0]?.id ?? null;
       });
       setNextContainerSeq(nextContainers.length + 1);
@@ -260,10 +318,42 @@ export function ContainerPlanningPage() {
     }
   }
 
+  async function fetchPurchaseOrders() {
+    setLoadingPurchaseOrders(true);
+    try {
+      const response = await fetch("/api/purchase-orders", { cache: "no-store" });
+      const json = await response.json();
+
+      if (json.success) {
+        setPurchaseOrders((json.data as PurchaseOrderOption[]).map((po) => ({
+          id: po.id,
+          number: po.number,
+          eta: po.eta,
+          factory: po.factory,
+          destination: po.destination,
+          status: po.status,
+          itemCount: po.itemCount,
+          items: (po.items ?? []).map((item) => ({
+            sku: item.sku,
+            qty: Number(item.qty ?? 0),
+            cbm: Number(item.cbm ?? 0),
+          })),
+        })));
+      } else {
+        setPurchaseOrders([]);
+      }
+    } catch {
+      setPurchaseOrders([]);
+    } finally {
+      setLoadingPurchaseOrders(false);
+    }
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchContainers();
     void fetchWarehouses();
+    void fetchPurchaseOrders();
   }, []);
 
   useEffect(() => {
@@ -273,6 +363,7 @@ export function ContainerPlanningPage() {
   }, [form.destination, isFormOpen, warehouses]);
 
   function openForm() {
+    setEditingContainerId(null);
     setForm({
       ...defaultFormState,
       destination: warehouses[0]?.warehouseCode ?? "",
@@ -288,7 +379,33 @@ export function ContainerPlanningPage() {
 
   function closeForm() {
     setIsFormOpen(false);
+    setEditingContainerId(null);
     setFormError(null);
+  }
+
+  function openEditForm(container: MockContainer) {
+    setExpandedId(container.id);
+    setEditingContainerId(container.id);
+    setForm({
+      number: container.number,
+      poNumbers: container.poNumbers.join(", "),
+      eta: container.eta,
+      status: container.status,
+      cbmCapacity: String(container.cbmCapacity || 67.5),
+      factory: container.factory,
+      origin: container.origin ?? "",
+      destination: container.destination,
+    });
+    const linkedPoIds = purchaseOrders
+      .filter((po) => container.poNumbers.includes(po.number))
+      .map((po) => po.id);
+    setSelectedPoIds(linkedPoIds);
+    setDraftItems(container.items.map((item) => ({ ...item })));
+    setSkuInput("");
+    setQtyInput("");
+    setCbmInput("");
+    setFormError(null);
+    setIsFormOpen(true);
   }
 
   function updateForm<K extends keyof ContainerFormState>(key: K, value: ContainerFormState[K]) {
@@ -300,11 +417,12 @@ export function ContainerPlanningPage() {
       const next = current.includes(poId)
         ? current.filter((id) => id !== poId)
         : [...current, poId];
-      const poNumbers = mockPurchaseOrders
-        .filter((po) => next.includes(po.id))
+      const selectedOrders = purchaseOrders.filter((po) => next.includes(po.id));
+      const poNumbers = selectedOrders
         .map((po) => po.number)
         .join(", ");
       setForm((formState) => ({ ...formState, poNumbers }));
+      setDraftItems(itemsFromPurchaseOrders(selectedOrders));
       return next;
     });
   }
@@ -385,11 +503,16 @@ export function ContainerPlanningPage() {
   }
 
   async function addSkuToDraft() {
+    if (editingContainerId && form.status !== "draft") {
+      setFormError("SKU add/delete is available only while the container is Draft.");
+      return;
+    }
+
     const sku = skuInput.trim().toUpperCase();
     const qty = Number.parseInt(qtyInput, 10);
 
     if (!sku) {
-      setFormError("Master SKU를 입력하세요.");
+      setFormError("Please enter a Master SKU.");
       return;
     }
 
@@ -402,12 +525,12 @@ export function ContainerPlanningPage() {
     const cbm = cbmInput ? Number.parseFloat(cbmInput) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
-      setFormError("수량은 1개 이상이어야 합니다.");
+      setFormError("Quantity must be at least 1.");
       return;
     }
 
     if (!Number.isFinite(cbm) || cbm <= 0) {
-      setFormError("CBM은 0보다 큰 값이어야 합니다.");
+      setFormError("CBM must be greater than 0.");
       return;
     }
 
@@ -433,6 +556,7 @@ export function ContainerPlanningPage() {
   }
 
   function removeDraftItem(sku: string) {
+    if (editingContainerId && form.status !== "draft") return;
     setDraftItems((items) => items.filter((item) => item.sku !== sku));
   }
 
@@ -441,17 +565,17 @@ export function ContainerPlanningPage() {
     const eta = form.eta.trim();
 
     if (!number) {
-      setFormError("컨테이너 번호를 입력하세요.");
+      setFormError("Please enter a container number.");
       return;
     }
 
     if (!eta) {
-      setFormError("ETA를 선택하세요.");
+      setFormError("Please select an ETA.");
       return;
     }
 
-    if (draftItems.length === 0) {
-      setFormError("SKU를 하나 이상 추가하세요.");
+    if (!editingContainerId && draftItems.length === 0) {
+      setFormError("Please add at least one SKU.");
       return;
     }
 
@@ -469,9 +593,44 @@ export function ContainerPlanningPage() {
       status: form.status,
       cbmCapacity,
       factory: form.factory.trim() || "Unassigned Factory",
+      origin: form.origin.trim(),
       destination: form.destination,
       items: draftItems,
     };
+
+    if (editingContainerId) {
+      setSavingContainer(true);
+      try {
+        const response = await fetch(`/api/containers?id=${encodeURIComponent(editingContainerId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            number: newContainer.number,
+            poNumbers: newContainer.poNumbers,
+            eta: newContainer.eta,
+            status: newContainer.status,
+            cbmCapacity: newContainer.cbmCapacity,
+            factory: newContainer.factory,
+            origin: newContainer.origin ?? "",
+            destination: newContainer.destination,
+            items: newContainer.items,
+          }),
+        });
+        const json = await response.json();
+
+        if (!response.ok || !json.success) {
+          setFormError(json.error ?? "Failed to save container.");
+          return;
+        }
+
+        await fetchContainers();
+        setExpandedId(editingContainerId);
+        closeForm();
+      } finally {
+        setSavingContainer(false);
+      }
+      return;
+    }
 
     setContainers((current) => [newContainer, ...current]);
     setNextContainerSeq((current) => current + 1);
@@ -480,7 +639,10 @@ export function ContainerPlanningPage() {
   }
 
   function deleteContainerItem(containerId: string, sku: string) {
-    if (!window.confirm(`${sku}를 삭제하시겠습니까?`)) return;
+    const container = containers.find((item) => item.id === containerId);
+    if (container?.status !== "draft") return;
+
+    if (!window.confirm(`Delete ${sku}?`)) return;
 
     setContainers((current) =>
       current.map((item) =>
@@ -491,11 +653,26 @@ export function ContainerPlanningPage() {
     );
   }
 
+  function changeContainerStatus(containerId: string, newStatus: ContainerStatus) {
+    setContainers((current) =>
+      current.map((c) => c.id === containerId ? { ...c, status: newStatus } : c)
+    );
+    setStatusModalContainerId(null);
+  }
+
+  function deleteContainer(containerId: string) {
+    setContainers((current) => current.filter((c) => c.id !== containerId));
+    if (expandedId === containerId) setExpandedId(null);
+  }
+
   function editDraftKey(containerId: string, sku: string) {
     return `${containerId}::${sku}`;
   }
 
   function startInlineEdit(containerId: string, item: ContainerItem) {
+    const container = containers.find((entry) => entry.id === containerId);
+    if (container?.status === "packing-list-received") return;
+
     setInlineEditDrafts((current) => ({
       ...current,
       [editDraftKey(containerId, item.sku)]: {
@@ -528,50 +705,60 @@ export function ContainerPlanningPage() {
     const draft = inlineEditDrafts[key];
     if (!draft) return;
 
-    const nextSku = draft.sku.trim().toUpperCase();
+    const container = containers.find((item) => item.id === containerId);
+    const originalItem = container?.items.find((item) => item.sku === originalSku);
+    const isQuantityOnly = container?.status === "final-list-sent";
+    const isLocked = container?.status === "packing-list-received";
+    if (isLocked) return;
+
+    const nextSku = isQuantityOnly ? originalSku : draft.sku.trim().toUpperCase();
     const qty = Number.parseInt(draft.qty, 10);
 
     if (!nextSku) {
-      window.alert("Master SKU를 입력하세요.");
+      window.alert("Please enter a Master SKU.");
       return;
     }
 
-    const found = await lookupSkuMaster(nextSku);
+    const found = isQuantityOnly && originalItem
+      ? { masterSku: originalItem.sku, cbmPerUnit: originalItem.cbm }
+      : await lookupSkuMaster(nextSku);
     if (!found) {
       window.alert(`SKU not found in SKU Master: ${nextSku}`);
       return;
     }
 
-    const cbm = draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
+    const cbm = isQuantityOnly && originalItem
+      ? originalItem.cbm
+      : draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
-      window.alert("수량은 1개 이상이어야 합니다.");
+      window.alert("Quantity must be at least 1.");
       return;
     }
 
     if (!Number.isFinite(cbm) || cbm <= 0) {
-      window.alert("CBM은 0보다 큰 값이어야 합니다.");
+      window.alert("CBM must be greater than 0.");
       return;
     }
 
-    const cbmUpdateError = await updateSkuMasterCbm(found.masterSku, cbm);
-    if (cbmUpdateError) {
-      window.alert(cbmUpdateError);
-      return;
+    if (!isQuantityOnly) {
+      const cbmUpdateError = await updateSkuMasterCbm(found.masterSku, cbm);
+      if (cbmUpdateError) {
+        window.alert(cbmUpdateError);
+        return;
+      }
     }
 
-    setContainers((current) =>
-      current.map((container) =>
-        container.id === containerId
-          ? {
-              ...container,
-              items: container.items.map((item) =>
-                item.sku === originalSku ? { sku: found.masterSku, qty, cbm } : item
-              ),
-            }
-          : container
-      )
-    );
+    const updatedContainer = container
+      ? {
+          ...container,
+          items: container.items.map((item) =>
+            item.sku === originalSku ? { sku: found.masterSku, qty, cbm } : item
+          ),
+        }
+      : null;
+
+    if (updatedContainer && !(await persistContainer(updatedContainer))) return;
     cancelInlineEdit(containerId, originalSku);
   }
 
@@ -599,7 +786,60 @@ export function ContainerPlanningPage() {
     );
   }
 
+  function getMergedContainer(container: MockContainer, itemsToMerge: ContainerItem[]): MockContainer {
+    const mergedItems = [...container.items];
+    for (const nextItem of itemsToMerge) {
+      const existingIndex = mergedItems.findIndex((item) => item.sku === nextItem.sku);
+      if (existingIndex >= 0) {
+        mergedItems[existingIndex] = {
+          ...mergedItems[existingIndex],
+          qty: mergedItems[existingIndex].qty + nextItem.qty,
+          cbm: nextItem.cbm,
+        };
+      } else {
+        mergedItems.push(nextItem);
+      }
+    }
+    return { ...container, items: mergedItems };
+  }
+
+  async function persistContainer(container: MockContainer): Promise<boolean> {
+    if (!/^\d+$/.test(container.id)) {
+      setContainers((current) => current.map((item) => (item.id === container.id ? container : item)));
+      return true;
+    }
+
+    const response = await fetch(`/api/containers?id=${encodeURIComponent(container.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        number: container.number,
+        poNumbers: container.poNumbers,
+        eta: container.eta,
+        status: container.status,
+        cbmCapacity: container.cbmCapacity,
+        factory: container.factory,
+        origin: container.origin ?? "",
+        destination: container.destination,
+        items: container.items,
+      }),
+    });
+    const json = await response.json();
+
+    if (!response.ok || !json.success) {
+      window.alert(json.error ?? "Failed to save container.");
+      return false;
+    }
+
+    await fetchContainers();
+    setExpandedId(container.id);
+    return true;
+  }
+
   function startInlineSkuAdd(containerId: string) {
+    const container = containers.find((item) => item.id === containerId);
+    if (container?.status !== "draft") return;
+
     setInlineSkuDrafts((current) => ({
       ...current,
       [containerId]: current[containerId] ?? { sku: "", qty: "", cbm: "" },
@@ -687,7 +927,7 @@ export function ContainerPlanningPage() {
     const qty = Number.parseInt(draft.qty, 10);
 
     if (!sku) {
-      window.alert("Master SKU를 입력하세요.");
+      window.alert("Please enter a Master SKU.");
       return;
     }
 
@@ -700,12 +940,12 @@ export function ContainerPlanningPage() {
     const cbm = draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
-      window.alert("수량은 1개 이상이어야 합니다.");
+      window.alert("Quantity must be at least 1.");
       return;
     }
 
     if (!Number.isFinite(cbm) || cbm <= 0) {
-      window.alert("CBM은 0보다 큰 값이어야 합니다.");
+      window.alert("CBM must be greater than 0.");
       return;
     }
 
@@ -715,11 +955,19 @@ export function ContainerPlanningPage() {
       return;
     }
 
-    mergeContainerItems(containerId, [{ sku: found.masterSku, qty, cbm }]);
+    const container = containers.find((item) => item.id === containerId);
+    if (!container) return;
+
+    const updatedContainer = getMergedContainer(container, [{ sku: found.masterSku, qty, cbm }]);
+    if (!(await persistContainer(updatedContainer))) return;
+
     cancelInlineSkuAdd(containerId);
   }
 
   async function importContainerItems(containerId: string, file: File) {
+    const container = containers.find((item) => item.id === containerId);
+    if (container?.status !== "draft") return;
+
     const extension = file.name.split(".").pop()?.toLowerCase();
     let rows: unknown[][] = [];
 
@@ -765,12 +1013,48 @@ export function ContainerPlanningPage() {
     }
 
     if (validImportedItems.length === 0) {
-      window.alert("가져올 SKU가 없습니다. 첫 행은 헤더, 컬럼은 SKU / Qty / CBM 순서로 넣어주세요.");
+      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM order.");
       return;
     }
 
-    mergeContainerItems(containerId, validImportedItems);
-    window.alert(`${validImportedItems.length}개 SKU를 가져왔습니다.`);
+    const updatedContainer = getMergedContainer(container, validImportedItems);
+    if (!(await persistContainer(updatedContainer))) return;
+    window.alert(`Imported ${validImportedItems.length} SKU(s).`);
+  }
+
+  async function exportContainerItems(containerId: string) {
+    const container = containers.find((item) => item.id === containerId);
+    if (!container) return;
+
+    const destinationLabel = warehouseNameByCode.get(container.destination) ?? container.destination;
+    const totalQty = container.items.reduce((sum, item) => sum + item.qty, 0);
+    const totalCbm = container.items.reduce((sum, item) => sum + item.qty * item.cbm, 0);
+    const rows: Array<Array<string | number | null>> = [
+      ["Container", container.number],
+      ["PO", container.poNumbers.join(", ") || null],
+      ["ETA", container.eta || null],
+      ["Factory", container.factory || null],
+      ["Destination", destinationLabel || null],
+      ["Status", containerStatusLabels[container.status]],
+      [],
+      ["Master SKU", "Qty", "CBM / Unit", "Total CBM"],
+      ...container.items.map((item) => [
+        item.sku,
+        item.qty,
+        item.cbm,
+        Number((item.qty * item.cbm).toFixed(4)),
+      ]),
+      [],
+      ["Total", totalQty, null, Number(totalCbm.toFixed(4))],
+    ];
+
+    const XLSX = await import("xlsx");
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Packing List");
+    XLSX.writeFile(workbook, `container-${safeFilePart(container.number)}-${todayLabel()}.xlsx`);
   }
 
   return (
@@ -811,14 +1095,31 @@ export function ContainerPlanningPage() {
           <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
             <span className="text-sm font-semibold text-muted-foreground">
               {filteredContainers.length} containers
+              {statusFilter ? (
+                <span className="ml-1 text-[11px] font-normal text-[#1a5cdb]">
+                  (filtered)
+                </span>
+              ) : null}
             </span>
             <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
-              {statusOptions.map((status) => (
-                <span key={status.value} className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColors[status.value] }} />
-                  {status.shortLabel}
-                </span>
-              ))}
+              {statusOptions.map((status) => {
+                const isActive = statusFilter === status.value;
+                return (
+                  <button
+                    key={status.value}
+                    type="button"
+                    onClick={() => setStatusFilter(isActive ? null : status.value)}
+                    className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors ${
+                      isActive
+                        ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4]"
+                        : "hover:text-foreground"
+                    }`}
+                  >
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColors[status.value] }} />
+                    {status.shortLabel}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -892,7 +1193,11 @@ export function ContainerPlanningPage() {
               <ContainerCreateForm
                 form={form}
                 formError={formError}
+                isEditing={Boolean(editingContainerId)}
+                saving={savingContainer}
                 selectedPoIds={selectedPoIds}
+                purchaseOrders={purchaseOrders}
+                loadingPurchaseOrders={loadingPurchaseOrders}
                 selectedPurchaseOrders={selectedPurchaseOrders}
                 draftItems={draftItems}
                 skuInput={skuInput}
@@ -943,6 +1248,11 @@ export function ContainerPlanningPage() {
                 onUpdateInlineSkuCbm={updateInlineSkuCbm}
                 onCancelInlineSkuDraft={cancelInlineSkuAdd}
                 onImportItems={importContainerItems}
+                onExportItems={exportContainerItems}
+                onEditContainer={openEditForm}
+                isAdmin={isAdmin}
+                onChangeStatus={(id) => setStatusModalContainerId(id)}
+                onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
                 detailMode
               />
@@ -963,6 +1273,13 @@ export function ContainerPlanningPage() {
           )}
         </main>
       </div>
+      {statusModalContainerId ? (
+        <StatusChangeModal
+          currentStatus={containers.find((c) => c.id === statusModalContainerId)?.status ?? "draft"}
+          onConfirm={(newStatus) => changeContainerStatus(statusModalContainerId, newStatus)}
+          onClose={() => setStatusModalContainerId(null)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -981,7 +1298,11 @@ function ContainerStat({ label, value, sub }: { label: string; value: string | n
 function ContainerCreateForm({
   form,
   formError,
+  isEditing,
+  saving,
   selectedPoIds,
+  purchaseOrders,
+  loadingPurchaseOrders,
   selectedPurchaseOrders,
   draftItems,
   skuInput,
@@ -1006,8 +1327,12 @@ function ContainerCreateForm({
 }: {
   form: ContainerFormState;
   formError: string | null;
+  isEditing: boolean;
+  saving: boolean;
   selectedPoIds: string[];
-  selectedPurchaseOrders: typeof mockPurchaseOrders;
+  purchaseOrders: PurchaseOrderOption[];
+  loadingPurchaseOrders: boolean;
+  selectedPurchaseOrders: PurchaseOrderOption[];
   draftItems: ContainerItem[];
   skuInput: string;
   qtyInput: string;
@@ -1029,11 +1354,13 @@ function ContainerCreateForm({
   onCbmInputBlur: () => void | Promise<void>;
   onAddSkuToDraft: () => void | Promise<void>;
 }) {
+  const canChangeSkuStructure = !isEditing || form.status === "draft";
+
   return (
     <div className="relative rounded-xl border-2 border-dashed border-[#cccac4] bg-white p-5">
       <div className="mb-5 flex items-start justify-between gap-4 border-b border-[#e2dfd8] pb-4 pr-10">
         <div>
-          <div className="text-base font-semibold">New Container Registration</div>
+          <div className="text-base font-semibold">{isEditing ? "Edit Container" : "New Container Registration"}</div>
           <div className="mt-1 text-xs text-muted-foreground">
             Enter the packing-list quantity directly. It may differ from PO quantity.
           </div>
@@ -1052,8 +1379,11 @@ function ContainerCreateForm({
         <div className="mb-2 text-sm font-semibold text-muted-foreground">
           Related Purchase Orders (multiple selection available)
         </div>
+        {loadingPurchaseOrders ? (
+          <div className="mb-2 text-xs text-muted-foreground">Loading purchase orders from database...</div>
+        ) : null}
         <div className="flex min-h-8 flex-wrap gap-2">
-          {mockPurchaseOrders.map((po) => (
+          {purchaseOrders.map((po) => (
             <button
               key={po.id}
               type="button"
@@ -1072,7 +1402,7 @@ function ContainerCreateForm({
           <div className="mt-3 rounded-md bg-white p-3 text-xs text-muted-foreground">
             {selectedPurchaseOrders.map((po) => (
               <div key={po.id}>
-                {po.number}: ETA {po.eta}, {po.destination}, {po.items.length} SKU
+                {po.number}: ETA {po.eta ?? "-"}, {po.destination ?? "-"}, {po.itemCount} SKU
               </div>
             ))}
           </div>
@@ -1177,8 +1507,13 @@ function ContainerCreateForm({
         <button type="button" onClick={onClose} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">
           Cancel
         </button>
-        <button type="button" onClick={() => void onSave()} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]">
-          Save
+        <button
+          type="button"
+          onClick={() => void onSave()}
+          disabled={saving}
+          className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save"}
         </button>
       </div>
     </div>
@@ -1214,6 +1549,11 @@ function ContainerCard({
   onUpdateInlineSkuCbm,
   onCancelInlineSkuDraft,
   onImportItems,
+  onExportItems,
+  onEditContainer,
+  isAdmin = false,
+  onChangeStatus,
+  onDeleteContainer,
   warehouseNameByCode,
   detailMode = false,
 }: {
@@ -1236,6 +1576,11 @@ function ContainerCard({
   onUpdateInlineSkuCbm: (containerId: string) => void | Promise<void>;
   onCancelInlineSkuDraft: (containerId: string) => void;
   onImportItems: (containerId: string, file: File) => void | Promise<void>;
+  onExportItems: (containerId: string) => void | Promise<void>;
+  onEditContainer: (container: MockContainer) => void;
+  isAdmin?: boolean;
+  onChangeStatus: (containerId: string) => void;
+  onDeleteContainer: (containerId: string) => void;
   warehouseNameByCode?: Map<string, string>;
   detailMode?: boolean;
 }) {
@@ -1245,6 +1590,10 @@ function ContainerCard({
     ? Math.min((usedCbm / container.cbmCapacity) * 100, 100)
     : 0;
   const cbmColor = cbmUsage > 95 ? "#c42b2b" : cbmUsage > 80 ? "#ef9f27" : "#1a5cdb";
+  const isStructureLocked = container.status === "final-list-sent";
+  const isFullyLocked = container.status === "packing-list-received";
+  const canEditQuantity = !isFullyLocked;
+  const canChangeStructure = !isStructureLocked && !isFullyLocked;
   const getEditDraft = (sku: string) => inlineEditDrafts[`${container.id}::${sku}`];
   const destinationLabel = warehouseNameByCode?.get(container.destination) ?? container.destination;
 
@@ -1306,11 +1655,21 @@ function ContainerCard({
 
       {expanded ? (
         <div className="border-t">
-          <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+          {isStructureLocked ? (
+            <div className="flex items-center gap-2 border-b border-[#fde68a] bg-[#fffbeb] px-5 py-2 text-xs text-[#92400e]">
+              <span>Final List Sent: SKU add/delete is locked. Qty can still be edited before packing list receipt.</span>
+            </div>
+          ) : null}
+          {isFullyLocked ? (
+            <div className="flex items-center gap-2 border-b border-[#bfdbfe] bg-[#eff6ff] px-5 py-2 text-xs text-[#1d4ed8]">
+              <span>Packing List Received: all SKU edits are locked because physical quantities are confirmed.</span>
+            </div>
+          ) : null}
+          <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.8fr_0.8fr]"}`}>
             <div>Master SKU</div>
             <div>Qty</div>
             <div>CBM</div>
-            <div className="text-right">Actions</div>
+            {canEditQuantity ? <div className="text-right">Actions</div> : null}
           </div>
 
           <div>
@@ -1320,6 +1679,8 @@ function ContainerCard({
                 containerId={container.id}
                 item={item}
                 editDraft={getEditDraft(item.sku)}
+                readonly={!canEditQuantity}
+                quantityOnly={isStructureLocked}
                 onStartEdit={onStartEditItem}
                 onUpdateDraft={onUpdateInlineEditDraft}
                 onSaveDraft={onSaveInlineEditDraft}
@@ -1329,7 +1690,7 @@ function ContainerCard({
                 onDelete={onDeleteItem}
               />
             ))}
-            {inlineSkuDraft ? (
+            {inlineSkuDraft && canChangeStructure ? (
               <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
                 <div className="pr-3">
                   <input
@@ -1379,14 +1740,14 @@ function ContainerCard({
                     onClick={() => void onSaveInlineSkuDraft(container.id)}
                     className="rounded-md border border-[#1a5cdb] px-2.5 py-1 text-xs font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
                   >
-                    저장
+                    Save
                   </button>
                   <button
                     type="button"
                     onClick={() => onCancelInlineSkuDraft(container.id)}
                     className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:bg-[#f0eee9]"
                   >
-                    취소
+                    Cancel
                   </button>
                 </div>
               </div>
@@ -1396,25 +1757,65 @@ function ContainerCard({
           <div className="flex items-center gap-3 border-t px-5 py-3">
             <button
               type="button"
-              onClick={() => onStartAddItem(container.id)}
-              disabled={Boolean(inlineSkuDraft)}
-              className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => onEditContainer(container)}
+              className="rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff]"
             >
-              + SKU 추가
+              Edit
             </button>
-            <label className="cursor-pointer rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]">
-              CSV/엑셀
-              <input
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (file) void onImportItems(container.id, file);
-                }}
-              />
-            </label>
+            {canChangeStructure ? (
+              <button
+                type="button"
+                onClick={() => onStartAddItem(container.id)}
+                disabled={Boolean(inlineSkuDraft)}
+                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + Add SKU
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void onExportItems(container.id)}
+              className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
+            >
+              CSV/Excel
+            </button>
+            {canChangeStructure ? (
+              <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
+                <span>Import</span>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void onImportItems(container.id, file);
+                  }}
+                />
+              </label>
+            ) : null}
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onChangeStatus(container.id)}
+                className="rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+              >
+                Change Status
+              </button>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Delete container '${container.number}'?`)) {
+                      onDeleteContainer(container.id);
+                    }
+                  }}
+                  className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
+                >
+                  Delete
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 border-t bg-[#f0eee9] px-5 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
@@ -1463,6 +1864,8 @@ function SkuRow({
   containerId,
   item,
   editDraft,
+  readonly = false,
+  quantityOnly = false,
   onStartEdit,
   onUpdateDraft,
   onSaveDraft,
@@ -1474,6 +1877,8 @@ function SkuRow({
   containerId: string;
   item: ContainerItem;
   editDraft?: InlineEditDraft;
+  readonly?: boolean;
+  quantityOnly?: boolean;
   onStartEdit: (containerId: string, item: ContainerItem) => void;
   onUpdateDraft: (containerId: string, sku: string, patch: Partial<InlineEditDraft>) => void;
   onSaveDraft: (containerId: string, sku: string) => void | Promise<void>;
@@ -1491,6 +1896,7 @@ function SkuRow({
             value={editDraft.sku}
             onChange={(event) => onUpdateDraft(containerId, item.sku, { sku: event.target.value })}
             onBlur={() => void onFillCbm(containerId, item.sku)}
+            disabled={quantityOnly}
             placeholder="Master SKU"
           />
           <div className="mt-1 flex items-center gap-2">
@@ -1515,6 +1921,7 @@ function SkuRow({
             value={editDraft.cbm}
             onChange={(event) => onUpdateDraft(containerId, item.sku, { cbm: event.target.value })}
             onBlur={() => void onUpdateCbm(containerId, item.sku)}
+            disabled={quantityOnly}
             placeholder="CBM"
           />
         </div>
@@ -1524,14 +1931,14 @@ function SkuRow({
             onClick={() => void onSaveDraft(containerId, item.sku)}
             className="rounded-md border border-[#1a5cdb] px-2.5 py-1 text-xs font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
           >
-            저장
+            Save
           </button>
           <button
             type="button"
             onClick={() => onCancelDraft(containerId, item.sku)}
             className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:bg-[#f0eee9]"
           >
-            취소
+            Cancel
           </button>
         </div>
       </div>
@@ -1539,29 +1946,33 @@ function SkuRow({
   }
 
   return (
-    <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4]">
+    <div className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${readonly ? "grid-cols-[2.2fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.8fr_0.8fr_110px]"}`}>
       <div className="flex min-w-0 items-center gap-2">
         <ProductBadge product={inferProductKey(item.sku)} />
         <span className="truncate font-mono text-xs font-medium">{item.sku}</span>
       </div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
       <div className="text-xs text-muted-foreground">{(item.qty * item.cbm).toFixed(3)} m3</div>
-      <div className="flex justify-end gap-1">
-        <button
-          type="button"
-          onClick={() => onStartEdit(containerId, item)}
-          className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#1a5cdb] hover:text-[#1a5cdb]"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(containerId, item.sku)}
-          className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#c42b2b] hover:text-[#c42b2b]"
-        >
-          Delete
-        </button>
-      </div>
+      {readonly ? null : (
+        <div className="flex justify-end gap-1">
+          <button
+            type="button"
+            onClick={() => onStartEdit(containerId, item)}
+            className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#1a5cdb] hover:text-[#1a5cdb]"
+          >
+            {quantityOnly ? "Qty" : "Edit"}
+          </button>
+          {quantityOnly ? null : (
+            <button
+              type="button"
+              onClick={() => onDelete(containerId, item.sku)}
+              className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#c42b2b] hover:text-[#c42b2b]"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1571,6 +1982,83 @@ function ContainerMeta({ label, children }: { label: string; children: ReactNode
     <div className="min-w-0 text-xs">
       <div className="text-[10px] uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
       <div className="truncate font-medium text-foreground">{children}</div>
+    </div>
+  );
+}
+
+const statusWorkflowLabels: Record<ContainerStatus, string> = {
+  draft: "Container Draft (Pre-plan)",
+  "final-list-sent": "Final List Sent (Factory)",
+  "packing-list-received": "Packing List Received / Shipped",
+};
+
+function StatusChangeModal({
+  currentStatus,
+  onConfirm,
+  onClose,
+}: {
+  currentStatus: ContainerStatus;
+  onConfirm: (newStatus: ContainerStatus) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<ContainerStatus>(currentStatus);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl border border-[#e2dfd8] bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-4 text-base font-semibold">Change Status</h2>
+        <div className="space-y-3">
+          {statusOptions.map((option) => (
+            <label
+              key={option.value}
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 transition-colors ${
+                selected === option.value
+                  ? "border-[#1a5cdb] bg-[#ebf0fd]"
+                  : "border-[#e2dfd8] hover:bg-[#f8f7f4]"
+              }`}
+            >
+              <input
+                type="radio"
+                name="containerStatus"
+                value={option.value}
+                checked={selected === option.value}
+                onChange={() => setSelected(option.value)}
+                className="sr-only"
+              />
+              <span
+                className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-black/10"
+                style={{
+                  backgroundColor: statusColors[option.value],
+                  boxShadow: `0 0 0 3px ${statusColors[option.value]}30`,
+                }}
+              />
+              <span className="text-sm font-medium">{statusWorkflowLabels[option.value]}</span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-[#cccac4] px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(selected)}
+            className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
