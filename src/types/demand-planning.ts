@@ -22,6 +22,7 @@ export interface ContainerMeta {
 }
 
 export interface ContainerRowData {
+  inbound_qty?: number | null;  // fc_container_items.qty — raw units in this container
   open_orders: number | null;
   avail_qty: number | null;
   est_sales: number | null;

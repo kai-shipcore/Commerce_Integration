@@ -1,0 +1,106 @@
+PLANNING DASHBOARD MIGRATION PLAN
+==================================
+
+OVERALL GOAL
+------------
+The dashboard becomes a read view over data that already lives in the app —
+containers entered via container planning, SKUs attached to those containers,
+and sales stats calculated from the sales table. No more manual data uploads.
+
+
+PHASE 1 — Wire up existing tables (do this first)
+--------------------------------------------------
+What changes:
+- Replace fc_planning_containers with fc_containers in the API route
+- Replace the per-SKU x per-container cross data with fc_container_items
+  joined to fc_containers
+- Derive containers_list, next_eta, and total_inbound_qty directly from
+  these joins at query time — no separate table needed
+
+Column mapping:
+
+  Dashboard field         Source
+  ----------------------  -----------------------------------------------
+  Container header name   fc_containers.container_number
+  ETA                     fc_containers.eta_date
+  CBM capacity            fc_containers.cbm_capacity
+  Inbound qty per SKU     fc_container_items.qty
+  CBM per item            fc_container_items.total_cbm
+  containers_list         aggregated from fc_container_items JOIN fc_containers
+  next_eta                MIN(fc_containers.eta_date) where items exist for SKU
+  total_inbound_qty       SUM(fc_container_items.qty) per SKU
+
+What you get immediately:
+  Any container added through the container planning UI shows up on the
+  dashboard automatically. No sync needed.
+
+OPEN QUESTION before starting Phase 1:
+  What status values does fc_containers.status have?
+  Need to know which ones to include (e.g. exclude "cancelled",
+  only show "in_transit" + "pending").
+
+
+PHASE 2 — Create fc_stats table
+--------------------------------
+What it holds:
+  One row per SKU. All pre-calculated sales velocity and inventory fields
+  that cannot be derived from fc_containers / fc_container_items alone.
+
+  master_sku          (unique, references fc_products or similar)
+  sales_status        (Original / Custom / Hold)
+  back                (backorder qty)
+  west_stock          east_stock          total_stock
+  west_90d ... west_7d ... west_30d_pre
+  east_90d  ... east_7d  ... east_30d_pre
+  avg_daily_prev      avg_daily_real      avg_daily_curr
+  east_avg_prev       east_avg_real       east_avg_curr
+  fba_avg_real        fba_avg_curr
+  west_fbm_30d        east_fbm_30d        fba_30d        total_30d
+  total_avg_prev      total_avg_real      total_avg_curr
+  sod                 (calculated — see Phase 3)
+  calculated_at       (timestamp of last refresh)
+
+How it gets populated:
+  A refresh endpoint (POST /api/planning/stats/refresh) runs aggregation
+  queries against the sales table and upserts into fc_stats.
+  Called manually at first, then put on a schedule later.
+
+OPEN QUESTION before starting Phase 2:
+  Does sales_status (Original/Custom/Hold) and back (backorder qty) already
+  live somewhere — fc_products, fc_container_items, or elsewhere?
+  Or will those be new fields only in fc_stats?
+
+
+PHASE 3 — Calculated fields at query time
+------------------------------------------
+Once fc_stats exists, these fields don't need to be stored — the API
+calculates them when serving the dashboard:
+
+  Field               Formula
+  ------------------  -------------------------------------------------------
+  sod                 today + (total_stock + total_inbound_qty) / avg_daily_curr
+  inv_life            avail_qty_for_container / avg_daily_curr
+  est_sod             eta_date + inv_life
+
+These are cheap enough to compute in SQL per request so they stay
+fresh automatically.
+
+
+RECOMMENDED ORDER
+-----------------
+1. Phase 1 first  — connects dashboard to real data with zero calculation
+                    work. Immediate visible payoff.
+
+2. Phase 2 next   — create fc_stats DDL and the refresh endpoint, populate
+                    it from whatever sales table is available.
+
+3. Phase 3 last   — small query-time changes to the API route once
+                    Phase 2 is stable.
+
+
+OPEN QUESTIONS (answer before starting each phase)
+----------------------------------------------------
+Phase 1:  What are the fc_containers.status values in use?
+
+Phase 2:  Where does sales_status (Original/Custom/Hold) and back
+          (backorder qty) currently live, if anywhere?
