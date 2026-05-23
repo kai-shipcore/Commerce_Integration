@@ -5,14 +5,15 @@ import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
 import { TODAY } from "./columns";
-import { demandPlanningData } from "@/features/planning/demand-planning-mock-data";
+import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 
 export function DemandPlanningDashboard() {
+  const { data, loading, error: loadError } = useDemandPlanningData();
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
   const [search, setSearch] = useState("");
-  const [filteredRows, setFilteredRows] = useState<DemandRow[]>(demandPlanningData.rows);
+  const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
 
   const handleUrgencyFilter = useCallback((filter: UrgencyFilter) => {
     setUrgencyFilter((current) => (current === filter ? null : filter));
@@ -71,6 +72,22 @@ export function DemandPlanningDashboard() {
     anchor.click();
     URL.revokeObjectURL(anchor.href);
   }, [filteredRows]);
+
+  if (loading) {
+    return (
+      <div style={{ position: "fixed", top: 56, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", fontSize: 13, color: "#7A766F" }}>
+        데이터 로딩 중…
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ position: "fixed", top: 56, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", fontSize: 13, color: "#C42020" }}>
+        오류: {loadError}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -254,7 +271,7 @@ export function DemandPlanningDashboard() {
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <DemandPlanningGrid
-          data={demandPlanningData}
+          data={data}
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
           search={search}

@@ -49,7 +49,7 @@ export const GROUP_BTN_COLORS: Record<string, string> = {
   con:    "#0D2535",
 };
 
-export const TODAY = "2026-05-15";
+export const TODAY = new Date().toISOString().slice(0, 10);
 
 export function daysTo(d: string | null | undefined): number | null {
   if (!d) return null;
@@ -170,6 +170,7 @@ export const ALL_COLS: ColDef[] = [
 ];
 
 export const CON_SUBCOLS: ConSubColDef[] = [
+  { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd) => cd.inbound_qty !== null && cd.inbound_qty !== undefined ? cd.inbound_qty : "" },
   { id: "oo",    label: "Open\nOrders", w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.open_orders || 0 },
   { id: "avail", label: "Avail\nQty",   w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.avail_qty !== null && cd.avail_qty !== undefined ? cd.avail_qty : "" },
   { id: "est",   label: "Est.\nSales",  w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.est_sales || 0 },
