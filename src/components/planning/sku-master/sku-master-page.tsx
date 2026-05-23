@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
 
 type SkuMasterRow = {
@@ -42,6 +43,105 @@ const productMeta: Record<
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
+type ExcelCbmImportRow = {
+  masterSku: string;
+  cbmPerUnit: number;
+};
+
+function normalizeHeader(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function parseNumberCell(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/,/g, "")
+    .match(/-?\d+(?:\.\d+)?/)?.[0];
+
+  if (!normalized) return null;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function decimalPlaces(value: number): number {
+  const text = String(value).toLowerCase();
+  if (text.includes("e-")) return Number(text.split("e-")[1] ?? 0);
+  return (text.split(".")[1] ?? "").replace(/0+$/, "").length;
+}
+
+function getSheetPriority(sheetName: string): number {
+  const normalized = sheetName.toLowerCase();
+  if (normalized.includes("only) l -")) return 0;
+  if (normalized.startsWith("l -")) return 1;
+  if (normalized.startsWith("link -")) return 2;
+  if (normalized.startsWith("long plan -")) return 3;
+  return 4;
+}
+
+function extractExcelCbmRows(workbook: XLSX.WorkBook): ExcelCbmImportRow[] {
+  const rowsBySku = new Map<string, ExcelCbmImportRow & { precision: number; sheetPriority: number }>();
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheetPriority = getSheetPriority(sheetName);
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      blankrows: false,
+      defval: "",
+      raw: true,
+    });
+
+    for (let rowIndex = 0; rowIndex < matrix.length; rowIndex += 1) {
+      const headerRow = matrix[rowIndex];
+      const normalizedHeaders = headerRow.map(normalizeHeader);
+      const masterSkuIndex = normalizedHeaders.findIndex(
+        (header) => header === "mastersku" || header.includes("mastersku")
+      );
+
+      if (masterSkuIndex < 0) continue;
+
+      const cbmCandidates = normalizedHeaders
+        .map((header, index) => ({ header, index }))
+        .filter(({ header }) => header === "cbm" || header === "cbmperunit" || header.includes("cbmunit"));
+      const cbmIndex =
+        cbmCandidates.find((candidate) => candidate.index < masterSkuIndex)?.index ??
+        cbmCandidates[0]?.index ??
+        -1;
+
+      if (cbmIndex < 0) continue;
+
+      for (let dataRowIndex = rowIndex + 1; dataRowIndex < matrix.length; dataRowIndex += 1) {
+        const dataRow = matrix[dataRowIndex];
+        const masterSku = String(dataRow[masterSkuIndex] ?? "").trim().toUpperCase();
+        const cbmPerUnit = parseNumberCell(dataRow[cbmIndex]);
+
+        if (!masterSku || !masterSku.includes("-")) continue;
+        if (cbmPerUnit == null || cbmPerUnit <= 0) continue;
+
+        const precision = decimalPlaces(cbmPerUnit);
+        const existing = rowsBySku.get(masterSku);
+        if (
+          !existing ||
+          sheetPriority < existing.sheetPriority ||
+          (sheetPriority === existing.sheetPriority && precision > existing.precision)
+        ) {
+          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, precision, sheetPriority });
+        }
+      }
+
+      break;
+    }
+  }
+
+  return [...rowsBySku.values()].map(({ masterSku, cbmPerUnit }) => ({ masterSku, cbmPerUnit }));
+}
+
 export function SkuMasterPage() {
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [query, setQuery] = useState("");
@@ -50,7 +150,9 @@ export function SkuMasterPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [pagination, setPagination] = useState({
@@ -133,6 +235,41 @@ export function SkuMasterPage() {
       setMessage(error instanceof Error ? error.message : "Failed to sync SKU master");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function importExcel(file: File) {
+    setImporting(true);
+    setMessage("");
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const importRows = extractExcelCbmRows(workbook);
+
+      if (importRows.length === 0) {
+        throw new Error("No valid Master SKU / CBM rows found in the Excel file");
+      }
+
+      const res = await fetch("/api/planning/sku-master", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: importRows }),
+      });
+      const json = await res.json();
+
+      if (!json.success) throw new Error(json.error ?? "Failed to import Excel");
+
+      setMessage(
+        `Imported ${numberFormatter.format(json.imported ?? importRows.length)} CBM rows ` +
+        `(${numberFormatter.format(json.updated ?? 0)} updated, ${numberFormatter.format(json.inserted ?? 0)} inserted)`
+      );
+      await fetchRows();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to import Excel");
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
     }
   }
 
@@ -224,6 +361,20 @@ export function SkuMasterPage() {
             placeholder="Search SKU..."
             className="form-input h-9 w-52 bg-white"
           />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setPage(1);
+              }}
+              className="inline-flex h-9 items-center gap-2 rounded-md px-2 text-xs font-semibold text-foreground hover:bg-[#f0eee9]"
+              aria-label="Reset SKU search"
+            >
+              <span>Reset</span>
+              <span className="text-sm font-normal" aria-hidden="true">X</span>
+            </button>
+          ) : null}
           <select
             value={product}
             onChange={(event) => {
@@ -247,10 +398,28 @@ export function SkuMasterPage() {
           >
             {downloading ? "Downloading..." : "Download CSV"}
           </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importExcel(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="h-9 rounded-md border border-[#cccac4] bg-white px-3 text-xs font-medium hover:bg-[#f0eee9] disabled:opacity-50"
+          >
+            {importing ? "Importing..." : "Excel Import"}
+          </button>
           <button
             type="button"
             onClick={syncFromInventory}
-            disabled={syncing}
+            disabled={syncing || importing}
             className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4]"
           >
             {syncing ? "Syncing..." : "Sync Inventory"}
@@ -269,7 +438,7 @@ export function SkuMasterPage() {
           value={stats.missingCbm.toString()}
           sub={stats.missingCbm ? "Needs review" : "All entered"}
         />
-        <SkuStat label="Average CBM" value={stats.averageCbm.toFixed(4)} sub="m3 / unit" />
+        <SkuStat label="Average CBM" value={stats.averageCbm.toFixed(6)} sub="m3 / unit" />
         <SkuStat label="Product Types" value={stats.productTypes.toString()} sub="types" />
       </div>
 
@@ -345,7 +514,7 @@ export function SkuMasterPage() {
             <EditableNumber
               active={editingSku === sku.masterSku}
               value={sku.cbmPerUnit}
-              decimals={4}
+              decimals={6}
               className={`font-mono font-semibold ${productMeta[sku.productKey].cbmClass}`}
               onChange={(value) => updateRow(sku.masterSku, { cbmPerUnit: value })}
             />
@@ -464,7 +633,7 @@ function EditableNumber({
       <div className={`${compact ? "" : "px-4 py-3"} inline-flex min-w-0 items-center whitespace-nowrap`}>
         <input
           type="number"
-          step={decimals === 0 ? 1 : 0.0001}
+          step={decimals === 0 ? 1 : 10 ** -decimals}
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
           className="h-8 w-20 shrink-0 rounded-md border border-[#cccac4] bg-white px-2 text-sm outline-none focus:border-[#1a5cdb]"

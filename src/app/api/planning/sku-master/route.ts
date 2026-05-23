@@ -4,6 +4,51 @@ import { getLookupPool } from "@/lib/db/supabase-lookup";
 
 type ProductKey = "cc" | "fm" | "sc";
 
+type ExcelCbmRow = {
+  masterSku: string;
+  cbmPerUnit: number;
+};
+
+type QueryClient = {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
+};
+
+const forecastDashboardViewSql = `
+  CREATE VIEW shipcore.fc_forecast_dashboard AS
+  SELECT p.master_sku,
+      p.sub_category_code,
+      p.status AS product_status,
+      p.moq,
+      p.cbm_per_unit,
+      COALESCE(st.total_usable_qty, 0::numeric) AS stock_qty,
+      COALESCE(st.total_backorder, 0::numeric) AS backorder_qty,
+      COALESCE(ib.inbound_qty, 0::bigint) AS inbound_qty,
+      ib.nearest_eta,
+      fb.adjusted_daily_forecast AS daily_forecast,
+      fb.seasonality_factor,
+      CASE
+        WHEN fb.adjusted_daily_forecast > 0::numeric THEN round(COALESCE(st.total_usable_qty, 0::numeric) / fb.adjusted_daily_forecast)
+        ELSE NULL::numeric
+      END AS days_of_cover,
+      CURRENT_DATE +
+      CASE
+        WHEN fb.adjusted_daily_forecast > 0::numeric THEN round(COALESCE(st.total_usable_qty, 0::numeric) / fb.adjusted_daily_forecast)::integer
+        ELSE 9999
+      END AS est_sold_out_date
+    FROM shipcore.fc_products p
+      LEFT JOIN shipcore.fc_stock_total st ON st.master_sku::text = p.master_sku::text
+      LEFT JOIN shipcore.fc_inbound_qty ib ON ib.master_sku::text = p.master_sku::text
+      LEFT JOIN LATERAL (
+        SELECT fc_forecast_baselines.adjusted_daily_forecast,
+          fc_forecast_baselines.seasonality_factor
+        FROM shipcore.fc_forecast_baselines
+        WHERE fc_forecast_baselines.master_sku::text = p.master_sku::text
+        ORDER BY fc_forecast_baselines.forecast_date DESC
+        LIMIT 1
+      ) fb ON true
+    WHERE p.status = 'active'::shipcore.fc_product_status
+`;
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
@@ -53,6 +98,27 @@ function inferProduct(masterSku: string): {
     caseQty: 1,
     weightKg: 0.9,
   };
+}
+
+async function ensureCbmPrecision(client: QueryClient) {
+  const result = await client.query(`
+    SELECT numeric_scale
+    FROM information_schema.columns
+    WHERE table_schema = 'shipcore'
+      AND table_name = 'fc_products'
+      AND column_name = 'cbm_per_unit'
+  `);
+  const scale = Number(result.rows[0]?.numeric_scale ?? 0);
+
+  if (scale < 6) {
+    await client.query("DROP VIEW IF EXISTS shipcore.fc_forecast_dashboard");
+    await client.query(`
+      ALTER TABLE shipcore.fc_products
+      ALTER COLUMN cbm_per_unit TYPE NUMERIC(14,6)
+      USING cbm_per_unit::NUMERIC(14,6)
+    `);
+    await client.query(forecastDashboardViewSql);
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -307,7 +373,7 @@ export async function PATCH(request: NextRequest) {
 
     const moq = body.moq == null ? null : Math.max(1, Number(body.moq));
     const caseQty = body.caseQty == null ? null : Math.max(1, Number(body.caseQty));
-    const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.0001, Number(body.cbmPerUnit));
+    const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.000001, Number(body.cbmPerUnit));
     const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
 
     const pool = getPrimaryPool();
@@ -332,6 +398,128 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error("SKU master PATCH failed:", error);
     return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  const pool = getPrimaryPool();
+  const client = await pool.connect();
+
+  try {
+    const body = await request.json();
+    const rawRows = Array.isArray(body.rows) ? body.rows : [];
+    const rowsBySku = new Map<string, ExcelCbmRow>();
+
+    for (const rawRow of rawRows) {
+      const masterSku = String(rawRow?.masterSku ?? "").trim().toUpperCase();
+      const cbmPerUnit = Number(rawRow?.cbmPerUnit);
+
+      if (!masterSku || !Number.isFinite(cbmPerUnit) || cbmPerUnit <= 0) {
+        continue;
+      }
+
+      rowsBySku.set(masterSku, { masterSku, cbmPerUnit });
+    }
+
+    const rows = [...rowsBySku.values()];
+
+    if (rows.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "No valid Master SKU / CBM rows found" },
+        { status: 400 }
+      );
+    }
+
+    await client.query("BEGIN");
+    await client.query(`
+      CREATE TEMP TABLE stg_excel_cbm (
+        master_sku TEXT PRIMARY KEY,
+        product_name TEXT,
+        category TEXT,
+        category_code TEXT,
+        moq INT,
+        order_multiple INT,
+        cbm_per_unit NUMERIC,
+        case_qty INT,
+        weight_kg NUMERIC
+      ) ON COMMIT DROP
+    `);
+
+    await ensureCbmPrecision(client);
+
+    const inferredRows = rows.map((row) => ({
+      ...inferProduct(row.masterSku),
+      ...row,
+    }));
+
+    await client.query(
+      `INSERT INTO stg_excel_cbm
+         (master_sku, product_name, category, category_code, moq, order_multiple, cbm_per_unit, case_qty, weight_kg)
+       SELECT
+         unnest($1::text[]),
+         unnest($2::text[]),
+         unnest($3::text[]),
+         unnest($4::text[]),
+         unnest($5::int[]),
+         unnest($6::int[]),
+         unnest($7::numeric[]),
+         unnest($8::int[]),
+         unnest($9::numeric[])`,
+      [
+        inferredRows.map((row) => row.masterSku),
+        inferredRows.map((row) => row.masterSku),
+        inferredRows.map((row) => row.category),
+        inferredRows.map((row) => row.categoryCode),
+        inferredRows.map((row) => row.moq),
+        inferredRows.map((row) => row.moq),
+        inferredRows.map((row) => row.cbmPerUnit),
+        inferredRows.map((row) => row.caseQty),
+        inferredRows.map((row) => row.weightKg),
+      ]
+    );
+
+    const existing = await client.query<{ count: string }>(`
+      SELECT COUNT(*)::text AS count
+      FROM stg_excel_cbm stg
+      JOIN shipcore.fc_products product ON product.master_sku = stg.master_sku
+    `);
+
+    const upsert = await client.query(`
+      INSERT INTO shipcore.fc_products (
+        master_sku, product_name, category, category_code, status,
+        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
+        created_at, updated_at
+      )
+      SELECT
+        master_sku, product_name, category, category_code, 'active',
+        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
+        NOW(), NOW()
+      FROM stg_excel_cbm
+      ON CONFLICT (master_sku) DO UPDATE SET
+        cbm_per_unit = EXCLUDED.cbm_per_unit,
+        product_name = COALESCE(NULLIF(shipcore.fc_products.product_name, ''), EXCLUDED.product_name),
+        category = COALESCE(shipcore.fc_products.category, EXCLUDED.category),
+        category_code = COALESCE(shipcore.fc_products.category_code, EXCLUDED.category_code),
+        status = 'active',
+        updated_at = NOW()
+    `);
+
+    await client.query("COMMIT");
+
+    const updated = Number(existing.rows[0]?.count ?? 0);
+    return NextResponse.json({
+      success: true,
+      imported: rows.length,
+      upserted: upsert.rowCount,
+      updated,
+      inserted: Math.max(0, rows.length - updated),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("SKU master Excel import failed:", error);
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  } finally {
+    client.release();
   }
 }
 

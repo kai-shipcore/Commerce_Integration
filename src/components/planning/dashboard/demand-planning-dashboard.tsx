@@ -66,11 +66,12 @@ export function DemandPlanningDashboard() {
       .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
       .join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
-    anchor.href = URL.createObjectURL(blob);
+    anchor.href = url;
     anchor.download = `planning_${TODAY}.csv`;
     anchor.click();
-    URL.revokeObjectURL(anchor.href);
+    URL.revokeObjectURL(url);
   }, [filteredRows]);
 
   if (loading) {
