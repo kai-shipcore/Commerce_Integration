@@ -71,6 +71,29 @@ type SkuMasterLookup = {
   cbmPerUnit: number;
 };
 
+type StockSourceType = "remaining" | "mistake";
+
+type StockAllocation = {
+  id: string;
+  stockId: string;
+  sourceType: StockSourceType;
+  referenceNo: string;
+  qty: number;
+  cbm: number;
+};
+
+type AvailableStockRow = {
+  id: string;
+  sourceType: StockSourceType;
+  referenceNo: string;
+  masterSku: string;
+  totalQty: number;
+  availableQty: number;
+  allocatedToContainer: number;
+  cbm: number;
+  note: string | null;
+};
+
 type ApiContainer = {
   id: string;
   containerNumber: string;
@@ -81,7 +104,7 @@ type ApiContainer = {
   origin: string | null;
   destWarehouse: string | null;
   poNumbers?: string[];
-  items?: Array<{ sku: string; qty: number; cbm: number }>;
+  items?: Array<{ sku: string; qty: number; cbm: number; allocations?: StockAllocation[] }>;
 };
 
 type WarehouseOption = {
@@ -158,6 +181,11 @@ function mapApiContainer(container: ApiContainer): MockContainer {
       sku: item.sku,
       qty: Number(item.qty ?? 0),
       cbm: Number(item.cbm ?? 0),
+      allocations: (item.allocations ?? []).map((allocation) => ({
+        ...allocation,
+        qty: Number(allocation.qty ?? 0),
+        cbm: Number(allocation.cbm ?? 0),
+      })),
     })),
   };
 }
@@ -217,6 +245,7 @@ export function ContainerPlanningPage() {
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
   const [savingContainer, setSavingContainer] = useState(false);
   const [statusModalContainerId, setStatusModalContainerId] = useState<string | null>(null);
+  const [availableStockContainerId, setAvailableStockContainerId] = useState<string | null>(null);
   const [form, setForm] = useState<ContainerFormState>(defaultFormState);
   const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
   const [draftItems, setDraftItems] = useState<ContainerItem[]>([]);
@@ -557,6 +586,10 @@ export function ContainerPlanningPage() {
 
   function removeDraftItem(sku: string) {
     if (editingContainerId && form.status !== "draft") return;
+    if (draftItems.find((item) => item.sku === sku)?.allocations?.length) {
+      setFormError("Allocated Remaining / Mistake stock must be removed from the container detail view by source.");
+      return;
+    }
     setDraftItems((items) => items.filter((item) => item.sku !== sku));
   }
 
@@ -653,11 +686,82 @@ export function ContainerPlanningPage() {
     );
   }
 
-  function changeContainerStatus(containerId: string, newStatus: ContainerStatus) {
-    setContainers((current) =>
-      current.map((c) => c.id === containerId ? { ...c, status: newStatus } : c)
-    );
+  async function changeContainerStatus(containerId: string, newStatus: ContainerStatus) {
+    const container = containers.find((entry) => entry.id === containerId);
     setStatusModalContainerId(null);
+
+    if (!container || container.status === newStatus) return;
+
+    if (!/^\d+$/.test(containerId)) {
+      setContainers((current) =>
+        current.map((entry) => entry.id === containerId ? { ...entry, status: newStatus } : entry)
+      );
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/containers?id=${encodeURIComponent(containerId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        window.alert(json.error ?? "Failed to update container status.");
+        return;
+      }
+
+      await fetchContainers();
+      setExpandedId(containerId);
+    } catch {
+      window.alert("Failed to update container status.");
+    }
+  }
+
+  async function addAvailableStockToContainer(
+    containerId: string,
+    allocations: Array<{ stockId: string; qty: number }>
+  ) {
+    try {
+      const response = await fetch("/api/container-available-stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "allocate", containerId, allocations }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) {
+        window.alert(json.error ?? "Failed to allocate available stock.");
+        return false;
+      }
+
+      await fetchContainers();
+      setExpandedId(containerId);
+      setAvailableStockContainerId(null);
+      return true;
+    } catch {
+      window.alert("Failed to allocate available stock.");
+      return false;
+    }
+  }
+
+  async function removeAvailableStockAllocation(allocationId: string, containerId: string) {
+    if (!window.confirm("Remove this allocated available stock from the container?")) return;
+    try {
+      const response = await fetch(
+        `/api/container-available-stock?allocationId=${encodeURIComponent(allocationId)}`,
+        { method: "DELETE" }
+      );
+      const json = await response.json();
+      if (!response.ok || !json.success) {
+        window.alert(json.error ?? "Failed to remove allocated stock.");
+        return;
+      }
+      await fetchContainers();
+      setExpandedId(containerId);
+    } catch {
+      window.alert("Failed to remove allocated stock.");
+    }
   }
 
   function deleteContainer(containerId: string) {
@@ -1037,20 +1141,25 @@ export function ContainerPlanningPage() {
       ["Destination", destinationLabel || null],
       ["Status", containerStatusLabels[container.status]],
       [],
-      ["Master SKU", "Qty", "CBM / Unit", "Total CBM"],
+      ["Master SKU", "Source", "Qty", "CBM / Unit", "Total CBM"],
       ...container.items.map((item) => [
         item.sku,
+        (item.allocations ?? [])
+          .map((allocation) =>
+            `${allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} ${allocation.referenceNo} (${allocation.qty})`
+          )
+          .join(", ") || "PO / Manual",
         item.qty,
         item.cbm,
         Number((item.qty * item.cbm).toFixed(4)),
       ]),
       [],
-      ["Total", totalQty, null, Number(totalCbm.toFixed(4))],
+      ["Total", null, totalQty, null, Number(totalCbm.toFixed(4))],
     ];
 
     const XLSX = await import("xlsx");
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    worksheet["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    worksheet["!cols"] = [{ wch: 28 }, { wch: 36 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Packing List");
@@ -1250,6 +1359,8 @@ export function ContainerPlanningPage() {
                 onImportItems={importContainerItems}
                 onExportItems={exportContainerItems}
                 onEditContainer={openEditForm}
+                onAddAvailableStock={(id) => setAvailableStockContainerId(id)}
+                onRemoveAvailableAllocation={removeAvailableStockAllocation}
                 isAdmin={isAdmin}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
@@ -1278,6 +1389,13 @@ export function ContainerPlanningPage() {
           currentStatus={containers.find((c) => c.id === statusModalContainerId)?.status ?? "draft"}
           onConfirm={(newStatus) => changeContainerStatus(statusModalContainerId, newStatus)}
           onClose={() => setStatusModalContainerId(null)}
+        />
+      ) : null}
+      {availableStockContainerId ? (
+        <AvailableStockModal
+          containerId={availableStockContainerId}
+          onAdd={(allocations) => addAvailableStockToContainer(availableStockContainerId, allocations)}
+          onClose={() => setAvailableStockContainerId(null)}
         />
       ) : null}
     </section>
@@ -1551,6 +1669,8 @@ function ContainerCard({
   onImportItems,
   onExportItems,
   onEditContainer,
+  onAddAvailableStock,
+  onRemoveAvailableAllocation,
   isAdmin = false,
   onChangeStatus,
   onDeleteContainer,
@@ -1578,6 +1698,8 @@ function ContainerCard({
   onImportItems: (containerId: string, file: File) => void | Promise<void>;
   onExportItems: (containerId: string) => void | Promise<void>;
   onEditContainer: (container: MockContainer) => void;
+  onAddAvailableStock: (containerId: string) => void;
+  onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<void>;
   isAdmin?: boolean;
   onChangeStatus: (containerId: string) => void;
   onDeleteContainer: (containerId: string) => void;
@@ -1688,6 +1810,7 @@ function ContainerCard({
                 onUpdateCbm={onUpdateInlineEditCbm}
                 onCancelDraft={onCancelInlineEditDraft}
                 onDelete={onDeleteItem}
+                onRemoveAvailableAllocation={onRemoveAvailableAllocation}
               />
             ))}
             {inlineSkuDraft && canChangeStructure ? (
@@ -1770,6 +1893,15 @@ function ContainerCard({
                 className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 + Add SKU
+              </button>
+            ) : null}
+            {canChangeStructure ? (
+              <button
+                type="button"
+                onClick={() => onAddAvailableStock(container.id)}
+                className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
+              >
+                + Add Available Stock
               </button>
             ) : null}
             <button
@@ -1873,6 +2005,7 @@ function SkuRow({
   onUpdateCbm,
   onCancelDraft,
   onDelete,
+  onRemoveAvailableAllocation,
 }: {
   containerId: string;
   item: ContainerItem;
@@ -1886,7 +2019,11 @@ function SkuRow({
   onUpdateCbm: (containerId: string, sku: string) => void | Promise<void>;
   onCancelDraft: (containerId: string, sku: string) => void;
   onDelete: (containerId: string, sku: string) => void;
+  onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<void>;
 }) {
+  const allocations = item.allocations ?? [];
+  const hasAllocatedStock = allocations.length > 0;
+
   if (editDraft) {
     return (
       <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
@@ -1947,13 +2084,41 @@ function SkuRow({
 
   return (
     <div className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${readonly ? "grid-cols-[2.2fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.8fr_0.8fr_110px]"}`}>
-      <div className="flex min-w-0 items-center gap-2">
-        <ProductBadge product={inferProductKey(item.sku)} />
-        <span className="truncate font-mono text-xs font-medium">{item.sku}</span>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <ProductBadge product={inferProductKey(item.sku)} />
+          <span className="truncate font-mono text-xs font-medium">{item.sku}</span>
+        </div>
+        {allocations.length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {allocations.map((allocation) => (
+              <span
+                key={allocation.id}
+                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                  allocation.sourceType === "remaining"
+                    ? "bg-[#e6f5f0] text-[#0a5e45]"
+                    : "bg-[#fef3e2] text-[#8a5300]"
+                }`}
+              >
+                {allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} {allocation.referenceNo} / {allocation.qty}
+                {!readonly && !quantityOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => void onRemoveAvailableAllocation(allocation.id, containerId)}
+                    className="ml-0.5 font-bold"
+                    aria-label={`Remove ${allocation.referenceNo} allocation`}
+                  >
+                    X
+                  </button>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
       <div className="text-xs text-muted-foreground">{(item.qty * item.cbm).toFixed(3)} m3</div>
-      {readonly ? null : (
+      {readonly || hasAllocatedStock ? null : (
         <div className="flex justify-end gap-1">
           <button
             type="button"
@@ -1973,6 +2138,9 @@ function SkuRow({
           )}
         </div>
       )}
+      {!readonly && hasAllocatedStock ? (
+        <div className="text-right text-[10px] text-muted-foreground">Manage by source</div>
+      ) : null}
     </div>
   );
 }
@@ -1991,6 +2159,234 @@ const statusWorkflowLabels: Record<ContainerStatus, string> = {
   "final-list-sent": "Final List Sent (Factory)",
   "packing-list-received": "Packing List Received / Shipped",
 };
+
+function AvailableStockModal({
+  containerId,
+  onAdd,
+  onClose,
+}: {
+  containerId: string;
+  onAdd: (allocations: Array<{ stockId: string; qty: number }>) => Promise<boolean>;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<AvailableStockRow[]>([]);
+  const [sourceType, setSourceType] = useState<StockSourceType>("remaining");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [selectedQty, setSelectedQty] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({
+    referenceNo: "",
+    masterSku: "",
+    totalQty: "",
+    cbm: "",
+    note: "",
+  });
+
+  async function loadRows() {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/container-available-stock?containerId=${encodeURIComponent(containerId)}`,
+        { cache: "no-store" }
+      );
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load available stock.");
+      setRows(json.data as AvailableStockRow[]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load available stock.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerId]);
+
+  const visibleRows = rows.filter((row) => {
+    if (row.sourceType !== sourceType) return false;
+    if (!query.trim()) return true;
+    const normalized = query.trim().toLowerCase();
+    return `${row.referenceNo} ${row.masterSku} ${row.note ?? ""}`.toLowerCase().includes(normalized);
+  });
+
+  const selected = rows
+    .map((row) => ({ stockId: row.id, qty: Number.parseInt(selectedQty[row.id] ?? "", 10), row }))
+    .filter((entry) => Number.isFinite(entry.qty) && entry.qty > 0);
+  const selectedUnits = selected.reduce((sum, entry) => sum + entry.qty, 0);
+  const selectedCbm = selected.reduce((sum, entry) => sum + entry.qty * entry.row.cbm, 0);
+
+  async function registerStock() {
+    const totalQty = Number.parseInt(form.totalQty, 10);
+    const cbm = Number.parseFloat(form.cbm);
+    if (!form.referenceNo.trim() || !form.masterSku.trim() || !Number.isFinite(totalQty) || !Number.isFinite(cbm)) {
+      setMessage("Reference, Master SKU, quantity, and CBM are required.");
+      return;
+    }
+    setCreating(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/container-available-stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType,
+          referenceNo: form.referenceNo.trim(),
+          masterSku: form.masterSku.trim().toUpperCase(),
+          totalQty,
+          cbm,
+          note: form.note.trim(),
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to register stock.");
+      setForm({ referenceNo: "", masterSku: "", totalQty: "", cbm: "", note: "" });
+      setMessage("Available stock registered.");
+      await loadRows();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to register stock.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function addSelected() {
+    if (selected.length === 0) {
+      setMessage("Enter a load quantity for at least one SKU.");
+      return;
+    }
+    const invalid = selected.find((entry) => entry.qty > entry.row.availableQty);
+    if (invalid) {
+      setMessage(`Quantity exceeds availability for ${invalid.row.masterSku}.`);
+      return;
+    }
+    setSubmitting(true);
+    const saved = await onAdd(selected.map((entry) => ({ stockId: entry.stockId, qty: entry.qty })));
+    if (!saved) setSubmitting(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={onClose}>
+      <div
+        className="flex h-[94vh] max-h-[94vh] w-[min(96vw,1280px)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-white shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[#e2dfd8] px-6 py-3">
+          <div>
+            <h2 className="text-base font-semibold">Add Available Stock to Container</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Allocate already-produced items from Remaining or Mistake Order stock.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-xl text-muted-foreground">X</button>
+        </div>
+
+        <div className="flex border-b border-[#e2dfd8] px-6 pt-3">
+          {(["remaining", "mistake"] as StockSourceType[]).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setSourceType(type)}
+              className={`mr-2 rounded-t-lg border px-4 py-2 text-sm font-semibold ${
+                sourceType === type
+                  ? "border-[#1a5cdb] border-b-white bg-white text-[#1a5cdb]"
+                  : "border-[#e2dfd8] bg-[#f0eee9] text-muted-foreground"
+              }`}
+            >
+              {type === "remaining" ? "Remaining List" : "Mistake Order List"}
+            </button>
+          ))}
+        </div>
+
+        <div className="border-b border-[#e2dfd8] bg-[#f8f7f4] px-4 py-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+            Register {sourceType === "remaining" ? "Remaining" : "Mistake Order"} Stock
+          </div>
+          <div className="grid gap-2 md:grid-cols-[130px_1fr_90px_100px_1fr_auto]">
+            <input className="form-input bg-white text-xs" placeholder="Reference No." value={form.referenceNo} onChange={(e) => setForm((value) => ({ ...value, referenceNo: e.target.value }))} />
+            <input className="form-input bg-white font-mono text-xs" placeholder="Master SKU" value={form.masterSku} onChange={(e) => setForm((value) => ({ ...value, masterSku: e.target.value }))} />
+            <input className="form-input bg-white text-xs" type="number" placeholder="Qty" value={form.totalQty} onChange={(e) => setForm((value) => ({ ...value, totalQty: e.target.value }))} />
+            <input className="form-input bg-white text-xs" type="number" step="0.000001" placeholder="CBM" value={form.cbm} onChange={(e) => setForm((value) => ({ ...value, cbm: e.target.value }))} />
+            <input className="form-input bg-white text-xs" placeholder="Note (optional)" value={form.note} onChange={(e) => setForm((value) => ({ ...value, note: e.target.value }))} />
+            <button type="button" disabled={creating} onClick={() => void registerStock()} className="rounded-md border border-[#1a5cdb] bg-white px-3 text-xs font-semibold text-[#1a5cdb] disabled:opacity-50">
+              {creating ? "Saving..." : "Register"}
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-2">
+          <input className="form-input w-72 bg-white text-xs" placeholder="Search SKU / reference..." value={query} onChange={(event) => setQuery(event.target.value)} />
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto px-6 pb-3">
+          <div className="grid grid-cols-[42px_120px_1fr_90px_100px_90px_100px] bg-[#f0eee9] px-3 py-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
+            <span />
+            <span>Reference</span>
+            <span>Master SKU</span>
+            <span>Available</span>
+            <span>Load Qty</span>
+            <span>CBM</span>
+            <span>Total CBM</span>
+          </div>
+          {loading ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">Loading available stock...</div>
+          ) : visibleRows.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">No available stock registered for this list.</div>
+          ) : (
+            visibleRows.map((row) => {
+              const qty = Number.parseInt(selectedQty[row.id] ?? "", 10) || 0;
+              return (
+                <div key={row.id} className="grid grid-cols-[42px_120px_1fr_90px_100px_90px_100px] items-center border-b border-[#e2dfd8] px-3 py-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedQty[row.id])}
+                    disabled={row.availableQty <= 0}
+                    onChange={(event) => setSelectedQty((current) => ({
+                      ...current,
+                      [row.id]: event.target.checked ? String(Math.min(row.availableQty, 1)) : "",
+                    }))}
+                  />
+                  <span className="text-xs font-semibold">{row.referenceNo}</span>
+                  <span className="font-mono text-xs">{row.masterSku}</span>
+                  <span className="font-semibold">{row.availableQty}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={row.availableQty}
+                    value={selectedQty[row.id] ?? ""}
+                    disabled={row.availableQty <= 0}
+                    onChange={(event) => setSelectedQty((current) => ({ ...current, [row.id]: event.target.value }))}
+                    className="h-7 w-20 rounded border border-[#cccac4] px-2 text-sm"
+                  />
+                  <span>{row.cbm.toFixed(4)}</span>
+                  <span>{(qty * row.cbm).toFixed(2)}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {message ? <div className="border-t border-[#e2dfd8] px-6 py-2 text-xs text-[#8a5300]">{message}</div> : null}
+        <div className="flex items-center justify-between border-t border-[#e2dfd8] px-6 py-3">
+          <span className="text-sm text-muted-foreground">
+            Selected: <strong className="text-foreground">{selectedUnits} units / {selectedCbm.toFixed(2)} CBM</strong>
+          </span>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="rounded-md border border-[#cccac4] px-4 py-2 text-sm">Cancel</button>
+            <button type="button" disabled={submitting} onClick={() => void addSelected()} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+              {submitting ? "Adding..." : "Add Selected to Container"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatusChangeModal({
   currentStatus,

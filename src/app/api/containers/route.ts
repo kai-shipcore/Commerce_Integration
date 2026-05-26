@@ -4,11 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { z } from "zod";
 
+const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-received"]);
+
 const ContainerSaveSchema = z.object({
   number: z.string().trim().min(1),
   poNumbers: z.array(z.string().trim()).optional().default([]),
   eta: z.string().trim().min(1),
-  status: z.enum(["draft", "final-list-sent", "packing-list-received"]),
+  status: ContainerStatusSchema,
   cbmCapacity: z.number().positive().default(67.5),
   factory: z.string().trim().optional(),
   origin: z.string().trim().optional(),
@@ -17,6 +19,7 @@ const ContainerSaveSchema = z.object({
     sku: z.string().trim().min(1),
     qty: z.number().int().positive(),
     cbm: z.number().positive(),
+    allocations: z.array(z.unknown()).optional(),
   })).default([]),
 });
 
@@ -91,7 +94,24 @@ export async function GET(request: NextRequest) {
                'id', id::text,
                'sku', master_sku,
                'qty', qty,
-               'cbm', COALESCE(cbm_unit, CASE WHEN qty > 0 THEN total_cbm / qty ELSE 0 END, 0)
+               'cbm', COALESCE(cbm_unit, CASE WHEN qty > 0 THEN total_cbm / qty ELSE 0 END, 0),
+               'allocations', COALESCE((
+                 SELECT json_agg(
+                   json_build_object(
+                     'id', allocation.id::text,
+                     'stockId', stock.id::text,
+                     'sourceType', stock.source_type,
+                     'referenceNo', stock.reference_no,
+                     'qty', allocation.qty,
+                     'cbm', stock.cbm_unit
+                   )
+                   ORDER BY allocation.id
+                 )
+                 FROM shipcore.fc_container_item_allocations allocation
+                 JOIN shipcore.fc_available_stock stock ON stock.id = allocation.source_stock_id
+                 WHERE allocation.container_id = fc_container_items.container_id
+                   AND stock.master_sku = fc_container_items.master_sku
+               ), '[]'::json)
              )
              ORDER BY id
            ) AS items
@@ -127,11 +147,29 @@ export async function GET(request: NextRequest) {
       ...(includeDetails
         ? {
             poNumbers: (row.po_numbers ?? []) as string[],
-            items: ((row.items ?? []) as Array<{ id?: string; sku?: string; qty?: number; cbm?: string | number }>).map((item) => ({
+            items: ((row.items ?? []) as Array<{
+              id?: string;
+              sku?: string;
+              qty?: number;
+              cbm?: string | number;
+              allocations?: Array<{
+                id: string;
+                stockId: string;
+                sourceType: "remaining" | "mistake";
+                referenceNo: string;
+                qty: number;
+                cbm: string | number;
+              }>;
+            }>).map((item) => ({
               id: item.id ?? "",
               sku: item.sku ?? "",
               qty: Number(item.qty ?? 0),
               cbm: Number(item.cbm ?? 0),
+              allocations: (item.allocations ?? []).map((allocation) => ({
+                ...allocation,
+                qty: Number(allocation.qty ?? 0),
+                cbm: Number(allocation.cbm ?? 0),
+              })),
             })),
           }
         : {}),
@@ -168,7 +206,30 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const validated = ContainerSaveSchema.parse(await request.json());
+    const body: unknown = await request.json();
+    const statusOnly = z.object({ status: ContainerStatusSchema }).strict().safeParse(body);
+
+    if (statusOnly.success) {
+      const result = await client.query(
+        `UPDATE shipcore.fc_containers
+         SET status = $2::shipcore.fc_container_status,
+             updated_at = NOW()
+         WHERE id = $1::bigint
+         RETURNING id`,
+        [id, toDbStatus(statusOnly.data.status)]
+      );
+
+      if (result.rowCount === 0) {
+        return NextResponse.json(
+          { success: false, error: "Container not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ success: true, data: { id } });
+    }
+
+    const validated = ContainerSaveSchema.parse(body);
     const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim().toUpperCase()))];
 
     await client.query("BEGIN");

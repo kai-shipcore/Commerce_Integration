@@ -165,7 +165,8 @@ export async function GET(request: NextRequest) {
            order_multiple,
            cbm_per_unit::text AS cbm_per_unit,
            case_qty,
-           weight_kg::text AS weight_kg
+           weight_kg::text AS weight_kg,
+           COALESCE(is_custom_sku, false) AS is_custom_sku
          FROM shipcore.fc_products
          WHERE master_sku = $1 AND status = 'active'
          LIMIT 1`,
@@ -194,6 +195,7 @@ export async function GET(request: NextRequest) {
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
           caseQty: Number(row.case_qty ?? inferred.caseQty),
           weightKg: Number(row.weight_kg ?? inferred.weightKg),
+          isCustomSku: Boolean(row.is_custom_sku),
         },
       });
     }
@@ -220,7 +222,8 @@ export async function GET(request: NextRequest) {
          order_multiple,
          cbm_per_unit::text AS cbm_per_unit,
          case_qty,
-         weight_kg::text AS weight_kg
+         weight_kg::text AS weight_kg,
+         COALESCE(is_custom_sku, false) AS is_custom_sku
        FROM shipcore.fc_products
        WHERE ${filters.join(" AND ")}
        ORDER BY category_code NULLS LAST, master_sku
@@ -243,6 +246,7 @@ export async function GET(request: NextRequest) {
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
           caseQty: Number(row.case_qty ?? inferred.caseQty),
           weightKg: Number(row.weight_kg ?? inferred.weightKg),
+          isCustomSku: Boolean(row.is_custom_sku),
         };
       }),
       pagination: {
@@ -375,6 +379,7 @@ export async function PATCH(request: NextRequest) {
     const caseQty = body.caseQty == null ? null : Math.max(1, Number(body.caseQty));
     const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.000001, Number(body.cbmPerUnit));
     const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
+    const isCustomSku = typeof body.isCustomSku === "boolean" ? body.isCustomSku : null;
 
     const pool = getPrimaryPool();
     const result = await pool.query(
@@ -384,10 +389,11 @@ export async function PATCH(request: NextRequest) {
            cbm_per_unit = COALESCE($3, cbm_per_unit),
            case_qty = COALESCE($4, case_qty),
            weight_kg = COALESCE($5, weight_kg),
+           is_custom_sku = COALESCE($6, is_custom_sku),
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,
-      [masterSku, moq, cbmPerUnit, caseQty, weightKg]
+      [masterSku, moq, cbmPerUnit, caseQty, weightKg, isCustomSku]
     );
 
     if (result.rowCount === 0) {

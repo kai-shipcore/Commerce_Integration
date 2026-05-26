@@ -15,6 +15,7 @@ type SkuMasterRow = {
   cbmPerUnit: number;
   caseQty: number;
   weightKg: number;
+  isCustomSku: boolean;
 };
 
 const productMeta: Record<
@@ -207,7 +208,7 @@ export function SkuMasterPage() {
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "caseQty" | "weightKg">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "caseQty" | "weightKg" | "isCustomSku">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
@@ -296,6 +297,7 @@ export function SkuMasterPage() {
 
       const headers = [
         "product_type",
+        "sku_type",
         "master_sku",
         "product_name",
         "category",
@@ -311,6 +313,7 @@ export function SkuMasterPage() {
         ...exportRows.map((sku) =>
           [
             productMeta[sku.productKey]?.label ?? sku.productKey,
+            sku.isCustomSku ? "Custom" : "Original",
             sku.masterSku,
             sku.productName,
             sku.category,
@@ -348,7 +351,7 @@ export function SkuMasterPage() {
         <div>
           <h1 className="text-lg font-semibold">SKU Master Management</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            Manage SKU-level CBM, MOQ, and case quantity. Click Edit to update values inline.
+            Manage SKU type, CBM, and MOQ. Click Edit to update values inline.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -489,26 +492,39 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[980px] grid-cols-[230px_360px_150px_110px_210px_130px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[940px] grid-cols-[210px_140px_330px_150px_110px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">Product</div>
+          <div className="px-4 py-3">SKU Type</div>
           <div className="px-4 py-3">Master SKU</div>
           <div className="px-4 py-3">CBM / Unit</div>
           <div className="px-4 py-3">MOQ</div>
-          <div className="px-4 py-3">
-            <div>Units per Case</div>
-            <div className="mt-0.5 text-[10px] font-normal text-[#b8b5ae]">Car cover only</div>
-          </div>
-          <div className="px-4 py-3">Weight</div>
           <div className="px-4 py-3 text-right">Actions</div>
         </div>
 
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[980px] grid-cols-[230px_360px_150px_110px_210px_130px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            className="grid min-w-[940px] grid-cols-[210px_140px_330px_150px_110px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
+            </div>
+            <div className="px-4 py-3">
+              {editingSku === sku.masterSku ? (
+                <select
+                  value={sku.isCustomSku ? "custom" : "original"}
+                  onChange={(event) =>
+                    updateRow(sku.masterSku, { isCustomSku: event.target.value === "custom" })
+                  }
+                  className="h-8 w-full rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
+                  aria-label={`SKU type for ${sku.masterSku}`}
+                >
+                  <option value="original">Original</option>
+                  <option value="custom">Custom</option>
+                </select>
+              ) : (
+                <SkuTypeBadge isCustomSku={sku.isCustomSku} />
+              )}
             </div>
             <div className="px-4 py-3 font-mono text-xs font-semibold">{sku.masterSku}</div>
             <EditableNumber
@@ -523,28 +539,6 @@ export function SkuMasterPage() {
               value={sku.moq}
               decimals={0}
               onChange={(value) => updateRow(sku.masterSku, { moq: value })}
-            />
-            <div className="px-4 py-3">
-              {sku.productKey === "cc" ? (
-                <EditableNumber
-                  active={editingSku === sku.masterSku}
-                  value={sku.caseQty}
-                  decimals={0}
-                  suffix="pcs/case"
-                  className="font-semibold"
-                  onChange={(value) => updateRow(sku.masterSku, { caseQty: value })}
-                  compact
-                />
-              ) : (
-                <span className="text-xs text-[#b8b5ae]">N/A</span>
-              )}
-            </div>
-            <EditableNumber
-              active={editingSku === sku.masterSku}
-              value={sku.weightKg}
-              decimals={1}
-              suffix="kg"
-              onChange={(value) => updateRow(sku.masterSku, { weightKg: value })}
             />
             <div className="flex min-w-0 flex-nowrap justify-end px-4 py-3">
               <button
@@ -607,6 +601,20 @@ function ProductBadge({ product }: { product: ProductKey }) {
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[11px] font-semibold ${meta.badgeClass}`}>
       {meta.label}
+    </span>
+  );
+}
+
+function SkuTypeBadge({ isCustomSku }: { isCustomSku: boolean }) {
+  return (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
+        isCustomSku
+          ? "bg-[#f5ead8] text-[#b56a00] dark:bg-orange-950/70 dark:text-orange-300"
+          : "bg-[#e5e9ff] text-[#2855d9] dark:bg-blue-950/70 dark:text-blue-300"
+      }`}
+    >
+      {isCustomSku ? "Custom" : "Original"}
     </span>
   );
 }

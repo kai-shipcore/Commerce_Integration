@@ -32,7 +32,19 @@ export interface MockContainer {
   factory: string;
   origin?: string;
   destination: string;
-  items: Array<{ sku: string; qty: number; cbm: number }>;
+  items: Array<{
+    sku: string;
+    qty: number;
+    cbm: number;
+    allocations?: Array<{
+      id: string;
+      stockId: string;
+      sourceType: "remaining" | "mistake";
+      referenceNo: string;
+      qty: number;
+      cbm: number;
+    }>;
+  }>;
 }
 
 export interface MockPurchaseOrder {
