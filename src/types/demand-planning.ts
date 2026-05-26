@@ -20,11 +20,13 @@ export interface ContainerMeta {
   name: string;
   eta: string;
   cbm_cap: number;
-  status: string;
+  status?: string;
 }
 
 export interface ContainerRowData {
-  inbound_qty?: number | null;  // fc_container_items.qty — raw units in this container
+  item_id?: number | null;       // fc_container_items.id — used for inline editing
+  cbm_unit?: number | null;      // fc_container_items.cbm_unit — used to recompute total_cbm on qty edit
+  inbound_qty?: number | null;   // fc_container_items.qty — raw units in this container
   open_orders: number | null;
   avail_qty: number | null;
   est_sales: number | null;

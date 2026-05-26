@@ -143,10 +143,12 @@ export async function GET() {
     // open_orders / est_sales / inv_life / est_sod / plan_sod → Phase 2
     const crossResult = await primary.query(`
       SELECT
+        ci.id::int                 AS item_id,
         ci.master_sku              AS sku,
         c.container_number         AS container_name,
         ci.qty::int                AS inbound_qty,
         ci.qty::int                AS avail_qty,
+        ci.cbm_unit::float8        AS cbm_unit,
         ci.total_cbm::float8       AS cbm,
         c.eta_date::text           AS eta,
         NULL::int                  AS open_orders,
@@ -196,6 +198,8 @@ export async function GET() {
     for (const r of crossResult.rows) {
       if (!crossMap.has(r.sku)) crossMap.set(r.sku, new Map());
       crossMap.get(r.sku)!.set(r.container_name, {
+        item_id:     r.item_id,
+        cbm_unit:    r.cbm_unit,
         inbound_qty: r.inbound_qty,
         open_orders: r.open_orders,
         avail_qty:   r.avail_qty,

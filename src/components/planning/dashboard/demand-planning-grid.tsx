@@ -177,6 +177,14 @@ export function DemandPlanningGrid({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [scrollState, setScrollState] = useState({ top: 0, height: 600 });
 
+  // Inline qty editing state
+  type EditingKey = `${string}::${string}`;
+  const [editingKey, setEditingKey] = useState<EditingKey | null>(null);
+  const [editingVal, setEditingVal] = useState("");
+  const [savingKey, setSavingKey] = useState<EditingKey | null>(null);
+  // Local overrides: key = `${sku}::${containerName}`, value = partial ContainerRowData
+  const [qtyOverrides, setQtyOverrides] = useState<Map<EditingKey, { inbound_qty: number; avail_qty: number; cbm: number }>>(new Map());
+
   const visCols = useMemo(
     () => ALL_COLS.filter((c) => c.grp === "fix" || groupVis[c.grp]),
     [groupVis],
@@ -632,7 +640,7 @@ export function DemandPlanningGrid({
               ))}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
-                const isDraft = c.status !== "shipped" && c.status !== "packing_received";
+                const isDraft = !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                 const dt = daysTo(c.eta);
                 const etaColor = isDraft ? "#8A8780" :
                   dt !== null && dt <= 7  ? "#FF9090" :
@@ -797,38 +805,106 @@ export function DemandPlanningGrid({
                       </td>
                     ))}
                     {showCon && CONS.map((c, ci) => {
-                      const cd = (r.containers && r.containers[c.name]) || {
-                        open_orders: 0, avail_qty: null, est_sales: 0,
+                      const rawCd = (r.containers && r.containers[c.name]) || {
+                        item_id: null, cbm_unit: null,
+                        inbound_qty: null, open_orders: 0, avail_qty: null, est_sales: 0,
                         backorder: 0, eta: c.eta, inv_life: null,
                         est_sod: null, plan_sod: null, cbm: 0,
                       };
-                      const isDraft = c.status !== "shipped" && c.status !== "packing_received";
+                      const eKey = `${r.sku}::${c.name}` as EditingKey;
+                      const override = qtyOverrides.get(eKey);
+                      const cd = override ? { ...rawCd, ...override } : rawCd;
+                      const isDraft = !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                       const isLast = ci === CONS.length - 1;
                       return CON_SUBCOLS.map((sc, si) => {
                         const isLastSub = si === CON_SUBCOLS.length - 1;
                         const baseBg = isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
+                        const isQtyCol = sc.id === "inb_qty";
+                        const isEditing = isQtyCol && editingKey === eKey;
+                        const isSaving = isQtyCol && savingKey === eKey;
+
                         return (
                           <td
                             key={`${c.name}-${sc.id}`}
+                            onClick={isQtyCol && !isEditing && rawCd.item_id ? () => {
+                              setEditingKey(eKey);
+                              setEditingVal(String(cd.inbound_qty ?? ""));
+                            } : undefined}
                             style={{
                               minWidth: sc.w,
                               maxWidth: sc.w,
                               width: sc.w,
                               boxSizing: "border-box",
-                              padding: "2px 7px",
+                              padding: isEditing ? "0" : "2px 7px",
                               borderRight: isLastSub && !isLast ? "2px solid #B0D8EE" : "1px solid #D8D6CE",
                               borderBottom: "1px solid #D8D6CE",
                               verticalAlign: "middle",
                               whiteSpace: "nowrap",
                               height: 28,
-                              background: baseBg,
+                              background: isEditing ? "#FFFDE7" : baseBg,
                               color: isDraft ? "#9A9790" : undefined,
                               textAlign: sc.align === "num" ? "right" : sc.align === "ctr" ? "center" : "left",
                               fontFamily: sc.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
                               fontSize: 11,
+                              cursor: isQtyCol && rawCd.item_id ? "text" : undefined,
                             }}
                           >
-                            {renderCell(sc.val(cd, c))}
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                type="number"
+                                min={0}
+                                value={editingVal}
+                                onChange={(e) => setEditingVal(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") { setEditingKey(null); setEditingVal(""); }
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                }}
+                                onBlur={async () => {
+                                  const newQty = parseInt(editingVal);
+                                  setEditingKey(null);
+                                  if (isNaN(newQty) || newQty === cd.inbound_qty) return;
+                                  setSavingKey(eKey);
+                                  try {
+                                    const res = await fetch(`/api/planning/containers/items/${rawCd.item_id}`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ qty: newQty }),
+                                    });
+                                    const json = await res.json();
+                                    if (json.success) {
+                                      setQtyOverrides((prev) => {
+                                        const next = new Map(prev);
+                                        next.set(eKey, {
+                                          inbound_qty: json.qty,
+                                          avail_qty: json.qty,
+                                          cbm: json.total_cbm,
+                                        });
+                                        return next;
+                                      });
+                                    }
+                                  } finally {
+                                    setSavingKey(null);
+                                  }
+                                }}
+                                style={{
+                                  width: "100%",
+                                  height: 28,
+                                  padding: "2px 7px",
+                                  border: "none",
+                                  background: "transparent",
+                                  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                                  fontSize: 11,
+                                  textAlign: "right",
+                                  outline: "none",
+                                  boxSizing: "border-box",
+                                }}
+                              />
+                            ) : isSaving ? (
+                              <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
+                            ) : (
+                              renderCell(sc.val(cd, c))
+                            )}
                           </td>
                         );
                       });
