@@ -41,6 +41,9 @@ interface DemandPlanningGridProps {
 }
 
 const DEFAULT_FREEZE = "sod";
+const ROW_HEIGHT = 28;
+const VIRTUAL_OVERSCAN = 12;
+const TABLE_HEADER_HEIGHT = 80;
 
 type SortValue = number | string | null | undefined;
 type SortDirection = "asc" | "desc";
@@ -171,6 +174,8 @@ export function DemandPlanningGrid({
   const [sortColumnId, setSortColumnId] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const tableRef = useRef<HTMLTableElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [scrollState, setScrollState] = useState({ top: 0, height: 600 });
 
   const visCols = useMemo(
     () => ALL_COLS.filter((c) => c.grp === "fix" || groupVis[c.grp]),
@@ -211,6 +216,45 @@ export function DemandPlanningGrid({
     setSortColumnId(columnId);
     setSortDirection("asc");
   }, [sortColumnId]);
+
+  useEffect(() => {
+    const element = scrollAreaRef.current;
+    if (!element) return;
+
+    const updateHeight = () => {
+      setScrollState((current) => (
+        current.height === element.clientHeight
+          ? current
+          : { ...current, height: element.clientHeight }
+      ));
+    };
+
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const element = scrollAreaRef.current;
+    if (!element) return;
+    element.scrollTop = 0;
+    setScrollState((current) => current.top === 0 ? current : { ...current, top: 0 });
+  }, [categoryFilter, productFilter, urgencyFilter, search, sortColumnId, sortDirection]);
+
+  const virtualRows = useMemo(() => {
+    const firstVisibleRow = Math.floor(Math.max(0, scrollState.top - TABLE_HEADER_HEIGHT) / ROW_HEIGHT);
+    const start = Math.max(0, firstVisibleRow - VIRTUAL_OVERSCAN);
+    const visibleCount = Math.ceil(scrollState.height / ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2;
+    const end = Math.min(displayedRows.length, start + visibleCount);
+    return {
+      start,
+      end,
+      topHeight: start * ROW_HEIGHT,
+      bottomHeight: (displayedRows.length - end) * ROW_HEIGHT,
+      rows: displayedRows.slice(start, end),
+    };
+  }, [displayedRows, scrollState]);
 
   useEffect(() => {
     onFilteredRowsChange(displayedRows);
@@ -499,6 +543,11 @@ export function DemandPlanningGrid({
 
       {/* Table */}
       <div
+        ref={scrollAreaRef}
+        onScroll={(event) => {
+          const top = event.currentTarget.scrollTop;
+          setScrollState((current) => current.top === top ? current : { ...current, top });
+        }}
         style={{
           flex: 1,
           minHeight: 0,
@@ -698,7 +747,17 @@ export function DemandPlanningGrid({
                 </td>
               </tr>
             ) : (
-              displayedRows.map((r, idx) => {
+              <>
+                {virtualRows.topHeight > 0 ? (
+                  <tr aria-hidden="true" style={{ height: virtualRows.topHeight }}>
+                    <td
+                      colSpan={visCols.length + (showCon ? CONS.length * CON_SUBCOLS.length : 0)}
+                      style={{ height: virtualRows.topHeight, padding: 0, border: 0 }}
+                    />
+                  </tr>
+                ) : null}
+                {virtualRows.rows.map((r, visibleIdx) => {
+                const idx = virtualRows.start + visibleIdx;
                 const u: UrgencyStatus = urgStatus(r);
                 const rowBg = u === "crit" ? "#FFF5F5" : idx % 2 === 1 ? "#FAFAF7" : "#fff";
                 return (
@@ -772,7 +831,16 @@ export function DemandPlanningGrid({
                     })}
                   </tr>
                 );
-              })
+                })}
+                {virtualRows.bottomHeight > 0 ? (
+                  <tr aria-hidden="true" style={{ height: virtualRows.bottomHeight }}>
+                    <td
+                      colSpan={visCols.length + (showCon ? CONS.length * CON_SUBCOLS.length : 0)}
+                      style={{ height: virtualRows.bottomHeight, padding: 0, border: 0 }}
+                    />
+                  </tr>
+                ) : null}
+              </>
             )}
           </tbody>
         </table>
