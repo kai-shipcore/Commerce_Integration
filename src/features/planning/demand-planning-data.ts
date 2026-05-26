@@ -22,7 +22,11 @@ export function useDemandPlanningData(): DemandPlanningDataState {
     setLoading(true);
     setError(null);
 
-    fetch("/api/planning/dashboard")
+    fetch("/api/planning/stats/refresh", { method: "POST" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
+        return fetch("/api/planning/dashboard");
+      })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;

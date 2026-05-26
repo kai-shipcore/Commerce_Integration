@@ -20,6 +20,7 @@ export interface ContainerMeta {
   name: string;
   eta: string;
   cbm_cap: number;
+  status: string;
 }
 
 export interface ContainerRowData {
