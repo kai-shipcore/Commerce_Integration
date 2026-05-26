@@ -19,6 +19,7 @@ import {
 } from "./columns";
 import type { CellContent, ColDef } from "./columns";
 import type {
+  CategoryFilter,
   ColumnGroupKey,
   DemandPlanningData,
   DemandRow,
@@ -29,6 +30,7 @@ import type {
 
 interface DemandPlanningGridProps {
   data: DemandPlanningData;
+  categoryFilter: CategoryFilter;
   productFilter: ProductFilter;
   urgencyFilter: UrgencyFilter | null;
   search: string;
@@ -39,6 +41,70 @@ interface DemandPlanningGridProps {
 }
 
 const DEFAULT_FREEZE = "sod";
+
+type SortValue = number | string | null | undefined;
+type SortDirection = "asc" | "desc";
+
+const SORT_VALUE_BY_COLUMN: Partial<Record<string, (row: DemandRow) => SortValue>> = {
+  cont_info: (row) => row.container_info,
+  cbm: (row) => row.cbm,
+  back: (row) => row.back,
+  status: (row) => row.sales_status,
+  sku: (row) => row.sku,
+  west: (row) => row.west_stock,
+  east: (row) => row.east_stock,
+  total: (row) => row.total_stock,
+  w90: (row) => row.west_90d,
+  w60: (row) => row.west_60d,
+  w30: (row) => row.west_30d,
+  w15: (row) => row.west_15d,
+  w7: (row) => row.west_7d,
+  wpre: (row) => row.west_30d_pre,
+  e90: (row) => row.east_90d,
+  e60: (row) => row.east_60d,
+  e30: (row) => row.east_30d,
+  e15: (row) => row.east_15d,
+  e7: (row) => row.east_7d,
+  epre: (row) => row.east_30d_pre,
+  wavg_p: (row) => row.avg_daily_prev,
+  wavg_r: (row) => row.avg_daily_real,
+  wavg_c: (row) => row.avg_daily_curr,
+  eavg_p: (row) => row.east_avg_prev,
+  eavg_r: (row) => row.east_avg_real,
+  eavg_c: (row) => row.east_avg_curr,
+  fba_r: (row) => row.fba_avg_real,
+  fba_c: (row) => row.fba_avg_curr,
+  wfbm30: (row) => row.west_fbm_30d,
+  efbm30: (row) => row.east_fbm_30d,
+  fba30: (row) => row.fba_30d,
+  tot30: (row) => row.total_30d,
+  tavg_p: (row) => row.total_avg_prev,
+  tavg_r: (row) => row.total_avg_real,
+  tavg_c: (row) => row.total_avg_curr,
+  inb_qty: (row) => row.total_inbound_qty,
+  inb_lst: (row) => row.containers_list,
+  next_eta: (row) => row.next_eta,
+  sod: (row) => row.sod,
+};
+
+function compareAscending(left: SortValue, right: SortValue): number {
+  const leftEmpty = left === null || left === undefined || left === "";
+  const rightEmpty = right === null || right === undefined || right === "";
+  if (leftEmpty || rightEmpty) {
+    if (leftEmpty && rightEmpty) return 0;
+    return leftEmpty ? 1 : -1;
+  }
+  if (typeof left === "number" && typeof right === "number") return left - right;
+  return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" {
+  if (row.category_code) return row.category_code;
+  const normalized = row.sku.toUpperCase();
+  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
+  return "SC";
+}
 
 const ALL_GROUP_KEYS: ColumnGroupKey[] = [
   "stock","wsales","esales","wavg","eavg","fba","s30","tavg","inb","con",
@@ -89,6 +155,7 @@ function cellStyle(col: ColDef): React.CSSProperties {
 
 export function DemandPlanningGrid({
   data,
+  categoryFilter,
   productFilter,
   urgencyFilter,
   search,
@@ -101,6 +168,8 @@ export function DemandPlanningGrid({
     fba: true, s30: true, tavg: true, inb: true, con: true,
   });
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
+  const [sortColumnId, setSortColumnId] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const tableRef = useRef<HTMLTableElement>(null);
 
   const visCols = useMemo(
@@ -113,6 +182,7 @@ export function DemandPlanningGrid({
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
+      if (categoryCodeForRow(r) !== categoryFilter.toUpperCase()) return false;
       if (productFilter === "orig" && r.sales_status !== "Original") return false;
       if (productFilter === "cust" && r.sales_status !== "Custom")   return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
@@ -122,11 +192,29 @@ export function DemandPlanningGrid({
       if (urgencyFilter === "bo")   return (r.back || 0) < 0;
       return true;
     });
-  }, [ROWS, productFilter, urgencyFilter, search]);
+  }, [ROWS, categoryFilter, productFilter, urgencyFilter, search]);
+
+  const displayedRows = useMemo(() => {
+    const getSortValue = sortColumnId ? SORT_VALUE_BY_COLUMN[sortColumnId] : undefined;
+    if (!getSortValue) return filteredRows;
+    return [...filteredRows].sort((left, right) => {
+      const result = compareAscending(getSortValue(left), getSortValue(right));
+      return sortDirection === "asc" ? result : -result;
+    });
+  }, [filteredRows, sortColumnId, sortDirection]);
+
+  const handleSort = useCallback((columnId: string) => {
+    if (sortColumnId === columnId) {
+      setSortDirection((current) => current === "asc" ? "desc" : "asc");
+      return;
+    }
+    setSortColumnId(columnId);
+    setSortDirection("asc");
+  }, [sortColumnId]);
 
   useEffect(() => {
-    onFilteredRowsChange(filteredRows);
-  }, [filteredRows, onFilteredRowsChange]);
+    onFilteredRowsChange(displayedRows);
+  }, [displayedRows, onFilteredRowsChange]);
 
   // Apply sticky freeze after every render
   useEffect(() => {
@@ -279,20 +367,23 @@ export function DemandPlanningGrid({
         .d-ok   { background: #0A6A45; }
       `}</style>
 
-      {/* Column Group Toggle Bar */}
-      <div
-        style={{
-          background: "#172033",
-          borderBottom: "2px solid #334155",
-          height: 38,
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "0 10px",
-          overflowX: "auto",
-        }}
-      >
+      {/* Column controls only apply after planning data is loaded. */}
+      {ROWS.length > 0 ? (
+        <>
+          {/* Column Group Toggle Bar */}
+          <div
+            style={{
+              background: "#172033",
+              borderBottom: "2px solid #334155",
+              height: 38,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "0 10px",
+              overflowX: "auto",
+            }}
+          >
         <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,240,.78)", whiteSpace: "nowrap", flexShrink: 0 }}>
           컬럼 그룹
         </span>
@@ -349,21 +440,21 @@ export function DemandPlanningGrid({
         >
           핵심만
         </button>
-      </div>
+          </div>
 
-      {/* Freeze Selector Bar */}
-      <div
-        style={{
-          background: "#0F172A",
-          borderBottom: "2px solid #4A8AAA",
-          minHeight: 28,
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          overflowX: "auto",
-          padding: "0 10px",
-        }}
-      >
+          {/* Freeze Selector Bar */}
+          <div
+            style={{
+              background: "#0F172A",
+              borderBottom: "2px solid #4A8AAA",
+              minHeight: 28,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              overflowX: "auto",
+              padding: "0 10px",
+            }}
+          >
         <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,240,.78)", whiteSpace: "nowrap", paddingRight: 8, fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", flexShrink: 0 }}>
           📌 고정 컬럼 선택 →
         </span>
@@ -402,7 +493,9 @@ export function DemandPlanningGrid({
         >
           기본값 복원
         </button>
-      </div>
+          </div>
+        </>
+      ) : null}
 
       {/* Table */}
       <div
@@ -522,6 +615,8 @@ export function DemandPlanningGrid({
                 <th
                   key={col.id}
                   data-cid={col.id}
+                  onClick={SORT_VALUE_BY_COLUMN[col.id] ? () => handleSort(col.id) : undefined}
+                  title={SORT_VALUE_BY_COLUMN[col.id] ? "Toggle ascending / descending sort" : undefined}
                   style={{
                     background: GROUP_HEADER_COLORS[col.gh] || "#34312D",
                     color: "rgba(255,255,255,.7)",
@@ -538,6 +633,8 @@ export function DemandPlanningGrid({
                     maxWidth: col.w,
                     width: col.w,
                     boxSizing: "border-box",
+                    cursor: SORT_VALUE_BY_COLUMN[col.id] ? "pointer" : "default",
+                    userSelect: "none",
                   }}
                 >
                   {col.label.split("\n").map((line, i) => (
@@ -546,6 +643,11 @@ export function DemandPlanningGrid({
                       {line}
                     </span>
                   ))}
+                  {sortColumnId === col.id ? (
+                    <span style={{ marginLeft: 3, color: "#67E8F9" }}>
+                      {sortDirection === "asc" ? "▲" : "▼"}
+                    </span>
+                  ) : null}
                 </th>
               ))}
               {showCon && CONS.map((c, ci) => {
@@ -586,7 +688,7 @@ export function DemandPlanningGrid({
             </tr>
           </thead>
           <tbody>
-            {filteredRows.length === 0 ? (
+            {displayedRows.length === 0 ? (
               <tr>
                 <td
                   colSpan={visCols.length + (showCon ? CONS.length * CON_SUBCOLS.length : 0)}
@@ -596,7 +698,7 @@ export function DemandPlanningGrid({
                 </td>
               </tr>
             ) : (
-              filteredRows.map((r, idx) => {
+              displayedRows.map((r, idx) => {
                 const u: UrgencyStatus = urgStatus(r);
                 const rowBg = u === "crit" ? "#FFF5F5" : idx % 2 === 1 ? "#FAFAF7" : "#fff";
                 return (

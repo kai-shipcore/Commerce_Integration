@@ -1,4 +1,5 @@
 export type ProductFilter = "all" | "orig" | "cust";
+export type CategoryFilter = "sc" | "cc" | "fm";
 export type UrgencyFilter = "crit" | "warn" | "bo";
 export type UrgencyStatus = "crit" | "warn" | "ok";
 export type ColumnGroupKey =
@@ -43,6 +44,7 @@ export interface DemandRow {
   tone: string;
   back: number;
   sales_status: "Original" | "Custom" | "Hold";
+  category_code?: "SC" | "CC" | "FM";
   sku: string;
   west_stock: number;
   east_stock: number;

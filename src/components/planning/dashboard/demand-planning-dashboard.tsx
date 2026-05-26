@@ -6,10 +6,11 @@ import { DemandPlanningGrid } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
 import { TODAY } from "./columns";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
-import type { DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+import type { CategoryFilter, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 
 export function DemandPlanningDashboard() {
   const { data, loading, error: loadError, reload } = useDemandPlanningData();
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("sc");
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
   const [search, setSearch] = useState("");
@@ -107,6 +108,35 @@ export function DemandPlanningDashboard() {
           overflowX: "auto",
         }}
       >
+        <label style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+          <span style={{ color: "#5A5750", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+            Product
+          </span>
+          <select
+            aria-label="Product category"
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
+            style={{
+              minWidth: 112,
+              height: 26,
+              padding: "2px 7px",
+              borderRadius: 4,
+              border: "1px solid #C2BFB5",
+              background: "#E3F5EC",
+              color: "#0A6A45",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            <option value="sc">Seat Cover</option>
+            <option value="cc">Car Cover</option>
+            <option value="fm">Floor Mat</option>
+          </select>
+        </label>
+
+        <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
+
         {(["all", "orig", "cust"] as ProductFilter[]).map((filter) => {
           const label = filter === "all" ? "All" : filter === "orig" ? "Original" : "Custom";
           const active = productFilter === filter;
@@ -307,6 +337,7 @@ export function DemandPlanningDashboard() {
         )}
         <DemandPlanningGrid
           data={data}
+          categoryFilter={categoryFilter}
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
           search={search}

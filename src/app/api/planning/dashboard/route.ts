@@ -35,6 +35,13 @@ function parseSku(sku: string): { seat: string; no: number; color: string; tone:
   return { no: 0, seat: "", color: "", tone: "" };
 }
 
+function inferCategoryCode(sku: string): "SC" | "CC" | "FM" {
+  const normalized = sku.toUpperCase();
+  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
+  return "SC";
+}
+
 // DB status values for containers that have confirmed quantities.
 // 'shipped'         = Final List Sent (UI: final-list-sent)
 // 'packing_received' = Packing List Received (UI: packing-list-received)
@@ -72,6 +79,7 @@ export async function GET() {
         agg.latest_eta,
         agg.latest_qty,
         COALESCE(s.sales_status,   'Original')               AS sales_status,
+        p.category_code                                      AS category_code,
         COALESCE(s.back,           0)::int                   AS back,
         COALESCE(s.west_stock,     0)::int                   AS west_stock,
         COALESCE(s.east_stock,     0)::int                   AS east_stock,
@@ -104,6 +112,7 @@ export async function GET() {
         COALESCE(s.total_avg_real, 0)::float8                AS total_avg_real,
         COALESCE(s.total_avg_curr, 0)::float8                AS total_avg_curr
       FROM shipcore.fc_stats s
+      LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
       LEFT JOIN (
         SELECT
           ci.master_sku,
@@ -198,6 +207,9 @@ export async function GET() {
 
     const rows: DemandRow[] = rowsResult.rows.map((r) => {
       const { seat, no, color, tone } = parseSku(r.sku as string);
+      const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM"
+        ? r.category_code
+        : inferCategoryCode(r.sku as string);
 
       const containerInfo = r.latest_container
         ? `${r.latest_eta ?? ""} - (${r.latest_container}) - ${r.latest_qty ?? ""}`
@@ -218,6 +230,7 @@ export async function GET() {
         tone,
         back:              r.back as number,
         sales_status:      (r.sales_status as "Original" | "Custom" | "Hold"),
+        category_code:     categoryCode,
         sku:               r.sku as string,
         west_stock:        r.west_stock,
         east_stock:        r.east_stock,
