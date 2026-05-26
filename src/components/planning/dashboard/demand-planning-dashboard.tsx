@@ -9,7 +9,7 @@ import { useDemandPlanningData } from "@/features/planning/demand-planning-data"
 import type { DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 
 export function DemandPlanningDashboard() {
-  const { data, loading, error: loadError } = useDemandPlanningData();
+  const { data, loading, error: loadError, reload } = useDemandPlanningData();
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
   const [search, setSearch] = useState("");
@@ -74,21 +74,7 @@ export function DemandPlanningDashboard() {
     URL.revokeObjectURL(url);
   }, [filteredRows]);
 
-  if (loading) {
-    return (
-      <div style={{ position: "fixed", top: 56, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", fontSize: 13, color: "#7A766F" }}>
-        데이터 로딩 중…
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div style={{ position: "fixed", top: 56, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", fontSize: 13, color: "#C42020" }}>
-        오류: {loadError}
-      </div>
-    );
-  }
+  const hasData = data.rows.length > 0;
 
   return (
     <div
@@ -247,12 +233,16 @@ export function DemandPlanningDashboard() {
         <StatusBar rows={filteredRows} inline />
 
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 10 }}>
+          {loadError && (
+            <span style={{ color: "#C42020", fontSize: 11 }}>Error: {loadError}</span>
+          )}
           <span style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}>
             {TODAY} | L-Min 5.13.2026
           </span>
           <button
             type="button"
             onClick={handleExportCSV}
+            disabled={!hasData}
             style={{
               fontSize: 11,
               fontWeight: 600,
@@ -260,17 +250,61 @@ export function DemandPlanningDashboard() {
               borderRadius: 4,
               border: "1px solid #C2BFB5",
               background: "#fff",
-              cursor: "pointer",
-              color: "#1A1917",
+              cursor: hasData ? "pointer" : "default",
+              color: hasData ? "#1A1917" : "#A8A49E",
               whiteSpace: "nowrap",
             }}
           >
             CSV
           </button>
+          <button
+            type="button"
+            onClick={reload}
+            disabled={loading}
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "5px 12px",
+              borderRadius: 4,
+              border: "1px solid #C2BFB5",
+              background: loading ? "#F5F4EF" : "#1A1917",
+              cursor: loading ? "default" : "pointer",
+              color: loading ? "#7A766F" : "#fff",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {loading ? "Loading…" : "Sync"}
+          </button>
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+        {!hasData && !loading && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "#F0EEE9", zIndex: 5 }}>
+            <span style={{ fontSize: 13, color: "#7A766F" }}>Press Sync to load planning data</span>
+            <button
+              type="button"
+              onClick={reload}
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "7px 20px",
+                borderRadius: 4,
+                border: "1px solid #C2BFB5",
+                background: "#1A1917",
+                cursor: "pointer",
+                color: "#fff",
+              }}
+            >
+              Sync
+            </button>
+          </div>
+        )}
+        {!hasData && loading && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", zIndex: 5, fontSize: 13, color: "#7A766F" }}>
+            Loading…
+          </div>
+        )}
         <DemandPlanningGrid
           data={data}
           productFilter={productFilter}

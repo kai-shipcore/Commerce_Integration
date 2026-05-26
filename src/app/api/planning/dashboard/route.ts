@@ -59,12 +59,12 @@ export async function GET() {
     `);
 
     // ── 2. Per-SKU rows ──────────────────────────────────────────────────────
-    // Aggregates fc_container_items by master_sku, then LEFT JOINs fc_stats.
-    // All fc_stats columns COALESCE to 0 while the table is empty (Phase 1).
+    // Drives from fc_stats (all SKUs) and LEFT JOINs container aggregation,
+    // so SKUs with no active containers still appear with their stats.
     const rowsResult = await primary.query(`
       SELECT
-        agg.master_sku                                        AS sku,
-        agg.total_inbound_qty,
+        s.master_sku                                          AS sku,
+        COALESCE(agg.total_inbound_qty, 0)::int              AS total_inbound_qty,
         agg.containers_list,
         agg.next_eta,
         agg.cbm_unit,
@@ -103,7 +103,8 @@ export async function GET() {
         COALESCE(s.total_avg_prev, 0)::float8                AS total_avg_prev,
         COALESCE(s.total_avg_real, 0)::float8                AS total_avg_real,
         COALESCE(s.total_avg_curr, 0)::float8                AS total_avg_curr
-      FROM (
+      FROM shipcore.fc_stats s
+      LEFT JOIN (
         SELECT
           ci.master_sku,
           SUM(ci.qty)::int                                                             AS total_inbound_qty,
@@ -120,9 +121,8 @@ export async function GET() {
         JOIN shipcore.fc_containers c ON c.id = ci.container_id
         WHERE c.status IN ${ACTIVE}
         GROUP BY ci.master_sku
-      ) agg
-      LEFT JOIN shipcore.fc_stats s ON s.master_sku = agg.master_sku
-      ORDER BY agg.master_sku
+      ) agg ON agg.master_sku = s.master_sku
+      ORDER BY s.master_sku
     `);
 
     // ── 3. Per-SKU × per-container cross data ────────────────────────────────
