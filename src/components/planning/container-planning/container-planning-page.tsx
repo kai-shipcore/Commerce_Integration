@@ -745,23 +745,33 @@ export function ContainerPlanningPage() {
     }
   }
 
-  async function removeAvailableStockAllocation(allocationId: string, containerId: string) {
-    if (!window.confirm("Remove this allocated available stock from the container?")) return;
+  async function removeAvailableStockAllocations(allocationIds: string[], containerId: string) {
+    if (allocationIds.length === 0) return false;
+    const prompt = allocationIds.length === 1
+      ? "Remove this allocated available stock from the container?"
+      : `Remove ${allocationIds.length} selected available stock items from the container?`;
+    if (!window.confirm(prompt)) return false;
     try {
       const response = await fetch(
-        `/api/container-available-stock?allocationId=${encodeURIComponent(allocationId)}`,
+        `/api/container-available-stock?allocationIds=${encodeURIComponent(allocationIds.join(","))}`,
         { method: "DELETE" }
       );
       const json = await response.json();
       if (!response.ok || !json.success) {
         window.alert(json.error ?? "Failed to remove allocated stock.");
-        return;
+        return false;
       }
       await fetchContainers();
       setExpandedId(containerId);
+      return true;
     } catch {
       window.alert("Failed to remove allocated stock.");
+      return false;
     }
+  }
+
+  async function removeAvailableStockAllocation(allocationId: string, containerId: string) {
+    return removeAvailableStockAllocations([allocationId], containerId);
   }
 
   function deleteContainer(containerId: string) {
@@ -1361,6 +1371,7 @@ export function ContainerPlanningPage() {
                 onEditContainer={openEditForm}
                 onAddAvailableStock={(id) => setAvailableStockContainerId(id)}
                 onRemoveAvailableAllocation={removeAvailableStockAllocation}
+                onRemoveAvailableAllocations={removeAvailableStockAllocations}
                 isAdmin={isAdmin}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
@@ -1671,6 +1682,7 @@ function ContainerCard({
   onEditContainer,
   onAddAvailableStock,
   onRemoveAvailableAllocation,
+  onRemoveAvailableAllocations,
   isAdmin = false,
   onChangeStatus,
   onDeleteContainer,
@@ -1699,7 +1711,8 @@ function ContainerCard({
   onExportItems: (containerId: string) => void | Promise<void>;
   onEditContainer: (container: MockContainer) => void;
   onAddAvailableStock: (containerId: string) => void;
-  onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<void>;
+  onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<boolean>;
+  onRemoveAvailableAllocations: (allocationIds: string[], containerId: string) => void | Promise<boolean>;
   isAdmin?: boolean;
   onChangeStatus: (containerId: string) => void;
   onDeleteContainer: (containerId: string) => void;
@@ -1716,8 +1729,27 @@ function ContainerCard({
   const isFullyLocked = container.status === "packing-list-received";
   const canEditQuantity = !isFullyLocked;
   const canChangeStructure = !isStructureLocked && !isFullyLocked;
+  const removableAllocationIds = container.items.flatMap((item) => (item.allocations ?? []).map((allocation) => allocation.id));
+  const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
+  const activeSelectedAllocationIds = selectedAllocationIds.filter((id) => removableAllocationIds.includes(id));
   const getEditDraft = (sku: string) => inlineEditDrafts[`${container.id}::${sku}`];
   const destinationLabel = warehouseNameByCode?.get(container.destination) ?? container.destination;
+
+  function toggleAllocationSelection(allocationIds: string[], checked: boolean) {
+    setSelectedAllocationIds((current) => {
+      const next = new Set(current);
+      allocationIds.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return [...next];
+    });
+  }
+
+  async function removeSelectedAllocations() {
+    const deleted = await onRemoveAvailableAllocations(activeSelectedAllocationIds, container.id);
+    if (deleted) setSelectedAllocationIds([]);
+  }
 
   return (
     <article className="overflow-hidden rounded-xl border border-[#e2dfd8] bg-white shadow-sm">
@@ -1793,6 +1825,26 @@ function ContainerCard({
             <div>CBM</div>
             {canEditQuantity ? <div className="text-right">Actions</div> : null}
           </div>
+          {canChangeStructure && removableAllocationIds.length > 0 ? (
+            <div className="flex items-center justify-between border-t bg-[#fbfaf8] px-5 py-2">
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={activeSelectedAllocationIds.length === removableAllocationIds.length}
+                  onChange={(event) => setSelectedAllocationIds(event.target.checked ? removableAllocationIds : [])}
+                />
+                Select all Remaining / Mistake items
+              </label>
+              <button
+                type="button"
+                onClick={() => void removeSelectedAllocations()}
+                disabled={activeSelectedAllocationIds.length === 0}
+                className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-3 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Delete Selected ({activeSelectedAllocationIds.length})
+              </button>
+            </div>
+          ) : null}
 
           <div>
             {container.items.map((item) => (
@@ -1811,6 +1863,8 @@ function ContainerCard({
                 onCancelDraft={onCancelInlineEditDraft}
                 onDelete={onDeleteItem}
                 onRemoveAvailableAllocation={onRemoveAvailableAllocation}
+                selectedAllocationIds={activeSelectedAllocationIds}
+                onToggleAllocationSelection={toggleAllocationSelection}
               />
             ))}
             {inlineSkuDraft && canChangeStructure ? (
@@ -2006,6 +2060,8 @@ function SkuRow({
   onCancelDraft,
   onDelete,
   onRemoveAvailableAllocation,
+  selectedAllocationIds,
+  onToggleAllocationSelection,
 }: {
   containerId: string;
   item: ContainerItem;
@@ -2019,7 +2075,9 @@ function SkuRow({
   onUpdateCbm: (containerId: string, sku: string) => void | Promise<void>;
   onCancelDraft: (containerId: string, sku: string) => void;
   onDelete: (containerId: string, sku: string) => void;
-  onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<void>;
+  onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<boolean>;
+  selectedAllocationIds: string[];
+  onToggleAllocationSelection: (allocationIds: string[], checked: boolean) => void;
 }) {
   const allocations = item.allocations ?? [];
   const hasAllocatedStock = allocations.length > 0;
@@ -2086,6 +2144,14 @@ function SkuRow({
     <div className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${readonly ? "grid-cols-[2.2fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.8fr_0.8fr_110px]"}`}>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
+          {hasAllocatedStock && !readonly && !quantityOnly ? (
+            <input
+              type="checkbox"
+              aria-label={`Select ${item.sku} available stock for removal`}
+              checked={allocations.every((allocation) => selectedAllocationIds.includes(allocation.id))}
+              onChange={(event) => onToggleAllocationSelection(allocations.map((allocation) => allocation.id), event.target.checked)}
+            />
+          ) : null}
           <ProductBadge product={inferProductKey(item.sku)} />
           <span className="truncate font-mono text-xs font-medium">{item.sku}</span>
         </div>
@@ -2101,16 +2167,6 @@ function SkuRow({
                 }`}
               >
                 {allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} {allocation.referenceNo} / {allocation.qty}
-                {!readonly && !quantityOnly ? (
-                  <button
-                    type="button"
-                    onClick={() => void onRemoveAvailableAllocation(allocation.id, containerId)}
-                    className="ml-0.5 font-bold"
-                    aria-label={`Remove ${allocation.referenceNo} allocation`}
-                  >
-                    X
-                  </button>
-                ) : null}
               </span>
             ))}
           </div>
@@ -2118,7 +2174,21 @@ function SkuRow({
       </div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
       <div className="text-xs text-muted-foreground">{(item.qty * item.cbm).toFixed(3)} m3</div>
-      {readonly || hasAllocatedStock ? null : (
+      {readonly ? null : hasAllocatedStock ? (
+        <div className="flex flex-col items-end gap-1">
+          {allocations.map((allocation) => (
+            <button
+              key={allocation.id}
+              type="button"
+              onClick={() => void onRemoveAvailableAllocation(allocation.id, containerId)}
+              title={`Delete ${allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} ${allocation.referenceNo}`}
+              className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-2.5 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
+            >
+              Delete
+            </button>
+          ))}
+        </div>
+      ) : (
         <div className="flex justify-end gap-1">
           <button
             type="button"
@@ -2138,9 +2208,6 @@ function SkuRow({
           )}
         </div>
       )}
-      {!readonly && hasAllocatedStock ? (
-        <div className="text-right text-[10px] text-muted-foreground">Manage by source</div>
-      ) : null}
     </div>
   );
 }
@@ -2218,8 +2285,31 @@ function AvailableStockModal({
   const selected = rows
     .map((row) => ({ stockId: row.id, qty: Number.parseInt(selectedQty[row.id] ?? "", 10), row }))
     .filter((entry) => Number.isFinite(entry.qty) && entry.qty > 0);
+  const selectableVisibleRows = visibleRows.filter((row) => row.availableQty > 0);
+  const allVisibleSelected = selectableVisibleRows.length > 0
+    && selectableVisibleRows.every((row) => Boolean(selectedQty[row.id]));
   const selectedUnits = selected.reduce((sum, entry) => sum + entry.qty, 0);
   const selectedCbm = selected.reduce((sum, entry) => sum + entry.qty * entry.row.cbm, 0);
+
+  function selectAllVisible() {
+    setSelectedQty((current) => {
+      const next = { ...current };
+      selectableVisibleRows.forEach((row) => {
+        next[row.id] = next[row.id] || "1";
+      });
+      return next;
+    });
+  }
+
+  function clearVisibleSelection() {
+    setSelectedQty((current) => {
+      const next = { ...current };
+      visibleRows.forEach((row) => {
+        next[row.id] = "";
+      });
+      return next;
+    });
+  }
 
   async function registerStock() {
     const totalQty = Number.parseInt(form.totalQty, 10);
@@ -2319,13 +2409,40 @@ function AvailableStockModal({
           </div>
         </div>
 
-        <div className="px-6 py-2">
+        <div className="flex items-center justify-between gap-3 px-6 py-2">
           <input className="form-input w-72 bg-white text-xs" placeholder="Search SKU / reference..." value={query} onChange={(event) => setQuery(event.target.value)} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              disabled={selectableVisibleRows.length === 0 || allVisibleSelected}
+              className="rounded-md border border-[#1a5cdb] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a5cdb] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              onClick={clearVisibleSelection}
+              disabled={!visibleRows.some((row) => Boolean(selectedQty[row.id]))}
+              className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear Selection
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-6 pb-3">
           <div className="grid grid-cols-[42px_120px_1fr_90px_100px_90px_100px] bg-[#f0eee9] px-3 py-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
-            <span />
+            <input
+              type="checkbox"
+              aria-label="Select all visible available stock"
+              checked={allVisibleSelected}
+              disabled={selectableVisibleRows.length === 0}
+              onChange={(event) => {
+                if (event.target.checked) selectAllVisible();
+                else clearVisibleSelection();
+              }}
+            />
             <span>Reference</span>
             <span>Master SKU</span>
             <span>Available</span>

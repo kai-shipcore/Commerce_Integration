@@ -173,51 +173,76 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const allocationId = new URL(request.url).searchParams.get("allocationId")?.trim() ?? "";
-  if (!/^\d+$/.test(allocationId)) {
-    return NextResponse.json({ success: false, error: "allocationId is required" }, { status: 400 });
+  const searchParams = new URL(request.url).searchParams;
+  const allocationInput = searchParams.get("allocationIds")?.trim() || searchParams.get("allocationId")?.trim() || "";
+  const allocationIds = [...new Set(allocationInput.split(",").map((id) => id.trim()).filter(Boolean))];
+  if (allocationIds.length === 0 || allocationIds.some((id) => !/^\d+$/.test(id))) {
+    return NextResponse.json({ success: false, error: "Valid allocationId or allocationIds is required" }, { status: 400 });
   }
 
   const client = await getPrimaryPool().connect();
   try {
     await client.query("BEGIN");
-    const result = await client.query<{ container_id: string; master_sku: string; qty: number; status: string }>(
-      `SELECT
-         a.container_id::text,
-         s.master_sku,
-         a.qty::int,
-         c.status::text
-       FROM shipcore.fc_container_item_allocations a
-       JOIN shipcore.fc_available_stock s ON s.id = a.source_stock_id
-       JOIN shipcore.fc_containers c ON c.id = a.container_id
-       WHERE a.id = $1::bigint
-       FOR UPDATE OF a, c`,
-      [allocationId]
-    );
-    if (result.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json({ success: false, error: "Allocation not found" }, { status: 404 });
-    }
-    const row = result.rows[0];
-    if (row.status !== "draft") {
-      await client.query("ROLLBACK");
-      return NextResponse.json({ success: false, error: "Allocated stock can be removed only while the container is Draft." }, { status: 409 });
-    }
+    let containerId = "";
+    for (const allocationId of allocationIds) {
+      const result = await client.query<{ container_id: string; master_sku: string; qty: number; status: string }>(
+        `SELECT
+           a.container_id::text,
+           s.master_sku,
+           a.qty::int,
+           c.status::text
+         FROM shipcore.fc_container_item_allocations a
+         JOIN shipcore.fc_available_stock s ON s.id = a.source_stock_id
+         JOIN shipcore.fc_containers c ON c.id = a.container_id
+         WHERE a.id = $1::bigint
+         FOR UPDATE OF a, c`,
+        [allocationId]
+      );
+      if (result.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ success: false, error: "Allocation not found" }, { status: 404 });
+      }
+      const row = result.rows[0];
+      if (row.status !== "draft") {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ success: false, error: "Allocated stock can be removed only while the container is Draft." }, { status: 409 });
+      }
+      if (containerId && row.container_id !== containerId) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ success: false, error: "Selected allocations must belong to the same container." }, { status: 400 });
+      }
+      containerId = row.container_id;
 
-    await client.query(`DELETE FROM shipcore.fc_container_item_allocations WHERE id = $1::bigint`, [allocationId]);
-    await client.query(
-      `UPDATE shipcore.fc_container_items
-       SET qty = qty - $3::int, updated_at = NOW()
-       WHERE container_id = $1::bigint AND master_sku = $2`,
-      [row.container_id, row.master_sku, row.qty]
-    );
-    await client.query(
-      `DELETE FROM shipcore.fc_container_items
-       WHERE container_id = $1::bigint AND master_sku = $2 AND qty <= 0`,
-      [row.container_id, row.master_sku]
-    );
+      const item = await client.query<{ qty: number }>(
+        `SELECT qty::int
+         FROM shipcore.fc_container_items
+         WHERE container_id = $1::bigint AND master_sku = $2
+         FOR UPDATE`,
+        [row.container_id, row.master_sku]
+      );
+      if (item.rowCount === 0 || item.rows[0].qty < row.qty) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ success: false, error: "Container item quantity is inconsistent with allocated stock." }, { status: 409 });
+      }
+
+      await client.query(`DELETE FROM shipcore.fc_container_item_allocations WHERE id = $1::bigint`, [allocationId]);
+      if (item.rows[0].qty === row.qty) {
+        await client.query(
+          `DELETE FROM shipcore.fc_container_items
+           WHERE container_id = $1::bigint AND master_sku = $2`,
+          [row.container_id, row.master_sku]
+        );
+      } else {
+        await client.query(
+          `UPDATE shipcore.fc_container_items
+           SET qty = qty - $3::int, updated_at = NOW()
+           WHERE container_id = $1::bigint AND master_sku = $2`,
+          [row.container_id, row.master_sku, row.qty]
+        );
+      }
+    }
     await client.query("COMMIT");
-    return NextResponse.json({ success: true, data: { containerId: row.container_id } });
+    return NextResponse.json({ success: true, data: { containerId, deletedCount: allocationIds.length } });
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("Available stock allocation DELETE failed:", error);
