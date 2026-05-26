@@ -53,16 +53,20 @@ export async function GET() {
     const lookup  = getLookupPool();
 
     // ── 1. Container headers ─────────────────────────────────────────────────
+    // All containers regardless of status so drafts also appear as columns.
     const containersResult = await primary.query<{
-      name: string; eta: string; cbm_cap: number;
+      name: string; eta: string; cbm_cap: number; status: string;
     }>(`
       SELECT
         container_number          AS name,
         eta_date::text            AS eta,
-        cbm_capacity::float8      AS cbm_cap
+        cbm_capacity::float8      AS cbm_cap,
+        status
       FROM shipcore.fc_containers
-      WHERE status IN ${ACTIVE}
-      ORDER BY eta_date NULLS LAST, id
+      ORDER BY
+        CASE WHEN status IN ${ACTIVE} THEN 0 ELSE 1 END,
+        eta_date NULLS LAST,
+        id
     `);
 
     // ── 2. Per-SKU rows ──────────────────────────────────────────────────────
@@ -153,7 +157,6 @@ export async function GET() {
         NULL::text                 AS plan_sod
       FROM shipcore.fc_container_items ci
       JOIN shipcore.fc_containers c ON c.id = ci.container_id
-      WHERE c.status IN ${ACTIVE}
     `);
 
     // ── 4. Backorders from Supabase (best-effort) ────────────────────────────
@@ -185,6 +188,7 @@ export async function GET() {
       name:    r.name,
       eta:     r.eta,
       cbm_cap: r.cbm_cap ?? 0,
+      status:  r.status,
     }));
 
     // cross-data lookup: sku → container_name → ContainerRowData

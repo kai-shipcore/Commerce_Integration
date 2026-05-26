@@ -6,7 +6,7 @@
 //         false/missing → velocity_link_snapshot  (sales_status = 'Original')
 //         true          → velocity_custom_snapshot (sales_status = 'Custom')
 //         order_type mapping: 'sales' → west, 'ttm' → east, 'preorder' → west_30d_pre.
-//         2-day trailing lag on order_date.
+//         No trailing lag — windows run up to CURRENT_DATE to match the velocity page.
 
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
@@ -113,26 +113,26 @@ export async function POST() {
       SELECT
         vls.link_master_sku AS master_sku,
         'Original'::text    AS sales_status,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_90d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_60d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_30d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_15d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_7d,
-        SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_30d_pre,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_90d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_60d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_30d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_15d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_7d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS west_90d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS west_60d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS west_30d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS west_15d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS west_7d,
+        SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS west_30d_pre,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS east_90d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS east_60d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS east_30d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS east_15d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric AS east_7d,
         0::numeric AS east_30d_pre,
         -- avg_daily_real (west): weighted avg over current window
         (
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
+          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
         ) AS avg_daily_real,
         -- avg_daily_prev (west): same formula, windows shifted back 7 days
         (
@@ -145,11 +145,11 @@ export async function POST() {
         ) AS avg_daily_prev,
         -- east_avg_real (ttm): same weighted formula using ttm orders
         (
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_real,
         -- east_avg_prev (ttm): shifted back 7 days
         (
@@ -172,25 +172,25 @@ export async function POST() {
       SELECT
         vcs.custom_master_sku AS master_sku,
         'Custom'::text        AS sales_status,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_90d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_60d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_15d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_7d,
-        SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d_pre,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_90d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_60d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_30d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_15d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_7d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS west_90d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS west_60d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS west_30d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS west_15d,
+        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS west_7d,
+        SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS west_30d_pre,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS east_90d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS east_60d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS east_30d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS east_15d,
+        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric AS east_7d,
         0::numeric AS east_30d_pre,
         (
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
+          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
         ) AS avg_daily_real,
         (
           SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 97 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
@@ -201,11 +201,11 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 37 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
         ) AS avg_daily_prev,
         (
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 90 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 60 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 30 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 7  AND order_date <= CURRENT_DATE THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_real,
         (
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 97 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +

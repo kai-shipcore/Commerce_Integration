@@ -583,8 +583,9 @@ export function DemandPlanningGrid({
               ))}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
+                const isDraft = c.status !== "shipped" && c.status !== "packing_received";
                 const dt = daysTo(c.eta);
-                const etaColor =
+                const etaColor = isDraft ? "#8A8780" :
                   dt !== null && dt <= 7  ? "#FF9090" :
                   dt !== null && dt <= 21 ? "#F0C060" : "#88D0FF";
                 return (
@@ -592,7 +593,7 @@ export function DemandPlanningGrid({
                     key={c.name}
                     colSpan={CON_SUBCOLS.length}
                     style={{
-                      background: "#2A2825",
+                      background: isDraft ? "#1E1D1A" : "#2A2825",
                       color: etaColor,
                       fontSize: 10,
                       fontWeight: 800,
@@ -604,7 +605,7 @@ export function DemandPlanningGrid({
                       height: 20,
                     }}
                   >
-                    {c.name}&nbsp;/&nbsp;Cap {c.cbm_cap.toFixed(1)}
+                    {isDraft ? "✏ " : ""}{c.name}&nbsp;/&nbsp;Cap {c.cbm_cap.toFixed(1)}
                   </th>
                 );
               })}
@@ -742,9 +743,11 @@ export function DemandPlanningGrid({
                         backorder: 0, eta: c.eta, inv_life: null,
                         est_sod: null, plan_sod: null, cbm: 0,
                       };
+                      const isDraft = c.status !== "shipped" && c.status !== "packing_received";
                       const isLast = ci === CONS.length - 1;
                       return CON_SUBCOLS.map((sc, si) => {
                         const isLastSub = si === CON_SUBCOLS.length - 1;
+                        const baseBg = isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
                         return (
                           <td
                             key={`${c.name}-${sc.id}`}
@@ -759,7 +762,8 @@ export function DemandPlanningGrid({
                               verticalAlign: "middle",
                               whiteSpace: "nowrap",
                               height: 28,
-                              background: TINT_COLORS[sc.tint] || "#fff",
+                              background: baseBg,
+                              color: isDraft ? "#9A9790" : undefined,
                               textAlign: sc.align === "num" ? "right" : sc.align === "ctr" ? "center" : "left",
                               fontFamily: sc.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
                               fontSize: 11,
