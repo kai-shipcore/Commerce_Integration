@@ -72,6 +72,7 @@ export async function GET() {
         agg.latest_eta,
         agg.latest_qty,
         COALESCE(s.sales_status,   'Original')               AS sales_status,
+        COALESCE(s.back,           0)::int                   AS back,
         COALESCE(s.west_stock,     0)::int                   AS west_stock,
         COALESCE(s.east_stock,     0)::int                   AS east_stock,
         COALESCE(s.total_stock,    0)::int                   AS total_stock,
@@ -215,7 +216,7 @@ export async function GET() {
         no,
         color,
         tone,
-        back:              backorderMap.get(r.sku as string) ?? 0,
+        back:              r.back as number,
         sales_status:      (r.sales_status as "Original" | "Custom" | "Hold"),
         sku:               r.sku as string,
         west_stock:        r.west_stock,
@@ -251,7 +252,14 @@ export async function GET() {
         total_inbound_qty: r.total_inbound_qty,
         containers_list:   r.containers_list ?? null,
         next_eta:          r.next_eta ?? null,
-        sod:               null, // Phase 2: today + (total_stock + inbound) / avg_daily_curr
+        sod:               (() => {
+          const rate = r.total_avg_real as number;
+          if (!rate) return null;
+          const days = Math.round((r.total_stock as number) / rate);
+          const d = new Date();
+          d.setDate(d.getDate() + days);
+          return d.toISOString().slice(0, 10);
+        })(),
         containers:        containersObj,
       };
     });
