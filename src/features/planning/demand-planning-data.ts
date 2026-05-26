@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { DemandPlanningData } from "@/types/demand-planning";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [] };
@@ -14,11 +14,10 @@ export interface DemandPlanningDataState {
 
 export function useDemandPlanningData(): DemandPlanningDataState {
   const [data, setData] = useState<DemandPlanningData>(EMPTY);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
 
-  useEffect(() => {
+  function reload() {
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -45,12 +44,7 @@ export function useDemandPlanningData(): DemandPlanningDataState {
       });
 
     return () => { cancelled = true; };
-  }, [tick]);
+  }
 
-  return {
-    data,
-    loading,
-    error,
-    reload: () => setTick((t) => t + 1),
-  };
+  return { data, loading, error, reload };
 }
