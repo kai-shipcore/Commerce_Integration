@@ -6,10 +6,12 @@ import { DemandPlanningGrid } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
 import { TODAY } from "./columns";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
+import type { VelocityMode } from "@/features/planning/demand-planning-data";
 import type { CategoryFilter, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 
 export function DemandPlanningDashboard() {
-  const { data, loading, error: loadError, reload } = useDemandPlanningData();
+  const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
+  const { data, loading, error: loadError, reload } = useDemandPlanningData(velocityMode);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("sc");
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
@@ -287,6 +289,28 @@ export function DemandPlanningDashboard() {
           >
             CSV
           </button>
+          <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
+            {(["link", "custom"] as VelocityMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setVelocityMode(m)}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "5px 10px",
+                  border: "none",
+                  borderRight: m === "link" ? "1px solid #C2BFB5" : undefined,
+                  background: velocityMode === m ? "#1A1917" : "#fff",
+                  color: velocityMode === m ? "#fff" : "#1A1917",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {m === "link" ? "Link" : "Custom"}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={reload}

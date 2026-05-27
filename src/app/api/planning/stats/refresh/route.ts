@@ -20,6 +20,7 @@ const BATCH = 500;
 
 async function batchUpsert(
   primary: ReturnType<typeof getPrimaryPool>,
+  table: "shipcore.fc_stats" | "shipcore.fc_stats_custom",
   rows: Record<string, unknown>[],
   columns: string[],
   updateSet: string,
@@ -34,7 +35,7 @@ async function batchUpsert(
       .join(", ");
     const params = batch.flatMap((r) => columns.map((c) => r[c]));
     await primary.query(
-      `INSERT INTO shipcore.fc_stats (${columns.join(", ")})
+      `INSERT INTO ${table} (${columns.join(", ")})
        VALUES ${values}
        ON CONFLICT (master_sku) DO UPDATE SET ${updateSet}`,
       params,
@@ -74,45 +75,53 @@ export async function POST() {
     `);
 
     const invRows = invResult.rows as Record<string, unknown>[];
-    await batchUpsert(
-      primary,
-      invRows,
-      ["master_sku", "west_stock", "east_stock", "total_stock", "back"],
-      `west_stock    = EXCLUDED.west_stock,
+    const invCols = ["master_sku", "west_stock", "east_stock", "total_stock", "back"];
+    const invUpdate = `west_stock    = EXCLUDED.west_stock,
        east_stock    = EXCLUDED.east_stock,
        total_stock   = EXCLUDED.total_stock,
        back          = EXCLUDED.back,
        calculated_at = NOW(),
-       updated_at    = NOW()`,
-    );
+       updated_at    = NOW()`;
+    await Promise.all([
+      batchUpsert(primary, "shipcore.fc_stats",        invRows, invCols, invUpdate),
+      batchUpsert(primary, "shipcore.fc_stats_custom", invRows, invCols, invUpdate),
+    ]);
 
     // ── Step 2: Sales velocity ───────────────────────────────────────────────
     // Zero out velocity + avg columns first so SKUs with no recent sales show 0.
-    await primary.query(`
-      UPDATE shipcore.fc_stats
-      SET west_90d = 0, west_60d = 0, west_30d = 0, west_15d = 0, west_7d = 0, west_30d_pre = 0,
-          east_90d = 0, east_60d = 0, east_30d = 0, east_15d = 0, east_7d = 0, east_30d_pre = 0,
-          avg_daily_real = 0, avg_daily_prev = 0, avg_daily_curr = 0,
-          east_avg_real  = 0, east_avg_prev  = 0, east_avg_curr  = 0,
-          total_avg_prev = 0, total_avg_real = 0, total_avg_curr = 0,
-          west_fbm_30d   = 0, east_fbm_30d   = 0, total_30d = 0,
-          updated_at = NOW()
-    `);
+    const zeroVelocity = `
+      west_90d = 0, west_60d = 0, west_30d = 0, west_15d = 0, west_7d = 0, west_30d_pre = 0,
+      east_90d = 0, east_60d = 0, east_30d = 0, east_15d = 0, east_7d = 0, east_30d_pre = 0,
+      avg_daily_real = 0, avg_daily_prev = 0, avg_daily_curr = 0,
+      east_avg_real  = 0, east_avg_prev  = 0, east_avg_curr  = 0,
+      total_avg_prev = 0, total_avg_real = 0, total_avg_curr = 0,
+      west_fbm_30d   = 0, east_fbm_30d   = 0, total_30d = 0,
+      updated_at = NOW()`;
+    await Promise.all([
+      primary.query(`UPDATE shipcore.fc_stats        SET ${zeroVelocity}`),
+      primary.query(`UPDATE shipcore.fc_stats_custom SET ${zeroVelocity}`),
+    ]);
 
-    // Update sales_status for all fc_stats rows from fc_products.
-    await primary.query(`
-      UPDATE shipcore.fc_stats fs
-      SET sales_status = CASE WHEN p.is_custom_sku = true THEN 'Custom' ELSE 'Original' END
-      FROM shipcore.fc_products p
-      WHERE fs.master_sku = p.master_sku
-    `);
+    // Update sales_status in both tables from fc_products.
+    await Promise.all([
+      primary.query(`
+        UPDATE shipcore.fc_stats fs
+        SET sales_status = CASE WHEN p.is_custom_sku = true THEN 'Custom' ELSE 'Original' END
+        FROM shipcore.fc_products p WHERE fs.master_sku = p.master_sku
+      `),
+      primary.query(`
+        UPDATE shipcore.fc_stats_custom fsc
+        SET sales_status = CASE WHEN p.is_custom_sku = true THEN 'Custom' ELSE 'Original' END
+        FROM shipcore.fc_products p WHERE fsc.master_sku = p.master_sku
+      `),
+    ]);
 
-    // Original SKUs — velocity_link_snapshot (fc_products.is_custom_sku = false or missing)
+    // All SKUs — velocity_link_snapshot → written to fc_stats
     // WHERE extends to CURRENT_DATE - 98 to cover the prev window (shifted back 7 days).
     const linkSalesResult = await primary.query(`
       SELECT
         vls.link_master_sku AS master_sku,
-        'Original'::text    AS sales_status,
+        'Original'::text    AS sales_status,  -- overwritten by sales_status UPDATE below
         SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_90d,
         SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_60d,
         SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_30d,
@@ -160,18 +169,16 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_prev
       FROM shipcore.velocity_link_snapshot vls
-      LEFT JOIN shipcore.fc_products p ON p.master_sku = vls.link_master_sku
       WHERE vls.link_master_sku IS NOT NULL
         AND vls.order_date >= CURRENT_DATE - 98
-        AND (p.is_custom_sku IS NULL OR p.is_custom_sku = false)
       GROUP BY vls.link_master_sku
     `);
 
-    // Custom SKUs — velocity_custom_snapshot (fc_products.is_custom_sku = true)
+    // All SKUs — velocity_custom_snapshot → written to fc_stats_custom
     const customSalesResult = await primary.query(`
       SELECT
         vcs.custom_master_sku AS master_sku,
-        'Custom'::text        AS sales_status,
+        'Original'::text      AS sales_status,  -- overwritten by sales_status UPDATE below
         SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_90d,
         SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_60d,
         SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d,
@@ -215,7 +222,6 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_prev
       FROM shipcore.velocity_custom_snapshot vcs
-      JOIN shipcore.fc_products p ON p.master_sku = vcs.custom_master_sku AND p.is_custom_sku = true
       WHERE vcs.custom_master_sku IS NOT NULL
         AND vcs.order_date >= CURRENT_DATE - 98
       GROUP BY vcs.custom_master_sku
@@ -299,8 +305,8 @@ export async function POST() {
     }
 
     await Promise.all([
-      batchUpsert(primary, linkRows,   salesCols, salesUpdateSet),
-      batchUpsert(primary, customRows, salesCols, salesUpdateSet),
+      batchUpsert(primary, "shipcore.fc_stats",        linkRows,   salesCols, salesUpdateSet),
+      batchUpsert(primary, "shipcore.fc_stats_custom", customRows, salesCols, salesUpdateSet),
     ]);
 
     return NextResponse.json({
