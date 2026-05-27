@@ -332,9 +332,9 @@ export async function POST() {
       r.east_avg_real   = eReal;
       r.avg_daily_curr  = wCurr;
       r.east_avg_curr   = eCurr;
-      r.total_avg_prev  = round2(wPrev + ePrev);
-      r.total_avg_real  = round2(wReal + eReal);
-      r.total_avg_curr  = round2(wCurr + eCurr);
+      r.total_avg_prev  = round2(wPrev + ePrev + fbaPrev);
+      r.total_avg_real  = round2(wReal + eReal + fbaReal);
+      r.total_avg_curr  = round2(wCurr + eCurr + fbaCurr);
       r.fba_avg_real    = fbaReal;
       r.fba_avg_curr    = fbaCurr;
 
@@ -344,7 +344,7 @@ export async function POST() {
       const e15 = Number(r.east_15d), e7  = Number(r.east_7d);
       r.west_fbm_30d = Math.round((w90/90*30 + w60/60*30 + w30/30*30 + w15/15*30 + w7/7*30) / 5);
       r.east_fbm_30d = Math.round((e90/90*30 + e60/60*30 + e30/30*30 + e15/15*30 + e7/7*30) / 5);
-      r.total_30d    = (r.west_fbm_30d as number) + (r.east_fbm_30d as number);
+      r.total_30d    = (r.west_fbm_30d as number) + (r.east_fbm_30d as number) + (r.fba_30d as number);
     }
 
     await Promise.all([
