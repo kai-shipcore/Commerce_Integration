@@ -23,9 +23,7 @@ export async function PATCH(
 
     const primary = getPrimaryPool();
     await primary.query(
-      `INSERT INTO shipcore.fc_products (master_sku, cbm_per_unit, updated_at)
-       VALUES ($1, $2::numeric, NOW())
-       ON CONFLICT (master_sku) DO UPDATE SET cbm_per_unit = EXCLUDED.cbm_per_unit, updated_at = NOW()`,
+      `UPDATE shipcore.fc_products SET cbm_per_unit = $2::numeric, updated_at = NOW() WHERE master_sku = $1`,
       [sku, cbm],
     );
 
