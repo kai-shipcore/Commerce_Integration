@@ -435,3 +435,66 @@ export async function PATCH(request: NextRequest) {
     client.release();
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  const client = await getPrimaryPool().connect();
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id")?.trim();
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "Container id is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!/^\d+$/.test(id)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid container id" },
+        { status: 400 }
+      );
+    }
+
+    await client.query("BEGIN");
+
+    const existing = await client.query(
+      `SELECT id FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
+      [id]
+    );
+
+    if (existing.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: "Container not found" },
+        { status: 404 }
+      );
+    }
+
+    await client.query(`DELETE FROM shipcore.fc_container_item_allocations WHERE container_id = $1::bigint`, [id]);
+    await client.query(`DELETE FROM shipcore.fc_container_items WHERE container_id = $1::bigint`, [id]);
+    await client.query(`DELETE FROM shipcore.fc_container_po_links WHERE container_id = $1::bigint`, [id]);
+
+    const deleted = await client.query(
+      `DELETE FROM shipcore.fc_containers WHERE id = $1::bigint RETURNING id`,
+      [id]
+    );
+
+    await client.query("COMMIT");
+
+    return NextResponse.json({
+      success: true,
+      data: { id: String(deleted.rows[0]?.id ?? id) },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting container:", error);
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
+}

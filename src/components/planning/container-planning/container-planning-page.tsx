@@ -800,9 +800,23 @@ export function ContainerPlanningPage() {
     return removeAvailableStockAllocations([allocationId], containerId);
   }
 
-  function deleteContainer(containerId: string) {
-    setContainers((current) => current.filter((c) => c.id !== containerId));
-    if (expandedId === containerId) setExpandedId(null);
+  async function deleteContainer(containerId: string) {
+    try {
+      const response = await fetch(`/api/containers?id=${encodeURIComponent(containerId)}`, {
+        method: "DELETE",
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        window.alert(json.error ?? "Failed to delete container.");
+        return;
+      }
+
+      await fetchContainers();
+      if (expandedId === containerId) setExpandedId(null);
+    } catch {
+      window.alert("Failed to delete container.");
+    }
   }
 
   function editDraftKey(containerId: string, sku: string) {

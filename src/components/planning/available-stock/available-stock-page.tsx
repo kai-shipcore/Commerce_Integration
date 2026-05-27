@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
 type StockSourceType = "remaining" | "mistake";
+type StockSortColumn = "referenceNo" | "plNo" | "masterSku" | "totalQty" | "allocatedQty" | "availableQty" | "cbm" | "totalCbm" | "note";
+type SortDirection = "asc" | "desc";
 
 type AvailableStockRow = {
   id: string;
@@ -38,6 +40,28 @@ const emptyForm: StockForm = {
 
 function allocatedQty(row: AvailableStockRow) {
   return row.totalQty - row.availableQty;
+}
+
+function stockSortValue(row: AvailableStockRow, column: StockSortColumn) {
+  switch (column) {
+    case "allocatedQty":
+      return allocatedQty(row);
+    case "totalCbm":
+      return row.totalQty * row.cbm;
+    case "plNo":
+      return row.plNo ?? "";
+    case "note":
+      return row.note ?? "";
+    default:
+      return row[column];
+  }
+}
+
+function compareStockRows(a: AvailableStockRow, b: AvailableStockRow, column: StockSortColumn) {
+  const left = stockSortValue(a, column);
+  const right = stockSortValue(b, column);
+  if (typeof left === "number" && typeof right === "number") return left - right;
+  return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
 }
 
 function parseForm(form: StockForm) {
@@ -128,6 +152,8 @@ export function AvailableStockPage() {
   const [createForm, setCreateForm] = useState<StockForm>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<StockForm>(emptyForm);
+  const [sortColumn, setSortColumn] = useState<StockSortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   async function loadRows() {
@@ -157,8 +183,17 @@ export function AvailableStockPage() {
       `${row.referenceNo} ${row.masterSku} ${row.note ?? ""}`.toLowerCase().includes(normalized)
     );
   }, [query, tabRows]);
+  const sortedRows = useMemo(() => {
+    if (!sortColumn) return visibleRows;
+    const direction = sortDirection === "asc" ? 1 : -1;
+    return [...visibleRows].sort((left, right) => {
+      const compared = compareStockRows(left, right, sortColumn);
+      return compared === 0 ? left.id.localeCompare(right.id) : compared * direction;
+    });
+  }, [sortColumn, sortDirection, visibleRows]);
   const tabTotals = useMemo(
     () => ({
+      masterSkuCount: new Set(tabRows.map((row) => row.masterSku)).size,
       totalQty: tabRows.reduce((sum, row) => sum + row.totalQty, 0),
       availableQty: tabRows.reduce((sum, row) => sum + row.availableQty, 0),
       allocatedQty: tabRows.reduce((sum, row) => sum + allocatedQty(row), 0),
@@ -170,6 +205,15 @@ export function AvailableStockPage() {
     setSourceType(next);
     setEditingId(null);
     setMessage("");
+  }
+
+  function toggleSort(column: StockSortColumn) {
+    if (sortColumn === column) {
+      setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection("asc");
   }
 
   async function lookupSkuMaster(masterSku: string): Promise<SkuMasterLookup | null> {
@@ -408,7 +452,8 @@ export function AvailableStockPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 border-b border-[#e2dfd8] bg-[#f8f7f4]">
+      <div className="grid grid-cols-4 border-b border-[#e2dfd8] bg-[#f8f7f4]">
+        <StockStat label="Master SKUs" value={tabTotals.masterSkuCount} />
         <StockStat label="Total Units" value={tabTotals.totalQty} />
         <StockStat label="Available Units" value={tabTotals.availableQty} />
         <StockStat label="Allocated Units" value={tabTotals.allocatedQty} />
@@ -434,28 +479,30 @@ export function AvailableStockPage() {
       {message ? <div className="border-b border-[#e2dfd8] px-6 py-2 text-xs text-[#8a5300]">{message}</div> : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
-        <div className="grid grid-cols-[120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground">
-          <span>Reference</span>
-          <span>PI Number</span>
-          <span>Master SKU</span>
-          <span>Total Qty</span>
-          <span>Allocated</span>
-          <span>Available</span>
-          <span>CBM</span>
-          <span>Total CBM</span>
-          <span>Note</span>
+        <div className="grid grid-cols-[48px_120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground">
+          <span>No.</span>
+          <StockSortHeader label="Reference" column="referenceNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="PI Number" column="plNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="Master SKU" column="masterSku" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="Total Qty" column="totalQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="Allocated" column="allocatedQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="Available" column="availableQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="CBM" column="cbm" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="Total CBM" column="totalCbm" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label="Note" column="note" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <span>Actions</span>
         </div>
         {loading ? (
           <div className="p-10 text-center text-sm text-muted-foreground">Loading available stock...</div>
-        ) : visibleRows.length === 0 ? (
+        ) : sortedRows.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">No available stock registered for this list.</div>
         ) : (
-          visibleRows.map((row) => {
+          sortedRows.map((row, index) => {
             const allocated = allocatedQty(row);
             const editing = editingId === row.id;
             return (
-              <div key={row.id} className="grid grid-cols-[120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] items-center border-b border-[#e2dfd8] px-3 py-2 text-sm">
+              <div key={row.id} className="grid grid-cols-[48px_120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] items-center border-b border-[#e2dfd8] px-3 py-2 text-sm">
+                <span className="font-mono text-xs text-muted-foreground">{index + 1}</span>
                 {editing ? <StockInput value={editForm.referenceNo} onChange={(value) => setEditForm((form) => ({ ...form, referenceNo: value }))} /> : <span className="text-xs font-semibold">{row.referenceNo}</span>}
                 {editing ? <StockInput value={editForm.plNo} onChange={(value) => setEditForm((form) => ({ ...form, plNo: value }))} /> : <span className="text-xs">{row.plNo || "-"}</span>}
                 {editing ? <StockInput mono disabled={allocated > 0} value={editForm.masterSku} onChange={(value) => setEditForm((form) => ({ ...form, masterSku: value }))} onBlur={() => void validateEditSku()} /> : <span className="font-mono text-xs">{row.masterSku}</span>}
@@ -493,6 +540,33 @@ function StockStat({ label, value }: { label: string; value: number }) {
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-lg font-semibold">{new Intl.NumberFormat("en-US").format(value)}</div>
     </div>
+  );
+}
+
+function StockSortHeader({
+  label,
+  column,
+  activeColumn,
+  direction,
+  onSort,
+}: {
+  label: string;
+  column: StockSortColumn;
+  activeColumn: StockSortColumn | null;
+  direction: SortDirection;
+  onSort: (column: StockSortColumn) => void;
+}) {
+  const active = activeColumn === column;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className={`flex items-center gap-1 text-left uppercase hover:text-foreground ${active ? "text-[#1a5cdb]" : ""}`}
+      aria-label={`Sort by ${label} ${active && direction === "asc" ? "descending" : "ascending"}`}
+    >
+      <span>{label}</span>
+      {active ? <span aria-hidden="true">{direction === "asc" ? "\u25B2" : "\u25BC"}</span> : null}
+    </button>
   );
 }
 
