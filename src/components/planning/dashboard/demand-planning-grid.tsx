@@ -170,6 +170,16 @@ export function DemandPlanningGrid({
     fix: true, stock: true, wsales: true, esales: true, wavg: true, eavg: true,
     fba: true, s30: true, tavg: true, inb: true, con: true,
   });
+  const [showRemaining, setShowRemaining] = useState(true);
+  const [showMistake, setShowMistake] = useState(true);
+  const [cbmEditingSku, setCbmEditingSku] = useState<string | null>(null);
+  const [cbmEditingVal, setCbmEditingVal] = useState("");
+  const cbmEditingValRef = useRef("");
+  const [cbmSavingSku, setCbmSavingSku] = useState<string | null>(null);
+  const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
+  const visSubCols = CON_SUBCOLS.filter((sc) =>
+    (sc.id !== "remaining" || showRemaining) && (sc.id !== "mistake" || showMistake)
+  );
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [sortColumnId, setSortColumnId] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -475,6 +485,30 @@ export function DemandPlanningGrid({
         })}
         <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
         <button
+          onClick={() => setShowRemaining((v) => !v)}
+          style={{
+            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
+            border: showRemaining ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)", cursor: "pointer",
+            color: showRemaining ? "#F8FAFC" : "rgba(203,213,225,.82)",
+            background: showRemaining ? "rgba(120,160,100,.55)" : "rgba(15,23,42,.5)",
+            whiteSpace: "nowrap", flexShrink: 0,
+          }}
+        >
+          Remaining
+        </button>
+        <button
+          onClick={() => setShowMistake((v) => !v)}
+          style={{
+            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
+            border: showMistake ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)", cursor: "pointer",
+            color: showMistake ? "#F8FAFC" : "rgba(203,213,225,.82)",
+            background: showMistake ? "rgba(120,160,100,.55)" : "rgba(15,23,42,.5)",
+            whiteSpace: "nowrap", flexShrink: 0,
+          }}
+        >
+          Mistake
+        </button>
+        <button
           onClick={() => handleToggleGroup("con")}
           style={{
             fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
@@ -602,9 +636,9 @@ export function DemandPlanningGrid({
               ))}
               {showCon && CONS.length > 0 && (
                 <th
-                  colSpan={CONS.length * CON_SUBCOLS.length}
+                  colSpan={CONS.length * visSubCols.length}
                   data-span-start={visCols.length}
-                  data-span-end={visCols.length + CONS.length * CON_SUBCOLS.length - 1}
+                  data-span-end={visCols.length + CONS.length * visSubCols.length - 1}
                   style={{
                     background: "#0D2535",
                     color: "rgba(255,255,255,.85)",
@@ -656,7 +690,7 @@ export function DemandPlanningGrid({
                 return (
                   <th
                     key={c.name}
-                    colSpan={CON_SUBCOLS.length}
+                    colSpan={visSubCols.length}
                     style={{
                       background: isBaseline ? "#0F2218" : isDraft ? "#1E1D1A" : "#2A2825",
                       color: etaColor,
@@ -718,8 +752,8 @@ export function DemandPlanningGrid({
               ))}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
-                return CON_SUBCOLS.map((sc, si) => {
-                  const isLastSub = si === CON_SUBCOLS.length - 1;
+                return visSubCols.map((sc, si) => {
+                  const isLastSub = si === visSubCols.length - 1;
                   return (
                     <th
                       key={`${c.name}-${sc.id}`}
@@ -757,7 +791,7 @@ export function DemandPlanningGrid({
             {displayedRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={visCols.length + (showCon ? CONS.length * CON_SUBCOLS.length : 0)}
+                  colSpan={visCols.length + (showCon ? CONS.length * visSubCols.length : 0)}
                   style={{ padding: 20, textAlign: "center", color: "#9A9790" }}
                 >
                   조건에 맞는 SKU 없음
@@ -768,7 +802,7 @@ export function DemandPlanningGrid({
                 {virtualRows.topHeight > 0 ? (
                   <tr aria-hidden="true" style={{ height: virtualRows.topHeight }}>
                     <td
-                      colSpan={visCols.length + (showCon ? CONS.length * CON_SUBCOLS.length : 0)}
+                      colSpan={visCols.length + (showCon ? CONS.length * visSubCols.length : 0)}
                       style={{ height: virtualRows.topHeight, padding: 0, border: 0 }}
                     />
                   </tr>
@@ -777,9 +811,10 @@ export function DemandPlanningGrid({
                 const idx = virtualRows.start + visibleIdx;
                 const u: UrgencyStatus = urgStatus(r);
                 const rowBg = u === "crit" ? "#FFF5F5" : idx % 2 === 1 ? "#FAFAF7" : "#fff";
-                const displayRow = rowTotalOverrides.has(r.sku)
-                  ? { ...r, ...rowTotalOverrides.get(r.sku) }
-                  : r;
+                const displayRow = {
+                  ...(rowTotalOverrides.has(r.sku) ? { ...r, ...rowTotalOverrides.get(r.sku) } : r),
+                  ...(cbmOverrides.has(r.sku) ? { cbm_per_unit: cbmOverrides.get(r.sku) } : {}),
+                };
                 return (
                   <tr
                     key={r.sku}
@@ -803,18 +838,83 @@ export function DemandPlanningGrid({
                       );
                     }}
                   >
-                    {visCols.map((col) => (
-                      <td
-                        key={col.id}
-                        data-cid={col.id}
-                        style={{
-                          ...cellStyle(col),
-                          background: TINT_COLORS[col.tint] || rowBg,
-                        }}
-                      >
-                        {renderCell(col.val(displayRow, idx, u))}
-                      </td>
-                    ))}
+                    {visCols.map((col) => {
+                      const isCbm = col.id === "cbm";
+                      const isCbmEditing = isCbm && cbmEditingSku === r.sku;
+                      const isCbmSaving  = isCbm && cbmSavingSku  === r.sku;
+                      let cbmSaveStarted = false;
+                      const commitCbmSave = async (val: string) => {
+                        if (cbmSaveStarted) return;
+                        cbmSaveStarted = true;
+                        const newCbm = parseFloat(val);
+                        setCbmEditingSku(null);
+                        if (isNaN(newCbm) || newCbm === displayRow.cbm_per_unit) return;
+                        setCbmSavingSku(r.sku);
+                        try {
+                          const res = await fetch(`/api/planning/products/${encodeURIComponent(r.sku)}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ cbm_per_unit: newCbm }),
+                          });
+                          const json = await res.json() as { success: boolean; error?: string };
+                          if (json.success) {
+                            setCbmOverrides((prev) => new Map(prev).set(r.sku, newCbm));
+                          } else {
+                            console.error("[cbmSave] error:", json.error);
+                          }
+                        } catch (err) {
+                          console.error("[cbmSave] network error:", err);
+                        } finally {
+                          setCbmSavingSku(null);
+                        }
+                      };
+                      return (
+                        <td
+                          key={col.id}
+                          data-cid={col.id}
+                          onClick={isCbm && !isCbmEditing ? () => {
+                            const initial = displayRow.cbm_per_unit ? String(displayRow.cbm_per_unit) : "";
+                            cbmEditingValRef.current = initial;
+                            setCbmEditingVal(initial);
+                            setCbmEditingSku(r.sku);
+                          } : undefined}
+                          style={{
+                            ...cellStyle(col),
+                            background: isCbmEditing ? "#FFFDE7" : TINT_COLORS[col.tint] || rowBg,
+                            cursor: isCbm && !isCbmEditing ? "pointer" : undefined,
+                            padding: isCbmEditing ? 0 : undefined,
+                            borderBottom: isCbm && !isCbmEditing ? "1px dashed #90B8E0" : undefined,
+                            color: isCbm && !isCbmEditing && !isCbmSaving ? "#1A4FC0" : undefined,
+                          }}
+                        >
+                          {isCbmEditing ? (
+                            <input
+                              autoFocus
+                              type="number"
+                              step="0.0001"
+                              min={0}
+                              value={cbmEditingVal}
+                              onChange={(e) => { cbmEditingValRef.current = e.target.value; setCbmEditingVal(e.target.value); }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape") { setCbmEditingSku(null); setCbmEditingVal(""); cbmEditingValRef.current = ""; }
+                                if (e.key === "Enter") { e.preventDefault(); void commitCbmSave(cbmEditingValRef.current); }
+                              }}
+                              onBlur={() => void commitCbmSave(cbmEditingValRef.current)}
+                              style={{
+                                width: "100%", height: 28, padding: "2px 4px",
+                                border: "none", background: "transparent",
+                                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                                fontSize: 11, textAlign: "right", outline: "none", boxSizing: "border-box",
+                              }}
+                            />
+                          ) : isCbmSaving ? (
+                            <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
+                          ) : (
+                            renderCell(col.val(displayRow, idx, u))
+                          )}
+                        </td>
+                      );
+                    })}
                     {showCon && CONS.map((c, ci) => {
                       const rawCd = (r.containers && r.containers[c.name]) || {
                         item_id: null, cbm_unit: null,
@@ -828,8 +928,8 @@ export function DemandPlanningGrid({
                       const isBaseline = c.status === "baseline";
                       const isDraft = !isBaseline && !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                       const isLast = ci === CONS.length - 1;
-                      return CON_SUBCOLS.map((sc, si) => {
-                        const isLastSub = si === CON_SUBCOLS.length - 1;
+                      return visSubCols.map((sc, si) => {
+                        const isLastSub = si === visSubCols.length - 1;
                         const baseBg = isBaseline ? "#E8F5E0" : isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
                         const isQtyCol = sc.id === "inb_qty";
                         const isEditing = isQtyCol && editingKey === eKey;
@@ -1016,7 +1116,7 @@ export function DemandPlanningGrid({
                 {virtualRows.bottomHeight > 0 ? (
                   <tr aria-hidden="true" style={{ height: virtualRows.bottomHeight }}>
                     <td
-                      colSpan={visCols.length + (showCon ? CONS.length * CON_SUBCOLS.length : 0)}
+                      colSpan={visCols.length + (showCon ? CONS.length * visSubCols.length : 0)}
                       style={{ height: virtualRows.bottomHeight, padding: 0, border: 0 }}
                     />
                   </tr>

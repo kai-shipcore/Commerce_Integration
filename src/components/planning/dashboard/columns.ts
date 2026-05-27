@@ -171,9 +171,9 @@ export const ALL_COLS: ColDef[] = [
 
 export const CON_SUBCOLS: ConSubColDef[] = [
   { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd) => cd.inbound_qty !== null && cd.inbound_qty !== undefined ? cd.inbound_qty : "" },
-  { id: "oo",        label: "Open\nOrders", w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.open_orders || 0 },
   { id: "remaining", label: "Remaining",   w: 54, align: "num", tint: "t-cn",      val: (_cd, _c, row) => row.remaining || "" },
   { id: "mistake",   label: "Mistake",     w: 48, align: "num", tint: "t-cn",      val: (_cd, _c, row) => row.mistake   || "" },
+  { id: "oo",        label: "Open\nOrders", w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.open_orders || 0 },
   { id: "avail", label: "Avail\nQty",   w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.avail_qty !== null && cd.avail_qty !== undefined ? cd.avail_qty : "" },
   { id: "est",   label: "Est.\nSales",  w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.est_sales || 0 },
   { id: "cbo",   label: "Back\nOrder",  w: 44, align: "num", tint: "t-cn",      val: (cd) => {
