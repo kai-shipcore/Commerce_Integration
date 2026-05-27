@@ -253,7 +253,6 @@ export function ContainerPlanningPage() {
   const [qtyInput, setQtyInput] = useState("");
   const [cbmInput, setCbmInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const [nextContainerSeq, setNextContainerSeq] = useState(1);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ContainerStatus | null>(null);
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
@@ -319,7 +318,6 @@ export function ContainerPlanningPage() {
         if (targetContainerId && nextContainers.some((container) => container.id === targetContainerId)) return targetContainerId;
         return nextContainers[0]?.id ?? null;
       });
-      setNextContainerSeq(nextContainers.length + 1);
     } catch (error) {
       setContainersError(error instanceof Error ? error.message : "Failed to fetch containers");
       setContainers([]);
@@ -619,7 +617,7 @@ export function ContainerPlanningPage() {
     }
 
     const newContainer: MockContainer = {
-      id: `container-new-${nextContainerSeq}`,
+      id: editingContainerId ?? "",
       number,
       poNumbers: splitPoNumbers(form.poNumbers),
       eta,
@@ -665,10 +663,38 @@ export function ContainerPlanningPage() {
       return;
     }
 
-    setContainers((current) => [newContainer, ...current]);
-    setNextContainerSeq((current) => current + 1);
-    setExpandedId(newContainer.id);
-    closeForm();
+    setSavingContainer(true);
+    try {
+      const response = await fetch("/api/containers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number: newContainer.number,
+          poNumbers: newContainer.poNumbers,
+          eta: newContainer.eta,
+          status: newContainer.status,
+          cbmCapacity: newContainer.cbmCapacity,
+          factory: newContainer.factory,
+          origin: newContainer.origin ?? "",
+          destination: newContainer.destination,
+          items: newContainer.items,
+        }),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        setFormError(json.error ?? "Failed to create container.");
+        return;
+      }
+
+      await fetchContainers();
+      setExpandedId(String(json.data.id));
+      closeForm();
+    } catch {
+      setFormError("Failed to create container.");
+    } finally {
+      setSavingContainer(false);
+    }
   }
 
   function deleteContainerItem(containerId: string, sku: string) {

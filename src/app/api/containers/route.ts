@@ -185,6 +185,103 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  const client = await getPrimaryPool().connect();
+
+  try {
+    const body: unknown = await request.json();
+    const validated = ContainerSaveSchema.parse(body);
+    const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim().toUpperCase()))];
+
+    await client.query("BEGIN");
+
+    const skuResult = await client.query<{ master_sku: string }>(
+      `SELECT master_sku FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
+      [distinctSkus]
+    );
+    const existingSkus = new Set(skuResult.rows.map((row) => row.master_sku));
+    const missingSkus = distinctSkus.filter((sku) => !existingSkus.has(sku));
+
+    if (missingSkus.length > 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: `SKU does not exist in fc_products: ${missingSkus.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const containerResult = await client.query<{ id: string }>(
+      `INSERT INTO shipcore.fc_containers
+         (container_number, eta_date, status, cbm_capacity, factory_name, origin, dest_warehouse, created_at, updated_at)
+       VALUES ($1, $2::date, $3::shipcore.fc_container_status, $4::numeric, $5, $6, $7, NOW(), NOW())
+       RETURNING id::text`,
+      [
+        validated.number.trim(),
+        validated.eta,
+        toDbStatus(validated.status),
+        validated.cbmCapacity,
+        validated.factory?.trim() || null,
+        validated.origin?.trim() || null,
+        validated.destination?.trim() || null,
+      ]
+    );
+    const containerId = containerResult.rows[0].id;
+
+    for (const item of validated.items) {
+      await client.query(
+        `INSERT INTO shipcore.fc_container_items
+           (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
+         VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
+        [containerId, item.sku.trim().toUpperCase(), item.qty, item.cbm]
+      );
+    }
+
+    const poNumbers = [...new Set(validated.poNumbers.map((po) => po.trim()).filter(Boolean))];
+    if (poNumbers.length > 0) {
+      const poResult = await client.query<{ id: string }>(
+        `SELECT id::text FROM shipcore.fc_purchase_orders WHERE po_number = ANY($1::text[])`,
+        [poNumbers]
+      );
+
+      for (const row of poResult.rows) {
+        await client.query(
+          `INSERT INTO shipcore.fc_container_po_links (container_id, po_id, created_at)
+           VALUES ($1::bigint, $2::bigint, NOW())
+           ON CONFLICT DO NOTHING`,
+          [containerId, row.id]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    return NextResponse.json({ success: true, data: { id: containerId } }, { status: 201 });
+  } catch (error) {
+    await client.query("ROLLBACK");
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: "Validation error", details: error.issues },
+        { status: 400 }
+      );
+    }
+
+    if ((error as { code?: string; constraint?: string }).constraint === "fc_containers_number_uk") {
+      return NextResponse.json(
+        { success: false, error: "Container number already exists." },
+        { status: 409 }
+      );
+    }
+
+    console.error("Error creating container:", error);
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   const client = await getPrimaryPool().connect();
 
