@@ -123,11 +123,11 @@ export async function POST() {
       SELECT
         vls.link_master_sku AS master_sku,
         'Original'::text    AS sales_status,  -- overwritten by sales_status UPDATE below
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_90d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_60d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_30d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_15d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_7d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_90d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_60d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_30d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_15d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_7d,
         SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_30d_pre,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_90d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_60d,
@@ -135,23 +135,23 @@ export async function POST() {
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_15d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_7d,
         0::numeric AS east_30d_pre,
-        -- avg_daily_real (west): weighted avg over current window
+        -- avg_daily_real (west, FBA excluded): weighted avg over current window
         (
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
+          SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
         ) AS avg_daily_real,
-        -- avg_daily_prev (west): same formula, windows shifted back 7 days
+        -- avg_daily_prev (west, FBA excluded): same formula, windows shifted back 7 days
         (
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 98 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 98 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
+          SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
         ) AS avg_daily_prev,
         -- east_avg_real (ttm): same weighted formula using ttm orders
         (
@@ -202,12 +202,12 @@ export async function POST() {
       SELECT
         vcs.custom_master_sku AS master_sku,
         'Original'::text      AS sales_status,  -- overwritten by sales_status UPDATE below
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_90d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_60d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_15d,
-        SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_7d,
-        SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d_pre,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_90d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_60d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_15d,
+        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_7d,
+        SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d_pre,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_90d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_60d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_30d,
@@ -215,20 +215,20 @@ export async function POST() {
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_7d,
         0::numeric AS east_30d_pre,
         (
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
+          SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
         ) AS avg_daily_real,
         (
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 98 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales'    AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 98 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
+          SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
         ) AS avg_daily_prev,
         (
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
@@ -350,10 +350,8 @@ export async function POST() {
       const w15 = Number(r.west_15d), w7  = Number(r.west_7d);
       const e90 = Number(r.east_90d), e60 = Number(r.east_60d), e30 = Number(r.east_30d);
       const e15 = Number(r.east_15d), e7  = Number(r.east_7d);
-      const f90 = Number(r.fba_90d ?? 0), f60 = Number(r.fba_60d ?? 0), f30 = Number(r.fba_30d ?? 0);
-      const f15 = Number(r.fba_15d ?? 0), f7  = Number(r.fba_7d  ?? 0);
-      // Subtract FBA from west windows so FBA orders don't double-count in west_fbm_30d
-      r.west_fbm_30d = Math.round((Math.max(0, w90-f90)/90*30 + Math.max(0, w60-f60)/60*30 + Math.max(0, w30-f30)/30*30 + Math.max(0, w15-f15)/15*30 + Math.max(0, w7-f7)/7*30) / 5);
+      // west windows already exclude FBA at the SQL level
+      r.west_fbm_30d = Math.round((w90/90*30 + w60/60*30 + w30/30*30 + w15/15*30 + w7/7*30) / 5);
       r.east_fbm_30d = Math.round((e90/90*30 + e60/60*30 + e30/30*30 + e15/15*30 + e7/7*30) / 5);
       r.total_30d    = (r.west_fbm_30d as number) + (r.east_fbm_30d as number) + (r.fba_30d as number);
     }
