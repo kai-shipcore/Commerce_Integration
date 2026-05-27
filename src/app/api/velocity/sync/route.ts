@@ -16,6 +16,8 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const VELOCITY_SYNC_LOCK_KEY = 1000000001;
+
 // ─── Shared SQL fragments ─────────────────────────────────────────────────────
 
 const CHANNEL_CASE = (alias: string) => `
@@ -71,6 +73,7 @@ interface LinkRow {
   order_type: string;
   link_master_sku: string;
   link_qty: number;
+  is_custom: string;
 }
 
 interface CustomRow {
@@ -81,6 +84,7 @@ interface CustomRow {
   order_type: string;
   custom_master_sku: string;
   custom_qty: number;
+  is_custom: string;
 }
 
 // ─── Batch upsert helpers ─────────────────────────────────────────────────────
@@ -94,13 +98,15 @@ async function upsertLink(rows: LinkRow[], syncedAt: Date): Promise<number> {
     const batch = rows.slice(i, i + BATCH_SIZE);
     await primaryPool().query(
       `INSERT INTO shipcore.velocity_link_snapshot
-         (order_date, order_date_la, item_category, channel, order_type, link_master_sku, link_qty, synced_at)
+         (order_date, order_date_la, item_category, channel, order_type, link_master_sku, link_qty, synced_at, is_custom)
        SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
-              UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[])
+              UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[]),
+              UNNEST($9::text[])
        ON CONFLICT (order_date, order_date_la, item_category, channel, order_type, link_master_sku)
        DO UPDATE SET
          link_qty  = EXCLUDED.link_qty,
-         synced_at = EXCLUDED.synced_at`,
+         synced_at = EXCLUDED.synced_at,
+         is_custom = EXCLUDED.is_custom`,
       [
         batch.map((r) => r.order_date.toISOString().slice(0, 10)),
         batch.map((r) => r.order_date_la.toISOString().slice(0, 10)),
@@ -110,6 +116,7 @@ async function upsertLink(rows: LinkRow[], syncedAt: Date): Promise<number> {
         batch.map((r) => r.link_master_sku),
         batch.map((r) => r.link_qty),
         batch.map(() => syncedAt),
+        batch.map((r) => r.is_custom),
       ]
     );
     upserted += batch.length;
@@ -123,13 +130,15 @@ async function upsertCustom(rows: CustomRow[], syncedAt: Date): Promise<number> 
     const batch = rows.slice(i, i + BATCH_SIZE);
     await primaryPool().query(
       `INSERT INTO shipcore.velocity_custom_snapshot
-         (order_date, order_date_la, item_category, channel, order_type, custom_master_sku, custom_qty, synced_at)
+         (order_date, order_date_la, item_category, channel, order_type, custom_master_sku, custom_qty, synced_at, is_custom)
        SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
-              UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[])
+              UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[]),
+              UNNEST($9::text[])
        ON CONFLICT (order_date, order_date_la, item_category, channel, order_type, custom_master_sku)
        DO UPDATE SET
          custom_qty = EXCLUDED.custom_qty,
-         synced_at  = EXCLUDED.synced_at`,
+         synced_at  = EXCLUDED.synced_at,
+         is_custom  = EXCLUDED.is_custom`,
       [
         batch.map((r) => r.order_date.toISOString().slice(0, 10)),
         batch.map((r) => r.order_date_la.toISOString().slice(0, 10)),
@@ -139,6 +148,7 @@ async function upsertCustom(rows: CustomRow[], syncedAt: Date): Promise<number> 
         batch.map((r) => r.custom_master_sku),
         batch.map((r) => r.custom_qty),
         batch.map(() => syncedAt),
+        batch.map((r) => r.is_custom),
       ]
     );
     upserted += batch.length;
@@ -173,7 +183,22 @@ export async function POST() {
     );
   }
 
+  const client = await primaryPool().connect();
+  let lockAcquired = false;
   try {
+    const lockRes = await client.query<{ acquired: boolean }>(
+      `SELECT pg_try_advisory_lock($1::bigint) AS acquired`,
+      [VELOCITY_SYNC_LOCK_KEY]
+    );
+
+    if (!lockRes.rows[0].acquired) {
+      return NextResponse.json(
+        { success: false, error: "Sync already in progress" },
+        { status: 409 }
+      );
+    }
+    lockAcquired = true;
+
     const [linkRes, customRes] = await Promise.all([
       lookupPool.query<LinkRow>(
         `SELECT
@@ -183,11 +208,12 @@ export async function POST() {
            ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("l")}    AS order_type,
            ${MASTER_SKU_REMAP_CASE("l.master_sku")} AS link_master_sku,
-           SUM(l.quantity)::int       AS link_qty
+           SUM(l.quantity)::int       AS link_qty,
+           l.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
            AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
-         GROUP BY 1, 2, 3, 4, 5, 6`
+         GROUP BY 1, 2, 3, 4, 5, 6, 8`
       ),
       lookupPool.query<CustomRow>(
         `SELECT
@@ -197,11 +223,12 @@ export async function POST() {
            ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("c")}    AS order_type,
            ${MASTER_SKU_REMAP_CASE("c.master_sku")} AS custom_master_sku,
-           SUM(c.quantity)::int       AS custom_qty
+           SUM(c.quantity)::int       AS custom_qty,
+           c.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
            AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
-         GROUP BY 1, 2, 3, 4, 5, 6`
+         GROUP BY 1, 2, 3, 4, 5, 6, 8`
       ),
     ]);
 
@@ -221,5 +248,10 @@ export async function POST() {
       { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
+  } finally {
+    if (lockAcquired) {
+      await client.query(`SELECT pg_advisory_unlock($1::bigint)`, [VELOCITY_SYNC_LOCK_KEY]);
+    }
+    client.release();
   }
 }
