@@ -55,9 +55,10 @@ export async function GET() {
     // ── 1. Container headers ─────────────────────────────────────────────────
     // All containers regardless of status so drafts also appear as columns.
     const containersResult = await primary.query<{
-      name: string; eta: string; cbm_cap: number; status: string;
+      id: number; name: string; eta: string; cbm_cap: number; status: string;
     }>(`
       SELECT
+        id::int                   AS id,
         container_number          AS name,
         eta_date::text            AS eta,
         cbm_capacity::float8      AS cbm_cap,
@@ -84,6 +85,7 @@ export async function GET() {
         agg.latest_qty,
         COALESCE(s.sales_status,   'Original')               AS sales_status,
         p.category_code                                      AS category_code,
+        COALESCE(p.cbm_per_unit, 0)::float8                  AS cbm_per_unit,
         COALESCE(s.back,           0)::int                   AS back,
         COALESCE(s.west_stock,     0)::int                   AS west_stock,
         COALESCE(s.east_stock,     0)::int                   AS east_stock,
@@ -143,10 +145,12 @@ export async function GET() {
     // open_orders / est_sales / inv_life / est_sod / plan_sod → Phase 2
     const crossResult = await primary.query(`
       SELECT
+        ci.id::int                 AS item_id,
         ci.master_sku              AS sku,
         c.container_number         AS container_name,
         ci.qty::int                AS inbound_qty,
         ci.qty::int                AS avail_qty,
+        ci.cbm_unit::float8        AS cbm_unit,
         ci.total_cbm::float8       AS cbm,
         c.eta_date::text           AS eta,
         NULL::int                  AS open_orders,
@@ -184,11 +188,12 @@ export async function GET() {
     // ── Assemble response ────────────────────────────────────────────────────
 
     const containers: ContainerMeta[] = containersResult.rows.map((r, i) => ({
-      col:     i,
-      name:    r.name,
-      eta:     r.eta,
-      cbm_cap: r.cbm_cap ?? 0,
-      status:  r.status,
+      col:          i,
+      container_id: r.id,
+      name:         r.name,
+      eta:          r.eta,
+      cbm_cap:      r.cbm_cap ?? 0,
+      status:       r.status,
     }));
 
     // cross-data lookup: sku → container_name → ContainerRowData
@@ -196,6 +201,8 @@ export async function GET() {
     for (const r of crossResult.rows) {
       if (!crossMap.has(r.sku)) crossMap.set(r.sku, new Map());
       crossMap.get(r.sku)!.set(r.container_name, {
+        item_id:     r.item_id,
+        cbm_unit:    r.cbm_unit,
         inbound_qty: r.inbound_qty,
         open_orders: r.open_orders,
         avail_qty:   r.avail_qty,
@@ -228,6 +235,7 @@ export async function GET() {
       return {
         container_info:    containerInfo,
         cbm:               (r.cbm_unit as number) ?? 0,
+        cbm_per_unit:      (r.cbm_per_unit as number) ?? 0,
         seat,
         no,
         color,

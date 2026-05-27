@@ -17,6 +17,7 @@ export type ColumnGroupKey =
 
 export interface ContainerMeta {
   col: number;
+  container_id?: number;
   name: string;
   eta: string;
   cbm_cap: number;
@@ -24,7 +25,9 @@ export interface ContainerMeta {
 }
 
 export interface ContainerRowData {
-  inbound_qty?: number | null;  // fc_container_items.qty — raw units in this container
+  item_id?: number | null;       // fc_container_items.id — used for inline editing
+  cbm_unit?: number | null;      // fc_container_items.cbm_unit — used to recompute total_cbm on qty edit
+  inbound_qty?: number | null;   // fc_container_items.qty — raw units in this container
   open_orders: number | null;
   avail_qty: number | null;
   est_sales: number | null;
@@ -77,6 +80,7 @@ export interface DemandRow {
   total_avg_prev: number;
   total_avg_real: number;
   total_avg_curr: number;
+  cbm_per_unit?: number;
   total_inbound_qty: number | null;
   containers_list: string | null;
   next_eta: string | null;

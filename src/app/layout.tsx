@@ -19,7 +19,7 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} scriptProps={{ suppressHydrationWarning: true }}>
           <Providers session={session}>{children}</Providers>
         </ThemeProvider>
       </body>

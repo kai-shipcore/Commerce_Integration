@@ -266,7 +266,7 @@ export function DemandPlanningDashboard() {
           {loadError && (
             <span style={{ color: "#C42020", fontSize: 11 }}>Error: {loadError}</span>
           )}
-          <span style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}>
+          <span suppressHydrationWarning style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}>
             {TODAY} | L-Min 5.13.2026
           </span>
           <button

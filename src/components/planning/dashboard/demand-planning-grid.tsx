@@ -177,6 +177,19 @@ export function DemandPlanningGrid({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [scrollState, setScrollState] = useState({ top: 0, height: 600 });
 
+  // Inline qty editing state
+  type EditingKey = `${string}::${string}`;
+  const [editingKey, setEditingKey] = useState<EditingKey | null>(null);
+  const [editingVal, setEditingVal] = useState("");
+  // Ref always holds the latest typed value — avoids stale-closure bugs in event handlers
+  const editingValRef = useRef("");
+  const [savingKey, setSavingKey] = useState<EditingKey | null>(null);
+  // Local overrides: key = `${sku}::${containerName}`, value = partial ContainerRowData
+  // item_id is stored here after a POST so subsequent edits use PATCH
+  const [qtyOverrides, setQtyOverrides] = useState<Map<EditingKey, { inbound_qty: number | null; avail_qty: number | null; cbm: number | null; item_id?: number }>>(new Map());
+  // Row-level corrections for active-container aggregates (sku → partial DemandRow overrides)
+  const [rowTotalOverrides, setRowTotalOverrides] = useState<Map<string, { total_inbound_qty?: number; containers_list?: string | null }>>(new Map());
+
   const visCols = useMemo(
     () => ALL_COLS.filter((c) => c.grp === "fix" || groupVis[c.grp]),
     [groupVis],
@@ -188,6 +201,8 @@ export function DemandPlanningGrid({
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
       if (categoryCodeForRow(r) !== categoryFilter.toUpperCase()) return false;
+      if (!r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
+          !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original") return false;
       if (productFilter === "cust" && r.sales_status !== "Custom")   return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
@@ -632,7 +647,7 @@ export function DemandPlanningGrid({
               ))}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
-                const isDraft = c.status !== "shipped" && c.status !== "packing_received";
+                const isDraft = !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                 const dt = daysTo(c.eta);
                 const etaColor = isDraft ? "#8A8780" :
                   dt !== null && dt <= 7  ? "#FF9090" :
@@ -761,6 +776,9 @@ export function DemandPlanningGrid({
                 const idx = virtualRows.start + visibleIdx;
                 const u: UrgencyStatus = urgStatus(r);
                 const rowBg = u === "crit" ? "#FFF5F5" : idx % 2 === 1 ? "#FAFAF7" : "#fff";
+                const displayRow = rowTotalOverrides.has(r.sku)
+                  ? { ...r, ...rowTotalOverrides.get(r.sku) }
+                  : r;
                 return (
                   <tr
                     key={r.sku}
@@ -793,42 +811,199 @@ export function DemandPlanningGrid({
                           background: TINT_COLORS[col.tint] || rowBg,
                         }}
                       >
-                        {renderCell(col.val(r, idx, u))}
+                        {renderCell(col.val(displayRow, idx, u))}
                       </td>
                     ))}
                     {showCon && CONS.map((c, ci) => {
-                      const cd = (r.containers && r.containers[c.name]) || {
-                        open_orders: 0, avail_qty: null, est_sales: 0,
+                      const rawCd = (r.containers && r.containers[c.name]) || {
+                        item_id: null, cbm_unit: null,
+                        inbound_qty: null, open_orders: 0, avail_qty: null, est_sales: 0,
                         backorder: 0, eta: c.eta, inv_life: null,
                         est_sod: null, plan_sod: null, cbm: 0,
                       };
-                      const isDraft = c.status !== "shipped" && c.status !== "packing_received";
+                      const eKey = `${r.sku}::${c.name}` as EditingKey;
+                      const override = qtyOverrides.get(eKey);
+                      const cd = override ? { ...rawCd, ...override } : rawCd;
+                      const isDraft = !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                       const isLast = ci === CONS.length - 1;
                       return CON_SUBCOLS.map((sc, si) => {
                         const isLastSub = si === CON_SUBCOLS.length - 1;
                         const baseBg = isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
+                        const isQtyCol = sc.id === "inb_qty";
+                        const isEditing = isQtyCol && editingKey === eKey;
+                        const isSaving = isQtyCol && savingKey === eKey;
+                        const isEditable = isQtyCol;
+
+                        // Shared save — called by both Enter and blur.
+                        // saveStarted prevents double-execution if blur fires
+                        // after Enter already initiated the save.
+                        let saveStarted = false;
+                        const commitSave = async (val: string) => {
+                          if (saveStarted) return;
+                          saveStarted = true;
+                          const newQty = parseInt(val);
+                          console.log("[commitSave]", { sku: r.sku, container: c.name, container_id: c.container_id, val, newQty, inbound_qty: cd.inbound_qty, item_id: rawCd.item_id ?? override?.item_id });
+                          setEditingKey(null);
+                          if (isNaN(newQty) || newQty === cd.inbound_qty) {
+                            console.log("[commitSave] skipped — no change or invalid value");
+                            return;
+                          }
+                          // When an override exists, its item_id takes precedence —
+                          // after a DELETE the override has item_id=undefined even though rawCd still has the old id.
+                          const effectiveItemId = override !== undefined ? override.item_id : rawCd.item_id;
+                          if (!effectiveItemId && newQty === 0) return;
+                          setSavingKey(eKey);
+                          try {
+                            let json: { success: boolean; qty?: number; total_cbm?: number; cbm_unit?: number; item_id?: number };
+                            const isActiveContainer = c.status === "shipped" || c.status === "packing_received";
+                            const oldQty = cd.inbound_qty ?? 0;
+
+                            if (effectiveItemId && newQty === 0) {
+                              // qty → 0 on an existing row: delete it and blank the cell
+                              const res = await fetch(`/api/planning/containers/items/${effectiveItemId}`, { method: "DELETE" });
+                              json = await res.json() as typeof json;
+                              if (json.success) {
+                                setQtyOverrides((prev) => {
+                                  const next = new Map(prev);
+                                  next.set(eKey, { inbound_qty: null, avail_qty: null, cbm: null, item_id: undefined });
+                                  return next;
+                                });
+                                if (isActiveContainer) {
+                                  setRowTotalOverrides((prev) => {
+                                    const next = new Map(prev);
+                                    const cur = prev.get(r.sku) ?? {};
+                                    const curTotal = cur.total_inbound_qty ?? (r.total_inbound_qty ?? 0);
+                                    const curList  = cur.containers_list  ?? (r.containers_list ?? "");
+                                    const newList  = curList.split(", ").filter((e) => !e.startsWith(`${c.name} (`)).join(", ") || null;
+                                    next.set(r.sku, { total_inbound_qty: Math.max(0, curTotal - oldQty), containers_list: newList });
+                                    return next;
+                                  });
+                                }
+                              } else {
+                                console.error("[commitSave] DELETE error:", json);
+                              }
+                              return;
+                            } else if (effectiveItemId) {
+                              const res = await fetch(`/api/planning/containers/items/${effectiveItemId}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ qty: newQty }),
+                              });
+                              json = await res.json() as typeof json;
+                            } else {
+                              const res = await fetch("/api/planning/containers/items", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  container_id: c.container_id,
+                                  master_sku: r.sku,
+                                  qty: newQty,
+                                  cbm_unit: rawCd.cbm_unit ?? (r.cbm > 0 ? r.cbm : null) ?? r.cbm_per_unit ?? 0,
+                                }),
+                              });
+                              json = await res.json() as typeof json;
+                            }
+                            console.log("[commitSave] response:", json);
+                            if (json.success) {
+                              setQtyOverrides((prev) => {
+                                const next = new Map(prev);
+                                next.set(eKey, {
+                                  inbound_qty: json.qty ?? newQty,
+                                  avail_qty: json.qty ?? newQty,
+                                  cbm: json.total_cbm ?? 0,
+                                  item_id: json.item_id ?? effectiveItemId ?? undefined,
+                                });
+                                return next;
+                              });
+                              if (isActiveContainer) {
+                                setRowTotalOverrides((prev) => {
+                                  const next = new Map(prev);
+                                  const cur = prev.get(r.sku) ?? {};
+                                  const curTotal = cur.total_inbound_qty ?? (r.total_inbound_qty ?? 0);
+                                  const curList  = cur.containers_list  ?? (r.containers_list ?? "");
+                                  const entry = `${c.name} (${newQty})`;
+                                  let newList: string;
+                                  if (oldQty === 0 || !curList.includes(`${c.name} (`)) {
+                                    // POST — container not yet in list, append
+                                    newList = curList ? `${curList}, ${entry}` : entry;
+                                  } else {
+                                    // PATCH — update existing entry's qty
+                                    newList = curList.split(", ").map((e) => e.startsWith(`${c.name} (`) ? entry : e).join(", ");
+                                  }
+                                  next.set(r.sku, { total_inbound_qty: Math.max(0, curTotal - oldQty + newQty), containers_list: newList });
+                                  return next;
+                                });
+                              }
+                            } else {
+                              console.error("[commitSave] API error:", json);
+                            }
+                          } catch (err) {
+                            console.error("[commitSave] network error:", err);
+                          } finally {
+                            setSavingKey(null);
+                          }
+                        };
+
                         return (
                           <td
                             key={`${c.name}-${sc.id}`}
+                            onClick={isEditable && !isEditing ? () => {
+                              const initial = String(cd.inbound_qty ?? "");
+                              editingValRef.current = initial;
+                              setEditingVal(initial);
+                              setEditingKey(eKey);
+                            } : undefined}
+                            title={isEditable ? "Click to edit quantity" : undefined}
                             style={{
                               minWidth: sc.w,
                               maxWidth: sc.w,
                               width: sc.w,
                               boxSizing: "border-box",
-                              padding: "2px 7px",
+                              padding: isEditing ? "0" : "2px 7px",
                               borderRight: isLastSub && !isLast ? "2px solid #B0D8EE" : "1px solid #D8D6CE",
-                              borderBottom: "1px solid #D8D6CE",
+                              borderBottom: isEditable && !isEditing ? "1px dashed #90B8E0" : "1px solid #D8D6CE",
                               verticalAlign: "middle",
                               whiteSpace: "nowrap",
                               height: 28,
-                              background: baseBg,
-                              color: isDraft ? "#9A9790" : undefined,
+                              background: isEditing ? "#FFFDE7" : baseBg,
+                              color: isDraft ? "#9A9790" : isEditable ? "#1A4FC0" : undefined,
                               textAlign: sc.align === "num" ? "right" : sc.align === "ctr" ? "center" : "left",
                               fontFamily: sc.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
                               fontSize: 11,
+                              fontWeight: isEditable ? 600 : undefined,
+                              cursor: isEditable ? "pointer" : undefined,
                             }}
                           >
-                            {renderCell(sc.val(cd, c))}
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                type="number"
+                                min={0}
+                                value={editingVal}
+                                onChange={(e) => { editingValRef.current = e.target.value; setEditingVal(e.target.value); }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") { setEditingKey(null); setEditingVal(""); editingValRef.current = ""; }
+                                  if (e.key === "Enter") { e.preventDefault(); void commitSave(editingValRef.current); }
+                                }}
+                                onBlur={() => void commitSave(editingValRef.current)}
+                                style={{
+                                  width: "100%",
+                                  height: 28,
+                                  padding: "2px 7px",
+                                  border: "none",
+                                  background: "transparent",
+                                  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                                  fontSize: 11,
+                                  textAlign: "right",
+                                  outline: "none",
+                                  boxSizing: "border-box",
+                                }}
+                              />
+                            ) : isSaving ? (
+                              <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
+                            ) : (
+                              renderCell(sc.val(cd, c))
+                            )}
                           </td>
                         );
                       });
