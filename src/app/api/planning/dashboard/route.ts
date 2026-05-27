@@ -163,7 +163,21 @@ export async function GET() {
       JOIN shipcore.fc_containers c ON c.id = ci.container_id
     `);
 
-    // ── 4. Backorders from Supabase (best-effort) ────────────────────────────
+    // ── 4. Available stock (remaining / mistake) from primary DB ────────────
+    const availStockResult = await primary.query<{ master_sku: string; source_type: string; total_qty: string }>(`
+      SELECT master_sku, source_type, SUM(total_qty)::int::text AS total_qty
+      FROM shipcore.fc_available_stock
+      GROUP BY master_sku, source_type
+    `);
+    const availStockMap = new Map<string, { remaining: number; mistake: number }>();
+    for (const r of availStockResult.rows) {
+      const entry = availStockMap.get(r.master_sku) ?? { remaining: 0, mistake: 0 };
+      if (r.source_type === "remaining") entry.remaining = parseInt(r.total_qty) || 0;
+      if (r.source_type === "mistake")   entry.mistake   = parseInt(r.total_qty) || 0;
+      availStockMap.set(r.master_sku, entry);
+    }
+
+    // ── 5. Backorders from Supabase (best-effort) ────────────────────────────
     // Sums backorder across all rows per master_sku in coverland_inventory.
     // Falls back to 0 per SKU if Supabase is unavailable.
     const backorderMap = new Map<string, number>();
@@ -277,6 +291,8 @@ export async function GET() {
         total_inbound_qty: r.total_inbound_qty,
         containers_list:   r.containers_list ?? null,
         next_eta:          r.next_eta ?? null,
+        remaining:         availStockMap.get(r.sku as string)?.remaining ?? 0,
+        mistake:           availStockMap.get(r.sku as string)?.mistake   ?? 0,
         sod:               (() => {
           const rate = r.total_avg_real as number;
           if (!rate) return null;
