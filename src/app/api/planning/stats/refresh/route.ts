@@ -96,6 +96,7 @@ export async function POST() {
       east_avg_real  = 0, east_avg_prev  = 0, east_avg_curr  = 0,
       total_avg_prev = 0, total_avg_real = 0, total_avg_curr = 0,
       west_fbm_30d   = 0, east_fbm_30d   = 0, total_30d = 0,
+      fba_avg_real   = 0, fba_avg_curr   = 0, fba_30d   = 0,
       updated_at = NOW()`;
     await Promise.all([
       primary.query(`UPDATE shipcore.fc_stats        SET ${zeroVelocity}`),
@@ -167,7 +168,25 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
-        ) AS east_avg_prev
+        ) AS east_avg_prev,
+        -- fba_avg_real: weighted avg of Amazon FBA channel sales
+        (
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
+        ) AS fba_avg_real,
+        -- fba_avg_prev: same formula shifted back 7 days
+        (
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 98 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
+        ) AS fba_avg_prev,
+        -- fba_30d: 30-day Amazon FBA count
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_30d
       FROM shipcore.velocity_link_snapshot vls
       WHERE vls.link_master_sku IS NOT NULL
         AND vls.order_date >= CURRENT_DATE - 98
@@ -220,7 +239,22 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
           SUM(CASE WHEN order_type = 'ttm' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
-        ) AS east_avg_prev
+        ) AS east_avg_prev,
+        (
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
+        ) AS fba_avg_real,
+        (
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 98 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
+        ) AS fba_avg_prev,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_30d
       FROM shipcore.velocity_custom_snapshot vcs
       WHERE vcs.custom_master_sku IS NOT NULL
         AND vcs.order_date >= CURRENT_DATE - 98
@@ -235,6 +269,7 @@ export async function POST() {
       "east_avg_real",  "east_avg_prev",  "east_avg_curr",
       "total_avg_prev", "total_avg_real", "total_avg_curr",
       "west_fbm_30d",   "east_fbm_30d",   "total_30d",
+      "fba_avg_real",   "fba_avg_curr",   "fba_30d",
     ];
     const salesUpdateSet = `
       sales_status    = EXCLUDED.sales_status,
@@ -262,6 +297,9 @@ export async function POST() {
       west_fbm_30d    = EXCLUDED.west_fbm_30d,
       east_fbm_30d    = EXCLUDED.east_fbm_30d,
       total_30d       = EXCLUDED.total_30d,
+      fba_avg_real    = EXCLUDED.fba_avg_real,
+      fba_avg_curr    = EXCLUDED.fba_avg_curr,
+      fba_30d         = EXCLUDED.fba_30d,
       calculated_at   = NOW(),
       updated_at      = NOW()`;
 
@@ -278,12 +316,15 @@ export async function POST() {
 
     for (const r of [...linkRows, ...customRows]) {
       // Round the SQL-computed values first so all subsequent arithmetic uses the same precision.
-      const wPrev = round2(Number(r.avg_daily_prev));
-      const wReal = round2(Number(r.avg_daily_real));
-      const ePrev = round2(Number(r.east_avg_prev));
-      const eReal = round2(Number(r.east_avg_real));
-      const wCurr = round2(computeCurr(wPrev, wReal));
-      const eCurr = round2(computeCurr(ePrev, eReal));
+      const wPrev   = round2(Number(r.avg_daily_prev));
+      const wReal   = round2(Number(r.avg_daily_real));
+      const ePrev   = round2(Number(r.east_avg_prev));
+      const eReal   = round2(Number(r.east_avg_real));
+      const fbaPrev = round2(Number(r.fba_avg_prev ?? 0));
+      const fbaReal = round2(Number(r.fba_avg_real ?? 0));
+      const wCurr   = round2(computeCurr(wPrev, wReal));
+      const eCurr   = round2(computeCurr(ePrev, eReal));
+      const fbaCurr = round2(computeCurr(fbaPrev, fbaReal));
 
       r.avg_daily_prev  = wPrev;
       r.avg_daily_real  = wReal;
@@ -294,6 +335,8 @@ export async function POST() {
       r.total_avg_prev  = round2(wPrev + ePrev);
       r.total_avg_real  = round2(wReal + eReal);
       r.total_avg_curr  = round2(wCurr + eCurr);
+      r.fba_avg_real    = fbaReal;
+      r.fba_avg_curr    = fbaCurr;
 
       const w90 = Number(r.west_90d), w60 = Number(r.west_60d), w30 = Number(r.west_30d);
       const w15 = Number(r.west_15d), w7  = Number(r.west_7d);
