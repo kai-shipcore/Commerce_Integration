@@ -1002,7 +1002,7 @@ export function DemandPlanningGrid({
                             ) : isSaving ? (
                               <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
                             ) : (
-                              renderCell(sc.val(cd, c))
+                              renderCell(sc.val(cd, c, displayRow))
                             )}
                           </td>
                         );
