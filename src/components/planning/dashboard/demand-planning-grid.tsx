@@ -881,10 +881,9 @@ export function DemandPlanningGrid({
                           style={{
                             ...cellStyle(col),
                             background: isCbmEditing ? "#FFFDE7" : TINT_COLORS[col.tint] || rowBg,
-                            cursor: isCbm && !isCbmEditing ? "pointer" : undefined,
-                            padding: isCbmEditing ? 0 : undefined,
-                            borderBottom: isCbm && !isCbmEditing ? "1px dashed #90B8E0" : undefined,
-                            color: isCbm && !isCbmEditing && !isCbmSaving ? "#1A4FC0" : undefined,
+                            ...(isCbm && !isCbmEditing ? { cursor: "pointer", borderBottom: "1px dashed #90B8E0", color: "#1A4FC0" } : {}),
+                            ...(isCbmSaving ? { color: undefined } : {}),
+                            ...(isCbmEditing ? { padding: 0 } : {}),
                           }}
                         >
                           {isCbmEditing ? (
