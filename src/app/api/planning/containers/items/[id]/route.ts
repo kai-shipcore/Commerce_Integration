@@ -1,6 +1,9 @@
 // Code Guide: PATCH /api/planning/containers/items/[id]
 // Updates qty (and recomputes total_cbm = qty * cbm_unit) for a single
 // fc_container_items row. Used by inline editing on the planning dashboard.
+//
+// DELETE /api/planning/containers/items/[id]
+// Removes the row entirely. Called when the user sets qty to 0.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
@@ -12,6 +15,32 @@ const BodySchema = z.object({
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Unknown error";
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const itemId = parseInt(id);
+  if (isNaN(itemId)) {
+    return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
+  }
+
+  try {
+    const primary = getPrimaryPool();
+    const result = await primary.query(
+      `DELETE FROM shipcore.fc_container_items WHERE id = $1`,
+      [itemId],
+    );
+    if (result.rowCount === 0) {
+      return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Container item DELETE failed:", error);
+    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+  }
 }
 
 export async function PATCH(
@@ -34,13 +63,13 @@ export async function PATCH(
 
   try {
     const primary = getPrimaryPool();
-    const result = await primary.query<{ id: number; cbm_unit: string }>(
+    // total_cbm is a generated column — omit it from SET; DB recomputes it on qty change.
+    const result = await primary.query<{ id: number; cbm_unit: string; total_cbm: string }>(
       `UPDATE shipcore.fc_container_items
        SET qty        = $1,
-           total_cbm  = $1 * cbm_unit,
            updated_at = NOW()
        WHERE id = $2
-       RETURNING id, cbm_unit::float8`,
+       RETURNING id, cbm_unit::float8, total_cbm::float8`,
       [qty, itemId],
     );
 
@@ -48,12 +77,11 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
     }
 
-    const cbm_unit = parseFloat(result.rows[0].cbm_unit);
     return NextResponse.json({
-      success: true,
+      success:   true,
       qty,
-      total_cbm: qty * cbm_unit,
-      cbm_unit,
+      cbm_unit:  parseFloat(result.rows[0].cbm_unit),
+      total_cbm: parseFloat(result.rows[0].total_cbm),
     });
   } catch (error) {
     console.error("Container item PATCH failed:", error);

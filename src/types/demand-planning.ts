@@ -17,6 +17,7 @@ export type ColumnGroupKey =
 
 export interface ContainerMeta {
   col: number;
+  container_id?: number;
   name: string;
   eta: string;
   cbm_cap: number;
@@ -79,6 +80,7 @@ export interface DemandRow {
   total_avg_prev: number;
   total_avg_real: number;
   total_avg_curr: number;
+  cbm_per_unit?: number;
   total_inbound_qty: number | null;
   containers_list: string | null;
   next_eta: string | null;
