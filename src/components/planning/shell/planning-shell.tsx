@@ -12,6 +12,7 @@ export function PlanningShell({ children }: PlanningShellProps) {
   const pathname = usePathname();
   const fullBleedPages = new Set([
     "/planning/container-planning",
+    "/planning/available-stock",
     "/planning/purchase-orders",
     "/planning/sku-master",
     "/planning/factories",

@@ -30,8 +30,8 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 const navigationGroups = [
   { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
   { name: "Operations", itemIds: ["orders", "signals"] },
-  { name: "Forecasting", itemIds: ["analytics", "velocity", "sales-link-report", "reconciliation", "compare"] },
-  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "purchase-orders", "sku-master"] },
+  { name: "Forecasting", itemIds: ["analytics", "velocity"] },
+  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "available-stock", "purchase-orders", "sku-master"] },
   { name: "Admin", itemIds: ["integrations", "warehouse-admin", "factories", "user-access"] },
 ];
 

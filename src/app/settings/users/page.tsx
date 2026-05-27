@@ -8,7 +8,6 @@ import {
   getDefaultVisibleMenuIds,
   isAdminLikeRole,
   navigationItems,
-  sanitizeVisibleMenuIds,
 } from "@/components/layout/navigation-config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,6 +43,17 @@ interface ManagedUser {
   updatedAt: string;
 }
 
+interface UserPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
 export default function UserAccessPage() {
   const { data: session, status } = useSession();
   const isElevatedRole = (role: string) => role === "admin" || role === "dev" || role === "planner";
@@ -66,7 +76,22 @@ export default function UserAccessPage() {
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<UserPagination>({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 1,
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm.trim());
+      setPagination((current) => ({ ...current, page: 1 }));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -87,7 +112,12 @@ export default function UserAccessPage() {
       }
 
       try {
-        const response = await fetch("/api/admin/users", {
+        const params = new URLSearchParams({
+          page: String(pagination.page),
+          limit: String(pagination.limit),
+        });
+        if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
+        const response = await fetch(`/api/admin/users?${params.toString()}`, {
           cache: "no-store",
         });
         const result = await response.json();
@@ -97,67 +127,45 @@ export default function UserAccessPage() {
         }
 
         const nextUsers = result.data?.users ?? [];
+        const nextPagination = result.data?.pagination as UserPagination | undefined;
         setUsers(nextUsers);
-        setSelectedUserId((current) => current ?? nextUsers[0]?.id ?? null);
+        if (nextPagination) setPagination(nextPagination);
+        setSelectedUserId((current) =>
+          nextUsers.some((user: ManagedUser) => user.id === current)
+            ? current
+            : nextUsers[0]?.id ?? null
+        );
         setError(null);
-      } catch (fetchError: any) {
-        setError(fetchError.message);
+      } catch (fetchError: unknown) {
+        setError(getErrorMessage(fetchError));
       } finally {
         setLoading(false);
       }
     };
 
     void loadUsers();
-  }, [session?.user?.role, status]);
-
-  const filteredUsers = useMemo(() => {
-    const normalized = searchTerm.trim().toLowerCase();
-
-    if (!normalized) {
-      return users;
-    }
-
-    return users.filter((user) => {
-      const name = user.name?.toLowerCase() || "";
-      return (
-        user.id.toLowerCase().includes(normalized) ||
-        user.email.toLowerCase().includes(normalized) ||
-        user.role.toLowerCase().includes(normalized) ||
-        name.includes(normalized)
-      );
-    });
-  }, [searchTerm, users]);
+  }, [debouncedSearchTerm, pagination.limit, pagination.page, session?.user?.role, status]);
 
   const selectedUser =
-    filteredUsers.find((user) => user.id === selectedUserId) ||
     users.find((user) => user.id === selectedUserId) ||
-    filteredUsers[0] ||
+    users[0] ||
     null;
 
-  useEffect(() => {
-    if (!selectedUserId && filteredUsers.length > 0) {
-      setSelectedUserId(filteredUsers[0].id);
-      return;
-    }
-
-    if (selectedUserId && filteredUsers.length > 0) {
-      const existsInFiltered = filteredUsers.some((user) => user.id === selectedUserId);
-      if (!existsInFiltered) {
-        setSelectedUserId(filteredUsers[0].id);
-      }
-    }
-  }, [filteredUsers, selectedUserId]);
-
   const refreshUsers = async () => {
-    const reloadResponse = await fetch("/api/admin/users", { cache: "no-store" });
+    const params = new URLSearchParams({
+      page: String(pagination.page),
+      limit: String(pagination.limit),
+    });
+    if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
+    const reloadResponse = await fetch(`/api/admin/users?${params.toString()}`, { cache: "no-store" });
     const reloadResult = await reloadResponse.json();
     if (reloadResponse.ok && reloadResult.success) {
       setUsers(reloadResult.data?.users ?? []);
+      setPagination(reloadResult.data?.pagination ?? pagination);
     }
   };
 
   const updateUserMenus = async (userId: string, nextVisibleMenuIds: string[]) => {
-    const targetUser = users.find((user) => user.id === userId);
     const sanitized = filterToValidMenuIds(nextVisibleMenuIds);
 
     setSavingUserId(userId);
@@ -191,8 +199,8 @@ export default function UserAccessPage() {
             : user
         )
       );
-    } catch (saveError: any) {
-      setError(saveError.message);
+    } catch (saveError: unknown) {
+      setError(getErrorMessage(saveError));
       await refreshUsers();
     } finally {
       setSavingUserId(null);
@@ -232,8 +240,8 @@ export default function UserAccessPage() {
             : user
         )
       );
-    } catch (saveError: any) {
-      setError(saveError.message);
+    } catch (saveError: unknown) {
+      setError(getErrorMessage(saveError));
       await refreshUsers();
     } finally {
       setSavingUserId(null);
@@ -279,12 +287,12 @@ export default function UserAccessPage() {
           </Alert>
         )}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-          <Card>
+        <div className="grid gap-6 xl:h-[calc(100vh-13rem)] xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+          <Card className="flex min-h-[560px] flex-col xl:min-h-0">
             <CardHeader className="space-y-4">
               <div className="flex items-center justify-between gap-4">
                 <CardTitle>User List</CardTitle>
-                <Badge variant="secondary">{filteredUsers.length} users</Badge>
+                <Badge variant="secondary">{pagination.total.toLocaleString()} users</Badge>
               </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -295,51 +303,96 @@ export default function UserAccessPage() {
                   className="pl-9"
                 />
               </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span>Rows</span>
+                  <select
+                    value={pagination.limit}
+                    onChange={(event) => setPagination((current) => ({
+                      ...current,
+                      page: 1,
+                      limit: Number(event.target.value),
+                    }))}
+                    className="h-8 rounded-md border bg-background px-2 text-foreground"
+                  >
+                    {[10, 20, 50].map((size) => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </div>
+                <span>
+                  Page {pagination.total === 0 ? 0 : pagination.page} of {pagination.total === 0 ? 0 : pagination.totalPages}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page <= 1 || loading}
+                    onClick={() => setPagination((current) => ({ ...current, page: current.page - 1 }))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page >= pagination.totalPages || pagination.total === 0 || loading}
+                    onClick={() => setPagination((current) => ({ ...current, page: current.page + 1 }))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User ID</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.length === 0 ? (
+            <CardContent className="min-h-0 flex-1">
+              <div className="h-full overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-background">
                     <TableRow>
-                      <TableCell colSpan={3} className="py-8 text-center text-muted-foreground">
-                        No users match your search.
-                      </TableCell>
+                      <TableHead>User ID</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredUsers.map((user) => (
+                  </TableHeader>
+                  <TableBody>
+                    {users.length === 0 ? (
                       <TableRow
-                        key={user.id}
-                        className="cursor-pointer"
-                        data-state={selectedUser?.id === user.id ? "selected" : undefined}
-                        onClick={() => setSelectedUserId(user.id)}
+                        className="hover:bg-transparent"
                       >
-                        <TableCell className="max-w-[220px] truncate font-medium">
-                          {user.id}
-                        </TableCell>
-                        <TableCell className="max-w-[240px] truncate">
-                          {user.email}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              isElevatedRole(user.role) ? "default" : "secondary"
-                            }
-                          >
-                            {user.role}
-                          </Badge>
+                        <TableCell colSpan={3} className="py-8 text-center text-muted-foreground">
+                          No users match your search.
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : (
+                      users.map((user) => (
+                        <TableRow
+                          key={user.id}
+                          className="cursor-pointer"
+                          data-state={selectedUser?.id === user.id ? "selected" : undefined}
+                          onClick={() => setSelectedUserId(user.id)}
+                        >
+                          <TableCell className="max-w-[220px] truncate font-medium">
+                            {user.id}
+                          </TableCell>
+                          <TableCell className="max-w-[240px] truncate">
+                            {user.email}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                isElevatedRole(user.role) ? "default" : "secondary"
+                              }
+                            >
+                              {user.role}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
 

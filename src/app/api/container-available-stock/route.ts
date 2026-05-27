@@ -7,10 +7,15 @@ const StockSourceSchema = z.enum(["remaining", "mistake"]);
 const CreateStockSchema = z.object({
   sourceType: StockSourceSchema,
   referenceNo: z.string().trim().min(1),
+  plNo: z.string().trim().optional(),
   masterSku: z.string().trim().min(1),
   totalQty: z.number().int().positive(),
   cbm: z.number().positive(),
   note: z.string().trim().optional(),
+});
+
+const UpdateStockSchema = CreateStockSchema.extend({
+  id: z.string().regex(/^\d+$/),
 });
 
 const AllocateSchema = z.object({
@@ -19,6 +24,19 @@ const AllocateSchema = z.object({
   allocations: z.array(z.object({
     stockId: z.string().regex(/^\d+$/),
     qty: z.number().int().positive(),
+  })).min(1),
+});
+
+const ImportStockSchema = z.object({
+  action: z.literal("import"),
+  rows: z.array(z.object({
+    sourceType: StockSourceSchema,
+    referenceNo: z.string().trim().min(1),
+    plNo: z.string().trim().optional(),
+    masterSku: z.string().trim().min(1),
+    totalQty: z.number().int().positive(),
+    cbm: z.number().positive().optional(),
+    note: z.string().trim().optional(),
   })).min(1),
 });
 
@@ -41,6 +59,7 @@ export async function GET(request: NextRequest) {
          s.id::text AS id,
          s.source_type,
          s.reference_no,
+         s.pl_no,
          s.master_sku,
          s.total_qty::int,
          s.cbm_unit::float8 AS cbm,
@@ -60,6 +79,7 @@ export async function GET(request: NextRequest) {
         id: row.id as string,
         sourceType: row.source_type as "remaining" | "mistake",
         referenceNo: row.reference_no as string,
+        plNo: row.pl_no as string | null,
         masterSku: row.master_sku as string,
         totalQty: Number(row.total_qty),
         availableQty: Number(row.available_qty),
@@ -76,20 +96,99 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body: unknown = await request.json();
+  const importRequest = ImportStockSchema.safeParse(body);
+  if (importRequest.success) {
+    const client = await getPrimaryPool().connect();
+    try {
+      await client.query("BEGIN");
+      const normalizedRows = importRequest.data.rows.map((row) => ({
+        ...row,
+        referenceNo: row.referenceNo.trim(),
+        plNo: row.plNo?.trim() || null,
+        masterSku: row.masterSku.trim().toUpperCase(),
+        note: row.note?.trim() || null,
+      }));
+      const skus = [...new Set(normalizedRows.map((row) => row.masterSku))];
+      const products = await client.query<{ master_sku: string; cbm: number }>(
+        `SELECT master_sku, cbm_per_unit::float8 AS cbm
+         FROM shipcore.fc_products
+         WHERE master_sku = ANY($1::text[])`,
+        [skus]
+      );
+      const cbmBySku = new Map(products.rows.map((row) => [row.master_sku, Number(row.cbm)]));
+      const missingSkus = skus.filter((sku) => !cbmBySku.has(sku));
+      if (missingSkus.length > 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, error: `SKU does not exist in SKU Master: ${missingSkus.join(", ")}` },
+          { status: 400 }
+        );
+      }
+
+      let inserted = 0;
+      let skipped = 0;
+      for (const row of normalizedRows) {
+        const cbm = row.cbm ?? cbmBySku.get(row.masterSku) ?? 0;
+        if (cbm <= 0) {
+          throw new Error(`No CBM per unit on file for ${row.masterSku}.`);
+        }
+        const result = await client.query(
+          `INSERT INTO shipcore.fc_available_stock
+             (source_type, reference_no, pl_no, master_sku, total_qty, cbm_unit, note)
+           SELECT $1::varchar, $2::varchar, $3::varchar, $4::varchar, $5::int, $6::numeric, $7::text
+           WHERE NOT EXISTS (
+             SELECT 1 FROM shipcore.fc_available_stock
+             WHERE source_type = $1::varchar
+               AND reference_no = $2::varchar
+               AND pl_no IS NOT DISTINCT FROM $3::varchar
+               AND master_sku = $4::varchar
+           )
+           RETURNING id`,
+          [row.sourceType, row.referenceNo, row.plNo, row.masterSku, row.totalQty, cbm, row.note]
+        );
+        if (result.rowCount === 1) inserted += 1;
+        else skipped += 1;
+      }
+      await client.query("COMMIT");
+      return NextResponse.json({ success: true, data: { inserted, skipped, total: normalizedRows.length } });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Available stock import failed:", error);
+      return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+    } finally {
+      client.release();
+    }
+  }
+
   const allocation = AllocateSchema.safeParse(body);
 
   if (!allocation.success) {
     try {
       const validated = CreateStockSchema.parse(body);
+      const masterSku = validated.masterSku.toUpperCase();
+      const product = await getPrimaryPool().query(
+        `SELECT master_sku
+         FROM shipcore.fc_products
+         WHERE master_sku = $1
+         LIMIT 1`,
+        [masterSku]
+      );
+      if (product.rowCount === 0) {
+        return NextResponse.json(
+          { success: false, error: `SKU not found in SKU Master: ${masterSku}` },
+          { status: 400 }
+        );
+      }
       const result = await getPrimaryPool().query(
         `INSERT INTO shipcore.fc_available_stock
-           (source_type, reference_no, master_sku, total_qty, cbm_unit, note)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (source_type, reference_no, pl_no, master_sku, total_qty, cbm_unit, note)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id::text`,
         [
           validated.sourceType,
           validated.referenceNo,
-          validated.masterSku.toUpperCase(),
+          validated.plNo || null,
+          masterSku,
           validated.totalQty,
           validated.cbm,
           validated.note || null,
@@ -172,8 +271,157 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  const client = await getPrimaryPool().connect();
+
+  try {
+    const body: unknown = await request.json();
+    const validated = UpdateStockSchema.parse(body);
+    const masterSku = validated.masterSku.toUpperCase();
+
+    await client.query("BEGIN");
+    const product = await client.query(
+      `SELECT master_sku
+       FROM shipcore.fc_products
+       WHERE master_sku = $1
+       LIMIT 1`,
+      [masterSku]
+    );
+    if (product.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: `SKU not found in SKU Master: ${masterSku}` },
+        { status: 400 }
+      );
+    }
+    const existing = await client.query<{
+      source_type: "remaining" | "mistake";
+      master_sku: string;
+      cbm: number;
+      allocated_qty: number;
+    }>(
+      `SELECT
+         s.source_type,
+         s.master_sku,
+         s.cbm_unit::float8 AS cbm,
+         COALESCE((
+           SELECT SUM(a.qty)
+           FROM shipcore.fc_container_item_allocations a
+           WHERE a.source_stock_id = s.id
+         ), 0)::int AS allocated_qty
+       FROM shipcore.fc_available_stock s
+       WHERE s.id = $1::bigint
+       FOR UPDATE OF s`,
+      [validated.id]
+    );
+
+    if (existing.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ success: false, error: "Available stock not found." }, { status: 404 });
+    }
+
+    const current = existing.rows[0];
+    if (validated.totalQty < current.allocated_qty) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: `Quantity cannot be less than allocated quantity (${current.allocated_qty}).` },
+        { status: 409 }
+      );
+    }
+    if (
+      current.allocated_qty > 0 &&
+      (validated.sourceType !== current.source_type ||
+        masterSku !== current.master_sku ||
+        validated.cbm !== current.cbm)
+    ) {
+      await client.query("ROLLBACK");
+      return NextResponse.json(
+        { success: false, error: "Allocated stock cannot change list, Master SKU, or CBM." },
+        { status: 409 }
+      );
+    }
+
+    await client.query(
+      `UPDATE shipcore.fc_available_stock
+       SET source_type = $2,
+           reference_no = $3,
+           pl_no = $4,
+           master_sku = $5,
+           total_qty = $6::int,
+           cbm_unit = $7::numeric,
+           note = $8,
+           updated_at = NOW()
+       WHERE id = $1::bigint`,
+      [
+        validated.id,
+        validated.sourceType,
+        validated.referenceNo,
+        validated.plNo || null,
+        masterSku,
+        validated.totalQty,
+        validated.cbm,
+        validated.note || null,
+      ]
+    );
+    await client.query("COMMIT");
+    return NextResponse.json({ success: true, data: { id: validated.id } });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ success: false, error: "Validation error", details: error.issues }, { status: 400 });
+    }
+    console.error("Available stock PATCH failed:", error);
+    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+  } finally {
+    client.release();
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   const searchParams = new URL(request.url).searchParams;
+  const stockId = searchParams.get("stockId")?.trim() ?? "";
+  if (stockId) {
+    if (!/^\d+$/.test(stockId)) {
+      return NextResponse.json({ success: false, error: "Valid stockId is required" }, { status: 400 });
+    }
+
+    const client = await getPrimaryPool().connect();
+    try {
+      await client.query("BEGIN");
+      const stock = await client.query<{ allocated_qty: number }>(
+        `SELECT COALESCE((
+           SELECT SUM(a.qty)
+           FROM shipcore.fc_container_item_allocations a
+           WHERE a.source_stock_id = s.id
+         ), 0)::int AS allocated_qty
+         FROM shipcore.fc_available_stock s
+         WHERE s.id = $1::bigint
+         FOR UPDATE OF s`,
+        [stockId]
+      );
+      if (stock.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ success: false, error: "Available stock not found." }, { status: 404 });
+      }
+      if (stock.rows[0].allocated_qty > 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, error: "Allocated stock cannot be deleted. Remove its container allocation first." },
+          { status: 409 }
+        );
+      }
+      await client.query(`DELETE FROM shipcore.fc_available_stock WHERE id = $1::bigint`, [stockId]);
+      await client.query("COMMIT");
+      return NextResponse.json({ success: true, data: { id: stockId } });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Available stock record DELETE failed:", error);
+      return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+    } finally {
+      client.release();
+    }
+  }
+
   const allocationInput = searchParams.get("allocationIds")?.trim() || searchParams.get("allocationId")?.trim() || "";
   const allocationIds = [...new Set(allocationInput.split(",").map((id) => id.trim()).filter(Boolean))];
   if (allocationIds.length === 0 || allocationIds.some((id) => !/^\d+$/.test(id))) {

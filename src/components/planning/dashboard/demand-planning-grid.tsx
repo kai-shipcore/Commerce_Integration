@@ -27,6 +27,7 @@ import type {
   UrgencyFilter,
   UrgencyStatus,
 } from "@/types/demand-planning";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DemandPlanningGridProps {
   data: DemandPlanningData;
@@ -44,6 +45,16 @@ const DEFAULT_FREEZE = "sod";
 const ROW_HEIGHT = 28;
 const VIRTUAL_OVERSCAN = 12;
 const TABLE_HEADER_HEIGHT = 80;
+const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
+
+type ResizableColumnId = "cont_info" | "sku" | "inb_lst";
+type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
+
+const RESIZABLE_COLUMN_LIMITS: Record<ResizableColumnId, { min: number; max: number }> = {
+  cont_info: { min: 90, max: 320 },
+  sku: { min: 160, max: 420 },
+  inb_lst: { min: 120, max: 420 },
+};
 
 type SortValue = number | string | null | undefined;
 type SortDirection = "asc" | "desc";
@@ -134,6 +145,99 @@ function renderCell(content: CellContent): React.ReactNode {
   return String(content);
 }
 
+function isResizableColumnId(value: string): value is ResizableColumnId {
+  return value in RESIZABLE_COLUMN_LIMITS;
+}
+
+function clampColumnWidth(columnId: ResizableColumnId, width: number) {
+  const { min, max } = RESIZABLE_COLUMN_LIMITS[columnId];
+  return Math.min(max, Math.max(min, width));
+}
+
+function loadSavedColumnWidths(): ColumnWidths {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(stored)
+        .filter(([key, value]) => isResizableColumnId(key) && typeof value === "number" && Number.isFinite(value))
+        .map(([key, value]) => [key, clampColumnWidth(key as ResizableColumnId, value as number)])
+    ) as ColumnWidths;
+  } catch {
+    return {};
+  }
+}
+
+function expandableTextValue(columnId: string, row: DemandRow): string | null {
+  if (columnId === "cont_info") return row.container_info || null;
+  if (columnId === "sku") return row.sku || null;
+  if (columnId === "inb_lst") return row.containers_list || null;
+  return null;
+}
+
+function FullTextCell({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value: string;
+  children: React.ReactNode;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyValue() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <Popover onOpenChange={() => setCopied(false)}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`View full ${label}`}
+          title="Click to view full value"
+          style={{
+            display: "block",
+            width: "100%",
+            padding: 0,
+            border: 0,
+            background: "transparent",
+            color: "inherit",
+            font: "inherit",
+            fontWeight: "inherit",
+            textAlign: "inherit",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            cursor: "pointer",
+          }}
+        >
+          {children}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(30rem,calc(100vw-2rem))] p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+          <button
+            type="button"
+            onClick={() => void copyValue()}
+            className="rounded border px-2 py-1 text-xs font-medium hover:bg-muted"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+        <div className="break-words font-mono text-sm leading-5">{value}</div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function cellStyle(col: ColDef): React.CSSProperties {
   return {
     minWidth: col.w,
@@ -183,9 +287,12 @@ export function DemandPlanningGrid({
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [sortColumnId, setSortColumnId] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
+  const columnWidthsRef = useRef<ColumnWidths>(columnWidths);
   const tableRef = useRef<HTMLTableElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [scrollState, setScrollState] = useState({ top: 0, height: 600 });
+  const resizeRef = useRef<{ columnId: ResizableColumnId; startX: number; startWidth: number; controller: AbortController } | null>(null);
 
   // Inline qty editing state
   type EditingKey = `${string}::${string}`;
@@ -200,9 +307,15 @@ export function DemandPlanningGrid({
   // Row-level corrections for active-container aggregates (sku → partial DemandRow overrides)
   const [rowTotalOverrides, setRowTotalOverrides] = useState<Map<string, { total_inbound_qty?: number; containers_list?: string | null }>>(new Map());
 
-  const visCols = useMemo(
-    () => ALL_COLS.filter((c) => c.grp === "fix" || groupVis[c.grp]),
-    [groupVis],
+  const visCols = useMemo<ColDef[]>(
+    () => ALL_COLS
+      .filter((c) => c.grp === "fix" || groupVis[c.grp])
+      .map((col) => {
+        if (!isResizableColumnId(col.id)) return col;
+        const savedWidth = columnWidths[col.id];
+        return typeof savedWidth === "number" ? { ...col, w: savedWidth } : col;
+      }),
+    [columnWidths, groupVis],
   );
 
   const showCon = groupVis["con"];
@@ -241,6 +354,45 @@ export function DemandPlanningGrid({
     setSortColumnId(columnId);
     setSortDirection("asc");
   }, [sortColumnId]);
+
+  const startColumnResize = useCallback((event: React.PointerEvent, columnId: ResizableColumnId, startWidth: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    resizeRef.current?.controller.abort();
+    const controller = new AbortController();
+    resizeRef.current = { columnId, startX: event.clientX, startWidth, controller };
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const resize = resizeRef.current;
+      if (!resize) return;
+      const nextWidth = clampColumnWidth(resize.columnId, resize.startWidth + moveEvent.clientX - resize.startX);
+      const next = { ...columnWidthsRef.current, [resize.columnId]: nextWidth };
+      columnWidthsRef.current = next;
+      setColumnWidths(next);
+    };
+    const onPointerUp = () => {
+      const activeResize = resizeRef.current;
+      resizeRef.current = null;
+      window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidthsRef.current));
+      activeResize?.controller.abort();
+    };
+    document.addEventListener("pointermove", onPointerMove, { signal: controller.signal });
+    document.addEventListener("pointerup", onPointerUp, { signal: controller.signal });
+  }, []);
+
+  const resetColumnWidths = useCallback(() => {
+    columnWidthsRef.current = {};
+    setColumnWidths({});
+    window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
+  }, []);
+
+  useEffect(() => {
+    const saved = loadSavedColumnWidths();
+    columnWidthsRef.current = saved;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setColumnWidths(saved);
+    return () => resizeRef.current?.controller.abort();
+  }, []);
 
   useEffect(() => {
     const element = scrollAreaRef.current;
@@ -533,6 +685,12 @@ export function DemandPlanningGrid({
         >
           핵심만
         </button>
+        <button
+          onClick={resetColumnWidths}
+          style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10, border: "1px solid rgba(148,163,184,.45)", cursor: "pointer", color: "rgba(226,232,240,.86)", background: "rgba(15,23,42,.5)", whiteSpace: "nowrap", flexShrink: 0 }}
+        >
+          Reset Widths
+        </button>
           </div>
 
           {/* Freeze Selector Bar */}
@@ -711,7 +869,9 @@ export function DemandPlanningGrid({
             </tr>
             {/* Row 3: Column names */}
             <tr>
-              {visCols.map((col) => (
+              {visCols.map((col) => {
+                const resizableColumnId = isResizableColumnId(col.id) ? col.id : null;
+                return (
                 <th
                   key={col.id}
                   data-cid={col.id}
@@ -735,6 +895,7 @@ export function DemandPlanningGrid({
                     boxSizing: "border-box",
                     cursor: SORT_VALUE_BY_COLUMN[col.id] ? "pointer" : "default",
                     userSelect: "none",
+                    position: "relative",
                   }}
                 >
                   {col.label.split("\n").map((line, i) => (
@@ -748,8 +909,29 @@ export function DemandPlanningGrid({
                       {sortDirection === "asc" ? "▲" : "▼"}
                     </span>
                   ) : null}
+                  {resizableColumnId ? (
+                    <span
+                      role="separator"
+                      aria-label={`Resize ${col.label.replace("\n", " ")} column`}
+                      title="Drag to resize"
+                      onPointerDown={(event) => startColumnResize(event, resizableColumnId, col.w)}
+                      onClick={(event) => event.stopPropagation()}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        right: -3,
+                        zIndex: 2,
+                        width: 7,
+                        height: "100%",
+                        background: "rgba(103,232,249,.24)",
+                        cursor: "col-resize",
+                        touchAction: "none",
+                      }}
+                    />
+                  ) : null}
                 </th>
-              ))}
+                );
+              })}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
                 return visSubCols.map((sc, si) => {
@@ -842,6 +1024,7 @@ export function DemandPlanningGrid({
                       const isCbm = col.id === "cbm";
                       const isCbmEditing = isCbm && cbmEditingSku === r.sku;
                       const isCbmSaving  = isCbm && cbmSavingSku  === r.sku;
+                      const fullTextValue = expandableTextValue(col.id, displayRow);
                       let cbmSaveStarted = false;
                       const commitCbmSave = async (val: string) => {
                         if (cbmSaveStarted) return;
@@ -908,6 +1091,10 @@ export function DemandPlanningGrid({
                             />
                           ) : isCbmSaving ? (
                             <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
+                          ) : fullTextValue ? (
+                            <FullTextCell label={col.label.replace("\n", " ")} value={fullTextValue}>
+                              {renderCell(col.val(displayRow, idx, u))}
+                            </FullTextCell>
                           ) : (
                             renderCell(col.val(displayRow, idx, u))
                           )}
@@ -931,6 +1118,7 @@ export function DemandPlanningGrid({
                         const isLastSub = si === visSubCols.length - 1;
                         const baseBg = isBaseline ? "#E8F5E0" : isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
                         const isQtyCol = sc.id === "inb_qty";
+                        const isMistakeCol = sc.id === "mistake";
                         const isEditing = isQtyCol && editingKey === eKey;
                         const isSaving = isQtyCol && savingKey === eKey;
                         const isEditable = isQtyCol && !isBaseline;
@@ -1067,11 +1255,11 @@ export function DemandPlanningGrid({
                               whiteSpace: "nowrap",
                               height: 28,
                               background: isEditing ? "#FFFDE7" : baseBg,
-                              color: isDraft ? "#9A9790" : isEditable ? "#1A4FC0" : undefined,
+                              color: isMistakeCol ? "#C42020" : isDraft ? "#9A9790" : isEditable ? "#1A4FC0" : undefined,
                               textAlign: sc.align === "num" ? "right" : sc.align === "ctr" ? "center" : "left",
                               fontFamily: sc.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
                               fontSize: 11,
-                              fontWeight: isEditable ? 600 : undefined,
+                              fontWeight: isMistakeCol || isEditable ? 600 : undefined,
                               cursor: isEditable ? "pointer" : undefined,
                             }}
                           >

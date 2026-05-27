@@ -106,10 +106,10 @@ export const ALL_COLS: ColDef[] = [
   // Always-visible base columns
   { id: "row_num",   grp: "fix", label: "#",                w: 28,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
   { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 115, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.container_info || "" },
-  { id: "cbm",       grp: "fix", label: "CBM",              w: 50,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "" },
+  { id: "cbm",       grp: "fix", label: "CBM",              w: 56,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "" },
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); } },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 52,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Hold" ? "sc-hold" : "sc-orig"}">${r.sales_status || ""}</span>` }) },
-  { id: "sku",       grp: "fix", label: "Master SKU",       w: 230, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }) },
+  { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }) },
   { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.west_stock || 0 },
   { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.east_stock || 0 },
   { id: "total",     grp: "stock", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.total_stock || 0, bold: true },
