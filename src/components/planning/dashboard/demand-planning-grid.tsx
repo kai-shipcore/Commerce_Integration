@@ -14,6 +14,7 @@ import {
   GROUP_LABELS,
   GROUP_BTN_COLORS,
   TINT_COLORS,
+  TODAY,
   daysTo,
   urgStatus,
 } from "./columns";
@@ -21,6 +22,7 @@ import type { CellContent, ColDef } from "./columns";
 import type {
   CategoryFilter,
   ColumnGroupKey,
+  ContainerMeta,
   DemandPlanningData,
   DemandRow,
   ProductFilter,
@@ -28,6 +30,79 @@ import type {
   UrgencyStatus,
 } from "@/types/demand-planning";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+type ChainDerived = {
+  open_orders: number | null;
+  avail_qty: number | null;
+  est_sales: number | null;
+  backorder: number | null;
+  carryover: number | null;
+  inv_life: number | null;
+  est_sod: string | null;
+  plan_sod: string | null;
+};
+
+function computeContainerChain(
+  row: DemandRow,
+  cons: ContainerMeta[],
+  overrides: Map<string, { inbound_qty: number | null }>,
+  todayStr: string,
+): Map<string, ChainDerived> {
+  const result = new Map<string, ChainDerived>();
+
+  const availQty  = (row.total_stock ?? 0) + (row.back ?? 0);
+  const carryover = availQty >= 0 ? availQty : 0;
+  const dailyRate = row.total_avg_curr ?? 0;
+
+  let prevCarryover = carryover;
+  let prevBackorder = availQty < 0 ? Math.abs(availQty) : 0;
+  let prevSod: string | null = row.sod;
+  let prevEta = todayStr;
+
+  for (const c of cons.slice(1)) {
+    const eKey = `${row.sku}::${c.name}`;
+    const ov = overrides.get(eKey);
+    const rawData = row.containers?.[c.name];
+    const qty = ov !== undefined ? (ov.inbound_qty ?? 0) : (rawData?.inbound_qty ?? 0);
+    const eta = c.eta ?? todayStr;
+
+    const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
+    const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
+
+    const daysBetween = Math.max(0, Math.round(
+      (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
+    ));
+    const estSales   = Math.round(daysBetween * dailyRate);
+    const backorderC = Math.max(0, estSales - availQtyC);
+    const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
+    const invLifeC   = dailyRate > 0 ? Math.floor(carryoverC / dailyRate) : null;
+
+    const sodFromThis = invLifeC !== null
+      ? new Date(new Date(eta).getTime() + invLifeC * 86400000).toISOString().slice(0, 10)
+      : null;
+    const estSodC: string | null = (!qty || carryoverC === 0)
+      ? prevSod
+      : prevSod && sodFromThis ? (prevSod > sodFromThis ? prevSod : sodFromThis) : (sodFromThis ?? prevSod);
+
+    result.set(c.name, {
+      open_orders: openOrders,
+      avail_qty:   availQtyC,
+      est_sales:   estSales,
+      backorder:   backorderC,
+      carryover:   carryoverC,
+      inv_life:    invLifeC,
+      est_sod:     estSodC,
+      plan_sod:    sodFromThis,
+    });
+
+    prevCarryover = carryoverC;
+    prevBackorder = backorderC;
+    prevSod       = estSodC;
+    prevEta       = eta;
+  }
+
+  return result;
+}
 
 interface DemandPlanningGridProps {
   data: DemandPlanningData;
@@ -304,6 +379,7 @@ export function DemandPlanningGrid({
   // Local overrides: key = `${sku}::${containerName}`, value = partial ContainerRowData
   // item_id is stored here after a POST so subsequent edits use PATCH
   const [qtyOverrides, setQtyOverrides] = useState<Map<EditingKey, { inbound_qty: number | null; avail_qty: number | null; cbm: number | null; item_id?: number }>>(new Map());
+  const [containerChainMap, setContainerChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   // Row-level corrections for active-container aggregates (sku → partial DemandRow overrides)
   const [rowTotalOverrides, setRowTotalOverrides] = useState<Map<string, { total_inbound_qty?: number; containers_list?: string | null }>>(new Map());
 
@@ -1110,7 +1186,8 @@ export function DemandPlanningGrid({
                       };
                       const eKey = `${r.sku}::${c.name}` as EditingKey;
                       const override = qtyOverrides.get(eKey);
-                      const cd = override ? { ...rawCd, ...override } : rawCd;
+                      const chainData = containerChainMap.get(r.sku)?.get(c.name);
+                      const cd = { ...rawCd, ...(override ?? {}), ...(chainData ?? {}) };
                       const isBaseline = c.status === "baseline";
                       const isDraft = !isBaseline && !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                       const isLast = ci === CONS.length - 1;
@@ -1152,11 +1229,11 @@ export function DemandPlanningGrid({
                               const res = await fetch(`/api/planning/containers/items/${effectiveItemId}`, { method: "DELETE" });
                               json = await res.json() as typeof json;
                               if (json.success) {
-                                setQtyOverrides((prev) => {
-                                  const next = new Map(prev);
-                                  next.set(eKey, { inbound_qty: null, avail_qty: null, cbm: null, item_id: undefined });
-                                  return next;
-                                });
+                                const nextOverrides = new Map(qtyOverrides);
+                                nextOverrides.set(eKey, { inbound_qty: null, avail_qty: null, cbm: null, item_id: undefined });
+                                setQtyOverrides(nextOverrides);
+                                const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY);
+                                setContainerChainMap((prev) => new Map(prev).set(r.sku, chainResult));
                                 if (isActiveContainer) {
                                   setRowTotalOverrides((prev) => {
                                     const next = new Map(prev);
@@ -1194,16 +1271,16 @@ export function DemandPlanningGrid({
                             }
                             console.log("[commitSave] response:", json);
                             if (json.success) {
-                              setQtyOverrides((prev) => {
-                                const next = new Map(prev);
-                                next.set(eKey, {
-                                  inbound_qty: json.qty ?? newQty,
-                                  avail_qty: json.qty ?? newQty,
-                                  cbm: json.total_cbm ?? 0,
-                                  item_id: json.item_id ?? effectiveItemId ?? undefined,
-                                });
-                                return next;
+                              const nextOverrides = new Map(qtyOverrides);
+                              nextOverrides.set(eKey, {
+                                inbound_qty: json.qty ?? newQty,
+                                avail_qty: json.qty ?? newQty,
+                                cbm: json.total_cbm ?? 0,
+                                item_id: json.item_id ?? effectiveItemId ?? undefined,
                               });
+                              setQtyOverrides(nextOverrides);
+                              const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY);
+                              setContainerChainMap((prev) => new Map(prev).set(r.sku, chainResult));
                               if (isActiveContainer) {
                                 setRowTotalOverrides((prev) => {
                                   const next = new Map(prev);

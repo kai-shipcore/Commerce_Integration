@@ -2,9 +2,9 @@
 // Step 1: inventory — reads ecommerce_data.coverland_inventory (lookup pool) and upserts
 //         west_stock, east_stock, total_stock, back into shipcore.fc_stats.
 //         Warehouse mapping: 'Fullerton' → west, 'TTM Group' → east.
-// Step 2: sales velocity — routes each SKU to the correct snapshot via fc_products.is_custom_sku:
-//         false/missing → velocity_link_snapshot  (sales_status = 'Original')
-//         true          → velocity_custom_snapshot (sales_status = 'Custom')
+// Step 2: sales velocity — reads both snapshots; sales_status derived from is_custom column:
+//         is_custom = 'Y' → 'Custom', is_custom = 'N' → 'Original'
+//         velocity_link_snapshot → fc_stats, velocity_custom_snapshot → fc_stats_custom
 //         order_type mapping: 'sales' → west, 'ttm' → east, 'preorder' → west_30d_pre.
 //         No trailing lag — windows run up to CURRENT_DATE to match the velocity page.
 
@@ -103,26 +103,12 @@ export async function POST() {
       primary.query(`UPDATE shipcore.fc_stats_custom SET ${zeroVelocity}`),
     ]);
 
-    // Update sales_status in both tables from fc_products.
-    await Promise.all([
-      primary.query(`
-        UPDATE shipcore.fc_stats fs
-        SET sales_status = CASE WHEN p.is_custom_sku = true THEN 'Custom' ELSE 'Original' END
-        FROM shipcore.fc_products p WHERE fs.master_sku = p.master_sku
-      `),
-      primary.query(`
-        UPDATE shipcore.fc_stats_custom fsc
-        SET sales_status = CASE WHEN p.is_custom_sku = true THEN 'Custom' ELSE 'Original' END
-        FROM shipcore.fc_products p WHERE fsc.master_sku = p.master_sku
-      `),
-    ]);
-
     // All SKUs — velocity_link_snapshot → written to fc_stats
     // WHERE extends to CURRENT_DATE - 98 to cover the prev window (shifted back 7 days).
     const linkSalesResult = await primary.query(`
       SELECT
         vls.link_master_sku AS master_sku,
-        'Original'::text    AS sales_status,  -- overwritten by sales_status UPDATE below
+        CASE WHEN MAX(vls.is_custom) = 'Y' THEN 'Custom' ELSE 'Original' END AS sales_status,
         SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_90d,
         SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_60d,
         SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS west_30d,
@@ -201,7 +187,7 @@ export async function POST() {
     const customSalesResult = await primary.query(`
       SELECT
         vcs.custom_master_sku AS master_sku,
-        'Original'::text      AS sales_status,  -- overwritten by sales_status UPDATE below
+        CASE WHEN MAX(vcs.is_custom) = 'Y' THEN 'Custom' ELSE 'Original' END AS sales_status,
         SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_90d,
         SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_60d,
         SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS west_30d,
