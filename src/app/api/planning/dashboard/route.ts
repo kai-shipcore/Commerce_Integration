@@ -201,14 +201,18 @@ export async function GET() {
 
     // ── Assemble response ────────────────────────────────────────────────────
 
-    const containers: ContainerMeta[] = containersResult.rows.map((r, i) => ({
-      col:          i,
-      container_id: r.id,
-      name:         r.name,
-      eta:          r.eta,
-      cbm_cap:      r.cbm_cap ?? 0,
-      status:       r.status,
-    }));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const containers: ContainerMeta[] = [
+      { col: 0, name: "기준", eta: todayStr, cbm_cap: 0, status: "baseline" },
+      ...containersResult.rows.map((r, i) => ({
+        col:          i + 1,
+        container_id: r.id,
+        name:         r.name,
+        eta:          r.eta,
+        cbm_cap:      r.cbm_cap ?? 0,
+        status:       r.status,
+      })),
+    ];
 
     // cross-data lookup: sku → container_name → ContainerRowData
     const crossMap = new Map<string, Map<string, ContainerRowData>>();
@@ -244,6 +248,87 @@ export async function GET() {
       const containersObj: Record<string, ContainerRowData> = {};
       if (skuCross) {
         for (const [name, data] of skuCross) containersObj[name] = data;
+      }
+
+      // Baseline seed: today's state, no incoming units
+      const availQty  = (r.total_stock as number) + (r.back as number);
+      const carryover = availQty >= 0 ? availQty : 0;
+      const dailyRate = r.total_avg_curr as number;
+      const invLife   = dailyRate > 0 ? Math.floor(carryover / dailyRate) : null;
+      const sod       = (() => {
+        const rate = r.total_avg_real as number;
+        if (!rate) return null;
+        const days = Math.round((r.total_stock as number) / rate);
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+      })();
+      const planSod   = invLife !== null
+        ? new Date(Date.now() + invLife * 86400000).toISOString().slice(0, 10)
+        : null;
+
+      containersObj["기준"] = {
+        item_id:     null,
+        cbm_unit:    null,
+        inbound_qty: null,
+        open_orders: 0,
+        avail_qty:   availQty,
+        est_sales:   0,
+        backorder:   availQty < 0 ? Math.abs(availQty) : 0,
+        carryover:   carryover,
+        eta:         todayStr,
+        inv_life:    invLife,
+        est_sod:     sod,
+        plan_sod:    planSod,
+        cbm:         0,
+      };
+
+      // Chain: iterate real containers left-to-right, each block reads prior block's outputs
+      let prevCarryover = carryover;
+      let prevBackorder = availQty < 0 ? Math.abs(availQty) : 0;
+      let prevSod       = sod;
+      let prevEta       = todayStr;
+
+      for (const c of containers.slice(1)) {
+        const raw  = containersObj[c.name];
+        const qty  = raw?.inbound_qty ?? 0;
+        const eta  = c.eta ?? todayStr;
+
+        const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
+        const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
+
+        const daysBetween = Math.max(0, Math.round(
+          (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
+        ));
+        const estSales   = Math.round(daysBetween * dailyRate);
+        const backorderC = Math.max(0, estSales - availQtyC);
+        const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
+        const invLifeC   = dailyRate > 0 ? Math.floor(carryoverC / dailyRate) : null;
+
+        const sodFromThis = invLifeC !== null
+          ? new Date(new Date(eta).getTime() + invLifeC * 86400000).toISOString().slice(0, 10)
+          : null;
+        const estSodC: string | null = (!qty || carryoverC === 0)
+          ? prevSod
+          : prevSod && sodFromThis ? (prevSod > sodFromThis ? prevSod : sodFromThis) : (sodFromThis ?? prevSod);
+        const planSodC = sodFromThis;
+
+        containersObj[c.name] = {
+          ...(raw ?? { item_id: null, cbm_unit: null, inbound_qty: null, cbm: 0, eta }),
+          open_orders: openOrders,
+          avail_qty:   availQtyC,
+          est_sales:   estSales,
+          backorder:   backorderC,
+          carryover:   carryoverC,
+          inv_life:    invLifeC,
+          est_sod:     estSodC,
+          plan_sod:    planSodC,
+        };
+
+        prevCarryover = carryoverC;
+        prevBackorder = backorderC;
+        prevSod       = estSodC;
+        prevEta       = eta;
       }
 
       return {
@@ -293,14 +378,7 @@ export async function GET() {
         next_eta:          r.next_eta ?? null,
         remaining:         availStockMap.get(r.sku as string)?.remaining ?? 0,
         mistake:           availStockMap.get(r.sku as string)?.mistake   ?? 0,
-        sod:               (() => {
-          const rate = r.total_avg_real as number;
-          if (!rate) return null;
-          const days = Math.round((r.total_stock as number) / rate);
-          const d = new Date();
-          d.setDate(d.getDate() + days);
-          return d.toISOString().slice(0, 10);
-        })(),
+        sod,
         containers:        containersObj,
       };
     });

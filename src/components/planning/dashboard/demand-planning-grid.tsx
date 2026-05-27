@@ -647,9 +647,10 @@ export function DemandPlanningGrid({
               ))}
               {showCon && CONS.map((c, ci) => {
                 const isLast = ci === CONS.length - 1;
-                const isDraft = !!c.status && c.status !== "shipped" && c.status !== "packing_received";
+                const isBaseline = c.status === "baseline";
+                const isDraft = !isBaseline && !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                 const dt = daysTo(c.eta);
-                const etaColor = isDraft ? "#8A8780" :
+                const etaColor = isBaseline ? "#A0D080" : isDraft ? "#8A8780" :
                   dt !== null && dt <= 7  ? "#FF9090" :
                   dt !== null && dt <= 21 ? "#F0C060" : "#88D0FF";
                 return (
@@ -657,7 +658,7 @@ export function DemandPlanningGrid({
                     key={c.name}
                     colSpan={CON_SUBCOLS.length}
                     style={{
-                      background: isDraft ? "#1E1D1A" : "#2A2825",
+                      background: isBaseline ? "#0F2218" : isDraft ? "#1E1D1A" : "#2A2825",
                       color: etaColor,
                       fontSize: 10,
                       fontWeight: 800,
@@ -669,7 +670,7 @@ export function DemandPlanningGrid({
                       height: 20,
                     }}
                   >
-                    {isDraft ? "✏ " : ""}{c.name}&nbsp;/&nbsp;Cap {c.cbm_cap.toFixed(1)}
+                    {isDraft ? "✏ " : ""}{isBaseline ? c.name : `${c.name} / Cap ${c.cbm_cap.toFixed(1)}`}
                   </th>
                 );
               })}
@@ -818,21 +819,22 @@ export function DemandPlanningGrid({
                       const rawCd = (r.containers && r.containers[c.name]) || {
                         item_id: null, cbm_unit: null,
                         inbound_qty: null, open_orders: 0, avail_qty: null, est_sales: 0,
-                        backorder: 0, eta: c.eta, inv_life: null,
+                        backorder: 0, carryover: null, eta: c.eta, inv_life: null,
                         est_sod: null, plan_sod: null, cbm: 0,
                       };
                       const eKey = `${r.sku}::${c.name}` as EditingKey;
                       const override = qtyOverrides.get(eKey);
                       const cd = override ? { ...rawCd, ...override } : rawCd;
-                      const isDraft = !!c.status && c.status !== "shipped" && c.status !== "packing_received";
+                      const isBaseline = c.status === "baseline";
+                      const isDraft = !isBaseline && !!c.status && c.status !== "shipped" && c.status !== "packing_received";
                       const isLast = ci === CONS.length - 1;
                       return CON_SUBCOLS.map((sc, si) => {
                         const isLastSub = si === CON_SUBCOLS.length - 1;
-                        const baseBg = isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
+                        const baseBg = isBaseline ? "#E8F5E0" : isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
                         const isQtyCol = sc.id === "inb_qty";
                         const isEditing = isQtyCol && editingKey === eKey;
                         const isSaving = isQtyCol && savingKey === eKey;
-                        const isEditable = isQtyCol;
+                        const isEditable = isQtyCol && !isBaseline;
 
                         // Shared save — called by both Enter and blur.
                         // saveStarted prevents double-execution if blur fires

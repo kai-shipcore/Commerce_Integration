@@ -32,6 +32,7 @@ export interface ContainerRowData {
   avail_qty: number | null;
   est_sales: number | null;
   backorder: number | null;
+  carryover?: number | null;
   eta: string | null;
   inv_life: number | null;
   est_sod: string | null;
