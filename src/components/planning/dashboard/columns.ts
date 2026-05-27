@@ -180,18 +180,19 @@ export const CON_SUBCOLS: ConSubColDef[] = [
     const v = cd.backorder || 0;
     return v ? { html: `<span class="bo-pos">${v}</span>` } : { html: `<span class="lv-dim">0</span>` };
   }},
-  { id: "ceta",  label: "ETA",          w: 44, align: "ctr", tint: "t-cn",      val: (_cd, c) => ({ html: `<span style="font-family:monospace;font-size:9px;color:#9A9790">${c.eta.slice(5)}</span>` }) },
+  { id: "carry", label: "Carry\nover",  w: 52, align: "num", tint: "t-cn", val: (cd) => cd.carryover !== null && cd.carryover !== undefined ? cd.carryover : "" },
+  { id: "ceta",  label: "ETA",          w: 72, align: "ctr", tint: "t-cn",      val: (_cd, c) => ({ html: `<span style="font-family:monospace;font-size:9px;color:#9A9790">${c.eta}</span>` }) },
   { id: "life",  label: "Inv.\nLife",   w: 42, align: "num", tint: "t-cn-life", val: (cd) => {
     const v = cd.inv_life;
     if (v === null || v === undefined) return "";
     return { html: `<span class="${lifeCls(v)}">${v}</span>` };
   }},
-  { id: "esod",  label: "EST.\nSOD",    w: 72, align: "ctr", tint: "t-cn-sod",  val: (cd) => {
+  { id: "esod",  label: "EST.\nSOD",    w: 84, align: "ctr", tint: "t-cn-sod",  val: (cd) => {
     if (!cd.est_sod) return "";
     const d = daysTo(cd.est_sod);
     const cls = d !== null && d <= 30 ? "sod-crit" : d !== null && d <= 60 ? "sod-warn" : "sod-ok";
-    return { html: `<span class="${cls}">${cd.est_sod.slice(5)}</span>` };
+    return { html: `<span class="${cls}">${cd.est_sod}</span>` };
   }},
-  { id: "psod",  label: "Plan\nSOD",    w: 72, align: "ctr", tint: "t-cn-sod",  val: (cd) => cd.plan_sod ? { html: `<span style="font-size:9px;color:#9A9790">${cd.plan_sod.slice(5)}</span>` } : "" },
+  { id: "psod",  label: "Plan\nSOD",    w: 84, align: "ctr", tint: "t-cn-sod",  val: (cd) => cd.plan_sod ? { html: `<span style="font-size:9px;color:#9A9790">${cd.plan_sod}</span>` } : "" },
   { id: "ccbm",  label: "CBM",          w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.cbm || "" },
 ];
