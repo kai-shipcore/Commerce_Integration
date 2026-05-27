@@ -47,8 +47,12 @@ function inferCategoryCode(sku: string): "SC" | "CC" | "FM" {
 // 'packing_received' = Packing List Received (UI: packing-list-received)
 const ACTIVE = `('shipped', 'packing_received')`;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const mode = searchParams.get("mode") === "custom" ? "custom" : "link";
+    const statsTable = mode === "custom" ? "shipcore.fc_stats_custom" : "shipcore.fc_stats";
+
     const primary = getPrimaryPool();
     const lookup  = getLookupPool();
 
@@ -117,7 +121,7 @@ export async function GET() {
         COALESCE(s.total_avg_prev, 0)::float8                AS total_avg_prev,
         COALESCE(s.total_avg_real, 0)::float8                AS total_avg_real,
         COALESCE(s.total_avg_curr, 0)::float8                AS total_avg_curr
-      FROM shipcore.fc_stats s
+      FROM ${statsTable} s
       LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
       LEFT JOIN (
         SELECT

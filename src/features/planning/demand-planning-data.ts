@@ -5,6 +5,8 @@ import type { DemandPlanningData } from "@/types/demand-planning";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [] };
 
+export type VelocityMode = "link" | "custom";
+
 export interface DemandPlanningDataState {
   data: DemandPlanningData;
   loading: boolean;
@@ -12,7 +14,7 @@ export interface DemandPlanningDataState {
   reload: () => void;
 }
 
-export function useDemandPlanningData(): DemandPlanningDataState {
+export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanningDataState {
   const [data, setData] = useState<DemandPlanningData>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,12 +24,13 @@ export function useDemandPlanningData(): DemandPlanningDataState {
     setLoading(true);
     setError(null);
 
+    const dashUrl = `/api/planning/dashboard?mode=${mode}`;
     const pipeline = withRefresh
       ? fetch("/api/planning/stats/refresh", { method: "POST" }).then((res) => {
           if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
-          return fetch("/api/planning/dashboard");
+          return fetch(dashUrl);
         })
-      : fetch("/api/planning/dashboard");
+      : fetch(dashUrl);
 
     pipeline
       .then((res) => {
@@ -50,8 +53,8 @@ export function useDemandPlanningData(): DemandPlanningDataState {
     return () => { cancelled = true; };
   }
 
-  // Auto-load on mount using existing fc_stats (no refresh)
-  useEffect(() => fetchDashboard(false), []);
+  // Auto-load on mount using existing stats (no refresh)
+  useEffect(() => fetchDashboard(false), [mode]);
 
   // Sync button: refresh stats first, then load
   function reload() { fetchDashboard(true); }
