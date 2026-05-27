@@ -185,8 +185,12 @@ export async function POST() {
           SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
           SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS fba_avg_prev,
-        -- fba_30d: 30-day Amazon FBA count
-        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_30d
+        -- fba raw windows (used to exclude FBA from west_fbm_30d)
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_90d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_60d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_30d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_15d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_7d
       FROM shipcore.velocity_link_snapshot vls
       WHERE vls.link_master_sku IS NOT NULL
         AND vls.order_date >= CURRENT_DATE - 98
@@ -254,7 +258,11 @@ export async function POST() {
           SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
           SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS fba_avg_prev,
-        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_30d
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_90d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_60d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_30d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_15d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_7d
       FROM shipcore.velocity_custom_snapshot vcs
       WHERE vcs.custom_master_sku IS NOT NULL
         AND vcs.order_date >= CURRENT_DATE - 98
@@ -342,7 +350,10 @@ export async function POST() {
       const w15 = Number(r.west_15d), w7  = Number(r.west_7d);
       const e90 = Number(r.east_90d), e60 = Number(r.east_60d), e30 = Number(r.east_30d);
       const e15 = Number(r.east_15d), e7  = Number(r.east_7d);
-      r.west_fbm_30d = Math.round((w90/90*30 + w60/60*30 + w30/30*30 + w15/15*30 + w7/7*30) / 5);
+      const f90 = Number(r.fba_90d ?? 0), f60 = Number(r.fba_60d ?? 0), f30 = Number(r.fba_30d ?? 0);
+      const f15 = Number(r.fba_15d ?? 0), f7  = Number(r.fba_7d  ?? 0);
+      // Subtract FBA from west windows so FBA orders don't double-count in west_fbm_30d
+      r.west_fbm_30d = Math.round((Math.max(0, w90-f90)/90*30 + Math.max(0, w60-f60)/60*30 + Math.max(0, w30-f30)/30*30 + Math.max(0, w15-f15)/15*30 + Math.max(0, w7-f7)/7*30) / 5);
       r.east_fbm_30d = Math.round((e90/90*30 + e60/60*30 + e30/30*30 + e15/15*30 + e7/7*30) / 5);
       r.total_30d    = (r.west_fbm_30d as number) + (r.east_fbm_30d as number) + (r.fba_30d as number);
     }
