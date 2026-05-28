@@ -242,13 +242,16 @@ async function main() {
       console.log(`  Upserted container: ${cg.name} (id=${result.rows[0].id})`);
     }
 
-    // 2. Check which SKUs exist in fc_products
+    // 2. Check which SKUs exist in fc_products; also fetch cbm_per_unit as fallback
     const allSkus = [...new Set(items.map((i) => i.masterSku))];
-    const skuResult = await client.query<{ master_sku: string }>(
-      `SELECT master_sku FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
+    const skuResult = await client.query<{ master_sku: string; cbm_per_unit: string | null }>(
+      `SELECT master_sku, cbm_per_unit::text FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
       [allSkus]
     );
     const validSkus = new Set(skuResult.rows.map((r) => r.master_sku));
+    const cbmBySkuMap = new Map<string, number | null>(
+      skuResult.rows.map((r) => [r.master_sku, r.cbm_per_unit ? parseFloat(r.cbm_per_unit) : null])
+    );
     const skippedSkus = allSkus.filter((s) => !validSkus.has(s));
     if (skippedSkus.length > 0) {
       console.log(`\nSkipping ${skippedSkus.length} SKU(s) not in fc_products: ${skippedSkus.join(", ")}`);
@@ -269,11 +272,12 @@ async function main() {
       const containerId = containerIds.get(item.containerName);
       if (!containerId) continue;
 
+      const cbmUnit = item.cbmUnit ?? cbmBySkuMap.get(item.masterSku) ?? null;
       await client.query(
         `INSERT INTO shipcore.fc_container_items
            (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
          VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
-        [containerId, item.masterSku, item.qty, item.cbmUnit]
+        [containerId, item.masterSku, item.qty, cbmUnit]
       );
       inserted++;
     }
