@@ -349,7 +349,15 @@ export function DemandPlanningGrid({
   containerDetailsLoading,
   containerDetailsLoaded,
 }: DemandPlanningGridProps) {
-  const { containers: CONS, rows: ROWS } = data;
+  const { rows: ROWS } = data;
+  const CONS = useMemo(
+    () => data.containers.filter((c) => {
+      if (c.name.endsWith("-FLOOR")) return categoryFilter === "fm";
+      if (c.name.endsWith("-SEAT"))  return categoryFilter === "sc";
+      return categoryFilter === "cc";
+    }),
+    [data.containers, categoryFilter],
+  );
 
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>({
     fix: true, stock: true, wsales: true, esales: true, wavg: true, eavg: true,
