@@ -367,17 +367,23 @@ export function DemandPlanningGrid({
   containerDetailsLoaded,
 }: DemandPlanningGridProps) {
   const { rows: ROWS } = data;
+  const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const CONS = useMemo(
-    () => data.containers.filter((c) => {
-      if (!c.categories || c.categories.length === 0) {
-        // fallback: name-suffix heuristic for containers without category data
-        if (c.name.endsWith("-FLOOR")) return categoryFilter === "fm";
-        if (c.name.endsWith("-SEAT"))  return categoryFilter === "sc";
-        return categoryFilter === "cc";
-      }
-      return c.categories.includes(categoryFilter.toUpperCase());
-    }),
-    [data.containers, categoryFilter],
+    () => data.containers
+      .map((c) => c.container_id !== undefined && etaOverrides.has(c.container_id)
+        ? { ...c, eta: etaOverrides.get(c.container_id)! }
+        : c
+      )
+      .filter((c) => {
+        if (!c.categories || c.categories.length === 0) {
+          // fallback: name-suffix heuristic for containers without category data
+          if (c.name.endsWith("-FLOOR")) return categoryFilter === "fm";
+          if (c.name.endsWith("-SEAT"))  return categoryFilter === "sc";
+          return categoryFilter === "cc";
+        }
+        return c.categories.includes(categoryFilter.toUpperCase());
+      }),
+    [data.containers, categoryFilter, etaOverrides],
   );
 
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>({
@@ -1043,7 +1049,39 @@ export function DemandPlanningGrid({
                       height: 20,
                     }}
                   >
-                    {isDraft ? "✏ " : ""}{isBaseline ? c.name : `${c.name} | ETA ${c.eta}`}
+                    {isBaseline ? c.name : (
+                      <>
+                        {isDraft ? "✏ " : ""}{c.name}{" | ETA "}
+                        <input
+                          type="date"
+                          value={c.eta ?? ""}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const newEta = e.target.value;
+                            if (!newEta || !c.container_id) return;
+                            setEtaOverrides((prev) => new Map(prev).set(c.container_id!, newEta));
+                            void fetch(`/api/containers?id=${c.container_id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ eta: newEta }),
+                            });
+                          }}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            borderBottom: "1px solid rgba(255,255,255,0.3)",
+                            color: "inherit",
+                            fontSize: "inherit",
+                            fontWeight: "inherit",
+                            fontFamily: "inherit",
+                            cursor: "pointer",
+                            padding: 0,
+                            outline: "none",
+                            width: 80,
+                          }}
+                        />
+                      </>
+                    )}
                   </th>,
                   ...(!isBaseline ? [
                     <th

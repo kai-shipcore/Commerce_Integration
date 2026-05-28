@@ -305,6 +305,29 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, data: { id } });
     }
 
+    const etaOnly = z.object({ eta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict().safeParse(body);
+
+    if (etaOnly.success) {
+      const result = await client.query(
+        `UPDATE shipcore.fc_containers
+         SET eta_date = $2::date,
+             updated_at = NOW()
+         WHERE id = $1::bigint
+         RETURNING id`,
+        [id, etaOnly.data.eta]
+      );
+
+      if (result.rowCount === 0) {
+        return NextResponse.json(
+          { success: false, error: "Container not found" },
+          { status: 404 }
+        );
+      }
+
+      await invalidatePlanningDashboardCache();
+      return NextResponse.json({ success: true, data: { id } });
+    }
+
     const validated = ContainerSaveSchema.parse(body);
     const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim().toUpperCase()))];
 
