@@ -142,9 +142,8 @@ async function main() {
       continue;
     }
 
-    // Container name pattern: e.g. "166-CA-SEAT", "167-CA-BK"
-    // Digits, dash, uppercase letters, dash, uppercase letters
-    if (/^\d{2,4}-[A-Z]{1,4}-[A-Z]+/.test(text)) {
+    // Container name pattern: e.g. "166-CA-SEAT", "166-CA", "166-CA-FLOOR"
+    if (/^\d{2,4}-[A-Z]{1,4}(-[A-Z]+)?$/.test(text)) {
       const etaCell = headerRow.getCell(c + 5);
       const etaDate = cellToDateString(etaCell.value);
       const argb = getCellFillArgb(cell);
@@ -166,7 +165,7 @@ async function main() {
 
   if (containerGroups.length === 0) {
     console.error("\nNo container name columns detected in row 3.");
-    console.error('Expected pattern: digits-LETTERS-LETTERS (e.g. "166-CA-SEAT").');
+    console.error('Expected pattern: digits-LETTERS[-LETTERS] (e.g. "166-CA", "166-CA-SEAT", "166-CA-FLOOR").');
     process.exit(1);
   }
 
