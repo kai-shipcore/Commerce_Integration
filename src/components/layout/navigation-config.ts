@@ -24,6 +24,7 @@ export interface NavigationItem {
   group?: string;
   hideable?: boolean;
   adminOnly?: boolean;
+  hidden?: boolean;
 }
 
 export const navigationItems: NavigationItem[] = [
@@ -130,6 +131,7 @@ export const navigationItems: NavigationItem[] = [
     icon: FileSpreadsheet,
     group: "Planning",
     hideable: true,
+    hidden: true,
   },
   {
     id: "sku-master",
@@ -175,7 +177,7 @@ export const navigationItems: NavigationItem[] = [
 ];
 
 export const adminDefaultVisibleMenuIds = navigationItems
-  .filter((item) => item.hideable !== false)
+  .filter((item) => item.hideable !== false && !item.hidden)
   .map((item) => item.id);
 
 export const userDefaultVisibleMenuIds = ["velocity"];

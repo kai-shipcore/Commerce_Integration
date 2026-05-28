@@ -9,13 +9,13 @@ const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-
 
 const ContainerSaveSchema = z.object({
   number: z.string().trim().min(1),
-  poNumbers: z.array(z.string().trim()).optional().default([]),
   eta: z.string().trim().min(1),
   status: ContainerStatusSchema,
-  cbmCapacity: z.number().positive().default(67.5),
+  cbmCapacity: z.number().positive().default(80),
   factory: z.string().trim().optional(),
   origin: z.string().trim().optional(),
   destination: z.string().trim().optional(),
+  note: z.string().trim().optional(),
   items: z.array(z.object({
     sku: z.string().trim().min(1),
     qty: z.number().int().positive(),
@@ -78,11 +78,11 @@ export async function GET(request: NextRequest) {
          c.factory_name,
          c.origin,
          c.dest_warehouse,
+         c.note,
          COALESCE(item_summary.item_count, 0)::int AS item_count,
          COALESCE(item_summary.total_qty, 0)::int AS total_qty,
          COALESCE(item_summary.total_cbm, 0)::text AS total_cbm,
-         COALESCE(item_summary.items, '[]'::json) AS items,
-         COALESCE(po_summary.po_numbers, ARRAY[]::text[]) AS po_numbers
+         COALESCE(item_summary.items, '[]'::json) AS items
        FROM shipcore.fc_containers c
        LEFT JOIN (
          SELECT
@@ -119,14 +119,6 @@ export async function GET(request: NextRequest) {
          FROM shipcore.fc_container_items
          GROUP BY container_id
        ) item_summary ON item_summary.container_id = c.id
-       LEFT JOIN (
-         SELECT
-           l.container_id,
-           array_agg(po.po_number ORDER BY po.po_number) AS po_numbers
-         FROM shipcore.fc_container_po_links l
-         JOIN shipcore.fc_purchase_orders po ON po.id = l.po_id
-         GROUP BY l.container_id
-       ) po_summary ON po_summary.container_id = c.id
        ${where}
        ORDER BY c.eta_date NULLS LAST, c.id DESC`,
       params
@@ -142,12 +134,12 @@ export async function GET(request: NextRequest) {
       factoryName: row.factory_name as string | null,
       origin: row.origin as string | null,
       destWarehouse: row.dest_warehouse as string | null,
+      note: row.note as string | null,
       itemCount: Number(row.item_count ?? 0),
       totalQty: Number(row.total_qty ?? 0),
       totalCbm: Number(row.total_cbm ?? 0),
       ...(includeDetails
         ? {
-            poNumbers: (row.po_numbers ?? []) as string[],
             items: ((row.items ?? []) as Array<{
               id?: string;
               sku?: string;
@@ -213,8 +205,8 @@ export async function POST(request: NextRequest) {
 
     const containerResult = await client.query<{ id: string }>(
       `INSERT INTO shipcore.fc_containers
-         (container_number, eta_date, status, cbm_capacity, factory_name, origin, dest_warehouse, created_at, updated_at)
-       VALUES ($1, $2::date, $3::shipcore.fc_container_status, $4::numeric, $5, $6, $7, NOW(), NOW())
+         (container_number, eta_date, status, cbm_capacity, factory_name, origin, dest_warehouse, note, created_at, updated_at)
+       VALUES ($1, $2::date, $3::shipcore.fc_container_status, $4::numeric, $5, $6, $7, $8, NOW(), NOW())
        RETURNING id::text`,
       [
         validated.number.trim(),
@@ -224,6 +216,7 @@ export async function POST(request: NextRequest) {
         validated.factory?.trim() || null,
         validated.origin?.trim() || null,
         validated.destination?.trim() || null,
+        validated.note?.trim() || null,
       ]
     );
     const containerId = containerResult.rows[0].id;
@@ -235,23 +228,6 @@ export async function POST(request: NextRequest) {
          VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
         [containerId, item.sku.trim().toUpperCase(), item.qty, item.cbm]
       );
-    }
-
-    const poNumbers = [...new Set(validated.poNumbers.map((po) => po.trim()).filter(Boolean))];
-    if (poNumbers.length > 0) {
-      const poResult = await client.query<{ id: string }>(
-        `SELECT id::text FROM shipcore.fc_purchase_orders WHERE po_number = ANY($1::text[])`,
-        [poNumbers]
-      );
-
-      for (const row of poResult.rows) {
-        await client.query(
-          `INSERT INTO shipcore.fc_container_po_links (container_id, po_id, created_at)
-           VALUES ($1::bigint, $2::bigint, NOW())
-           ON CONFLICT DO NOTHING`,
-          [containerId, row.id]
-        );
-      }
     }
 
     await client.query("COMMIT");
@@ -371,6 +347,7 @@ export async function PATCH(request: NextRequest) {
            factory_name = $6,
            origin = $7,
            dest_warehouse = $8,
+           note = $9,
            updated_at = NOW()
        WHERE id = $1::bigint`,
       [
@@ -382,6 +359,7 @@ export async function PATCH(request: NextRequest) {
         validated.factory?.trim() || null,
         validated.origin?.trim() || null,
         validated.destination?.trim() || null,
+        validated.note?.trim() || null,
       ]
     );
 
@@ -399,23 +377,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     await client.query(`DELETE FROM shipcore.fc_container_po_links WHERE container_id = $1::bigint`, [id]);
-
-    const poNumbers = [...new Set(validated.poNumbers.map((po) => po.trim()).filter(Boolean))];
-    if (poNumbers.length > 0) {
-      const poResult = await client.query<{ id: string }>(
-        `SELECT id::text FROM shipcore.fc_purchase_orders WHERE po_number = ANY($1::text[])`,
-        [poNumbers]
-      );
-
-      for (const row of poResult.rows) {
-        await client.query(
-          `INSERT INTO shipcore.fc_container_po_links (container_id, po_id, created_at)
-           VALUES ($1::bigint, $2::bigint, NOW())
-           ON CONFLICT DO NOTHING`,
-          [id, row.id]
-        );
-      }
-    }
 
     await client.query("COMMIT");
     await invalidatePlanningDashboardCache();

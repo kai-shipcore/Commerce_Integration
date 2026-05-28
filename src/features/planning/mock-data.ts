@@ -32,7 +32,9 @@ export interface MockContainer {
   factory: string;
   origin?: string;
   destination: string;
+  note?: string;
   items: Array<{
+    id?: string;
     sku: string;
     qty: number;
     cbm: number;

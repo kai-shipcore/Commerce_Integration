@@ -224,7 +224,7 @@ export function FactoriesPage() {
           <div>
             <h1 className="text-lg font-semibold">🏭 Factory Management</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              Manage factory master records used across purchase orders (DB: fc_factories)
+              Manage factory master records used across planning workflows
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -287,12 +287,14 @@ export function FactoriesPage() {
                       🏭
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block font-mono text-xs font-bold">
-                        {f.factoryCode ?? f.factoryName}
+                      <span className="block truncate text-sm font-semibold">
+                        {f.factoryName}
                       </span>
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                        {f.factoryCode ? f.factoryName : ""}
-                      </span>
+                      {f.factoryCode ? (
+                        <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
+                          {f.factoryCode}
+                        </span>
+                      ) : null}
                       {f.origin ? (
                         <span className="mt-0.5 block text-[10px] text-muted-foreground">
                           {f.origin}
@@ -430,15 +432,15 @@ function FactoryDetail({
       {/* Detail header */}
       <div className="mb-5 flex items-start justify-between gap-4 border-b border-[#e2dfd8] pb-4">
         <div>
-          <div className="font-mono text-base font-semibold">
+          <div className="text-base font-semibold">
             {isNew
               ? "🏭 New Factory"
-              : `🏭 ${form.factoryCode || form.factoryName}`}
+              : `🏭 ${form.factoryName}`}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {isNew
               ? "Enter the details and save"
-              : `${form.factoryCode ? form.factoryName : ""}${form.origin ? ` · ${form.origin}` : ""}`}
+              : `${form.factoryCode || "No code"}${form.origin ? ` · ${form.origin}` : ""}`}
           </div>
           {selectedFactory ? (
             <div className="mt-1 text-[10px] text-muted-foreground">

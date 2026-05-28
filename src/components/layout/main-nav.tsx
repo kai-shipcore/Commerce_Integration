@@ -144,6 +144,7 @@ export function MainNav() {
 
   const visibleNavigation = navigationItems.filter(
     (item) =>
+      !item.hidden &&
       (!item.adminOnly || isAdmin) &&
       (item.hideable === false || visibleMenuIds.includes(item.id))
   );

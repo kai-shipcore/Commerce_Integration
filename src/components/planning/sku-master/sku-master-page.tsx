@@ -208,7 +208,7 @@ export function SkuMasterPage() {
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "caseQty" | "weightKg" | "isCustomSku">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "caseQty" | "weightKg">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
@@ -217,7 +217,13 @@ export function SkuMasterPage() {
     const res = await fetch("/api/planning/sku-master", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(row),
+      body: JSON.stringify({
+        masterSku: row.masterSku,
+        cbmPerUnit: row.cbmPerUnit,
+        moq: row.moq,
+        caseQty: row.caseQty,
+        weightKg: row.weightKg,
+      }),
     });
     const json = await res.json();
     if (!json.success) throw new Error(json.error ?? "Failed to save SKU");
@@ -351,7 +357,7 @@ export function SkuMasterPage() {
         <div>
           <h1 className="text-lg font-semibold">SKU Master Management</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            Manage SKU type, CBM, and MOQ. Click Edit to update values inline.
+            Manage CBM and MOQ. Click Edit to update values inline.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -492,9 +498,8 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[940px] grid-cols-[210px_140px_330px_150px_110px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[800px] grid-cols-[210px_330px_150px_110px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">Product</div>
-          <div className="px-4 py-3">SKU Type</div>
           <div className="px-4 py-3">Master SKU</div>
           <div className="px-4 py-3">CBM / Unit</div>
           <div className="px-4 py-3">MOQ</div>
@@ -504,27 +509,10 @@ export function SkuMasterPage() {
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[940px] grid-cols-[210px_140px_330px_150px_110px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            className="grid min-w-[800px] grid-cols-[210px_330px_150px_110px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
-            </div>
-            <div className="px-4 py-3">
-              {editingSku === sku.masterSku ? (
-                <select
-                  value={sku.isCustomSku ? "custom" : "original"}
-                  onChange={(event) =>
-                    updateRow(sku.masterSku, { isCustomSku: event.target.value === "custom" })
-                  }
-                  className="h-8 w-full rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
-                  aria-label={`SKU type for ${sku.masterSku}`}
-                >
-                  <option value="original">Original</option>
-                  <option value="custom">Custom</option>
-                </select>
-              ) : (
-                <SkuTypeBadge isCustomSku={sku.isCustomSku} />
-              )}
             </div>
             <div className="px-4 py-3 font-mono text-xs font-semibold">{sku.masterSku}</div>
             <EditableNumber
@@ -601,20 +589,6 @@ function ProductBadge({ product }: { product: ProductKey }) {
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[11px] font-semibold ${meta.badgeClass}`}>
       {meta.label}
-    </span>
-  );
-}
-
-function SkuTypeBadge({ isCustomSku }: { isCustomSku: boolean }) {
-  return (
-    <span
-      className={`inline-flex whitespace-nowrap rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
-        isCustomSku
-          ? "bg-[#f5ead8] text-[#b56a00] dark:bg-orange-950/70 dark:text-orange-300"
-          : "bg-[#e5e9ff] text-[#2855d9] dark:bg-blue-950/70 dark:text-blue-300"
-      }`}
-    >
-      {isCustomSku ? "Custom" : "Original"}
     </span>
   );
 }

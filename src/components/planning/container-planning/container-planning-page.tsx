@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -16,24 +16,22 @@ type ContainerItem = MockContainer["items"][number];
 
 type ContainerFormState = {
   number: string;
-  poNumbers: string;
   eta: string;
   status: ContainerStatus;
   cbmCapacity: string;
   factory: string;
-  origin: string;
   destination: string;
+  note: string;
 };
 
 const defaultFormState: ContainerFormState = {
   number: "",
-  poNumbers: "",
   eta: "",
   status: "draft",
-  cbmCapacity: "67.5",
+  cbmCapacity: "80",
   factory: "",
-  origin: "China Guangzhou",
   destination: "",
+  note: "",
 };
 
 const statusOptions: Array<{ value: ContainerStatus; label: string; shortLabel: string }> = [
@@ -103,8 +101,14 @@ type ApiContainer = {
   factoryName: string | null;
   origin: string | null;
   destWarehouse: string | null;
-  poNumbers?: string[];
-  items?: Array<{ sku: string; qty: number; cbm: number; allocations?: StockAllocation[] }>;
+  note: string | null;
+  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; allocations?: StockAllocation[] }>;
+};
+
+type FactoryOption = {
+  id: string;
+  factoryCode: string;
+  factoryName: string;
 };
 
 type WarehouseOption = {
@@ -114,21 +118,28 @@ type WarehouseOption = {
   isActive: boolean;
 };
 
-type PurchaseOrderOption = {
-  id: string;
-  number: string;
-  eta: string | null;
-  factory: string | null;
-  destination: string | null;
-  status: string;
-  itemCount: number;
-  items: ContainerItem[];
-};
-
 const productBadgeClasses: Record<ProductKey, string> = {
   sc: "bg-[#e6f5f0] text-[#0a5e45]",
   cc: "bg-[#ebf0fd] text-[#1a4db0]",
   fm: "bg-[#fef3e2] text-[#8a5300]",
+};
+
+const productLabels: Record<ProductKey, string> = {
+  cc: "Car Cover",
+  fm: "Floor Mat",
+  sc: "Seat Cover",
+};
+
+const productFilterColors: Record<ProductKey, string> = {
+  cc: "#1a4db0",
+  fm: "#8a5300",
+  sc: "#0a5e45",
+};
+
+const productFilterIcons: Record<ProductKey, string> = {
+  cc: "🚗",
+  fm: "🧩",
+  sc: "💺",
 };
 
 function inferProductKey(sku: string): ProductKey {
@@ -139,11 +150,12 @@ function inferProductKey(sku: string): ProductKey {
   return "sc";
 }
 
-function splitPoNumbers(value: string) {
-  return value
-    .split(",")
-    .map((po) => po.trim())
-    .filter(Boolean);
+function getContainerProducts(container: MockContainer): Set<ProductKey> {
+  const products = new Set<ProductKey>();
+  for (const item of container.items) {
+    products.add(inferProductKey(item.sku));
+  }
+  return products;
 }
 
 function formatNumber(value: number) {
@@ -170,14 +182,16 @@ function mapApiContainer(container: ApiContainer): MockContainer {
   return {
     id: container.id,
     number: container.containerNumber,
-    poNumbers: container.poNumbers ?? [],
+    poNumbers: [],
     eta: container.etaDate ?? "",
     status: normalizeContainerStatus(container.status),
-    cbmCapacity: container.cbmCapacity || 67.5,
+    cbmCapacity: container.cbmCapacity || 80,
     factory: container.factoryName ?? "",
     origin: container.origin ?? "",
     destination: container.destWarehouse ?? "",
+    note: container.note ?? "",
     items: (container.items ?? []).map((item) => ({
+      id: item.id,
       sku: item.sku,
       qty: Number(item.qty ?? 0),
       cbm: Number(item.cbm ?? 0),
@@ -203,30 +217,6 @@ function safeFilePart(value: string) {
   return value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "_") || "container";
 }
 
-function itemsFromPurchaseOrders(orders: PurchaseOrderOption[]): ContainerItem[] {
-  const itemsBySku = new Map<string, ContainerItem>();
-
-  for (const order of orders) {
-    for (const item of order.items) {
-      const sku = item.sku.trim().toUpperCase();
-      if (!sku || item.qty <= 0) continue;
-
-      const existing = itemsBySku.get(sku);
-      if (existing) {
-        itemsBySku.set(sku, {
-          sku,
-          qty: existing.qty + item.qty,
-          cbm: item.cbm > 0 ? item.cbm : existing.cbm,
-        });
-      } else {
-        itemsBySku.set(sku, { sku, qty: item.qty, cbm: item.cbm });
-      }
-    }
-  }
-
-  return [...itemsBySku.values()];
-}
-
 export function ContainerPlanningPage() {
   const { data: session } = useSession();
   const isAdmin = isAdminLikeRole(session?.user?.role);
@@ -239,15 +229,13 @@ export function ContainerPlanningPage() {
   const [containersError, setContainersError] = useState<string | null>(null);
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [loadingWarehouses, setLoadingWarehouses] = useState(true);
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderOption[]>([]);
-  const [loadingPurchaseOrders, setLoadingPurchaseOrders] = useState(true);
+  const [factories, setFactories] = useState<FactoryOption[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
   const [savingContainer, setSavingContainer] = useState(false);
   const [statusModalContainerId, setStatusModalContainerId] = useState<string | null>(null);
   const [availableStockContainerId, setAvailableStockContainerId] = useState<string | null>(null);
   const [form, setForm] = useState<ContainerFormState>(defaultFormState);
-  const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
   const [draftItems, setDraftItems] = useState<ContainerItem[]>([]);
   const [skuInput, setSkuInput] = useState("");
   const [qtyInput, setQtyInput] = useState("");
@@ -255,6 +243,7 @@ export function ContainerPlanningPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ContainerStatus | null>(null);
+  const [productFilter, setProductFilter] = useState<ProductKey | null>(null);
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
 
@@ -272,31 +261,28 @@ export function ContainerPlanningPage() {
     const normalizedQuery = query.trim().toLowerCase();
     return containers.filter((container) => {
       if (statusFilter && container.status !== statusFilter) return false;
+      if (productFilter && !getContainerProducts(container).has(productFilter)) return false;
       if (!normalizedQuery) return true;
       return [
         container.number,
         container.destination,
         container.factory,
+        container.note,
         container.eta,
-        ...container.poNumbers,
       ]
         .join(" ")
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [containers, query, statusFilter]);
+  }, [containers, query, statusFilter, productFilter]);
   const selectedContainer = containers.find((container) => container.id === expandedId) ?? null;
-  const selectedPurchaseOrders = useMemo(
-    () => purchaseOrders.filter((po) => selectedPoIds.includes(po.id)),
-    [purchaseOrders, selectedPoIds]
-  );
   const warehouseNameByCode = useMemo(
     () => new Map(warehouses.map((warehouse) => [warehouse.warehouseCode, warehouse.warehouseName])),
     [warehouses]
   );
   const draftCbm = draftItems.reduce((sum, item) => sum + item.qty * item.cbm, 0);
   const draftQty = draftItems.reduce((sum, item) => sum + item.qty, 0);
-  const cbmCapacity = Number.parseFloat(form.cbmCapacity) || 67.5;
+  const cbmCapacity = Number.parseFloat(form.cbmCapacity) || 80;
 
   async function fetchContainers() {
     setLoadingContainers(true);
@@ -345,34 +331,30 @@ export function ContainerPlanningPage() {
     }
   }
 
-  async function fetchPurchaseOrders() {
-    setLoadingPurchaseOrders(true);
+  async function fetchFactories() {
     try {
-      const response = await fetch("/api/purchase-orders", { cache: "no-store" });
+      const response = await fetch("/api/factories?active=true", { cache: "no-store" });
       const json = await response.json();
-
-      if (json.success) {
-        setPurchaseOrders((json.data as PurchaseOrderOption[]).map((po) => ({
-          id: po.id,
-          number: po.number,
-          eta: po.eta,
-          factory: po.factory,
-          destination: po.destination,
-          status: po.status,
-          itemCount: po.itemCount,
-          items: (po.items ?? []).map((item) => ({
-            sku: item.sku,
-            qty: Number(item.qty ?? 0),
-            cbm: Number(item.cbm ?? 0),
-          })),
-        })));
-      } else {
-        setPurchaseOrders([]);
-      }
+      if (json.success) setFactories(json.data as FactoryOption[]);
     } catch {
-      setPurchaseOrders([]);
-    } finally {
-      setLoadingPurchaseOrders(false);
+      setFactories([]);
+    }
+  }
+
+  async function upsertFactoryIfNew(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (factories.some((f) => f.factoryName.toLowerCase() === trimmed.toLowerCase())) return;
+    try {
+      const response = await fetch("/api/factories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factoryName: trimmed }),
+      });
+      const json = await response.json();
+      if (json.success) await fetchFactories();
+    } catch {
+      // silently ignore — factory field still holds the typed value
     }
   }
 
@@ -380,7 +362,7 @@ export function ContainerPlanningPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchContainers();
     void fetchWarehouses();
-    void fetchPurchaseOrders();
+    void fetchFactories();
   }, []);
 
   useEffect(() => {
@@ -395,7 +377,6 @@ export function ContainerPlanningPage() {
       ...defaultFormState,
       destination: warehouses[0]?.warehouseCode ?? "",
     });
-    setSelectedPoIds([]);
     setDraftItems([]);
     setSkuInput("");
     setQtyInput("");
@@ -415,18 +396,13 @@ export function ContainerPlanningPage() {
     setEditingContainerId(container.id);
     setForm({
       number: container.number,
-      poNumbers: container.poNumbers.join(", "),
       eta: container.eta,
       status: container.status,
-      cbmCapacity: String(container.cbmCapacity || 67.5),
+      cbmCapacity: String(container.cbmCapacity || 80),
       factory: container.factory,
-      origin: container.origin ?? "",
       destination: container.destination,
+      note: container.note ?? "",
     });
-    const linkedPoIds = purchaseOrders
-      .filter((po) => container.poNumbers.includes(po.number))
-      .map((po) => po.id);
-    setSelectedPoIds(linkedPoIds);
     setDraftItems(container.items.map((item) => ({ ...item })));
     setSkuInput("");
     setQtyInput("");
@@ -437,21 +413,6 @@ export function ContainerPlanningPage() {
 
   function updateForm<K extends keyof ContainerFormState>(key: K, value: ContainerFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
-  }
-
-  function togglePurchaseOrder(poId: string) {
-    setSelectedPoIds((current) => {
-      const next = current.includes(poId)
-        ? current.filter((id) => id !== poId)
-        : [...current, poId];
-      const selectedOrders = purchaseOrders.filter((po) => next.includes(po.id));
-      const poNumbers = selectedOrders
-        .map((po) => po.number)
-        .join(", ");
-      setForm((formState) => ({ ...formState, poNumbers }));
-      setDraftItems(itemsFromPurchaseOrders(selectedOrders));
-      return next;
-    });
   }
 
   async function lookupSkuMaster(masterSku: string): Promise<SkuMasterLookup | null> {
@@ -619,13 +580,13 @@ export function ContainerPlanningPage() {
     const newContainer: MockContainer = {
       id: editingContainerId ?? "",
       number,
-      poNumbers: splitPoNumbers(form.poNumbers),
+      poNumbers: [],
       eta,
       status: form.status,
       cbmCapacity,
       factory: form.factory.trim() || "Unassigned Factory",
-      origin: form.origin.trim(),
       destination: form.destination,
+      note: form.note.trim(),
       items: draftItems,
     };
 
@@ -637,13 +598,12 @@ export function ContainerPlanningPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             number: newContainer.number,
-            poNumbers: newContainer.poNumbers,
             eta: newContainer.eta,
             status: newContainer.status,
             cbmCapacity: newContainer.cbmCapacity,
             factory: newContainer.factory,
-            origin: newContainer.origin ?? "",
             destination: newContainer.destination,
+            note: newContainer.note,
             items: newContainer.items,
           }),
         });
@@ -670,13 +630,12 @@ export function ContainerPlanningPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           number: newContainer.number,
-          poNumbers: newContainer.poNumbers,
           eta: newContainer.eta,
           status: newContainer.status,
           cbmCapacity: newContainer.cbmCapacity,
           factory: newContainer.factory,
-          origin: newContainer.origin ?? "",
           destination: newContainer.destination,
+          note: newContainer.note,
           items: newContainer.items,
         }),
       });
@@ -895,6 +854,35 @@ export function ContainerPlanningPage() {
       return;
     }
 
+    if (isQuantityOnly && originalItem?.id && /^\d+$/.test(originalItem.id)) {
+      const response = await fetch(`/api/planning/containers/items/${encodeURIComponent(originalItem.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ qty }),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        window.alert(json.error ?? "Failed to update quantity.");
+        return;
+      }
+
+      setContainers((current) =>
+        current.map((currentContainer) =>
+          currentContainer.id === containerId
+            ? {
+                ...currentContainer,
+                items: currentContainer.items.map((item) =>
+                  item.sku === originalSku ? { ...item, qty, cbm } : item
+                ),
+              }
+            : currentContainer
+        )
+      );
+      cancelInlineEdit(containerId, originalSku);
+      return;
+    }
+
     if (!isQuantityOnly) {
       const cbmUpdateError = await updateSkuMasterCbm(found.masterSku, cbm);
       if (cbmUpdateError) {
@@ -914,30 +902,6 @@ export function ContainerPlanningPage() {
 
     if (updatedContainer && !(await persistContainer(updatedContainer))) return;
     cancelInlineEdit(containerId, originalSku);
-  }
-
-  function mergeContainerItems(containerId: string, itemsToMerge: ContainerItem[]) {
-    setContainers((current) =>
-      current.map((container) => {
-        if (container.id !== containerId) return container;
-
-        const mergedItems = [...container.items];
-        for (const nextItem of itemsToMerge) {
-          const existingIndex = mergedItems.findIndex((item) => item.sku === nextItem.sku);
-          if (existingIndex >= 0) {
-            mergedItems[existingIndex] = {
-              ...mergedItems[existingIndex],
-              qty: mergedItems[existingIndex].qty + nextItem.qty,
-              cbm: nextItem.cbm,
-            };
-          } else {
-            mergedItems.push(nextItem);
-          }
-        }
-
-        return { ...container, items: mergedItems };
-      })
-    );
   }
 
   function getMergedContainer(container: MockContainer, itemsToMerge: ContainerItem[]): MockContainer {
@@ -968,13 +932,12 @@ export function ContainerPlanningPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         number: container.number,
-        poNumbers: container.poNumbers,
         eta: container.eta,
         status: container.status,
         cbmCapacity: container.cbmCapacity,
         factory: container.factory,
-        origin: container.origin ?? "",
         destination: container.destination,
+        note: container.note ?? "",
         items: container.items,
       }),
     });
@@ -1185,10 +1148,10 @@ export function ContainerPlanningPage() {
     const totalCbm = container.items.reduce((sum, item) => sum + item.qty * item.cbm, 0);
     const rows: Array<Array<string | number | null>> = [
       ["Container", container.number],
-      ["PO", container.poNumbers.join(", ") || null],
       ["ETA", container.eta || null],
       ["Factory", container.factory || null],
       ["Destination", destinationLabel || null],
+      ["Notes", container.note || null],
       ["Status", containerStatusLabels[container.status]],
       [],
       ["Master SKU", "Source", "Qty", "CBM / Unit", "Total CBM"],
@@ -1198,7 +1161,7 @@ export function ContainerPlanningPage() {
           .map((allocation) =>
             `${allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} ${allocation.referenceNo} (${allocation.qty})`
           )
-          .join(", ") || "PO / Manual",
+          .join(", ") || "Container / Manual",
         item.qty,
         item.cbm,
         Number((item.qty * item.cbm).toFixed(4)),
@@ -1216,13 +1179,89 @@ export function ContainerPlanningPage() {
     XLSX.writeFile(workbook, `container-${safeFilePart(container.number)}-${todayLabel()}.xlsx`);
   }
 
+  async function importCreateFormItems(file: File) {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    let rows: unknown[][] = [];
+
+    if (extension === "csv") {
+      const text = await file.text();
+      rows = text
+        .split(/\r?\n/)
+        .map((line) => line.split(",").map((cell) => cell.trim()))
+        .filter((row) => row.some(Boolean));
+    } else {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as unknown[][];
+    }
+
+    const parsedItems = rows
+      .slice(1)
+      .map((row) => {
+        const sku = String(row[0] ?? "").trim().toUpperCase();
+        const qty = Math.trunc(parseNumberCell(row[1]));
+        const cbm = parseNumberCell(row[2]);
+        return { sku, qty, cbm };
+      })
+      .filter((item) => Boolean(item.sku) && item.qty > 0);
+
+    const importedItems = await Promise.all(
+      parsedItems.map(async (item) => {
+        const found = await lookupSkuMaster(item.sku);
+        if (!found) return null;
+        const cbm = item.cbm > 0 ? item.cbm : found.cbmPerUnit;
+        return cbm > 0 ? { sku: found.masterSku, qty: item.qty, cbm } : null;
+      })
+    );
+    const validImportedItems = importedItems.filter((item): item is ContainerItem => Boolean(item));
+    const missingSkus = parsedItems
+      .filter((item) => !validImportedItems.some((v) => v.sku === item.sku))
+      .map((item) => item.sku);
+
+    if (missingSkus.length > 0) {
+      window.alert(`Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`);
+      return;
+    }
+    if (validImportedItems.length === 0) {
+      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM order.");
+      return;
+    }
+
+    setDraftItems((current) => {
+      const merged = [...current];
+      for (const nextItem of validImportedItems) {
+        const idx = merged.findIndex((item) => item.sku === nextItem.sku);
+        if (idx >= 0) {
+          merged[idx] = { ...merged[idx], qty: merged[idx].qty + nextItem.qty, cbm: nextItem.cbm };
+        } else {
+          merged.push(nextItem);
+        }
+      }
+      return merged;
+    });
+  }
+
+  function downloadContainerTemplate() {
+    const csv = "Master SKU,Qty,CBM/Unit\n";
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "container-import-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <section className="container-planning-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4">
         <div>
           <h1 className="text-lg font-semibold">Container Planning</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            Register inbound containers, assign PO/SKU quantities, and monitor packing-list status.
+            Register inbound containers, assign SKU quantities, and monitor packing-list status.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1230,7 +1269,7 @@ export function ContainerPlanningPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="form-input h-9 w-72 bg-white"
-            placeholder="Search container / PO / warehouse..."
+            placeholder="Search container"
           />
           <button
             type="button"
@@ -1251,31 +1290,62 @@ export function ContainerPlanningPage() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 bg-white lg:grid-cols-[420px_1fr]">
         <aside className="border-r border-[#e2dfd8] bg-white">
-          <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
-            <span className="text-sm font-semibold text-muted-foreground">
-              {filteredContainers.length} containers
-              {statusFilter ? (
-                <span className="ml-1 text-[11px] font-normal text-[#1a5cdb]">
-                  (filtered)
-                </span>
-              ) : null}
-            </span>
+          <div className="flex flex-col gap-2 border-b border-[#e2dfd8] px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-muted-foreground">
+                {filteredContainers.length} containers
+                {(statusFilter || productFilter) ? (
+                  <span className="ml-1 text-[11px] font-normal text-[#1a5cdb]">
+                    (filtered)
+                  </span>
+                ) : null}
+              </span>
+              <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
+                {statusOptions.map((status) => {
+                  const isActive = statusFilter === status.value;
+                  return (
+                    <button
+                      key={status.value}
+                      type="button"
+                      onClick={() => setStatusFilter(isActive ? null : status.value)}
+                      className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors ${
+                        isActive
+                          ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4]"
+                          : "hover:text-foreground"
+                      }`}
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColors[status.value] }} />
+                      {status.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
-              {statusOptions.map((status) => {
-                const isActive = statusFilter === status.value;
+              {(Object.entries(productLabels) as [ProductKey, string][]).map(([key, label]) => {
+                const isActive = productFilter === key;
                 return (
                   <button
-                    key={status.value}
+                    key={key}
                     type="button"
-                    onClick={() => setStatusFilter(isActive ? null : status.value)}
+                    onClick={() => setProductFilter(isActive ? null : key)}
                     className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors ${
                       isActive
                         ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4]"
                         : "hover:text-foreground"
                     }`}
                   >
-                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColors[status.value] }} />
-                    {status.shortLabel}
+                    <span
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-[11px]"
+                      style={{
+                        backgroundColor: `${productFilterColors[key]}18`,
+                        color: productFilterColors[key],
+                      }}
+                      aria-hidden="true"
+                    >
+                      {productFilterIcons[key]}
+                    </span>
+                    {label}
                   </button>
                 );
               })}
@@ -1321,7 +1391,7 @@ export function ContainerPlanningPage() {
                         </span>
                       </span>
                       <span className="mt-1 block truncate text-xs text-muted-foreground">
-                        {container.poNumbers.length > 0 ? container.poNumbers.join(" / ") : "No PO"} / {destinationLabel}
+                        {destinationLabel}
                       </span>
                       <span className="mt-1 block text-[10px] text-muted-foreground">
                         ETA {container.eta} / {container.items.length} SKUs / {formatNumber(totalQtyForContainer)} units / {usedCbmForContainer.toFixed(1)} CBM
@@ -1354,10 +1424,6 @@ export function ContainerPlanningPage() {
                 formError={formError}
                 isEditing={Boolean(editingContainerId)}
                 saving={savingContainer}
-                selectedPoIds={selectedPoIds}
-                purchaseOrders={purchaseOrders}
-                loadingPurchaseOrders={loadingPurchaseOrders}
-                selectedPurchaseOrders={selectedPurchaseOrders}
                 draftItems={draftItems}
                 skuInput={skuInput}
                 qtyInput={qtyInput}
@@ -1367,9 +1433,10 @@ export function ContainerPlanningPage() {
                 cbmCapacity={cbmCapacity}
                 warehouses={warehouses}
                 loadingWarehouses={loadingWarehouses}
+                factories={factories}
+                onFactoryBlur={() => void upsertFactoryIfNew(form.factory)}
                 onClose={closeForm}
                 onSave={saveContainer}
-                onTogglePurchaseOrder={togglePurchaseOrder}
                 onUpdateForm={updateForm}
                 onRemoveDraftItem={removeDraftItem}
                 onSkuInputChange={setSkuInput}
@@ -1378,12 +1445,19 @@ export function ContainerPlanningPage() {
                 onCbmInputChange={setCbmInput}
                 onCbmInputBlur={updateCreateSkuCbm}
                 onAddSkuToDraft={addSkuToDraft}
+                onImportItems={importCreateFormItems}
+                onDownloadTemplate={downloadContainerTemplate}
+                onAddAvailableStock={
+                  editingContainerId
+                    ? () => setAvailableStockContainerId(editingContainerId)
+                    : () => window.alert("Please save the container first before adding available stock.")
+                }
               />
             </div>
           ) : loadingContainers ? (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
               <div className="text-sm font-medium">Loading container details...</div>
-              <div className="text-xs">Reading fc_containers, fc_container_items, and fc_container_po_links</div>
+              <div className="text-xs">Reading fc_containers and fc_container_items</div>
             </div>
           ) : selectedContainer ? (
             <div className="h-full overflow-y-auto px-7 py-6">
@@ -1469,10 +1543,6 @@ function ContainerCreateForm({
   formError,
   isEditing,
   saving,
-  selectedPoIds,
-  purchaseOrders,
-  loadingPurchaseOrders,
-  selectedPurchaseOrders,
   draftItems,
   skuInput,
   qtyInput,
@@ -1482,9 +1552,10 @@ function ContainerCreateForm({
   cbmCapacity,
   warehouses,
   loadingWarehouses,
+  factories,
+  onFactoryBlur,
   onClose,
   onSave,
-  onTogglePurchaseOrder,
   onUpdateForm,
   onRemoveDraftItem,
   onSkuInputChange,
@@ -1493,15 +1564,14 @@ function ContainerCreateForm({
   onCbmInputChange,
   onCbmInputBlur,
   onAddSkuToDraft,
+  onImportItems,
+  onDownloadTemplate,
+  onAddAvailableStock,
 }: {
   form: ContainerFormState;
   formError: string | null;
   isEditing: boolean;
   saving: boolean;
-  selectedPoIds: string[];
-  purchaseOrders: PurchaseOrderOption[];
-  loadingPurchaseOrders: boolean;
-  selectedPurchaseOrders: PurchaseOrderOption[];
   draftItems: ContainerItem[];
   skuInput: string;
   qtyInput: string;
@@ -1511,9 +1581,10 @@ function ContainerCreateForm({
   cbmCapacity: number;
   warehouses: WarehouseOption[];
   loadingWarehouses: boolean;
+  factories: FactoryOption[];
+  onFactoryBlur: () => void;
   onClose: () => void;
   onSave: () => void | Promise<void>;
-  onTogglePurchaseOrder: (poId: string) => void;
   onUpdateForm: <K extends keyof ContainerFormState>(key: K, value: ContainerFormState[K]) => void;
   onRemoveDraftItem: (sku: string) => void;
   onSkuInputChange: (value: string) => void;
@@ -1522,157 +1593,237 @@ function ContainerCreateForm({
   onCbmInputChange: (value: string) => void;
   onCbmInputBlur: () => void | Promise<void>;
   onAddSkuToDraft: () => void | Promise<void>;
+  onImportItems: (file: File) => void | Promise<void>;
+  onDownloadTemplate: () => void;
+  onAddAvailableStock?: () => void;
 }) {
-  const canChangeSkuStructure = !isEditing || form.status === "draft";
+  const importRef = useRef<HTMLInputElement | null>(null);
+  const statusLabel = statusOptions.find((opt) => opt.value === form.status)?.shortLabel ?? form.status;
+  const loadRate = cbmCapacity > 0 ? (draftCbm / cbmCapacity) * 100 : 0;
+  const containersNeeded = draftCbm > 0 ? Math.ceil(draftCbm / cbmCapacity) : 0;
 
   return (
-    <div className="relative rounded-xl border-2 border-dashed border-[#cccac4] bg-white p-5">
-      <div className="mb-5 flex items-start justify-between gap-4 border-b border-[#e2dfd8] pb-4 pr-10">
+    <div className="space-y-4">
+      {/* Title row */}
+      <div className="flex items-center justify-between">
         <div>
-          <div className="text-base font-semibold">{isEditing ? "Edit Container" : "New Container Registration"}</div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            Enter the packing-list quantity directly. It may differ from PO quantity.
-          </div>
+          <h2 className="text-base font-semibold">{isEditing ? "Edit Container" : "New Container Registration"}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Enter SKU quantities directly for this container.</p>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close container form"
-          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-[#cccac4] bg-white text-lg leading-none text-muted-foreground transition-colors hover:bg-[#f0eee9] hover:text-foreground"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-[#cccac4] bg-white text-lg leading-none text-muted-foreground transition-colors hover:bg-[#f0eee9] hover:text-foreground"
         >
           ×
         </button>
       </div>
 
-      <div className="mb-4 rounded-lg border border-[#cccac4] bg-[#f0eee9] p-3">
-        <div className="mb-2 text-sm font-semibold text-muted-foreground">
-          Related Purchase Orders (multiple selection available)
-        </div>
-        {loadingPurchaseOrders ? (
-          <div className="mb-2 text-xs text-muted-foreground">Loading purchase orders from database...</div>
-        ) : null}
-        <div className="flex min-h-8 flex-wrap gap-2">
-          {purchaseOrders.map((po) => (
-            <button
-              key={po.id}
-              type="button"
-              onClick={() => onTogglePurchaseOrder(po.id)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                selectedPoIds.includes(po.id)
-                  ? "border-[#1a5cdb] bg-[#ebf0fd] text-[#1a4db0]"
-                  : "border-[#cccac4] bg-white text-muted-foreground"
-              }`}
-            >
-              {po.number} · {po.factory}
-            </button>
-          ))}
-        </div>
-        {selectedPurchaseOrders.length > 0 ? (
-          <div className="mt-3 rounded-md bg-white p-3 text-xs text-muted-foreground">
-            {selectedPurchaseOrders.map((po) => (
-              <div key={po.id}>
-                {po.number}: ETA {po.eta ?? "-"}, {po.destination ?? "-"}, {po.itemCount} SKU
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="Container No.">
-          <input className="form-input bg-white" value={form.number} onChange={(event) => onUpdateForm("number", event.target.value)} placeholder="#165" />
-        </Field>
-        <Field label="PO No. (comma separated)">
-          <input className="form-input bg-white" value={form.poNumbers} onChange={(event) => onUpdateForm("poNumbers", event.target.value)} placeholder="PO-2026-041, PO-2026-042" />
-        </Field>
-        <Field label="ETA">
-          <input className="form-input bg-white" type="date" value={form.eta} onChange={(event) => onUpdateForm("eta", event.target.value)} />
-        </Field>
-        <Field label="Status">
-          <select className="form-input bg-white" value={form.status} onChange={(event) => onUpdateForm("status", event.target.value as ContainerStatus)}>
-            {statusOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="CBM Capacity">
-          <input className="form-input bg-white" type="number" step="0.1" value={form.cbmCapacity} onChange={(event) => onUpdateForm("cbmCapacity", event.target.value)} placeholder="67.5" />
-        </Field>
-        <Field label="Factory">
-          <input className="form-input bg-white" value={form.factory} onChange={(event) => onUpdateForm("factory", event.target.value)} placeholder="Guangzhou A Factory" />
-        </Field>
-        <Field label="Origin">
-          <input className="form-input bg-white" value={form.origin} onChange={(event) => onUpdateForm("origin", event.target.value)} placeholder="China Guangzhou" />
-        </Field>
-        <Field label="Destination Warehouse">
-          <select className="form-input bg-white" value={form.destination} onChange={(event) => onUpdateForm("destination", event.target.value)}>
-            {loadingWarehouses ? (
-              <option value="">Loading warehouses...</option>
-            ) : warehouses.length > 0 ? (
-              warehouses.map((warehouse) => (
-                <option key={warehouse.id} value={warehouse.warehouseCode}>
-                  {warehouse.warehouseName}
-                </option>
-              ))
-            ) : (
-              <option value="">No active warehouses</option>
-            )}
-          </select>
-        </Field>
-      </div>
-
-      <div className="mt-4 border-t border-[#e2dfd8] pt-4">
-        <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="text-sm font-semibold text-muted-foreground">SKU Quantity Entry</div>
-          <div className="text-xs text-muted-foreground">PackingList CSV/Excel import will be connected in the next step.</div>
-        </div>
-
-        {draftItems.length > 0 ? (
-          <div className="mb-3 space-y-2">
-            {draftItems.map((item) => (
-              <div key={item.sku} className="grid grid-cols-[2fr_0.8fr_0.8fr_1fr_auto] items-center gap-2 rounded-lg bg-[#f0eee9] px-3 py-2 text-sm">
-                <span className="font-mono text-xs font-medium">{item.sku}</span>
-                <span>{item.qty} units</span>
-                <span>{item.cbm.toFixed(4)} CBM/unit</span>
-                <span>{(item.qty * item.cbm).toFixed(2)} CBM</span>
-                <button type="button" onClick={() => onRemoveDraftItem(item.sku)} className="text-sm font-semibold text-[#c42b2b]">×</button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="grid items-end gap-3 md:grid-cols-[2fr_1fr_1fr_auto]">
-          <Field label="Master SKU">
+      {/* Card 1: Container Details */}
+      <FormCard
+        title="Container Details"
+        right={
+          <span className="rounded-full bg-[#f0eee9] px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+            {statusLabel}
+          </span>
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Container No.">
+            <input className="form-input bg-white" value={form.number} onChange={(event) => onUpdateForm("number", event.target.value)} placeholder="#165" />
+          </Field>
+          <Field label="ETA Date">
+            <input className="form-input bg-white" type="date" value={form.eta} onChange={(event) => onUpdateForm("eta", event.target.value)} />
+          </Field>
+          <Field label="Status">
+            <select className="form-input bg-white" value={form.status} onChange={(event) => onUpdateForm("status", event.target.value as ContainerStatus)}>
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="CBM Capacity">
+            <input className="form-input bg-white" type="number" step="0.1" value={form.cbmCapacity} onChange={(event) => onUpdateForm("cbmCapacity", event.target.value)} placeholder="80" />
+          </Field>
+          <Field label="Factory">
             <input
-              className="form-input bg-white font-mono"
-              value={skuInput}
-              onChange={(event) => {
-                const nextSku = event.target.value;
-                onSkuInputChange(nextSku);
-              }}
-              onBlur={() => void onSkuInputBlur()}
-              placeholder="CA-SC-10-F-10-BK-1TO"
+              className="form-input bg-white"
+              value={form.factory}
+              onChange={(event) => onUpdateForm("factory", event.target.value)}
+              onBlur={onFactoryBlur}
+              placeholder="Guangzhou A Factory"
+              list="factory-datalist"
+              autoComplete="off"
+            />
+            <datalist id="factory-datalist">
+              {factories.map((f) => (
+                <option key={f.id} value={f.factoryName} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Destination Warehouse">
+            <select className="form-input bg-white" value={form.destination} onChange={(event) => onUpdateForm("destination", event.target.value)}>
+              {loadingWarehouses ? (
+                <option value="">Loading warehouses...</option>
+              ) : warehouses.length > 0 ? (
+                warehouses.map((warehouse) => (
+                  <option key={warehouse.id} value={warehouse.warehouseCode}>
+                    {warehouse.warehouseName}
+                  </option>
+                ))
+              ) : (
+                <option value="">No active warehouses</option>
+              )}
+            </select>
+          </Field>
+          <Field label="Notes" className="md:col-span-3">
+            <textarea
+              className="form-input min-h-[88px] resize-y bg-white"
+              value={form.note}
+              onChange={(event) => onUpdateForm("note", event.target.value)}
+              placeholder="Factory instructions, packing notes, special handling..."
             />
           </Field>
-          <Field label="Quantity">
-            <input className="form-input bg-white" type="number" value={qtyInput} onChange={(event) => onQtyInputChange(event.target.value)} placeholder="50" />
-          </Field>
-          <Field label="CBM (auto-detect)">
-            <input className="form-input bg-white" type="number" step="0.001" value={cbmInput} onChange={(event) => onCbmInputChange(event.target.value)} onBlur={() => void onCbmInputBlur()} placeholder="Auto" />
-          </Field>
-          <button type="button" onClick={() => void onAddSkuToDraft()} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]">
-            + Add
-          </button>
+        </div>
+      </FormCard>
+
+      {/* Card 2: SKU Quantities */}
+      <FormCard
+        title="SKU Order Quantities"
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">{draftItems.length}</span>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void onImportItems(file);
+                if (importRef.current) importRef.current.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => importRef.current?.click()}
+              className="rounded-md border border-[#9ed8c8] bg-[#e6f5f0] px-3 py-1.5 text-xs font-semibold text-[#0a5e45] hover:bg-[#d4ede6]"
+            >
+              CSV/Excel Import
+            </button>
+            <button
+              type="button"
+              onClick={onDownloadTemplate}
+              className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs text-muted-foreground hover:bg-[#f0eee9]"
+            >
+              Download Template
+            </button>
+          </div>
+        }
+      >
+        <div className="overflow-hidden rounded-lg border border-[#e2dfd8]">
+          <div className="grid grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+            <div>Master SKU</div>
+            <div>Qty</div>
+            <div>CBM / Unit</div>
+            <div>Total CBM</div>
+            <div className="text-right">Delete</div>
+          </div>
+
+          {draftItems.map((item) => (
+            <div key={item.sku} className="grid grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px] items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg">
+              <span className="font-mono text-xs font-medium">{item.sku}</span>
+              <span>{formatNumber(item.qty)}</span>
+              <span className="font-mono text-xs">{item.cbm.toFixed(4)}</span>
+              <span className="font-mono text-xs">{(item.qty * item.cbm).toFixed(4)}</span>
+              <div className="flex justify-end">
+                <button type="button" onClick={() => onRemoveDraftItem(item.sku)} className="text-xs font-semibold text-[#c42b2b] hover:underline">
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {/* Inline add row */}
+          <div className="grid grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px] items-end gap-2 border-t border-[#e2dfd8] bg-[#fbfaf8] px-3 py-2">
+            <input
+              className="form-input font-mono text-xs"
+              value={skuInput}
+              onChange={(event) => onSkuInputChange(event.target.value)}
+              onBlur={() => void onSkuInputBlur()}
+              placeholder="Master SKU..."
+            />
+            <input
+              className="form-input"
+              type="number"
+              value={qtyInput}
+              onChange={(event) => onQtyInputChange(event.target.value)}
+              placeholder="Qty"
+            />
+            <input
+              className="form-input font-mono text-xs"
+              type="number"
+              step="0.0001"
+              value={cbmInput}
+              onChange={(event) => onCbmInputChange(event.target.value)}
+              onBlur={() => void onCbmInputBlur()}
+              placeholder="0.048"
+            />
+            <div className="font-mono text-xs text-muted-foreground">
+              {skuInput && cbmInput && qtyInput
+                ? (parseFloat(cbmInput) * parseInt(qtyInput, 10) || 0).toFixed(4)
+                : "—"}
+            </div>
+            <div />
+          </div>
         </div>
 
-        <div className="mt-2 text-xs text-muted-foreground">
-          Current input: {formatNumber(draftQty)} units · {draftCbm.toFixed(2)} / {cbmCapacity.toFixed(1)} CBM
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void onAddSkuToDraft()}
+              className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
+            >
+              + Add
+            </button>
+            {form.status === "draft" && onAddAvailableStock ? (
+              <button
+                type="button"
+                onClick={onAddAvailableStock}
+                className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
+              >
+                + Add Available Stock
+              </button>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span>Total SKUs: <strong className="text-foreground">{draftItems.length}</strong></span>
+            <span>Total Qty: <strong className="text-foreground">{formatNumber(draftQty)}</strong></span>
+            <span>Total CBM: <strong className="text-foreground">{draftCbm.toFixed(2)} m3</strong></span>
+          </div>
         </div>
-      </div>
 
-      {formError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div> : null}
+        {formError ? (
+          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</div>
+        ) : null}
+      </FormCard>
 
-      <div className="mt-4 flex gap-2 border-t border-[#e2dfd8] pt-4">
+      {/* Card 3: CBM Simulation */}
+      <FormCard title="CBM Simulation">
+        <div className="grid gap-3 md:grid-cols-3">
+          <MetricBox label="Total CBM" value={`${draftCbm.toFixed(1)} m3`} />
+          <MetricBox label="Load Rate" value={`${loadRate.toFixed(0)}%`} />
+          <MetricBox label="Containers Needed" value={String(containersNeeded)} />
+        </div>
+        <div className="mt-3 text-xs text-muted-foreground">
+          Based on {cbmCapacity} m3 per container / recommended load rate 80-95%
+        </div>
+      </FormCard>
+
+      {/* Footer */}
+      <div className="flex gap-2 pb-2">
         <button type="button" onClick={onClose} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">
           Cancel
         </button>
@@ -1689,12 +1840,33 @@ function ContainerCreateForm({
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className={`flex flex-col gap-1 ${className}`}>
       <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</span>
       {children}
     </label>
+  );
+}
+
+function FormCard({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="rounded-xl border border-[#e2dfd8] bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] pb-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {right}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function MetricBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[#e2dfd8] p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-xl font-semibold text-[#1a5cdb]">{value}</div>
+    </div>
   );
 }
 
@@ -1771,6 +1943,7 @@ function ContainerCard({
   const canChangeStructure = !isStructureLocked && !isFullyLocked;
   const removableAllocationIds = container.items.flatMap((item) => (item.allocations ?? []).map((allocation) => allocation.id));
   const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
+  const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
   const activeSelectedAllocationIds = selectedAllocationIds.filter((id) => removableAllocationIds.includes(id));
   const getEditDraft = (sku: string) => inlineEditDrafts[`${container.id}::${sku}`];
   const destinationLabel = warehouseNameByCode?.get(container.destination) ?? container.destination;
@@ -1787,12 +1960,27 @@ function ContainerCard({
   }
 
   async function removeSelectedAllocations() {
-    const deleted = await onRemoveAvailableAllocations(activeSelectedAllocationIds, container.id);
-    if (deleted) setSelectedAllocationIds([]);
+    if (activeSelectedAllocationIds.length === 0 || deletingSelectedAllocations) return;
+    setDeletingSelectedAllocations(true);
+    try {
+      const deleted = await onRemoveAvailableAllocations(activeSelectedAllocationIds, container.id);
+      if (deleted) setSelectedAllocationIds([]);
+    } finally {
+      setDeletingSelectedAllocations(false);
+    }
   }
 
   return (
-    <article className="overflow-hidden rounded-xl border border-[#e2dfd8] bg-white shadow-sm">
+    <article className="relative overflow-hidden rounded-xl border border-[#e2dfd8] bg-white shadow-sm">
+      {deletingSelectedAllocations ? (
+        <div className="fixed inset-0 z-50 flex cursor-wait items-center justify-center bg-black/20">
+          <div className="rounded-lg border border-[#e2dfd8] bg-white px-5 py-4 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-[#1a5cdb] border-t-transparent" />
+            <div className="text-sm font-semibold">Deleting selected items...</div>
+            <div className="mt-1 text-xs text-muted-foreground">Please wait until the operation is complete.</div>
+          </div>
+        </div>
+      ) : null}
       <button
         type="button"
         onClick={onToggle}
@@ -1811,13 +1999,7 @@ function ContainerCard({
         <div className="min-w-[60px] font-mono text-sm font-semibold">{container.number}</div>
 
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 md:grid-cols-4">
-          <ContainerMeta label="PO">
-            {container.poNumbers.length > 0 ? (
-              <span className="text-[#1a5cdb]">{container.poNumbers.join(" · ")}</span>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
-          </ContainerMeta>
+          <ContainerMeta label="Factory">{container.factory || "Unassigned"}</ContainerMeta>
           <ContainerMeta label="Destination">{destinationLabel}</ContainerMeta>
           <ContainerMeta label="SKU">
             {container.items.length} kinds / {formatNumber(totalQty)} units
@@ -1859,6 +2041,12 @@ function ContainerCard({
               <span>Packing List Received: all SKU edits are locked because physical quantities are confirmed.</span>
             </div>
           ) : null}
+          {container.note ? (
+            <div className="border-b border-[#e2dfd8] bg-[#fffdf8] px-5 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">Notes</div>
+              <div className="mt-1 whitespace-pre-wrap text-sm text-foreground">{container.note}</div>
+            </div>
+          ) : null}
           <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.8fr_0.8fr]"}`}>
             <div>Master SKU</div>
             <div>Qty</div>
@@ -1871,6 +2059,7 @@ function ContainerCard({
                 <input
                   type="checkbox"
                   checked={activeSelectedAllocationIds.length === removableAllocationIds.length}
+                  disabled={deletingSelectedAllocations}
                   onChange={(event) => setSelectedAllocationIds(event.target.checked ? removableAllocationIds : [])}
                 />
                 Select all Remaining / Mistake items
@@ -1878,10 +2067,12 @@ function ContainerCard({
               <button
                 type="button"
                 onClick={() => void removeSelectedAllocations()}
-                disabled={activeSelectedAllocationIds.length === 0}
+                disabled={activeSelectedAllocationIds.length === 0 || deletingSelectedAllocations}
                 className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-3 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Delete Selected ({activeSelectedAllocationIds.length})
+                {deletingSelectedAllocations
+                  ? "Deleting..."
+                  : `Delete Selected (${activeSelectedAllocationIds.length})`}
               </button>
             </div>
           ) : null}
@@ -2283,6 +2474,7 @@ function AvailableStockModal({
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedQty, setSelectedQty] = useState<Record<string, string>>({});
+  const [bulkQty, setBulkQty] = useState("1");
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     referenceNo: "",
@@ -2331,11 +2523,28 @@ function AvailableStockModal({
   const selectedUnits = selected.reduce((sum, entry) => sum + entry.qty, 0);
   const selectedCbm = selected.reduce((sum, entry) => sum + entry.qty * entry.row.cbm, 0);
 
+  function getBulkQty() {
+    const parsed = Number.parseInt(bulkQty, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }
+
   function selectAllVisible() {
+    const qty = getBulkQty();
     setSelectedQty((current) => {
       const next = { ...current };
       selectableVisibleRows.forEach((row) => {
-        next[row.id] = next[row.id] || "1";
+        next[row.id] = String(Math.min(row.availableQty, qty));
+      });
+      return next;
+    });
+  }
+
+  function applyBulkQtyToSelectedVisible() {
+    const qty = getBulkQty();
+    setSelectedQty((current) => {
+      const next = { ...current };
+      selectableVisibleRows.forEach((row) => {
+        if (current[row.id]) next[row.id] = String(Math.min(row.availableQty, qty));
       });
       return next;
     });
@@ -2386,6 +2595,7 @@ function AvailableStockModal({
   }
 
   async function addSelected() {
+    if (submitting) return;
     if (selected.length === 0) {
       setMessage("Enter a load quantity for at least one SKU.");
       return;
@@ -2401,7 +2611,19 @@ function AvailableStockModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3"
+      onClick={submitting ? undefined : onClose}
+    >
+      {submitting ? (
+        <div className="fixed inset-0 z-[60] flex cursor-wait items-center justify-center bg-black/25">
+          <div className="rounded-lg border border-[#e2dfd8] bg-white px-5 py-4 text-center shadow-xl">
+            <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-[#1a5cdb] border-t-transparent" />
+            <div className="text-sm font-semibold">Adding selected stock...</div>
+            <div className="mt-1 text-xs text-muted-foreground">Please wait until the allocation is complete.</div>
+          </div>
+        </div>
+      ) : null}
       <div
         className="flex h-[94vh] max-h-[94vh] w-[min(96vw,1280px)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-white shadow-xl"
         onClick={(event) => event.stopPropagation()}
@@ -2413,7 +2635,7 @@ function AvailableStockModal({
               Allocate already-produced items from Remaining or Mistake Order stock.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-xl text-muted-foreground">X</button>
+          <button type="button" disabled={submitting} onClick={onClose} className="text-xl text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40">X</button>
         </div>
 
         <div className="flex border-b border-[#e2dfd8] px-6 pt-3">
@@ -2421,6 +2643,7 @@ function AvailableStockModal({
             <button
               key={type}
               type="button"
+              disabled={submitting}
               onClick={() => setSourceType(type)}
               className={`mr-2 rounded-t-lg border px-4 py-2 text-sm font-semibold ${
                 sourceType === type
@@ -2438,24 +2661,45 @@ function AvailableStockModal({
             Register {sourceType === "remaining" ? "Remaining" : "Mistake Order"} Stock
           </div>
           <div className="grid gap-2 md:grid-cols-[130px_1fr_90px_100px_1fr_auto]">
-            <input className="form-input bg-white text-xs" placeholder="Reference No." value={form.referenceNo} onChange={(e) => setForm((value) => ({ ...value, referenceNo: e.target.value }))} />
-            <input className="form-input bg-white font-mono text-xs" placeholder="Master SKU" value={form.masterSku} onChange={(e) => setForm((value) => ({ ...value, masterSku: e.target.value }))} />
-            <input className="form-input bg-white text-xs" type="number" placeholder="Qty" value={form.totalQty} onChange={(e) => setForm((value) => ({ ...value, totalQty: e.target.value }))} />
-            <input className="form-input bg-white text-xs" type="number" step="0.000001" placeholder="CBM" value={form.cbm} onChange={(e) => setForm((value) => ({ ...value, cbm: e.target.value }))} />
-            <input className="form-input bg-white text-xs" placeholder="Note (optional)" value={form.note} onChange={(e) => setForm((value) => ({ ...value, note: e.target.value }))} />
-            <button type="button" disabled={creating} onClick={() => void registerStock()} className="rounded-md border border-[#1a5cdb] bg-white px-3 text-xs font-semibold text-[#1a5cdb] disabled:opacity-50">
+            <input className="form-input bg-white text-xs" disabled={submitting} placeholder="Reference No." value={form.referenceNo} onChange={(e) => setForm((value) => ({ ...value, referenceNo: e.target.value }))} />
+            <input className="form-input bg-white font-mono text-xs" disabled={submitting} placeholder="Master SKU" value={form.masterSku} onChange={(e) => setForm((value) => ({ ...value, masterSku: e.target.value }))} />
+            <input className="form-input bg-white text-xs" disabled={submitting} type="number" placeholder="Qty" value={form.totalQty} onChange={(e) => setForm((value) => ({ ...value, totalQty: e.target.value }))} />
+            <input className="form-input bg-white text-xs" disabled={submitting} type="number" step="0.000001" placeholder="CBM" value={form.cbm} onChange={(e) => setForm((value) => ({ ...value, cbm: e.target.value }))} />
+            <input className="form-input bg-white text-xs" disabled={submitting} placeholder="Note (optional)" value={form.note} onChange={(e) => setForm((value) => ({ ...value, note: e.target.value }))} />
+            <button type="button" disabled={creating || submitting} onClick={() => void registerStock()} className="rounded-md border border-[#1a5cdb] bg-white px-3 text-xs font-semibold text-[#1a5cdb] disabled:opacity-50">
               {creating ? "Saving..." : "Register"}
             </button>
           </div>
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 py-2">
-          <input className="form-input w-72 bg-white text-xs" placeholder="Search SKU / reference..." value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input className="form-input w-72 bg-white text-xs" disabled={submitting} placeholder="Search SKU / reference..." value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <span>Qty</span>
+              <input
+                className="h-8 w-20 rounded border border-[#cccac4] bg-white px-2 text-xs font-normal text-foreground"
+                disabled={submitting}
+                type="number"
+                min={1}
+                value={bulkQty}
+                onChange={(event) => setBulkQty(event.target.value)}
+                placeholder="Qty"
+                aria-label="Bulk load quantity"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={applyBulkQtyToSelectedVisible}
+              disabled={submitting || !visibleRows.some((row) => Boolean(selectedQty[row.id]))}
+              className="rounded-md border border-[#1a5cdb] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a5cdb] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Apply Qty
+            </button>
             <button
               type="button"
               onClick={selectAllVisible}
-              disabled={selectableVisibleRows.length === 0 || allVisibleSelected}
+              disabled={submitting || selectableVisibleRows.length === 0 || allVisibleSelected}
               className="rounded-md border border-[#1a5cdb] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a5cdb] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Select All
@@ -2463,7 +2707,7 @@ function AvailableStockModal({
             <button
               type="button"
               onClick={clearVisibleSelection}
-              disabled={!visibleRows.some((row) => Boolean(selectedQty[row.id]))}
+              disabled={submitting || !visibleRows.some((row) => Boolean(selectedQty[row.id]))}
               className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
               Clear Selection
@@ -2477,7 +2721,7 @@ function AvailableStockModal({
               type="checkbox"
               aria-label="Select all visible available stock"
               checked={allVisibleSelected}
-              disabled={selectableVisibleRows.length === 0}
+              disabled={submitting || selectableVisibleRows.length === 0}
               onChange={(event) => {
                 if (event.target.checked) selectAllVisible();
                 else clearVisibleSelection();
@@ -2502,7 +2746,7 @@ function AvailableStockModal({
                   <input
                     type="checkbox"
                     checked={Boolean(selectedQty[row.id])}
-                    disabled={row.availableQty <= 0}
+                    disabled={submitting || row.availableQty <= 0}
                     onChange={(event) => setSelectedQty((current) => ({
                       ...current,
                       [row.id]: event.target.checked ? String(Math.min(row.availableQty, 1)) : "",
@@ -2516,7 +2760,7 @@ function AvailableStockModal({
                     min={0}
                     max={row.availableQty}
                     value={selectedQty[row.id] ?? ""}
-                    disabled={row.availableQty <= 0}
+                    disabled={submitting || row.availableQty <= 0}
                     onChange={(event) => setSelectedQty((current) => ({ ...current, [row.id]: event.target.value }))}
                     className="h-7 w-20 rounded border border-[#cccac4] px-2 text-sm"
                   />
@@ -2534,7 +2778,7 @@ function AvailableStockModal({
             Selected: <strong className="text-foreground">{selectedUnits} units / {selectedCbm.toFixed(2)} CBM</strong>
           </span>
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="rounded-md border border-[#cccac4] px-4 py-2 text-sm">Cancel</button>
+            <button type="button" disabled={submitting} onClick={onClose} className="rounded-md border border-[#cccac4] px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
             <button type="button" disabled={submitting} onClick={() => void addSelected()} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
               {submitting ? "Adding..." : "Add Selected to Container"}
             </button>

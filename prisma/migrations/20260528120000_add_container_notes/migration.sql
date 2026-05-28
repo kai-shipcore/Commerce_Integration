@@ -1,0 +1,2 @@
+ALTER TABLE IF EXISTS shipcore.fc_containers
+  ADD COLUMN IF NOT EXISTS note TEXT;
