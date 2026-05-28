@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { DemandPlanningData } from "@/types/demand-planning";
 
-const EMPTY: DemandPlanningData = { containers: [], rows: [] };
+const EMPTY: DemandPlanningData = { containers: [], rows: [], last_sync: null };
 
 export type VelocityMode = "link" | "custom";
 
@@ -88,6 +88,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanni
         const detailBySku = new Map(json.data.rows.map((row) => [row.sku, row.containers]));
         setData((current) => ({
           containers: json.data?.containers ?? current.containers,
+          last_sync: current.last_sync,
           rows: current.rows.map((row) => ({
             ...row,
             containers: detailBySku.get(row.sku) ?? row.containers,

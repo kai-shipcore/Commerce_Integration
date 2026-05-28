@@ -94,4 +94,5 @@ export interface DemandRow {
 export interface DemandPlanningData {
   containers: ContainerMeta[];
   rows: DemandRow[];
+  last_sync: string | null;
 }

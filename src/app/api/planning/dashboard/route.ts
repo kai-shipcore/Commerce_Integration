@@ -228,6 +228,12 @@ export async function GET(req: Request) {
       }
     }
 
+    // ── 6. Last sync timestamp from fc_stats ─────────────────────────────────
+    const lastSyncResult = await primary.query<{ last_sync: string | null }>(
+      `SELECT MAX(calculated_at)::text AS last_sync FROM shipcore.fc_stats`
+    );
+    const lastSync = lastSyncResult.rows[0]?.last_sync ?? null;
+
     // ── Assemble response ────────────────────────────────────────────────────
 
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -412,7 +418,7 @@ export async function GET(req: Request) {
       };
     });
 
-    const response = { success: true, data: { containers, rows } satisfies DemandPlanningData };
+    const response = { success: true, data: { containers, rows, last_sync: lastSync } satisfies DemandPlanningData };
     setPlanningDashboardCache(mode, response, includeContainers);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },
