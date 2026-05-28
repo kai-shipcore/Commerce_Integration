@@ -1125,25 +1125,7 @@ export function DemandPlanningGrid({
                 return (
                   <tr
                     key={r.sku}
-                    style={{ height: 28, cursor: "pointer" }}
-                    onMouseEnter={(e) => {
-                      Array.from(e.currentTarget.cells).forEach(
-                        (td) => {
-                          const cell = td as HTMLElement;
-                          cell.dataset.originalBackground = cell.style.backgroundColor || cell.style.background || "";
-                          cell.style.background = "#EAF0FF";
-                        },
-                      );
-                    }}
-                    onMouseLeave={(e) => {
-                      Array.from(e.currentTarget.cells).forEach(
-                        (td) => {
-                          const cell = td as HTMLElement;
-                          cell.style.background = cell.dataset.originalBackground || "";
-                          delete cell.dataset.originalBackground;
-                        },
-                      );
-                    }}
+                    style={{ height: 28, cursor: "pointer", backgroundColor: rowBg }}
                   >
                     {visCols.map((col) => {
                       const isCbm = col.id === "cbm";
@@ -1188,7 +1170,7 @@ export function DemandPlanningGrid({
                           } : undefined}
                           style={{
                             ...cellStyle(col),
-                            background: isCbmEditing ? "#FFFDE7" : TINT_COLORS[col.tint] || rowBg,
+                            background: isCbmEditing ? "#FFFDE7" : TINT_COLORS[col.tint] || undefined,
                             ...(isCbm && !isCbmEditing ? { cursor: "pointer", borderBottom: "1px dashed #90B8E0", color: "#1A4FC0" } : {}),
                             ...(isCbmSaving ? { color: undefined } : {}),
                             ...(isCbmEditing ? { padding: 0 } : {}),

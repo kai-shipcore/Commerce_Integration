@@ -418,7 +418,7 @@ export async function GET(req: Request) {
       };
     });
 
-    const response = { success: true, data: { containers, rows, last_sync: lastSync } satisfies DemandPlanningData };
+    const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, last_sync: lastSync } };
     setPlanningDashboardCache(mode, response, includeContainers);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },
