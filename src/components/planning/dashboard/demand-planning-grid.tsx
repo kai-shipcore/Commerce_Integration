@@ -1060,6 +1060,17 @@ export function DemandPlanningGrid({
                             const newEta = e.target.value;
                             if (!newEta || !c.container_id) return;
                             setEtaOverrides((prev) => new Map(prev).set(c.container_id!, newEta));
+                            // Recompute chain for all rows immediately with the new ETA applied
+                            const newCons = CONS.map((con) =>
+                              con.container_id === c.container_id ? { ...con, eta: newEta } : con
+                            );
+                            setContainerChainMap((prev) => {
+                              const next = new Map(prev);
+                              for (const r of ROWS) {
+                                next.set(r.sku, computeContainerChain(r, newCons, qtyOverrides, TODAY));
+                              }
+                              return next;
+                            });
                             void fetch(`/api/containers?id=${c.container_id}`, {
                               method: "PATCH",
                               headers: { "Content-Type": "application/json" },
