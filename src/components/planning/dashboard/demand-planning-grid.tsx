@@ -956,7 +956,7 @@ export function DemandPlanningGrid({
                       height: 20,
                     }}
                   >
-                    {isDraft ? "✏ " : ""}{isBaseline ? c.name : `${c.name} | ${c.eta}`}
+                    {isDraft ? "✏ " : ""}{isBaseline ? c.name : `${c.name} | ETA ${c.eta}`}
                   </th>,
                   ...(!isBaseline ? [
                     <th
