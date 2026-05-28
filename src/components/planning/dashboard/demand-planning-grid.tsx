@@ -938,7 +938,7 @@ export function DemandPlanningGrid({
                       height: 20,
                     }}
                   >
-                    {isDraft ? "✏ " : ""}{isBaseline ? c.name : `${c.name}  ${c.eta}  Cap ${c.cbm_cap.toFixed(1)}`}
+                    {isDraft ? "✏ " : ""}{isBaseline ? c.name : `${c.name} | ${c.eta} | Cap ${c.cbm_cap.toFixed(1)}`}
                   </th>
                 );
               })}
