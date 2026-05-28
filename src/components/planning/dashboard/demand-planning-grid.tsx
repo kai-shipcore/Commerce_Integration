@@ -114,6 +114,9 @@ interface DemandPlanningGridProps {
   onProductFilterChange: (f: ProductFilter) => void;
   onUrgencyFilterChange: (f: UrgencyFilter | null) => void;
   onFilteredRowsChange: (rows: DemandRow[]) => void;
+  onLoadContainerDetails: () => void;
+  containerDetailsLoading: boolean;
+  containerDetailsLoaded: boolean;
 }
 
 const DEFAULT_FREEZE = "sod";
@@ -342,12 +345,15 @@ export function DemandPlanningGrid({
   urgencyFilter,
   search,
   onFilteredRowsChange,
+  onLoadContainerDetails,
+  containerDetailsLoading,
+  containerDetailsLoaded,
 }: DemandPlanningGridProps) {
   const { containers: CONS, rows: ROWS } = data;
 
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>({
     fix: true, stock: true, wsales: true, esales: true, wavg: true, eavg: true,
-    fba: true, s30: true, tavg: true, inb: true, con: true,
+    fba: true, s30: true, tavg: true, inb: true, con: false,
   });
   const [showRemaining, setShowRemaining] = useState(true);
   const [showMistake, setShowMistake] = useState(true);
@@ -409,6 +415,11 @@ export function DemandPlanningGrid({
   );
 
   const showCon = groupVis["con"];
+  useEffect(() => {
+    if (showCon && !containerDetailsLoaded && !containerDetailsLoading) {
+      onLoadContainerDetails();
+    }
+  }, [showCon, containerDetailsLoaded, containerDetailsLoading, onLoadContainerDetails]);
 
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase();
@@ -613,7 +624,7 @@ export function DemandPlanningGrid({
   }, []);
 
   const handleCoreOnly = useCallback(() => {
-    const keep = new Set<string>(["fix", "stock", "s30", "tavg", "inb", "con"]);
+    const keep = new Set<string>(["fix", "stock", "s30", "tavg", "inb"]);
     setGroupVis((prev) =>
       Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
     );
@@ -760,7 +771,7 @@ export function DemandPlanningGrid({
             whiteSpace: "nowrap", flexShrink: 0,
           }}
         >
-          {GROUP_BTN_LABELS["con"]}
+          {containerDetailsLoading ? "Loading Container..." : GROUP_BTN_LABELS["con"]}
         </button>
         <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
         <button

@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { z } from "zod";
 
 const BodySchema = z.object({
@@ -36,6 +37,7 @@ export async function DELETE(
     if (result.rowCount === 0) {
       return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
     }
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Container item DELETE failed:", error);
@@ -77,6 +79,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
     }
 
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({
       success:   true,
       qty,

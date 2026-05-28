@@ -11,7 +11,15 @@ import type { CategoryFilter, DemandRow, ProductFilter, UrgencyFilter } from "@/
 
 export function DemandPlanningDashboard() {
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
-  const { data, loading, error: loadError, reload } = useDemandPlanningData(velocityMode);
+  const {
+    data,
+    loading,
+    containerDetailsLoading,
+    containerDetailsLoaded,
+    error: loadError,
+    reload,
+    loadContainerDetails,
+  } = useDemandPlanningData(velocityMode);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("sc");
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
@@ -369,6 +377,9 @@ export function DemandPlanningDashboard() {
           onProductFilterChange={handleProductFilter}
           onUrgencyFilterChange={setUrgencyFilter}
           onFilteredRowsChange={setFilteredRows}
+          onLoadContainerDetails={loadContainerDetails}
+          containerDetailsLoading={containerDetailsLoading}
+          containerDetailsLoaded={containerDetailsLoaded}
         />
       </div>
     </div>

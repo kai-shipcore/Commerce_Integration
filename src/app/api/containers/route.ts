@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { z } from "zod";
 
 const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-received"]);
@@ -254,6 +255,7 @@ export async function POST(request: NextRequest) {
     }
 
     await client.query("COMMIT");
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true, data: { id: containerId } }, { status: 201 });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -323,6 +325,7 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
+      await invalidatePlanningDashboardCache();
       return NextResponse.json({ success: true, data: { id } });
     }
 
@@ -415,6 +418,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     await client.query("COMMIT");
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true, data: { id } });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -482,6 +486,7 @@ export async function DELETE(request: NextRequest) {
     );
 
     await client.query("COMMIT");
+    await invalidatePlanningDashboardCache();
 
     return NextResponse.json({
       success: true,

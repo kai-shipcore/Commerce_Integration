@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 
 const StockSourceSchema = z.enum(["remaining", "mistake"]);
 
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
         else skipped += 1;
       }
       await client.query("COMMIT");
+      await invalidatePlanningDashboardCache();
       return NextResponse.json({ success: true, data: { inserted, skipped, total: normalizedRows.length } });
     } catch (error) {
       await client.query("ROLLBACK");
@@ -194,6 +196,7 @@ export async function POST(request: NextRequest) {
           validated.note || null,
         ]
       );
+      await invalidatePlanningDashboardCache();
       return NextResponse.json({ success: true, data: { id: result.rows[0].id } });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -261,6 +264,7 @@ export async function POST(request: NextRequest) {
     }
 
     await client.query("COMMIT");
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -364,6 +368,7 @@ export async function PATCH(request: NextRequest) {
       ]
     );
     await client.query("COMMIT");
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true, data: { id: validated.id } });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -412,6 +417,7 @@ export async function DELETE(request: NextRequest) {
       }
       await client.query(`DELETE FROM shipcore.fc_available_stock WHERE id = $1::bigint`, [stockId]);
       await client.query("COMMIT");
+      await invalidatePlanningDashboardCache();
       return NextResponse.json({ success: true, data: { id: stockId } });
     } catch (error) {
       await client.query("ROLLBACK");
@@ -490,6 +496,7 @@ export async function DELETE(request: NextRequest) {
       }
     }
     await client.query("COMMIT");
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true, data: { containerId, deletedCount: allocationIds.length } });
   } catch (error) {
     await client.query("ROLLBACK");

@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { z } from "zod";
 
 const BodySchema = z.object({
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
     );
 
     const row = result.rows[0];
+    await invalidatePlanningDashboardCache();
     return NextResponse.json({
       success:   true,
       item_id:   row.id,

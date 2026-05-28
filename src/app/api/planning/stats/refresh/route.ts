@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -346,6 +347,7 @@ export async function POST() {
       batchUpsert(primary, "shipcore.fc_stats",        linkRows,   salesCols, salesUpdateSet),
       batchUpsert(primary, "shipcore.fc_stats_custom", customRows, salesCols, salesUpdateSet),
     ]);
+    await invalidatePlanningDashboardCache();
 
     return NextResponse.json({
       success: true,

@@ -10,13 +10,18 @@ export type VelocityMode = "link" | "custom";
 export interface DemandPlanningDataState {
   data: DemandPlanningData;
   loading: boolean;
+  containerDetailsLoading: boolean;
+  containerDetailsLoaded: boolean;
   error: string | null;
   reload: () => void;
+  loadContainerDetails: () => void;
 }
 
 export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanningDataState {
   const [data, setData] = useState<DemandPlanningData>(EMPTY);
   const [loading, setLoading] = useState(false);
+  const [containerDetailsLoading, setContainerDetailsLoading] = useState(false);
+  const [containerDetailsLoaded, setContainerDetailsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function fetchDashboard(withRefresh: boolean) {
@@ -39,7 +44,10 @@ export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanni
       })
       .then((json) => {
         if (cancelled) return;
-        if (json.success && json.data) setData(json.data);
+        if (json.success && json.data) {
+          setData(json.data);
+          setContainerDetailsLoaded(false);
+        }
         else setError(json.error ?? "Failed to load data");
       })
       .catch((err: unknown) => {
@@ -54,10 +62,44 @@ export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanni
   }
 
   // Auto-load on mount using existing stats (no refresh)
-  useEffect(() => fetchDashboard(false), [mode]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial API load is intentionally started after mode changes.
+    return fetchDashboard(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode.
+  }, [mode]);
 
   // Sync button: refresh stats first, then load
   function reload() { fetchDashboard(true); }
 
-  return { data, loading, error, reload };
+  function loadContainerDetails() {
+    if (containerDetailsLoading || containerDetailsLoaded) return;
+    setContainerDetailsLoading(true);
+    setError(null);
+
+    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Container details failed: HTTP ${res.status}`);
+        return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
+      })
+      .then((json) => {
+        if (!json.success || !json.data) {
+          throw new Error(json.error ?? "Failed to load container details");
+        }
+        const detailBySku = new Map(json.data.rows.map((row) => [row.sku, row.containers]));
+        setData((current) => ({
+          containers: json.data?.containers ?? current.containers,
+          rows: current.rows.map((row) => ({
+            ...row,
+            containers: detailBySku.get(row.sku) ?? row.containers,
+          })),
+        }));
+        setContainerDetailsLoaded(true);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Network error");
+      })
+      .finally(() => setContainerDetailsLoading(false));
+  }
+
+  return { data, loading, containerDetailsLoading, containerDetailsLoaded, error, reload, loadContainerDetails };
 }

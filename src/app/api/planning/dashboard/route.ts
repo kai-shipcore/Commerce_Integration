@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
+import { getPlanningDashboardCache, setPlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import type {
   ContainerMeta,
   ContainerRowData,
@@ -51,6 +52,14 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get("mode") === "custom" ? "custom" : "link";
+    const includeContainers = searchParams.get("includeContainers") === "1";
+    const cached = await getPlanningDashboardCache(mode, includeContainers);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: { "x-planning-dashboard-cache": "HIT" },
+      });
+    }
+
     // CC and FM SKUs always use custom velocity; SC uses the mode selection.
     // In custom mode all SKUs come from fc_stats_custom so no UNION needed.
     const statsSource = mode === "custom"
@@ -163,7 +172,7 @@ export async function GET(req: Request) {
     // ── 3. Per-SKU × per-container cross data ────────────────────────────────
     // inbound_qty and avail_qty both come from fc_container_items.qty for now.
     // open_orders / est_sales / inv_life / est_sod / plan_sod → Phase 2
-    const crossResult = await primary.query(`
+    const crossResult = includeContainers ? await primary.query(`
       SELECT
         ci.id::int                 AS item_id,
         ci.master_sku              AS sku,
@@ -181,7 +190,7 @@ export async function GET(req: Request) {
         NULL::text                 AS plan_sod
       FROM shipcore.fc_container_items ci
       JOIN shipcore.fc_containers c ON c.id = ci.container_id
-    `);
+    `) : { rows: [] };
 
     // ── 4. Available stock (remaining / mistake) from primary DB ────────────
     const availStockResult = await primary.query<{ master_sku: string; source_type: string; total_qty: string }>(`
@@ -264,7 +273,7 @@ export async function GET(req: Request) {
         ? `${r.latest_eta ?? ""} - (${r.latest_container}) - ${r.latest_qty ?? ""}`
         : "";
 
-      const skuCross = crossMap.get(r.sku as string);
+      const skuCross = includeContainers ? crossMap.get(r.sku as string) : undefined;
       const containersObj: Record<string, ContainerRowData> = {};
       if (skuCross) {
         for (const [name, data] of skuCross) containersObj[name] = data;
@@ -399,11 +408,15 @@ export async function GET(req: Request) {
         remaining:         availStockMap.get(r.sku as string)?.remaining ?? 0,
         mistake:           availStockMap.get(r.sku as string)?.mistake   ?? 0,
         sod,
-        containers:        containersObj,
+        containers:        includeContainers ? containersObj : {},
       };
     });
 
-    return NextResponse.json({ success: true, data: { containers, rows } satisfies DemandPlanningData });
+    const response = { success: true, data: { containers, rows } satisfies DemandPlanningData };
+    setPlanningDashboardCache(mode, response, includeContainers);
+    return NextResponse.json(response, {
+      headers: { "x-planning-dashboard-cache": "MISS" },
+    });
   } catch (error) {
     console.error("Planning dashboard GET failed:", error);
     return NextResponse.json(
