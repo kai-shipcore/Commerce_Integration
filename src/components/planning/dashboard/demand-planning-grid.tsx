@@ -414,6 +414,7 @@ export function DemandPlanningGrid({
   const [containerChainMap, setContainerChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   // Row-level corrections for active-container aggregates (sku → partial DemandRow overrides)
   const [rowTotalOverrides, setRowTotalOverrides] = useState<Map<string, { total_inbound_qty?: number; containers_list?: string | null }>>(new Map());
+  const [showZeroSales, setShowZeroSales] = useState(false);
 
   const visCols = useMemo<ColDef[]>(
     () => ALL_COLS
@@ -437,7 +438,8 @@ export function DemandPlanningGrid({
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
       if (categoryCodeForRow(r) !== categoryFilter.toUpperCase()) return false;
-      if (!r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
+      if (!showZeroSales &&
+          !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
           !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original") return false;
       if (productFilter === "cust" && r.sales_status !== "Custom")   return false;
@@ -448,7 +450,7 @@ export function DemandPlanningGrid({
       if (urgencyFilter === "bo")   return (r.back || 0) < 0;
       return true;
     });
-  }, [ROWS, categoryFilter, productFilter, urgencyFilter, search]);
+  }, [ROWS, categoryFilter, productFilter, urgencyFilter, search, showZeroSales]);
 
   const displayedRows = useMemo(() => {
     const getSortValue = sortColumnId ? SORT_VALUE_BY_COLUMN[sortColumnId] : undefined;
@@ -784,6 +786,20 @@ export function DemandPlanningGrid({
           }}
         >
           {containerDetailsLoading ? "Loading Container..." : GROUP_BTN_LABELS["con"]}
+        </button>
+        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
+        <button
+          onClick={() => setShowZeroSales((v) => !v)}
+          style={{
+            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
+            border: showZeroSales ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)",
+            cursor: "pointer",
+            color: showZeroSales ? "#F8FAFC" : "rgba(203,213,225,.82)",
+            background: showZeroSales ? "rgba(120,160,100,.55)" : "rgba(15,23,42,.5)",
+            whiteSpace: "nowrap", flexShrink: 0,
+          }}
+        >
+          {showZeroSales ? "0 Sales Shown" : "0 Sales Hidden"}
         </button>
         <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
         <button
