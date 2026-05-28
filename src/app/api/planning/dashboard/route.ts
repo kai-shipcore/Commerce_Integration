@@ -51,7 +51,23 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get("mode") === "custom" ? "custom" : "link";
-    const statsTable = mode === "custom" ? "shipcore.fc_stats_custom" : "shipcore.fc_stats";
+    // CC and FM SKUs always use custom velocity; SC uses the mode selection.
+    // In custom mode all SKUs come from fc_stats_custom so no UNION needed.
+    const statsSource = mode === "custom"
+      ? "shipcore.fc_stats_custom"
+      : `(
+          SELECT s.* FROM shipcore.fc_stats_custom s
+          WHERE EXISTS (
+            SELECT 1 FROM shipcore.fc_products p
+            WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
+          )
+          UNION ALL
+          SELECT s.* FROM shipcore.fc_stats s
+          WHERE NOT EXISTS (
+            SELECT 1 FROM shipcore.fc_products p
+            WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
+          )
+        )`;
 
     const primary = getPrimaryPool();
     const lookup  = getLookupPool();
@@ -121,7 +137,7 @@ export async function GET(req: Request) {
         COALESCE(s.total_avg_prev, 0)::float8                AS total_avg_prev,
         COALESCE(s.total_avg_real, 0)::float8                AS total_avg_real,
         COALESCE(s.total_avg_curr, 0)::float8                AS total_avg_curr
-      FROM ${statsTable} s
+      FROM ${statsSource} s
       LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
       LEFT JOIN (
         SELECT
