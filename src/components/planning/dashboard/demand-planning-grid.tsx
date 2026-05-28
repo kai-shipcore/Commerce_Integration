@@ -202,6 +202,22 @@ const ALL_GROUP_KEYS: ColumnGroupKey[] = [
   "stock","wsales","esales","wavg","eavg","fba","s30","tavg","inb","con",
 ];
 
+const COMPACT_COLUMN_IDS = new Set([
+  "back",
+  "status",
+  "sku",
+  "west",
+  "east",
+  "total",
+  "tavg_p",
+  "tavg_r",
+  "tavg_c",
+  "inb_qty",
+  "inb_lst",
+  "next_eta",
+  "sod",
+]);
+
 const GROUP_BTN_LABELS: Record<string, string> = {
   wsales: "📈 West Sales",
   stock:  "Inventory",
@@ -367,6 +383,7 @@ export function DemandPlanningGrid({
     fix: true, stock: true, wsales: true, esales: true, wavg: true, eavg: true,
     fba: true, s30: true, tavg: true, inb: true, con: false,
   });
+  const [compactMode, setCompactMode] = useState(false);
   const [showRemaining, setShowRemaining] = useState(true);
   const [showMistake, setShowMistake] = useState(true);
   const [cbmEditingSku, setCbmEditingSku] = useState<string | null>(null);
@@ -419,12 +436,13 @@ export function DemandPlanningGrid({
   const visCols = useMemo<ColDef[]>(
     () => ALL_COLS
       .filter((c) => c.grp === "fix" || groupVis[c.grp])
+      .filter((c) => !compactMode || COMPACT_COLUMN_IDS.has(c.id))
       .map((col) => {
         if (!isResizableColumnId(col.id)) return col;
         const savedWidth = columnWidths[col.id];
         return typeof savedWidth === "number" ? { ...col, w: savedWidth } : col;
       }),
-    [columnWidths, groupVis],
+    [columnWidths, compactMode, groupVis],
   );
 
   const showCon = groupVis["con"];
@@ -615,6 +633,7 @@ export function DemandPlanningGrid({
 
   const handleToggleGroup = useCallback(
     (key: ColumnGroupKey) => {
+      if (key !== "con") setCompactMode(false);
       setGroupVis((prev) => {
         const next = { ...prev, [key]: !prev[key] };
         // If freeze col is now hidden, reset to last visible
@@ -632,16 +651,27 @@ export function DemandPlanningGrid({
   );
 
   const handleAllOn = useCallback(() => {
+    setCompactMode(false);
     setGroupVis((prev) =>
       Object.fromEntries(Object.keys(prev).map((k) => [k, true])) as Record<ColumnGroupKey, boolean>,
     );
   }, []);
 
   const handleCoreOnly = useCallback(() => {
+    setCompactMode(false);
     const keep = new Set<string>(["fix", "stock", "s30", "tavg", "inb"]);
     setGroupVis((prev) =>
       Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
     );
+  }, []);
+
+  const handleCompact = useCallback(() => {
+    setCompactMode(true);
+    const keep = new Set<string>(["fix", "stock", "tavg", "inb"]);
+    setGroupVis((prev) =>
+      Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
+    );
+    setFreezeUntil("sod");
   }, []);
 
   const handleSetFreeze = useCallback(
@@ -813,6 +843,23 @@ export function DemandPlanningGrid({
           style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10, border: "1px solid rgba(148,163,184,.45)", cursor: "pointer", color: "rgba(226,232,240,.86)", background: "rgba(15,23,42,.5)", whiteSpace: "nowrap", flexShrink: 0 }}
         >
           핵심만
+        </button>
+        <button
+          onClick={handleCompact}
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            padding: "4px 9px",
+            borderRadius: 10,
+            border: compactMode ? "1px solid rgba(226,232,240,.7)" : "1px solid rgba(148,163,184,.45)",
+            cursor: "pointer",
+            color: compactMode ? "#F8FAFC" : "rgba(226,232,240,.86)",
+            background: compactMode ? "rgba(26,92,219,.58)" : "rgba(15,23,42,.5)",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          Compact
         </button>
         <button
           onClick={resetColumnWidths}

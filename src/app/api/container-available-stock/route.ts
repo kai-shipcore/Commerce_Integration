@@ -223,45 +223,71 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Available stock can be added only while the container is Draft." }, { status: 409 });
     }
 
+    const qtyByStockId = new Map<string, number>();
     for (const requested of allocation.data.allocations) {
-      const stock = await client.query<{ master_sku: string; cbm: number; available_qty: number }>(
-        `SELECT
-           s.master_sku,
-           s.cbm_unit::float8 AS cbm,
-           (s.total_qty - COALESCE((
-             SELECT SUM(a.qty)
-             FROM shipcore.fc_container_item_allocations a
-             WHERE a.source_stock_id = s.id
-           ), 0))::int AS available_qty
-         FROM shipcore.fc_available_stock s
-         WHERE s.id = $1::bigint
-         FOR UPDATE OF s`,
-        [requested.stockId]
-      );
-      if (stock.rowCount === 0) throw new Error(`Available stock not found: ${requested.stockId}`);
-      if (requested.qty > stock.rows[0].available_qty) {
-        throw new Error(`Requested quantity exceeds available quantity for ${stock.rows[0].master_sku}`);
-      }
-
-      await client.query(
-        `INSERT INTO shipcore.fc_container_item_allocations (container_id, source_stock_id, qty)
-         VALUES ($1::bigint, $2::bigint, $3::int)
-         ON CONFLICT (container_id, source_stock_id) DO UPDATE SET
-           qty = shipcore.fc_container_item_allocations.qty + EXCLUDED.qty,
-           updated_at = NOW()`,
-        [allocation.data.containerId, requested.stockId, requested.qty]
-      );
-      await client.query(
-        `INSERT INTO shipcore.fc_container_items
-           (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-         VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())
-         ON CONFLICT (container_id, master_sku) DO UPDATE SET
-           qty = shipcore.fc_container_items.qty + EXCLUDED.qty,
-           cbm_unit = EXCLUDED.cbm_unit,
-           updated_at = NOW()`,
-        [allocation.data.containerId, stock.rows[0].master_sku, requested.qty, stock.rows[0].cbm]
-      );
+      qtyByStockId.set(requested.stockId, (qtyByStockId.get(requested.stockId) ?? 0) + requested.qty);
     }
+
+    const stockIds = [...qtyByStockId.keys()];
+    const stockResult = await client.query<{ id: string; master_sku: string; cbm: number; available_qty: number }>(
+      `SELECT
+         s.id::text,
+         s.master_sku,
+         s.cbm_unit::float8 AS cbm,
+         (s.total_qty - COALESCE((
+           SELECT SUM(a.qty)
+           FROM shipcore.fc_container_item_allocations a
+           WHERE a.source_stock_id = s.id
+         ), 0))::int AS available_qty
+       FROM shipcore.fc_available_stock s
+       WHERE s.id = ANY($1::bigint[])
+       FOR UPDATE OF s`,
+      [stockIds]
+    );
+
+    if (stockResult.rowCount !== stockIds.length) {
+      throw new Error("One or more available stock records were not found.");
+    }
+
+    const itemQtyBySku = new Map<string, { qty: number; cbm: number }>();
+    for (const stock of stockResult.rows) {
+      const requestedQty = qtyByStockId.get(stock.id) ?? 0;
+      if (requestedQty > stock.available_qty) {
+        throw new Error(`Requested quantity exceeds available quantity for ${stock.master_sku}`);
+      }
+      const current = itemQtyBySku.get(stock.master_sku);
+      itemQtyBySku.set(stock.master_sku, {
+        qty: (current?.qty ?? 0) + requestedQty,
+        cbm: stock.cbm,
+      });
+    }
+
+    const allocationStockIds = stockIds;
+    const allocationQtys = allocationStockIds.map((stockId) => qtyByStockId.get(stockId) ?? 0);
+    await client.query(
+      `INSERT INTO shipcore.fc_container_item_allocations (container_id, source_stock_id, qty)
+       SELECT $1::bigint, stock_id, qty
+       FROM unnest($2::bigint[], $3::int[]) AS allocation(stock_id, qty)
+       ON CONFLICT (container_id, source_stock_id) DO UPDATE SET
+         qty = shipcore.fc_container_item_allocations.qty + EXCLUDED.qty,
+         updated_at = NOW()`,
+      [allocation.data.containerId, allocationStockIds, allocationQtys]
+    );
+
+    const itemSkus = [...itemQtyBySku.keys()];
+    const itemQtys = itemSkus.map((sku) => itemQtyBySku.get(sku)?.qty ?? 0);
+    const itemCbms = itemSkus.map((sku) => itemQtyBySku.get(sku)?.cbm ?? 0);
+    await client.query(
+      `INSERT INTO shipcore.fc_container_items
+         (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
+       SELECT $1::bigint, master_sku, qty, cbm, NOW(), NOW()
+       FROM unnest($2::text[], $3::int[], $4::numeric[]) AS item(master_sku, qty, cbm)
+       ON CONFLICT (container_id, master_sku) DO UPDATE SET
+         qty = shipcore.fc_container_items.qty + EXCLUDED.qty,
+         cbm_unit = EXCLUDED.cbm_unit,
+         updated_at = NOW()`,
+      [allocation.data.containerId, itemSkus, itemQtys, itemCbms]
+    );
 
     await client.query("COMMIT");
     await invalidatePlanningDashboardCache();
@@ -437,64 +463,92 @@ export async function DELETE(request: NextRequest) {
   const client = await getPrimaryPool().connect();
   try {
     await client.query("BEGIN");
-    let containerId = "";
-    for (const allocationId of allocationIds) {
-      const result = await client.query<{ container_id: string; master_sku: string; qty: number; status: string }>(
-        `SELECT
-           a.container_id::text,
-           s.master_sku,
-           a.qty::int,
-           c.status::text
-         FROM shipcore.fc_container_item_allocations a
-         JOIN shipcore.fc_available_stock s ON s.id = a.source_stock_id
-         JOIN shipcore.fc_containers c ON c.id = a.container_id
-         WHERE a.id = $1::bigint
-         FOR UPDATE OF a, c`,
-        [allocationId]
-      );
-      if (result.rowCount === 0) {
-        await client.query("ROLLBACK");
-        return NextResponse.json({ success: false, error: "Allocation not found" }, { status: 404 });
-      }
-      const row = result.rows[0];
-      if (row.status !== "draft") {
-        await client.query("ROLLBACK");
-        return NextResponse.json({ success: false, error: "Allocated stock can be removed only while the container is Draft." }, { status: 409 });
-      }
-      if (containerId && row.container_id !== containerId) {
-        await client.query("ROLLBACK");
-        return NextResponse.json({ success: false, error: "Selected allocations must belong to the same container." }, { status: 400 });
-      }
-      containerId = row.container_id;
+    const allocationResult = await client.query<{ id: string; container_id: string; master_sku: string; qty: number; status: string }>(
+      `SELECT
+         a.id::text,
+         a.container_id::text,
+         s.master_sku,
+         a.qty::int,
+         c.status::text
+       FROM shipcore.fc_container_item_allocations a
+       JOIN shipcore.fc_available_stock s ON s.id = a.source_stock_id
+       JOIN shipcore.fc_containers c ON c.id = a.container_id
+       WHERE a.id = ANY($1::bigint[])
+       FOR UPDATE OF a, c`,
+      [allocationIds]
+    );
 
-      const item = await client.query<{ qty: number }>(
-        `SELECT qty::int
-         FROM shipcore.fc_container_items
-         WHERE container_id = $1::bigint AND master_sku = $2
-         FOR UPDATE`,
-        [row.container_id, row.master_sku]
-      );
-      if (item.rowCount === 0 || item.rows[0].qty < row.qty) {
-        await client.query("ROLLBACK");
-        return NextResponse.json({ success: false, error: "Container item quantity is inconsistent with allocated stock." }, { status: 409 });
-      }
-
-      await client.query(`DELETE FROM shipcore.fc_container_item_allocations WHERE id = $1::bigint`, [allocationId]);
-      if (item.rows[0].qty === row.qty) {
-        await client.query(
-          `DELETE FROM shipcore.fc_container_items
-           WHERE container_id = $1::bigint AND master_sku = $2`,
-          [row.container_id, row.master_sku]
-        );
-      } else {
-        await client.query(
-          `UPDATE shipcore.fc_container_items
-           SET qty = qty - $3::int, updated_at = NOW()
-           WHERE container_id = $1::bigint AND master_sku = $2`,
-          [row.container_id, row.master_sku, row.qty]
-        );
-      }
+    if (allocationResult.rowCount !== allocationIds.length) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ success: false, error: "Allocation not found" }, { status: 404 });
     }
+
+    const containerIds = new Set(allocationResult.rows.map((row) => row.container_id));
+    if (containerIds.size !== 1) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ success: false, error: "Selected allocations must belong to the same container." }, { status: 400 });
+    }
+
+    const containerId = allocationResult.rows[0].container_id;
+    if (allocationResult.rows.some((row) => row.status !== "draft")) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ success: false, error: "Allocated stock can be removed only while the container is Draft." }, { status: 409 });
+    }
+
+    const removeQtyBySku = new Map<string, number>();
+    for (const row of allocationResult.rows) {
+      removeQtyBySku.set(row.master_sku, (removeQtyBySku.get(row.master_sku) ?? 0) + row.qty);
+    }
+
+    const skus = [...removeQtyBySku.keys()];
+    const removeQtys = skus.map((sku) => removeQtyBySku.get(sku) ?? 0);
+    const itemResult = await client.query<{ master_sku: string; qty: number }>(
+      `SELECT master_sku, qty::int
+       FROM shipcore.fc_container_items
+       WHERE container_id = $1::bigint
+         AND master_sku = ANY($2::text[])
+       FOR UPDATE`,
+      [containerId, skus]
+    );
+    const itemQtyBySku = new Map(itemResult.rows.map((row) => [row.master_sku, row.qty]));
+    const inconsistentSku = skus.find((sku) => (itemQtyBySku.get(sku) ?? 0) < (removeQtyBySku.get(sku) ?? 0));
+    if (inconsistentSku) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ success: false, error: "Container item quantity is inconsistent with allocated stock." }, { status: 409 });
+    }
+
+    await client.query(
+      `DELETE FROM shipcore.fc_container_item_allocations
+       WHERE id = ANY($1::bigint[])`,
+      [allocationIds]
+    );
+
+    await client.query(
+      `UPDATE shipcore.fc_container_items ci
+       SET qty = ci.qty - removed.remove_qty,
+           updated_at = NOW()
+       FROM (
+         SELECT unnest($2::text[]) AS master_sku,
+                unnest($3::int[]) AS remove_qty
+       ) removed
+       WHERE ci.container_id = $1::bigint
+         AND ci.master_sku = removed.master_sku
+         AND ci.qty > removed.remove_qty`,
+      [containerId, skus, removeQtys]
+    );
+
+    await client.query(
+      `DELETE FROM shipcore.fc_container_items ci
+       USING (
+         SELECT unnest($2::text[]) AS master_sku,
+                unnest($3::int[]) AS remove_qty
+       ) removed
+       WHERE ci.container_id = $1::bigint
+         AND ci.master_sku = removed.master_sku
+         AND ci.qty = removed.remove_qty`,
+      [containerId, skus, removeQtys]
+    );
+
     await client.query("COMMIT");
     await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true, data: { containerId, deletedCount: allocationIds.length } });

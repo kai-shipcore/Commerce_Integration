@@ -1599,6 +1599,7 @@ function ContainerCreateForm({
 }) {
   const importRef = useRef<HTMLInputElement | null>(null);
   const statusLabel = statusOptions.find((opt) => opt.value === form.status)?.shortLabel ?? form.status;
+  const canChangeStructure = form.status === "draft";
   const loadRate = cbmCapacity > 0 ? (draftCbm / cbmCapacity) * 100 : 0;
   const containersNeeded = draftCbm > 0 ? Math.ceil(draftCbm / cbmCapacity) : 0;
 
@@ -1694,58 +1695,65 @@ function ContainerCreateForm({
         right={
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">{draftItems.length}</span>
-            <input
-              ref={importRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void onImportItems(file);
-                if (importRef.current) importRef.current.value = "";
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => importRef.current?.click()}
-              className="rounded-md border border-[#9ed8c8] bg-[#e6f5f0] px-3 py-1.5 text-xs font-semibold text-[#0a5e45] hover:bg-[#d4ede6]"
-            >
-              CSV/Excel Import
-            </button>
-            <button
-              type="button"
-              onClick={onDownloadTemplate}
-              className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs text-muted-foreground hover:bg-[#f0eee9]"
-            >
-              Download Template
-            </button>
+            {canChangeStructure ? (
+              <>
+                <input
+                  ref={importRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onImportItems(file);
+                    if (importRef.current) importRef.current.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => importRef.current?.click()}
+                  className="rounded-md border border-[#9ed8c8] bg-[#e6f5f0] px-3 py-1.5 text-xs font-semibold text-[#0a5e45] hover:bg-[#d4ede6]"
+                >
+                  CSV/Excel Import
+                </button>
+                <button
+                  type="button"
+                  onClick={onDownloadTemplate}
+                  className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs text-muted-foreground hover:bg-[#f0eee9]"
+                >
+                  Download Template
+                </button>
+              </>
+            ) : null}
           </div>
         }
       >
         <div className="overflow-hidden rounded-lg border border-[#e2dfd8]">
-          <div className="grid grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+          <div className={`grid bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canChangeStructure ? "grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
             <div>Master SKU</div>
             <div>Qty</div>
             <div>CBM / Unit</div>
             <div>Total CBM</div>
-            <div className="text-right">Delete</div>
+            {canChangeStructure ? <div className="text-right">Delete</div> : null}
           </div>
 
           {draftItems.map((item) => (
-            <div key={item.sku} className="grid grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px] items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg">
+            <div key={item.sku} className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${canChangeStructure ? "grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
               <span className="font-mono text-xs font-medium">{item.sku}</span>
               <span>{formatNumber(item.qty)}</span>
               <span className="font-mono text-xs">{item.cbm.toFixed(4)}</span>
               <span className="font-mono text-xs">{(item.qty * item.cbm).toFixed(4)}</span>
-              <div className="flex justify-end">
-                <button type="button" onClick={() => onRemoveDraftItem(item.sku)} className="text-xs font-semibold text-[#c42b2b] hover:underline">
-                  Delete
-                </button>
-              </div>
+              {canChangeStructure ? (
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => onRemoveDraftItem(item.sku)} className="text-xs font-semibold text-[#c42b2b] hover:underline">
+                    Delete
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))}
 
           {/* Inline add row */}
+          {canChangeStructure ? (
           <div className="grid grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px] items-end gap-2 border-t border-[#e2dfd8] bg-[#fbfaf8] px-3 py-2">
             <input
               className="form-input font-mono text-xs"
@@ -1777,18 +1785,21 @@ function ContainerCreateForm({
             </div>
             <div />
           </div>
+          ) : null}
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void onAddSkuToDraft()}
-              className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
-            >
-              + Add
-            </button>
-            {form.status === "draft" && onAddAvailableStock ? (
+            {canChangeStructure ? (
+              <button
+                type="button"
+                onClick={() => void onAddSkuToDraft()}
+                className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
+              >
+                + Add
+              </button>
+            ) : null}
+            {canChangeStructure && onAddAvailableStock ? (
               <button
                 type="button"
                 onClick={onAddAvailableStock}
@@ -2047,10 +2058,11 @@ function ContainerCard({
               <div className="mt-1 whitespace-pre-wrap text-sm text-foreground">{container.note}</div>
             </div>
           ) : null}
-          <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.8fr_0.8fr]"}`}>
+          <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]"}`}>
             <div>Master SKU</div>
             <div>Qty</div>
-            <div>CBM</div>
+            <div>CBM / Unit</div>
+            <div>Total CBM</div>
             {canEditQuantity ? <div className="text-right">Actions</div> : null}
           </div>
           {canChangeStructure && removableAllocationIds.length > 0 ? (
@@ -2099,7 +2111,7 @@ function ContainerCard({
               />
             ))}
             {inlineSkuDraft && canChangeStructure ? (
-              <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+              <div className="grid grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
                 <div className="pr-3">
                   <input
                     className="form-input font-mono text-xs"
@@ -2139,8 +2151,13 @@ function ContainerCard({
                     value={inlineSkuDraft.cbm}
                     onChange={(event) => onUpdateInlineSkuDraft(container.id, { cbm: event.target.value })}
                     onBlur={() => void onUpdateInlineSkuCbm(container.id)}
-                    placeholder="CBM"
+                    placeholder="CBM / Unit"
                   />
+                </div>
+                <div className="pb-2 font-mono text-xs text-muted-foreground">
+                  {inlineSkuDraft.qty && inlineSkuDraft.cbm
+                    ? `${((Number.parseInt(inlineSkuDraft.qty, 10) || 0) * (Number.parseFloat(inlineSkuDraft.cbm) || 0)).toFixed(3)} m3`
+                    : "-"}
                 </div>
                 <div className="flex justify-end gap-1">
                   <button
@@ -2189,13 +2206,15 @@ function ContainerCard({
                 + Add Available Stock
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void onExportItems(container.id)}
-              className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
-            >
-              CSV/Excel
-            </button>
+            {!isFullyLocked ? (
+              <button
+                type="button"
+                onClick={() => void onExportItems(container.id)}
+                className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
+              >
+                CSV/Excel
+              </button>
+            ) : null}
             {canChangeStructure ? (
               <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
                 <span>Import</span>
@@ -2219,7 +2238,7 @@ function ContainerCard({
               >
                 Change Status
               </button>
-              {isAdmin ? (
+              {isAdmin && !isFullyLocked ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -2315,7 +2334,7 @@ function SkuRow({
 
   if (editDraft) {
     return (
-      <div className="grid grid-cols-[2.2fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+      <div className="grid grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
         <div className="pr-3">
           <input
             className="form-input font-mono text-xs"
@@ -2348,8 +2367,13 @@ function SkuRow({
             onChange={(event) => onUpdateDraft(containerId, item.sku, { cbm: event.target.value })}
             onBlur={() => void onUpdateCbm(containerId, item.sku)}
             disabled={quantityOnly}
-            placeholder="CBM"
+            placeholder="CBM / Unit"
           />
+        </div>
+        <div className="pb-2 font-mono text-xs text-muted-foreground">
+          {editDraft.qty && editDraft.cbm
+            ? `${((Number.parseInt(editDraft.qty, 10) || 0) * (Number.parseFloat(editDraft.cbm) || 0)).toFixed(3)} m3`
+            : "-"}
         </div>
         <div className="flex justify-end gap-1">
           <button
@@ -2372,7 +2396,7 @@ function SkuRow({
   }
 
   return (
-    <div className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${readonly ? "grid-cols-[2.2fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.8fr_0.8fr_110px]"}`}>
+    <div className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${readonly ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]"}`}>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {hasAllocatedStock && !readonly && !quantityOnly ? (
@@ -2404,7 +2428,8 @@ function SkuRow({
         ) : null}
       </div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
-      <div className="text-xs text-muted-foreground">{(item.qty * item.cbm).toFixed(3)} m3</div>
+      <div className="font-mono text-xs text-muted-foreground">{item.cbm.toFixed(4)} m3</div>
+      <div className="font-mono text-xs font-semibold">{(item.qty * item.cbm).toFixed(3)} m3</div>
       {readonly ? null : hasAllocatedStock ? (
         <div className="flex flex-col items-end gap-1">
           {allocations.map((allocation) => (
