@@ -104,7 +104,7 @@ export interface ConSubColDef {
 
 export const ALL_COLS: ColDef[] = [
   // Always-visible base columns
-  { id: "row_num",   grp: "fix", label: "#",                w: 28,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
+  { id: "row_num",   grp: "fix", label: "#",                w: 36,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
   { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 115, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.container_info || "" },
   { id: "cbm",       grp: "fix", label: "CBM",              w: 56,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "" },
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); } },
@@ -128,9 +128,9 @@ export const ALL_COLS: ColDef[] = [
   { id: "e7",   grp: "esales", label: "East\n7D",   w: 40, align: "num", tint: "t-esales", gh: "gh-esales", val: (r) => r.east_7d || 0 },
   { id: "epre", grp: "esales", label: "E Pre\n30D", w: 38, align: "num", tint: "t-esales", gh: "gh-esales", val: (r) => r.east_30d_pre || 0 },
   // West Avg Daily
-  { id: "wavg_p", grp: "wavg", label: "W Avg\n이전", w: 44, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.avg_daily_prev || "" },
-  { id: "wavg_r", grp: "wavg", label: "W Avg\n실제", w: 44, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.avg_daily_real || "" },
-  { id: "wavg_c", grp: "wavg", label: "W Avg\n현재", w: 44, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => {
+  { id: "wavg_p", grp: "wavg", label: "W Avg\n이전", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.avg_daily_prev || "" },
+  { id: "wavg_r", grp: "wavg", label: "W Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.avg_daily_real || "" },
+  { id: "wavg_c", grp: "wavg", label: "W Avg\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => {
     const v = r.avg_daily_curr;
     if (!v) return "";
     if (v >= 10) return { html: `<span class="lv-crit">${v}</span>` };
@@ -138,21 +138,21 @@ export const ALL_COLS: ColDef[] = [
     return v;
   }},
   // East Avg Daily
-  { id: "eavg_p", grp: "eavg", label: "E Avg\n이전", w: 42, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.east_avg_prev || "" },
-  { id: "eavg_r", grp: "eavg", label: "E Avg\n실제", w: 42, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.east_avg_real || "" },
-  { id: "eavg_c", grp: "eavg", label: "E Avg\n현재", w: 44, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => r.east_avg_curr || "" },
+  { id: "eavg_p", grp: "eavg", label: "E Avg\n이전", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.east_avg_prev || "" },
+  { id: "eavg_r", grp: "eavg", label: "E Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.east_avg_real || "" },
+  { id: "eavg_c", grp: "eavg", label: "E Avg\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => r.east_avg_curr || "" },
   // FBA Avg
-  { id: "fba_r", grp: "fba", label: "FBA\n실제", w: 42, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_real || "" },
-  { id: "fba_c", grp: "fba", label: "FBA\n현재", w: 42, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_curr || "" },
+  { id: "fba_r", grp: "fba", label: "FBA\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_real || "" },
+  { id: "fba_c", grp: "fba", label: "FBA\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_curr || "" },
   // 30D Sales
   { id: "wfbm30", grp: "s30", label: "W FBM\n30D",  w: 50, align: "num", tint: "t-total", gh: "gh-total", val: (r) => r.west_fbm_30d || 0 },
   { id: "efbm30", grp: "s30", label: "E FBM\n30D",  w: 44, align: "num", tint: "t-total", gh: "gh-total", val: (r) => r.east_fbm_30d || 0 },
   { id: "fba30",  grp: "s30", label: "FBA\n30D",    w: 40, align: "num", tint: "t-total", gh: "gh-total", val: (r) => r.fba_30d || 0 },
   { id: "tot30",  grp: "s30", label: "Total\n30D",  w: 52, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => r.total_30d || 0 },
   // Total Avg Daily
-  { id: "tavg_p", grp: "tavg", label: "T.Avg\n이전", w: 46, align: "num", tint: "t-total", gh: "gh-total", val: (r) => r.total_avg_prev || "" },
-  { id: "tavg_r", grp: "tavg", label: "T.Avg\n실제", w: 48, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => r.total_avg_real || "" },
-  { id: "tavg_c", grp: "tavg", label: "T.Avg\n현재", w: 48, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => r.total_avg_curr || "" },
+  { id: "tavg_p", grp: "tavg", label: "T.Avg\n이전", w: 56, align: "num", tint: "t-total", gh: "gh-total", val: (r) => r.total_avg_prev || "" },
+  { id: "tavg_r", grp: "tavg", label: "T.Avg\n실제", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => r.total_avg_real || "" },
+  { id: "tavg_c", grp: "tavg", label: "T.Avg\n현재", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => r.total_avg_curr || "" },
   // Inbound / SOD
   { id: "inb_qty",  grp: "inb", label: "Inbound\nQty",       w: 52,  align: "num",  tint: "t-inb", gh: "gh-inb", val: (r) => {
     const v = r.total_inbound_qty || 0;
