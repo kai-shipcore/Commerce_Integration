@@ -181,7 +181,6 @@ export const CON_SUBCOLS: ConSubColDef[] = [
     return v ? { html: `<span class="bo-pos">${v}</span>` } : { html: `<span class="lv-dim">0</span>` };
   }},
   { id: "carry", label: "Carry\nover",  w: 52, align: "num", tint: "t-cn", val: (cd) => cd.carryover !== null && cd.carryover !== undefined ? cd.carryover : "" },
-  { id: "ceta",  label: "ETA",          w: 72, align: "ctr", tint: "t-cn",      val: (_cd, c) => ({ html: `<span style="font-family:monospace;font-size:9px;color:#9A9790">${c.eta}</span>` }) },
   { id: "life",  label: "Inv.\nLife",   w: 42, align: "num", tint: "t-cn-life", val: (cd) => {
     const v = cd.inv_life;
     if (v === null || v === undefined) return "";
