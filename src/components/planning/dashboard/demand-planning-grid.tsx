@@ -125,10 +125,11 @@ const VIRTUAL_OVERSCAN = 12;
 const TABLE_HEADER_HEIGHT = 80;
 const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
 
-type ResizableColumnId = "cont_info" | "sku" | "inb_lst";
+type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
 type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
 
 const RESIZABLE_COLUMN_LIMITS: Record<ResizableColumnId, { min: number; max: number }> = {
+  row_num: { min: 36, max: 90 },
   cont_info: { min: 90, max: 320 },
   sku: { min: 160, max: 420 },
   inb_lst: { min: 120, max: 420 },

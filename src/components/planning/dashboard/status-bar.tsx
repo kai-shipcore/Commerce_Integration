@@ -30,7 +30,7 @@ export function StatusBar({ rows, inline = false }: StatusBarProps) {
         overflow: "hidden",
       }}
     >
-      <SbItem label="SKU"     value={rows.length}              color="#1D4ED8" />
+      <SbItem label="SKU"     value={rows.length.toLocaleString()} color="#1D4ED8" />
       <SbItem label="🔴긴급"  value={crit}                     color="#DC2626" />
       <SbItem label="⚠주의"   value={warn}                     color="#B45309" />
       <SbItem label="Stock"   value={stock.toLocaleString()}   color="#1D4ED8" />
