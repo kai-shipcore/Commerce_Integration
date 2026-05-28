@@ -106,7 +106,7 @@ export interface ConSubColDef {
 export const ALL_COLS: ColDef[] = [
   // Always-visible base columns
   { id: "row_num",   grp: "fix", label: "#",                w: 36,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
-  { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 210, align: "left", tint: "",        gh: "gh-fix",    fontSize: 10, val: (r) => r.container_info || "" },
+  { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 190, align: "left", tint: "",        gh: "gh-fix",    fontSize: 10, val: (r) => r.container_info || "" },
   { id: "cbm",       grp: "fix", label: "CBM",              w: 56,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "" },
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); } },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Hold" ? "sc-hold" : "sc-orig"}">${r.sales_status || ""}</span>` }) },
