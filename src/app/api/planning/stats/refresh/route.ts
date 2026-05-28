@@ -69,7 +69,7 @@ export async function POST() {
         SUM(CASE WHEN warehouse = 'Fullerton' THEN COALESCE(on_hand, 0) ELSE 0 END)::int AS west_stock,
         SUM(CASE WHEN warehouse = 'TTM Group' THEN COALESCE(on_hand, 0) ELSE 0 END)::int AS east_stock,
         SUM(COALESCE(on_hand,   0))::int                                               AS total_stock,
-        SUM(COALESCE(backorder, 0))::int                                               AS back
+        -SUM(COALESCE(backorder, 0))::int                                              AS back
       FROM ecommerce_data.coverland_inventory
       WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
       GROUP BY BTRIM(master_sku)

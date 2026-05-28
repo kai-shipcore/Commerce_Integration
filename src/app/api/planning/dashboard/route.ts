@@ -301,7 +301,7 @@ export async function GET(req: Request) {
         cbm_unit:    null,
         inbound_qty: null,
         open_orders: 0,
-        avail_qty:   availQty,
+        avail_qty:   Math.max(0, availQty),
         est_sales:   0,
         backorder:   availQty < 0 ? Math.abs(availQty) : 0,
         carryover:   carryover,
@@ -345,7 +345,7 @@ export async function GET(req: Request) {
         containersObj[c.name] = {
           ...(raw ?? { item_id: null, cbm_unit: null, inbound_qty: null, cbm: 0, eta }),
           open_orders: openOrders,
-          avail_qty:   availQtyC,
+          avail_qty:   Math.max(0, availQtyC),
           est_sales:   estSales,
           backorder:   backorderC,
           carryover:   carryoverC,

@@ -86,7 +86,7 @@ function computeContainerChain(
 
     result.set(c.name, {
       open_orders: openOrders,
-      avail_qty:   availQtyC,
+      avail_qty:   Math.max(0, availQtyC),
       est_sales:   estSales,
       backorder:   backorderC,
       carryover:   carryoverC,
