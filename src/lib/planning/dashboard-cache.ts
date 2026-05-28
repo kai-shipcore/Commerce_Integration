@@ -22,8 +22,9 @@ const hasRedisEnv = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UP
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-export function planningDashboardCacheKey(mode: string, includeContainers = false) {
-  return `planning:dashboard:${mode}:${includeContainers ? "detail" : "summary"}`;
+export function planningDashboardCacheKey(mode: string, includeContainers = false, asOfDate?: string) {
+  const dateSuffix = asOfDate ? `:${asOfDate}` : "";
+  return `planning:dashboard:${mode}:${includeContainers ? "detail" : "summary"}${dateSuffix}`;
 }
 
 async function withTimeout<T>(work: Promise<T>, fallback: T): Promise<T> {
@@ -46,11 +47,11 @@ async function withTimeoutMs<T>(work: Promise<T>, fallback: T, timeoutMs: number
   }
 }
 
-export async function getPlanningDashboardCache(mode: string, includeContainers = false) {
+export async function getPlanningDashboardCache(mode: string, includeContainers = false, asOfDate?: string) {
   if (!hasRedisEnv) return null;
   const cached = await withTimeout(
     CacheManager.get<DashboardCachePayload | CompressedDashboardCachePayload | string>(
-      planningDashboardCacheKey(mode, includeContainers),
+      planningDashboardCacheKey(mode, includeContainers, asOfDate),
     ),
     null,
   );
@@ -80,7 +81,7 @@ export async function getPlanningDashboardCache(mode: string, includeContainers 
   return parsed;
 }
 
-export function setPlanningDashboardCache(mode: string, payload: DashboardCachePayload, includeContainers = false) {
+export function setPlanningDashboardCache(mode: string, payload: DashboardCachePayload, includeContainers = false, asOfDate?: string) {
   if (!hasRedisEnv) return;
   setTimeout(() => void (async () => {
     try {
@@ -91,7 +92,7 @@ export function setPlanningDashboardCache(mode: string, payload: DashboardCacheP
         body: compressed.toString("base64"),
       };
       void withTimeout(
-      CacheManager.set(planningDashboardCacheKey(mode, includeContainers), cachePayload, DASHBOARD_CACHE_TTL_SECONDS),
+      CacheManager.set(planningDashboardCacheKey(mode, includeContainers, asOfDate), cachePayload, DASHBOARD_CACHE_TTL_SECONDS),
       false,
     );
     } catch {

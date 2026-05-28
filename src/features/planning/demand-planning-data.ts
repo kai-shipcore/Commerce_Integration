@@ -17,7 +17,7 @@ export interface DemandPlanningDataState {
   loadContainerDetails: () => void;
 }
 
-export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanningDataState {
+export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: string): DemandPlanningDataState {
   const [data, setData] = useState<DemandPlanningData>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [containerDetailsLoading, setContainerDetailsLoading] = useState(false);
@@ -29,7 +29,8 @@ export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanni
     setLoading(true);
     setError(null);
 
-    const dashUrl = `/api/planning/dashboard?mode=${mode}`;
+    const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
+    const dashUrl = `/api/planning/dashboard?mode=${mode}${asOfSuffix}`;
     const pipeline = withRefresh
       ? fetch("/api/planning/stats/refresh", { method: "POST" }).then((res) => {
           if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
@@ -61,12 +62,12 @@ export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanni
     return () => { cancelled = true; };
   }
 
-  // Auto-load on mount using existing stats (no refresh)
+  // Auto-load on mount and whenever mode or asOfDate changes
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial API load is intentionally started after mode changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial API load is intentionally started after mode/date changes.
     return fetchDashboard(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode.
-  }, [mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode and asOfDate.
+  }, [mode, asOfDate]);
 
   // Sync button: refresh stats first, then load
   function reload() { fetchDashboard(true); }
@@ -76,7 +77,8 @@ export function useDemandPlanningData(mode: VelocityMode = "link"): DemandPlanni
     setContainerDetailsLoading(true);
     setError(null);
 
-    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1`)
+    const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
+    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Container details failed: HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;

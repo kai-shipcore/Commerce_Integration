@@ -9,8 +9,11 @@ import { useDemandPlanningData } from "@/features/planning/demand-planning-data"
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
 import type { CategoryFilter, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 
+const TODAY_STR = new Date().toISOString().slice(0, 10);
+
 export function DemandPlanningDashboard() {
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
+  const [asOfDate, setAsOfDate] = useState<string>(TODAY_STR);
   const {
     data,
     loading,
@@ -19,7 +22,7 @@ export function DemandPlanningDashboard() {
     error: loadError,
     reload,
     loadContainerDetails,
-  } = useDemandPlanningData(velocityMode);
+  } = useDemandPlanningData(velocityMode, asOfDate === TODAY_STR ? undefined : asOfDate);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("sc");
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
@@ -279,6 +282,46 @@ export function DemandPlanningDashboard() {
           <span suppressHydrationWarning style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}>
             {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "—"}
           </span>
+          <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ color: "#5A5750", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>As of</span>
+            <input
+              type="date"
+              value={asOfDate}
+              max={TODAY_STR}
+              onChange={(e) => setAsOfDate(e.target.value || TODAY_STR)}
+              style={{
+                height: 26,
+                padding: "2px 6px",
+                borderRadius: 4,
+                border: asOfDate !== TODAY_STR ? "1px solid #aac0f0" : "1px solid #C2BFB5",
+                background: asOfDate !== TODAY_STR ? "#E5EEFF" : "#F5F4EF",
+                color: asOfDate !== TODAY_STR ? "#1A4FC0" : "#1A1917",
+                fontSize: 11,
+                fontWeight: asOfDate !== TODAY_STR ? 600 : 400,
+                cursor: "pointer",
+              }}
+            />
+            {asOfDate !== TODAY_STR && (
+              <button
+                type="button"
+                onClick={() => setAsOfDate(TODAY_STR)}
+                title="Reset to today"
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  border: "1px solid #aac0f0",
+                  background: "#E5EEFF",
+                  color: "#1A4FC0",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Today
+              </button>
+            )}
+          </label>
           <button
             type="button"
             onClick={handleExportCSV}
