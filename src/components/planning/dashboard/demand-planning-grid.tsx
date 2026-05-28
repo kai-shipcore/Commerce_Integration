@@ -331,7 +331,7 @@ function cellStyle(col: ColDef): React.CSSProperties {
     background: TINT_COLORS[col.tint] || "#fff",
     textAlign: col.align === "num" ? "right" : col.align === "ctr" ? "center" : "left",
     fontFamily: col.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
-    fontSize: 11,
+    fontSize: col.fontSize ?? 11,
     fontWeight: col.bold ? 700 : 400,
     overflow: "hidden",
     textOverflow: "ellipsis",
