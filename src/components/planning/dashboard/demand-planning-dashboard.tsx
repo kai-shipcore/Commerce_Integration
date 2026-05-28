@@ -277,7 +277,7 @@ export function DemandPlanningDashboard() {
             <span style={{ color: "#C42020", fontSize: 11 }}>Error: {loadError}</span>
           )}
           <span suppressHydrationWarning style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}>
-            {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "—"} | L-Min 5.13.2026
+            {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "—"}
           </span>
           <button
             type="button"
