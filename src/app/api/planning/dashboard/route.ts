@@ -99,6 +99,26 @@ export async function GET(req: Request) {
         id
     `);
 
+    // ── 1b. Which category codes have nonzero qty in each container ──────────
+    const containerIds = containersResult.rows.map((r) => r.id);
+    const categoriesResult = containerIds.length > 0
+      ? await primary.query<{ container_id: number; category_code: string }>(`
+          SELECT ci.container_id::int, p.category_code
+          FROM shipcore.fc_container_items ci
+          JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
+          WHERE ci.container_id = ANY($1::int[])
+            AND ci.qty > 0
+            AND p.category_code IS NOT NULL
+          GROUP BY ci.container_id, p.category_code
+        `, [containerIds])
+      : { rows: [] };
+    const categoriesByContainer = new Map<number, string[]>();
+    for (const row of categoriesResult.rows) {
+      const arr = categoriesByContainer.get(row.container_id) ?? [];
+      arr.push(row.category_code);
+      categoriesByContainer.set(row.container_id, arr);
+    }
+
     // ── 2. Per-SKU rows ──────────────────────────────────────────────────────
     // Drives from fc_stats (all SKUs) and LEFT JOINs container aggregation,
     // so SKUs with no active containers still appear with their stats.
@@ -246,6 +266,7 @@ export async function GET(req: Request) {
         eta:          r.eta,
         cbm_cap:      r.cbm_cap ?? 0,
         status:       r.status,
+        categories:   categoriesByContainer.get(r.id) ?? [],
       })),
     ];
 

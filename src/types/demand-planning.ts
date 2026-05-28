@@ -22,6 +22,7 @@ export interface ContainerMeta {
   eta: string;
   cbm_cap: number;
   status?: string;
+  categories?: string[];  // category_code values present in this container, e.g. ['SC','CC']
 }
 
 export interface ContainerRowData {

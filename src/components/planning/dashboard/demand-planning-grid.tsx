@@ -352,9 +352,13 @@ export function DemandPlanningGrid({
   const { rows: ROWS } = data;
   const CONS = useMemo(
     () => data.containers.filter((c) => {
-      if (c.name.endsWith("-FLOOR")) return categoryFilter === "fm";
-      if (c.name.endsWith("-SEAT"))  return categoryFilter === "sc";
-      return categoryFilter === "cc";
+      if (!c.categories || c.categories.length === 0) {
+        // fallback: name-suffix heuristic for containers without category data
+        if (c.name.endsWith("-FLOOR")) return categoryFilter === "fm";
+        if (c.name.endsWith("-SEAT"))  return categoryFilter === "sc";
+        return categoryFilter === "cc";
+      }
+      return c.categories.includes(categoryFilter.toUpperCase());
     }),
     [data.containers, categoryFilter],
   );
