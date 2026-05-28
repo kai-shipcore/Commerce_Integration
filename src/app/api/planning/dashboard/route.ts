@@ -271,7 +271,10 @@ export async function GET(req: Request) {
       fba_avg_real: number; fba_avg_prev: number; fba_30d: number;
       _avg_curr: number; _east_curr: number; _fba_curr: number;
     };
-    const historicalVelocityMap = new Map<string, VelRow>();
+    // SC uses link_snapshot velocity; CC/FM use custom_snapshot velocity.
+    // Two separate maps so rows.map() can select by category_code.
+    const linkVelMap   = new Map<string, VelRow>();
+    const customVelMap = new Map<string, VelRow>();
 
     if (!isToday) {
       function velQuery(table: "shipcore.velocity_link_snapshot", skuCol: "link_master_sku", qtyCol: "link_qty"): string;
@@ -313,20 +316,20 @@ export async function GET(req: Request) {
 
       // link mode: SC uses link_snapshot, CC/FM use custom_snapshot
       // custom mode: everything uses custom_snapshot
+      // Keep two separate maps so rows.map() can select by category_code.
       const [linkVelResult, customVelResult] = await Promise.all([
         mode === "link" ? primary.query<VelRow>(velQuery("shipcore.velocity_link_snapshot", "link_master_sku", "link_qty"), [todayStr]) : Promise.resolve({ rows: [] as VelRow[] }),
         primary.query<VelRow>(velQuery("shipcore.velocity_custom_snapshot", "custom_master_sku", "custom_qty"), [todayStr]),
       ]);
 
-      // link_snapshot rows first, then custom_snapshot overwrites (higher priority)
-      for (const r of [...linkVelResult.rows, ...customVelResult.rows]) {
+      function buildVelEntry(r: VelRow): VelRow {
         const wPrev   = round2(Number(r.avg_daily_prev));
         const wReal   = round2(Number(r.avg_daily_real));
         const ePrev   = round2(Number(r.east_avg_prev));
         const eReal   = round2(Number(r.east_avg_real));
         const fbaPrev = round2(Number(r.fba_avg_prev ?? 0));
         const fbaReal = round2(Number(r.fba_avg_real ?? 0));
-        historicalVelocityMap.set(r.master_sku, {
+        return {
           master_sku:     r.master_sku,
           west_90d:       Number(r.west_90d),
           west_60d:       Number(r.west_60d),
@@ -346,12 +349,14 @@ export async function GET(req: Request) {
           fba_avg_real:   fbaReal,
           fba_avg_prev:   fbaPrev,
           fba_30d:        Number(r.fba_30d),
-          // curr values (used in rows.map below)
           _avg_curr:  round2(computeCurr(wPrev, wReal)),
           _east_curr: round2(computeCurr(ePrev, eReal)),
           _fba_curr:  round2(computeCurr(fbaPrev, fbaReal)),
-        } as VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number });
+        } as VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number };
       }
+
+      for (const r of linkVelResult.rows)   linkVelMap.set(r.master_sku, buildVelEntry(r));
+      for (const r of customVelResult.rows) customVelMap.set(r.master_sku, buildVelEntry(r));
     }
 
     // ── Assemble response ────────────────────────────────────────────────────
@@ -405,8 +410,10 @@ export async function GET(req: Request) {
         for (const [name, data] of skuCross) containersObj[name] = data;
       }
 
-      // For historical dates, override velocity fields from snapshot-based calculation
-      const vel = historicalVelocityMap.get(r.sku as string) as (VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number }) | undefined;
+      // For historical dates, pick velocity from the correct snapshot source:
+      // CC/FM use custom_snapshot; SC uses link_snapshot (mirrors statsSource logic).
+      const velSourceMap = (categoryCode === "CC" || categoryCode === "FM") ? customVelMap : linkVelMap;
+      const vel = velSourceMap.get(r.sku as string) as (VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number }) | undefined;
       const west_90d     = vel ? vel.west_90d     : r.west_90d as number;
       const west_60d     = vel ? vel.west_60d     : r.west_60d as number;
       const west_30d     = vel ? vel.west_30d     : r.west_30d as number;
