@@ -359,6 +359,20 @@ export function DemandPlanningGrid({
   const visSubCols = CON_SUBCOLS.filter((sc) =>
     (sc.id !== "remaining" || showRemaining) && (sc.id !== "mistake" || showMistake)
   );
+
+  const containerCbmTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const c of CONS) {
+      let total = 0;
+      for (const r of ROWS) {
+        const cd = r.containers?.[c.name];
+        if (cd?.cbm) total += cd.cbm as number;
+      }
+      if (total > 0) totals.set(c.name, total);
+    }
+    return totals;
+  }, [CONS, ROWS]);
+
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [sortColumnId, setSortColumnId] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -913,7 +927,7 @@ export function DemandPlanningGrid({
                   }}
                 />
               ))}
-              {showCon && CONS.map((c, ci) => {
+              {showCon && CONS.flatMap((c, ci) => {
                 const isLast = ci === CONS.length - 1;
                 const isBaseline = c.status === "baseline";
                 const isDraft = !isBaseline && !!c.status && c.status !== "shipped" && c.status !== "packing_received";
@@ -921,17 +935,21 @@ export function DemandPlanningGrid({
                 const etaColor = isBaseline ? "#A0D080" : isDraft ? "#8A8780" :
                   dt !== null && dt <= 7  ? "#FF9090" :
                   dt !== null && dt <= 21 ? "#F0C060" : "#88D0FF";
-                return (
+                const totalCbm = containerCbmTotals.get(c.name) ?? 0;
+                const nameSpan = isBaseline ? visSubCols.length : visSubCols.length - 1;
+                const bg = isBaseline ? "#0F2218" : isDraft ? "#1E1D1A" : "#2A2825";
+                const rightBorder = isLast ? "1px solid #3a3835" : "2px solid #1A4060";
+                return [
                   <th
-                    key={c.name}
-                    colSpan={visSubCols.length}
+                    key={`${c.name}-hdr`}
+                    colSpan={nameSpan}
                     style={{
-                      background: isBaseline ? "#0F2218" : isDraft ? "#1E1D1A" : "#2A2825",
+                      background: bg,
                       color: etaColor,
                       fontSize: 10,
                       fontWeight: 800,
                       padding: "2px 4px",
-                      borderRight: isLast ? "1px solid #3a3835" : "2px solid #1A4060",
+                      borderRight: isBaseline ? rightBorder : "none",
                       borderBottom: "1px solid #555",
                       textAlign: "center",
                       whiteSpace: "nowrap",
@@ -939,8 +957,28 @@ export function DemandPlanningGrid({
                     }}
                   >
                     {isDraft ? "✏ " : ""}{isBaseline ? c.name : `${c.name} | ${c.eta}`}
-                  </th>
-                );
+                  </th>,
+                  ...(!isBaseline ? [
+                    <th
+                      key={`${c.name}-cbm`}
+                      colSpan={1}
+                      style={{
+                        background: bg,
+                        color: "#7EB880",
+                        fontSize: 9,
+                        fontWeight: 700,
+                        padding: "2px 4px",
+                        borderRight: rightBorder,
+                        borderBottom: "1px solid #555",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                        height: 20,
+                      }}
+                    >
+                      {totalCbm > 0 ? totalCbm.toFixed(1) : ""}
+                    </th>,
+                  ] : []),
+                ];
               })}
             </tr>
             {/* Row 3: Column names */}
