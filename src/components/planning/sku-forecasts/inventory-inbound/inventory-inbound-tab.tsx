@@ -13,7 +13,9 @@ export function InventoryInboundTab({
   containerDetailsLoading: boolean;
   containerDetailsLoaded: boolean;
 }) {
+  // Match server-side: only shipped + packing_received count toward inbound
   const inboundRows = containers
+    .filter((c) => c.status === "shipped" || c.status === "packing_received")
     .map((container) => {
       const detail = sku.containers?.[container.name];
       const qty = detail?.inbound_qty ?? 0;

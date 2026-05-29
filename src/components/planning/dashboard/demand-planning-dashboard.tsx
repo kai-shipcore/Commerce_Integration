@@ -15,7 +15,7 @@ import {
   loadSavedColumnWidths,
 } from "./columns";
 import type { ColumnWidths } from "./columns";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
 import type { CategoryFilter, ColumnGroupKey, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
@@ -528,8 +528,27 @@ export function DemandPlanningDashboard() {
               </button>
             </PopoverTrigger>
             <PopoverContent align="start" className="dashboard-columns-popover" style={{ width: 272, padding: 0, overflow: "hidden" }}>
+              {/* Header with close button */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px 0" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>Columns</span>
+                <PopoverClose asChild>
+                  <button
+                    type="button"
+                    aria-label="닫기"
+                    style={{
+                      width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center",
+                      borderRadius: 4, border: "none", background: "transparent", cursor: "pointer",
+                      color: "#94A3B8", fontSize: 16, lineHeight: 1,
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F1F5F9"; (e.currentTarget as HTMLButtonElement).style.color = "#475569"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "#94A3B8"; }}
+                  >
+                    ✕
+                  </button>
+                </PopoverClose>
+              </div>
               {/* Quick Presets */}
-              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+              <div style={{ padding: "8px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   Quick Preset
                 </div>
