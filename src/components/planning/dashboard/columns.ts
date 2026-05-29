@@ -75,6 +75,19 @@ export function lifeCls(v: number | null | undefined): string {
   return "lv-ok";
 }
 
+export function compactContainerList(value: string | null | undefined): string {
+  if (!value) return "";
+
+  return value
+    .split(",")
+    .map((entry) => {
+      const trimmed = entry.trim();
+      const match = trimmed.match(/^(\d+)(?:-[^(]+)?(\s*\([^)]*\))?$/);
+      return match ? `${match[1]}${match[2] ?? ""}` : trimmed;
+    })
+    .join(", ");
+}
+
 export type CellContent =
   | string
   | number
@@ -159,7 +172,7 @@ export const ALL_COLS: ColDef[] = [
     const v = r.total_inbound_qty || 0;
     return v > 0 ? { html: `<span class="inb-pos">+${v}</span>` } : { html: `<span class="lv-dim">0</span>` };
   }},
-  { id: "inb_lst",  grp: "inb", label: "Containers\nList",   w: 152, align: "left", tint: "t-inb", gh: "gh-inb", val: (r) => r.containers_list || "" },
+  { id: "inb_lst",  grp: "inb", label: "Containers\nList",   w: 152, align: "left", tint: "t-inb", gh: "gh-inb", val: (r) => compactContainerList(r.containers_list) },
   { id: "next_eta", grp: "inb", label: "Next\nETA",          w: 78,  align: "ctr",  tint: "t-inb", gh: "gh-inb", val: (r) => {
     const d = daysTo(r.next_eta);
     const color = d !== null && d < 0 ? "#C42020" : d !== null && d <= 14 ? "#9A5200" : "#1A4FC0";

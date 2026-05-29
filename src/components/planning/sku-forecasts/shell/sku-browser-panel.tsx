@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
 import { daysUntil, formatNumber, getUrgency, productLabels, type ProductKey } from "../types";
 
@@ -58,6 +58,9 @@ function SortHeader({
   );
 }
 
+const ROW_HEIGHT = 36;
+const OVERSCAN = 10;
+
 export function SkuBrowserPanel({
   product,
   productCounts,
@@ -70,6 +73,10 @@ export function SkuBrowserPanel({
 }: SkuBrowserPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [scrollTop, setScrollTop] = useState(0);
+  const [listHeight, setListHeight] = useState(600);
+  const listRef = useRef<HTMLDivElement>(null);
+
   const sortedRows = useMemo(
     () => [...rows].sort((left, right) => {
       let result = 0;
@@ -88,6 +95,33 @@ export function SkuBrowserPanel({
     }),
     [rows, sortDirection, sortKey],
   );
+
+  // Track scroll container height
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const update = () => setListHeight(el.clientHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Reset scroll when list content changes (filter, sort, product switch)
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = 0;
+      setScrollTop(0);
+    }
+  }, [sortedRows]);
+
+  // Virtual window calculation
+  const firstVisible = Math.floor(scrollTop / ROW_HEIGHT);
+  const start = Math.max(0, firstVisible - OVERSCAN);
+  const end = Math.min(sortedRows.length, start + Math.ceil(listHeight / ROW_HEIGHT) + OVERSCAN * 2);
+  const topPad = start * ROW_HEIGHT;
+  const bottomPad = (sortedRows.length - end) * ROW_HEIGHT;
+  const virtualRows = sortedRows.slice(start, end);
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -135,12 +169,17 @@ export function SkuBrowserPanel({
           ) : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 overflow-y-auto p-3"
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      >
         {rows.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">No SKUs</div>
         ) : (
           <div className="overflow-hidden rounded-md border bg-white dark:border-zinc-700 dark:bg-zinc-900">
-            <div className="grid grid-cols-[minmax(260px,1fr)_78px_76px_68px] gap-2 border-b bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">
+            {/* Sticky header */}
+            <div className="sticky top-0 z-10 grid grid-cols-[minmax(260px,1fr)_78px_76px_68px] gap-2 border-b bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">
               {(["sku", "stock", "avg", "sod"] as SortKey[]).map((key) => (
                 <SortHeader
                   key={key}
@@ -153,34 +192,36 @@ export function SkuBrowserPanel({
                 />
               ))}
             </div>
-            <div className="divide-y">
-              {sortedRows.map((row) => {
-                const selected = selectedSkuId === row.sku;
-                const urgency = getUrgency(row);
-                const days = daysUntil(row.sod);
-                return (
-                  <button
-                    key={row.sku}
-                    type="button"
-                    onClick={() => onSelectSku(row.sku)}
-                    className={`grid w-full grid-cols-[minmax(260px,1fr)_78px_76px_68px] items-center gap-2 px-3 py-2 text-left transition-colors ${
-                      selected ? "bg-[#ebf0fd] text-[#1238a0] dark:bg-blue-900/40 dark:text-blue-300" : "hover:bg-[#f8f7f4] dark:hover:bg-zinc-800"
-                    }`}
-                  >
-                    <div className="truncate font-mono text-xs font-semibold" title={row.sku}>{row.sku}</div>
-                    <div className="whitespace-nowrap text-right font-mono text-xs font-semibold text-foreground">
-                      {formatNumber(row.total_stock)}
-                    </div>
-                    <div className="whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
-                      {formatNumber(row.total_avg_curr, 2)}
-                    </div>
-                    <span className={`justify-self-end whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${urgencyStyles[urgency]}`}>
-                      {days === null ? "-" : `${days}d`}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Virtual rows */}
+            {topPad > 0 && <div style={{ height: topPad }} />}
+            {virtualRows.map((row) => {
+              const selected = selectedSkuId === row.sku;
+              const urgency = getUrgency(row);
+              const days = daysUntil(row.sod);
+              return (
+                <button
+                  key={row.sku}
+                  type="button"
+                  onClick={() => onSelectSku(row.sku)}
+                  style={{ height: ROW_HEIGHT }}
+                  className={`grid w-full grid-cols-[minmax(260px,1fr)_78px_76px_68px] items-center gap-2 border-b px-3 text-left transition-colors dark:border-zinc-700/50 ${
+                    selected ? "bg-[#ebf0fd] text-[#1238a0] dark:bg-blue-900/40 dark:text-blue-300" : "hover:bg-[#f8f7f4] dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  <div className="truncate font-mono text-xs font-semibold" title={row.sku}>{row.sku}</div>
+                  <div className="whitespace-nowrap text-right font-mono text-xs font-semibold text-foreground">
+                    {formatNumber(row.total_stock)}
+                  </div>
+                  <div className="whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
+                    {formatNumber(row.total_avg_curr, 2)}
+                  </div>
+                  <span className={`justify-self-end whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${urgencyStyles[urgency]}`}>
+                    {days === null ? "-" : `${days}d`}
+                  </span>
+                </button>
+              );
+            })}
+            {bottomPad > 0 && <div style={{ height: bottomPad }} />}
           </div>
         )}
       </div>
