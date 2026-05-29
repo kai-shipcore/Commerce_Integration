@@ -19,7 +19,7 @@ export function SkuForecastTabs({
       <TabsList className="planning-panel h-auto rounded-xl border bg-white p-1">
         <TabsTrigger value="sales">Sales Analysis</TabsTrigger>
         <TabsTrigger value="inventory">Inventory &amp; Inbound</TabsTrigger>
-        <TabsTrigger value="purchase">Purchase Recommendation</TabsTrigger>
+        <TabsTrigger value="purchase">Container Recommendation</TabsTrigger>
       </TabsList>
 
       <TabsContent value="sales">{sales}</TabsContent>

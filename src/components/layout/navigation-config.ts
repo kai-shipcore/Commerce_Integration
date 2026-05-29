@@ -102,7 +102,7 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     id: "sku-forecasts",
-    name: "SKU Forecasts",
+    name: "SKU Planning",
     href: "/planning/sku-forecasts",
     icon: TrendingUp,
     group: "Planning",

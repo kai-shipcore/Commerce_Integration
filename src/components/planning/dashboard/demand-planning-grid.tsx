@@ -129,8 +129,8 @@ interface DemandPlanningGridProps {
 }
 
 const ROW_HEIGHT = 28;
-const VIRTUAL_OVERSCAN = 12;
-const TABLE_HEADER_HEIGHT = 80;
+const VIRTUAL_OVERSCAN = 40;
+const TABLE_HEADER_HEIGHT = 84;
 
 type SortValue = number | string | null | undefined;
 type SortDirection = "asc" | "desc";
@@ -361,6 +361,7 @@ export function DemandPlanningGrid({
 
   const [sortColumnId, setSortColumnId] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const selectedSkuRef = useRef<string | null>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [scrollState, setScrollState] = useState({ top: 0, height: 600 });
@@ -494,6 +495,9 @@ export function DemandPlanningGrid({
   }, [categoryFilter, productFilter, urgencyFilter, search, sortColumnId, sortDirection]);
 
   const virtualRows = useMemo(() => {
+    if (!showCon) {
+      return { start: 0, end: displayedRows.length, topHeight: 0, bottomHeight: 0, rows: displayedRows };
+    }
     const firstVisibleRow = Math.floor(Math.max(0, scrollState.top - TABLE_HEADER_HEIGHT) / ROW_HEIGHT);
     const start = Math.max(0, firstVisibleRow - VIRTUAL_OVERSCAN);
     const visibleCount = Math.ceil(scrollState.height / ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2;
@@ -505,72 +509,29 @@ export function DemandPlanningGrid({
       bottomHeight: (displayedRows.length - end) * ROW_HEIGHT,
       rows: displayedRows.slice(start, end),
     };
-  }, [displayedRows, scrollState]);
+  }, [displayedRows, scrollState, showCon]);
 
   useEffect(() => {
     onFilteredRowsChange(displayedRows);
   }, [displayedRows, onFilteredRowsChange]);
 
-  // Apply sticky freeze after every render
   useEffect(() => {
+    const selectedSku = selectedSkuRef.current;
     const table = tableRef.current;
-    if (!table) return;
-
-    const freezeIdx = visCols.findIndex((c) => c.id === freezeUntil);
-    const headerWidthByCid = new Map<string, number>();
-    table.querySelectorAll<HTMLElement>("thead tr:last-child [data-cid]").forEach((cell) => {
-      const cid = cell.getAttribute("data-cid");
-      if (cid) headerWidthByCid.set(cid, cell.offsetWidth);
+    if (!selectedSku || !table) return;
+    table.querySelector("tbody tr.row-selected")?.classList.remove("row-selected");
+    table.querySelectorAll<HTMLTableRowElement>("tbody tr[data-row-sku]").forEach((row) => {
+      if (row.dataset.rowSku === selectedSku) row.classList.add("row-selected");
     });
+  }, [virtualRows.rows]);
 
-    const leftOffsets: number[] = [];
-    let cum = 0;
-    visCols.forEach((col, i) => {
-      leftOffsets.push(cum);
-      if (i <= freezeIdx) cum += headerWidthByCid.get(col.id) || col.w;
-    });
+  useEffect(() => {
+    if (showCon && scrollAreaRef.current) {
+      const top = scrollAreaRef.current.scrollTop;
+      setScrollState((current) => ({ ...current, top }));
+    }
+  }, [showCon]);
 
-    // Apply to all th/td with data-cid
-    const allCells = table.querySelectorAll<HTMLElement>("[data-cid]");
-    allCells.forEach((cell) => {
-      const cid = cell.getAttribute("data-cid")!;
-      const idx = visCols.findIndex((c) => c.id === cid);
-      if (idx < 0) return;
-      const frozen = idx <= freezeIdx;
-      const isEnd  = idx === freezeIdx;
-      if (frozen) {
-        cell.style.position = "sticky";
-        cell.style.left = `${leftOffsets[idx]}px`;
-        cell.style.zIndex = cell.tagName === "TH" ? "70" : "35";
-      } else {
-        cell.style.position = "";
-        cell.style.left = "";
-        cell.style.zIndex = "";
-      }
-      cell.classList.toggle("col-frozen", frozen);
-      cell.classList.toggle("col-freeze-end", isEnd);
-    });
-
-    // Group header rows: data-span-start / data-span-end
-    const groupCells = table.querySelectorAll<HTMLElement>("[data-span-start]");
-    groupCells.forEach((th) => {
-      const spanStart = parseInt(th.getAttribute("data-span-start") || "0");
-      const spanEnd   = parseInt(th.getAttribute("data-span-end")   || "0");
-      const anyFrozen = spanStart <= freezeIdx;
-      const isEnd     = spanStart <= freezeIdx && spanEnd >= freezeIdx;
-      if (anyFrozen) {
-        th.style.position = "sticky";
-        th.style.left = `${leftOffsets[Math.min(spanStart, leftOffsets.length - 1)]}px`;
-        th.style.zIndex = "80";
-      } else {
-        th.style.position = "";
-        th.style.left = "";
-        th.style.zIndex = "";
-      }
-      th.classList.toggle("col-frozen", anyFrozen);
-      th.classList.toggle("col-freeze-end", isEnd);
-    });
-  });
 
   // Build group spans for header row 1
   const groupSpans = useMemo(() => {
@@ -591,6 +552,16 @@ export function DemandPlanningGrid({
 
   const freezeIdx = visCols.findIndex((c) => c.id === freezeUntil);
 
+  const leftOffsets = useMemo(() => {
+    const offsets: number[] = [];
+    let cum = 0;
+    for (let i = 0; i < visCols.length; i++) {
+      offsets.push(cum);
+      if (i <= freezeIdx) cum += visCols[i].w;
+    }
+    return offsets;
+  }, [visCols, freezeIdx]);
+
   return (
     <>
       <style>{`
@@ -598,6 +569,8 @@ export function DemandPlanningGrid({
         td.col-frozen { background-color: inherit; }
         th.col-frozen { background-clip: padding-box; }
         .col-freeze-end { border-right: 3px solid #4ACCE0 !important; box-shadow: 8px 0 12px rgba(15,23,42,.26), 3px 0 8px rgba(74,200,220,.28); }
+        tr.row-selected td { background: #E8F1FF !important; }
+        tr.row-selected td:first-child { box-shadow: inset 3px 0 0 #2563EB; }
         .bo-pos  { color: #C42020; font-weight: 600; }
         .inb-pos { color: #1A4FC0; font-weight: 600; }
         .lv-crit { color: #C42020; font-weight: 700; }
@@ -622,6 +595,7 @@ export function DemandPlanningGrid({
       <div
         ref={scrollAreaRef}
         onScroll={(event) => {
+          if (!showCon) return;
           const top = event.currentTarget.scrollTop;
           setScrollState((current) => current.top === top ? current : { ...current, top });
         }}
@@ -639,12 +613,16 @@ export function DemandPlanningGrid({
           <thead style={{ position: "sticky", top: 0, zIndex: 40 }}>
             {/* Row 1: Group headers */}
             <tr>
-              {groupSpans.map((g) => (
+              {groupSpans.map((g) => {
+                const gFrozen = g.start <= freezeIdx;
+                const gIsEnd  = g.start <= freezeIdx && g.end >= freezeIdx;
+                return (
                 <th
                   key={`${g.grp}-${g.start}`}
                   colSpan={g.count}
                   data-span-start={g.start}
                   data-span-end={g.end}
+                  className={gIsEnd ? "col-frozen col-freeze-end" : gFrozen ? "col-frozen" : undefined}
                   style={{
                     background: GROUP_HEADER_COLORS[g.gh] || "#1E1C19",
                     color: "rgba(255,255,255,.85)",
@@ -657,11 +635,13 @@ export function DemandPlanningGrid({
                     whiteSpace: "nowrap",
                     textAlign: "center",
                     height: 24,
+                    ...(gFrozen ? { position: "sticky" as const, left: leftOffsets[g.start] ?? 0, zIndex: 80 } : {}),
                   }}
                 >
                   {GROUP_LABELS[g.grp] || g.grp}
                 </th>
-              ))}
+                );
+              })}
               {showCon && containerColumnCount > 0 && (
                 <th
                   colSpan={containerColumnCount}
@@ -687,12 +667,16 @@ export function DemandPlanningGrid({
             </tr>
             {/* Row 2: Container sub-header */}
             <tr>
-              {groupSpans.map((g) => (
+              {groupSpans.map((g) => {
+                const gFrozen = g.start <= freezeIdx;
+                const gIsEnd  = g.start <= freezeIdx && g.end >= freezeIdx;
+                return (
                 <th
                   key={`r2-${g.grp}-${g.start}`}
                   colSpan={g.count}
                   data-span-start={g.start}
                   data-span-end={g.end}
+                  className={gIsEnd ? "col-frozen col-freeze-end" : gFrozen ? "col-frozen" : undefined}
                   style={{
                     background: "#2A2825",
                     color: "rgba(255,255,255,.55)",
@@ -704,9 +688,11 @@ export function DemandPlanningGrid({
                     textAlign: "center",
                     whiteSpace: "nowrap",
                     height: 20,
+                    ...(gFrozen ? { position: "sticky" as const, left: leftOffsets[g.start] ?? 0, zIndex: 80 } : {}),
                   }}
                 />
-              ))}
+                );
+              })}
               {showCon && CONS.flatMap((c, ci) => {
                 const isLast = ci === CONS.length - 1;
                 const isBaseline = c.status === "baseline";
@@ -825,12 +811,15 @@ export function DemandPlanningGrid({
             </tr>
             {/* Row 3: Column names */}
             <tr>
-              {visCols.map((col) => {
+              {visCols.map((col, colIdx) => {
                 const resizableColumnId = isResizableColumnId(col.id) ? col.id : null;
+                const thFrozen = colIdx <= freezeIdx;
+                const thIsEnd  = colIdx === freezeIdx;
                 return (
                 <th
                   key={col.id}
                   data-cid={col.id}
+                  className={thIsEnd ? "col-frozen col-freeze-end" : thFrozen ? "col-frozen" : undefined}
                   onClick={SORT_VALUE_BY_COLUMN[col.id] ? () => handleSort(col.id) : undefined}
                   title={SORT_VALUE_BY_COLUMN[col.id] ? "Toggle ascending / descending sort" : undefined}
                   style={{
@@ -851,7 +840,8 @@ export function DemandPlanningGrid({
                     boxSizing: "border-box",
                     cursor: SORT_VALUE_BY_COLUMN[col.id] ? "pointer" : "default",
                     userSelect: "none",
-                    position: "relative",
+                    position: thFrozen ? "sticky" : "relative",
+                    ...(thFrozen ? { left: leftOffsets[colIdx], zIndex: 70 } : {}),
                   }}
                 >
                   {col.label.split("\n").map((line, i) => (
@@ -979,9 +969,21 @@ export function DemandPlanningGrid({
                 return (
                   <tr
                     key={r.sku}
-                    style={{ height: 28, cursor: "pointer", backgroundColor: rowBg }}
+                    data-row-sku={r.sku}
+                    onClick={(event) => {
+                      tableRef.current?.querySelector("tbody tr.row-selected")?.classList.remove("row-selected");
+                      selectedSkuRef.current = r.sku;
+                      event.currentTarget.classList.add("row-selected");
+                    }}
+                    style={{
+                      height: 28,
+                      cursor: "pointer",
+                      backgroundColor: rowBg,
+                    }}
                   >
-                    {visCols.map((col) => {
+                    {visCols.map((col, colIdx) => {
+                      const tdFrozen = colIdx <= freezeIdx;
+                      const tdIsEnd  = colIdx === freezeIdx;
                       const isCbm = col.id === "cbm";
                       const isCbmEditing = isCbm && cbmEditingSku === r.sku;
                       const isCbmSaving  = isCbm && cbmSavingSku  === r.sku;
@@ -1016,6 +1018,7 @@ export function DemandPlanningGrid({
                         <td
                           key={col.id}
                           data-cid={col.id}
+                          className={tdIsEnd ? "col-frozen col-freeze-end" : tdFrozen ? "col-frozen" : undefined}
                           onClick={isCbm && !isCbmEditing ? () => {
                             const initial = displayRow.cbm_per_unit ? String(displayRow.cbm_per_unit) : "";
                             cbmEditingValRef.current = initial;
@@ -1025,6 +1028,7 @@ export function DemandPlanningGrid({
                           style={{
                             ...cellStyle(col),
                             background: isCbmEditing ? "#FFFDE7" : TINT_COLORS[col.tint] || undefined,
+                            ...(tdFrozen ? { position: "sticky" as const, left: leftOffsets[colIdx], zIndex: 35 } : {}),
                             ...(isCbm && !isCbmEditing ? { cursor: "pointer", borderBottom: "1px dashed #90B8E0", color: "#1A4FC0" } : {}),
                             ...(isCbmSaving ? { color: undefined } : {}),
                             ...(isCbmEditing ? { padding: 0 } : {}),
