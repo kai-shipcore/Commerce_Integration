@@ -1,13 +1,81 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
-import { TODAY } from "./columns";
+import {
+  ALL_COLS,
+  ALL_GROUP_KEYS,
+  COMPACT_COLUMN_IDS,
+  GROUP_BTN_LABELS,
+  DEFAULT_FREEZE,
+  COLUMN_WIDTHS_STORAGE_KEY,
+  TODAY,
+  loadSavedColumnWidths,
+} from "./columns";
+import type { ColumnWidths } from "./columns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
-import type { CategoryFilter, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+import type { CategoryFilter, ColumnGroupKey, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+
+const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
+  fix: true,
+  stock: true,
+  wsales: true,
+  esales: true,
+  wavg: true,
+  eavg: true,
+  fba: true,
+  s30: true,
+  tavg: true,
+  inb: true,
+  con: false,
+};
+
+const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
+
+type ColumnSettings = {
+  groupVis: Record<ColumnGroupKey, boolean>;
+  compactMode: boolean;
+  showRemaining: boolean;
+  showMistake: boolean;
+  showZeroSales: boolean;
+  freezeUntil: string;
+};
+
+function loadSavedColumnSettings(): Partial<ColumnSettings> {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMN_SETTINGS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    const savedGroupVis = stored.groupVis && typeof stored.groupVis === "object" && !Array.isArray(stored.groupVis)
+      ? stored.groupVis as Record<string, unknown>
+      : {};
+    const groupVis = {
+      ...DEFAULT_GROUP_VIS,
+      ...Object.fromEntries(
+        ALL_GROUP_KEYS
+          .filter((key) => typeof savedGroupVis[key] === "boolean")
+          .map((key) => [key, savedGroupVis[key]]),
+      ),
+    } as Record<ColumnGroupKey, boolean>;
+    const freezeUntil = typeof stored.freezeUntil === "string" && ALL_COLS.some((col) => col.id === stored.freezeUntil)
+      ? stored.freezeUntil
+      : undefined;
+
+    return {
+      groupVis,
+      compactMode: typeof stored.compactMode === "boolean" ? stored.compactMode : undefined,
+      showRemaining: typeof stored.showRemaining === "boolean" ? stored.showRemaining : undefined,
+      showMistake: typeof stored.showMistake === "boolean" ? stored.showMistake : undefined,
+      showZeroSales: typeof stored.showZeroSales === "boolean" ? stored.showZeroSales : undefined,
+      freezeUntil,
+    };
+  } catch {
+    return {};
+  }
+}
 
 export function DemandPlanningDashboard() {
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
@@ -37,14 +105,135 @@ export function DemandPlanningDashboard() {
     setAsOfDate((current) => current || today);
   }, []);
 
-  const handleUrgencyFilter = useCallback((filter: UrgencyFilter) => {
-    setUrgencyFilter((current) => (current === filter ? null : filter));
-  }, []);
-
   const handleProductFilter = useCallback((filter: ProductFilter) => {
     setProductFilter(filter);
     setUrgencyFilter(null);
   }, []);
+
+  // ── Column visibility state (lifted from grid) ──────────────────────────────
+  const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
+  const [compactMode, setCompactMode] = useState(false);
+  const [showRemaining, setShowRemaining] = useState(true);
+  const [showMistake, setShowMistake] = useState(true);
+  const [showZeroSales, setShowZeroSales] = useState(false);
+  const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
+  const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
+  const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
+  const columnWidthsRef = useRef<ColumnWidths>({});
+  const containerAutoLoadKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const saved = loadSavedColumnWidths();
+    columnWidthsRef.current = saved;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setColumnWidths(saved);
+  }, []);
+
+  useEffect(() => {
+    const saved = loadSavedColumnSettings();
+    queueMicrotask(() => {
+      if (saved.groupVis) setGroupVis(saved.groupVis);
+      if (saved.compactMode !== undefined) setCompactMode(saved.compactMode);
+      if (saved.showRemaining !== undefined) setShowRemaining(saved.showRemaining);
+      if (saved.showMistake !== undefined) setShowMistake(saved.showMistake);
+      if (saved.showZeroSales !== undefined) setShowZeroSales(saved.showZeroSales);
+      if (saved.freezeUntil) setFreezeUntil(saved.freezeUntil);
+      setColumnSettingsLoaded(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!columnSettingsLoaded) return;
+    window.localStorage.setItem(
+      COLUMN_SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        groupVis,
+        compactMode,
+        showRemaining,
+        showMistake,
+        showZeroSales,
+        freezeUntil,
+      }),
+    );
+  }, [columnSettingsLoaded, groupVis, compactMode, showRemaining, showMistake, showZeroSales, freezeUntil]);
+
+  useEffect(() => {
+    if (!data.rows.length || containerDetailsLoaded || containerDetailsLoading) return;
+    const loadKey = `${velocityMode}|${isHistoricalDate ? asOfDate : "current"}|${data.last_sync ?? ""}|${data.rows.length}`;
+    if (containerAutoLoadKeyRef.current === loadKey) return;
+    containerAutoLoadKeyRef.current = loadKey;
+    loadContainerDetails();
+  }, [
+    asOfDate,
+    containerDetailsLoaded,
+    containerDetailsLoading,
+    data.last_sync,
+    data.rows.length,
+    isHistoricalDate,
+    loadContainerDetails,
+    velocityMode,
+  ]);
+
+  const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
+    columnWidthsRef.current = next;
+    setColumnWidths(next);
+  }, []);
+
+  const resetColumnWidths = useCallback(() => {
+    columnWidthsRef.current = {};
+    setColumnWidths({});
+    window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
+  }, []);
+
+  const handleAllOn = useCallback(() => {
+    setCompactMode(false);
+    setGroupVis((prev) =>
+      Object.fromEntries(Object.keys(prev).map((k) => [k, true])) as Record<ColumnGroupKey, boolean>,
+    );
+  }, []);
+
+  const handleCoreOnly = useCallback(() => {
+    setCompactMode(false);
+    const keep = new Set<string>(["fix", "stock", "s30", "tavg", "inb"]);
+    setGroupVis((prev) =>
+      Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
+    );
+  }, []);
+
+  const handleCompact = useCallback(() => {
+    setCompactMode(true);
+    const keep = new Set<string>(["fix", "stock", "tavg", "inb"]);
+    setGroupVis((prev) =>
+      Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
+    );
+    setFreezeUntil("sod");
+  }, []);
+
+  const handleToggleGroup = useCallback(
+    (key: ColumnGroupKey) => {
+      if (key !== "con") setCompactMode(false);
+      setGroupVis((prev) => {
+        const next = { ...prev, [key]: !prev[key] };
+        const nextVisCols = ALL_COLS.filter((c) => c.grp === "fix" || next[c.grp]);
+        const stillVis = nextVisCols.find((c) => c.id === freezeUntil);
+        if (!stillVis && nextVisCols.length > 0) {
+          setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
+        }
+        return next;
+      });
+    },
+    [freezeUntil],
+  );
+
+  const hiddenGroupCount = ALL_GROUP_KEYS.filter((k) => !groupVis[k]).length;
+
+  const visColsForFreeze = useMemo(
+    () => ALL_COLS
+      .filter((c) => c.grp === "fix" || groupVis[c.grp])
+      .filter((c) => !compactMode || COMPACT_COLUMN_IDS.has(c.id)),
+    [groupVis, compactMode],
+  );
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const handleExportCSV = useCallback(() => {
     const header = [
@@ -97,6 +286,11 @@ export function DemandPlanningDashboard() {
   }, [filteredRows]);
 
   const hasData = data.rows.length > 0;
+  const containerStatusText = containerDetailsLoading
+    ? "Loading containers..."
+    : containerDetailsLoaded
+      ? "Containers ready"
+      : "Containers pending";
 
   return (
     <div
@@ -130,9 +324,6 @@ export function DemandPlanningDashboard() {
         }}
       >
         <label style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-          <span style={{ color: "#5A5750", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
-            Product
-          </span>
           <select
             aria-label="Product category"
             value={categoryFilter}
@@ -158,67 +349,53 @@ export function DemandPlanningDashboard() {
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
-        {(["all", "orig", "cust"] as ProductFilter[]).map((filter) => {
-          const label = filter === "all" ? "All" : filter === "orig" ? "Original" : "Custom";
-          const active = productFilter === filter;
-          return (
-            <button
-              key={filter}
-              type="button"
-              onClick={() => handleProductFilter(filter)}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "3px 9px",
-                borderRadius: 10,
-                border: "1px solid",
-                borderColor: active ? "#aac0f0" : "#C2BFB5",
-                cursor: "pointer",
-                background: active ? "#E5EEFF" : "transparent",
-                color: active ? "#1A4FC0" : "#5A5750",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+        <select
+          aria-label="Product type filter"
+          value={productFilter}
+          onChange={(e) => handleProductFilter(e.target.value as ProductFilter)}
+          style={{
+            height: 26,
+            padding: "2px 7px",
+            borderRadius: 4,
+            border: "1px solid #C2BFB5",
+            background: productFilter !== "all" ? "#E5EEFF" : "#fff",
+            color: productFilter !== "all" ? "#1A4FC0" : "#1A1917",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <option value="all">All Types</option>
+          <option value="orig">Original</option>
+          <option value="cust">Custom</option>
+        </select>
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
-        {(["crit", "warn", "bo"] as UrgencyFilter[]).map((filter) => {
-          const active = urgencyFilter === filter;
-          const label = filter === "crit" ? "Critical" : filter === "warn" ? "Warning" : "BackOrder";
-          const activeStyle =
-            filter === "crit"
-              ? { background: "#FFEDED", color: "#C42020", borderColor: "#f0aaaa" }
-              : filter === "warn"
-                ? { background: "#FEF3D8", color: "#9A5200", borderColor: "#f0d0aa" }
-                : { background: "#E5EEFF", color: "#1A4FC0", borderColor: "#aac0f0" };
-          return (
-            <button
-              key={filter}
-              type="button"
-              onClick={() => handleUrgencyFilter(filter)}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "3px 9px",
-                borderRadius: 10,
-                border: "1px solid",
-                borderColor: active ? activeStyle.borderColor : "#C2BFB5",
-                cursor: "pointer",
-                background: active ? activeStyle.background : "transparent",
-                color: active ? activeStyle.color : "#5A5750",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+        <select
+          aria-label="Urgency filter"
+          value={urgencyFilter ?? ""}
+          onChange={(e) => setUrgencyFilter(e.target.value === "" ? null : e.target.value as UrgencyFilter)}
+          style={{
+            height: 26,
+            padding: "2px 7px",
+            borderRadius: 4,
+            border: "1px solid",
+            borderColor: urgencyFilter === "crit" ? "#f0aaaa" : urgencyFilter === "warn" ? "#f0d0aa" : urgencyFilter === "bo" ? "#aac0f0" : "#C2BFB5",
+            background: urgencyFilter === "crit" ? "#FFEDED" : urgencyFilter === "warn" ? "#FEF3D8" : urgencyFilter === "bo" ? "#E5EEFF" : "#fff",
+            color: urgencyFilter === "crit" ? "#C42020" : urgencyFilter === "warn" ? "#9A5200" : urgencyFilter === "bo" ? "#1A4FC0" : "#1A1917",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <option value="">— All Status</option>
+          <option value="crit">Critical</option>
+          <option value="warn">Warning</option>
+          <option value="bo">BackOrder</option>
+        </select>
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
@@ -281,9 +458,192 @@ export function DemandPlanningDashboard() {
           ) : null}
         </div>
 
+        {hasData && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  height: 30,
+                  boxSizing: "border-box",
+                  padding: "0 10px",
+                  borderRadius: 4,
+                  border: "1px solid #C2BFB5",
+                  cursor: "pointer",
+                  color: "#1A1917",
+                  background: "#fff",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                ⊞ Columns
+                {compactMode ? (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 8, background: "#E5EEFF", color: "#1A4FC0" }}>
+                    Compact
+                  </span>
+                ) : hiddenGroupCount > 0 ? (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 8, background: "#FFEDED", color: "#C42020" }}>
+                    {hiddenGroupCount} hidden
+                  </span>
+                ) : null}
+                {" ▾"}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" style={{ width: 272, padding: 0, overflow: "hidden" }}>
+              {/* Quick Presets */}
+              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Quick Preset
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([
+                    { label: "All", action: handleAllOn, active: !compactMode && hiddenGroupCount === 0 },
+                    { label: "Core", action: handleCoreOnly, active: false },
+                    { label: "Compact", action: handleCompact, active: compactMode },
+                  ] as { label: string; action: () => void; active: boolean }[]).map(({ label, action, active }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={action}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: "4px 12px",
+                        borderRadius: 5,
+                        border: active ? "1px solid #3B82F6" : "1px solid #CBD5E1",
+                        cursor: "pointer",
+                        background: active ? "#EFF6FF" : "#F8FAFC",
+                        color: active ? "#1D4ED8" : "#475569",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Column Groups */}
+              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Column Groups
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {ALL_GROUP_KEYS.map((key) => {
+                    const checked = groupVis[key];
+                    return (
+                      <label
+                        key={key}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "3px 6px",
+                          borderRadius: 4,
+                          cursor: "pointer",
+                          background: checked ? "rgba(59,130,246,.06)" : "transparent",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleToggleGroup(key)}
+                          style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
+                        />
+                        <span style={{ fontSize: 12, fontWeight: 500, color: checked ? "#1E3A5F" : "#94A3B8" }}>
+                          {key === "con" && containerDetailsLoading ? "Loading Container..." : GROUP_BTN_LABELS[key]}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Options */}
+              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Options
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showRemaining ? "rgba(59,130,246,.06)" : "transparent" }}>
+                    <input type="checkbox" checked={showRemaining} onChange={() => setShowRemaining((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
+                    <span style={{ fontSize: 12, fontWeight: 500, color: showRemaining ? "#1E3A5F" : "#94A3B8" }}>Show Remaining</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showMistake ? "rgba(59,130,246,.06)" : "transparent" }}>
+                    <input type="checkbox" checked={showMistake} onChange={() => setShowMistake((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
+                    <span style={{ fontSize: 12, fontWeight: 500, color: showMistake ? "#1E3A5F" : "#94A3B8" }}>Show Mistake</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent" }}>
+                    <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
+                    <span style={{ fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>Show Zero-Sales SKUs</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Freeze Column */}
+              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  📌 Freeze Column
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <select
+                    value={freezeUntil}
+                    onChange={(e) => setFreezeUntil(e.target.value)}
+                    style={{ flex: 1, fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
+                  >
+                    {visColsForFreeze.map((col) => (
+                      <option key={col.id} value={col.id}>
+                        {col.label.replace("\n", " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setFreezeUntil(DEFAULT_FREEZE)}
+                    style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B", whiteSpace: "nowrap" }}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+
+              {/* Reset Column Widths */}
+              <div style={{ padding: "8px 14px" }}>
+                <button
+                  type="button"
+                  onClick={resetColumnWidths}
+                  style={{ width: "100%", fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
+                >
+                  Reset Column Widths
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+
         <StatusBar rows={filteredRows} inline />
 
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 10 }}>
+          {hasData ? (
+            <span
+              style={{
+                color: containerDetailsLoaded ? "#0A6A45" : "#7A766F",
+                background: containerDetailsLoaded ? "#E3F5EC" : "#F5F4EF",
+                border: "1px solid #D8D6CE",
+                borderRadius: 4,
+                padding: "3px 7px",
+                fontSize: 11,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {containerStatusText}
+            </span>
+          ) : null}
           {loadError && (
             <span style={{ color: "#C42020", fontSize: 11 }}>Error: {loadError}</span>
           )}
@@ -424,13 +784,19 @@ export function DemandPlanningDashboard() {
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
           search={search}
-          onSearchChange={setSearch}
-          onProductFilterChange={handleProductFilter}
-          onUrgencyFilterChange={setUrgencyFilter}
           onFilteredRowsChange={setFilteredRows}
           onLoadContainerDetails={loadContainerDetails}
           containerDetailsLoading={containerDetailsLoading}
           containerDetailsLoaded={containerDetailsLoaded}
+          groupVis={groupVis}
+          compactMode={compactMode}
+          showRemaining={showRemaining}
+          showMistake={showMistake}
+          showZeroSales={showZeroSales}
+          freezeUntil={freezeUntil}
+          columnWidths={columnWidths}
+          columnWidthsRef={columnWidthsRef}
+          onColumnWidthsChange={handleColumnWidthsChange}
         />
       </div>
     </div>

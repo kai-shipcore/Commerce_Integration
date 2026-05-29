@@ -10,15 +10,19 @@ import {
 import {
   ALL_COLS,
   CON_SUBCOLS,
+  COMPACT_COLUMN_IDS,
+  COLUMN_WIDTHS_STORAGE_KEY,
   GROUP_HEADER_COLORS,
   GROUP_LABELS,
-  GROUP_BTN_COLORS,
   TINT_COLORS,
   TODAY,
+  clampColumnWidth,
   daysTo,
+  isResizableColumnId,
   urgStatus,
 } from "./columns";
-import type { CellContent, ColDef } from "./columns";
+import type { CellContent, ColDef, ColumnWidths, ResizableColumnId } from "./columns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type {
   CategoryFilter,
   ColumnGroupKey,
@@ -29,8 +33,6 @@ import type {
   UrgencyFilter,
   UrgencyStatus,
 } from "@/types/demand-planning";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-
 type ChainDerived = {
   open_orders: number | null;
   avail_qty: number | null;
@@ -110,30 +112,25 @@ interface DemandPlanningGridProps {
   productFilter: ProductFilter;
   urgencyFilter: UrgencyFilter | null;
   search: string;
-  onSearchChange: (v: string) => void;
-  onProductFilterChange: (f: ProductFilter) => void;
-  onUrgencyFilterChange: (f: UrgencyFilter | null) => void;
   onFilteredRowsChange: (rows: DemandRow[]) => void;
   onLoadContainerDetails: () => void;
   containerDetailsLoading: boolean;
   containerDetailsLoaded: boolean;
+  // Column visibility state (owned by dashboard)
+  groupVis: Record<ColumnGroupKey, boolean>;
+  compactMode: boolean;
+  showRemaining: boolean;
+  showMistake: boolean;
+  showZeroSales: boolean;
+  freezeUntil: string;
+  columnWidths: ColumnWidths;
+  columnWidthsRef: React.MutableRefObject<ColumnWidths>;
+  onColumnWidthsChange: (next: ColumnWidths) => void;
 }
 
-const DEFAULT_FREEZE = "sod";
 const ROW_HEIGHT = 28;
 const VIRTUAL_OVERSCAN = 12;
 const TABLE_HEADER_HEIGHT = 80;
-const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
-
-type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
-type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
-
-const RESIZABLE_COLUMN_LIMITS: Record<ResizableColumnId, { min: number; max: number }> = {
-  row_num: { min: 36, max: 90 },
-  cont_info: { min: 90, max: 320 },
-  sku: { min: 160, max: 420 },
-  inb_lst: { min: 120, max: 420 },
-};
 
 type SortValue = number | string | null | undefined;
 type SortDirection = "asc" | "desc";
@@ -199,68 +196,12 @@ function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" {
   return "SC";
 }
 
-const ALL_GROUP_KEYS: ColumnGroupKey[] = [
-  "stock","wsales","esales","wavg","eavg","fba","s30","tavg","inb","con",
-];
-
-const COMPACT_COLUMN_IDS = new Set([
-  "back",
-  "status",
-  "sku",
-  "west",
-  "east",
-  "total",
-  "tavg_p",
-  "tavg_r",
-  "tavg_c",
-  "inb_qty",
-  "inb_lst",
-  "next_eta",
-  "sod",
-]);
-
-const GROUP_BTN_LABELS: Record<string, string> = {
-  wsales: "📈 West Sales",
-  stock:  "Inventory",
-  esales: "📈 East Sales",
-  wavg:   "〜 W Avg",
-  eavg:   "〜 E Avg",
-  fba:    "FBA Avg",
-  s30:    "🗓 30D Sales",
-  tavg:   "〜 Total Avg",
-  inb:    "🚢 Inbound/SOD",
-  con:    "📋 Container 컬럼",
-};
-
 function renderCell(content: CellContent): React.ReactNode {
   if (content === null || content === undefined) return "";
   if (typeof content === "object" && "html" in content) {
     return <span dangerouslySetInnerHTML={{ __html: content.html }} />;
   }
   return String(content);
-}
-
-function isResizableColumnId(value: string): value is ResizableColumnId {
-  return value in RESIZABLE_COLUMN_LIMITS;
-}
-
-function clampColumnWidth(columnId: ResizableColumnId, width: number) {
-  const { min, max } = RESIZABLE_COLUMN_LIMITS[columnId];
-  return Math.min(max, Math.max(min, width));
-}
-
-function loadSavedColumnWidths(): ColumnWidths {
-  if (typeof window === "undefined") return {};
-  try {
-    const stored = JSON.parse(window.localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
-    return Object.fromEntries(
-      Object.entries(stored)
-        .filter(([key, value]) => isResizableColumnId(key) && typeof value === "number" && Number.isFinite(value))
-        .map(([key, value]) => [key, clampColumnWidth(key as ResizableColumnId, value as number)])
-    ) as ColumnWidths;
-  } catch {
-    return {};
-  }
 }
 
 function expandableTextValue(columnId: string, row: DemandRow): string | null {
@@ -365,6 +306,15 @@ export function DemandPlanningGrid({
   onLoadContainerDetails,
   containerDetailsLoading,
   containerDetailsLoaded,
+  groupVis,
+  compactMode,
+  showRemaining,
+  showMistake,
+  showZeroSales,
+  freezeUntil,
+  columnWidths,
+  columnWidthsRef,
+  onColumnWidthsChange,
 }: DemandPlanningGridProps) {
   const { rows: ROWS } = data;
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
@@ -386,13 +336,6 @@ export function DemandPlanningGrid({
     [data.containers, categoryFilter, etaOverrides],
   );
 
-  const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>({
-    fix: true, stock: true, wsales: true, esales: true, wavg: true, eavg: true,
-    fba: true, s30: true, tavg: true, inb: true, con: false,
-  });
-  const [compactMode, setCompactMode] = useState(false);
-  const [showRemaining, setShowRemaining] = useState(true);
-  const [showMistake, setShowMistake] = useState(true);
   const [cbmEditingSku, setCbmEditingSku] = useState<string | null>(null);
   const [cbmEditingVal, setCbmEditingVal] = useState("");
   const cbmEditingValRef = useRef("");
@@ -415,11 +358,8 @@ export function DemandPlanningGrid({
     return totals;
   }, [CONS, ROWS]);
 
-  const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [sortColumnId, setSortColumnId] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
-  const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
-  const columnWidthsRef = useRef<ColumnWidths>(columnWidths);
   const tableRef = useRef<HTMLTableElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [scrollState, setScrollState] = useState({ top: 0, height: 600 });
@@ -438,7 +378,6 @@ export function DemandPlanningGrid({
   const [containerChainMap, setContainerChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   // Row-level corrections for active-container aggregates (sku → partial DemandRow overrides)
   const [rowTotalOverrides, setRowTotalOverrides] = useState<Map<string, { total_inbound_qty?: number; containers_list?: string | null }>>(new Map());
-  const [showZeroSales, setShowZeroSales] = useState(false);
 
   const visCols = useMemo<ColDef[]>(
     () => ALL_COLS
@@ -453,6 +392,10 @@ export function DemandPlanningGrid({
   );
 
   const showCon = groupVis["con"];
+  const showContainerLoadingColumn = showCon && containerDetailsLoading && !containerDetailsLoaded;
+  const containerColumnCount = showCon
+    ? (CONS.length * visSubCols.length) + (showContainerLoadingColumn ? 1 : 0)
+    : 0;
   useEffect(() => {
     if (showCon && !containerDetailsLoaded && !containerDetailsLoading) {
       onLoadContainerDetails();
@@ -508,7 +451,7 @@ export function DemandPlanningGrid({
       const nextWidth = clampColumnWidth(resize.columnId, resize.startWidth + moveEvent.clientX - resize.startX);
       const next = { ...columnWidthsRef.current, [resize.columnId]: nextWidth };
       columnWidthsRef.current = next;
-      setColumnWidths(next);
+      onColumnWidthsChange(next);
     };
     const onPointerUp = () => {
       const activeResize = resizeRef.current;
@@ -518,19 +461,9 @@ export function DemandPlanningGrid({
     };
     document.addEventListener("pointermove", onPointerMove, { signal: controller.signal });
     document.addEventListener("pointerup", onPointerUp, { signal: controller.signal });
-  }, []);
-
-  const resetColumnWidths = useCallback(() => {
-    columnWidthsRef.current = {};
-    setColumnWidths({});
-    window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
-  }, []);
+  }, [onColumnWidthsChange]);
 
   useEffect(() => {
-    const saved = loadSavedColumnWidths();
-    columnWidthsRef.current = saved;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
-    setColumnWidths(saved);
     return () => resizeRef.current?.controller.abort();
   }, []);
 
@@ -638,62 +571,6 @@ export function DemandPlanningGrid({
     });
   });
 
-  const handleToggleGroup = useCallback(
-    (key: ColumnGroupKey) => {
-      if (key !== "con") setCompactMode(false);
-      setGroupVis((prev) => {
-        const next = { ...prev, [key]: !prev[key] };
-        // If freeze col is now hidden, reset to last visible
-        const nextVisCols = ALL_COLS.filter(
-          (c) => c.grp === "fix" || next[c.grp],
-        );
-        const stillVis = nextVisCols.find((c) => c.id === freezeUntil);
-        if (!stillVis && nextVisCols.length > 0) {
-          setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
-        }
-        return next;
-      });
-    },
-    [freezeUntil],
-  );
-
-  const handleAllOn = useCallback(() => {
-    setCompactMode(false);
-    setGroupVis((prev) =>
-      Object.fromEntries(Object.keys(prev).map((k) => [k, true])) as Record<ColumnGroupKey, boolean>,
-    );
-  }, []);
-
-  const handleCoreOnly = useCallback(() => {
-    setCompactMode(false);
-    const keep = new Set<string>(["fix", "stock", "s30", "tavg", "inb"]);
-    setGroupVis((prev) =>
-      Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
-    );
-  }, []);
-
-  const handleCompact = useCallback(() => {
-    setCompactMode(true);
-    const keep = new Set<string>(["fix", "stock", "tavg", "inb"]);
-    setGroupVis((prev) =>
-      Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
-    );
-    setFreezeUntil("sod");
-  }, []);
-
-  const handleSetFreeze = useCallback(
-    (colId: string) => {
-      const idx    = visCols.findIndex((c) => c.id === colId);
-      const curIdx = visCols.findIndex((c) => c.id === freezeUntil);
-      if (idx === curIdx && idx > 0) {
-        setFreezeUntil(visCols[idx - 1].id);
-      } else {
-        setFreezeUntil(colId);
-      }
-    },
-    [visCols, freezeUntil],
-  );
-
   // Build group spans for header row 1
   const groupSpans = useMemo(() => {
     const spans: { grp: string; gh: string; count: number; start: number; end: number }[] = [];
@@ -740,197 +617,6 @@ export function DemandPlanningGrid({
         .d-ok   { background: #0A6A45; }
       `}</style>
 
-      {/* Column controls only apply after planning data is loaded. */}
-      {ROWS.length > 0 ? (
-        <>
-          {/* Column Group Toggle Bar */}
-          <div
-            style={{
-              background: "#172033",
-              borderBottom: "2px solid #334155",
-              height: 38,
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "0 10px",
-              overflowX: "auto",
-            }}
-          >
-        <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,240,.78)", whiteSpace: "nowrap", flexShrink: 0 }}>
-          컬럼 그룹
-        </span>
-        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
-        {ALL_GROUP_KEYS.filter((k) => k !== "con").map((key) => {
-          const active = groupVis[key];
-          return (
-            <button
-              key={key}
-              onClick={() => handleToggleGroup(key)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 3,
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "3px 8px",
-                borderRadius: 10,
-                border: active ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)",
-                cursor: "pointer",
-                color: active ? "#F8FAFC" : "rgba(203,213,225,.82)",
-                background: active ? GROUP_BTN_COLORS[key] || "rgba(255,255,255,.08)" : "rgba(15,23,42,.5)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              {GROUP_BTN_LABELS[key]}
-            </button>
-          );
-        })}
-        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
-        <button
-          onClick={() => setShowRemaining((v) => !v)}
-          style={{
-            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
-            border: showRemaining ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)", cursor: "pointer",
-            color: showRemaining ? "#F8FAFC" : "rgba(203,213,225,.82)",
-            background: showRemaining ? "rgba(120,160,100,.55)" : "rgba(15,23,42,.5)",
-            whiteSpace: "nowrap", flexShrink: 0,
-          }}
-        >
-          Remaining
-        </button>
-        <button
-          onClick={() => setShowMistake((v) => !v)}
-          style={{
-            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
-            border: showMistake ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)", cursor: "pointer",
-            color: showMistake ? "#F8FAFC" : "rgba(203,213,225,.82)",
-            background: showMistake ? "rgba(120,160,100,.55)" : "rgba(15,23,42,.5)",
-            whiteSpace: "nowrap", flexShrink: 0,
-          }}
-        >
-          Mistake
-        </button>
-        <button
-          onClick={() => handleToggleGroup("con")}
-          style={{
-            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
-            border: groupVis["con"] ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)", cursor: "pointer",
-            color: groupVis["con"] ? "#F8FAFC" : "rgba(203,213,225,.82)",
-            background: groupVis["con"] ? GROUP_BTN_COLORS["con"] : "rgba(15,23,42,.5)",
-            whiteSpace: "nowrap", flexShrink: 0,
-          }}
-        >
-          {containerDetailsLoading ? "Loading Container..." : GROUP_BTN_LABELS["con"]}
-        </button>
-        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
-        <button
-          onClick={() => setShowZeroSales((v) => !v)}
-          style={{
-            fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10,
-            border: showZeroSales ? "1px solid rgba(226,232,240,.55)" : "1px solid rgba(148,163,184,.36)",
-            cursor: "pointer",
-            color: showZeroSales ? "#F8FAFC" : "rgba(203,213,225,.82)",
-            background: showZeroSales ? "rgba(120,160,100,.55)" : "rgba(15,23,42,.5)",
-            whiteSpace: "nowrap", flexShrink: 0,
-          }}
-        >
-          {showZeroSales ? "0 Sales Shown" : "0 Sales Hidden"}
-        </button>
-        <div style={{ width: 1, height: 18, background: "rgba(148,163,184,.32)", margin: "0 2px", flexShrink: 0 }} />
-        <button
-          onClick={handleAllOn}
-          style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10, border: "1px solid rgba(148,163,184,.45)", cursor: "pointer", color: "rgba(226,232,240,.86)", background: "rgba(15,23,42,.5)", whiteSpace: "nowrap", flexShrink: 0 }}
-        >
-          모두 표시
-        </button>
-        <button
-          onClick={handleCoreOnly}
-          style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10, border: "1px solid rgba(148,163,184,.45)", cursor: "pointer", color: "rgba(226,232,240,.86)", background: "rgba(15,23,42,.5)", whiteSpace: "nowrap", flexShrink: 0 }}
-        >
-          핵심만
-        </button>
-        <button
-          onClick={handleCompact}
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            padding: "4px 9px",
-            borderRadius: 10,
-            border: compactMode ? "1px solid rgba(226,232,240,.7)" : "1px solid rgba(148,163,184,.45)",
-            cursor: "pointer",
-            color: compactMode ? "#F8FAFC" : "rgba(226,232,240,.86)",
-            background: compactMode ? "rgba(26,92,219,.58)" : "rgba(15,23,42,.5)",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-        >
-          Compact
-        </button>
-        <button
-          onClick={resetColumnWidths}
-          style={{ fontSize: 11, fontWeight: 700, padding: "4px 9px", borderRadius: 10, border: "1px solid rgba(148,163,184,.45)", cursor: "pointer", color: "rgba(226,232,240,.86)", background: "rgba(15,23,42,.5)", whiteSpace: "nowrap", flexShrink: 0 }}
-        >
-          Reset Widths
-        </button>
-          </div>
-
-          {/* Freeze Selector Bar */}
-          <div
-            style={{
-              background: "#0F172A",
-              borderBottom: "2px solid #4A8AAA",
-              minHeight: 28,
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              overflowX: "auto",
-              padding: "0 10px",
-            }}
-          >
-        <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(226,232,240,.78)", whiteSpace: "nowrap", paddingRight: 8, fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", flexShrink: 0 }}>
-          📌 고정 컬럼 선택 →
-        </span>
-        {visCols.map((col, i) => {
-          const frozen = i <= freezeIdx;
-          const isEnd  = i === freezeIdx;
-          const label  = col.label.replace(/\n/g, " ").slice(0, 12);
-          return (
-            <button
-              key={col.id}
-              onClick={() => handleSetFreeze(col.id)}
-              style={{
-                fontSize: 11,
-                fontWeight: isEnd ? 800 : frozen ? 700 : 600,
-                padding: "3px 8px",
-                borderTop: "none",
-                borderBottom: "none",
-                borderLeft: "none",
-                borderRight: isEnd ? "3px solid #4ACCE0" : "1px solid #2A2825",
-                background: isEnd ? "rgba(74,204,220,.2)" : frozen ? "rgba(74,170,204,.1)" : "transparent",
-                cursor: "pointer",
-                color: isEnd ? "#F8FAFC" : frozen ? "#67E8F9" : "rgba(203,213,225,.72)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-                fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-                position: "relative",
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
-        <button
-          onClick={() => setFreezeUntil(DEFAULT_FREEZE)}
-          style={{ fontSize: 10, padding: "4px 9px", marginLeft: 6, borderRadius: 4, border: "1px solid rgba(74,170,204,.4)", background: "rgba(74,170,204,.08)", color: "#4ACCE0", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
-        >
-          기본값 복원
-        </button>
-          </div>
-        </>
-      ) : null}
-
       {/* Table */}
       <div
         ref={scrollAreaRef}
@@ -975,11 +661,11 @@ export function DemandPlanningGrid({
                   {GROUP_LABELS[g.grp] || g.grp}
                 </th>
               ))}
-              {showCon && CONS.length > 0 && (
+              {showCon && containerColumnCount > 0 && (
                 <th
-                  colSpan={CONS.length * visSubCols.length}
+                  colSpan={containerColumnCount}
                   data-span-start={visCols.length}
-                  data-span-end={visCols.length + CONS.length * visSubCols.length - 1}
+                  data-span-end={visCols.length + containerColumnCount - 1}
                   style={{
                     background: "#0D2535",
                     color: "rgba(255,255,255,.85)",
@@ -1117,6 +803,24 @@ export function DemandPlanningGrid({
                   ] : []),
                 ];
               })}
+              {showContainerLoadingColumn ? (
+                <th
+                  style={{
+                    background: "#2A2825",
+                    color: "#88D0FF",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "2px 8px",
+                    borderRight: "1px solid #3a3835",
+                    borderBottom: "1px solid #555",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                    height: 20,
+                  }}
+                >
+                  Preparing details
+                </th>
+              ) : null}
             </tr>
             {/* Row 3: Column names */}
             <tr>
@@ -1218,13 +922,36 @@ export function DemandPlanningGrid({
                   );
                 });
               })}
+              {showContainerLoadingColumn ? (
+                <th
+                  style={{
+                    background: "#34312D",
+                    color: "rgba(255,255,255,.7)",
+                    fontSize: 10,
+                    fontWeight: 500,
+                    padding: "2px 4px",
+                    borderRight: "1px solid #3a3835",
+                    borderBottom: "2px solid #555",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                    height: 36,
+                    lineHeight: 1.25,
+                    minWidth: 180,
+                    maxWidth: 180,
+                    width: 180,
+                    boxSizing: "border-box",
+                  }}
+                >
+                  Loading
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {displayedRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={visCols.length + (showCon ? CONS.length * visSubCols.length : 0)}
+                  colSpan={visCols.length + containerColumnCount}
                   style={{ padding: 20, textAlign: "center", color: "#9A9790" }}
                 >
                   조건에 맞는 SKU 없음
@@ -1235,7 +962,7 @@ export function DemandPlanningGrid({
                 {virtualRows.topHeight > 0 ? (
                   <tr aria-hidden="true" style={{ height: virtualRows.topHeight }}>
                     <td
-                      colSpan={visCols.length + (showCon ? CONS.length * visSubCols.length : 0)}
+                      colSpan={visCols.length + containerColumnCount}
                       style={{ height: virtualRows.topHeight, padding: 0, border: 0 }}
                     />
                   </tr>
@@ -1531,13 +1258,36 @@ export function DemandPlanningGrid({
                         );
                       });
                     })}
+                    {showContainerLoadingColumn ? (
+                      <td
+                        style={{
+                          minWidth: 180,
+                          maxWidth: 180,
+                          width: 180,
+                          boxSizing: "border-box",
+                          padding: "2px 8px",
+                          borderRight: "1px solid #D8D6CE",
+                          borderBottom: "1px solid #D8D6CE",
+                          verticalAlign: "middle",
+                          whiteSpace: "nowrap",
+                          height: 28,
+                          background: "#F2F1EC",
+                          color: "#7A766F",
+                          textAlign: "center",
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}
+                      >
+                        Loading...
+                      </td>
+                    ) : null}
                   </tr>
                 );
                 })}
                 {virtualRows.bottomHeight > 0 ? (
                   <tr aria-hidden="true" style={{ height: virtualRows.bottomHeight }}>
                     <td
-                      colSpan={visCols.length + (showCon ? CONS.length * visSubCols.length : 0)}
+                      colSpan={visCols.length + containerColumnCount}
                       style={{ height: virtualRows.bottomHeight, padding: 0, border: 0 }}
                     />
                   </tr>

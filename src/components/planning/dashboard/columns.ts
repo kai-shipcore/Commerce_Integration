@@ -170,6 +170,68 @@ export const ALL_COLS: ColDef[] = [
   })},
 ];
 
+// ── Column visibility / toolbar shared exports ───────────────────────────────
+
+export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
+  "stock","wsales","esales","wavg","eavg","fba","s30","tavg","inb","con",
+];
+
+export const COMPACT_COLUMN_IDS = new Set<string>([
+  "back","status","sku","west","east","total",
+  "tavg_p","tavg_r","tavg_c","inb_qty","inb_lst","next_eta","sod",
+]);
+
+export const GROUP_BTN_LABELS: Record<string, string> = {
+  wsales: "📈 West Sales",
+  stock:  "Inventory",
+  esales: "📈 East Sales",
+  wavg:   "〜 W Avg",
+  eavg:   "〜 E Avg",
+  fba:    "FBA Avg",
+  s30:    "🗓 30D Sales",
+  tavg:   "〜 Total Avg",
+  inb:    "🚢 Inbound/SOD",
+  con:    "📋 Container 컬럼",
+};
+
+export const DEFAULT_FREEZE = "sod";
+export const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
+
+export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
+export type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
+
+export const RESIZABLE_COLUMN_LIMITS: Record<ResizableColumnId, { min: number; max: number }> = {
+  row_num:   { min: 36, max: 90  },
+  cont_info: { min: 90, max: 320 },
+  sku:       { min: 160, max: 420 },
+  inb_lst:   { min: 120, max: 420 },
+};
+
+export function isResizableColumnId(value: string): value is ResizableColumnId {
+  return value in RESIZABLE_COLUMN_LIMITS;
+}
+
+export function clampColumnWidth(columnId: ResizableColumnId, width: number): number {
+  const { min, max } = RESIZABLE_COLUMN_LIMITS[columnId];
+  return Math.min(max, Math.max(min, width));
+}
+
+export function loadSavedColumnWidths(): ColumnWidths {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(stored)
+        .filter(([key, value]) => isResizableColumnId(key) && typeof value === "number" && Number.isFinite(value))
+        .map(([key, value]) => [key, clampColumnWidth(key as ResizableColumnId, value as number)])
+    ) as ColumnWidths;
+  } catch {
+    return {};
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const CON_SUBCOLS: ConSubColDef[] = [
   { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd) => cd.inbound_qty !== null && cd.inbound_qty !== undefined ? cd.inbound_qty : "" },
   { id: "remaining", label: "Remaining",   w: 54, align: "num", tint: "t-cn",      val: (_cd, _c, row) => row.remaining || "" },
