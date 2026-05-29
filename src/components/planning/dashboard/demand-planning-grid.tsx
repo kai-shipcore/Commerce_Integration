@@ -325,6 +325,7 @@ export function DemandPlanningGrid({
         : c
       )
       .filter((c) => {
+        if (c.status === "baseline") return true;
         if (!c.categories || c.categories.length === 0) {
           // fallback: name-suffix heuristic for containers without category data
           if (c.name.endsWith("-FLOOR")) return categoryFilter === "fm";
