@@ -1085,6 +1085,7 @@ export function DemandPlanningGrid({
                             fontSize: "inherit",
                             fontWeight: "inherit",
                             fontFamily: "inherit",
+                            colorScheme: "dark",
                             cursor: "pointer",
                             padding: 0,
                             outline: "none",
