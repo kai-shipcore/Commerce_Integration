@@ -29,6 +29,49 @@ const sortLabels: Record<SortKey, string> = {
   sod: "SOD",
 };
 
+type SkuFilterKey = "all" | "critical" | "watch" | "high" | "low";
+
+const SKU_FILTERS: Array<{
+  id: SkuFilterKey;
+  label: string;
+  icon?: string;
+  activeClass: string;
+  hoverClass: string;
+}> = [
+  {
+    id: "all",
+    label: "All",
+    activeClass: "border-[#1a4db0] bg-[#ebf0fd] text-[#1a4db0] dark:border-blue-500 dark:bg-blue-900/40 dark:text-blue-300",
+    hoverClass: "hover:bg-[#f0eee9] dark:hover:bg-zinc-700/60",
+  },
+  {
+    id: "critical",
+    label: "Critical",
+    icon: "●",
+    activeClass: "border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/60 dark:text-red-300",
+    hoverClass: "hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400",
+  },
+  {
+    id: "watch",
+    label: "Watch",
+    icon: "▲",
+    activeClass: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-950/60 dark:text-amber-300",
+    hoverClass: "hover:border-amber-200 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-950/30 dark:hover:text-amber-400",
+  },
+  {
+    id: "high",
+    label: "High",
+    activeClass: "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300",
+    hoverClass: "hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400",
+  },
+  {
+    id: "low",
+    label: "Low",
+    activeClass: "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-500 dark:bg-zinc-700/60 dark:text-zinc-200",
+    hoverClass: "hover:bg-[#f0eee9] dark:hover:bg-zinc-700/60",
+  },
+];
+
 function SortHeader({
   label,
   sortId,
@@ -73,12 +116,33 @@ export function SkuBrowserPanel({
 }: SkuBrowserPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [skuFilter, setSkuFilter] = useState<SkuFilterKey>("all");
   const [scrollTop, setScrollTop] = useState(0);
   const [listHeight, setListHeight] = useState(600);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Count per filter category (always from unfiltered rows)
+  const filterCounts = useMemo(() => ({
+    all: rows.length,
+    critical: rows.filter((r) => getUrgency(r) === "critical").length,
+    watch: rows.filter((r) => getUrgency(r) === "watch").length,
+    high: rows.filter((r) => getUrgency(r) === "healthy").length,
+    low: rows.filter((r) => (r.back ?? 0) < 0).length,
+  }), [rows]);
+
+  // Apply filter then sort
+  const filteredRows = useMemo(() => {
+    switch (skuFilter) {
+      case "critical": return rows.filter((r) => getUrgency(r) === "critical");
+      case "watch":    return rows.filter((r) => getUrgency(r) === "watch");
+      case "high":     return rows.filter((r) => getUrgency(r) === "healthy");
+      case "low":      return rows.filter((r) => (r.back ?? 0) < 0);
+      default:         return rows;
+    }
+  }, [rows, skuFilter]);
+
   const sortedRows = useMemo(
-    () => [...rows].sort((left, right) => {
+    () => [...filteredRows].sort((left, right) => {
       let result = 0;
       if (sortKey === "sku") {
         result = left.sku.localeCompare(right.sku, undefined, { numeric: true, sensitivity: "base" });
@@ -93,7 +157,7 @@ export function SkuBrowserPanel({
       }
       return sortDirection === "asc" ? result : -result;
     }),
-    [rows, sortDirection, sortKey],
+    [filteredRows, sortDirection, sortKey],
   );
 
   // Track scroll container height
@@ -149,7 +213,7 @@ export function SkuBrowserPanel({
           </button>
         ))}
       </div>
-      <div className="border-b p-3">
+      <div className="p-3 pb-2">
         <div className="relative">
           <input
             value={search}
@@ -168,7 +232,36 @@ export function SkuBrowserPanel({
             </button>
           ) : null}
         </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {SKU_FILTERS.map((f) => {
+            const active = skuFilter === f.id;
+            const count = filterCounts[f.id];
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setSkuFilter(f.id)}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? f.activeClass
+                    : `border-[#cccac4] text-muted-foreground dark:border-zinc-600 ${f.hoverClass}`
+                }`}
+              >
+                {f.icon && (
+                  <span className={`text-[9px] leading-none ${f.id === "critical" ? "text-red-500" : f.id === "watch" ? "text-amber-500" : ""}`}>
+                    {f.icon}
+                  </span>
+                )}
+                {f.label}
+                <span className={`ml-0.5 font-mono text-[10px] ${active ? "opacity-80" : "opacity-60"}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
+      <div className="border-b" />
       <div
         ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto p-3"
@@ -177,9 +270,9 @@ export function SkuBrowserPanel({
         {rows.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">No SKUs</div>
         ) : (
-          <div className="overflow-hidden rounded-md border bg-white dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="rounded-md border bg-white dark:border-zinc-700 dark:bg-zinc-900">
             {/* Sticky header */}
-            <div className="sticky top-0 z-10 grid grid-cols-[minmax(260px,1fr)_78px_76px_68px] gap-2 border-b bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="sticky top-0 z-20 grid grid-cols-[minmax(260px,1fr)_78px_76px_68px] gap-2 rounded-t-md border-b bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
               {(["sku", "stock", "avg", "sod"] as SortKey[]).map((key) => (
                 <SortHeader
                   key={key}
@@ -205,7 +298,7 @@ export function SkuBrowserPanel({
                   onClick={() => onSelectSku(row.sku)}
                   style={{ height: ROW_HEIGHT }}
                   className={`grid w-full grid-cols-[minmax(260px,1fr)_78px_76px_68px] items-center gap-2 border-b px-3 text-left transition-colors dark:border-zinc-700/50 ${
-                    selected ? "bg-[#ebf0fd] text-[#1238a0] dark:bg-blue-900/40 dark:text-blue-300" : "hover:bg-[#f8f7f4] dark:hover:bg-zinc-800"
+                    selected ? "bg-[#ebf0fd] text-[#1238a0] dark:bg-blue-900/40 dark:text-blue-300" : "bg-white text-foreground hover:bg-[#f8f7f4] dark:bg-zinc-900 dark:hover:bg-zinc-800"
                   }`}
                 >
                   <div className="truncate font-mono text-xs font-semibold" title={row.sku}>{row.sku}</div>

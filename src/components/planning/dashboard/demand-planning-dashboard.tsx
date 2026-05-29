@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
@@ -91,7 +91,9 @@ export function DemandPlanningDashboard() {
     reload,
     loadContainerDetails,
   } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined);
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("sc");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("fm");
+  const [isCategoryPending, startCategoryTransition] = useTransition();
+  const [isCategoryLoading, setIsCategoryLoading] = useState(false);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
   const [search, setSearch] = useState("");
@@ -110,6 +112,31 @@ export function DemandPlanningDashboard() {
     setUrgencyFilter(null);
   }, []);
 
+  const handleCategoryFilter = useCallback((filter: CategoryFilter) => {
+    if (filter === categoryFilter) return;
+    if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
+
+    setIsCategoryLoading(true);
+    categoryChangeTimerRef.current = window.setTimeout(() => {
+      startCategoryTransition(() => {
+        setCategoryFilter(filter);
+      });
+      categoryChangeTimerRef.current = null;
+    }, 60);
+  }, [categoryFilter]);
+
+  useEffect(() => {
+    if (!isCategoryLoading) return;
+    const hideTimer = window.setTimeout(() => setIsCategoryLoading(false), 250);
+    return () => window.clearTimeout(hideTimer);
+  }, [categoryFilter, isCategoryLoading]);
+
+  useEffect(() => {
+    return () => {
+      if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
+    };
+  }, []);
+
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
   const [compactMode, setCompactMode] = useState(false);
@@ -121,6 +148,7 @@ export function DemandPlanningDashboard() {
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
   const columnWidthsRef = useRef<ColumnWidths>({});
   const containerAutoLoadKeyRef = useRef<string | null>(null);
+  const categoryChangeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const saved = loadSavedColumnWidths();
@@ -310,6 +338,11 @@ export function DemandPlanningDashboard() {
         zIndex: 10,
       }}
     >
+      <style>{`
+        @keyframes dashboard-spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       <div
         style={{
           background: "#fff",
@@ -327,7 +360,7 @@ export function DemandPlanningDashboard() {
           <select
             aria-label="Product category"
             value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value as CategoryFilter)}
+            onChange={(event) => handleCategoryFilter(event.target.value as CategoryFilter)}
             style={{
               minWidth: 112,
               height: 26,
@@ -341,9 +374,9 @@ export function DemandPlanningDashboard() {
               cursor: "pointer",
             }}
           >
-            <option value="sc">Seat Cover</option>
-            <option value="cc">Car Cover</option>
             <option value="fm">Floor Mat</option>
+            <option value="cc">Car Cover</option>
+            <option value="sc">Seat Cover</option>
           </select>
         </label>
 
@@ -776,6 +809,54 @@ export function DemandPlanningDashboard() {
         {!hasData && loading && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", zIndex: 5, fontSize: 13, color: "#7A766F" }}>
             Loading…
+          </div>
+        )}
+        {hasData && (isCategoryLoading || isCategoryPending) && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(240,238,233,0.52)",
+              backdropFilter: "blur(1px)",
+              pointerEvents: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "9px 14px",
+                borderRadius: 4,
+                border: "1px solid #C2BFB5",
+                background: "rgba(255,255,255,0.96)",
+                boxShadow: "0 8px 24px rgba(26,25,23,0.16)",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  border: "2px solid #C2BFB5",
+                  borderTopColor: "#1A1917",
+                  animation: "dashboard-spin 0.8s linear infinite",
+                }}
+              />
+              <span
+                style={{
+              color: "#5A5750",
+                }}
+              >
+                Loading...
+              </span>
+            </div>
           </div>
         )}
         <DemandPlanningGrid
