@@ -18,13 +18,18 @@ export function SalesAnalysisTab({ sku }: { sku: DemandRow }) {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_360px]">
         <div className="planning-panel rounded-lg border p-4">
           <h3 className="text-sm font-semibold">Sales Trend</h3>
-          <div className="mt-4 flex h-44 items-end gap-3">
+          <div className="mt-4 flex h-48 items-end gap-3">
             {totalSales.map((item) => (
-              <div key={item.label} className="flex flex-1 flex-col items-center gap-2">
-                <div
-                  className="w-full rounded-t bg-[#1a5cdb]"
-                  style={{ height: `${Math.max((item.value / maxSales) * 100, 4)}%` }}
-                />
+              <div key={item.label} className="flex h-full flex-1 flex-col items-center gap-2">
+                <div className="font-mono text-xs font-semibold text-[#1a4db0] dark:text-blue-400">
+                  {formatNumber(item.value)}
+                </div>
+                <div className="flex min-h-0 w-full flex-1 items-end rounded-t bg-[#eef2f8] dark:bg-zinc-700">
+                  <div
+                    className="w-full rounded-t bg-[#1a5cdb] dark:bg-blue-500"
+                    style={{ height: `${Math.max((item.value / maxSales) * 100, 4)}%` }}
+                  />
+                </div>
                 <div className="text-xs font-medium text-muted-foreground">{item.label}</div>
               </div>
             ))}
@@ -68,7 +73,7 @@ function MetricTable({ title, rows }: { title: string; rows: Array<[string, numb
       <h3 className="text-sm font-semibold">{title}</h3>
       <div className="mt-3 grid grid-cols-5 gap-2 text-center text-sm">
         {rows.map(([label, value]) => (
-          <div key={label} className="rounded-md border bg-[#f8f7f4] p-2">
+          <div key={label} className="rounded-md border bg-[#f8f7f4] p-2 dark:border-zinc-700 dark:bg-zinc-800">
             <div className="text-xs text-muted-foreground">{label}</div>
             <div className="mt-1 font-mono font-semibold">{formatNumber(value)}</div>
           </div>
@@ -80,7 +85,7 @@ function MetricTable({ title, rows }: { title: string; rows: Array<[string, numb
 
 function AverageCard({ title, value, highlight = false }: { title: string; value: number; highlight?: boolean }) {
   return (
-    <div className={`planning-panel rounded-lg border p-4 ${highlight ? "border-[#a0c0f0] bg-[#ebf0fd]" : ""}`}>
+    <div className={`planning-panel rounded-lg border p-4 ${highlight ? "border-[#a0c0f0] bg-[#ebf0fd] dark:border-blue-700 dark:bg-blue-900/40" : ""}`}>
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</div>
       <div className="mt-2 font-mono text-2xl font-semibold">{formatNumber(value, 2)}/d</div>
     </div>

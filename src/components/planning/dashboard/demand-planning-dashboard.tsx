@@ -494,7 +494,7 @@ export function DemandPlanningDashboard() {
                 {" ▾"}
               </button>
             </PopoverTrigger>
-            <PopoverContent align="start" style={{ width: 272, padding: 0, overflow: "hidden" }}>
+            <PopoverContent align="start" className="dashboard-columns-popover" style={{ width: 272, padding: 0, overflow: "hidden" }}>
               {/* Quick Presets */}
               <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>

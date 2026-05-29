@@ -25,13 +25,13 @@ export function PurchaseRecommendationTab({
         Container recommendation
       </div>
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className={`planning-panel rounded-lg border p-5 ${recommendedQty > 0 ? "border-[#a0c0f0] bg-[#ebf0fd]" : ""}`}>
+        <div className={`planning-panel rounded-lg border p-5 ${recommendedQty > 0 ? "border-[#a0c0f0] bg-[#ebf0fd] dark:border-blue-700 dark:bg-blue-900/40" : ""}`}>
           <div className="text-sm text-muted-foreground">Recommended Container Qty</div>
           <div className="mt-2 font-mono text-4xl font-bold">{formatNumber(recommendedQty)}</div>
           <div className="mt-2 text-sm text-muted-foreground">
             Multiple {formatNumber(orderMultiple)} units
           </div>
-          <div className="mt-4 rounded-md border bg-white/70 p-3 text-sm">
+          <div className="mt-4 rounded-md border bg-white/70 p-3 text-sm dark:border-zinc-600 dark:bg-zinc-700/50">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Estimated CBM</span>
               <span className="font-mono font-semibold">{formatNumber(recommendedCbm, 2)} m3</span>

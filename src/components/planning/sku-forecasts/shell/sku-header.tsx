@@ -13,10 +13,10 @@ export function SkuHeader({
   const urgency = getUrgency(sku);
   const urgencyClass =
     urgency === "critical"
-      ? "border-red-200 bg-red-50 text-red-700"
+      ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300"
       : urgency === "watch"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700";
+        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+        : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300";
 
   return (
     <header className="planning-panel rounded-lg border p-4">
@@ -28,7 +28,7 @@ export function SkuHeader({
           ) : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <span className="rounded-full border border-[#a0c0f0] bg-[#ebf0fd] px-3 py-1 text-xs font-medium text-[#1a4db0]">
+          <span className="rounded-full border border-[#a0c0f0] bg-[#ebf0fd] px-3 py-1 text-xs font-medium text-[#1a4db0] dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
             {productLabel}
           </span>
           <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">

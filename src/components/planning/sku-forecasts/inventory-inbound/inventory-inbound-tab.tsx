@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ContainerMeta, DemandRow } from "@/types/demand-planning";
 import { daysUntil, formatNumber } from "../types";
 
@@ -53,30 +54,46 @@ export function InventoryInboundTab({
           </div>
           <div className="mt-4 space-y-2">
             {containerDetailsLoading && inboundRows.length === 0 ? (
-              <div className="rounded-md border bg-[#f8f7f4] p-4 text-sm text-muted-foreground">Loading container details...</div>
+              <div className="rounded-md border bg-[#f8f7f4] p-4 text-sm text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">Loading container details...</div>
             ) : inboundRows.length === 0 ? (
-              <div className="rounded-md border bg-[#f8f7f4] p-4 text-sm text-muted-foreground">No active inbound containers.</div>
+              <div className="rounded-md border bg-[#f8f7f4] p-4 text-sm text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">No active inbound containers.</div>
             ) : (
-              inboundRows.map(({ container, detail, qty }) => (
-                <div key={container.name} className="grid gap-2 rounded-md border p-3 text-sm md:grid-cols-[1fr_90px_100px_90px]">
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold">{container.name}</div>
-                    <div className="text-xs text-muted-foreground">{container.status ?? "status unknown"}</div>
+              inboundRows.map(({ container, detail, qty }) => {
+                const content = (
+                  <>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{container.name}</div>
+                      <div className="text-xs text-muted-foreground group-hover:text-current">{container.status ?? "status unknown"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground group-hover:text-current">ETA</div>
+                      <div className="font-mono">{detail?.eta ?? container.eta ?? "-"}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground group-hover:text-current">Qty</div>
+                      <div className="font-mono font-semibold">{formatNumber(qty)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground group-hover:text-current">CBM</div>
+                      <div className="font-mono">{formatNumber(detail?.cbm ?? 0, 2)}</div>
+                    </div>
+                  </>
+                );
+                const className = "group grid gap-2 rounded-md border p-3 text-sm text-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1238a0] dark:hover:border-blue-500 dark:hover:bg-blue-950/50 dark:hover:text-blue-100 md:grid-cols-[1fr_90px_100px_90px]";
+                return container.container_id ? (
+                  <Link
+                    key={container.name}
+                    href={`/planning/container-planning?containerId=${encodeURIComponent(String(container.container_id))}`}
+                    className={className}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={container.name} className={className}>
+                    {content}
                   </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">ETA</div>
-                    <div className="font-mono">{detail?.eta ?? container.eta ?? "-"}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">Qty</div>
-                    <div className="font-mono font-semibold">{formatNumber(qty)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs text-muted-foreground">CBM</div>
-                    <div className="font-mono">{formatNumber(detail?.cbm ?? 0, 2)}</div>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -104,7 +121,7 @@ function Summary({
   danger?: boolean;
 }) {
   return (
-    <div className="rounded-md border bg-[#f8f7f4] p-3">
+    <div className="rounded-md border bg-[#f8f7f4] p-3 dark:border-zinc-700 dark:bg-zinc-800">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`mt-1 font-mono text-lg font-semibold ${danger ? "text-red-700" : ""}`}>
         {typeof value === "number" ? formatNumber(value) : value}

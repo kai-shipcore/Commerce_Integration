@@ -2201,7 +2201,7 @@ function ContainerCard({
               <button
                 type="button"
                 onClick={() => onAddAvailableStock(container.id)}
-                className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
+                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
               >
                 + Add Available Stock
               </button>
@@ -2210,7 +2210,7 @@ function ContainerCard({
               <button
                 type="button"
                 onClick={() => void onExportItems(container.id)}
-                className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
+                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
               >
                 CSV/Excel
               </button>

@@ -139,7 +139,7 @@ export function SkuForecastsShell() {
           type="button"
           onClick={reload}
           disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-semibold text-[#1A1917] disabled:cursor-default disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-semibold text-[#1A1917] disabled:cursor-default disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Sync
@@ -147,12 +147,12 @@ export function SkuForecastsShell() {
       </div>
 
       {error ? (
-        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
           {error}
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[580px_minmax(0,1fr)]">
         <SkuBrowserPanel
           product={product}
           productCounts={{

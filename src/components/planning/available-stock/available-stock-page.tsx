@@ -401,7 +401,7 @@ export function AvailableStockPage() {
   }
 
   return (
-    <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-white shadow-sm">
+    <section className="available-stock-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-white shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] px-6 py-4">
         <div>
           <h1 className="text-lg font-semibold">Available Stock Management</h1>

@@ -128,6 +128,7 @@
   }
 
   .planning-surface:has(.container-planning-fullbleed),
+  .planning-surface:has(.available-stock-fullbleed),
   .planning-surface:has(.purchase-orders-fullbleed),
   .planning-surface:has(.sku-master-fullbleed),
   .planning-surface:has(.factories-fullbleed) {
@@ -152,6 +153,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -163,20 +165,32 @@
   }
 
   .dark :where(
+    .available-stock-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) {
+    background-color: var(--background) !important;
+  }
+
+  .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
     .warehouse-fullbleed
   ) :where(
     .bg-white,
-    [class*="bg-[#f5f4f0]"]
+    [class*="bg-[#f5f4f0]"],
+    [class*="bg-[#f8f7f4]"],
+    [class*="bg-[#fbfaf8]"]
   ) {
     background-color: rgb(17 24 39) !important;
   }
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -190,19 +204,22 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
     .warehouse-fullbleed
   ) :where(
     [class*="border-[#e2dfd8]"],
-    [class*="border-[#cccac4]"]
+    [class*="border-[#cccac4]"],
+    [class*="border-b-white"]
   ) {
     border-color: rgb(51 65 85 / 0.95) !important;
   }
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -220,6 +237,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -230,6 +248,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -243,6 +262,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -256,6 +276,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -270,6 +291,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -283,6 +305,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -296,6 +319,7 @@
 
   .dark :where(
     .container-planning-fullbleed,
+    .available-stock-fullbleed,
     .purchase-orders-fullbleed,
     .sku-master-fullbleed,
     .factories-fullbleed,
@@ -304,6 +328,63 @@
     [class*="text-[#b8b5ae]"]
   ) {
     color: rgb(148 163 184) !important;
+  }
+
+  /* ── Planning surface / panel dark mode (applies to all planning pages) ── */
+  .dark .planning-surface {
+    background-color: rgb(15 23 42);
+    border-color: rgb(51 65 85 / 0.9);
+  }
+
+  .dark .planning-panel {
+    background-color: rgb(17 24 39);
+    border-color: rgb(51 65 85 / 0.9);
+  }
+
+  .dark .planning-muted {
+    background-color: rgb(30 41 59);
+  }
+
+  .dark .form-input {
+    background-color: rgb(15 23 42);
+    border-color: rgb(71 85 105);
+    color: rgb(241 245 249);
+  }
+
+  .dark .dashboard-columns-popover {
+    background-color: rgb(17 24 39) !important;
+    border-color: rgb(51 65 85) !important;
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark .dashboard-columns-popover :where(div) {
+    border-color: rgb(51 65 85) !important;
+  }
+
+  .dark .dashboard-columns-popover :where(label) {
+    color: rgb(203 213 225) !important;
+  }
+
+  .dark .dashboard-columns-popover :where(label[style*="rgba(59,130,246,.06)"]) {
+    background-color: rgb(30 41 59) !important;
+  }
+
+  .dark .dashboard-columns-popover :where(span) {
+    color: rgb(203 213 225) !important;
+  }
+
+  .dark .dashboard-columns-popover :where(button, select) {
+    background-color: rgb(15 23 42) !important;
+    border-color: rgb(71 85 105) !important;
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark .dashboard-columns-popover :where(button:hover, select:hover) {
+    background-color: rgb(30 41 59) !important;
+  }
+
+  .dark .dashboard-columns-popover :where(input[type="checkbox"]) {
+    accent-color: rgb(96 165 250);
   }
 }
 
