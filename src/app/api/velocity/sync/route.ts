@@ -89,7 +89,9 @@ interface CustomRow {
 
 // ─── Batch upsert helpers ─────────────────────────────────────────────────────
 
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 2000;
+// Only pull this many days of history — covers the 96-day max lookback with buffer.
+const SYNC_LOOKBACK_DAYS = 120;
 const primaryPool = () => getPrimaryPool();
 
 async function upsertLink(rows: LinkRow[], syncedAt: Date): Promise<number> {
@@ -212,6 +214,7 @@ export async function POST() {
            l.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
+           AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
            AND NOT (l.platform_source::text = 'SHOPIFY_ICARCOVER' AND l.tags ILIKE '%ebay%')
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
@@ -228,6 +231,7 @@ export async function POST() {
            c.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
+           AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
            AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND c.tags ILIKE '%ebay%')
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
@@ -235,9 +239,6 @@ export async function POST() {
     ]);
 
     const syncedAt = new Date();
-    await primaryPool().query(
-      "TRUNCATE TABLE shipcore.velocity_link_snapshot, shipcore.velocity_custom_snapshot"
-    );
     const [linkUpserted, customUpserted] = await Promise.all([
       upsertLink(linkRes.rows, syncedAt),
       upsertCustom(customRes.rows, syncedAt),
