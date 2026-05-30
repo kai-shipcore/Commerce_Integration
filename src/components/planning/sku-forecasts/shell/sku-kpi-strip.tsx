@@ -8,7 +8,7 @@ export function SkuKpiStrip({ sku, master }: { sku: DemandRow; master: SkuMaster
   const items = [
     { label: "Current Stock", value: formatNumber(sku.total_stock), sub: `West ${formatNumber(sku.west_stock)} / East ${formatNumber(sku.east_stock)}` },
     { label: "Daily Average", value: formatNumber(sku.total_avg_curr, 2), sub: `30D ${formatNumber(sku.total_30d)} units` },
-    { label: "Days of Supply", value: days === null ? "-" : `${days}d`, sub: "Based on projected SOD" },
+    { label: "Inv. Life", value: days === null ? "-" : `${days}d`, sub: "Based on projected SOD" },
     { label: "Inbound", value: formatNumber(inbound), sub: sku.next_eta ? `Next ETA ${sku.next_eta}` : "No active inbound" },
     { label: "Projected", value: formatNumber(projected), sub: `CBM/unit ${formatNumber(master.cbmPerUnit, 4)}` },
   ];
