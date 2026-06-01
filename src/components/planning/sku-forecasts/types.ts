@@ -17,10 +17,21 @@ export type SkuMasterMeta = {
 };
 
 export const productLabels: Record<ProductKey, string> = {
-  sc: "Seat Cover",
-  cc: "Car Cover",
   fm: "Floor Mat",
+  cc: "Car Cover",
+  sc: "Seat Cover",
 };
+
+export const TARGET_INVENTORY_DAYS = 90;
+
+export function recommendedContainerQty(row: DemandRow, multiple?: number): number {
+  const targetQty = Math.ceil(row.total_avg_curr * TARGET_INVENTORY_DAYS);
+  const projectedQty = row.total_stock + (row.total_inbound_qty ?? 0) + Math.min(row.back, 0);
+  const rawQty = Math.max(targetQty - projectedQty, 0);
+  const fallbackMultiple = productKeyForRow(row) === "cc" ? 3 : 5;
+  const orderMultiple = Math.max(multiple || row.order_multiple || row.moq || fallbackMultiple, 1);
+  return rawQty === 0 ? 0 : Math.ceil(rawQty / orderMultiple) * orderMultiple;
+}
 
 export function productKeyForRow(row: DemandRow): ProductKey {
   if (row.category_code === "CC") return "cc";

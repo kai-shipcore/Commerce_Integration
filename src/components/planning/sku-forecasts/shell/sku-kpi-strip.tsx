@@ -1,16 +1,17 @@
 import type { DemandRow } from "@/types/demand-planning";
 import { daysUntil, formatNumber, type SkuMasterMeta } from "../types";
+import { pick, type SkuForecastLanguage } from "../language";
 
-export function SkuKpiStrip({ sku, master }: { sku: DemandRow; master: SkuMasterMeta }) {
+export function SkuKpiStrip({ sku, master, language }: { sku: DemandRow; master: SkuMasterMeta; language: SkuForecastLanguage }) {
   const days = daysUntil(sku.sod);
   const inbound = sku.total_inbound_qty ?? 0;
   const projected = sku.total_stock + inbound + Math.min(sku.back, 0);
   const items = [
-    { label: "Current Stock", value: formatNumber(sku.total_stock), sub: `West ${formatNumber(sku.west_stock)} / East ${formatNumber(sku.east_stock)}` },
-    { label: "Daily Average", value: formatNumber(sku.total_avg_curr, 2), sub: `30D ${formatNumber(sku.total_30d)} units` },
-    { label: "Inv. Life", value: days === null ? "-" : `${days}d`, sub: "Based on projected SOD" },
-    { label: "Inbound", value: formatNumber(inbound), sub: sku.next_eta ? `Next ETA ${sku.next_eta}` : "No active inbound" },
-    { label: "Projected", value: formatNumber(projected), sub: `CBM/unit ${formatNumber(master.cbmPerUnit, 4)}` },
+    { label: pick(language, "현재 재고", "Current Stock"), value: formatNumber(sku.total_stock), sub: `West ${formatNumber(sku.west_stock)} / East ${formatNumber(sku.east_stock)}` },
+    { label: pick(language, "일평균 판매", "Daily Average"), value: formatNumber(sku.total_avg_curr, 2), sub: `30D ${formatNumber(sku.total_30d)} ${pick(language, "개", "units")}` },
+    { label: pick(language, "재고 유지일", "Inv. Life"), value: days === null ? "-" : `${days}d`, sub: pick(language, "예상 SOD 기준", "Based on projected SOD") },
+    { label: pick(language, "입고", "Inbound"), value: formatNumber(inbound), sub: sku.next_eta ? `${pick(language, "다음 ETA", "Next ETA")} ${sku.next_eta}` : pick(language, "활성 입고 없음", "No active inbound") },
+    { label: pick(language, "예상 재고", "Projected"), value: formatNumber(projected), sub: `CBM/${pick(language, "개", "unit")} ${formatNumber(master.cbmPerUnit, 4)}` },
   ];
 
   return (

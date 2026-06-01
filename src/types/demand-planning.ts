@@ -83,6 +83,8 @@ export interface DemandRow {
   total_avg_real: number;
   total_avg_curr: number;
   cbm_per_unit?: number;
+  moq?: number;
+  order_multiple?: number;
   remaining?: number;
   mistake?: number;
   total_inbound_qty: number | null;

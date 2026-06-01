@@ -2,17 +2,20 @@
 
 import type { ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { pick, type SkuForecastLanguage } from "../language";
 
 interface SkuForecastTabsProps {
   sales: ReactNode;
   inventory: ReactNode;
   purchase: ReactNode;
+  language: SkuForecastLanguage;
 }
 
 export function SkuForecastTabs({
   sales,
   inventory,
   purchase,
+  language,
 }: SkuForecastTabsProps) {
   return (
     <Tabs defaultValue="sales" className="space-y-4">
@@ -21,19 +24,19 @@ export function SkuForecastTabs({
           value="sales"
           className="rounded-lg px-4 py-1.5 text-sm font-medium data-[state=active]:bg-[#1A1917] data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:text-[#5A5750] data-[state=inactive]:hover:text-[#1A1917] dark:data-[state=active]:bg-white dark:data-[state=active]:text-[#1A1917] dark:data-[state=inactive]:text-zinc-400 dark:data-[state=inactive]:hover:text-white"
         >
-          Sales Analysis
+          {pick(language, "판매 분석", "Sales Analysis")}
         </TabsTrigger>
         <TabsTrigger
           value="inventory"
           className="rounded-lg px-4 py-1.5 text-sm font-medium data-[state=active]:bg-[#1A1917] data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:text-[#5A5750] data-[state=inactive]:hover:text-[#1A1917] dark:data-[state=active]:bg-white dark:data-[state=active]:text-[#1A1917] dark:data-[state=inactive]:text-zinc-400 dark:data-[state=inactive]:hover:text-white"
         >
-          Inventory &amp; Inbound
+          {pick(language, "재고 및 입고", "Inventory & Inbound")}
         </TabsTrigger>
         <TabsTrigger
           value="purchase"
           className="rounded-lg px-4 py-1.5 text-sm font-medium data-[state=active]:bg-[#1A1917] data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:text-[#5A5750] data-[state=inactive]:hover:text-[#1A1917] dark:data-[state=active]:bg-white dark:data-[state=active]:text-[#1A1917] dark:data-[state=inactive]:text-zinc-400 dark:data-[state=inactive]:hover:text-white"
         >
-          Container Recommendation
+          {pick(language, "컨테이너 추천", "Container Recommendation")}
         </TabsTrigger>
       </TabsList>
 

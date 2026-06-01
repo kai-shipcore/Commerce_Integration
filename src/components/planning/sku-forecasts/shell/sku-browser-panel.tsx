@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
-import { daysUntil, formatNumber, getUrgency, productLabels, type ProductKey } from "../types";
+import { daysUntil, formatNumber, getUrgency, productLabels, recommendedContainerQty, type ProductKey } from "../types";
+import { pick, productLabel, type SkuForecastLanguage } from "../language";
 
-type SortKey = "sku" | "stock" | "avg" | "sod";
+type SortKey = "sku" | "stock" | "avg" | "sod" | "order";
 type SortDirection = "asc" | "desc";
 
 interface SkuBrowserPanelProps {
@@ -14,6 +15,7 @@ interface SkuBrowserPanelProps {
   rows: DemandRow[];
   selectedSkuId: string;
   onSelectSku: (skuId: string) => void;
+  language: SkuForecastLanguage;
 }
 
 const urgencyStyles = {
@@ -27,9 +29,10 @@ const sortLabels: Record<SortKey, string> = {
   stock: "Stock",
   avg: "Avg",
   sod: "SOD",
+  order: "Rec. Qty",
 };
 
-type SkuFilterKey = "all" | "critical" | "watch" | "high" | "low";
+type SkuFilterKey = "all" | "critical" | "watch" | "high" | "low" | "order";
 
 const SKU_FILTERS: Array<{
   id: SkuFilterKey;
@@ -69,6 +72,12 @@ const SKU_FILTERS: Array<{
     label: "Low",
     activeClass: "border-zinc-400 bg-zinc-100 text-zinc-700 dark:border-zinc-500 dark:bg-zinc-700/60 dark:text-zinc-200",
     hoverClass: "hover:bg-[#f0eee9] dark:hover:bg-zinc-700/60",
+  },
+  {
+    id: "order",
+    label: "Order Required",
+    activeClass: "border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-600 dark:bg-violet-950/60 dark:text-violet-300",
+    hoverClass: "hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-950/30 dark:hover:text-violet-400",
   },
 ];
 
@@ -113,6 +122,7 @@ export function SkuBrowserPanel({
   rows,
   selectedSkuId,
   onSelectSku,
+  language,
 }: SkuBrowserPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -128,6 +138,7 @@ export function SkuBrowserPanel({
     watch: rows.filter((r) => getUrgency(r) === "watch").length,
     high: rows.filter((r) => getUrgency(r) === "healthy").length,
     low: rows.filter((r) => (r.back ?? 0) < 0).length,
+    order: rows.filter((r) => recommendedContainerQty(r) > 0).length,
   }), [rows]);
 
   // Apply filter then sort
@@ -137,6 +148,7 @@ export function SkuBrowserPanel({
       case "watch":    return rows.filter((r) => getUrgency(r) === "watch");
       case "high":     return rows.filter((r) => getUrgency(r) === "healthy");
       case "low":      return rows.filter((r) => (r.back ?? 0) < 0);
+      case "order":    return rows.filter((r) => recommendedContainerQty(r) > 0);
       default:         return rows;
     }
   }, [rows, skuFilter]);
@@ -150,10 +162,12 @@ export function SkuBrowserPanel({
         result = left.total_stock - right.total_stock;
       } else if (sortKey === "avg") {
         result = left.total_avg_curr - right.total_avg_curr;
-      } else {
+      } else if (sortKey === "sod") {
         const leftDays = daysUntil(left.sod);
         const rightDays = daysUntil(right.sod);
         result = (leftDays ?? Number.POSITIVE_INFINITY) - (rightDays ?? Number.POSITIVE_INFINITY);
+      } else {
+        result = recommendedContainerQty(left) - recommendedContainerQty(right);
       }
       return sortDirection === "asc" ? result : -result;
     }),
@@ -208,7 +222,7 @@ export function SkuBrowserPanel({
             }`}
             onClick={() => onProductChange(key)}
           >
-            {productLabels[key]}
+            {productLabel(language, key)}
             <span className="ml-1 font-mono text-[10px]">{formatNumber(productCounts[key])}</span>
           </button>
         ))}
@@ -218,7 +232,7 @@ export function SkuBrowserPanel({
           <input
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search master SKU..."
+            placeholder={pick(language, "Master SKU 검색...", "Search master SKU...")}
             className="h-9 w-full rounded-md border bg-[#f0eee9] px-3 text-sm outline-none focus:border-[#1a5cdb] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-blue-500 pr-8"
           />
           {search ? (
@@ -252,7 +266,9 @@ export function SkuBrowserPanel({
                     {f.icon}
                   </span>
                 )}
-                {f.label}
+                {language === "ko"
+                  ? { all: "전체", critical: "긴급", watch: "주의", high: "정상", low: "백오더", order: "발주 필요" }[f.id]
+                  : f.label}
                 <span className={`ml-0.5 font-mono text-[10px] ${active ? "opacity-80" : "opacity-60"}`}>
                   {count}
                 </span>
@@ -264,26 +280,30 @@ export function SkuBrowserPanel({
       <div className="border-b" />
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto p-3"
+        className="min-h-0 flex-1 overflow-y-auto px-3 pb-3"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
         {rows.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">No SKUs</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">{pick(language, "SKU 없음", "No SKUs")}</div>
         ) : (
-          <div className="rounded-md border bg-white dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="rounded-b-md border-x border-b bg-white dark:border-zinc-700 dark:bg-zinc-900">
             {/* Sticky header */}
-            <div className="sticky top-0 z-20 grid grid-cols-[minmax(260px,1fr)_78px_76px_68px] gap-2 rounded-t-md border-b bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-              {(["sku", "stock", "avg", "sod"] as SortKey[]).map((key) => (
-                <SortHeader
-                  key={key}
-                  label={sortLabels[key]}
-                  sortId={key}
-                  activeKey={sortKey}
-                  direction={sortDirection}
-                  align={key === "sku" ? "left" : "right"}
-                  onSort={toggleSort}
-                />
-              ))}
+            <div className="sticky top-0 z-20 border-t bg-background pt-3 dark:border-zinc-700">
+              <div className="grid grid-cols-[minmax(210px,1fr)_68px_62px_62px_72px] gap-2 rounded-t-md border-b bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                {(["sku", "stock", "avg", "sod", "order"] as SortKey[]).map((key) => (
+                  <SortHeader
+                    key={key}
+                    label={language === "ko"
+                      ? { sku: "Master SKU", stock: "재고", avg: "평균", sod: "SOD", order: "추천" }[key]
+                      : sortLabels[key]}
+                    sortId={key}
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    align={key === "sku" ? "left" : "right"}
+                    onSort={toggleSort}
+                  />
+                ))}
+              </div>
             </div>
             {/* Virtual rows */}
             {topPad > 0 && <div style={{ height: topPad }} />}
@@ -291,13 +311,14 @@ export function SkuBrowserPanel({
               const selected = selectedSkuId === row.sku;
               const urgency = getUrgency(row);
               const days = daysUntil(row.sod);
+              const recommendedQty = recommendedContainerQty(row);
               return (
                 <button
                   key={row.sku}
                   type="button"
                   onClick={() => onSelectSku(row.sku)}
                   style={{ height: ROW_HEIGHT }}
-                  className={`grid w-full grid-cols-[minmax(260px,1fr)_78px_76px_68px] items-center gap-2 border-b px-3 text-left transition-colors dark:border-zinc-700/50 ${
+                  className={`grid w-full grid-cols-[minmax(210px,1fr)_68px_62px_62px_72px] items-center gap-2 border-b px-3 text-left transition-colors dark:border-zinc-700/50 ${
                     selected ? "bg-[#ebf0fd] text-[#1238a0] dark:bg-blue-900/40 dark:text-blue-300" : "bg-white text-foreground hover:bg-[#f8f7f4] dark:bg-zinc-900 dark:hover:bg-zinc-800"
                   }`}
                 >
@@ -311,6 +332,9 @@ export function SkuBrowserPanel({
                   <span className={`justify-self-end whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${urgencyStyles[urgency]}`}>
                     {days === null ? "-" : `${days}d`}
                   </span>
+                  <div className={`whitespace-nowrap text-right font-mono text-xs font-semibold ${recommendedQty > 0 ? "text-violet-700 dark:text-violet-300" : "text-muted-foreground"}`}>
+                    {recommendedQty > 0 ? `+${formatNumber(recommendedQty)}` : "-"}
+                  </div>
                 </button>
               );
             })}

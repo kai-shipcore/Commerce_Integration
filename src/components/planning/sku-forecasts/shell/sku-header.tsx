@@ -1,16 +1,22 @@
 import type { DemandRow } from "@/types/demand-planning";
 import { formatNumber, getUrgency, type SkuMasterMeta } from "../types";
+import { pick, type SkuForecastLanguage } from "../language";
 
 export function SkuHeader({
   sku,
   master,
   productLabel,
+  language,
 }: {
   sku: DemandRow;
   master: SkuMasterMeta;
   productLabel: string;
+  language: SkuForecastLanguage;
 }) {
   const urgency = getUrgency(sku);
+  const salesStatus = language === "ko"
+    ? { Original: "일반", Custom: "커스텀", Hold: "보류" }[sku.sales_status]
+    : sku.sales_status;
   const urgencyClass =
     urgency === "critical"
       ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300"
@@ -32,18 +38,22 @@ export function SkuHeader({
             {productLabel}
           </span>
           <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">
-            {sku.sales_status}
+            {salesStatus}
           </span>
           <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${urgencyClass}`}>
-            {urgency === "critical" ? "Critical" : urgency === "watch" ? "Watch" : "Healthy"}
+            {urgency === "critical"
+              ? pick(language, "긴급", "Critical")
+              : urgency === "watch"
+                ? pick(language, "주의", "Watch")
+                : pick(language, "정상", "Healthy")}
           </span>
         </div>
       </div>
       <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
         <div>MOQ <span className="font-mono font-semibold text-foreground">{formatNumber(master.moq)}</span></div>
-        <div>Case <span className="font-mono font-semibold text-foreground">{formatNumber(master.caseQty)}</span></div>
+        <div>{pick(language, "케이스", "Case")} <span className="font-mono font-semibold text-foreground">{formatNumber(master.caseQty)}</span></div>
         <div>CBM <span className="font-mono font-semibold text-foreground">{formatNumber(master.cbmPerUnit, 4)}</span></div>
-        <div>Next ETA <span className="font-mono font-semibold text-foreground">{sku.next_eta ?? "-"}</span></div>
+        <div>{pick(language, "다음 ETA", "Next ETA")} <span className="font-mono font-semibold text-foreground">{sku.next_eta ?? "-"}</span></div>
       </div>
     </header>
   );

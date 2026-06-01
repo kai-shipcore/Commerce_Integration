@@ -14,10 +14,12 @@ import { SkuKpiStrip } from "./sku-kpi-strip";
 import {
   defaultMasterMeta,
   productKeyForRow,
-  productLabels,
   type ProductKey,
   type SkuMasterMeta,
 } from "../types";
+import { pick, productLabel, type SkuForecastLanguage } from "../language";
+
+const LANGUAGE_STORAGE_KEY = "sku-forecasts-language";
 
 type SkuMasterResponse = {
   success: boolean;
@@ -26,36 +28,31 @@ type SkuMasterResponse = {
 };
 
 export function SkuForecastsShell() {
-  const [product, setProduct] = useState<ProductKey>("sc");
+  const [product, setProduct] = useState<ProductKey>("fm");
   const [search, setSearch] = useState("");
   const [selectedSkuId, setSelectedSkuId] = useState<string>("");
+  const [language, setLanguage] = useState<SkuForecastLanguage>("en");
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
   const masterLoadingRef = useRef<Set<string>>(new Set());
-  const containerAutoLoadKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (stored === "ko" || stored === "en") {
+      queueMicrotask(() => setLanguage(stored));
+    }
+  }, []);
+
+  function changeLanguage(nextLanguage: SkuForecastLanguage) {
+    setLanguage(nextLanguage);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+  }
 
   const {
     data,
     loading,
-    containerDetailsLoading,
-    containerDetailsLoaded,
     error,
     reload,
-    loadContainerDetails,
   } = useDemandPlanningData("link");
-
-  useEffect(() => {
-    if (!data.rows.length || containerDetailsLoaded || containerDetailsLoading) return;
-    const loadKey = `${data.last_sync ?? ""}|${data.rows.length}`;
-    if (containerAutoLoadKeyRef.current === loadKey) return;
-    containerAutoLoadKeyRef.current = loadKey;
-    loadContainerDetails();
-  }, [
-    containerDetailsLoaded,
-    containerDetailsLoading,
-    data.last_sync,
-    data.rows.length,
-    loadContainerDetails,
-  ]);
 
   const rowsByProduct = useMemo(() => {
     const grouped: Record<ProductKey, DemandRow[]> = { sc: [], cc: [], fm: [] };
@@ -109,17 +106,11 @@ export function SkuForecastsShell() {
     ? masterBySku[selectedRow.sku] ?? defaultMasterMeta(selectedRow)
     : null;
 
-  const containerStatus = containerDetailsLoading
-    ? "Loading containers..."
-    : containerDetailsLoaded
-      ? "Containers ready"
-      : "Containers pending";
-
   if (loading && data.rows.length === 0) {
     return (
       <div className="flex h-[calc(100vh-9rem)] items-center justify-center text-sm text-muted-foreground">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Loading SKU planning data...
+        {pick(language, "SKU 계획 데이터를 불러오는 중...", "Loading SKU planning data...")}
       </div>
     );
   }
@@ -128,22 +119,40 @@ export function SkuForecastsShell() {
     <section className="flex h-[calc(100vh-7.5rem)] min-h-[680px] flex-col gap-3 overflow-hidden">
       <div className="flex shrink-0 items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">SKU Planning</h1>
+          <h1 className="text-xl font-semibold">{pick(language, "SKU 계획", "SKU Planning")}</h1>
           <div className="mt-1 text-xs text-muted-foreground">
-            {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "Not synced"}
-            <span className="mx-2">|</span>
-            {containerStatus}
+            {data.last_sync
+              ? `${pick(language, "동기화", "Synced")} ${data.last_sync.slice(0, 16).replace("T", " ")}`
+              : pick(language, "동기화되지 않음", "Not synced")}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={reload}
-          disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-semibold text-[#1A1917] disabled:cursor-default disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Sync
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
+            {(["ko", "en"] as SkuForecastLanguage[]).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => changeLanguage(option)}
+                className={`px-3 text-xs font-semibold ${
+                  language === option
+                    ? "bg-[#1A1917] text-white dark:bg-white dark:text-[#1A1917]"
+                    : "text-muted-foreground hover:bg-[#f0eee9] dark:hover:bg-zinc-700"
+                }`}
+              >
+                {option === "ko" ? "한" : "EN"}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={reload}
+            disabled={loading}
+            className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-semibold text-[#1A1917] disabled:cursor-default disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            {pick(language, "동기화", "Sync")}
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -169,29 +178,26 @@ export function SkuForecastsShell() {
           rows={visibleRows}
           selectedSkuId={selectedRow?.sku ?? ""}
           onSelectSku={setSelectedSkuId}
+          language={language}
         />
 
         <div className="min-w-0 overflow-y-auto pr-1">
           {selectedRow && selectedMaster ? (
             <div className="space-y-3">
-              <SkuHeader sku={selectedRow} master={selectedMaster} productLabel={productLabels[productKeyForRow(selectedRow)]} />
-              <SkuKpiStrip sku={selectedRow} master={selectedMaster} />
+              <SkuHeader sku={selectedRow} master={selectedMaster} productLabel={productLabel(language, productKeyForRow(selectedRow))} language={language} />
+              <SkuKpiStrip sku={selectedRow} master={selectedMaster} language={language} />
               <SkuForecastTabs
-                sales={<SalesAnalysisTab sku={selectedRow} />}
+                language={language}
+                sales={<SalesAnalysisTab sku={selectedRow} language={language} />}
                 inventory={
-                  <InventoryInboundTab
-                    sku={selectedRow}
-                    containers={data.containers}
-                    containerDetailsLoading={containerDetailsLoading}
-                    containerDetailsLoaded={containerDetailsLoaded}
-                  />
+                  <InventoryInboundTab sku={selectedRow} language={language} />
                 }
-                purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} />}
+                purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} />}
               />
             </div>
           ) : (
             <div className="planning-panel flex h-full items-center justify-center rounded-lg border text-sm text-muted-foreground">
-              Select a SKU
+              {pick(language, "SKU를 선택하세요", "Select a SKU")}
             </div>
           )}
         </div>
