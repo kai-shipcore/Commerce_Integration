@@ -61,6 +61,7 @@ export function daysTo(d: string | null | undefined): number | null {
 }
 
 export function urgStatus(row: DemandRow): UrgencyStatus {
+  if ((row.back ?? 0) < 0) return "crit";
   const dt = daysTo(row.sod);
   if (dt !== null && dt <= 30) return "crit";
   if (dt !== null && dt <= 60) return "warn";

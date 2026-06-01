@@ -63,6 +63,23 @@ type ChainDerived = {
   plan_sod: string | null;
 };
 
+type ContainerColumnTotals = Partial<Record<"ccbm" | "inb_qty" | "remaining" | "mistake" | "oo", number>>;
+
+type ContainerTotalColumn = {
+  id: string;
+  width: number;
+  total?: number;
+};
+
+function containerColumnWidth(column: { id: string; w: number }) {
+  if (column.id === "ccbm") return 48;
+  if (column.id === "inb_qty") return 42;
+  if (column.id === "remaining") return 42;
+  if (column.id === "mistake") return 38;
+  if (column.id === "esod" || column.id === "psod") return 70;
+  return column.w;
+}
+
 function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
@@ -317,36 +334,49 @@ function QtyCellRenderer({
 function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
-    totalCbm: number;
-    cbmColumnWidth: number;
     baseline: boolean;
+    totalColumns: ContainerTotalColumn[];
     onEtaChange: (value: string) => void;
   },
 ) {
   return (
-    <div className="flex w-full flex-col items-center justify-center gap-0.5 overflow-hidden text-[10px]">
-      <span className="max-w-full truncate font-bold">{props.displayName}</span>
+    <div className="flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px]">
+      <div className="flex items-center justify-center gap-1 overflow-hidden">
+        <span className="max-w-full truncate font-bold">{props.displayName}</span>
+        {props.baseline ? null : (
+          <>
+            <span>| ETA</span>
+            <label className="flex items-center gap-1">
+              <input
+                type="date"
+                value={props.eta}
+                onChange={(event) => props.onEtaChange(event.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="w-[94px] rounded border border-white/30 bg-transparent px-1 text-[9px] text-white"
+              />
+            </label>
+          </>
+        )}
+      </div>
       {props.baseline ? null : (
-        <div className="relative flex w-full items-center justify-center">
-          <label className="flex items-center gap-1">
-            <span>ETA</span>
-            <input
-              type="date"
-              value={props.eta}
-              onChange={(event) => props.onEtaChange(event.target.value)}
-              style={{ colorScheme: "dark" }}
-              className="w-[94px] rounded border border-white/30 bg-transparent px-1 text-[9px] text-white"
-            />
-          </label>
-          {props.totalCbm > 0 ? (
-            <span
-              title={`Total CBM: ${props.totalCbm.toFixed(1)} m3`}
-              className="absolute right-0 text-center text-[9px] font-bold text-[#7EB880]"
-              style={{ width: props.cbmColumnWidth }}
-            >
-              {props.totalCbm.toFixed(1)}
-            </span>
-          ) : null}
+        <div className="flex w-full text-[9px] font-bold text-[#7EB880]">
+          {props.totalColumns.map((column) => {
+            const totalLabel = column.total === undefined
+              ? ""
+              : column.id === "ccbm"
+                ? column.total.toFixed(1)
+                : Math.round(column.total).toLocaleString();
+            return (
+              <span
+                key={column.id}
+                title={totalLabel ? `Total: ${totalLabel}` : undefined}
+                className="shrink-0 truncate text-center"
+                style={{ width: column.width }}
+              >
+                {totalLabel}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>
@@ -429,24 +459,42 @@ export function AgDemandPlanningGrid({
   }, [containerDetailsLoaded, containerDetailsLoading, groupVis.con, onLoadContainerDetails]);
 
   const subColumns = useMemo(
-    () => CON_SUBCOLS.filter((column) =>
-      (column.id !== "remaining" || showRemaining) && (column.id !== "mistake" || showMistake)),
+    () => {
+      const visibleColumns = CON_SUBCOLS.filter((column) =>
+        (column.id !== "remaining" || showRemaining) && (column.id !== "mistake" || showMistake));
+      const cbmColumn = visibleColumns.find((column) => column.id === "ccbm");
+      return cbmColumn
+        ? [cbmColumn, ...visibleColumns.filter((column) => column.id !== "ccbm")]
+        : visibleColumns;
+    },
     [showMistake, showRemaining],
   );
 
-  const containerCbmTotals = useMemo(() => {
-    const totals = new Map<string, number>();
+  const containerColumnTotals = useMemo(() => {
+    const totals = new Map<string, ContainerColumnTotals>();
     for (const container of containers) {
-      totals.set(container.name, data.rows.reduce((sum, row) => {
+      const containerTotals: ContainerColumnTotals = {
+        ccbm: 0,
+        inb_qty: 0,
+        remaining: 0,
+        mistake: 0,
+        oo: 0,
+      };
+      for (const row of visibleRows) {
         const key = `${row.sku}::${container.name}`;
-        const cbm = qtyOverrides.has(key)
-          ? qtyOverrides.get(key)?.cbm
-          : row.containers?.[container.name]?.cbm;
-        return sum + (cbm ?? 0);
-      }, 0));
+        const raw = row.containers?.[container.name];
+        const override = qtyOverrides.get(key);
+        const derived = chainMap.get(row.sku)?.get(container.name);
+        containerTotals.ccbm! += override !== undefined ? override.cbm ?? 0 : raw?.cbm ?? 0;
+        containerTotals.inb_qty! += override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
+        containerTotals.remaining! += row.remaining ?? 0;
+        containerTotals.mistake! += row.mistake ?? 0;
+        containerTotals.oo! += derived?.open_orders ?? raw?.open_orders ?? 0;
+      }
+      totals.set(container.name, containerTotals);
     }
     return totals;
-  }, [containers, data.rows, qtyOverrides]);
+  }, [chainMap, containers, qtyOverrides, visibleRows]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -554,9 +602,16 @@ export function AgDemandPlanningGrid({
   visibleBaseColumns.forEach((column, index) => {
     const columns = baseGroups.get(column.grp) ?? [];
     const isCopyable = column.id === "sku" || column.id === "inb_lst";
+    const headerName = column.id === "tavg_p"
+      ? "Tot Avg 이전"
+      : column.id === "tavg_r"
+        ? "Tot Avg 실제"
+        : column.id === "tavg_c"
+          ? "Tot Avg 현재"
+          : column.label.replace("\n", " ");
     columns.push({
       colId: column.id,
-      headerName: column.label.replace("\n", " "),
+      headerName,
         headerTooltip: column.label.replace("\n", " "),
         width: columnWidths[column.id as keyof typeof columnWidths] ?? column.w,
         minWidth: Math.min(36, column.w),
@@ -601,16 +656,25 @@ export function AgDemandPlanningGrid({
           headerGroupComponent: ContainerGroupHeader,
           headerGroupComponentParams: {
             eta: container.eta,
-            totalCbm: containerCbmTotals.get(container.name) ?? 0,
-            cbmColumnWidth: subColumns.find((column) => column.id === "ccbm")?.w ?? 58,
             baseline,
+            totalColumns: subColumns.map((column) => ({
+              id: column.id,
+              width: containerColumnWidth(column),
+              total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
+            })),
             onEtaChange: (eta: string) => updateEta(container, eta),
           },
           children: subColumns.map((column) => ({
             colId: `${container.name}::${column.id}`,
-            headerName: column.label.replace("\n", " "),
+            headerName: column.id === "oo"
+              ? "Open Ord"
+              : column.id === "remaining"
+                ? "Rem."
+                : column.id === "mistake"
+                  ? "Mist"
+                  : column.label.replace("\n", " "),
             headerTooltip: column.label.replace("\n", " "),
-            width: column.w,
+            width: containerColumnWidth(column),
             valueGetter: (params) => {
               if (!params.data) return "";
               const key = `${params.data.sku}::${container.name}`;
@@ -643,7 +707,7 @@ export function AgDemandPlanningGrid({
       }
     }
     return groups;
-  }, [chainMap, columnWidths, compactMode, containerCbmTotals, containers, freezeUntil, groupVis, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+  }, [chainMap, columnWidths, compactMode, containerColumnTotals, containers, freezeUntil, groupVis, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
 
   return (
     <div className="planning-ag-grid h-full min-h-0 w-full bg-white">

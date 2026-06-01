@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   containerStatusLabels,
   mockSkus,
@@ -142,6 +143,8 @@ const productFilterIcons: Record<ProductKey, string> = {
   sc: "💺",
 };
 
+const SKU_LIST_COLLAPSED_STORAGE_KEY = "container-planning-sku-list-collapsed";
+
 function inferProductKey(sku: string): ProductKey {
   const matchedSku = mockSkus.find((item) => item.id === sku);
   if (matchedSku) return matchedSku.product;
@@ -246,6 +249,19 @@ export function ContainerPlanningPage() {
   const [productFilter, setProductFilter] = useState<ProductKey | null>(null);
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
+  const [skuListCollapsed, setSkuListCollapsed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSkuListCollapsed(window.localStorage.getItem(SKU_LIST_COLLAPSED_STORAGE_KEY) === "true");
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
+    if (skuListCollapsed === null) return;
+    window.localStorage.setItem(SKU_LIST_COLLAPSED_STORAGE_KEY, String(skuListCollapsed));
+  }, [skuListCollapsed]);
 
   const totalUnits = containers.reduce(
     (sum, container) => sum + container.items.reduce((inner, item) => inner + item.qty, 0),
@@ -549,6 +565,7 @@ export function ContainerPlanningPage() {
       setFormError("Allocated Remaining / Mistake stock must be removed from the container detail view by source.");
       return;
     }
+    if (editingContainerId && !window.confirm(`Delete ${sku} from this container?`)) return;
     setDraftItems((items) => items.filter((item) => item.sku !== sku));
   }
 
@@ -1490,6 +1507,8 @@ export function ContainerPlanningPage() {
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
+                skuListCollapsed={skuListCollapsed ?? false}
+                onToggleSkuList={() => setSkuListCollapsed((current) => !(current ?? false))}
                 detailMode
               />
             </div>
@@ -1598,10 +1617,15 @@ function ContainerCreateForm({
   onAddAvailableStock?: () => void;
 }) {
   const importRef = useRef<HTMLInputElement | null>(null);
+  const [skuSearch, setSkuSearch] = useState("");
   const statusLabel = statusOptions.find((opt) => opt.value === form.status)?.shortLabel ?? form.status;
   const canChangeStructure = form.status === "draft";
   const loadRate = cbmCapacity > 0 ? (draftCbm / cbmCapacity) * 100 : 0;
   const containersNeeded = draftCbm > 0 ? Math.ceil(draftCbm / cbmCapacity) : 0;
+  const normalizedSkuSearch = skuSearch.trim().toLowerCase();
+  const visibleDraftItems = normalizedSkuSearch
+    ? draftItems.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))
+    : draftItems;
 
   return (
     <div className="space-y-4">
@@ -1727,6 +1751,31 @@ function ContainerCreateForm({
           </div>
         }
       >
+        {isEditing ? (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-muted-foreground">
+              Showing {visibleDraftItems.length} of {draftItems.length} SKUs
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                aria-label="Search SKU in edit container"
+                className="form-input w-64 bg-white font-mono text-xs"
+                placeholder="Search SKU..."
+                value={skuSearch}
+                onChange={(event) => setSkuSearch(event.target.value)}
+              />
+              {skuSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setSkuSearch("")}
+                  className="rounded-md border border-[#cccac4] bg-white px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-[#f0eee9]"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div className="overflow-hidden rounded-lg border border-[#e2dfd8]">
           <div className={`grid bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canChangeStructure ? "grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
             <div>Master SKU</div>
@@ -1736,7 +1785,7 @@ function ContainerCreateForm({
             {canChangeStructure ? <div className="text-right">Delete</div> : null}
           </div>
 
-          {draftItems.map((item) => (
+          {visibleDraftItems.map((item) => (
             <div key={item.sku} className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${canChangeStructure ? "grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
               <span className="font-mono text-xs font-medium">{item.sku}</span>
               <span>{formatNumber(item.qty)}</span>
@@ -1751,6 +1800,11 @@ function ContainerCreateForm({
               ) : null}
             </div>
           ))}
+          {normalizedSkuSearch && visibleDraftItems.length === 0 ? (
+            <div className="border-t border-[#e2dfd8] px-3 py-8 text-center text-sm text-muted-foreground">
+              No SKUs match &quot;{skuSearch.trim()}&quot;.
+            </div>
+          ) : null}
 
           {/* Inline add row */}
           {canChangeStructure ? (
@@ -1910,6 +1964,8 @@ function ContainerCard({
   onChangeStatus,
   onDeleteContainer,
   warehouseNameByCode,
+  skuListCollapsed = false,
+  onToggleSkuList,
   detailMode = false,
 }: {
   container: MockContainer;
@@ -1940,6 +1996,8 @@ function ContainerCard({
   onChangeStatus: (containerId: string) => void;
   onDeleteContainer: (containerId: string) => void;
   warehouseNameByCode?: Map<string, string>;
+  skuListCollapsed?: boolean;
+  onToggleSkuList?: () => void;
   detailMode?: boolean;
 }) {
   const totalQty = container.items.reduce((sum, item) => sum + item.qty, 0);
@@ -2065,21 +2123,29 @@ function ContainerCard({
           ) : null}
           {detailMode ? (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] bg-[#fbfaf8] px-5 py-3">
-              <div>
+              <button
+                type="button"
+                aria-label={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
+                title={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
+                onClick={onToggleSkuList}
+                className="flex-1 text-left"
+              >
                 <div className="text-sm font-semibold">SKU List</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   Showing {visibleItems.length} of {container.items.length} SKUs
                 </div>
-              </div>
+              </button>
               <div className="flex items-center gap-2">
-                <input
-                  aria-label="Search SKU"
-                  className="form-input w-64 bg-white font-mono text-xs"
-                  placeholder="Search SKU..."
-                  value={skuSearch}
-                  onChange={(event) => setSkuSearch(event.target.value)}
-                />
-                {skuSearch ? (
+                {!skuListCollapsed ? (
+                  <input
+                    aria-label="Search SKU"
+                    className="form-input w-64 bg-white font-mono text-xs"
+                    placeholder="Search SKU..."
+                    value={skuSearch}
+                    onChange={(event) => setSkuSearch(event.target.value)}
+                  />
+                ) : null}
+                {!skuListCollapsed && skuSearch ? (
                   <button
                     type="button"
                     onClick={() => setSkuSearch("")}
@@ -2088,9 +2154,19 @@ function ContainerCard({
                     Clear
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  aria-label={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
+                  title={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
+                  onClick={onToggleSkuList}
+                  className="flex h-9 w-9 items-center justify-center rounded-md border border-[#cccac4] bg-white text-muted-foreground hover:bg-[#f0eee9]"
+                >
+                  {skuListCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </button>
               </div>
             </div>
           ) : null}
+          {skuListCollapsed ? null : <>
           <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]"}`}>
             <div>Master SKU</div>
             <div>Qty</div>
@@ -2218,6 +2294,7 @@ function ContainerCard({
               </div>
             ) : null}
           </div>
+          </>}
 
           <div className="flex items-center gap-3 border-t px-5 py-3">
             <button
@@ -2371,6 +2448,15 @@ function SkuRow({
 }) {
   const allocations = item.allocations ?? [];
   const hasAllocatedStock = allocations.length > 0;
+  const allocationIds = allocations.map((allocation) => allocation.id);
+  const canSelectAllocations = hasAllocatedStock && !readonly && !quantityOnly;
+  const allAllocationsSelected = canSelectAllocations
+    && allocations.every((allocation) => selectedAllocationIds.includes(allocation.id));
+
+  function toggleAllocationRow() {
+    if (!canSelectAllocations) return;
+    onToggleAllocationSelection(allocationIds, !allAllocationsSelected);
+  }
 
   if (editDraft) {
     return (
@@ -2436,14 +2522,28 @@ function SkuRow({
   }
 
   return (
-    <div className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${readonly ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]"}`}>
+    <div
+      role={canSelectAllocations ? "button" : undefined}
+      tabIndex={canSelectAllocations ? 0 : undefined}
+      aria-label={canSelectAllocations ? `Toggle ${item.sku} available stock for removal` : undefined}
+      onClick={canSelectAllocations ? toggleAllocationRow : undefined}
+      onKeyDown={canSelectAllocations ? (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        toggleAllocationRow();
+      } : undefined}
+      className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${
+        canSelectAllocations ? "cursor-pointer" : ""
+      } ${readonly ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]"}`}
+    >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {hasAllocatedStock && !readonly && !quantityOnly ? (
             <input
               type="checkbox"
               aria-label={`Select ${item.sku} available stock for removal`}
-              checked={allocations.every((allocation) => selectedAllocationIds.includes(allocation.id))}
+              checked={allAllocationsSelected}
+              onClick={(event) => event.stopPropagation()}
               onChange={(event) => onToggleAllocationSelection(allocations.map((allocation) => allocation.id), event.target.checked)}
             />
           ) : null}
@@ -2476,7 +2576,10 @@ function SkuRow({
             <button
               key={allocation.id}
               type="button"
-              onClick={() => void onRemoveAvailableAllocation(allocation.id, containerId)}
+              onClick={(event) => {
+                event.stopPropagation();
+                void onRemoveAvailableAllocation(allocation.id, containerId);
+              }}
               title={`Delete ${allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} ${allocation.referenceNo}`}
               className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-2.5 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
             >
@@ -2623,6 +2726,14 @@ function AvailableStockModal({
       });
       return next;
     });
+  }
+
+  function toggleRowSelection(row: AvailableStockRow) {
+    if (submitting || row.availableQty <= 0) return;
+    setSelectedQty((current) => ({
+      ...current,
+      [row.id]: current[row.id] ? "" : String(Math.min(row.availableQty, 1)),
+    }));
   }
 
   async function registerStock() {
@@ -2807,15 +2918,27 @@ function AvailableStockModal({
             visibleRows.map((row) => {
               const qty = Number.parseInt(selectedQty[row.id] ?? "", 10) || 0;
               return (
-                <div key={row.id} className="grid grid-cols-[42px_120px_1fr_90px_100px_90px_100px] items-center border-b border-[#e2dfd8] px-3 py-1 text-sm">
+                <div
+                  key={row.id}
+                  role="button"
+                  tabIndex={submitting || row.availableQty <= 0 ? -1 : 0}
+                  aria-label={`Toggle ${row.masterSku}`}
+                  onClick={() => toggleRowSelection(row)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    toggleRowSelection(row);
+                  }}
+                  className={`grid grid-cols-[42px_120px_1fr_90px_100px_90px_100px] items-center border-b border-[#e2dfd8] px-3 py-1 text-sm ${
+                    submitting || row.availableQty <= 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-[#f8f7f4]"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     checked={Boolean(selectedQty[row.id])}
                     disabled={submitting || row.availableQty <= 0}
-                    onChange={(event) => setSelectedQty((current) => ({
-                      ...current,
-                      [row.id]: event.target.checked ? String(Math.min(row.availableQty, 1)) : "",
-                    }))}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={() => toggleRowSelection(row)}
                   />
                   <span className="text-xs font-semibold">{row.referenceNo}</span>
                   <span className="font-mono text-xs">{row.masterSku}</span>
@@ -2826,6 +2949,7 @@ function AvailableStockModal({
                     max={row.availableQty}
                     value={selectedQty[row.id] ?? ""}
                     disabled={submitting || row.availableQty <= 0}
+                    onClick={(event) => event.stopPropagation()}
                     onChange={(event) => setSelectedQty((current) => ({ ...current, [row.id]: event.target.value }))}
                     className="h-7 w-20 rounded border border-[#cccac4] px-2 text-sm"
                   />
