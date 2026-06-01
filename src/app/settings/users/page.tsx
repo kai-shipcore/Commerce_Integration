@@ -58,7 +58,7 @@ export default function UserAccessPage() {
   const { data: session, status } = useSession();
   const isElevatedRole = (role: string) => role === "admin" || role === "dev" || role === "planner";
   const configurableMenus = useMemo(
-    () => navigationItems.filter((item) => item.hideable !== false && !item.adminOnly),
+    () => navigationItems.filter((item) => item.hideable !== false && !item.adminOnly && !item.hidden),
     []
   );
 

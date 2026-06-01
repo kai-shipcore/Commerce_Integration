@@ -67,6 +67,7 @@ export const navigationItems: NavigationItem[] = [
     icon: ShoppingCart,
     group: "Commerce",
     hideable: true,
+    hidden: true,
   },
   {
     id: "collections",
@@ -75,6 +76,7 @@ export const navigationItems: NavigationItem[] = [
     icon: FolderKanban,
     group: "Commerce",
     hideable: true,
+    hidden: true,
   },
   {
     id: "analytics",
@@ -95,7 +97,7 @@ export const navigationItems: NavigationItem[] = [
   {
     id: "demand-planning",
     name: "Dashboard",
-    href: "/planning/dashboard",
+    href: "/planning/dashboard-ag-grid",
     icon: LayoutDashboard,
     group: "Planning",
     hideable: true,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
@@ -19,6 +20,11 @@ import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/compone
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
 import type { CategoryFilter, ColumnGroupKey, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+
+const AgDemandPlanningGrid = dynamic(
+  () => import("./ag-demand-planning-grid").then((module) => module.AgDemandPlanningGrid),
+  { ssr: false },
+);
 
 const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
   fix: true,
@@ -77,7 +83,7 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
   }
 }
 
-export function DemandPlanningDashboard() {
+export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "native" | "ag-grid" }) {
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
   const [todayStr, setTodayStr] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
@@ -878,7 +884,7 @@ export function DemandPlanningDashboard() {
             </div>
           </div>
         )}
-        <DemandPlanningGrid
+        {gridMode === "ag-grid" ? <AgDemandPlanningGrid
           data={data}
           categoryFilter={categoryFilter}
           productFilter={productFilter}
@@ -897,7 +903,26 @@ export function DemandPlanningDashboard() {
           columnWidths={columnWidths}
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
-        />
+        /> : <DemandPlanningGrid
+          data={data}
+          categoryFilter={categoryFilter}
+          productFilter={productFilter}
+          urgencyFilter={urgencyFilter}
+          search={search}
+          onFilteredRowsChange={setFilteredRows}
+          onLoadContainerDetails={loadContainerDetails}
+          containerDetailsLoading={containerDetailsLoading}
+          containerDetailsLoaded={containerDetailsLoaded}
+          groupVis={groupVis}
+          compactMode={compactMode}
+          showRemaining={showRemaining}
+          showMistake={showMistake}
+          showZeroSales={showZeroSales}
+          freezeUntil={freezeUntil}
+          columnWidths={columnWidths}
+          columnWidthsRef={columnWidthsRef}
+          onColumnWidthsChange={handleColumnWidthsChange}
+        />}
       </div>
     </div>
   );

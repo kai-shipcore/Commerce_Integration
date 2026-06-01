@@ -106,7 +106,7 @@ function computeContainerChain(
   return result;
 }
 
-interface DemandPlanningGridProps {
+export interface DemandPlanningGridProps {
   data: DemandPlanningData;
   categoryFilter: CategoryFilter;
   productFilter: ProductFilter;

@@ -1955,6 +1955,11 @@ function ContainerCard({
   const removableAllocationIds = container.items.flatMap((item) => (item.allocations ?? []).map((allocation) => allocation.id));
   const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
   const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
+  const [skuSearch, setSkuSearch] = useState("");
+  const normalizedSkuSearch = skuSearch.trim().toLowerCase();
+  const visibleItems = normalizedSkuSearch
+    ? container.items.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))
+    : container.items;
   const activeSelectedAllocationIds = selectedAllocationIds.filter((id) => removableAllocationIds.includes(id));
   const getEditDraft = (sku: string) => inlineEditDrafts[`${container.id}::${sku}`];
   const destinationLabel = warehouseNameByCode?.get(container.destination) ?? container.destination;
@@ -2058,6 +2063,34 @@ function ContainerCard({
               <div className="mt-1 whitespace-pre-wrap text-sm text-foreground">{container.note}</div>
             </div>
           ) : null}
+          {detailMode ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] bg-[#fbfaf8] px-5 py-3">
+              <div>
+                <div className="text-sm font-semibold">SKU List</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Showing {visibleItems.length} of {container.items.length} SKUs
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  aria-label="Search SKU"
+                  className="form-input w-64 bg-white font-mono text-xs"
+                  placeholder="Search SKU..."
+                  value={skuSearch}
+                  onChange={(event) => setSkuSearch(event.target.value)}
+                />
+                {skuSearch ? (
+                  <button
+                    type="button"
+                    onClick={() => setSkuSearch("")}
+                    className="rounded-md border border-[#cccac4] bg-white px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-[#f0eee9]"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]"}`}>
             <div>Master SKU</div>
             <div>Qty</div>
@@ -2090,7 +2123,7 @@ function ContainerCard({
           ) : null}
 
           <div>
-            {container.items.map((item) => (
+            {visibleItems.map((item) => (
               <SkuRow
                 key={item.sku}
                 containerId={container.id}
@@ -2110,6 +2143,13 @@ function ContainerCard({
                 onToggleAllocationSelection={toggleAllocationSelection}
               />
             ))}
+            {visibleItems.length === 0 ? (
+              <div className="border-t px-5 py-8 text-center text-sm text-muted-foreground">
+                {normalizedSkuSearch
+                  ? <>No SKUs match &quot;{skuSearch.trim()}&quot;.</>
+                  : "No SKUs have been added yet."}
+              </div>
+            ) : null}
             {inlineSkuDraft && canChangeStructure ? (
               <div className="grid grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
                 <div className="pr-3">
