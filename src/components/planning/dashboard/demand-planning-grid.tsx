@@ -23,6 +23,7 @@ import {
 } from "./columns";
 import type { CellContent, ColDef, ColumnWidths, ResizableColumnId } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import type {
   CategoryFilter,
   ColumnGroupKey,
@@ -49,6 +50,7 @@ function computeContainerChain(
   cons: ContainerMeta[],
   overrides: Map<string, { inbound_qty: number | null }>,
   todayStr: string,
+  seasonalFactors: SeasonalFactors,
 ): Map<string, ChainDerived> {
   const result = new Map<string, ChainDerived>();
 
@@ -60,6 +62,7 @@ function computeContainerChain(
   let prevBackorder = availQty < 0 ? Math.abs(availQty) : 0;
   let prevSod: string | null = row.sod;
   let prevEta = todayStr;
+  let cumulativeAvailQty = availQty;
 
   for (const c of cons.slice(1)) {
     const eKey = `${row.sku}::${c.name}`;
@@ -67,6 +70,7 @@ function computeContainerChain(
     const rawData = row.containers?.[c.name];
     const qty = ov !== undefined ? (ov.inbound_qty ?? 0) : (rawData?.inbound_qty ?? 0);
     const eta = c.eta ?? todayStr;
+    cumulativeAvailQty += qty;
 
     const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
     const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
@@ -74,7 +78,7 @@ function computeContainerChain(
     const daysBetween = Math.max(0, Math.round(
       (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
     ));
-    const estSales   = Math.round(daysBetween * dailyRate);
+    const estSales   = Math.round(daysBetween * dailyRate * seasonalFactorForEta(eta, seasonalFactors));
     const backorderC = Math.max(0, estSales - availQtyC);
     const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
     const invLifeC   = dailyRate > 0 ? Math.floor(carryoverC / dailyRate) : null;
@@ -88,7 +92,7 @@ function computeContainerChain(
 
     result.set(c.name, {
       open_orders: openOrders,
-      avail_qty:   Math.max(0, availQtyC),
+      avail_qty:   cumulativeAvailQty,
       est_sales:   estSales,
       backorder:   backorderC,
       carryover:   carryoverC,
@@ -126,6 +130,7 @@ export interface DemandPlanningGridProps {
   columnWidths: ColumnWidths;
   columnWidthsRef: React.MutableRefObject<ColumnWidths>;
   onColumnWidthsChange: (next: ColumnWidths) => void;
+  seasonalFactors: SeasonalFactors;
 }
 
 const ROW_HEIGHT = 28;
@@ -315,6 +320,7 @@ export function DemandPlanningGrid({
   columnWidths,
   columnWidthsRef,
   onColumnWidthsChange,
+  seasonalFactors,
 }: DemandPlanningGridProps) {
   const { rows: ROWS } = data;
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
@@ -380,6 +386,17 @@ export function DemandPlanningGrid({
   const [containerChainMap, setContainerChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   // Row-level corrections for active-container aggregates (sku → partial DemandRow overrides)
   const [rowTotalOverrides, setRowTotalOverrides] = useState<Map<string, { total_inbound_qty?: number; containers_list?: string | null }>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setContainerChainMap(new Map(
+        ROWS.map((row) => [row.sku, computeContainerChain(row, CONS, qtyOverrides, TODAY, seasonalFactors)]),
+      ));
+    });
+    return () => { cancelled = true; };
+  }, [CONS, ROWS, qtyOverrides, seasonalFactors]);
 
   const visCols = useMemo<ColDef[]>(
     () => ALL_COLS
@@ -740,7 +757,7 @@ export function DemandPlanningGrid({
                             setContainerChainMap((prev) => {
                               const next = new Map(prev);
                               for (const r of ROWS) {
-                                next.set(r.sku, computeContainerChain(r, newCons, qtyOverrides, TODAY));
+                                next.set(r.sku, computeContainerChain(r, newCons, qtyOverrides, TODAY, seasonalFactors));
                               }
                               return next;
                             });
@@ -1121,7 +1138,7 @@ export function DemandPlanningGrid({
                                 const nextOverrides = new Map(qtyOverrides);
                                 nextOverrides.set(eKey, { inbound_qty: null, avail_qty: null, cbm: null, item_id: undefined });
                                 setQtyOverrides(nextOverrides);
-                                const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY);
+                                const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY, seasonalFactors);
                                 setContainerChainMap((prev) => new Map(prev).set(r.sku, chainResult));
                                 if (isActiveContainer) {
                                   setRowTotalOverrides((prev) => {
@@ -1168,7 +1185,7 @@ export function DemandPlanningGrid({
                                 item_id: json.item_id ?? effectiveItemId ?? undefined,
                               });
                               setQtyOverrides(nextOverrides);
-                              const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY);
+                              const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY, seasonalFactors);
                               setContainerChainMap((prev) => new Map(prev).set(r.sku, chainResult));
                               if (isActiveContainer) {
                                 setRowTotalOverrides((prev) => {

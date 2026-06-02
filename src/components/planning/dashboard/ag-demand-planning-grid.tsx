@@ -23,6 +23,7 @@ import {
 } from "./columns";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import type { CellContent } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
@@ -98,6 +99,7 @@ function computeContainerChain(
   row: DemandRow,
   containers: ContainerMeta[],
   overrides: Map<string, QtyOverride>,
+  seasonalFactors: SeasonalFactors,
 ): Map<string, ChainDerived> {
   const result = new Map<string, ChainDerived>();
   const availableQty = (row.total_stock ?? 0) + (row.back ?? 0);
@@ -106,16 +108,18 @@ function computeContainerChain(
   let previousBackorder = availableQty < 0 ? Math.abs(availableQty) : 0;
   let previousSod = row.sod;
   let previousEta = TODAY;
+  let cumulativeAvailableQty = availableQty;
 
   for (const container of containers.slice(1)) {
     const key = `${row.sku}::${container.name}`;
     const raw = row.containers?.[container.name];
     const qty = overrides.get(key)?.inbound_qty ?? raw?.inbound_qty ?? 0;
+    cumulativeAvailableQty += qty;
     const eta = container.eta ?? TODAY;
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
     const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
     const days = Math.max(0, Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000));
-    const estimatedSales = Math.round(days * dailyRate);
+    const estimatedSales = Math.round(days * dailyRate * seasonalFactorForEta(eta, seasonalFactors));
     const backorder = Math.max(0, estimatedSales - available);
     const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
     const inventoryLife = dailyRate > 0 ? Math.floor(carryover / dailyRate) : null;
@@ -130,7 +134,7 @@ function computeContainerChain(
 
     result.set(container.name, {
       open_orders: openOrders,
-      avail_qty: Math.max(0, available),
+      avail_qty: cumulativeAvailableQty,
       est_sales: estimatedSales,
       backorder,
       carryover,
@@ -297,26 +301,29 @@ function QtyCellRenderer({
 
   if (editing) {
     return (
-      <input
-        autoFocus
-        type="number"
-        min={0}
-        value={inputValue}
-        onClick={(event) => event.stopPropagation()}
-        onChange={(event) => setInputValue(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setInputValue(displayValue);
-            setEditing(false);
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void commit();
-          }
-        }}
-        onBlur={() => void commit()}
-        className="h-full w-full border-0 bg-[#FFFDE7] px-1 text-right font-mono text-[11px] outline-none"
-      />
+      <div className="relative h-full w-full">
+        <input
+          autoFocus
+          type="number"
+          min={0}
+          value={inputValue}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setInputValue(displayValue);
+              setEditing(false);
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void commit();
+            }
+          }}
+          onBlur={() => void commit()}
+          className="absolute right-0 top-0 h-full min-w-[88px] border border-[#1a5cdb] bg-[#FFFDE7] px-2 text-right font-mono text-[11px] outline-none"
+          style={{ zIndex: 100 }}
+        />
+      </div>
     );
   }
 
@@ -494,6 +501,7 @@ export function AgDemandPlanningGrid({
   freezeUntil,
   columnWidths,
   onColumnWidthsChange,
+  seasonalFactors,
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
@@ -590,6 +598,17 @@ export function AgDemandPlanningGrid({
   }, [chainMap, containers, qtyOverrides, visibleRows]);
 
   useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setChainMap(new Map(
+        data.rows.map((row) => [row.sku, computeContainerChain(row, containers, qtyOverrides, seasonalFactors)]),
+      ));
+    });
+    return () => { cancelled = true; };
+  }, [containers, data.rows, qtyOverrides, seasonalFactors]);
+
+  useEffect(() => {
     const api = gridRef.current?.api;
     if (!api) return;
     api.refreshCells({ force: true });
@@ -600,13 +619,13 @@ export function AgDemandPlanningGrid({
     if (!eta || !container.container_id) return;
     setEtaOverrides((current) => new Map(current).set(container.container_id!, eta));
     const nextContainers = containers.map((entry) => entry.container_id === container.container_id ? { ...entry, eta } : entry);
-    setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides)])));
+    setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides, seasonalFactors)])));
     void fetch(`/api/containers?id=${container.container_id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ eta }),
     });
-  }, [containers, data.rows, qtyOverrides]);
+  }, [containers, data.rows, qtyOverrides, seasonalFactors]);
 
   const saveCbm = useCallback(async (row: DemandRow, nextCbm: number) => {
     if (!Number.isFinite(nextCbm) || nextCbm < 0) return false;
@@ -694,7 +713,7 @@ export function AgDemandPlanningGrid({
       item_id: nextQty === 0 ? undefined : (json.item_id ?? itemId),
     });
     setQtyOverrides(nextOverrides);
-    setChainMap((current) => new Map(current).set(row.sku, computeContainerChain(row, containers, nextOverrides)));
+    setChainMap((current) => new Map(current).set(row.sku, computeContainerChain(row, containers, nextOverrides, seasonalFactors)));
 
     if (container.status === "shipped" || container.status === "packing_received") {
       setRowOverrides((current) => {
@@ -712,7 +731,7 @@ export function AgDemandPlanningGrid({
       });
     }
     return true;
-  }, [containers, qtyOverrides]);
+  }, [containers, qtyOverrides, seasonalFactors]);
 
   const columnDefs = useMemo<Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>>(() => {
     const visibleBaseColumns = ALL_COLS

@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { getPlanningDashboardCache, setPlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import type {
   ContainerMeta,
   ContainerRowData,
@@ -468,7 +469,7 @@ export async function GET(req: Request) {
         cbm_unit:    null,
         inbound_qty: null,
         open_orders: 0,
-        avail_qty:   Math.max(0, availQty),
+        avail_qty:   availQty,
         est_sales:   0,
         backorder:   availQty < 0 ? Math.abs(availQty) : 0,
         carryover:   carryover,
@@ -484,11 +485,13 @@ export async function GET(req: Request) {
       let prevBackorder = availQty < 0 ? Math.abs(availQty) : 0;
       let prevSod       = sod;
       let prevEta       = todayStr;
+      let cumulativeAvailQty = availQty;
 
       for (const c of containers.slice(1)) {
         const raw  = containersObj[c.name];
         const qty  = raw?.inbound_qty ?? 0;
         const eta  = c.eta ?? todayStr;
+        cumulativeAvailQty += qty;
 
         const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
         const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
@@ -496,7 +499,7 @@ export async function GET(req: Request) {
         const daysBetween = Math.max(0, Math.round(
           (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
         ));
-        const estSales   = Math.round(daysBetween * dailyRate);
+        const estSales   = Math.round(daysBetween * dailyRate * seasonalFactorForEta(eta, DEFAULT_SEASONAL_FACTORS));
         const backorderC = Math.max(0, estSales - availQtyC);
         const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
         const invLifeC   = dailyRate > 0 ? Math.floor(carryoverC / dailyRate) : null;
@@ -512,7 +515,7 @@ export async function GET(req: Request) {
         containersObj[c.name] = {
           ...(raw ?? { item_id: null, cbm_unit: null, inbound_qty: null, cbm: 0, eta }),
           open_orders: openOrders,
-          avail_qty:   Math.max(0, availQtyC),
+          avail_qty:   cumulativeAvailQty,
           est_sales:   estSales,
           backorder:   backorderC,
           carryover:   carryoverC,

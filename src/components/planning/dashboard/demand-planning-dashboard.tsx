@@ -19,6 +19,12 @@ import type { ColumnWidths } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
+import {
+  DEFAULT_SEASONAL_FACTORS,
+  SEASONAL_FACTORS_STORAGE_KEY,
+  loadSavedSeasonalFactors,
+  type SeasonalFactors,
+} from "@/lib/planning/seasonal-factors";
 import type { CategoryFilter, ColumnGroupKey, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 
 const AgDemandPlanningGrid = dynamic(
@@ -152,6 +158,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
+  const [seasonalFactors, setSeasonalFactors] = useState<SeasonalFactors>(DEFAULT_SEASONAL_FACTORS);
   const columnWidthsRef = useRef<ColumnWidths>({});
   const containerAutoLoadKeyRef = useRef<string | null>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
@@ -161,6 +168,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     columnWidthsRef.current = saved;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setColumnWidths(saved);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setSeasonalFactors(loadSavedSeasonalFactors());
   }, []);
 
   useEffect(() => {
@@ -217,6 +229,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     columnWidthsRef.current = {};
     setColumnWidths({});
     window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
+  }, []);
+
+  const handleSeasonalFactorsChange = useCallback((next: SeasonalFactors) => {
+    setSeasonalFactors(next);
+    window.localStorage.setItem(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(next));
   }, []);
 
   const handleAllOn = useCallback(() => {
@@ -683,7 +700,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           </Popover>
         )}
 
-        <StatusBar rows={filteredRows} inline />
+        <StatusBar
+          rows={filteredRows}
+          inline
+          seasonalFactors={seasonalFactors}
+          onSeasonalFactorsChange={handleSeasonalFactorsChange}
+        />
 
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 10 }}>
           {hasData ? (
@@ -903,6 +925,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidths={columnWidths}
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
+          seasonalFactors={seasonalFactors}
         /> : <DemandPlanningGrid
           data={data}
           categoryFilter={categoryFilter}
@@ -922,6 +945,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidths={columnWidths}
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
+          seasonalFactors={seasonalFactors}
         />}
       </div>
     </div>
