@@ -9,7 +9,6 @@ import {
   type ColGroupDef,
   type ICellRendererParams,
   type IHeaderGroupParams,
-  type NewValueParams,
 } from "ag-grid-community";
 import {
   ALL_COLS,
@@ -49,6 +48,7 @@ type QtyOverride = {
   inbound_qty: number | null;
   avail_qty: number | null;
   cbm: number | null;
+  cbm_unit?: number | null;
   item_id?: number;
 };
 
@@ -77,6 +77,12 @@ function containerColumnWidth(column: { id: string; w: number }) {
   if (column.id === "remaining") return 42;
   if (column.id === "mistake") return 38;
   if (column.id === "esod" || column.id === "psod") return 70;
+  return column.w;
+}
+
+function baseColumnWidth(column: { id: string; w: number }) {
+  if (column.id === "eavg_p" || column.id === "eavg_r" || column.id === "eavg_c") return 50;
+  if (column.id === "tavg_p" || column.id === "tavg_r" || column.id === "tavg_c") return 50;
   return column.w;
 }
 
@@ -331,6 +337,93 @@ function QtyCellRenderer({
   );
 }
 
+function CbmCellRenderer({
+  value,
+  node,
+  onSave,
+}: ICellRendererParams<DemandRow, CellContent> & {
+  onSave: (cbm: number) => Promise<boolean>;
+}) {
+  const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState(displayValue);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    if (!editing && !savingRef.current) setInputValue(displayValue);
+  }, [displayValue, editing]);
+
+  async function commit() {
+    if (savingRef.current) return;
+    const nextCbm = Number.parseFloat(inputValue);
+    if (!Number.isFinite(nextCbm) || nextCbm < 0) {
+      setInputValue(displayValue);
+      setEditing(false);
+      return;
+    }
+    if (nextCbm === Number.parseFloat(displayValue)) {
+      setEditing(false);
+      return;
+    }
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const saved = await onSave(nextCbm);
+      if (!saved) setInputValue(displayValue);
+    } catch {
+      setInputValue(displayValue);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        min={0}
+        step="0.0001"
+        value={inputValue}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => setInputValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setInputValue(displayValue);
+            setEditing(false);
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void commit();
+          }
+        }}
+        onBlur={() => void commit()}
+        className="h-full w-full border-0 bg-[#FFFDE7] px-1 text-right font-mono text-[11px] outline-none"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      title="Click to edit CBM"
+      onClick={(event) => {
+        event.stopPropagation();
+        node.setSelected(true, true);
+        setEditing(true);
+      }}
+      className="h-full w-full border-0 bg-transparent px-1 text-right font-mono text-[11px] text-[#1A4FC0]"
+    >
+      {saving ? "..." : displayValue}
+    </button>
+  );
+}
+
 function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
@@ -515,17 +608,45 @@ export function AgDemandPlanningGrid({
     });
   }, [containers, data.rows, qtyOverrides]);
 
-  const saveCbm = useCallback(async (event: NewValueParams<DemandRow, number>) => {
-    const row = event.data;
-    const nextCbm = Number(event.newValue);
-    if (!row || !Number.isFinite(nextCbm) || nextCbm < 0 || nextCbm === row.cbm_per_unit) return;
+  const saveCbm = useCallback(async (row: DemandRow, nextCbm: number) => {
+    if (!Number.isFinite(nextCbm) || nextCbm < 0) return false;
+    if (nextCbm === row.cbm_per_unit) return true;
     const response = await fetch(`/api/planning/products/${encodeURIComponent(row.sku)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cbm_per_unit: nextCbm }),
     });
-    const json = await response.json() as { success: boolean };
-    if (json.success) setCbmOverrides((current) => new Map(current).set(row.sku, nextCbm));
+    const json = await response.json() as {
+      success: boolean;
+      container_items?: Array<{
+        item_id: number;
+        container_name: string;
+        cbm_unit: number;
+        total_cbm: number;
+      }>;
+    };
+    if (!json.success) return false;
+
+    setCbmOverrides((current) => new Map(current).set(row.sku, nextCbm));
+    if (json.container_items?.length) {
+      setQtyOverrides((current) => {
+        const next = new Map(current);
+        for (const item of json.container_items ?? []) {
+          const key = `${row.sku}::${item.container_name}`;
+          const raw = row.containers?.[item.container_name];
+          const previous = current.get(key);
+          next.set(key, {
+            inbound_qty: previous?.inbound_qty ?? raw?.inbound_qty ?? null,
+            avail_qty: previous?.avail_qty ?? raw?.avail_qty ?? null,
+            cbm: item.total_cbm,
+            cbm_unit: item.cbm_unit,
+            item_id: previous?.item_id ?? raw?.item_id ?? item.item_id,
+          });
+        }
+        return next;
+      });
+    }
+    return true;
   }, []);
 
   const saveQty = useCallback(async (
@@ -558,7 +679,7 @@ export function AgDemandPlanningGrid({
           container_id: container.container_id,
           master_sku: row.sku,
           qty: nextQty,
-          cbm_unit: raw.cbm_unit ?? row.cbm_per_unit ?? 0,
+          cbm_unit: previous?.cbm_unit ?? raw.cbm_unit ?? row.cbm_per_unit ?? 0,
         }),
       }).then((response) => response.json());
     }
@@ -569,6 +690,7 @@ export function AgDemandPlanningGrid({
       inbound_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
       avail_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
       cbm: nextQty === 0 ? null : (json.total_cbm ?? 0),
+      cbm_unit: previous?.cbm_unit ?? raw.cbm_unit,
       item_id: nextQty === 0 ? undefined : (json.item_id ?? itemId),
     });
     setQtyOverrides(nextOverrides);
@@ -603,22 +725,22 @@ export function AgDemandPlanningGrid({
     const columns = baseGroups.get(column.grp) ?? [];
     const isCopyable = column.id === "sku" || column.id === "inb_lst";
     const headerName = column.id === "tavg_p"
-      ? "Tot Avg 이전"
+      ? "T. Avg 이전"
       : column.id === "tavg_r"
-        ? "Tot Avg 실제"
+        ? "T. Avg 실제"
         : column.id === "tavg_c"
-          ? "Tot Avg 현재"
+          ? "T. Avg 현재"
           : column.label.replace("\n", " ");
     columns.push({
       colId: column.id,
       headerName,
         headerTooltip: column.label.replace("\n", " "),
-        width: columnWidths[column.id as keyof typeof columnWidths] ?? column.w,
+        width: columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column),
         minWidth: Math.min(36, column.w),
         sortable: column.id !== "row_num",
       pinned: freezeIndex >= 0 && index <= freezeIndex ? "left" : undefined,
       valueGetter: (params) => params.data ? column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data)) : "",
-      cellRenderer: isCopyable ? CopyableCellRenderer : CellRenderer,
+      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
         ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
             copyValue: column.id === "sku"
@@ -626,6 +748,10 @@ export function AgDemandPlanningGrid({
               : params.data?.containers_list ?? "",
             label: column.id === "sku" ? "Master SKU" : "Containers List",
           })
+        : column.id === "cbm"
+          ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
+              onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
+            })
         : undefined,
       cellStyle: {
           backgroundColor: TINT_COLORS[column.tint] || "#fff",
@@ -633,10 +759,6 @@ export function AgDemandPlanningGrid({
           textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
           ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
         },
-        editable: column.id === "cbm",
-        valueParser: column.id === "cbm" ? (params) => Number(params.newValue) : undefined,
-        valueSetter: column.id === "cbm" ? (params) => Number(params.newValue) !== Number(params.oldValue) : undefined,
-        onCellValueChanged: column.id === "cbm" ? saveCbm : undefined,
       });
       baseGroups.set(column.grp, columns);
     });
@@ -730,7 +852,7 @@ export function AgDemandPlanningGrid({
           rowData={visibleRows}
           columnDefs={columnDefs}
           defaultColDef={{
-            autoHeaderHeight: true,
+            autoHeaderHeight: false,
             wrapHeaderText: true,
           }}
           getRowId={(params) => params.data.sku}
@@ -741,7 +863,7 @@ export function AgDemandPlanningGrid({
           }}
           onCellClicked={(event) => event.node.setSelected(true, true)}
           rowHeight={28}
-          headerHeight={44}
+          headerHeight={45}
           groupHeaderHeight={42}
           animateRows={false}
           singleClickEdit
