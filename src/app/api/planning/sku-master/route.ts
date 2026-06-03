@@ -126,13 +126,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim() ?? "";
     const product = searchParams.get("product")?.trim() ?? "all";
+    const status = searchParams.get("status")?.trim().toLowerCase() ?? "active";
     const masterSku = searchParams.get("masterSku")?.trim() ?? "";
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
     const limit = Math.min(200, Math.max(20, Number(searchParams.get("limit") ?? 50)));
     const offset = (page - 1) * limit;
 
-    const filters = ["status = 'active'"];
+    const filters: string[] = [];
     const params: unknown[] = [];
+
+    if (status !== "all") {
+      if (status !== "active" && status !== "inactive") {
+        return NextResponse.json({ success: false, error: "Invalid status filter" }, { status: 400 });
+      }
+      params.push(status);
+      filters.push(`status = $${params.length}::shipcore.fc_product_status`);
+    }
 
     if (search) {
       params.push(`%${search}%`);
@@ -153,6 +162,7 @@ export async function GET(request: NextRequest) {
     }
 
     const pool = getPrimaryPool();
+    const whereClause = filters.length > 0 ? filters.join(" AND ") : "TRUE";
 
     if (masterSku) {
       const result = await pool.query(
@@ -161,6 +171,7 @@ export async function GET(request: NextRequest) {
            product_name,
            category,
            category_code,
+           status::text AS status,
            moq,
            order_multiple,
            cbm_per_unit::text AS cbm_per_unit,
@@ -190,6 +201,7 @@ export async function GET(request: NextRequest) {
           productKey: (row.category_code?.toLowerCase() ?? inferred.productKey) as ProductKey,
           category: row.category ?? inferred.category,
           categoryCode: row.category_code ?? inferred.categoryCode,
+          status: row.status ?? "active",
           moq: Number(row.moq ?? inferred.moq),
           orderMultiple: Number(row.order_multiple ?? inferred.moq),
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
@@ -203,7 +215,7 @@ export async function GET(request: NextRequest) {
     const countResult = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
        FROM shipcore.fc_products
-       WHERE ${filters.join(" AND ")}`,
+       WHERE ${whereClause}`,
       params
     );
     const total = Number(countResult.rows[0]?.count ?? 0);
@@ -218,6 +230,7 @@ export async function GET(request: NextRequest) {
          product_name,
          category,
          category_code,
+         status::text AS status,
          moq,
          order_multiple,
          cbm_per_unit::text AS cbm_per_unit,
@@ -225,7 +238,7 @@ export async function GET(request: NextRequest) {
          weight_kg::text AS weight_kg,
          COALESCE(is_custom_sku, false) AS is_custom_sku
        FROM shipcore.fc_products
-       WHERE ${filters.join(" AND ")}
+       WHERE ${whereClause}
        ORDER BY category_code NULLS LAST, master_sku
        LIMIT $${limitParam} OFFSET $${offsetParam}`,
       dataParams
@@ -241,6 +254,7 @@ export async function GET(request: NextRequest) {
           productKey: (row.category_code?.toLowerCase() ?? inferred.productKey) as ProductKey,
           category: row.category ?? inferred.category,
           categoryCode: row.category_code ?? inferred.categoryCode,
+          status: row.status ?? "active",
           moq: Number(row.moq ?? inferred.moq),
           orderMultiple: Number(row.order_multiple ?? inferred.moq),
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
@@ -380,6 +394,11 @@ export async function PATCH(request: NextRequest) {
     const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.000001, Number(body.cbmPerUnit));
     const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
     const isCustomSku = typeof body.isCustomSku === "boolean" ? body.isCustomSku : null;
+    const statusValue = body.status == null ? null : String(body.status).trim().toLowerCase();
+
+    if (statusValue !== null && statusValue !== "active" && statusValue !== "inactive") {
+      return NextResponse.json({ success: false, error: "Invalid status" }, { status: 400 });
+    }
 
     const pool = getPrimaryPool();
     const result = await pool.query(
@@ -390,10 +409,11 @@ export async function PATCH(request: NextRequest) {
            case_qty = COALESCE($4, case_qty),
            weight_kg = COALESCE($5, weight_kg),
            is_custom_sku = COALESCE($6, is_custom_sku),
+           status = COALESCE($7::shipcore.fc_product_status, status),
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,
-      [masterSku, moq, cbmPerUnit, caseQty, weightKg, isCustomSku]
+      [masterSku, moq, cbmPerUnit, caseQty, weightKg, isCustomSku, statusValue]
     );
 
     if (result.rowCount === 0) {

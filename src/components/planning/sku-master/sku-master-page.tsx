@@ -10,6 +10,7 @@ type SkuMasterRow = {
   productKey: ProductKey;
   category: string;
   categoryCode: string;
+  status: SkuStatus;
   moq: number;
   orderMultiple: number;
   cbmPerUnit: number;
@@ -17,6 +18,9 @@ type SkuMasterRow = {
   weightKg: number;
   isCustomSku: boolean;
 };
+
+type SkuStatus = "active" | "inactive";
+type StatusFilter = SkuStatus | "all";
 
 const productMeta: Record<
   ProductKey,
@@ -147,6 +151,7 @@ export function SkuMasterPage() {
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState<ProductKey | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -169,6 +174,7 @@ export function SkuMasterPage() {
       const params = new URLSearchParams();
       if (query.trim()) params.set("search", query.trim());
       if (product !== "all") params.set("product", product);
+      if (statusFilter !== "active") params.set("status", statusFilter);
       params.set("page", String(page));
       params.set("limit", String(limit));
       const res = await fetch(`/api/planning/sku-master?${params.toString()}`, { cache: "no-store" });
@@ -190,7 +196,7 @@ export function SkuMasterPage() {
     }, 200);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, product, page, limit]);
+  }, [query, product, statusFilter, page, limit]);
 
   const visibleSkus = useMemo(
     () => rows,
@@ -208,7 +214,7 @@ export function SkuMasterPage() {
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "caseQty" | "weightKg">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "caseQty" | "weightKg" | "status">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
@@ -223,6 +229,7 @@ export function SkuMasterPage() {
         moq: row.moq,
         caseQty: row.caseQty,
         weightKg: row.weightKg,
+        status: row.status,
       }),
     });
     const json = await res.json();
@@ -292,6 +299,7 @@ export function SkuMasterPage() {
         const params = new URLSearchParams();
         if (query.trim()) params.set("search", query.trim());
         if (product !== "all") params.set("product", product);
+        if (statusFilter !== "active") params.set("status", statusFilter);
         params.set("page", String(exportPage));
         params.set("limit", String(exportLimit));
 
@@ -308,6 +316,7 @@ export function SkuMasterPage() {
         "product_name",
         "category",
         "category_code",
+        "status",
         "cbm_per_unit",
         "moq",
         "order_multiple",
@@ -324,6 +333,7 @@ export function SkuMasterPage() {
             sku.productName,
             sku.category,
             sku.categoryCode,
+            sku.status,
             sku.cbmPerUnit,
             sku.moq,
             sku.orderMultiple,
@@ -398,6 +408,18 @@ export function SkuMasterPage() {
                 {productMeta[key].label}
               </option>
             ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as StatusFilter);
+              setPage(1);
+            }}
+            className="form-input h-9 w-32 bg-white text-xs"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="all">All Status</option>
           </select>
           <button
             type="button"
@@ -498,9 +520,10 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[800px] grid-cols-[210px_330px_150px_110px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[920px] grid-cols-[190px_310px_130px_150px_100px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">Product</div>
           <div className="px-4 py-3">Master SKU</div>
+          <div className="px-4 py-3">Status</div>
           <div className="px-4 py-3">CBM / Unit</div>
           <div className="px-4 py-3">MOQ</div>
           <div className="px-4 py-3 text-right">Actions</div>
@@ -509,12 +532,17 @@ export function SkuMasterPage() {
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[800px] grid-cols-[210px_330px_150px_110px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            className="grid min-w-[920px] grid-cols-[190px_310px_130px_150px_100px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
             </div>
             <div className="px-4 py-3 font-mono text-xs font-semibold">{sku.masterSku}</div>
+            <EditableStatus
+              active={editingSku === sku.masterSku}
+              value={sku.status}
+              onChange={(value) => updateRow(sku.masterSku, { status: value })}
+            />
             <EditableNumber
               active={editingSku === sku.masterSku}
               value={sku.cbmPerUnit}
@@ -590,6 +618,53 @@ function ProductBadge({ product }: { product: ProductKey }) {
     <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[11px] font-semibold ${meta.badgeClass}`}>
       {meta.label}
     </span>
+  );
+}
+
+function StatusBadge({ status }: { status: SkuStatus }) {
+  const active = status === "active";
+  return (
+    <span
+      className={
+        `inline-flex rounded-lg px-2 py-0.5 text-[11px] font-semibold ` +
+        (active
+          ? "bg-[#dcefe8] text-[#047857] dark:bg-emerald-950/70 dark:text-emerald-300"
+          : "bg-[#eee9df] text-[#7a7061] dark:bg-stone-900/70 dark:text-stone-300")
+      }
+    >
+      {active ? "Active" : "Inactive"}
+    </span>
+  );
+}
+
+function EditableStatus({
+  active,
+  value,
+  onChange,
+}: {
+  active: boolean;
+  value: SkuStatus;
+  onChange: (value: SkuStatus) => void;
+}) {
+  if (active) {
+    return (
+      <div className="px-4 py-3">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value as SkuStatus)}
+          className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
+        >
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3">
+      <StatusBadge status={value} />
+    </div>
   );
 }
 
