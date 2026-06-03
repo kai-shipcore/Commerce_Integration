@@ -23,6 +23,7 @@ import {
 } from "./columns";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import type { CellContent } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
@@ -109,6 +110,25 @@ function computeContainerChain(
   let previousSod = row.sod;
   let previousEta = TODAY;
   let cumulativeAvailableQty = availableQty;
+  const baseline = containers[0];
+  const baselineSeasonalFactor = seasonalFactorForEta(baseline?.eta ?? TODAY, seasonalFactors);
+  const baselineInventoryLife = inventoryLifeDays(previousCarryover, dailyRate, baselineSeasonalFactor);
+  const baselinePlanSod = baselineInventoryLife === null
+    ? null
+    : new Date(new Date(baseline?.eta ?? TODAY).getTime() + baselineInventoryLife * 86400000).toISOString().slice(0, 10);
+
+  if (baseline) {
+    result.set(baseline.name, {
+      open_orders: 0,
+      avail_qty: availableQty,
+      est_sales: 0,
+      backorder: previousBackorder,
+      carryover: previousCarryover,
+      inv_life: baselineInventoryLife,
+      est_sod: row.sod,
+      plan_sod: baselinePlanSod,
+    });
+  }
 
   for (const container of containers.slice(1)) {
     const key = `${row.sku}::${container.name}`;
@@ -118,11 +138,12 @@ function computeContainerChain(
     const eta = container.eta ?? TODAY;
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
     const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
-    const days = Math.max(0, Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000));
-    const estimatedSales = Math.round(days * dailyRate * seasonalFactorForEta(eta, seasonalFactors));
+    const days = Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000);
+    const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
+    const estimatedSales = days * dailyRate * seasonalFactor;
     const backorder = Math.max(0, estimatedSales - available);
     const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
-    const inventoryLife = dailyRate > 0 ? Math.floor(carryover / dailyRate) : null;
+    const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
     const sodFromContainer = inventoryLife === null
       ? null
       : new Date(new Date(eta).getTime() + inventoryLife * 86400000).toISOString().slice(0, 10);
@@ -156,6 +177,25 @@ function renderCellValue(value: CellContent | undefined) {
     return <span dangerouslySetInnerHTML={{ __html: value.html }} />;
   }
   return <span>{String(value)}</span>;
+}
+
+function exportCellValue(value: unknown): string | number | boolean {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object" && value !== null && "html" in value) {
+    const element = document.createElement("span");
+    element.innerHTML = String((value as { html: unknown }).html);
+    return element.textContent ?? "";
+  }
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    ? value
+    : String(value);
+}
+
+function excelDateSerial(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000 + 25569;
 }
 
 function CellRenderer({ value }: ICellRendererParams<DemandRow, CellContent>) {
@@ -502,6 +542,7 @@ export function AgDemandPlanningGrid({
   columnWidths,
   onColumnWidthsChange,
   seasonalFactors,
+  onExportReady,
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
@@ -849,6 +890,70 @@ export function AgDemandPlanningGrid({
     }
     return groups;
   }, [chainMap, columnWidths, compactMode, containerColumnTotals, containers, freezeUntil, groupVis, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+
+  const exportCurrentView = useCallback(async () => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    const columns = api.getAllDisplayedColumns();
+    const csv = api.getDataAsCsv({
+      exportedRows: "filteredAndSorted",
+      valueFrom: "edit",
+      processCellCallback: (params) => String(exportCellValue(params.value)),
+      processGroupHeaderCallback: (params) => {
+        const groupId = params.columnGroup.getGroupId();
+        const container = groupId.startsWith("container-")
+          ? containers.find((entry) => `container-${entry.name}` === groupId)
+          : undefined;
+        return container
+          ? `${container.name} | ETA ${container.eta}`
+          : params.columnGroup.getColGroupDef()?.headerName ?? "";
+      },
+    });
+    if (!csv) return;
+
+    const XLSX = await import("xlsx");
+    const csvWorkbook = XLSX.read(csv, { type: "string", raw: true });
+    const worksheet = csvWorkbook.Sheets[csvWorkbook.SheetNames[0]];
+    const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1");
+    columns.forEach((column, columnIndex) => {
+      const columnId = column.getColId();
+      const isContainersList = columnId === "inb_lst";
+      const isDate = columnId === "next_eta"
+        || columnId === "sod"
+        || columnId.endsWith("::esod")
+        || columnId.endsWith("::psod");
+      if (!isContainersList && !isDate) return;
+
+      for (let rowIndex = 2; rowIndex <= range.e.r; rowIndex += 1) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+        if (!cell || cell.v === null || cell.v === undefined || cell.v === "") continue;
+        if (isContainersList) {
+          cell.t = "s";
+          cell.v = String(cell.v);
+          continue;
+        }
+
+        const serial = excelDateSerial(cell.v);
+        if (serial === null) continue;
+        cell.t = "n";
+        cell.v = serial;
+        cell.z = "yyyy-mm-dd";
+      }
+    });
+    worksheet["!cols"] = columns.map((column) => ({
+      wch: Math.max(8, Math.min(24, Math.ceil((column.getActualWidth() ?? 80) / 7))),
+    }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Planning");
+    XLSX.writeFile(workbook, `planning_${TODAY}.xlsx`);
+  }, [containers]);
+
+  useEffect(() => {
+    if (!onExportReady) return;
+    onExportReady(exportCurrentView);
+    return () => onExportReady(null);
+  }, [exportCurrentView, onExportReady]);
 
   return (
     <div className="planning-ag-grid h-full min-h-0 w-full bg-white">

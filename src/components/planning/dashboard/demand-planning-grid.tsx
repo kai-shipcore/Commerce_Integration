@@ -23,6 +23,7 @@ import {
 } from "./columns";
 import type { CellContent, ColDef, ColumnWidths, ResizableColumnId } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import type {
   CategoryFilter,
@@ -63,6 +64,25 @@ function computeContainerChain(
   let prevSod: string | null = row.sod;
   let prevEta = todayStr;
   let cumulativeAvailQty = availQty;
+  const baseline = cons[0];
+  const baselineSeasonalFactor = seasonalFactorForEta(baseline?.eta ?? todayStr, seasonalFactors);
+  const baselineInventoryLife = inventoryLifeDays(carryover, dailyRate, baselineSeasonalFactor);
+  const baselinePlanSod = baselineInventoryLife === null
+    ? null
+    : new Date(new Date(baseline?.eta ?? todayStr).getTime() + baselineInventoryLife * 86400000).toISOString().slice(0, 10);
+
+  if (baseline) {
+    result.set(baseline.name, {
+      open_orders: 0,
+      avail_qty: availQty,
+      est_sales: 0,
+      backorder: prevBackorder,
+      carryover,
+      inv_life: baselineInventoryLife,
+      est_sod: row.sod,
+      plan_sod: baselinePlanSod,
+    });
+  }
 
   for (const c of cons.slice(1)) {
     const eKey = `${row.sku}::${c.name}`;
@@ -75,13 +95,14 @@ function computeContainerChain(
     const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
     const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
 
-    const daysBetween = Math.max(0, Math.round(
+    const daysBetween = Math.round(
       (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
-    ));
-    const estSales   = Math.round(daysBetween * dailyRate * seasonalFactorForEta(eta, seasonalFactors));
+    );
+    const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
+    const estSales   = daysBetween * dailyRate * seasonalFactor;
     const backorderC = Math.max(0, estSales - availQtyC);
     const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
-    const invLifeC   = dailyRate > 0 ? Math.floor(carryoverC / dailyRate) : null;
+    const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
 
     const sodFromThis = invLifeC !== null
       ? new Date(new Date(eta).getTime() + invLifeC * 86400000).toISOString().slice(0, 10)
@@ -131,6 +152,7 @@ export interface DemandPlanningGridProps {
   columnWidthsRef: React.MutableRefObject<ColumnWidths>;
   onColumnWidthsChange: (next: ColumnWidths) => void;
   seasonalFactors: SeasonalFactors;
+  onExportReady?: (exporter: (() => Promise<void>) | null) => void;
 }
 
 const ROW_HEIGHT = 28;

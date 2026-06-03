@@ -162,6 +162,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const columnWidthsRef = useRef<ColumnWidths>({});
   const containerAutoLoadKeyRef = useRef<string | null>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
+  const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     const saved = loadSavedColumnWidths();
@@ -286,7 +287,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   );
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const handleExportCSV = useCallback(() => {
+  const handleAgGridExportReady = useCallback((exporter: (() => Promise<void>) | null) => {
+    agGridExportRef.current = exporter;
+  }, []);
+
+  const handleExport = useCallback(() => {
+    if (gridMode === "ag-grid" && agGridExportRef.current) {
+      void agGridExportRef.current();
+      return;
+    }
+
     const header = [
       "#",
       "SKU",
@@ -334,7 +344,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     anchor.download = `planning_${TODAY}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [filteredRows]);
+  }, [filteredRows, gridMode]);
 
   const hasData = data.rows.length > 0;
   const containerStatusText = containerDetailsLoading
@@ -772,7 +782,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           </label>
           <button
             type="button"
-            onClick={handleExportCSV}
+            onClick={handleExport}
             disabled={!hasData}
             style={{
               fontSize: 11,
@@ -786,7 +796,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               whiteSpace: "nowrap",
             }}
           >
-            CSV
+            {gridMode === "ag-grid" ? "Excel" : "CSV"}
           </button>
           <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
             {(["link", "custom"] as VelocityMode[]).map((m) => (
@@ -926,6 +936,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
           seasonalFactors={seasonalFactors}
+          onExportReady={handleAgGridExportReady}
         /> : <DemandPlanningGrid
           data={data}
           categoryFilter={categoryFilter}
