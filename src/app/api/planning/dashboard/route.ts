@@ -43,8 +43,12 @@ function parseSku(sku: string): { seat: string; no: number; color: string; tone:
   return { no: 0, seat: "", color: "", tone: "" };
 }
 
-function inferCategoryCode(sku: string): "SC" | "CC" | "FM" {
-  return forecastCategoryCodeForSku(sku);
+function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" {
+  const normalized = sku.toUpperCase();
+  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
+  if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
+  return "AC";
 }
 
 // DB status values for containers that have confirmed quantities.
@@ -101,6 +105,7 @@ export async function GET(req: Request) {
         cbm_capacity::float8      AS cbm_cap,
         status
       FROM shipcore.fc_containers
+      WHERE status != 'complete'
       ORDER BY
         CASE WHEN status IN ${ACTIVE} THEN 0 ELSE 1 END,
         eta_date NULLS LAST,
@@ -400,7 +405,7 @@ export async function GET(req: Request) {
 
     const rows: DemandRow[] = rowsResult.rows.map((r) => {
       const { seat, no, color, tone } = parseSku(r.sku as string);
-      const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM"
+      const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC"
         ? r.category_code
         : inferCategoryCode(r.sku as string);
 

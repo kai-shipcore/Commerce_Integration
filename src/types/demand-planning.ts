@@ -1,5 +1,5 @@
 export type ProductFilter = "all" | "orig" | "cust";
-export type CategoryFilter = "sc" | "cc" | "fm";
+export type CategoryFilter = "sc" | "cc" | "fm" | "ac";
 export type UrgencyFilter = "crit" | "warn" | "bo";
 export type UrgencyStatus = "crit" | "warn" | "ok";
 export type ColumnGroupKey =

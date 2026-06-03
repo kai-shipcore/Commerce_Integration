@@ -1,5 +1,5 @@
 export type ProductKey = "sc" | "cc" | "fm";
-export type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received";
+export type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received" | "complete";
 export type PurchaseOrderStatus = "draft" | "approved" | "sent";
 
 export interface MockSku {
@@ -228,6 +228,7 @@ export const containerStatusLabels: Record<ContainerStatus, string> = {
   draft: "Container Draft (Pre-Plan)",
   "final-list-sent": "Final List Sent to Factory",
   "packing-list-received": "Packing List Received / Shipped",
+  complete: "Stock-in completed",
 };
 
 export function getInboundQty(skuId: string) {

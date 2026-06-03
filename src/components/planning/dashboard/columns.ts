@@ -214,9 +214,30 @@ export const GROUP_BTN_LABELS: Record<string, string> = {
 
 export const DEFAULT_FREEZE = "sod";
 export const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
+export const COLUMN_COLORS_STORAGE_KEY = "planning-dashboard-column-colors";
+export const CELL_COLORS_STORAGE_KEY = "planning-dashboard-cell-colors";
 
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
 export type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
+export type ColumnColorSettings = Record<string, { cell?: string; header?: string }>;
+export type CellColorSettings = Record<string, string>;
+export type SkuPartFilterKey = "seat" | "no" | "color" | "tone";
+export type SkuParts = Record<SkuPartFilterKey, string>;
+export type SkuPartFilters = Record<SkuPartFilterKey, string[]>;
+
+export const EMPTY_SKU_PART_FILTERS: SkuPartFilters = {
+  seat: [],
+  no: [],
+  color: [],
+  tone: [],
+};
+
+export const EMPTY_SKU_PARTS: SkuParts = {
+  seat: "",
+  no: "",
+  color: "",
+  tone: "",
+};
 
 export const RESIZABLE_COLUMN_LIMITS: Record<ResizableColumnId, { min: number; max: number }> = {
   row_num:   { min: 36, max: 90  },
@@ -248,12 +269,94 @@ export function loadSavedColumnWidths(): ColumnWidths {
   }
 }
 
+export function isValidHexColor(value: unknown): value is string {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+export function loadSavedColumnColors(): ColumnColorSettings {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMN_COLORS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(stored)
+        .map(([key, value]) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+          const entry = value as Record<string, unknown>;
+          const next = {
+            ...(isValidHexColor(entry.cell) ? { cell: entry.cell } : {}),
+            ...(isValidHexColor(entry.header) ? { header: entry.header } : {}),
+          };
+          return next.cell || next.header ? [key, next] : null;
+        })
+        .filter((entry): entry is [string, { cell?: string; header?: string }] => entry !== null),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone">): SkuParts {
+  const parts = String(row.sku ?? "").trim().toUpperCase().split("-");
+  if ((parts[0] === "CA" || parts[0] === "CL") && parts[1] === "SC" && parts.length >= 6) {
+    for (let index = parts.length - 4; index >= 2; index -= 1) {
+      const [seat, no, color, tone] = parts.slice(index, index + 4);
+      if ((seat === "F" || seat === "B") && /^\d+$/.test(no ?? "") && color && tone) {
+        return { seat, no, color, tone };
+      }
+    }
+    return EMPTY_SKU_PARTS;
+  }
+  if ((parts[0] === "CA" || parts[0] === "CL") && parts[1] === "FM" && parts.length >= 6) {
+    return {
+      no: parts[2] ?? "",
+      seat: parts[3] ?? "",
+      color: parts[5] ?? "",
+      tone: "",
+    };
+  }
+
+  const rowParts: SkuParts = {
+    seat: String(row.seat ?? "").trim().toUpperCase(),
+    no: row.no === null || row.no === undefined || row.no === 0 ? "" : String(row.no).trim().toUpperCase(),
+    color: String(row.color ?? "").trim().toUpperCase(),
+    tone: String(row.tone ?? "").trim().toUpperCase(),
+  };
+  if (rowParts.seat || rowParts.no || rowParts.color || rowParts.tone) return rowParts;
+
+  return EMPTY_SKU_PARTS;
+}
+
+export function skuMatchesPartFilters(
+  row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone">,
+  filters: SkuPartFilters,
+): boolean {
+  const parts = skuPartsForRow(row);
+  return (Object.keys(filters) as SkuPartFilterKey[]).every((key) => {
+    const filterValues = filters[key];
+    return !filterValues.length || filterValues.includes(parts[key]);
+  });
+}
+
+export function loadSavedCellColors(): CellColorSettings {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(CELL_COLORS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(stored).filter((entry): entry is [string, string] => isValidHexColor(entry[1])),
+    );
+  } catch {
+    return {};
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const CON_SUBCOLS: ConSubColDef[] = [
   { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd) => cd.inbound_qty !== null && cd.inbound_qty !== undefined ? cd.inbound_qty : "" },
-  { id: "remaining", label: "Remaining",   w: 54, align: "num", tint: "t-cn",      val: (_cd, _c, row) => row.remaining || "" },
-  { id: "mistake",   label: "Mistake",     w: 48, align: "num", tint: "t-cn",      val: (_cd, _c, row) => row.mistake   || "" },
+  { id: "remaining", label: "Rem. Qty",    w: 54, align: "num", tint: "t-cn",      val: (_cd, _c, row) => {
+    const total = (row.remaining ?? 0) + (row.mistake ?? 0);
+    return total || "";
+  } },
   { id: "oo",        label: "Open\nOrders", w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.open_orders || 0 },
   { id: "avail", label: "Avail\nQty",   w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.avail_qty !== null && cd.avail_qty !== undefined ? cd.avail_qty : "" },
   { id: "est",   label: "Est.\nSales",  w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.est_sales || 0 },

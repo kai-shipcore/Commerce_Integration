@@ -19,6 +19,7 @@ import {
   TINT_COLORS,
   TODAY,
   isResizableColumnId,
+  skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 
 const modules = [AllCommunityModule];
+const MIN_SCROLLABLE_CENTER_WIDTH = 240;
 const planningTheme = themeQuartz.withParams({
   backgroundColor: "#fff",
   borderColor: "#D8D6CE",
@@ -73,11 +75,34 @@ type ContainerTotalColumn = {
   total?: number;
 };
 
+function readableTextColor(backgroundColor: string) {
+  const match = backgroundColor.match(/^#([0-9a-fA-F]{6})$/);
+  if (!match) return "#fff";
+  const hex = match[1];
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  return luminance > 150 ? "#1A1917" : "#fff";
+}
+
+function headerStyleForColor(backgroundColor: string | undefined) {
+  return backgroundColor
+    ? {
+        backgroundColor,
+        color: readableTextColor(backgroundColor),
+      }
+    : undefined;
+}
+
+function cellColorKey(rowId: string | undefined, columnId: string) {
+  return rowId ? `${rowId}::${columnId}` : "";
+}
+
 function containerColumnWidth(column: { id: string; w: number }) {
   if (column.id === "ccbm") return 48;
   if (column.id === "inb_qty") return 42;
   if (column.id === "remaining") return 42;
-  if (column.id === "mistake") return 38;
   if (column.id === "esod" || column.id === "psod") return 70;
   return column.w;
 }
@@ -88,12 +113,13 @@ function baseColumnWidth(column: { id: string; w: number }) {
   return column.w;
 }
 
-function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" {
+function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
   if (normalized.startsWith("CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
-  return "SC";
+  if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
+  return "AC";
 }
 
 function computeContainerChain(
@@ -529,6 +555,7 @@ export function AgDemandPlanningGrid({
   productFilter,
   urgencyFilter,
   search,
+  skuPartFilters,
   onFilteredRowsChange,
   onLoadContainerDetails,
   containerDetailsLoading,
@@ -536,20 +563,24 @@ export function AgDemandPlanningGrid({
   groupVis,
   compactMode,
   showRemaining,
-  showMistake,
   showZeroSales,
   freezeUntil,
   columnWidths,
   onColumnWidthsChange,
   seasonalFactors,
+  columnColors = {},
+  cellColors = {},
+  onAgCellSelected,
   onExportReady,
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
+  const gridHostRef = useRef<HTMLDivElement>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const [rowOverrides, setRowOverrides] = useState<Map<string, Partial<DemandRow>>>(new Map());
+  const [gridWidth, setGridWidth] = useState(0);
 
   const containers = useMemo(
     () => data.containers
@@ -578,6 +609,7 @@ export function AgDemandPlanningGrid({
           !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
         if (productFilter === "orig" && row.sales_status !== "Original") return false;
         if (productFilter === "cust" && row.sales_status !== "Custom") return false;
+        if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
         if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
         const urgency = urgStatus(row);
         if (urgencyFilter === "crit") return urgency === "crit";
@@ -590,11 +622,22 @@ export function AgDemandPlanningGrid({
         ...(rowOverrides.get(row.sku) ?? {}),
         ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
       }));
-  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
 
   useEffect(() => {
     onFilteredRowsChange(visibleRows);
   }, [onFilteredRowsChange, visibleRows]);
+
+  useEffect(() => {
+    const element = gridHostRef.current;
+    if (!element) return;
+
+    const updateWidth = () => setGridWidth(element.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (groupVis.con && !containerDetailsLoaded && !containerDetailsLoading) onLoadContainerDetails();
@@ -603,13 +646,13 @@ export function AgDemandPlanningGrid({
   const subColumns = useMemo(
     () => {
       const visibleColumns = CON_SUBCOLS.filter((column) =>
-        (column.id !== "remaining" || showRemaining) && (column.id !== "mistake" || showMistake));
+        column.id !== "remaining" || showRemaining);
       const cbmColumn = visibleColumns.find((column) => column.id === "ccbm");
       return cbmColumn
         ? [cbmColumn, ...visibleColumns.filter((column) => column.id !== "ccbm")]
         : visibleColumns;
     },
-    [showMistake, showRemaining],
+    [showRemaining],
   );
 
   const containerColumnTotals = useMemo(() => {
@@ -654,7 +697,11 @@ export function AgDemandPlanningGrid({
     if (!api) return;
     api.refreshCells({ force: true });
     api.refreshHeader();
-  }, [cbmOverrides, chainMap, qtyOverrides, rowOverrides]);
+  }, [cbmOverrides, cellColors, chainMap, columnColors, qtyOverrides, rowOverrides]);
+
+  useEffect(() => {
+    gridRef.current?.api?.refreshHeader();
+  }, [gridWidth]);
 
   const updateEta = useCallback((container: ContainerMeta, eta: string) => {
     if (!eta || !container.container_id) return;
@@ -774,16 +821,48 @@ export function AgDemandPlanningGrid({
     return true;
   }, [containers, qtyOverrides, seasonalFactors]);
 
-  const columnDefs = useMemo<Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>>(() => {
+  const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS
       .filter((column) => column.grp === "fix" || groupVis[column.grp])
       .filter((column) => !compactMode || COMPACT_COLUMN_IDS.has(column.id));
     const freezeIndex = visibleBaseColumns.findIndex((column) => column.id === freezeUntil);
+    if (freezeIndex < 0) return { ids: [] as string[], widths: {} as Record<string, number>, width: 0 };
+
+    const pinnedColumns = visibleBaseColumns.slice(0, freezeIndex + 1);
+    const desiredWidths = Object.fromEntries(
+      pinnedColumns.map((column) => [
+        column.id,
+        columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column),
+      ]),
+    ) as Record<string, number>;
+    const desiredPinnedWidth = Object.values(desiredWidths).reduce((total, width) => total + width, 0);
+
+    return {
+      ids: pinnedColumns.map((column) => column.id),
+      widths: desiredWidths,
+      width: desiredPinnedWidth,
+    };
+  }, [columnWidths, compactMode, freezeUntil, groupVis]);
+
+  const gridMinWidth = Math.max(
+    gridWidth,
+    pinnedBaseColumnLayout.width + MIN_SCROLLABLE_CENTER_WIDTH,
+  );
+
+  const columnDefs = useMemo<Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>>(() => {
+    const visibleBaseColumns = ALL_COLS
+      .filter((column) => column.grp === "fix" || groupVis[column.grp])
+      .filter((column) => !compactMode || COMPACT_COLUMN_IDS.has(column.id));
+    const pinnedBaseColumnIdSet = new Set(pinnedBaseColumnLayout.ids);
     const baseGroups = new Map<string, AgColDef<DemandRow>[]>();
 
-  visibleBaseColumns.forEach((column, index) => {
+  visibleBaseColumns.forEach((column) => {
     const columns = baseGroups.get(column.grp) ?? [];
     const isCopyable = column.id === "sku" || column.id === "inb_lst";
+    const shouldPin = pinnedBaseColumnIdSet.has(column.id);
+    const width = shouldPin
+      ? pinnedBaseColumnLayout.widths[column.id]
+      : columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column);
     const headerName = column.id === "tavg_p"
       ? "T. Avg 이전"
       : column.id === "tavg_r"
@@ -795,10 +874,10 @@ export function AgDemandPlanningGrid({
       colId: column.id,
       headerName,
         headerTooltip: column.label.replace("\n", " "),
-        width: columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column),
+        width,
         minWidth: Math.min(36, column.w),
         sortable: column.id !== "row_num",
-      pinned: freezeIndex >= 0 && index <= freezeIndex ? "left" : undefined,
+      pinned: shouldPin ? "left" : undefined,
       valueGetter: (params) => params.data ? column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data)) : "",
       cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
@@ -813,12 +892,13 @@ export function AgDemandPlanningGrid({
               onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
             })
         : undefined,
-      cellStyle: {
-          backgroundColor: TINT_COLORS[column.tint] || "#fff",
+      headerStyle: headerStyleForColor(columnColors[column.id]?.header),
+      cellStyle: (params) => ({
+          backgroundColor: cellColors[cellColorKey(params.data?.sku, column.id)] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
           fontWeight: column.bold ? 700 : 400,
           textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
           ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-        },
+        }),
       });
       baseGroups.set(column.grp, columns);
     });
@@ -846,15 +926,18 @@ export function AgDemandPlanningGrid({
             })),
             onEtaChange: (eta: string) => updateEta(container, eta),
           },
-          children: subColumns.map((column) => ({
+          children: subColumns.map((column, columnIndex) => ({
+            headerStyle: headerStyleForColor(columnColors[`con:${column.id}`]?.header),
+            headerClass: [
+              columnIndex === 0 ? "container-column-start" : "",
+              columnIndex === subColumns.length - 1 ? "container-column-end" : "",
+            ].filter(Boolean).join(" "),
             colId: `${container.name}::${column.id}`,
             headerName: column.id === "oo"
               ? "Open Ord"
               : column.id === "remaining"
-                ? "Rem."
-                : column.id === "mistake"
-                  ? "Mist"
-                  : column.label.replace("\n", " "),
+                ? "Rem. Qty"
+                : column.label.replace("\n", " "),
             headerTooltip: column.label.replace("\n", " "),
             width: containerColumnWidth(column),
             valueGetter: (params) => {
@@ -879,17 +962,35 @@ export function AgDemandPlanningGrid({
               };
               return { onSave: (qty: number) => saveQty(row, container, raw, qty) };
             } : undefined,
-            cellStyle: {
-              backgroundColor: baseline ? "#E8F5E0" : TINT_COLORS[column.tint] || "#fff",
-              textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
-              ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
+            cellStyle: (params) => {
+              const columnId = `${container.name}::${column.id}`;
+              return {
+                backgroundColor: cellColors[cellColorKey(params.data?.sku, columnId)] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E8F5E0" : TINT_COLORS[column.tint] || "#fff"),
+                ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
+                ...(columnIndex === subColumns.length - 1 ? { borderRight: "2px solid #5A5750" } : {}),
+                textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
+                ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
+              };
             },
           })),
         });
       }
     }
     return groups;
-  }, [chainMap, columnWidths, compactMode, containerColumnTotals, containers, freezeUntil, groupVis, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+  }, [cellColors, chainMap, columnColors, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+
+  useEffect(() => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const pinnedSet = new Set(pinnedBaseColumnLayout.ids);
+    api.applyColumnState({
+      state: (api.getColumns() ?? []).map((column) => ({
+        colId: column.getColId(),
+        pinned: pinnedSet.has(column.getColId()) ? "left" : null,
+      })),
+      applyOrder: false,
+    });
+  }, [columnDefs, pinnedBaseColumnLayout]);
 
   const exportCurrentView = useCallback(async () => {
     const api = gridRef.current?.api;
@@ -956,11 +1057,8 @@ export function AgDemandPlanningGrid({
   }, [exportCurrentView, onExportReady]);
 
   return (
-    <div className="planning-ag-grid h-full min-h-0 w-full bg-white">
+    <div ref={gridHostRef} className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white">
       <style>{`
-        .planning-ag-grid .ag-row-selected .ag-cell {
-          background-color: transparent !important;
-        }
         .planning-ag-grid .ag-row-selected {
           outline: 1px solid #7aa7e8;
           outline-offset: -1px;
@@ -968,43 +1066,64 @@ export function AgDemandPlanningGrid({
         .planning-ag-grid .ag-cell-focus:not(.ag-cell-range-selected):focus-within {
           border-color: transparent;
         }
+        .planning-ag-grid .container-column-start {
+          border-left: 2px solid #5A5750 !important;
+        }
+        .planning-ag-grid .container-column-end {
+          border-right: 2px solid #5A5750 !important;
+        }
+        .planning-ag-grid .ag-header-group-cell[col-id^="container-"] {
+          border-left: 2px solid #5A5750 !important;
+          border-right: 2px solid #5A5750 !important;
+        }
       `}</style>
-      <AgGridProvider modules={modules}>
-        <AgGridReact<DemandRow>
-          ref={gridRef}
-          theme={planningTheme}
-          rowData={visibleRows}
-          columnDefs={columnDefs}
-          defaultColDef={{
-            autoHeaderHeight: false,
-            wrapHeaderText: true,
-          }}
-          getRowId={(params) => params.data.sku}
-          rowSelection={{
-            mode: "singleRow",
-            checkboxes: false,
-            enableClickSelection: true,
-          }}
-          onCellClicked={(event) => event.node.setSelected(true, true)}
-          rowHeight={28}
-          headerHeight={45}
-          groupHeaderHeight={42}
-          animateRows={false}
-          singleClickEdit
-          suppressCellFocus
-          suppressMovableColumns
-          onColumnResized={(event) => {
-            if (!event.finished || !event.column) return;
-            const id = event.column.getColId();
-            if (!isResizableColumnId(id)) return;
-            const next = { ...columnWidths, [id]: event.column.getActualWidth() };
-            onColumnWidthsChange(next);
-            window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next));
-          }}
-          getRowStyle={(params) => params.data && urgStatus(params.data) === "crit" ? { backgroundColor: "#FFF5F5" } : undefined}
-          overlayLoadingTemplate={containerDetailsLoading ? "Loading container details..." : "Loading..."}
-        />
-      </AgGridProvider>
+      <div className="h-full min-h-0" style={{ minWidth: gridMinWidth }}>
+        <AgGridProvider modules={modules}>
+          <AgGridReact<DemandRow>
+            ref={gridRef}
+            theme={planningTheme}
+            rowData={visibleRows}
+            columnDefs={columnDefs}
+            defaultColDef={{
+              autoHeaderHeight: false,
+              wrapHeaderText: true,
+            }}
+            getRowId={(params) => params.data.sku}
+            rowSelection={{
+              mode: "singleRow",
+              checkboxes: false,
+              enableClickSelection: true,
+            }}
+            onCellClicked={(event) => {
+              event.node.setSelected(true, true);
+              if (!event.data) return;
+              const columnId = event.column.getColId();
+              onAgCellSelected?.({
+                rowId: event.data.sku,
+                columnId,
+                label: `${event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
+              });
+            }}
+            rowHeight={28}
+            headerHeight={45}
+            groupHeaderHeight={42}
+            animateRows={false}
+            singleClickEdit
+            suppressCellFocus
+            suppressMovableColumns
+            onColumnResized={(event) => {
+              if (!event.finished || !event.column) return;
+              const id = event.column.getColId();
+              if (!isResizableColumnId(id)) return;
+              const next = { ...columnWidths, [id]: event.column.getActualWidth() };
+              onColumnWidthsChange(next);
+              window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next));
+            }}
+            getRowStyle={(params) => params.data && urgStatus(params.data) === "crit" ? { backgroundColor: "#FFF5F5" } : undefined}
+            overlayLoadingTemplate={containerDetailsLoading ? "Loading container details..." : "Loading..."}
+          />
+        </AgGridProvider>
+      </div>
     </div>
   );
 }

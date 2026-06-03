@@ -11,7 +11,7 @@ import {
   type MockContainer,
   type ProductKey,
 } from "@/features/planning/mock-data";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { isPOApproverRole } from "@/components/layout/navigation-config";
 
 type ContainerItem = MockContainer["items"][number];
 
@@ -36,21 +36,24 @@ const defaultFormState: ContainerFormState = {
 };
 
 const statusOptions: Array<{ value: ContainerStatus; label: string; shortLabel: string }> = [
-  { value: "draft", label: "Container Draft (Pre-Plan)", shortLabel: "Container Draft" },
+  { value: "draft", label: "Container Draft (Pre-Plan)", shortLabel: "Draft" },
   { value: "final-list-sent", label: "Final List Sent to Factory", shortLabel: "Final" },
   { value: "packing-list-received", label: "Packing List Received / Shipped", shortLabel: "Packing" },
+  { value: "complete", label: "Stock-in completed", shortLabel: "Complete" },
 ];
 
 const statusColors: Record<ContainerStatus, string> = {
   draft: "#d4537e",
   "final-list-sent": "#ef9f27",
   "packing-list-received": "#378add",
+  complete: "#22a666",
 };
 
 const statusPillClasses: Record<ContainerStatus, string> = {
   draft: "bg-[#fce4ec] text-[#880e4f]",
   "final-list-sent": "bg-[#fef3e2] text-[#8a5300]",
   "packing-list-received": "bg-[#ebf0fd] text-[#1a4db0]",
+  complete: "bg-[#e6f7ee] text-[#166534]",
 };
 
 type InlineSkuDraft = {
@@ -158,6 +161,12 @@ function getContainerProducts(container: MockContainer): Set<ProductKey> {
   for (const item of container.items) {
     products.add(inferProductKey(item.sku));
   }
+  if (products.size === 0) {
+    const normalizedNumber = container.number.toUpperCase();
+    if (normalizedNumber.includes("FLOOR") || normalizedNumber.includes("-FM")) products.add("fm");
+    else if (normalizedNumber.includes("SEAT") || normalizedNumber.includes("-SC")) products.add("sc");
+    else if (normalizedNumber.includes("COVER") || normalizedNumber.includes("-CC")) products.add("cc");
+  }
   return products;
 }
 
@@ -167,6 +176,9 @@ function formatNumber(value: number) {
 
 function normalizeContainerStatus(status: string): ContainerStatus {
   const normalized = status.toLowerCase().replace(/_/g, "-");
+  if (normalized === "complete" || normalized === "completed" || normalized === "received-complete") {
+    return "complete";
+  }
   if (normalized === "final-list-sent" || normalized === "final" || normalized === "sent" || normalized === "shipped") {
     return "final-list-sent";
   }
@@ -222,7 +234,7 @@ function safeFilePart(value: string) {
 
 export function ContainerPlanningPage() {
   const { data: session } = useSession();
-  const isAdmin = isAdminLikeRole(session?.user?.role);
+  const canDeleteContainers = isPOApproverRole(session?.user?.role);
   const searchParams = useSearchParams();
   const targetContainerId = searchParams.get("containerId");
 
@@ -408,6 +420,7 @@ export function ContainerPlanningPage() {
   }
 
   function openEditForm(container: MockContainer) {
+    if (container.status === "complete") return;
     setExpandedId(container.id);
     setEditingContainerId(container.id);
     setForm({
@@ -562,7 +575,7 @@ export function ContainerPlanningPage() {
   function removeDraftItem(sku: string) {
     if (editingContainerId && form.status !== "draft") return;
     if (draftItems.find((item) => item.sku === sku)?.allocations?.length) {
-      setFormError("Allocated Remaining / Mistake stock must be removed from the container detail view by source.");
+      setFormError("Allocated Remain stock must be removed from the container detail view.");
       return;
     }
     if (editingContainerId && !window.confirm(`Delete ${sku} from this container?`)) return;
@@ -777,6 +790,12 @@ export function ContainerPlanningPage() {
   }
 
   async function deleteContainer(containerId: string) {
+    const container = containers.find((item) => item.id === containerId);
+    if (container?.status === "complete" && !canDeleteContainers) {
+      window.alert("Only Planner or Admin can delete Stock-in completed containers.");
+      return;
+    }
+
     try {
       const response = await fetch(`/api/containers?id=${encodeURIComponent(containerId)}`, {
         method: "DELETE",
@@ -1176,7 +1195,7 @@ export function ContainerPlanningPage() {
         item.sku,
         (item.allocations ?? [])
           .map((allocation) =>
-            `${allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} ${allocation.referenceNo} (${allocation.qty})`
+            `Remain ${allocation.referenceNo} (${allocation.qty})`
           )
           .join(", ") || "Container / Manual",
         item.qty,
@@ -1310,7 +1329,7 @@ export function ContainerPlanningPage() {
           <div className="flex flex-col gap-2 border-b border-[#e2dfd8] px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted-foreground">
-                {filteredContainers.length} containers
+                {filteredContainers.length}
                 {(statusFilter || productFilter) ? (
                   <span className="ml-1 text-[11px] font-normal text-[#1a5cdb]">
                     (filtered)
@@ -1503,7 +1522,7 @@ export function ContainerPlanningPage() {
                 onAddAvailableStock={(id) => setAvailableStockContainerId(id)}
                 onRemoveAvailableAllocation={removeAvailableStockAllocation}
                 onRemoveAvailableAllocations={removeAvailableStockAllocations}
-                isAdmin={isAdmin}
+                canDeleteContainers={canDeleteContainers}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
@@ -1960,7 +1979,7 @@ function ContainerCard({
   onAddAvailableStock,
   onRemoveAvailableAllocation,
   onRemoveAvailableAllocations,
-  isAdmin = false,
+  canDeleteContainers = false,
   onChangeStatus,
   onDeleteContainer,
   warehouseNameByCode,
@@ -1992,7 +2011,7 @@ function ContainerCard({
   onAddAvailableStock: (containerId: string) => void;
   onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<boolean>;
   onRemoveAvailableAllocations: (allocationIds: string[], containerId: string) => void | Promise<boolean>;
-  isAdmin?: boolean;
+  canDeleteContainers?: boolean;
   onChangeStatus: (containerId: string) => void;
   onDeleteContainer: (containerId: string) => void;
   warehouseNameByCode?: Map<string, string>;
@@ -2007,9 +2026,13 @@ function ContainerCard({
     : 0;
   const cbmColor = cbmUsage > 95 ? "#c42b2b" : cbmUsage > 80 ? "#ef9f27" : "#1a5cdb";
   const isStructureLocked = container.status === "final-list-sent";
-  const isFullyLocked = container.status === "packing-list-received";
+  const isStockInCompleted = container.status === "complete";
+  const isFullyLocked = container.status === "packing-list-received" || isStockInCompleted;
+  const canEditContainer = !isStockInCompleted;
   const canEditQuantity = !isFullyLocked;
   const canChangeStructure = !isStructureLocked && !isFullyLocked;
+  const canExportItems = !isFullyLocked;
+  const canDeleteThisContainer = canDeleteContainers && (!isFullyLocked || isStockInCompleted);
   const removableAllocationIds = container.items.flatMap((item) => (item.allocations ?? []).map((allocation) => allocation.id));
   const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
   const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
@@ -2112,7 +2135,11 @@ function ContainerCard({
           ) : null}
           {isFullyLocked ? (
             <div className="flex items-center gap-2 border-b border-[#bfdbfe] bg-[#eff6ff] px-5 py-2 text-xs text-[#1d4ed8]">
-              <span>Packing List Received: all SKU edits are locked because physical quantities are confirmed.</span>
+              <span>
+                {isStockInCompleted
+                  ? "Stock-in completed: edits and attachment actions are locked."
+                  : "Packing List Received: all SKU edits are locked because physical quantities are confirmed."}
+              </span>
             </div>
           ) : null}
           {container.note ? (
@@ -2183,7 +2210,7 @@ function ContainerCard({
                   disabled={deletingSelectedAllocations}
                   onChange={(event) => setSelectedAllocationIds(event.target.checked ? removableAllocationIds : [])}
                 />
-                Select all Remaining / Mistake items
+                Select all Remain items
               </label>
               <button
                 type="button"
@@ -2300,7 +2327,8 @@ function ContainerCard({
             <button
               type="button"
               onClick={() => onEditContainer(container)}
-              className="rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff]"
+              disabled={!canEditContainer}
+              className="rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff] disabled:cursor-not-allowed disabled:border-[#d8d6ce] disabled:bg-[#f0eee9] disabled:text-muted-foreground disabled:opacity-60"
             >
               Edit
             </button>
@@ -2323,7 +2351,7 @@ function ContainerCard({
                 + Add Available Stock
               </button>
             ) : null}
-            {!isFullyLocked ? (
+            {canExportItems ? (
               <button
                 type="button"
                 onClick={() => void onExportItems(container.id)}
@@ -2355,7 +2383,7 @@ function ContainerCard({
               >
                 Change Status
               </button>
-              {isAdmin && !isFullyLocked ? (
+              {canDeleteThisContainer ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -2448,6 +2476,7 @@ function SkuRow({
 }) {
   const allocations = item.allocations ?? [];
   const hasAllocatedStock = allocations.length > 0;
+  const allocatedRemainQty = allocations.reduce((sum, allocation) => sum + allocation.qty, 0);
   const allocationIds = allocations.map((allocation) => allocation.id);
   const canSelectAllocations = hasAllocatedStock && !readonly && !quantityOnly;
   const allAllocationsSelected = canSelectAllocations
@@ -2552,18 +2581,12 @@ function SkuRow({
         </div>
         {allocations.length > 0 ? (
           <div className="mt-1 flex flex-wrap gap-1">
-            {allocations.map((allocation) => (
-              <span
-                key={allocation.id}
-                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                  allocation.sourceType === "remaining"
-                    ? "bg-[#e6f5f0] text-[#0a5e45]"
-                    : "bg-[#fef3e2] text-[#8a5300]"
-                }`}
-              >
-                {allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} {allocation.referenceNo} / {allocation.qty}
-              </span>
-            ))}
+            <span
+              title={allocations.map((allocation) => `${allocation.referenceNo} / ${allocation.qty}`).join(", ")}
+              className="inline-flex items-center gap-1 rounded bg-[#e6f5f0] px-1.5 py-0.5 text-[10px] font-medium text-[#0a5e45]"
+            >
+              Remain / {allocatedRemainQty}
+            </span>
           </div>
         ) : null}
       </div>
@@ -2580,7 +2603,7 @@ function SkuRow({
                 event.stopPropagation();
                 void onRemoveAvailableAllocation(allocation.id, containerId);
               }}
-              title={`Delete ${allocation.sourceType === "remaining" ? "Remaining" : "Mistake"} ${allocation.referenceNo}`}
+              title={`Delete Remain ${allocation.referenceNo}`}
               className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-2.5 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
             >
               Delete
@@ -2624,6 +2647,7 @@ const statusWorkflowLabels: Record<ContainerStatus, string> = {
   draft: "Container Draft (Pre-plan)",
   "final-list-sent": "Final List Sent (Factory)",
   "packing-list-received": "Packing List Received / Shipped",
+  complete: "Stock-in completed",
 };
 
 function AvailableStockModal({

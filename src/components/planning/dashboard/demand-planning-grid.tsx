@@ -19,9 +19,10 @@ import {
   clampColumnWidth,
   daysTo,
   isResizableColumnId,
+  skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
-import type { CellContent, ColDef, ColumnWidths, ResizableColumnId } from "./columns";
+import type { CellColorSettings, CellContent, ColDef, ColumnColorSettings, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -137,6 +138,7 @@ export interface DemandPlanningGridProps {
   productFilter: ProductFilter;
   urgencyFilter: UrgencyFilter | null;
   search: string;
+  skuPartFilters: SkuPartFilters;
   onFilteredRowsChange: (rows: DemandRow[]) => void;
   onLoadContainerDetails: () => void;
   containerDetailsLoading: boolean;
@@ -152,6 +154,9 @@ export interface DemandPlanningGridProps {
   columnWidthsRef: React.MutableRefObject<ColumnWidths>;
   onColumnWidthsChange: (next: ColumnWidths) => void;
   seasonalFactors: SeasonalFactors;
+  columnColors?: ColumnColorSettings;
+  cellColors?: CellColorSettings;
+  onAgCellSelected?: (cell: { rowId: string; columnId: string; label: string }) => void;
   onExportReady?: (exporter: (() => Promise<void>) | null) => void;
 }
 
@@ -215,12 +220,13 @@ function compareAscending(left: SortValue, right: SortValue): number {
   return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" {
+function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
   if (normalized.startsWith("CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
-  return "SC";
+  if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
+  return "AC";
 }
 
 function renderCell(content: CellContent): React.ReactNode {
@@ -329,6 +335,7 @@ export function DemandPlanningGrid({
   productFilter,
   urgencyFilter,
   search,
+  skuPartFilters,
   onFilteredRowsChange,
   onLoadContainerDetails,
   containerDetailsLoading,
@@ -336,7 +343,6 @@ export function DemandPlanningGrid({
   groupVis,
   compactMode,
   showRemaining,
-  showMistake,
   showZeroSales,
   freezeUntil,
   columnWidths,
@@ -371,7 +377,7 @@ export function DemandPlanningGrid({
   const [cbmSavingSku, setCbmSavingSku] = useState<string | null>(null);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const visSubCols = CON_SUBCOLS.filter((sc) =>
-    (sc.id !== "remaining" || showRemaining) && (sc.id !== "mistake" || showMistake)
+    sc.id !== "remaining" || showRemaining
   );
 
   const containerCbmTotals = useMemo(() => {
@@ -452,6 +458,7 @@ export function DemandPlanningGrid({
           !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original") return false;
       if (productFilter === "cust" && r.sales_status !== "Custom")   return false;
+      if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
       const u: UrgencyStatus = urgStatus(r);
       if (urgencyFilter === "crit") return u === "crit";
@@ -459,7 +466,7 @@ export function DemandPlanningGrid({
       if (urgencyFilter === "bo")   return (r.back || 0) < 0;
       return true;
     });
-  }, [ROWS, categoryFilter, productFilter, urgencyFilter, search, showZeroSales]);
+  }, [ROWS, categoryFilter, productFilter, skuPartFilters, urgencyFilter, search, showZeroSales]);
 
   const displayedRows = useMemo(() => {
     const getSortValue = sortColumnId ? SORT_VALUE_BY_COLUMN[sortColumnId] : undefined;
@@ -1123,7 +1130,6 @@ export function DemandPlanningGrid({
                         const isLastSub = si === visSubCols.length - 1;
                         const baseBg = isBaseline ? "#E8F5E0" : isDraft ? "#F2F1EC" : (TINT_COLORS[sc.tint] || "#fff");
                         const isQtyCol = sc.id === "inb_qty";
-                        const isMistakeCol = sc.id === "mistake";
                         const isEditing = isQtyCol && editingKey === eKey;
                         const isSaving = isQtyCol && savingKey === eKey;
                         const isEditable = isQtyCol && !isBaseline;
@@ -1260,11 +1266,11 @@ export function DemandPlanningGrid({
                               whiteSpace: "nowrap",
                               height: 28,
                               background: isEditing ? "#FFFDE7" : baseBg,
-                              color: isMistakeCol ? "#C42020" : isDraft ? "#9A9790" : isEditable ? "#1A4FC0" : undefined,
+                              color: isDraft ? "#9A9790" : isEditable ? "#1A4FC0" : undefined,
                               textAlign: sc.align === "num" ? "right" : sc.align === "ctr" ? "center" : "left",
                               fontFamily: sc.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
                               fontSize: 11,
-                              fontWeight: isMistakeCol || isEditable ? 600 : undefined,
+                              fontWeight: isEditable ? 600 : undefined,
                               cursor: isEditable ? "pointer" : undefined,
                             }}
                           >

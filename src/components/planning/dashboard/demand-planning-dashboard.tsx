@@ -9,13 +9,20 @@ import {
   ALL_COLS,
   ALL_GROUP_KEYS,
   COMPACT_COLUMN_IDS,
+  CON_SUBCOLS,
+  CELL_COLORS_STORAGE_KEY,
+  COLUMN_COLORS_STORAGE_KEY,
   GROUP_BTN_LABELS,
   DEFAULT_FREEZE,
   COLUMN_WIDTHS_STORAGE_KEY,
   TODAY,
+  EMPTY_SKU_PART_FILTERS,
+  loadSavedColumnColors,
+  loadSavedCellColors,
   loadSavedColumnWidths,
+  skuPartsForRow,
 } from "./columns";
-import type { ColumnWidths } from "./columns";
+import type { CellColorSettings, ColumnColorSettings, ColumnWidths, SkuPartFilterKey, SkuPartFilters } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
@@ -56,6 +63,45 @@ type ColumnSettings = {
   showZeroSales: boolean;
   freezeUntil: string;
 };
+
+const COLORABLE_COLUMNS = [
+  ...ALL_COLS.map((column) => ({
+    id: column.id,
+    label: column.label.replace("\n", " "),
+  })),
+  ...CON_SUBCOLS.map((column) => ({
+    id: `con:${column.id}`,
+    label: `Container ${column.label.replace("\n", " ")}`,
+  })),
+];
+
+const SKU_FILTER_LABELS: Record<SkuPartFilterKey, string> = {
+  seat: "Seat",
+  no: "No.",
+  color: "Color",
+  tone: "Tone",
+};
+
+function sortSkuFilterValues(values: Iterable<string>) {
+  return Array.from(values)
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function skuFilterSummary(values: string[]) {
+  if (!values.length) return "All";
+  if (values.length <= 2) return values.join(", ");
+  return `${values.slice(0, 2).join(", ")} +${values.length - 2}`;
+}
+
+function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
+  if (row.category_code) return row.category_code;
+  const normalized = row.sku.toUpperCase();
+  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
+  if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
+  return "AC";
+}
 
 function loadSavedColumnSettings(): Partial<ColumnSettings> {
   if (typeof window === "undefined") return {};
@@ -109,6 +155,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
   const [search, setSearch] = useState("");
+  const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(EMPTY_SKU_PART_FILTERS);
+  const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
 
   useEffect(() => {
@@ -149,6 +197,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     };
   }, []);
 
+  useEffect(() => {
+    if (!openSkuFilterKey) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && skuFiltersRef.current?.contains(target)) return;
+      setOpenSkuFilterKey(null);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [openSkuFilterKey]);
+
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
   const [compactMode, setCompactMode] = useState(false);
@@ -158,8 +217,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
+  const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
+  const [cellColors, setCellColors] = useState<CellColorSettings>({});
+  const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
+  const [selectedColorColumn, setSelectedColorColumn] = useState(COLORABLE_COLUMNS[0]?.id ?? "");
   const [seasonalFactors, setSeasonalFactors] = useState<SeasonalFactors>(DEFAULT_SEASONAL_FACTORS);
   const columnWidthsRef = useRef<ColumnWidths>({});
+  const skuFiltersRef = useRef<HTMLDivElement>(null);
   const containerAutoLoadKeyRef = useRef<string | null>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
@@ -169,6 +233,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     columnWidthsRef.current = saved;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setColumnWidths(saved);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setColumnColors(loadSavedColumnColors());
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setCellColors(loadSavedCellColors());
   }, []);
 
   useEffect(() => {
@@ -232,6 +306,63 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
   }, []);
 
+  const handleColumnColorChange = useCallback((columnId: string, target: "cell" | "header", color: string) => {
+    setColumnColors((current) => {
+      const nextEntry = { ...(current[columnId] ?? {}), [target]: color };
+      const next = { ...current, [columnId]: nextEntry };
+      window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const resetSelectedColumnColor = useCallback(() => {
+    setColumnColors((current) => {
+      const next = { ...current };
+      delete next[selectedColorColumn];
+      if (Object.keys(next).length) {
+        window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
+      } else {
+        window.localStorage.removeItem(COLUMN_COLORS_STORAGE_KEY);
+      }
+      return next;
+    });
+  }, [selectedColorColumn]);
+
+  const resetColumnColors = useCallback(() => {
+    setColumnColors({});
+    window.localStorage.removeItem(COLUMN_COLORS_STORAGE_KEY);
+  }, []);
+
+  const handleSelectedCellColorChange = useCallback((color: string) => {
+    if (!selectedAgCell) return;
+    const key = `${selectedAgCell.rowId}::${selectedAgCell.columnId}`;
+    setCellColors((current) => {
+      const next = { ...current, [key]: color };
+      window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [selectedAgCell]);
+
+  const resetSelectedCellColor = useCallback(() => {
+    if (!selectedAgCell) return;
+    const key = `${selectedAgCell.rowId}::${selectedAgCell.columnId}`;
+    setCellColors((current) => {
+      const next = { ...current };
+      delete next[key];
+      if (Object.keys(next).length) {
+        window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(next));
+      } else {
+        window.localStorage.removeItem(CELL_COLORS_STORAGE_KEY);
+      }
+      return next;
+    });
+  }, [selectedAgCell]);
+
+  const resetCellColors = useCallback(() => {
+    setCellColors({});
+    window.localStorage.removeItem(CELL_COLORS_STORAGE_KEY);
+  }, []);
+
   const handleSeasonalFactorsChange = useCallback((next: SeasonalFactors) => {
     setSeasonalFactors(next);
     window.localStorage.setItem(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(next));
@@ -286,6 +417,46 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     [groupVis, compactMode],
   );
   // ─────────────────────────────────────────────────────────────────────────────
+
+  const skuFilterOptions = useMemo(() => {
+    const options: Record<SkuPartFilterKey, Set<string>> = {
+      seat: new Set(),
+      no: new Set(),
+      color: new Set(),
+      tone: new Set(),
+    };
+    for (const row of data.rows) {
+      if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) continue;
+      const parts = skuPartsForRow(row);
+      (Object.keys(options) as SkuPartFilterKey[]).forEach((key) => {
+        if (parts[key]) options[key].add(parts[key]);
+      });
+    }
+    return {
+      seat: sortSkuFilterValues(options.seat),
+      no: sortSkuFilterValues(options.no),
+      color: sortSkuFilterValues(options.color),
+      tone: sortSkuFilterValues(options.tone),
+    };
+  }, [categoryFilter, data.rows]);
+
+  const hasSkuPartFilters = (Object.keys(skuPartFilters) as SkuPartFilterKey[]).some((key) => skuPartFilters[key].length > 0);
+
+  const handleSkuPartFilterToggle = useCallback((key: SkuPartFilterKey, value: string) => {
+    setSkuPartFilters((current) => {
+      const selected = new Set(current[key]);
+      if (selected.has(value)) {
+        selected.delete(value);
+      } else {
+        selected.add(value);
+      }
+      return { ...current, [key]: sortSkuFilterValues(selected) };
+    });
+  }, []);
+
+  const clearSkuPartFilter = useCallback((key: SkuPartFilterKey) => {
+    setSkuPartFilters((current) => ({ ...current, [key]: [] }));
+  }, []);
 
   const handleAgGridExportReady = useCallback((exporter: (() => Promise<void>) | null) => {
     agGridExportRef.current = exporter;
@@ -410,6 +581,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             <option value="fm">Floor Mat</option>
             <option value="cc">Car Cover</option>
             <option value="sc">Seat Cover</option>
+            <option value="ac">Accessories</option>
           </select>
         </label>
 
@@ -560,9 +732,21 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 {" ▾"}
               </button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="dashboard-columns-popover" style={{ width: 272, padding: 0, overflow: "hidden" }}>
+            <PopoverContent
+              align="start"
+              className="dashboard-columns-popover"
+              style={{
+                width: "min(920px, calc(100vw - 24px))",
+                maxHeight: "min(620px, calc(100vh - 120px))",
+                padding: 0,
+                overflow: "auto",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                alignItems: "start",
+              }}
+            >
               {/* Header with close button */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderBottom: "1px solid #E2E8F0", gridColumn: "1 / -1", position: "sticky", top: 0, zIndex: 1, background: "#fff" }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>Columns</span>
                 <PopoverClose asChild>
                   <button
@@ -656,16 +840,142 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showRemaining ? "rgba(59,130,246,.06)" : "transparent" }}>
                     <input type="checkbox" checked={showRemaining} onChange={() => setShowRemaining((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
-                    <span style={{ fontSize: 12, fontWeight: 500, color: showRemaining ? "#1E3A5F" : "#94A3B8" }}>Show Remaining</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showMistake ? "rgba(59,130,246,.06)" : "transparent" }}>
-                    <input type="checkbox" checked={showMistake} onChange={() => setShowMistake((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
-                    <span style={{ fontSize: 12, fontWeight: 500, color: showMistake ? "#1E3A5F" : "#94A3B8" }}>Show Mistake</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: showRemaining ? "#1E3A5F" : "#94A3B8" }}>Show Remaining Qty</span>
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent" }}>
                     <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
                     <span style={{ fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>Show Zero-Sales SKUs</span>
                   </label>
+                  <div ref={skuFiltersRef} style={{ marginTop: 8, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        SKU Filters
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!hasSkuPartFilters}
+                        onClick={() => setSkuPartFilters(EMPTY_SKU_PART_FILTERS)}
+                        style={{
+                          fontSize: 10,
+                          padding: "2px 7px",
+                          borderRadius: 4,
+                          border: "1px solid #CBD5E1",
+                          cursor: hasSkuPartFilters ? "pointer" : "default",
+                          background: "#F8FAFC",
+                          color: hasSkuPartFilters ? "#475569" : "#A8B0BA",
+                        }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      {(["seat", "no", "color", "tone"] as SkuPartFilterKey[]).map((key) => {
+                        const selectedValues = skuPartFilters[key];
+                        return (
+                          <div key={key} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{SKU_FILTER_LABELS[key]}</span>
+                            <details open={openSkuFilterKey === key} style={{ position: "relative" }}>
+                              <summary
+                                title={selectedValues.length ? selectedValues.join(", ") : "All"}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  setOpenSkuFilterKey((current) => current === key ? null : key);
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 6,
+                                  width: "100%",
+                                  minHeight: 28,
+                                  boxSizing: "border-box",
+                                  padding: "4px 7px",
+                                  borderRadius: 5,
+                                  border: "1px solid #CBD5E1",
+                                  background: selectedValues.length ? "#EFF6FF" : "#F8FAFC",
+                                  color: selectedValues.length ? "#1D4ED8" : "#1E293B",
+                                  cursor: "pointer",
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  listStyle: "none",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {skuFilterSummary(selectedValues)}
+                                </span>
+                                <span style={{ flexShrink: 0, color: "#64748B", fontSize: 10 }}>▼</span>
+                              </summary>
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: "calc(100% + 4px)",
+                                  left: 0,
+                                  right: 0,
+                                  zIndex: 4,
+                                  maxHeight: 180,
+                                  overflow: "auto",
+                                  borderRadius: 5,
+                                  border: "1px solid #CBD5E1",
+                                  background: "#fff",
+                                  boxShadow: "0 8px 20px rgba(15, 23, 42, .16)",
+                                  padding: 5,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={!selectedValues.length}
+                                  onClick={() => clearSkuPartFilter(key)}
+                                  style={{
+                                    width: "100%",
+                                    marginBottom: 4,
+                                    padding: "4px 6px",
+                                    borderRadius: 4,
+                                    border: "1px solid #E2E8F0",
+                                    background: "#F8FAFC",
+                                    color: selectedValues.length ? "#475569" : "#A8B0BA",
+                                    cursor: selectedValues.length ? "pointer" : "default",
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    textAlign: "left",
+                                  }}
+                                >
+                                  All
+                                </button>
+                                {skuFilterOptions[key].map((value) => {
+                                  const checked = selectedValues.includes(value);
+                                  return (
+                                    <label
+                                      key={value}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 6,
+                                        padding: "3px 5px",
+                                        borderRadius: 4,
+                                        cursor: "pointer",
+                                        background: checked ? "rgba(59,130,246,.08)" : "transparent",
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => handleSkuPartFilterToggle(key, value)}
+                                        style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#3B82F6" }}
+                                      />
+                                      <span style={{ fontSize: 12, color: checked ? "#1D4ED8" : "#334155", fontWeight: checked ? 700 : 500 }}>
+                                        {value}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </details>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -697,6 +1007,113 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               </div>
 
               {/* Reset Column Widths */}
+              {gridMode === "ag-grid" ? (
+                <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Column Colors
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <select
+                      value={selectedColorColumn}
+                      onChange={(event) => setSelectedColorColumn(event.target.value)}
+                      style={{ width: "100%", fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
+                    >
+                      {COLORABLE_COLUMNS.map((column) => (
+                        <option key={column.id} value={column.id}>
+                          {column.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      {(["cell", "header"] as const).map((target) => {
+                        const current = columnColors[selectedColorColumn]?.[target] ?? (target === "cell" ? "#FFFFFF" : "#2A2825");
+                        return (
+                          <label key={target} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                            {target === "cell" ? "Cell" : "Header"}
+                            <input
+                              type="color"
+                              value={current}
+                              onChange={(event) => handleColumnColorChange(selectedColorColumn, target, event.target.value)}
+                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={resetSelectedColumnColor}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
+                      >
+                        Reset Selected
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetColumnColors}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
+                      >
+                        Reset All
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {gridMode === "ag-grid" ? (
+                <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Selected Cell Color
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div
+                      title={selectedAgCell?.label}
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        borderRadius: 5,
+                        border: "1px solid #CBD5E1",
+                        background: selectedAgCell ? "#F8FAFC" : "#F1F5F9",
+                        color: selectedAgCell ? "#1E293B" : "#94A3B8",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: "5px 8px",
+                      }}
+                    >
+                      {selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Cell</span>
+                      <input
+                        type="color"
+                        disabled={!selectedAgCell}
+                        value={selectedAgCell ? (cellColors[`${selectedAgCell.rowId}::${selectedAgCell.columnId}`] ?? "#FFFFFF") : "#FFFFFF"}
+                        onChange={(event) => handleSelectedCellColorChange(event.target.value)}
+                        style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: selectedAgCell ? "pointer" : "default" }}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <button
+                        type="button"
+                        disabled={!selectedAgCell}
+                        onClick={resetSelectedCellColor}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
+                      >
+                        Reset Selected
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetCellColors}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
+                      >
+                        Reset All Cells
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div style={{ padding: "8px 14px" }}>
                 <button
                   type="button"
@@ -922,6 +1339,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
           search={search}
+          skuPartFilters={skuPartFilters}
           onFilteredRowsChange={setFilteredRows}
           onLoadContainerDetails={loadContainerDetails}
           containerDetailsLoading={containerDetailsLoading}
@@ -936,6 +1354,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
           seasonalFactors={seasonalFactors}
+          columnColors={columnColors}
+          cellColors={cellColors}
+          onAgCellSelected={setSelectedAgCell}
           onExportReady={handleAgGridExportReady}
         /> : <DemandPlanningGrid
           data={data}
@@ -943,6 +1364,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
           search={search}
+          skuPartFilters={skuPartFilters}
           onFilteredRowsChange={setFilteredRows}
           onLoadContainerDetails={loadContainerDetails}
           containerDetailsLoading={containerDetailsLoading}
@@ -957,6 +1379,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
           seasonalFactors={seasonalFactors}
+          columnColors={columnColors}
+          cellColors={cellColors}
         />}
       </div>
     </div>

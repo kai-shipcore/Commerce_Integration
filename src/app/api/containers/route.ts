@@ -3,9 +3,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { auth } from "@/lib/auth";
+import { isPOApproverRole } from "@/components/layout/navigation-config";
 import { z } from "zod";
 
-const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-received"]);
+const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-received", "complete"]);
 
 const ContainerSaveSchema = z.object({
   number: z.string().trim().min(1),
@@ -37,6 +39,7 @@ function serializeDate(value: unknown): string | null {
 function toDbStatus(status: z.infer<typeof ContainerSaveSchema>["status"]) {
   if (status === "final-list-sent") return "shipped";
   if (status === "packing-list-received") return "packing_received";
+  if (status === "complete") return "complete";
   return "draft";
 }
 
@@ -282,6 +285,18 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body: unknown = await request.json();
+    const existingStatus = await client.query(
+      `SELECT status::text AS status FROM shipcore.fc_containers WHERE id = $1::bigint`,
+      [id]
+    );
+
+    if (existingStatus.rowCount === 0) {
+      return NextResponse.json(
+        { success: false, error: "Container not found" },
+        { status: 404 }
+      );
+    }
+
     const statusOnly = z.object({ status: ContainerStatusSchema }).strict().safeParse(body);
 
     if (statusOnly.success) {
@@ -303,6 +318,13 @@ export async function PATCH(request: NextRequest) {
 
       await invalidatePlanningDashboardCache();
       return NextResponse.json({ success: true, data: { id } });
+    }
+
+    if (existingStatus.rows[0]?.status === "complete") {
+      return NextResponse.json(
+        { success: false, error: "Stock-in completed containers cannot be modified." },
+        { status: 403 }
+      );
     }
 
     const etaOnly = z.object({ eta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict().safeParse(body);
@@ -448,7 +470,7 @@ export async function DELETE(request: NextRequest) {
     await client.query("BEGIN");
 
     const existing = await client.query(
-      `SELECT id FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
+      `SELECT id, status::text AS status FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
       [id]
     );
 
@@ -458,6 +480,17 @@ export async function DELETE(request: NextRequest) {
         { success: false, error: "Container not found" },
         { status: 404 }
       );
+    }
+
+    if (existing.rows[0]?.status === "complete") {
+      const session = await auth();
+      if (!session?.user || !isPOApproverRole(session.user.role)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { success: false, error: "Only Planner or Admin can delete Stock-in completed containers." },
+          { status: 403 }
+        );
+      }
     }
 
     await client.query(`DELETE FROM shipcore.fc_container_item_allocations WHERE container_id = $1::bigint`, [id]);
