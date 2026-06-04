@@ -1011,7 +1011,6 @@ export function AgDemandPlanningGrid({
               return {
                 backgroundColor: cellColors[cellColorKey(params.data?.sku, columnId)] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E8F5E0" : TINT_COLORS[column.tint] || "#fff"),
                 ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
-                ...(columnIndex === subColumns.length - 1 ? { borderRight: "2px solid #5A5750" } : {}),
                 textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
                 ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
               };
@@ -1114,11 +1113,11 @@ export function AgDemandPlanningGrid({
           border-left: 2px solid #5A5750 !important;
         }
         .planning-ag-grid .container-column-end {
-          border-right: 2px solid #5A5750 !important;
+          border-right: 0 !important;
         }
         .planning-ag-grid .ag-header-group-cell[col-id^="container-"] {
           border-left: 2px solid #5A5750 !important;
-          border-right: 2px solid #5A5750 !important;
+          border-right: 0 !important;
         }
       `}</style>
       <div className="h-full min-h-0" style={{ minWidth: gridMinWidth }}>

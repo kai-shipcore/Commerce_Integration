@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
 
@@ -159,6 +160,7 @@ export function SkuMasterPage() {
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [pagination, setPagination] = useState({
@@ -458,19 +460,53 @@ export function SkuMasterPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 border-b border-[#e2dfd8] bg-[#f0eee9] md:grid-cols-4">
-        <SkuStat
-          label="Total SKUs"
-          value={numberFormatter.format(pagination.total)}
-          sub={loading ? "Loading..." : `${numberFormatter.format(visibleSkus.length)} on this page`}
-        />
-        <SkuStat
-          label="Missing CBM"
-          value={stats.missingCbm.toString()}
-          sub={stats.missingCbm ? "Needs review" : "All entered"}
-        />
-        <SkuStat label="Average CBM" value={stats.averageCbm.toFixed(6)} sub="m3 / unit" />
-        <SkuStat label="Product Types" value={stats.productTypes.toString()} sub="types" />
+      <div className="border-b border-[#e2dfd8] bg-[#f0eee9]">
+        <button
+          type="button"
+          onClick={() => setSummaryCollapsed((current) => !current)}
+          className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-2 text-left transition-colors hover:bg-[#ebe8df]"
+          aria-expanded={!summaryCollapsed}
+        >
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="font-semibold text-[#1a1917]">Summary</span>
+            <span className="text-muted-foreground">
+              Total <span className="font-mono font-semibold text-foreground">{numberFormatter.format(pagination.total)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Page <span className="font-mono font-semibold text-foreground">{numberFormatter.format(visibleSkus.length)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Missing CBM <span className="font-mono font-semibold text-foreground">{stats.missingCbm}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Avg CBM <span className="font-mono font-semibold text-foreground">{stats.averageCbm.toFixed(6)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Types <span className="font-mono font-semibold text-foreground">{stats.productTypes}</span>
+            </span>
+          </span>
+          {summaryCollapsed ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
+        </button>
+        {!summaryCollapsed ? (
+          <div className="grid grid-cols-2 border-t border-[#e2dfd8] md:grid-cols-4">
+            <SkuStat
+              label="Total SKUs"
+              value={numberFormatter.format(pagination.total)}
+              sub={loading ? "Loading..." : `${numberFormatter.format(visibleSkus.length)} on this page`}
+            />
+            <SkuStat
+              label="Missing CBM"
+              value={stats.missingCbm.toString()}
+              sub={stats.missingCbm ? "Needs review" : "All entered"}
+            />
+            <SkuStat label="Average CBM" value={stats.averageCbm.toFixed(6)} sub="m3 / unit" />
+            <SkuStat label="Product Types" value={stats.productTypes.toString()} sub="types" />
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] bg-white px-5 py-2 text-xs text-muted-foreground">

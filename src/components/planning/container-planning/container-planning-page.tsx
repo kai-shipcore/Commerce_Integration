@@ -122,6 +122,8 @@ type WarehouseOption = {
   isActive: boolean;
 };
 
+type ContainerListTab = "active" | "completed";
+
 const productBadgeClasses: Record<ProductKey, string> = {
   sc: "bg-[#e6f5f0] text-[#0a5e45]",
   cc: "bg-[#ebf0fd] text-[#1a4db0]",
@@ -259,9 +261,11 @@ export function ContainerPlanningPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ContainerStatus | null>(null);
   const [productFilter, setProductFilter] = useState<ProductKey | null>(null);
+  const [containerListTab, setContainerListTab] = useState<ContainerListTab>("active");
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
   const [skuListCollapsed, setSkuListCollapsed] = useState<boolean | null>(null);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -284,10 +288,13 @@ export function ContainerPlanningPage() {
       sum + container.items.reduce((inner, item) => inner + item.qty * item.cbm, 0),
     0
   );
-  const activeContainers = containers.filter((container) => container.status !== "packing-list-received").length;
+  const activeContainers = containers.filter((container) => container.status !== "complete").length;
+  const completedContainers = containers.length - activeContainers;
   const filteredContainers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return containers.filter((container) => {
+      if (containerListTab === "active" && container.status === "complete") return false;
+      if (containerListTab === "completed" && container.status !== "complete") return false;
       if (statusFilter && container.status !== statusFilter) return false;
       if (productFilter && !getContainerProducts(container).has(productFilter)) return false;
       if (!normalizedQuery) return true;
@@ -302,7 +309,7 @@ export function ContainerPlanningPage() {
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [containers, query, statusFilter, productFilter]);
+  }, [containerListTab, containers, query, statusFilter, productFilter]);
   const selectedContainer = containers.find((container) => container.id === expandedId) ?? null;
   const warehouseNameByCode = useMemo(
     () => new Map(warehouses.map((warehouse) => [warehouse.warehouseCode, warehouse.warehouseName])),
@@ -328,9 +335,25 @@ export function ContainerPlanningPage() {
       const nextContainers = (json.data as ApiContainer[]).map(mapApiContainer);
       setContainers(nextContainers);
       setExpandedId((current) => {
-        if (current && nextContainers.some((container) => container.id === current)) return current;
-        if (targetContainerId && nextContainers.some((container) => container.id === targetContainerId)) return targetContainerId;
-        return nextContainers[0]?.id ?? null;
+        const currentContainer = current
+          ? nextContainers.find((container) => container.id === current)
+          : null;
+        if (
+          currentContainer
+          && (containerListTab === "active"
+            ? currentContainer.status !== "complete"
+            : currentContainer.status === "complete")
+        ) {
+          return currentContainer.id;
+        }
+        const targetContainer = targetContainerId
+          ? nextContainers.find((container) => container.id === targetContainerId)
+          : null;
+        if (targetContainer) {
+          setContainerListTab(targetContainer.status === "complete" ? "completed" : "active");
+          return targetContainer.id;
+        }
+        return nextContainers.find((container) => container.status !== "complete")?.id ?? nextContainers[0]?.id ?? null;
       });
     } catch (error) {
       setContainersError(error instanceof Error ? error.message : "Failed to fetch containers");
@@ -1317,16 +1340,86 @@ export function ContainerPlanningPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 border-b border-[#e2dfd8] bg-[#f0eee9] md:grid-cols-4">
-        <ContainerStat label="Total Containers" value={containers.length} sub="Registered plans" />
-        <ContainerStat label="Inbound Units" value={formatNumber(totalUnits)} sub="Across all SKUs" />
-        <ContainerStat label="Total CBM" value={totalCbm.toFixed(2)} sub="Current usage" />
-        <ContainerStat label="Active Containers" value={activeContainers} sub="Draft / in progress" />
+      <div className="border-b border-[#e2dfd8] bg-[#f0eee9]">
+        <button
+          type="button"
+          onClick={() => setSummaryCollapsed((current) => !current)}
+          className="flex w-full flex-wrap items-center justify-between gap-3 px-6 py-2 text-left transition-colors hover:bg-[#ebe8df]"
+          aria-expanded={!summaryCollapsed}
+        >
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="font-semibold text-[#1a1917]">Summary</span>
+            <span className="text-muted-foreground">
+              Total <span className="font-mono font-semibold text-foreground">{containers.length}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Active <span className="font-mono font-semibold text-foreground">{activeContainers}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Completed <span className="font-mono font-semibold text-foreground">{completedContainers}</span>
+            </span>
+            <span className="text-muted-foreground">
+              Units <span className="font-mono font-semibold text-foreground">{formatNumber(totalUnits)}</span>
+            </span>
+            <span className="text-muted-foreground">
+              CBM <span className="font-mono font-semibold text-foreground">{totalCbm.toFixed(2)}</span>
+            </span>
+          </span>
+          {summaryCollapsed ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
+        </button>
+        {!summaryCollapsed ? (
+          <div className="grid grid-cols-2 border-t border-[#e2dfd8] md:grid-cols-4">
+            <ContainerStat label="Total Containers" value={containers.length} sub="Registered plans" />
+            <ContainerStat label="Inbound Units" value={formatNumber(totalUnits)} sub="Across all SKUs" />
+            <ContainerStat label="Total CBM" value={totalCbm.toFixed(2)} sub="Current usage" />
+            <ContainerStat label="Active Containers" value={activeContainers} sub="Draft / in progress" />
+          </div>
+        ) : null}
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 bg-white lg:grid-cols-[420px_1fr]">
         <aside className="border-r border-[#e2dfd8] bg-white">
           <div className="flex flex-col gap-2 border-b border-[#e2dfd8] px-4 py-3">
+            <div className="grid grid-cols-2 rounded-md border border-[#d8d6ce] bg-[#f5f4f0] p-1">
+              {([
+                { id: "active", label: "Active", count: activeContainers },
+                { id: "completed", label: "Completed", count: completedContainers },
+              ] as Array<{ id: ContainerListTab; label: string; count: number }>).map((tab) => {
+                const isActive = containerListTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setContainerListTab(tab.id);
+                      setExpandedId(
+                        containers.find((container) =>
+                          tab.id === "active" ? container.status !== "complete" : container.status === "complete"
+                        )?.id ?? null
+                      );
+                      setIsFormOpen(false);
+                      setStatusFilter((current) => {
+                        if (tab.id === "active" && current === "complete") return null;
+                        if (tab.id === "completed" && current !== "complete") return null;
+                        return current;
+                      });
+                    }}
+                    className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      isActive
+                        ? "bg-white text-[#1a1917] shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tab.label}
+                    <span className="ml-1 font-mono text-[11px] text-muted-foreground">{tab.count}</span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted-foreground">
                 {filteredContainers.length}
@@ -1336,8 +1429,9 @@ export function ContainerPlanningPage() {
                   </span>
                 ) : null}
               </span>
-              <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
-                {statusOptions.map((status) => {
+              {containerListTab === "active" ? (
+                <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
+                {statusOptions.filter((status) => status.value !== "complete").map((status) => {
                   const isActive = statusFilter === status.value;
                   return (
                     <button
@@ -1355,7 +1449,8 @@ export function ContainerPlanningPage() {
                     </button>
                   );
                 })}
-              </div>
+                </div>
+              ) : null}
             </div>
             <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
               {(Object.entries(productLabels) as [ProductKey, string][]).map(([key, label]) => {
@@ -1444,8 +1539,14 @@ export function ContainerPlanningPage() {
                   className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                 >
                   <span className="text-3xl">+</span>
-                  <span className="text-sm font-semibold">No containers found in Database</span>
-                  <span className="text-xs">Click + Add Container, or insert records into the database</span>
+                  <span className="text-sm font-semibold">
+                    {containerListTab === "active" ? "No active containers found" : "No completed containers found"}
+                  </span>
+                  <span className="text-xs">
+                    {containerListTab === "active"
+                      ? "Click + Add Container, or adjust the filters"
+                      : "Completed containers will appear here after stock-in is complete"}
+                  </span>
                 </button>
               </div>
             )}
