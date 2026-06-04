@@ -144,6 +144,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "sku-master-part",
+    name: "Part",
+    href: "/planning/sku-master/part",
+    icon: Package,
+    group: "Planning",
+    hideable: true,
+  },
+  {
     id: "factories",
     name: "Factories",
     href: "/planning/factories",
