@@ -13,6 +13,7 @@ import {
   CELL_COLORS_STORAGE_KEY,
   COLUMN_COLORS_STORAGE_KEY,
   GROUP_BTN_LABELS,
+  GROUP_LABELS,
   DEFAULT_FREEZE,
   COLUMN_WIDTHS_STORAGE_KEY,
   TODAY,
@@ -22,7 +23,7 @@ import {
   loadSavedColumnWidths,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, ColumnColorSettings, ColumnWidths, SkuPartFilterKey, SkuPartFilters } from "./columns";
+import type { CellColorSettings, ColumnColorSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
@@ -57,6 +58,7 @@ const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
 
 type ColumnSettings = {
   groupVis: Record<ColumnGroupKey, boolean>;
+  columnVis: ColumnVisibility;
   compactMode: boolean;
   showRemaining: boolean;
   showMistake: boolean;
@@ -74,6 +76,37 @@ const COLORABLE_COLUMNS = [
     label: `Container ${column.label.replace("\n", " ")}`,
   })),
 ];
+
+type ColumnVisibilityItem = {
+  id: string;
+  label: string;
+  group: ColumnGroupKey;
+  compact: boolean;
+  kind: "base" | "container";
+};
+
+const COLUMN_VISIBILITY_GROUP_KEYS: ColumnGroupKey[] = ["fix", ...ALL_GROUP_KEYS];
+
+const COLUMN_VISIBILITY_ITEMS: ColumnVisibilityItem[] = [
+  ...ALL_COLS.map((column) => ({
+    id: column.id,
+    label: column.label.replace("\n", " "),
+    group: column.grp,
+    compact: COMPACT_COLUMN_IDS.has(column.id),
+    kind: "base" as const,
+  })),
+  ...CON_SUBCOLS.map((column) => ({
+    id: `con:${column.id}`,
+    label: column.id === "remaining" ? "Rem. Qty" : column.label.replace("\n", " "),
+    group: "con" as const,
+    compact: false,
+    kind: "container" as const,
+  })),
+];
+
+const DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN = Object.fromEntries(
+  COLUMN_VISIBILITY_GROUP_KEYS.map((key) => [key, true]),
+) as Record<ColumnGroupKey, boolean>;
 
 const SKU_FILTER_LABELS: Record<SkuPartFilterKey, string> = {
   seat: "Seat",
@@ -103,6 +136,54 @@ function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
   return "AC";
 }
 
+function getColumnVisibilityForPreset(preset: "all" | "core" | "compact"): ColumnVisibility {
+  const coreGroups = new Set<ColumnGroupKey>(["fix", "stock", "s30", "tavg", "inb"]);
+  return Object.fromEntries(
+    COLUMN_VISIBILITY_ITEMS.map((item) => {
+      const visible = preset === "all"
+        ? true
+        : preset === "core"
+          ? item.group === "con" || item.group === "fix" || coreGroups.has(item.group)
+          : item.group === "con" || (item.kind === "base" && (item.group === "fix" || coreGroups.has(item.group)) && item.compact);
+      return [item.id, visible];
+    }),
+  );
+}
+
+function getColumnVisibilityFromGroups(groupVis: Record<ColumnGroupKey, boolean>, compactMode: boolean): ColumnVisibility {
+  return Object.fromEntries(
+    COLUMN_VISIBILITY_ITEMS.map((item) => {
+      const groupVisible = item.group === "fix" || groupVis[item.group];
+      const compactVisible = !compactMode || (item.kind === "base" && item.compact);
+      return [item.id, groupVisible && compactVisible];
+    }),
+  );
+}
+
+function getGroupVisibilityFromColumns(columnVis: ColumnVisibility): Record<ColumnGroupKey, boolean> {
+  return {
+    ...DEFAULT_GROUP_VIS,
+    ...Object.fromEntries(
+      ALL_GROUP_KEYS.map((key) => [
+        key,
+        COLUMN_VISIBILITY_ITEMS.some((item) => item.group === key && columnVis[item.id] !== false),
+      ]),
+    ),
+  } as Record<ColumnGroupKey, boolean>;
+}
+
+function normalizeColumnVisibility(value: unknown): ColumnVisibility | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const stored = value as Record<string, unknown>;
+  return Object.fromEntries(
+    COLUMN_VISIBILITY_ITEMS.map((item) => [item.id, typeof stored[item.id] === "boolean" ? stored[item.id] : true]),
+  ) as ColumnVisibility;
+}
+
+function columnVisibilityEquals(left: ColumnVisibility, right: ColumnVisibility): boolean {
+  return COLUMN_VISIBILITY_ITEMS.every((item) => left[item.id] !== false === (right[item.id] !== false));
+}
+
 function loadSavedColumnSettings(): Partial<ColumnSettings> {
   if (typeof window === "undefined") return {};
   try {
@@ -121,10 +202,13 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
     const freezeUntil = typeof stored.freezeUntil === "string" && ALL_COLS.some((col) => col.id === stored.freezeUntil)
       ? stored.freezeUntil
       : undefined;
+    const compactMode = typeof stored.compactMode === "boolean" ? stored.compactMode : undefined;
+    const columnVis = normalizeColumnVisibility(stored.columnVis) ?? getColumnVisibilityFromGroups(groupVis, compactMode ?? false);
 
     return {
       groupVis,
-      compactMode: typeof stored.compactMode === "boolean" ? stored.compactMode : undefined,
+      columnVis,
+      compactMode,
       showRemaining: typeof stored.showRemaining === "boolean" ? stored.showRemaining : undefined,
       showMistake: typeof stored.showMistake === "boolean" ? stored.showMistake : undefined,
       showZeroSales: typeof stored.showZeroSales === "boolean" ? stored.showZeroSales : undefined,
@@ -210,6 +294,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
+  const [columnVis, setColumnVis] = useState<ColumnVisibility>(() => getColumnVisibilityForPreset("all"));
   const [compactMode, setCompactMode] = useState(false);
   const [showRemaining, setShowRemaining] = useState(true);
   const [showMistake, setShowMistake] = useState(true);
@@ -217,6 +302,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
+  const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN);
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
@@ -253,7 +339,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     const saved = loadSavedColumnSettings();
     queueMicrotask(() => {
-      if (saved.groupVis) setGroupVis(saved.groupVis);
+      if (saved.columnVis) {
+        setColumnVis(saved.columnVis);
+        setGroupVis(getGroupVisibilityFromColumns(saved.columnVis));
+      } else if (saved.groupVis) {
+        setGroupVis(saved.groupVis);
+      }
       if (saved.compactMode !== undefined) setCompactMode(saved.compactMode);
       if (saved.showRemaining !== undefined) setShowRemaining(saved.showRemaining);
       if (saved.showMistake !== undefined) setShowMistake(saved.showMistake);
@@ -269,6 +360,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       COLUMN_SETTINGS_STORAGE_KEY,
       JSON.stringify({
         groupVis,
+        columnVis,
         compactMode,
         showRemaining,
         showMistake,
@@ -276,7 +368,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         freezeUntil,
       }),
     );
-  }, [columnSettingsLoaded, groupVis, compactMode, showRemaining, showMistake, showZeroSales, freezeUntil]);
+  }, [columnSettingsLoaded, groupVis, columnVis, compactMode, showRemaining, showMistake, showZeroSales, freezeUntil]);
 
   useEffect(() => {
     if (!data.rows.length || containerDetailsLoaded || containerDetailsLoading) return;
@@ -369,37 +461,74 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   const handleAllOn = useCallback(() => {
+    const nextColumnVis = getColumnVisibilityForPreset("all");
     setCompactMode(false);
-    setGroupVis((prev) =>
-      Object.fromEntries(Object.keys(prev).map((k) => [k, true])) as Record<ColumnGroupKey, boolean>,
-    );
+    setColumnVis(nextColumnVis);
+    setGroupVis(getGroupVisibilityFromColumns(nextColumnVis));
   }, []);
 
   const handleCoreOnly = useCallback(() => {
+    const nextColumnVis = getColumnVisibilityForPreset("core");
     setCompactMode(false);
-    const keep = new Set<string>(["fix", "stock", "s30", "tavg", "inb"]);
-    setGroupVis((prev) =>
-      Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
-    );
+    setColumnVis(nextColumnVis);
+    setGroupVis(getGroupVisibilityFromColumns(nextColumnVis));
   }, []);
 
   const handleCompact = useCallback(() => {
+    const nextColumnVis = getColumnVisibilityForPreset("compact");
     setCompactMode(true);
-    const keep = new Set<string>(["fix", "stock", "tavg", "inb"]);
-    setGroupVis((prev) =>
-      Object.fromEntries(Object.keys(prev).map((k) => [k, keep.has(k)])) as Record<ColumnGroupKey, boolean>,
-    );
+    setColumnVis(nextColumnVis);
+    setGroupVis(getGroupVisibilityFromColumns(nextColumnVis));
     setFreezeUntil("sod");
   }, []);
 
-  const handleToggleGroup = useCallback(
-    (key: ColumnGroupKey) => {
-      if (key !== "con") setCompactMode(false);
-      setGroupVis((prev) => {
-        const next = { ...prev, [key]: !prev[key] };
-        const nextVisCols = ALL_COLS.filter((c) => c.grp === "fix" || next[c.grp]);
-        const stillVis = nextVisCols.find((c) => c.id === freezeUntil);
-        if (!stillVis && nextVisCols.length > 0) {
+  const handleToggleContainerColumns = useCallback(() => {
+    setColumnVis((current) => {
+      const containerItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === "con");
+      const allContainerColumnsVisible = containerItems.every((item) => current[item.id] !== false);
+      const next = { ...current };
+      containerItems.forEach((item) => {
+        next[item.id] = !allContainerColumnsVisible;
+      });
+      setGroupVis(getGroupVisibilityFromColumns(next));
+      return next;
+    });
+  }, []);
+
+  const handleToggleColumnVisibilityGroup = useCallback((group: ColumnGroupKey) => {
+    setCompactMode(false);
+    setColumnVis((current) => {
+      const groupItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
+      const allGroupColumnsVisible = groupItems.every((item) => current[item.id] !== false);
+      const next = { ...current };
+      groupItems.forEach((item) => {
+        next[item.id] = !allGroupColumnsVisible;
+      });
+      setGroupVis(getGroupVisibilityFromColumns(next));
+
+      const nextVisCols = ALL_COLS.filter((column) => next[column.id] !== false);
+      const stillVisible = nextVisCols.some((column) => column.id === freezeUntil);
+      if (!stillVisible && nextVisCols.length > 0) {
+        setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
+      }
+      return next;
+    });
+  }, [freezeUntil]);
+
+  const handleToggleColumnVisibilityGroupOpen = useCallback((group: ColumnGroupKey) => {
+    setOpenColumnVisibilityGroups((current) => ({ ...current, [group]: !current[group] }));
+  }, []);
+
+  const handleToggleColumn = useCallback(
+    (columnId: string) => {
+      setCompactMode(false);
+      setColumnVis((current) => {
+        const next = { ...current, [columnId]: current[columnId] === false };
+        setGroupVis(getGroupVisibilityFromColumns(next));
+
+        const nextVisCols = ALL_COLS.filter((column) => next[column.id] !== false);
+        const stillVisible = nextVisCols.some((column) => column.id === freezeUntil);
+        if (!stillVisible && nextVisCols.length > 0) {
           setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
         }
         return next;
@@ -408,13 +537,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     [freezeUntil],
   );
 
-  const hiddenGroupCount = ALL_GROUP_KEYS.filter((k) => !groupVis[k]).length;
+  const hiddenColumnCount = COLUMN_VISIBILITY_ITEMS.filter((item) => columnVis[item.id] === false).length;
+  const allPresetActive = columnVisibilityEquals(columnVis, getColumnVisibilityForPreset("all"));
+  const corePresetActive = columnVisibilityEquals(columnVis, getColumnVisibilityForPreset("core"));
+  const compactPresetActive = compactMode && columnVisibilityEquals(columnVis, getColumnVisibilityForPreset("compact"));
+  const allContainerColumnsVisible = COLUMN_VISIBILITY_ITEMS
+    .filter((item) => item.group === "con")
+    .every((item) => columnVis[item.id] !== false);
 
   const visColsForFreeze = useMemo(
     () => ALL_COLS
-      .filter((c) => c.grp === "fix" || groupVis[c.grp])
-      .filter((c) => !compactMode || COMPACT_COLUMN_IDS.has(c.id)),
-    [groupVis, compactMode],
+      .filter((c) => columnVis[c.id] !== false),
+    [columnVis],
   );
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -724,9 +858,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 8, background: "#E5EEFF", color: "#1A4FC0" }}>
                     Compact
                   </span>
-                ) : hiddenGroupCount > 0 ? (
+                ) : hiddenColumnCount > 0 ? (
                   <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 8, background: "#FFEDED", color: "#C42020" }}>
-                    {hiddenGroupCount} hidden
+                    {hiddenColumnCount} hidden
                   </span>
                 ) : null}
                 {" ▾"}
@@ -736,12 +870,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               align="start"
               className="dashboard-columns-popover"
               style={{
-                width: "min(920px, calc(100vw - 24px))",
-                maxHeight: "min(620px, calc(100vh - 120px))",
+                width: "min(1100px, calc(100vw - 24px))",
+                maxHeight: "min(760px, calc(100vh - 80px))",
                 padding: 0,
                 overflow: "auto",
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gridTemplateColumns: "minmax(280px, 0.95fr) minmax(360px, 1fr) minmax(200px, 0.65fr)",
                 alignItems: "start",
               }}
             >
@@ -765,15 +899,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 </PopoverClose>
               </div>
               {/* Quick Presets */}
-              <div style={{ padding: "8px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+              <div style={{ gridColumn: 1, gridRow: 2, padding: "8px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   Quick Preset
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {([
-                    { label: "All", action: handleAllOn, active: !compactMode && hiddenGroupCount === 0 },
-                    { label: "Core", action: handleCoreOnly, active: false },
-                    { label: "Compact", action: handleCompact, active: compactMode },
+                    { label: "All", action: handleAllOn, active: allPresetActive },
+                    { label: "Core", action: handleCoreOnly, active: corePresetActive },
+                    { label: "Compact", action: handleCompact, active: compactPresetActive },
                   ] as { label: string; action: () => void; active: boolean }[]).map(({ label, action, active }) => (
                     <button
                       key={label}
@@ -794,46 +928,30 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={handleToggleContainerColumns}
+                  style={{
+                    marginTop: 7,
+                    width: "100%",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: "5px 10px",
+                    borderRadius: 5,
+                    border: allContainerColumnsVisible ? "1px solid #3B82F6" : "1px solid #CBD5E1",
+                    cursor: "pointer",
+                    background: allContainerColumnsVisible ? "#EFF6FF" : "#F8FAFC",
+                    color: allContainerColumnsVisible ? "#1D4ED8" : "#475569",
+                    textAlign: "left",
+                  }}
+                >
+                  Container Columns
+                </button>
               </div>
 
-              {/* Column Groups */}
-              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  Column Groups
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {ALL_GROUP_KEYS.map((key) => {
-                    const checked = groupVis[key];
-                    return (
-                      <label
-                        key={key}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "3px 6px",
-                          borderRadius: 4,
-                          cursor: "pointer",
-                          background: checked ? "rgba(59,130,246,.06)" : "transparent",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => handleToggleGroup(key)}
-                          style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
-                        />
-                        <span style={{ fontSize: 12, fontWeight: 500, color: checked ? "#1E3A5F" : "#94A3B8" }}>
-                          {key === "con" && containerDetailsLoading ? "Loading Container..." : GROUP_BTN_LABELS[key]}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
+              {/* Options — placed before Column Visibility in DOM so stacked layout keeps it below Quick Preset */}
               {/* Options */}
-              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+              <div style={{ gridColumn: 1, gridRow: 3, padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   Options
                 </div>
@@ -976,39 +1094,122 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       })}
                     </div>
                   </div>
+                  <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Freeze Column
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <select
+                        value={freezeUntil}
+                        onChange={(e) => setFreezeUntil(e.target.value)}
+                        style={{ flex: 1, minWidth: 0, fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
+                      >
+                        {visColsForFreeze.map((col) => (
+                          <option key={col.id} value={col.id}>
+                            {col.label.replace("\n", " ")}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setFreezeUntil(DEFAULT_FREEZE)}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B", whiteSpace: "nowrap" }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Freeze Column */}
-              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+              {/* Columns */}
+              <div style={{ gridColumn: 2, gridRow: "2 / 4", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  📌 Freeze Column
+                  Column Visibility
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <select
-                    value={freezeUntil}
-                    onChange={(e) => setFreezeUntil(e.target.value)}
-                    style={{ flex: 1, fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
-                  >
-                    {visColsForFreeze.map((col) => (
-                      <option key={col.id} value={col.id}>
-                        {col.label.replace("\n", " ")}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setFreezeUntil(DEFAULT_FREEZE)}
-                    style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B", whiteSpace: "nowrap" }}
-                  >
-                    Reset
-                  </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: "min(560px, calc(100vh - 260px))", overflow: "auto", paddingRight: 4 }}>
+                  {COLUMN_VISIBILITY_GROUP_KEYS.map((group) => {
+                    const groupItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
+                    const checkedCount = groupItems.filter((item) => columnVis[item.id] !== false).length;
+                    const allChecked = checkedCount === groupItems.length;
+                    const someChecked = checkedCount > 0 && checkedCount < groupItems.length;
+                    const isOpen = openColumnVisibilityGroups[group];
+                    return (
+                      <div key={group} style={{ borderRadius: 5, background: checkedCount ? "rgba(59,130,246,.04)" : "transparent" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, padding: "4px 5px" }}>
+                          <button
+                            type="button"
+                            aria-label={isOpen ? "Collapse group" : "Expand group"}
+                            onClick={() => handleToggleColumnVisibilityGroupOpen(group)}
+                            style={{ width: 18, height: 18, border: "none", background: "transparent", cursor: "pointer", color: "#64748B", fontSize: 10, padding: 0, lineHeight: "18px" }}
+                          >
+                            {isOpen ? "▼" : "▶"}
+                          </button>
+                          <input
+                            type="checkbox"
+                            checked={allChecked}
+                            ref={(node) => {
+                              if (node) node.indeterminate = someChecked;
+                            }}
+                            onChange={() => handleToggleColumnVisibilityGroup(group)}
+                            style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleToggleColumnVisibilityGroupOpen(group)}
+                            title={GROUP_LABELS[group] || GROUP_BTN_LABELS[group] || group}
+                            style={{ minWidth: 0, flex: 1, border: "none", background: "transparent", cursor: "pointer", padding: 0, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 700, color: checkedCount ? "#1E3A5F" : "#94A3B8" }}
+                          >
+                            {GROUP_LABELS[group] || GROUP_BTN_LABELS[group] || group}
+                            <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: "#64748B" }}>
+                              {checkedCount}/{groupItems.length}
+                            </span>
+                          </button>
+                        </div>
+                        {isOpen ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 1, padding: "0 0 4px 28px" }}>
+                            {groupItems.map((item) => {
+                              const checked = columnVis[item.id] !== false;
+                              return (
+                                <label
+                                  key={item.id}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    minWidth: 0,
+                                    padding: "3px 5px",
+                                    borderRadius: 4,
+                                    cursor: "pointer",
+                                    background: checked ? "rgba(59,130,246,.06)" : "transparent",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => handleToggleColumn(item.id)}
+                                    style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
+                                  />
+                                  <span
+                                    title={`${GROUP_LABELS[item.group] || GROUP_BTN_LABELS[item.group]} / ${item.label}`}
+                                    style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 500, color: checked ? "#1E3A5F" : "#94A3B8" }}
+                                  >
+                                    {item.label}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Reset Column Widths */}
+              {/* Column Colors + Selected Cell Color */}
               {gridMode === "ag-grid" ? (
-                <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                <div style={{ gridColumn: 3, gridRow: "2 / 4", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                     Column Colors
                   </div>
@@ -1057,72 +1258,71 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </button>
                     </div>
                   </div>
-                </div>
-              ) : null}
 
-              {gridMode === "ag-grid" ? (
-                <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Selected Cell Color
+                  {/* Selected Cell Color — merged into same column 3 container */}
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Selected Cell Color
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      <div
+                        title={selectedAgCell?.label}
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          borderRadius: 5,
+                          border: "1px solid #CBD5E1",
+                          background: selectedAgCell ? "#F8FAFC" : "#F1F5F9",
+                          color: selectedAgCell ? "#1E293B" : "#94A3B8",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          padding: "5px 8px",
+                        }}
+                      >
+                        {selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Cell</span>
+                        <input
+                          type="color"
+                          disabled={!selectedAgCell}
+                          value={selectedAgCell ? (cellColors[`${selectedAgCell.rowId}::${selectedAgCell.columnId}`] ?? "#FFFFFF") : "#FFFFFF"}
+                          onChange={(event) => handleSelectedCellColorChange(event.target.value)}
+                          style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: selectedAgCell ? "pointer" : "default" }}
+                        />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <button
+                          type="button"
+                          disabled={!selectedAgCell}
+                          onClick={resetSelectedCellColor}
+                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
+                        >
+                          Reset Selected
+                        </button>
+                        <button
+                          type="button"
+                          onClick={resetCellColors}
+                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
+                        >
+                          Reset All Cells
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    <div
-                      title={selectedAgCell?.label}
-                      style={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        borderRadius: 5,
-                        border: "1px solid #CBD5E1",
-                        background: selectedAgCell ? "#F8FAFC" : "#F1F5F9",
-                        color: selectedAgCell ? "#1E293B" : "#94A3B8",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        padding: "5px 8px",
-                      }}
+
+                  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #E2E8F0" }}>
+                    <button
+                      type="button"
+                      onClick={resetColumnWidths}
+                      style={{ width: "100%", fontSize: 11, padding: "6px 10px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
                     >
-                      {selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-                      <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Cell</span>
-                      <input
-                        type="color"
-                        disabled={!selectedAgCell}
-                        value={selectedAgCell ? (cellColors[`${selectedAgCell.rowId}::${selectedAgCell.columnId}`] ?? "#FFFFFF") : "#FFFFFF"}
-                        onChange={(event) => handleSelectedCellColorChange(event.target.value)}
-                        style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: selectedAgCell ? "pointer" : "default" }}
-                      />
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      <button
-                        type="button"
-                        disabled={!selectedAgCell}
-                        onClick={resetSelectedCellColor}
-                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
-                      >
-                        Reset Selected
-                      </button>
-                      <button
-                        type="button"
-                        onClick={resetCellColors}
-                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
-                      >
-                        Reset All Cells
-                      </button>
-                    </div>
+                      Reset Column Widths
+                    </button>
                   </div>
                 </div>
               ) : null}
-
-              <div style={{ padding: "8px 14px" }}>
-                <button
-                  type="button"
-                  onClick={resetColumnWidths}
-                  style={{ width: "100%", fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
-                >
-                  Reset Column Widths
-                </button>
-              </div>
             </PopoverContent>
           </Popover>
         )}
@@ -1345,6 +1545,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           containerDetailsLoading={containerDetailsLoading}
           containerDetailsLoaded={containerDetailsLoaded}
           groupVis={groupVis}
+          columnVis={columnVis}
           compactMode={compactMode}
           showRemaining={showRemaining}
           showMistake={showMistake}
@@ -1370,6 +1571,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           containerDetailsLoading={containerDetailsLoading}
           containerDetailsLoaded={containerDetailsLoaded}
           groupVis={groupVis}
+          columnVis={columnVis}
           compactMode={compactMode}
           showRemaining={showRemaining}
           showMistake={showMistake}

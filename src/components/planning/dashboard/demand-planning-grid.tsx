@@ -22,7 +22,7 @@ import {
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
-import type { CellColorSettings, CellContent, ColDef, ColumnColorSettings, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
+import type { CellColorSettings, CellContent, ColDef, ColumnColorSettings, ColumnVisibility, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -145,6 +145,7 @@ export interface DemandPlanningGridProps {
   containerDetailsLoaded: boolean;
   // Column visibility state (owned by dashboard)
   groupVis: Record<ColumnGroupKey, boolean>;
+  columnVis: ColumnVisibility;
   compactMode: boolean;
   showRemaining: boolean;
   showMistake: boolean;
@@ -341,6 +342,7 @@ export function DemandPlanningGrid({
   containerDetailsLoading,
   containerDetailsLoaded,
   groupVis,
+  columnVis,
   compactMode,
   showRemaining,
   showZeroSales,
@@ -377,7 +379,7 @@ export function DemandPlanningGrid({
   const [cbmSavingSku, setCbmSavingSku] = useState<string | null>(null);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const visSubCols = CON_SUBCOLS.filter((sc) =>
-    sc.id !== "remaining" || showRemaining
+    (sc.id !== "remaining" || showRemaining) && columnVis[`con:${sc.id}`] !== false
   );
 
   const containerCbmTotals = useMemo(() => {
@@ -429,13 +431,14 @@ export function DemandPlanningGrid({
   const visCols = useMemo<ColDef[]>(
     () => ALL_COLS
       .filter((c) => c.grp === "fix" || groupVis[c.grp])
+      .filter((c) => columnVis[c.id] !== false)
       .filter((c) => !compactMode || COMPACT_COLUMN_IDS.has(c.id))
       .map((col) => {
         if (!isResizableColumnId(col.id)) return col;
         const savedWidth = columnWidths[col.id];
         return typeof savedWidth === "number" ? { ...col, w: savedWidth } : col;
       }),
-    [columnWidths, compactMode, groupVis],
+    [columnVis, columnWidths, compactMode, groupVis],
   );
 
   const showCon = groupVis["con"];

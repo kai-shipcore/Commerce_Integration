@@ -25,7 +25,7 @@ export const GROUP_HEADER_COLORS: Record<string, string> = {
 };
 
 export const GROUP_LABELS: Record<string, string> = {
-  fix:    "Core Info",
+  fix:    "Basic Info",
   stock:  "Inventory",
   wsales: "West FBM Sales",
   esales: "East FBM Sales",
@@ -219,6 +219,7 @@ export const CELL_COLORS_STORAGE_KEY = "planning-dashboard-cell-colors";
 
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
 export type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
+export type ColumnVisibility = Record<string, boolean>;
 export type ColumnColorSettings = Record<string, { cell?: string; header?: string }>;
 export type CellColorSettings = Record<string, string>;
 export type SkuPartFilterKey = "seat" | "no" | "color" | "tone";

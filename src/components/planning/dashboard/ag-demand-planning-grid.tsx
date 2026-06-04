@@ -9,6 +9,7 @@ import {
   type ColGroupDef,
   type ICellRendererParams,
   type IHeaderGroupParams,
+  type IHeaderParams,
 } from "ag-grid-community";
 import {
   ALL_COLS,
@@ -497,6 +498,31 @@ function CbmCellRenderer({
   );
 }
 
+function ConQtyHeader(params: IHeaderParams & {
+  isFiltered: boolean;
+  onRightClick: (x: number, y: number) => void;
+}) {
+  return (
+    <div
+      style={{ display: "flex", alignItems: "center", gap: 3, width: "100%", height: "100%", cursor: "pointer", userSelect: "none" }}
+      onClick={(e) => {
+        e.stopPropagation();
+        params.progressSort(e.shiftKey);
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        params.onRightClick(e.clientX, e.clientY);
+      }}
+    >
+      <span>Con. Qty</span>
+      {params.isFiltered && (
+        <span style={{ color: "#1a5cdb", fontSize: 9, lineHeight: 1 }}>▼</span>
+      )}
+    </div>
+  );
+}
+
 function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
@@ -561,6 +587,7 @@ export function AgDemandPlanningGrid({
   containerDetailsLoading,
   containerDetailsLoaded,
   groupVis,
+  columnVis,
   compactMode,
   showRemaining,
   showZeroSales,
@@ -581,6 +608,8 @@ export function AgDemandPlanningGrid({
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const [rowOverrides, setRowOverrides] = useState<Map<string, Partial<DemandRow>>>(new Map());
   const [gridWidth, setGridWidth] = useState(0);
+  const [conQtyFilter, setConQtyFilter] = useState<string | null>(null);
+  const [qtyCtxMenu, setQtyCtxMenu] = useState<{ x: number; y: number; containerName: string } | null>(null);
 
   const containers = useMemo(
     () => data.containers
@@ -615,6 +644,12 @@ export function AgDemandPlanningGrid({
         if (urgencyFilter === "crit") return urgency === "crit";
         if (urgencyFilter === "warn") return urgency === "warn" || urgency === "crit";
         if (urgencyFilter === "bo") return (row.back ?? 0) < 0;
+        if (conQtyFilter) {
+          const qty = qtyOverrides.get(`${row.sku}::${conQtyFilter}`)?.inbound_qty
+            ?? row.containers?.[conQtyFilter]?.inbound_qty
+            ?? 0;
+          if ((qty ?? 0) <= 0) return false;
+        }
         return true;
       })
       .map((row) => ({
@@ -622,7 +657,7 @@ export function AgDemandPlanningGrid({
         ...(rowOverrides.get(row.sku) ?? {}),
         ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
       }));
-  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, conQtyFilter, data.rows, productFilter, qtyOverrides, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
 
   useEffect(() => {
     onFilteredRowsChange(visibleRows);
@@ -646,13 +681,13 @@ export function AgDemandPlanningGrid({
   const subColumns = useMemo(
     () => {
       const visibleColumns = CON_SUBCOLS.filter((column) =>
-        column.id !== "remaining" || showRemaining);
+        (column.id !== "remaining" || showRemaining) && columnVis[`con:${column.id}`] !== false);
       const cbmColumn = visibleColumns.find((column) => column.id === "ccbm");
       return cbmColumn
         ? [cbmColumn, ...visibleColumns.filter((column) => column.id !== "ccbm")]
         : visibleColumns;
     },
-    [showRemaining],
+    [columnVis, showRemaining],
   );
 
   const containerColumnTotals = useMemo(() => {
@@ -824,6 +859,7 @@ export function AgDemandPlanningGrid({
   const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS
       .filter((column) => column.grp === "fix" || groupVis[column.grp])
+      .filter((column) => columnVis[column.id] !== false)
       .filter((column) => !compactMode || COMPACT_COLUMN_IDS.has(column.id));
     const freezeIndex = visibleBaseColumns.findIndex((column) => column.id === freezeUntil);
     if (freezeIndex < 0) return { ids: [] as string[], widths: {} as Record<string, number>, width: 0 };
@@ -842,7 +878,7 @@ export function AgDemandPlanningGrid({
       widths: desiredWidths,
       width: desiredPinnedWidth,
     };
-  }, [columnWidths, compactMode, freezeUntil, groupVis]);
+  }, [columnVis, columnWidths, compactMode, freezeUntil, groupVis]);
 
   const gridMinWidth = Math.max(
     gridWidth,
@@ -852,6 +888,7 @@ export function AgDemandPlanningGrid({
   const columnDefs = useMemo<Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>>(() => {
     const visibleBaseColumns = ALL_COLS
       .filter((column) => column.grp === "fix" || groupVis[column.grp])
+      .filter((column) => columnVis[column.id] !== false)
       .filter((column) => !compactMode || COMPACT_COLUMN_IDS.has(column.id));
     const pinnedBaseColumnIdSet = new Set(pinnedBaseColumnLayout.ids);
     const baseGroups = new Map<string, AgColDef<DemandRow>[]>();
@@ -938,7 +975,14 @@ export function AgDemandPlanningGrid({
               : column.id === "remaining"
                 ? "Rem. Qty"
                 : column.label.replace("\n", " "),
-            headerTooltip: column.label.replace("\n", " "),
+            headerTooltip: column.id === "inb_qty" && !baseline
+              ? "Right-click to filter Qty > 0"
+              : column.label.replace("\n", " "),
+            headerComponent: column.id === "inb_qty" && !baseline ? ConQtyHeader : undefined,
+            headerComponentParams: column.id === "inb_qty" && !baseline ? {
+              isFiltered: conQtyFilter === container.name,
+              onRightClick: (x: number, y: number) => setQtyCtxMenu({ x, y, containerName: container.name }),
+            } : undefined,
             width: containerColumnWidth(column),
             valueGetter: (params) => {
               if (!params.data) return "";
@@ -977,7 +1021,7 @@ export function AgDemandPlanningGrid({
       }
     }
     return groups;
-  }, [cellColors, chainMap, columnColors, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+  }, [cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -1124,6 +1168,56 @@ export function AgDemandPlanningGrid({
           />
         </AgGridProvider>
       </div>
+
+      {/* Con. Qty right-click context menu */}
+      {qtyCtxMenu && (
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 999 }}
+            onClick={() => setQtyCtxMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setQtyCtxMenu(null); }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: qtyCtxMenu.y,
+              left: qtyCtxMenu.x,
+              zIndex: 1000,
+              background: "#fff",
+              border: "1px solid #E2E8F0",
+              borderRadius: 6,
+              boxShadow: "0 4px 16px rgba(15,23,42,.16)",
+              minWidth: 180,
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              {qtyCtxMenu.containerName}
+            </div>
+            {conQtyFilter === qtyCtxMenu.containerName ? (
+              <button
+                type="button"
+                onClick={() => { setConQtyFilter(null); setQtyCtxMenu(null); }}
+                style={{ display: "block", width: "100%", padding: "7px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "#C42020", background: "transparent", border: "none", cursor: "pointer", borderTop: "1px solid #F1F5F9" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#FFF5F5"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+              >
+                ✕ 필터 해제
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setConQtyFilter(qtyCtxMenu.containerName); setQtyCtxMenu(null); }}
+                style={{ display: "block", width: "100%", padding: "7px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "#1A1917", background: "transparent", border: "none", cursor: "pointer", borderTop: "1px solid #F1F5F9" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+              >
+                ▼ Qty &gt; 0 만 표시
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
