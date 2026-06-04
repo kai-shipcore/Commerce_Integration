@@ -16,6 +16,7 @@ export function PlanningShell({ children }: PlanningShellProps) {
     "/planning/purchase-orders",
     "/planning/sku-master",
     "/planning/factories",
+    "/planning/seat-cover/parts",
   ]);
   const surfaceClass = fullBleedPages.has(pathname)
     ? "min-w-0"

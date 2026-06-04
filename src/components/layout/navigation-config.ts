@@ -144,9 +144,9 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
-    id: "sku-master-part",
-    name: "Part",
-    href: "/planning/sku-master/part",
+    id: "seat-cover-parts",
+    name: "Parts",
+    href: "/planning/seat-cover/parts",
     icon: Package,
     group: "Planning",
     hideable: true,

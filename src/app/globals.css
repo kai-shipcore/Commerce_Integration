@@ -131,7 +131,8 @@
   .planning-surface:has(.available-stock-fullbleed),
   .planning-surface:has(.purchase-orders-fullbleed),
   .planning-surface:has(.sku-master-fullbleed),
-  .planning-surface:has(.factories-fullbleed) {
+  .planning-surface:has(.factories-fullbleed),
+  .planning-surface:has(.parts-fullbleed) {
     @apply border-0 bg-transparent p-0 shadow-none md:p-0;
   }
 

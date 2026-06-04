@@ -31,7 +31,7 @@ const navigationGroups = [
   { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
   { name: "Operations", itemIds: ["orders", "signals"] },
   { name: "Forecasting", itemIds: ["analytics", "velocity"] },
-  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "available-stock", "purchase-orders", "sku-master", "sku-master-part"] },
+  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "available-stock", "purchase-orders", "sku-master", "seat-cover-parts"] },
   { name: "Admin", itemIds: ["integrations", "warehouse-admin", "factories", "user-access"] },
 ];
 
