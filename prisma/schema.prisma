@@ -577,6 +577,7 @@ model PartOrder {
   orderStatus       String?  @map("orderstatus")
   shipheroOrder     String?
   shippingStatus    String?
+  deleteYN          String   @default("N")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

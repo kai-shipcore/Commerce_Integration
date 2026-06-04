@@ -1,4 +1,5 @@
 // Code Guide: PATCH /api/planning/seat-cover/parts/[id] — updates a replacement part row
+// DELETE /api/planning/seat-cover/parts/[id] — deletes a replacement part row
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
@@ -64,5 +65,29 @@ export async function PATCH(
   } catch (err) {
     console.error("[parts] update error", err);
     return NextResponse.json({ success: false, error: "Update failed" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const { orderNumber } = body;
+
+    await prisma.$executeRaw`
+      UPDATE shipcore.replacement_parts SET "deleteYN" = 'Y' WHERE id = ${BigInt(id)}
+    `;
+
+    const session = await auth();
+    const userName = session?.user?.name ?? session?.user?.email ?? "Unknown";
+    notifySlack(`[Parts] ${userName} deleted a row — Order #${orderNumber ?? id}`);
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[parts] delete error", err);
+    return NextResponse.json({ success: false, error: "Delete failed" }, { status: 500 });
   }
 }

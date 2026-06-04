@@ -9,6 +9,7 @@ import {
   type ColDef,
 } from "ag-grid-community";
 import { PartDialog } from "./add-part-dialog";
+import { DeleteDialog } from "@/components/ui/delete-dialog";
 
 const modules = [AllCommunityModule];
 
@@ -208,6 +209,36 @@ export function PartsGrid() {
           <span style={{ fontSize: 13, color: "#7A766F" }}>Loading…</span>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <DeleteDialog
+            trigger={
+              <button
+                disabled={!selectedRow}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: selectedRow ? "#c0392b" : "#A8A49E",
+                  background: selectedRow ? "#FEF2F2" : "#F7F6F3",
+                  border: `1px solid ${selectedRow ? "#FECACA" : "#D8D6CE"}`,
+                  borderRadius: 6,
+                  padding: "5px 12px",
+                  cursor: selectedRow ? "pointer" : "not-allowed",
+                }}
+              >
+                Delete
+              </button>
+            }
+            title="Delete Part"
+            description={`Order #${selectedRow?.orderNumber ?? ""} 행을 삭제합니다. 되돌릴 수 없습니다.`}
+            onConfirm={async () => {
+              await fetch(`/api/planning/seat-cover/parts/${selectedRow!.id}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderNumber: selectedRow!.orderNumber }),
+              });
+              setSelectedRow(null);
+              loadRows();
+            }}
+          />
           <button
             onClick={() => {
               setEditData(selectedRow);

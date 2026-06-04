@@ -9,6 +9,7 @@ export async function GET() {
   try {
     const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
       SELECT * FROM shipcore.replacement_parts
+      WHERE "deleteYN" = 'N'
       ORDER BY "requestReceivedAt" ASC
     `;
     const data = rows.map((r) => ({ ...r, id: String(r.id) }));
