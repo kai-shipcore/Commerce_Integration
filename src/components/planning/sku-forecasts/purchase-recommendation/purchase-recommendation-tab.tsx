@@ -10,11 +10,13 @@ export function PurchaseRecommendationTab({
   master,
   language,
   targetInventoryDays,
+  includeDraftContainers,
 }: {
   sku: DemandRow;
   master: SkuMasterMeta;
   language: SkuForecastLanguage;
   targetInventoryDays: number;
+  includeDraftContainers: boolean;
 }) {
   const dailyAvg = sku.total_avg_curr;
   const targetQty = Math.ceil(dailyAvg * targetInventoryDays);
@@ -91,7 +93,7 @@ export function PurchaseRecommendationTab({
             [pick(language, "일평균 판매", "Daily Average"), `${formatNumber(dailyAvg, 2)}/d`],
             [pick(language, "목표 재고", "Target Stock"), formatNumber(targetQty)],
             [pick(language, "현재 재고", "Current Stock"), formatNumber(sku.total_stock)],
-            [pick(language, "입고", "Inbound"), formatNumber(inboundQty)],
+            [includeDraftContainers ? pick(language, "입고 (Draft 포함)", "Inbound incl. Draft") : pick(language, "입고", "Inbound"), formatNumber(inboundQty)],
             [pick(language, "백오더 영향", "Backorder Impact"), formatNumber(Math.min(sku.back, 0))],
             [pick(language, "예상 재고", "Projected Stock"), formatNumber(projectedQty)],
             [pick(language, "필요 수량", "Raw Need"), formatNumber(rawQty)],

@@ -22,6 +22,7 @@ import { pick, productLabel, type SkuForecastLanguage } from "../language";
 
 const LANGUAGE_STORAGE_KEY = "sku-forecasts-language";
 const TARGET_INVENTORY_DAYS_STORAGE_KEY = "sku-forecasts-target-inventory-days";
+const INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY = "sku-forecasts-include-draft-containers";
 const MIN_TARGET_INVENTORY_DAYS = 1;
 const MAX_TARGET_INVENTORY_DAYS = 365;
 
@@ -37,6 +38,7 @@ export function SkuForecastsShell() {
   const [selectedSkuId, setSelectedSkuId] = useState<string>("");
   const [language, setLanguage] = useState<SkuForecastLanguage>("en");
   const [targetInventoryDays, setTargetInventoryDays] = useState(DEFAULT_TARGET_INVENTORY_DAYS);
+  const [includeDraftContainers, setIncludeDraftContainers] = useState(false);
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
   const masterLoadingRef = useRef<Set<string>>(new Set());
 
@@ -48,6 +50,9 @@ export function SkuForecastsShell() {
     const storedTargetDays = normalizeTargetInventoryDays(window.localStorage.getItem(TARGET_INVENTORY_DAYS_STORAGE_KEY));
     if (storedTargetDays !== null) {
       queueMicrotask(() => setTargetInventoryDays(storedTargetDays));
+    }
+    if (window.localStorage.getItem(INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY) === "1") {
+      queueMicrotask(() => setIncludeDraftContainers(true));
     }
   }, []);
 
@@ -62,12 +67,17 @@ export function SkuForecastsShell() {
     window.localStorage.setItem(TARGET_INVENTORY_DAYS_STORAGE_KEY, String(nextDays));
   }
 
+  function changeIncludeDraftContainers(nextValue: boolean) {
+    setIncludeDraftContainers(nextValue);
+    window.localStorage.setItem(INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY, nextValue ? "1" : "0");
+  }
+
   const {
     data,
     loading,
     error,
     reload,
-  } = useDemandPlanningData("link");
+  } = useDemandPlanningData("link", undefined, includeDraftContainers);
 
   const rowsByProduct = useMemo(() => {
     const grouped: Record<ProductKey, DemandRow[]> = { sc: [], cc: [], fm: [] };
@@ -141,7 +151,26 @@ export function SkuForecastsShell() {
               : pick(language, "동기화되지 않음", "Not synced")}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
+            {[
+              { value: false, label: pick(language, "Active 컨테이너", "Active Containers") },
+              { value: true, label: pick(language, "Draft 포함", "Active + Draft") },
+            ].map((option) => (
+              <button
+                key={String(option.value)}
+                type="button"
+                onClick={() => changeIncludeDraftContainers(option.value)}
+                className={`px-3 text-xs font-semibold ${
+                  includeDraftContainers === option.value
+                    ? "bg-[#1A1917] text-white dark:bg-white dark:text-[#1A1917]"
+                    : "text-muted-foreground hover:bg-[#f0eee9] dark:hover:bg-zinc-700"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           <label className="flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-xs font-semibold text-[#1A1917] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100">
             <span className="whitespace-nowrap">{pick(language, "목표 재고일", "Target days")}</span>
             <input
@@ -212,14 +241,12 @@ export function SkuForecastsShell() {
           {selectedRow && selectedMaster ? (
             <div className="space-y-3">
               <SkuHeader sku={selectedRow} master={selectedMaster} productLabel={productLabel(language, productKeyForRow(selectedRow))} language={language} />
-              <SkuKpiStrip sku={selectedRow} master={selectedMaster} language={language} />
+              <SkuKpiStrip sku={selectedRow} master={selectedMaster} language={language} includeDraftContainers={includeDraftContainers} />
               <SkuForecastTabs
                 language={language}
                 sales={<SalesAnalysisTab sku={selectedRow} language={language} />}
-                inventory={
-                  <InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} />
-                }
-                purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} />}
+                inventory={<InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
+                purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
               />
             </div>
           ) : (

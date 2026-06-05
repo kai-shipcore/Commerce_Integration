@@ -7,7 +7,10 @@ function errorMessage(error: unknown): string {
 
 export async function GET(request: Request) {
   try {
-    const masterSku = new URL(request.url).searchParams.get("masterSku")?.trim().toUpperCase();
+    const searchParams = new URL(request.url).searchParams;
+    const masterSku = searchParams.get("masterSku")?.trim().toUpperCase();
+    const includeDrafts = searchParams.get("includeDrafts") === "1";
+    const statuses = includeDrafts ? "('shipped', 'packing_received', 'draft')" : "('shipped', 'packing_received')";
     if (!masterSku) {
       return NextResponse.json({ success: false, error: "masterSku is required" }, { status: 400 });
     }
@@ -31,8 +34,11 @@ export async function GET(request: Request) {
       JOIN shipcore.fc_containers c ON c.id = ci.container_id
       WHERE ci.master_sku = $1
         AND ci.qty > 0
-        AND c.status IN ('shipped', 'packing_received')
-      ORDER BY c.eta_date NULLS LAST, c.id
+        AND c.status IN ${statuses}
+      ORDER BY
+        CASE WHEN c.status = 'draft' THEN 1 ELSE 0 END,
+        c.eta_date NULLS LAST,
+        c.id
     `, [masterSku]);
 
     return NextResponse.json({ success: true, data: result.rows });

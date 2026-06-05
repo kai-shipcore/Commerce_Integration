@@ -1,14 +1,35 @@
 import type { DemandRow } from "@/types/demand-planning";
-import { formatNumber, type SkuMasterMeta } from "../types";
+import { daysUntil, formatNumber, type SkuMasterMeta } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
 
-export function SkuKpiStrip({ sku, master, language }: { sku: DemandRow; master: SkuMasterMeta; language: SkuForecastLanguage }) {
+export function SkuKpiStrip({
+  sku,
+  master,
+  language,
+  includeDraftContainers,
+}: {
+  sku: DemandRow;
+  master: SkuMasterMeta;
+  language: SkuForecastLanguage;
+  includeDraftContainers: boolean;
+}) {
   const inbound = sku.total_inbound_qty ?? 0;
   const projected = sku.total_stock + inbound + Math.min(sku.back, 0);
   const projectedDays = sku.total_avg_curr > 0 ? projected / sku.total_avg_curr : null;
   const projectedSod = projectedDays === null ? null : addDays(new Date(), Math.ceil(projectedDays));
+  // sku.sod is already current-stock-only (no inbound) — reuse it to avoid discrepancy
+  const currentOnlySod = sku.sod ?? null;
+  const currentOnlyDays = currentOnlySod ? daysUntil(currentOnlySod) : null;
+  const inboundSub = includeDraftContainers
+    ? pick(language, "Draft 포함", "Draft included")
+    : sku.next_eta
+      ? `${pick(language, "다음 ETA", "Next ETA")} ${sku.next_eta}`
+      : pick(language, "활성 입고 없음", "No active inbound");
+
   const items = [
     { label: pick(language, "현재 재고", "Current Stock"), value: formatNumber(sku.total_stock), sub: `West ${formatNumber(sku.west_stock)} / East ${formatNumber(sku.east_stock)}` },
+    { label: pick(language, "입고", "Inbound"), value: formatNumber(inbound), sub: inboundSub },
+    { label: pick(language, "예상 재고", "Projected"), value: formatNumber(projected), sub: `CBM/${pick(language, "개", "unit")} ${formatNumber(master.cbmPerUnit, 4)}` },
     { label: pick(language, "일평균 판매", "Daily Average"), value: formatNumber(sku.total_avg_curr, 2), sub: `30D ${formatNumber(sku.total_30d)} ${pick(language, "개", "units")}` },
     {
       label: pick(language, "재고 유지일", "Inv. Life"),
@@ -17,21 +38,40 @@ export function SkuKpiStrip({ sku, master, language }: { sku: DemandRow; master:
         ? `${pick(language, "예상 소진일", "Projected SOD")} ${projectedSod}`
         : pick(language, "판매 속도 없음", "No sales velocity"),
     },
-    { label: pick(language, "입고", "Inbound"), value: formatNumber(inbound), sub: sku.next_eta ? `${pick(language, "다음 ETA", "Next ETA")} ${sku.next_eta}` : pick(language, "활성 입고 없음", "No active inbound") },
-    { label: pick(language, "예상 재고", "Projected"), value: formatNumber(projected), sub: `CBM/${pick(language, "개", "unit")} ${formatNumber(master.cbmPerUnit, 4)}` },
   ];
+
+  const invLifeLabel = pick(language, "재고 유지일", "Inv. Life");
+  const showCurrentOnly = inbound > 0 && currentOnlyDays !== null && currentOnlySod !== null;
+  const currentOnlyUrgent = currentOnlyDays !== null && currentOnlyDays < 60;
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-      {items.map((item) => (
-        <div key={item.label} className="planning-panel rounded-lg border p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {item.label}
+      {items.map((item) => {
+        const isInvLife = item.label === invLifeLabel;
+        return (
+          <div key={item.label} className="planning-panel flex flex-col rounded-lg border p-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {item.label}
+            </div>
+            <div className="mt-2 font-mono text-2xl font-semibold">{item.value}</div>
+            <div className="mt-1 flex-1 text-xs text-muted-foreground">{item.sub}</div>
+            {isInvLife && showCurrentOnly ? (
+              <div className={`mt-2 border-t pt-1.5 text-xs font-medium ${
+                (currentOnlyDays ?? 999) < 30
+                  ? "text-red-600 dark:text-red-400"
+                  : currentOnlyUrgent
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-muted-foreground"
+              }`}>
+                {currentOnlyUrgent ? "⚠ " : ""}
+                {pick(language, "현재 재고만", "Stock only")}: {formatNumber(currentOnlyDays!, 1)}d ({currentOnlySod})
+              </div>
+            ) : isInvLife ? (
+              <div className="mt-2 border-t pt-1.5 text-xs text-transparent select-none">-</div>
+            ) : null}
           </div>
-          <div className="mt-2 font-mono text-2xl font-semibold">{item.value}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{item.sub}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

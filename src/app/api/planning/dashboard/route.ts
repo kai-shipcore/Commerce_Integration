@@ -62,11 +62,13 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get("mode") === "custom" ? "custom" : "link";
     const includeContainers = searchParams.get("includeContainers") === "1";
+    const includeDrafts = searchParams.get("includeDrafts") === "1";
+    const inboundStatuses = includeDrafts ? "('shipped', 'packing_received', 'draft')" : ACTIVE;
     const todayDefault = planningLocalDateString();
     const asOfParam = searchParams.get("asOf");
     const todayStr = asOfParam && /^\d{4}-\d{2}-\d{2}$/.test(asOfParam) ? asOfParam : todayDefault;
     const isToday = todayStr === todayDefault;
-    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr);
+    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr, includeDrafts);
     if (cached) {
       return NextResponse.json(cached, {
         headers: { "x-planning-dashboard-cache": "HIT" },
@@ -175,7 +177,7 @@ export async function GET(req: Request) {
           (ARRAY_AGG(ci.qty               ORDER BY c.eta_date NULLS LAST))[1]::int     AS latest_qty
         FROM shipcore.fc_container_items ci
         JOIN shipcore.fc_containers c ON c.id = ci.container_id
-        WHERE c.status IN ${ACTIVE}
+        WHERE c.status IN ${inboundStatuses}
         GROUP BY ci.master_sku
       ) agg ON agg.master_sku = s.master_sku
       ORDER BY s.master_sku
@@ -724,7 +726,7 @@ export async function GET(req: Request) {
     });
 
     const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, last_sync: lastSync } };
-    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr);
+    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },
     });

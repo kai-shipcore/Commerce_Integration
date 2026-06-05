@@ -17,7 +17,7 @@ export interface DemandPlanningDataState {
   loadContainerDetails: () => void;
 }
 
-export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: string): DemandPlanningDataState {
+export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: string, includeDrafts = false): DemandPlanningDataState {
   const [data, setData] = useState<DemandPlanningData>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [containerDetailsLoading, setContainerDetailsLoading] = useState(false);
@@ -30,7 +30,8 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     setError(null);
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
-    const dashUrl = `/api/planning/dashboard?mode=${mode}${asOfSuffix}`;
+    const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
+    const dashUrl = `/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}`;
     const pipeline = withRefresh
       ? fetch("/api/planning/stats/refresh", { method: "POST" }).then((res) => {
           if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
@@ -62,12 +63,12 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     return () => { cancelled = true; };
   }
 
-  // Auto-load on mount and whenever mode or asOfDate changes
+  // Auto-load on mount and whenever mode, date, or inbound scope changes
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial API load is intentionally started after mode/date changes.
     return fetchDashboard(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode and asOfDate.
-  }, [mode, asOfDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode, date, and inbound scope.
+  }, [mode, asOfDate, includeDrafts]);
 
   // Sync button: refresh stats first, then load
   function reload() { fetchDashboard(true); }
@@ -78,7 +79,8 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     setError(null);
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
-    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}`)
+    const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
+    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}${draftSuffix}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Container details failed: HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
