@@ -61,6 +61,7 @@ const FILTER_LABEL: Record<string, string> = {
   "ready-not-ready": "ready_not_ready",
   shipped: "shipped",
   canceled: "canceled",
+  deleted: "deleted",
 };
 
 function exportToExcel(rows: PartOrderRow[], tabKey: string) {
@@ -85,12 +86,13 @@ function exportToExcel(rows: PartOrderRow[], tabKey: string) {
   XLSX.writeFile(wb, `parts_${FILTER_LABEL[tabKey] ?? tabKey}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
-type FilterKey = "ready-not-ready" | "shipped" | "canceled";
+type FilterKey = "ready-not-ready" | "shipped" | "canceled" | "deleted";
 
 const FILTER_BUTTONS: { key: FilterKey; label: string }[] = [
   { key: "ready-not-ready", label: "Ready / Not Ready" },
   { key: "shipped", label: "Shipped" },
   { key: "canceled", label: "Canceled" },
+  { key: "deleted", label: "Deleted" },
 ];
 
 export function PartsGrid() {
@@ -104,12 +106,15 @@ export function PartsGrid() {
 
   const loadRows = useCallback(() => {
     setLoading(true);
-    fetch("/api/planning/seat-cover/parts")
+    const url = activeFilter === "deleted"
+      ? "/api/planning/seat-cover/parts?deleted=true"
+      : "/api/planning/seat-cover/parts";
+    fetch(url)
       .then((r) => r.json())
       .then((json) => setRows(json.data ?? []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeFilter]);
 
   useEffect(() => {
     loadRows();
@@ -120,7 +125,9 @@ export function PartsGrid() {
       return rows.filter((r) => r.shippingStatus === "Ready" || r.shippingStatus === "Not Ready");
     if (activeFilter === "shipped")
       return rows.filter((r) => r.shippingStatus === "Shipped");
-    return rows.filter((r) => r.shippingStatus === "Canceled");
+    if (activeFilter === "canceled")
+      return rows.filter((r) => r.shippingStatus === "Canceled");
+    return rows; // deleted — API already filtered by deleteYN='Y'
   }, [rows, activeFilter]);
 
   const numFilterParams = {
@@ -283,55 +290,59 @@ export function PartsGrid() {
               Import
             </button>
           )}
-          <DeleteDialog
-            trigger={
-              <button
-                disabled={!selectedRow}
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: selectedRow ? "#c0392b" : "#A8A49E",
-                  background: selectedRow ? "#FEF2F2" : "#F7F6F3",
-                  border: `1px solid ${selectedRow ? "#FECACA" : "#D8D6CE"}`,
-                  borderRadius: 6,
-                  padding: "5px 12px",
-                  cursor: selectedRow ? "pointer" : "not-allowed",
-                }}
-              >
-                Delete
-              </button>
-            }
-            title="Delete Part"
-            description={`Order #${selectedRow?.orderNumber ?? ""} 행을 삭제합니다. 되돌릴 수 없습니다.`}
-            onConfirm={async () => {
-              await fetch(`/api/planning/seat-cover/parts/${selectedRow!.id}`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ orderNumber: selectedRow!.orderNumber }),
-              });
-              setSelectedRow(null);
-              loadRows();
-            }}
-          />
-          <button
-            onClick={() => {
-              setEditData(selectedRow);
-              setDialogOpen(true);
-            }}
-            disabled={!selectedRow}
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: selectedRow ? "#1A1917" : "#A8A49E",
-              background: selectedRow ? "#F0EEE9" : "#F7F6F3",
-              border: "1px solid #D8D6CE",
-              borderRadius: 6,
-              padding: "5px 12px",
-              cursor: selectedRow ? "pointer" : "not-allowed",
-            }}
-          >
-            Edit
-          </button>
+          {activeFilter !== "deleted" && (
+            <DeleteDialog
+              trigger={
+                <button
+                  disabled={!selectedRow}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: selectedRow ? "#c0392b" : "#A8A49E",
+                    background: selectedRow ? "#FEF2F2" : "#F7F6F3",
+                    border: `1px solid ${selectedRow ? "#FECACA" : "#D8D6CE"}`,
+                    borderRadius: 6,
+                    padding: "5px 12px",
+                    cursor: selectedRow ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Delete
+                </button>
+              }
+              title="Delete Part"
+              description={`Order #${selectedRow?.orderNumber ?? ""} 행을 삭제합니다. 되돌릴 수 없습니다.`}
+              onConfirm={async () => {
+                await fetch(`/api/planning/seat-cover/parts/${selectedRow!.id}`, {
+                  method: "DELETE",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderNumber: selectedRow!.orderNumber }),
+                });
+                setSelectedRow(null);
+                loadRows();
+              }}
+            />
+          )}
+          {activeFilter !== "deleted" && (
+            <button
+              onClick={() => {
+                setEditData(selectedRow);
+                setDialogOpen(true);
+              }}
+              disabled={!selectedRow}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: selectedRow ? "#1A1917" : "#A8A49E",
+                background: selectedRow ? "#F0EEE9" : "#F7F6F3",
+                border: "1px solid #D8D6CE",
+                borderRadius: 6,
+                padding: "5px 12px",
+                cursor: selectedRow ? "pointer" : "not-allowed",
+              }}
+            >
+              Edit
+            </button>
+          )}
           {activeFilter === "ready-not-ready" && (
             <button
               onClick={() => {

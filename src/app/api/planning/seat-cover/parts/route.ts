@@ -5,11 +5,13 @@ import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notifySlack } from "@/lib/slack";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const deletedOnly = searchParams.get("deleted") === "true";
   try {
     const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
       SELECT * FROM shipcore.replacement_parts
-      WHERE "deleteYN" = 'N'
+      WHERE "deleteYN" = ${deletedOnly ? "Y" : "N"}
       ORDER BY "requestReceivedAt" ASC
     `;
     const data = rows.map((r) => ({
