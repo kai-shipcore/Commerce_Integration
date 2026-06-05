@@ -204,6 +204,7 @@ export async function GET(req: Request) {
       // 6. Pinned reference rows (raw inputs only; derived values computed at runtime)
       primary.query(`
         SELECT
+          p.id::int                                                         AS _pin_id,
           p.master_sku                                                      AS sku,
           p.label                                                           AS _pin_label,
           p.sort_order                                                      AS _sort_order,
@@ -220,7 +221,9 @@ export async function GET(req: Request) {
           COALESCE(pr.moq, 1)::int                                          AS moq,
           COALESCE(pr.order_multiple, pr.moq, 1)::int                       AS order_multiple,
           p.back::int,
-          p.west_stock::int, p.east_stock::int, p.total_stock::int,
+          p.west_stock::int,
+          p.east_stock::int,
+          p.total_stock::int,
           p.west_90d::float8, p.west_60d::float8, p.west_30d::float8,
           p.west_15d::float8, p.west_7d::float8, p.west_30d_pre::float8,
           p.east_90d::float8, p.east_60d::float8, p.east_30d::float8,
@@ -237,27 +240,25 @@ export async function GET(req: Request) {
         LEFT JOIN shipcore.fc_products pr ON pr.master_sku = p.master_sku
         LEFT JOIN (
           SELECT
-            ci.master_sku,
-            SUM(ci.qty)::int                                                             AS total_inbound_qty,
-            STRING_AGG(c.container_number || ' (' || ci.qty || ')', ', '
-              ORDER BY c.eta_date NULLS LAST)                                            AS containers_list,
-            MIN(c.eta_date)::text                                                         AS next_eta,
-            AVG(ci.cbm_unit)::float8                                                      AS cbm_unit,
-            (ARRAY_AGG(c.container_number ORDER BY c.eta_date NULLS LAST))[1]            AS latest_container,
-            (ARRAY_AGG(c.eta_date::text   ORDER BY c.eta_date NULLS LAST))[1]            AS latest_eta,
-            (ARRAY_AGG(ci.qty             ORDER BY c.eta_date NULLS LAST))[1]::int       AS latest_qty
-          FROM shipcore.fc_container_items ci
-          JOIN shipcore.fc_containers c ON c.id = ci.container_id
-          WHERE c.status IN ${ACTIVE}
-          GROUP BY ci.master_sku
-        ) agg ON agg.master_sku = p.master_sku
+            pc.pin_id,
+            SUM(pc.test_qty)::int                                                                   AS total_inbound_qty,
+            STRING_AGG(pc.container_ref || ' (' || pc.test_qty || ')', ', '
+              ORDER BY pc.arrives_on NULLS LAST)                                                    AS containers_list,
+            MIN(pc.arrives_on)::text                                                                AS next_eta,
+            0::float8                                                                               AS cbm_unit,
+            (ARRAY_AGG(pc.container_ref ORDER BY pc.arrives_on NULLS LAST))[1]                     AS latest_container,
+            (ARRAY_AGG(pc.arrives_on::text ORDER BY pc.arrives_on NULLS LAST))[1]                  AS latest_eta,
+            (ARRAY_AGG(pc.test_qty     ORDER BY pc.arrives_on NULLS LAST))[1]::int                 AS latest_qty
+          FROM shipcore.fc_pin_containers pc
+          GROUP BY pc.pin_id
+        ) agg ON agg.pin_id = p.id
         ORDER BY p.sort_order, p.id
       `).catch(() => ({ rows: [] })),
     ]);
 
     // ── 1b + cross: run in parallel after containersResult is available ──────
     const containerIds = containersResult.rows.map((r) => r.id);
-    const [categoriesResult, crossResult] = await Promise.all([
+    const [categoriesResult, crossResult, pinContainersResult] = await Promise.all([
       // 1b. Category codes per container
       containerIds.length > 0
         ? primary.query<{ container_id: number; category_code: string }>(`
@@ -290,9 +291,44 @@ export async function GET(req: Request) {
         FROM shipcore.fc_container_items ci
         JOIN shipcore.fc_containers c ON c.id = ci.container_id
       `) : Promise.resolve({ rows: [] }),
+      // Pin containers: test inbound quantities for pinned reference rows
+      primary.query<{ pin_id: number; container_ref: string; arrives_on: string; test_qty: number; test_cbm_unit: number }>(`
+        SELECT
+          pc.pin_id::int,
+          pc.container_ref,
+          pc.arrives_on::text,
+          pc.test_qty::int,
+          COALESCE(NULLIF(pc.test_cbm_unit, 0), pr.cbm_per_unit, 0)::float8  AS effective_cbm_unit
+        FROM shipcore.fc_pin_containers pc
+        JOIN shipcore.fc_pinned_rows p ON p.id = pc.pin_id
+        LEFT JOIN shipcore.fc_products pr ON pr.master_sku = p.master_sku
+        ORDER BY pc.pin_id, pc.arrives_on
+      `).catch(() => ({ rows: [] as { pin_id: number; container_ref: string; arrives_on: string; test_qty: number; effective_cbm_unit: number }[] })),
     ]);
 
     // Build derived maps from parallel results
+
+    // pin_id → container_ref → ContainerRowData (raw, no chain values yet)
+    const pinContainerMap = new Map<number, Map<string, ContainerRowData>>();
+    for (const row of pinContainersResult.rows) {
+      if (!pinContainerMap.has(row.pin_id)) pinContainerMap.set(row.pin_id, new Map());
+      const cbmUnit = (row as { effective_cbm_unit?: number }).effective_cbm_unit ?? 0;
+      pinContainerMap.get(row.pin_id)!.set(row.container_ref, {
+        item_id:     null,
+        cbm_unit:    cbmUnit,
+        inbound_qty: row.test_qty,
+        open_orders: null,
+        avail_qty:   null,
+        est_sales:   null,
+        backorder:   null,
+        eta:         row.arrives_on,
+        inv_life:    null,
+        est_sod:     null,
+        plan_sod:    null,
+        cbm:         cbmUnit * row.test_qty,
+      });
+    }
+
     const categoriesByContainer = new Map<number, string[]>();
     for (const row of categoriesResult.rows) {
       const arr = categoriesByContainer.get(row.container_id) ?? [];
@@ -483,16 +519,23 @@ export async function GET(req: Request) {
 
     const rows: DemandRow[] = allStatsRows.map((r) => {
       const isPinned = !!(r as { _is_pinned?: boolean })._is_pinned;
-      const { seat, no, color, tone } = parseSku(r.sku as string);
+      // Pinned rows get a synthetic sku key that cannot collide with any real SKU.
+      // The real SKU is stored in base_sku for display. All grid Maps key by sku.
+      const masterSku    = r.sku as string;
+      const rowSku       = isPinned ? `__pin__${(r as { _pin_id?: number })._pin_id ?? 0}` : masterSku;
+      const { seat, no, color, tone } = parseSku(masterSku);
       const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC"
         ? r.category_code
-        : inferCategoryCode(r.sku as string);
+        : inferCategoryCode(masterSku);
 
       const containerInfo = r.latest_container
         ? `${r.latest_eta ?? ""} - (${r.latest_container}) - ${r.latest_qty ?? ""}`
         : "";
 
-      const skuCross = includeContainers ? crossMap.get(r.sku as string) : undefined;
+      const pinId    = isPinned ? (r as { _pin_id?: number })._pin_id ?? 0 : 0;
+      const skuCross = includeContainers
+        ? (isPinned ? pinContainerMap.get(pinId) : crossMap.get(masterSku))
+        : undefined;
       const containersObj: Record<string, ContainerRowData> = {};
       if (skuCross) {
         for (const [name, data] of skuCross) containersObj[name] = data;
@@ -504,7 +547,7 @@ export async function GET(req: Request) {
       const velSourceMap = (categoryCode === "CC" || categoryCode === "FM") ? customVelMap : linkVelMap;
       const vel = isPinned
         ? buildPinnedVelEntry(r as Record<string, unknown>)
-        : velSourceMap.get(r.sku as string) as (VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number }) | undefined;
+        : velSourceMap.get(masterSku) as (VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number }) | undefined;
       const west_90d     = vel ? vel.west_90d     : r.west_90d as number;
       const west_60d     = vel ? vel.west_60d     : r.west_60d as number;
       const west_30d     = vel ? vel.west_30d     : r.west_30d as number;
@@ -578,6 +621,9 @@ export async function GET(req: Request) {
 
       for (const c of containers.slice(1)) {
         const raw  = containersObj[c.name];
+        // Pinned rows only process their explicitly listed test containers
+        // (skipping avoids past ETAs corrupting prevEta / the days calculation)
+        if (isPinned && !raw) continue;
         const qty  = raw?.inbound_qty ?? 0;
         const eta  = c.eta ?? todayStr;
         cumulativeAvailQty += qty;
@@ -633,7 +679,8 @@ export async function GET(req: Request) {
         back:              r.back as number,
         sales_status:      (r.sales_status as "Original" | "Custom" | "Hold"),
         category_code:     categoryCode,
-        sku:               r.sku as string,
+        sku:               rowSku,
+        base_sku:          isPinned ? masterSku : undefined,
         west_stock:        r.west_stock,
         east_stock:        r.east_stock,
         total_stock:       r.total_stock,
@@ -667,8 +714,8 @@ export async function GET(req: Request) {
         total_inbound_qty: r.total_inbound_qty,
         containers_list:   r.containers_list ?? null,
         next_eta:          r.next_eta ?? null,
-        remaining:         availStockMap.get(r.sku as string)?.remaining ?? 0,
-        mistake:           availStockMap.get(r.sku as string)?.mistake   ?? 0,
+        remaining:         availStockMap.get(masterSku)?.remaining ?? 0,
+        mistake:           availStockMap.get(masterSku)?.mistake   ?? 0,
         sod,
         containers:        includeContainers ? containersObj : {},
         is_pinned:         isPinned || undefined,

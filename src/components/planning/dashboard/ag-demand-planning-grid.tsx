@@ -160,6 +160,8 @@ function computeContainerChain(
   for (const container of containers.slice(1)) {
     const key = `${row.sku}::${container.name}`;
     const raw = row.containers?.[container.name];
+    // Pinned rows only chain their own test containers; others would corrupt prevEta
+    if (row.is_pinned && !raw) continue;
     const qty = overrides.get(key)?.inbound_qty ?? raw?.inbound_qty ?? 0;
     cumulativeAvailableQty += qty;
     const eta = container.eta ?? TODAY;
@@ -255,9 +257,11 @@ function CopyableCellRenderer({
   node,
   copyValue,
   label,
+  badge,
 }: ICellRendererParams<DemandRow, CellContent> & {
   copyValue: string;
   label: string;
+  badge?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
@@ -295,6 +299,11 @@ function CopyableCellRenderer({
           className="flex h-full w-full min-w-0 items-center text-left"
         >
           <span className="min-w-0 flex-1 truncate">{renderCellValue(value)}</span>
+          {badge && (
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", padding: "1px 4px", borderRadius: 3, background: "#F59E0B", color: "#fff", flexShrink: 0, marginLeft: 4 }}>
+              {badge}
+            </span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -629,33 +638,38 @@ export function AgDemandPlanningGrid({
 
   const visibleRows = useMemo(() => {
     const query = search.toLowerCase();
-    return data.rows
-      .filter((row) => {
-        if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) return false;
-        if (!showZeroSales &&
-          !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
-          !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
-        if (productFilter === "orig" && row.sales_status !== "Original") return false;
-        if (productFilter === "cust" && row.sales_status !== "Custom") return false;
-        if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
-        if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
-        const urgency = urgStatus(row);
-        if (urgencyFilter === "crit") return urgency === "crit";
-        if (urgencyFilter === "warn") return urgency === "warn" || urgency === "crit";
-        if (urgencyFilter === "bo") return (row.back ?? 0) < 0;
-        if (conQtyFilter) {
-          const qty = qtyOverrides.get(`${row.sku}::${conQtyFilter}`)?.inbound_qty
-            ?? row.containers?.[conQtyFilter]?.inbound_qty
-            ?? 0;
-          if ((qty ?? 0) <= 0) return false;
-        }
-        return true;
-      })
-      .map((row) => ({
-        ...row,
-        ...(rowOverrides.get(row.sku) ?? {}),
-        ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
-      }));
+    const filtered = data.rows.filter((row) => {
+      // Pinned reference rows always pass through all filters.
+      if (row.is_pinned) return true;
+      if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) return false;
+      if (!showZeroSales &&
+        !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
+        !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
+      if (productFilter === "orig" && row.sales_status !== "Original") return false;
+      if (productFilter === "cust" && row.sales_status !== "Custom") return false;
+      if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
+      const displaySku = (row.base_sku ?? row.sku).toLowerCase();
+      if (query && !displaySku.includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
+      const urgency = urgStatus(row);
+      if (urgencyFilter === "crit") return urgency === "crit";
+      if (urgencyFilter === "warn") return urgency === "warn" || urgency === "crit";
+      if (urgencyFilter === "bo") return (row.back ?? 0) < 0;
+      if (conQtyFilter) {
+        const qty = qtyOverrides.get(`${row.sku}::${conQtyFilter}`)?.inbound_qty
+          ?? row.containers?.[conQtyFilter]?.inbound_qty
+          ?? 0;
+        if ((qty ?? 0) <= 0) return false;
+      }
+      return true;
+    });
+    // Pinned rows always appear at the top regardless of sort order.
+    const pinned = filtered.filter((r) => r.is_pinned);
+    const rest   = filtered.filter((r) => !r.is_pinned);
+    return [...pinned, ...rest].map((row) => ({
+      ...row,
+      ...(rowOverrides.get(row.sku) ?? {}),
+      ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
+    }));
   }, [categoryFilter, cbmOverrides, conQtyFilter, data.rows, productFilter, qtyOverrides, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
 
   useEffect(() => {
@@ -914,14 +928,23 @@ export function AgDemandPlanningGrid({
         minWidth: Math.min(36, column.w),
         sortable: column.id !== "row_num",
       pinned: shouldPin ? "left" : undefined,
-      valueGetter: (params) => params.data ? column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data)) : "",
+      valueGetter: (params) => {
+        if (!params.data) return "";
+        // For pinned rows' SKU cell, show the real SKU (base_sku) not the synthetic key.
+        if (column.id === "sku" && params.data.is_pinned) {
+          const realSku = params.data.base_sku ?? params.data.sku;
+          return { html: `<span class="dot d-ok"></span>${realSku}` };
+        }
+        return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
+      },
       cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
         ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
             copyValue: column.id === "sku"
-              ? params.data?.sku ?? ""
+              ? (params.data?.base_sku ?? params.data?.sku ?? "")
               : params.data?.containers_list ?? "",
             label: column.id === "sku" ? "Master SKU" : "Containers List",
+            badge: column.id === "sku" && params.data?.is_pinned ? (params.data.pin_label ?? "Ref") : undefined,
           })
         : column.id === "cbm"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
@@ -1144,7 +1167,7 @@ export function AgDemandPlanningGrid({
               onAgCellSelected?.({
                 rowId: event.data.sku,
                 columnId,
-                label: `${event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
+                label: `${event.data.base_sku ?? event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
               });
             }}
             rowHeight={28}
@@ -1162,7 +1185,12 @@ export function AgDemandPlanningGrid({
               onColumnWidthsChange(next);
               window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next));
             }}
-            getRowStyle={(params) => params.data && urgStatus(params.data) === "crit" ? { backgroundColor: "#FFF5F5" } : undefined}
+            getRowStyle={(params) => {
+              if (!params.data) return undefined;
+              if (params.data.is_pinned) return { backgroundColor: "#FFFBEB" };
+              if (urgStatus(params.data) === "crit") return { backgroundColor: "#FFF5F5" };
+              return undefined;
+            }}
             overlayLoadingTemplate={containerDetailsLoading ? "Loading container details..." : "Loading..."}
           />
         </AgGridProvider>

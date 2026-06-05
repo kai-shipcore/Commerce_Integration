@@ -361,12 +361,12 @@ export const CON_SUBCOLS: ConSubColDef[] = [
   } },
   { id: "oo",        label: "Open\nOrders", w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.open_orders || 0 },
   { id: "avail", label: "Avail\nQty",   w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.avail_qty !== null && cd.avail_qty !== undefined ? cd.avail_qty : "" },
-  { id: "est",   label: "Est.\nSales",  w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.est_sales || 0 },
+  { id: "est",   label: "Est.\nSales",  w: 44, align: "num", tint: "t-cn",      val: (cd) => Math.round(cd.est_sales ?? 0) || 0 },
   { id: "cbo",   label: "Back\nOrder",  w: 44, align: "num", tint: "t-cn",      val: (cd) => {
     const v = cd.backorder || 0;
     return v ? { html: `<span class="bo-pos">${v}</span>` } : { html: `<span class="lv-dim">0</span>` };
   }},
-  { id: "carry", label: "Carry\nover",  w: 52, align: "num", tint: "t-cn", val: (cd) => cd.carryover !== null && cd.carryover !== undefined ? cd.carryover : "" },
+  { id: "carry", label: "Carry\nover",  w: 52, align: "num", tint: "t-cn", val: (cd) => cd.carryover !== null && cd.carryover !== undefined ? Math.round(cd.carryover) : "" },
   { id: "life",  label: "Inv.\nLife",   w: 42, align: "num", tint: "t-cn-life", val: (cd) => {
     const v = cd.inv_life;
     if (v === null || v === undefined) return "";
