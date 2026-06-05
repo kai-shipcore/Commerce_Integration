@@ -67,7 +67,7 @@ const EXPECTED = {
 
   // ── FBA daily rates ───────────────────────────────────────────────────────
   fba_avg_real:         null as number | null,  // = fba_30d / 30
-  fba_avg_prev:         0.01 as number | null,  // = fba_30d_prev / 30
+  fba_avg_prev:         null as number | null,  // no prev FBA data in test; no 0.01 floor on FBA
   fba_avg_curr:         0.01 as number | null,  // = fba_avg_real
 
   // ── 30-day unit totals ────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ for (const c of containers.slice(1)) {
 
   const db       = daysBetween(prevEta, eta);
   const seasonal = seasonalFactorForEta(eta, DEFAULT_SEASONAL_FACTORS);
-  const estSales  = db * dailyRate * seasonal;
+  const estSales  = Math.round(db * dailyRate * seasonal);
 
   const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
   const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;

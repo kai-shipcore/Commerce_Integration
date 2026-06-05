@@ -34,5 +34,5 @@ export function fbmThirtyDayAverage(
 
 export function inventoryLifeDays(carryover: number, dailyRate: number, seasonalFactor: number): number | null {
   const adjustedDailyRate = dailyRate * seasonalFactor;
-  return adjustedDailyRate > 0 ? carryover / adjustedDailyRate : null;
+  return adjustedDailyRate > 0 ? Math.round(carryover / adjustedDailyRate) : null;
 }
