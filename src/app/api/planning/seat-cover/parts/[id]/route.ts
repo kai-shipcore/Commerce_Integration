@@ -62,7 +62,17 @@ export async function PATCH(
     notifySlack(`[Parts] ${userName} edited a row — Order #${orderNumber}`);
 
     return NextResponse.json({ success: true });
-  } catch (err) {
+  } catch (err: unknown) {
+    const e = err as { code?: string; message?: string };
+    const isDuplicate =
+      e.code === "P2002" ||
+      (typeof e.message === "string" && e.message.includes("23505"));
+    if (isDuplicate) {
+      return NextResponse.json(
+        { success: false, error: "Request Received Date · Order Number · Part Number 조합이 이미 존재합니다." },
+        { status: 409 }
+      );
+    }
     console.error("[parts] update error", err);
     return NextResponse.json({ success: false, error: "Update failed" }, { status: 500 });
   }

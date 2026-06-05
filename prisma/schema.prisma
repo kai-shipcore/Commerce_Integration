@@ -565,7 +565,7 @@ model VelocityLinkSnapshot {
 
 model PartOrder {
   id                BigInt   @id @default(autoincrement())
-  requestReceivedAt DateTime
+  requestReceivedAt DateTime @db.Date
   orderNumber       String
   partNumber        String
   correspondingSku  String?

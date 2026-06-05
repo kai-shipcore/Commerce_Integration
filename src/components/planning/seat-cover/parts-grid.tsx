@@ -8,8 +8,10 @@ import {
   themeQuartz,
   type ColDef,
 } from "ag-grid-community";
+import * as XLSX from "xlsx";
 import { PartDialog } from "./add-part-dialog";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
+import { ImportPartsDialog } from "./import-parts-dialog";
 
 const modules = [AllCommunityModule];
 
@@ -46,20 +48,50 @@ export type PartOrderRow = {
   updatedAt: string;
 };
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
 function fmtDate(value: string | null | undefined) {
   if (!value) return "";
-  try {
-    return dateFormatter.format(new Date(value));
-  } catch {
-    return value;
-  }
+  const dateOnly = value.split("T")[0];
+  const parts = dateOnly.split("-");
+  if (parts.length !== 3) return value;
+  const [y, m, d] = parts;
+  return `${Number(m)}/${Number(d)}/${y}`;
 }
+
+const FILTER_LABEL: Record<string, string> = {
+  "ready-not-ready": "ready_not_ready",
+  shipped: "shipped",
+  canceled: "canceled",
+};
+
+function exportToExcel(rows: PartOrderRow[], tabKey: string) {
+  const data = rows.map((r) => ({
+    "Request Received Date": fmtDate(r.requestReceivedAt),
+    "Order Number": r.orderNumber,
+    "Part Number": r.partNumber,
+    "해당SKU": r.correspondingSku ?? "",
+    QTY: r.qty,
+    "Order Request": r.orderRequest ?? "",
+    "PART SKU": r.partSku ?? "",
+    "PART SKU(VALUE)": r.partSkuValue ?? "",
+    Note: r.note ?? "",
+    "Order Status": r.orderStatus ?? "",
+    "Shiphero Order": r.shipheroOrder ?? "",
+    "Shipping Status": r.shippingStatus ?? "",
+    "Last Updated Date": fmtDate(r.updatedAt),
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Parts");
+  XLSX.writeFile(wb, `parts_${FILTER_LABEL[tabKey] ?? tabKey}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+type FilterKey = "ready-not-ready" | "shipped" | "canceled";
+
+const FILTER_BUTTONS: { key: FilterKey; label: string }[] = [
+  { key: "ready-not-ready", label: "Ready / Not Ready" },
+  { key: "shipped", label: "Shipped" },
+  { key: "canceled", label: "Canceled" },
+];
 
 export function PartsGrid() {
   const [rows, setRows] = useState<PartOrderRow[]>([]);
@@ -67,6 +99,8 @@ export function PartsGrid() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editData, setEditData] = useState<PartOrderRow | null>(null);
   const [selectedRow, setSelectedRow] = useState<PartOrderRow | null>(null);
+  const [activeFilter, setActiveFilter] = useState<FilterKey>("ready-not-ready");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   const loadRows = useCallback(() => {
     setLoading(true);
@@ -80,6 +114,14 @@ export function PartsGrid() {
   useEffect(() => {
     loadRows();
   }, [loadRows]);
+
+  const filteredRows = useMemo(() => {
+    if (activeFilter === "ready-not-ready")
+      return rows.filter((r) => r.shippingStatus === "Ready" || r.shippingStatus === "Not Ready");
+    if (activeFilter === "shipped")
+      return rows.filter((r) => r.shippingStatus === "Shipped");
+    return rows.filter((r) => r.shippingStatus === "Canceled");
+  }, [rows, activeFilter]);
 
   const numFilterParams = {
     filterOptions: ["greaterThan", "equals", "notEqual", "lessThan", "inRange"],
@@ -209,6 +251,38 @@ export function PartsGrid() {
           <span style={{ fontSize: 13, color: "#7A766F" }}>Loading…</span>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button
+            onClick={() => exportToExcel(filteredRows, activeFilter)}
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#1A1917",
+              background: "#F0EEE9",
+              border: "1px solid #D8D6CE",
+              borderRadius: 6,
+              padding: "5px 12px",
+              cursor: "pointer",
+            }}
+          >
+            Export
+          </button>
+          {activeFilter === "ready-not-ready" && (
+            <button
+              onClick={() => setImportDialogOpen(true)}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#1A1917",
+                background: "#F0EEE9",
+                border: "1px solid #D8D6CE",
+                borderRadius: 6,
+                padding: "5px 12px",
+                cursor: "pointer",
+              }}
+            >
+              Import
+            </button>
+          )}
           <DeleteDialog
             trigger={
               <button
@@ -258,24 +332,26 @@ export function PartsGrid() {
           >
             Edit
           </button>
-          <button
-            onClick={() => {
-              setEditData(null);
-              setDialogOpen(true);
-            }}
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#fff",
-              background: "#2A2825",
-              border: "none",
-              borderRadius: 6,
-              padding: "5px 12px",
-              cursor: "pointer",
-            }}
-          >
-            + Add Row
-          </button>
+          {activeFilter === "ready-not-ready" && (
+            <button
+              onClick={() => {
+                setEditData(null);
+                setDialogOpen(true);
+              }}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#fff",
+                background: "#2A2825",
+                border: "none",
+                borderRadius: 6,
+                padding: "5px 12px",
+                cursor: "pointer",
+              }}
+            >
+              + Add Row
+            </button>
+          )}
         </div>
       </div>
 
@@ -285,6 +361,50 @@ export function PartsGrid() {
         onSuccess={loadRows}
         editData={editData}
       />
+      <ImportPartsDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onSuccess={loadRows}
+      />
+
+      {/* Filter Bar */}
+      <div
+        style={{
+          background: "#fff",
+          borderBottom: "1px solid #D8D6CE",
+          height: 40,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          padding: "0 12px",
+          gap: 6,
+        }}
+      >
+        {FILTER_BUTTONS.map(({ key, label }) => {
+          const active = activeFilter === key;
+          return (
+            <button
+              key={key}
+              onClick={() => {
+                setActiveFilter(key);
+                setSelectedRow(null);
+              }}
+              style={{
+                fontSize: 13,
+                fontWeight: active ? 700 : 500,
+                color: active ? "#fff" : "#1A1917",
+                background: active ? "#2A2825" : "#F0EEE9",
+                border: "1px solid #D8D6CE",
+                borderRadius: 6,
+                padding: "4px 12px",
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Grid */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -293,7 +413,7 @@ export function PartsGrid() {
             <AgGridReact<PartOrderRow>
               modules={modules}
               theme={theme}
-              rowData={rows}
+              rowData={filteredRows}
               columnDefs={colDefs}
               defaultColDef={defaultColDef}
               suppressCellFocus={false}

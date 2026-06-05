@@ -12,7 +12,17 @@ export async function GET() {
       WHERE "deleteYN" = 'N'
       ORDER BY "requestReceivedAt" ASC
     `;
-    const data = rows.map((r) => ({ ...r, id: String(r.id) }));
+    const data = rows.map((r) => ({
+      ...r,
+      id: String(r.id),
+      requestReceivedAt: (() => {
+        const d = r.requestReceivedAt as Date | string | null;
+        if (!d) return null;
+        if (d instanceof Date)
+          return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+        return String(d).split("T")[0];
+      })(),
+    }));
     return NextResponse.json({ success: true, data });
   } catch (err) {
     console.error("[parts] fetch error", err);
@@ -76,7 +86,17 @@ export async function POST(req: Request) {
     notifySlack(`[Parts] ${userName} added a new row — Order #${orderNumber}`);
 
     return NextResponse.json({ success: true }, { status: 201 });
-  } catch (err) {
+  } catch (err: unknown) {
+    const e = err as { code?: string; message?: string };
+    const isDuplicate =
+      e.code === "P2002" ||
+      (typeof e.message === "string" && e.message.includes("23505"));
+    if (isDuplicate) {
+      return NextResponse.json(
+        { success: false, error: "Request Received Date · Order Number · Part Number 조합이 이미 존재합니다." },
+        { status: 409 }
+      );
+    }
     console.error("[parts] insert error", err);
     return NextResponse.json({ success: false, error: "Insert failed" }, { status: 500 });
   }

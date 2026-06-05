@@ -11,7 +11,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { PartOrderRow } from "./parts-grid";
+
+const SHIPPING_STATUSES = ["Not Ready", "Ready", "Shipped", "Canceled"] as const;
 
 interface FormData {
   requestReceivedAt: string;
@@ -40,14 +49,12 @@ const emptyForm: FormData = {
   note: "",
   orderStatus: "",
   shipheroOrder: "",
-  shippingStatus: "",
+  shippingStatus: "Not Ready",
 };
 
 function rowToForm(row: PartOrderRow): FormData {
   return {
-    requestReceivedAt: row.requestReceivedAt
-      ? new Date(row.requestReceivedAt).toISOString().split("T")[0]
-      : "",
+    requestReceivedAt: row.requestReceivedAt ?? "",
     orderNumber: row.orderNumber ?? "",
     partNumber: row.partNumber ?? "",
     correspondingSku: row.correspondingSku ?? "",
@@ -162,8 +169,23 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
             {field("PART SKU (VALUE)", "partSkuValue")}
             {field("Note", "note")}
             {field("Order Status", "orderStatus")}
-            {field("Shiphero Order", "shipheroOrder")}
-            {field("Shipping Status", "shippingStatus")}
+                    {field("Shiphero Order", "shipheroOrder")}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <Label style={{ fontSize: 12, color: "#7A766F" }}>Shipping Status</Label>
+              <Select
+                value={formData.shippingStatus}
+                onValueChange={(val) => setFormData((prev) => ({ ...prev, shippingStatus: val }))}
+              >
+                <SelectTrigger style={{ fontSize: 13, height: 32 }} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SHIPPING_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {error && (
