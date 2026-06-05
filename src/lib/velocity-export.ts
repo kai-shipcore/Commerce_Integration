@@ -10,7 +10,7 @@ function hasAnyQty(r: VelocityRow): boolean {
     !!r.isTotal ||
     r.qtys.some((v) => (v ?? 0) > 0) ||
     (r.customQtys ?? []).some((v) => (v ?? 0) > 0) ||
-    (r.ttmCount ?? 0) > 0
+    (r.ttmQtys ?? []).some((v) => (v ?? 0) > 0)
   );
 }
 
@@ -25,31 +25,32 @@ function buildSection(
 
   if (mode === "preorder") {
     if (selectedItem === "Car Cover") {
-      result.push(["Master SKU", "Total", "Final Master SKU", "Total"]);
+      result.push(["Master SKU", ...labels, "Final Master SKU", ...labels]);
       for (const r of rows) {
+        const qtys = labels.map((_, i) => r.qtys[i] ?? null);
         result.push([
           r.masterSku || null,
-          r.qtys[0] ?? null,
+          ...qtys,
           r.masterSku ? r.masterSku.replace("BKGR", "BKLG") : null,
-          r.qtys[0] ?? null,
+          ...qtys,
         ]);
       }
     } else if (selectedItem === "Floor Mat") {
-      result.push(["Master SKU", "Total"]);
+      result.push(["Master SKU", ...labels]);
       for (const r of rows) {
-        result.push([r.masterSku || null, r.qtys[0] ?? null]);
+        result.push([r.masterSku || null, ...labels.map((_, i) => r.qtys[i] ?? null)]);
       }
     } else {
       // Seat Cover
-      result.push(["Master SKU", "Total", "Custom SKU", "Total", "TTM SKU", "Total"]);
+      result.push(["Master SKU", ...labels, "Custom SKU", ...labels, "TTM SKU", ...labels]);
       for (const r of rows) {
         result.push([
           r.masterSku || null,
-          r.qtys[0] ?? null,
+          ...labels.map((_, i) => r.qtys[i] ?? null),
           r.customMasterSku ?? null,
-          r.customQtys?.[0] ?? null,
+          ...labels.map((_, i) => r.customQtys?.[i] ?? null),
           r.ttmMasterSku ?? null,
-          r.ttmCount ?? null,
+          ...labels.map((_, i) => r.ttmQtys?.[i] ?? null),
         ]);
       }
     }

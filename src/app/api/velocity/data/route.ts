@@ -8,7 +8,7 @@
  *   channels — comma-separated channels (e.g. "Coverland,Amazon")
  *   mode     — "sales" | "ttm" | "preorder"
  *   ranges   — comma-separated "from:to" date pairs (e.g. "2025-01-01:2025-03-31,2025-04-01:2025-04-30")
- *              ignored for preorder mode (preorder always uses a fixed 30-day window)
+ *              used by all modes including preorder (client applies 2-day offset via periodsToRanges)
  *   tz       — "utc" (default) | "la" — which date column to filter on
  */
 
@@ -54,40 +54,59 @@ export async function GET(req: NextRequest) {
 
     // ── Pre Order mode ────────────────────────────────────────────────────────
     if (mode === "preorder") {
-      const linkQuery = pool.query<{ master_sku: string; qty: number }>(
-        `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
+      if (!ranges.length) {
+        return NextResponse.json({ success: true, link: [], custom: [], ttm: [] });
+      }
+
+      const linkCols = ranges
+        .map(
+          ({ from, to }, i) =>
+            `SUM(CASE WHEN ${dateCol} >= '${from}' AND ${dateCol} <= '${to}' THEN link_qty ELSE 0 END)::int AS qty_${i}`
+        )
+        .join(", ");
+
+      const linkQuery = pool.query(
+        `SELECT link_master_sku AS master_sku, ${linkCols}
          FROM shipcore.velocity_link_snapshot
          WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
-           AND order_date >= CURRENT_DATE - INTERVAL '30 days'
-         GROUP BY link_master_sku ORDER BY qty DESC`,
+         GROUP BY link_master_sku ORDER BY qty_0 DESC`,
         [items, channels]
       );
-      const ttmQuery = pool.query<{ master_sku: string; qty: number }>(
-        `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
+      const ttmQuery = pool.query(
+        `SELECT link_master_sku AS master_sku, ${linkCols}
          FROM shipcore.velocity_link_snapshot
          WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'ttm_preorder'
-           AND order_date >= CURRENT_DATE - INTERVAL '30 days'
-         GROUP BY link_master_sku ORDER BY qty DESC`,
+         GROUP BY link_master_sku ORDER BY qty_0 DESC`,
         [items, channels]
       );
       const customQuery = needsCustom
-        ? pool.query<{ master_sku: string; qty: number }>(
-            `SELECT custom_master_sku AS master_sku, SUM(custom_qty)::int AS qty
+        ? pool.query(
+            `SELECT custom_master_sku AS master_sku, ${ranges
+              .map(
+                ({ from, to }, i) =>
+                  `SUM(CASE WHEN ${dateCol} >= '${from}' AND ${dateCol} <= '${to}' THEN custom_qty ELSE 0 END)::int AS qty_${i}`
+              )
+              .join(", ")}
              FROM shipcore.velocity_custom_snapshot
              WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
-               AND order_date >= CURRENT_DATE - INTERVAL '30 days'
-             GROUP BY custom_master_sku ORDER BY qty DESC`,
+             GROUP BY custom_master_sku ORDER BY qty_0 DESC`,
             [items, channels]
           )
-        : Promise.resolve({ rows: [] as { master_sku: string; qty: number }[] });
+        : Promise.resolve({ rows: [] as Record<string, unknown>[] });
 
       const [linkRes, customRes, ttmRes] = await Promise.all([linkQuery, customQuery, ttmQuery]);
 
+      const toPreorderRows = (rows: Record<string, unknown>[]) =>
+        rows.map((r) => ({
+          masterSku: r.master_sku as string,
+          qtys: ranges.map((_, i) => (r[`qty_${i}`] as number) ?? 0),
+        }));
+
       return NextResponse.json({
         success: true,
-        link: linkRes.rows.map((r) => ({ masterSku: r.master_sku, qtys: [r.qty] })),
-        custom: customRes.rows.map((r) => ({ masterSku: r.master_sku, qtys: [r.qty] })),
-        ttm: ttmRes.rows.map((r) => ({ masterSku: r.master_sku, count: r.qty })),
+        link:   toPreorderRows(linkRes.rows),
+        custom: toPreorderRows(customRes.rows),
+        ttm:    toPreorderRows(ttmRes.rows),
       });
     }
 

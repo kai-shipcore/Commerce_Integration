@@ -243,7 +243,7 @@ function ToggleBtn({
 type ApiData = {
   link: { masterSku: string; qtys: number[] }[];
   custom: { masterSku: string; qtys: number[] }[];
-  ttm?: { masterSku: string; count: number }[];
+  ttm?: { masterSku: string; qtys: number[] }[];
 };
 
 function responseToRows(data: ApiData, count: number): VelocityRow[] {
@@ -261,7 +261,7 @@ function responseToRows(data: ApiData, count: number): VelocityRow[] {
     customMasterSku: custom[i]?.masterSku ?? null,
     customQtys: custom[i]?.qtys ?? nullQtys(),
     ttmMasterSku: ttm?.[i]?.masterSku ?? null,
-    ttmCount: ttm?.[i]?.count ?? null,
+    ttmQtys: ttm?.[i]?.qtys ?? nullQtys(),
   }));
 
   const totalRow: VelocityRow = {
@@ -270,7 +270,9 @@ function responseToRows(data: ApiData, count: number): VelocityRow[] {
     customMasterSku: custom.length > 0 ? "Total" : null,
     customQtys: Array.from({ length: count }, (_, i) => custom.reduce((s, r) => s + (r.qtys[i] ?? 0), 0)),
     ttmMasterSku: ttm && ttm.length > 0 ? "Total" : null,
-    ttmCount: ttm ? ttm.reduce((s, r) => s + r.count, 0) : null,
+    ttmQtys: ttm && ttm.length > 0
+      ? Array.from({ length: count }, (_, i) => ttm.reduce((s, r) => s + (r.qtys[i] ?? 0), 0))
+      : null,
     isTotal: true,
   };
 
@@ -419,15 +421,9 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
   const labels = useMemo(() => ranges.map((r) => `${rangeDays(r)}D`), [ranges]);
 
   const columns = useMemo(() => {
-    if (selectedItem === "Car Cover") {
-      if (mode === "preorder") return createCarCoverColumns(["Total"]);
-      return createCarCoverColumns(labels);
-    }
-    if (selectedItem === "Floor Mat") {
-      if (mode === "preorder") return createFloorMatColumns(["Total"]);
-      return createFloorMatColumns(labels);
-    }
-    if (mode === "preorder") return createPreOrderColumns();
+    if (selectedItem === "Car Cover") return createCarCoverColumns(labels);
+    if (selectedItem === "Floor Mat") return createFloorMatColumns(labels);
+    if (mode === "preorder") return createPreOrderColumns(labels);
     if (mode === "ttm") return createTtmColumns(labels);
     return createSalesSalesColumns(labels);
   }, [mode, labels, selectedItem]);
@@ -453,7 +449,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
       r.isTotal ||
       r.qtys.some((v) => (v ?? 0) > 0) ||
       (r.customQtys ?? []).some((v) => (v ?? 0) > 0) ||
-      (r.ttmCount ?? 0) > 0;
+      (r.ttmQtys ?? []).some((v) => (v ?? 0) > 0);
 
     const base = allRows.filter(hasAnyQty);
     if (!search) return base;

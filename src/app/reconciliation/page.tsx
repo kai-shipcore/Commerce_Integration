@@ -362,7 +362,7 @@ function SalesDataPane() {
             qtys: [r.qty90d],
             customMasterSku: e.customMasterSku ?? null,
             customQtys: [e.customQty90d ?? null],
-            ttmCount: e.ttmCount ?? null,
+            ttmQtys: [e.ttmCount ?? null],
             ttmMasterSku: e.ttmMasterSku ?? null,
           };
         });
@@ -392,7 +392,7 @@ function SalesDataPane() {
               masterSku: "Total",
               qtys: [t.qty90d],
               customQtys: [ct.customQty90d ?? null],
-              ttmCount: ct.ttmQty90d ?? null,
+              ttmQtys: [ct.ttmQty90d ?? null],
               isTotal: true,
             }
           : {

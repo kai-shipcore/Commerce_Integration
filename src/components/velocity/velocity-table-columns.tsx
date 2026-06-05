@@ -10,8 +10,8 @@ export type VelocityRow = {
   qtys: (number | null)[];
   customMasterSku?: string | null;
   customQtys?: (number | null)[];
-  ttmCount?: number | null;
   ttmMasterSku?: string | null;
+  ttmQtys?: (number | null)[] | null;
   isTotal?: boolean;
 };
 
@@ -64,6 +64,27 @@ function makeQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
       </div>
     ),
     enableSorting: true,
+  };
+}
+
+function makeTtmQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
+  return {
+    id: `ttmQty_${periodIdx}`,
+    accessorFn: (row) => row.ttmQtys?.[periodIdx] ?? null,
+    header: () => <div className="text-right text-xs font-medium text-muted-foreground">{label}</div>,
+    cell: ({ row }) => {
+      const val = row.original.ttmQtys?.[periodIdx];
+      return (
+        <div className="text-right">
+          {val != null ? (
+            <QtyCell value={val} isTotal={row.original.isTotal} />
+          ) : (
+            <PlaceholderCell />
+          )}
+        </div>
+      );
+    },
+    enableSorting: false,
   };
 }
 
@@ -216,13 +237,13 @@ export function createFloorMatColumns(labels: string[]): ColumnDef<VelocityRow>[
   ];
 }
 
-export function createPreOrderColumns(): ColumnDef<VelocityRow>[] {
+export function createPreOrderColumns(labels: string[]): ColumnDef<VelocityRow>[] {
   return [
     masterSkuCol,
     {
       id: "linkPreOrderGroup",
       header: "Link Pre Order",
-      columns: [makeQtyCol(0, "Total")],
+      columns: labels.map((label, i) => makeQtyCol(i, label)),
     },
     {
       id: "customPreOrderGroup",
@@ -251,7 +272,7 @@ export function createPreOrderColumns(): ColumnDef<VelocityRow>[] {
           },
           enableSorting: false,
         } as ColumnDef<VelocityRow>,
-        makeCustomQtyCol(0, "Total"),
+        ...labels.map((label, i) => makeCustomQtyCol(i, label)),
       ],
     },
     {
@@ -281,20 +302,7 @@ export function createPreOrderColumns(): ColumnDef<VelocityRow>[] {
           },
           enableSorting: false,
         } as ColumnDef<VelocityRow>,
-        {
-          id: "ttmCount",
-          header: () => <div className="text-right text-xs font-medium text-muted-foreground">Total</div>,
-          cell: ({ row }) => (
-            <div className="text-right">
-              {row.original.ttmCount != null ? (
-                <QtyCell value={row.original.ttmCount} isTotal={row.original.isTotal} />
-              ) : (
-                <PlaceholderCell />
-              )}
-            </div>
-          ),
-          enableSorting: false,
-        } as ColumnDef<VelocityRow>,
+        ...labels.map((label, i) => makeTtmQtyCol(i, label)),
       ],
     },
   ];
