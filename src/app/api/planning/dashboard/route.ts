@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
+import { planningLocalDateString } from "@/lib/planning/date-utils";
 import { getPlanningDashboardCache, setPlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import {
   currentDailyAverage,
@@ -61,7 +62,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get("mode") === "custom" ? "custom" : "link";
     const includeContainers = searchParams.get("includeContainers") === "1";
-    const todayDefault = new Date().toISOString().slice(0, 10);
+    const todayDefault = planningLocalDateString();
     const asOfParam = searchParams.get("asOf");
     const todayStr = asOfParam && /^\d{4}-\d{2}-\d{2}$/.test(asOfParam) ? asOfParam : todayDefault;
     const isToday = todayStr === todayDefault;
@@ -93,51 +94,27 @@ export async function GET(req: Request) {
     const primary = getPrimaryPool();
     const lookup  = getLookupPool();
 
-    // ── 1. Container headers ─────────────────────────────────────────────────
-    // All containers regardless of status so drafts also appear as columns.
-    const containersResult = await primary.query<{
-      id: number; name: string; eta: string; cbm_cap: number; status: string;
-    }>(`
-      SELECT
-        id::int                   AS id,
-        container_number          AS name,
-        eta_date::text            AS eta,
-        cbm_capacity::float8      AS cbm_cap,
-        status
-      FROM shipcore.fc_containers
-      WHERE status != 'complete'
-      ORDER BY
-        CASE WHEN status IN ${ACTIVE} THEN 0 ELSE 1 END,
-        eta_date NULLS LAST,
-        id
-    `);
-
-    // ── 1b. Which category codes have nonzero qty in each container ──────────
-    const containerIds = containersResult.rows.map((r) => r.id);
-    const categoriesResult = containerIds.length > 0
-      ? await primary.query<{ container_id: number; category_code: string }>(`
-          SELECT ci.container_id::int, p.category_code
-          FROM shipcore.fc_container_items ci
-          JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
-          WHERE ci.container_id = ANY($1::int[])
-            AND ci.qty > 0
-            AND p.category_code IS NOT NULL
-          GROUP BY ci.container_id, p.category_code
-        `, [containerIds])
-      : { rows: [] };
-    const categoriesByContainer = new Map<number, string[]>();
-    for (const row of categoriesResult.rows) {
-      const arr = categoriesByContainer.get(row.container_id) ?? [];
-      arr.push(row.category_code);
-      categoriesByContainer.set(row.container_id, arr);
-    }
-
-    // ── 2. Per-SKU rows ──────────────────────────────────────────────────────
-    // Drives from fc_stats (all SKUs) and LEFT JOINs container aggregation,
-    // so SKUs with no active containers still appear with their stats.
-    const rowsResult = await primary.query(`
-      SELECT
-        s.master_sku                                          AS sku,
+    // ── 1-4 run in parallel: containers, stats rows, available stock, last sync, backorders ──
+    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly, boResultEarly] = await Promise.all([
+      // 1. Container headers
+      primary.query<{ id: number; name: string; eta: string; cbm_cap: number; status: string }>(`
+        SELECT
+          id::int                   AS id,
+          container_number          AS name,
+          eta_date::text            AS eta,
+          cbm_capacity::float8      AS cbm_cap,
+          status
+        FROM shipcore.fc_containers
+        WHERE status != 'complete'
+        ORDER BY
+          CASE WHEN status IN ${ACTIVE} THEN 0 ELSE 1 END,
+          eta_date NULLS LAST,
+          id
+      `),
+      // 2. Per-SKU stats rows
+      primary.query(`
+        SELECT
+          s.master_sku                                          AS sku,
         COALESCE(agg.total_inbound_qty, 0)::int              AS total_inbound_qty,
         agg.containers_list,
         agg.next_eta,
@@ -202,37 +179,75 @@ export async function GET(req: Request) {
         GROUP BY ci.master_sku
       ) agg ON agg.master_sku = s.master_sku
       ORDER BY s.master_sku
-    `);
+    `),
+      // 3. Available stock (remaining / mistake)
+      primary.query<{ master_sku: string; source_type: string; total_qty: string }>(`
+        SELECT master_sku, source_type, SUM(total_qty)::int::text AS total_qty
+        FROM shipcore.fc_available_stock
+        GROUP BY master_sku, source_type
+      `),
+      // 4. Last sync timestamp
+      primary.query<{ last_sync: string | null }>(
+        `SELECT MAX(calculated_at)::text AS last_sync FROM shipcore.fc_stats`
+      ),
+      // 5. Backorders from Supabase (best-effort, runs concurrently)
+      lookup
+        ? lookup.query<{ master_sku: string; backorder: string }>(`
+            SELECT
+              BTRIM(master_sku)                 AS master_sku,
+              SUM(COALESCE(backorder, 0))::text AS backorder
+            FROM ecommerce_data.coverland_inventory
+            WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
+            GROUP BY BTRIM(master_sku)
+          `).catch(() => ({ rows: [] as { master_sku: string; backorder: string }[] }))
+        : Promise.resolve({ rows: [] as { master_sku: string; backorder: string }[] }),
+    ]);
 
-    // ── 3. Per-SKU × per-container cross data ────────────────────────────────
-    // inbound_qty and avail_qty both come from fc_container_items.qty for now.
-    // open_orders / est_sales / inv_life / est_sod / plan_sod → Phase 2
-    const crossResult = includeContainers ? await primary.query(`
-      SELECT
-        ci.id::int                 AS item_id,
-        ci.master_sku              AS sku,
-        c.container_number         AS container_name,
-        ci.qty::int                AS inbound_qty,
-        ci.qty::int                AS avail_qty,
-        ci.cbm_unit::float8        AS cbm_unit,
-        ci.total_cbm::float8       AS cbm,
-        c.eta_date::text           AS eta,
-        NULL::int                  AS open_orders,
-        NULL::int                  AS est_sales,
-        NULL::int                  AS backorder,
-        NULL::float8               AS inv_life,
-        NULL::text                 AS est_sod,
-        NULL::text                 AS plan_sod
-      FROM shipcore.fc_container_items ci
-      JOIN shipcore.fc_containers c ON c.id = ci.container_id
-    `) : { rows: [] };
+    // ── 1b + cross: run in parallel after containersResult is available ──────
+    const containerIds = containersResult.rows.map((r) => r.id);
+    const [categoriesResult, crossResult] = await Promise.all([
+      // 1b. Category codes per container
+      containerIds.length > 0
+        ? primary.query<{ container_id: number; category_code: string }>(`
+            SELECT ci.container_id::int, p.category_code
+            FROM shipcore.fc_container_items ci
+            JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
+            WHERE ci.container_id = ANY($1::int[])
+              AND ci.qty > 0
+              AND p.category_code IS NOT NULL
+            GROUP BY ci.container_id, p.category_code
+          `, [containerIds])
+        : Promise.resolve({ rows: [] as { container_id: number; category_code: string }[] }),
+      // cross data (only for includeContainers=1)
+      includeContainers ? primary.query(`
+        SELECT
+          ci.id::int                 AS item_id,
+          ci.master_sku              AS sku,
+          c.container_number         AS container_name,
+          ci.qty::int                AS inbound_qty,
+          ci.qty::int                AS avail_qty,
+          ci.cbm_unit::float8        AS cbm_unit,
+          ci.total_cbm::float8       AS cbm,
+          c.eta_date::text           AS eta,
+          NULL::int                  AS open_orders,
+          NULL::int                  AS est_sales,
+          NULL::int                  AS backorder,
+          NULL::float8               AS inv_life,
+          NULL::text                 AS est_sod,
+          NULL::text                 AS plan_sod
+        FROM shipcore.fc_container_items ci
+        JOIN shipcore.fc_containers c ON c.id = ci.container_id
+      `) : Promise.resolve({ rows: [] }),
+    ]);
 
-    // ── 4. Available stock (remaining / mistake) from primary DB ────────────
-    const availStockResult = await primary.query<{ master_sku: string; source_type: string; total_qty: string }>(`
-      SELECT master_sku, source_type, SUM(total_qty)::int::text AS total_qty
-      FROM shipcore.fc_available_stock
-      GROUP BY master_sku, source_type
-    `);
+    // Build derived maps from parallel results
+    const categoriesByContainer = new Map<number, string[]>();
+    for (const row of categoriesResult.rows) {
+      const arr = categoriesByContainer.get(row.container_id) ?? [];
+      arr.push(row.category_code);
+      categoriesByContainer.set(row.container_id, arr);
+    }
+
     const availStockMap = new Map<string, { remaining: number; mistake: number }>();
     for (const r of availStockResult.rows) {
       const entry = availStockMap.get(r.master_sku) ?? { remaining: 0, mistake: 0 };
@@ -241,33 +256,12 @@ export async function GET(req: Request) {
       availStockMap.set(r.master_sku, entry);
     }
 
-    // ── 5. Backorders from Supabase (best-effort) ────────────────────────────
-    // Sums backorder across all rows per master_sku in coverland_inventory.
-    // Falls back to 0 per SKU if Supabase is unavailable.
     const backorderMap = new Map<string, number>();
-    if (lookup) {
-      try {
-        const boResult = await lookup.query<{ master_sku: string; backorder: string }>(`
-          SELECT
-            BTRIM(master_sku)            AS master_sku,
-            SUM(COALESCE(backorder, 0))::text AS backorder
-          FROM ecommerce_data.coverland_inventory
-          WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
-          GROUP BY BTRIM(master_sku)
-        `);
-        for (const r of boResult.rows) {
-          backorderMap.set(r.master_sku, parseInt(r.backorder) || 0);
-        }
-      } catch {
-        // Supabase unreachable — all backorders stay 0
-      }
+    for (const r of boResultEarly.rows) {
+      backorderMap.set(r.master_sku, parseInt(r.backorder) || 0);
     }
 
-    // ── 6. Last sync timestamp from fc_stats ─────────────────────────────────
-    const lastSyncResult = await primary.query<{ last_sync: string | null }>(
-      `SELECT MAX(calculated_at)::text AS last_sync FROM shipcore.fc_stats`
-    );
-    const lastSync = lastSyncResult.rows[0]?.last_sync ?? null;
+    const lastSync = lastSyncResultEarly.rows[0]?.last_sync ?? null;
 
     // ── 6b. Historical velocity (when asOf != today) ─────────────────────────
     // Re-compute velocity windows from snapshot tables using asOf as reference.
@@ -305,21 +299,19 @@ export async function GET(req: Request) {
             SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 29 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_30d,
             SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 14 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_15d,
             SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 6  AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_7d,
-            SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_30d_pre,
+            0::float8 AS east_30d_pre,
             (SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS avg_daily_real,
             (SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS avg_daily_prev,
-            (SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS east_avg_real,
-            (SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS east_avg_prev,
-            GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30)::float8 AS fba_avg_real,
-            GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30)::float8 AS fba_avg_prev,
+            (SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_real,
+            (SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_prev,
+            (SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30)::float8 AS fba_avg_real,
+            (SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30)::float8 AS fba_avg_prev,
             SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_30d
           FROM ${table}
           WHERE ${skuCol} IS NOT NULL AND order_date >= $1::date - 96
           GROUP BY ${skuCol}
         `;
       }
-
-      const round2 = (n: number) => Math.round(n * 100) / 100;
 
       // link mode: SC uses link_snapshot, CC/FM use custom_snapshot
       // custom mode: everything uses custom_snapshot
@@ -331,12 +323,12 @@ export async function GET(req: Request) {
 
       function buildVelEntry(r: VelRow): VelRow {
         const categoryCode = forecastCategoryCodeForSku(r.master_sku);
-        const wPrev   = round2(Number(r.avg_daily_prev));
-        const wReal   = round2(Number(r.avg_daily_real));
-        const ePrev   = round2(Number(r.east_avg_prev));
-        const eReal   = round2(Number(r.east_avg_real));
-        const fbaPrev = round2(Number(r.fba_avg_prev ?? 0));
-        const fbaReal = round2(Number(r.fba_avg_real ?? 0));
+        const wPrev   = Number(r.avg_daily_prev);
+        const wReal   = Number(r.avg_daily_real);
+        const ePrev   = Number(r.east_avg_prev);
+        const eReal   = Number(r.east_avg_real);
+        const fbaPrev = Number(r.fba_avg_prev ?? 0);
+        const fbaReal = Number(r.fba_avg_real ?? 0);
         return {
           master_sku:     r.master_sku,
           west_90d:       Number(r.west_90d),
@@ -358,9 +350,9 @@ export async function GET(req: Request) {
           fba_avg_real:   fbaReal,
           fba_avg_prev:   fbaPrev,
           fba_30d:        Number(r.fba_30d),
-          _avg_curr:  round2(currentDailyAverage(wPrev, wReal, categoryCode)),
-          _east_curr: round2(currentDailyAverage(ePrev, eReal, categoryCode)),
-          _fba_curr:  round2(currentDailyAverage(fbaPrev, fbaReal, categoryCode)),
+          _avg_curr:  currentDailyAverage(wPrev, wReal, categoryCode),
+          _east_curr: currentDailyAverage(ePrev, eReal, categoryCode),
+          _fba_curr:  fbaReal,
         } as VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number };
       }
 
@@ -445,13 +437,12 @@ export async function GET(req: Request) {
       const fba_avg_curr   = vel ? vel._fba_curr      : r.fba_avg_curr   as number;
       const fba_30d        = vel ? vel.fba_30d        : r.fba_30d        as number;
       // Derived 30d/avg totals
-      const round2 = (n: number) => Math.round(n * 100) / 100;
       const west_fbm_30d = vel ? fbmThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d) : r.west_fbm_30d as number;
       const east_fbm_30d = vel ? fbmThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d) : r.east_fbm_30d as number;
       const total_30d    = vel ? west_fbm_30d + east_fbm_30d + fba_30d : r.total_30d as number;
-      const total_avg_prev = vel ? round2(avg_daily_prev + east_avg_prev + (vel.fba_avg_prev ?? 0)) : r.total_avg_prev as number;
-      const total_avg_real = vel ? round2(avg_daily_real + east_avg_real + fba_avg_real) : r.total_avg_real as number;
-      const total_avg_curr = vel ? round2(avg_daily_curr + east_avg_curr + fba_avg_curr) : r.total_avg_curr as number;
+      const total_avg_prev = vel ? avg_daily_prev + east_avg_prev + (vel.fba_avg_prev ?? 0) : r.total_avg_prev as number;
+      const total_avg_real = vel ? avg_daily_real + east_avg_real + fba_avg_real : r.total_avg_real as number;
+      const total_avg_curr = vel ? avg_daily_curr + east_avg_curr + fba_avg_curr : r.total_avg_curr as number;
 
       // Baseline seed: today's state, no incoming units
       const availQty  = (r.total_stock as number) + (r.back as number);
@@ -463,7 +454,7 @@ export async function GET(req: Request) {
       const sod       = (() => {
         const rate = total_avg_curr;
         if (!rate) return null;
-        const days = Math.round((r.total_stock as number) / rate);
+        const days = Math.floor((r.total_stock as number) / rate);
         const d = new Date(asOfMs);
         d.setDate(d.getDate() + days);
         return d.toISOString().slice(0, 10);

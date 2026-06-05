@@ -147,7 +147,6 @@ export interface DemandPlanningGridProps {
   groupVis: Record<ColumnGroupKey, boolean>;
   columnVis: ColumnVisibility;
   compactMode: boolean;
-  showRemaining: boolean;
   showMistake: boolean;
   showZeroSales: boolean;
   freezeUntil: string;
@@ -344,7 +343,6 @@ export function DemandPlanningGrid({
   groupVis,
   columnVis,
   compactMode,
-  showRemaining,
   showZeroSales,
   freezeUntil,
   columnWidths,
@@ -379,7 +377,7 @@ export function DemandPlanningGrid({
   const [cbmSavingSku, setCbmSavingSku] = useState<string | null>(null);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const visSubCols = CON_SUBCOLS.filter((sc) =>
-    (sc.id !== "remaining" || showRemaining) && columnVis[`con:${sc.id}`] !== false
+    columnVis[`con:${sc.id}`] !== false
   );
 
   const containerCbmTotals = useMemo(() => {

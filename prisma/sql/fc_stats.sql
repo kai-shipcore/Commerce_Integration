@@ -46,18 +46,18 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_stats (
     east_30d_pre   NUMERIC(10, 2)  NOT NULL DEFAULT 0,
 
     -- West avg daily velocity (prev = prior period, real = trailing, curr = recent)
-    avg_daily_prev NUMERIC(8, 2)   NOT NULL DEFAULT 0,
-    avg_daily_real NUMERIC(8, 2)   NOT NULL DEFAULT 0,
-    avg_daily_curr NUMERIC(8, 2)   NOT NULL DEFAULT 0,
+    avg_daily_prev NUMERIC(12, 6)  NOT NULL DEFAULT 0,
+    avg_daily_real NUMERIC(12, 6)  NOT NULL DEFAULT 0,
+    avg_daily_curr NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
     -- East avg daily velocity
-    east_avg_prev  NUMERIC(8, 2)   NOT NULL DEFAULT 0,
-    east_avg_real  NUMERIC(8, 2)   NOT NULL DEFAULT 0,
-    east_avg_curr  NUMERIC(8, 2)   NOT NULL DEFAULT 0,
+    east_avg_prev  NUMERIC(12, 6)  NOT NULL DEFAULT 0,
+    east_avg_real  NUMERIC(12, 6)  NOT NULL DEFAULT 0,
+    east_avg_curr  NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
     -- FBA avg daily
-    fba_avg_real   NUMERIC(8, 2)   NOT NULL DEFAULT 0,
-    fba_avg_curr   NUMERIC(8, 2)   NOT NULL DEFAULT 0,
+    fba_avg_real   NUMERIC(12, 6)  NOT NULL DEFAULT 0,
+    fba_avg_curr   NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
     -- 30-day sales breakdown by channel
     west_fbm_30d   INTEGER         NOT NULL DEFAULT 0,
@@ -66,9 +66,9 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_stats (
     total_30d      INTEGER         NOT NULL DEFAULT 0,
 
     -- Total avg daily
-    total_avg_prev NUMERIC(8, 2)   NOT NULL DEFAULT 0,
-    total_avg_real NUMERIC(8, 2)   NOT NULL DEFAULT 0,
-    total_avg_curr NUMERIC(8, 2)   NOT NULL DEFAULT 0,
+    total_avg_prev NUMERIC(12, 6)  NOT NULL DEFAULT 0,
+    total_avg_real NUMERIC(12, 6)  NOT NULL DEFAULT 0,
+    total_avg_curr NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
     -- Timestamp of last stats calculation run
     -- NULL means this row has never been calculated (shows zeros on dashboard)

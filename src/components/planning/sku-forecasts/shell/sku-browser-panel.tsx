@@ -16,6 +16,7 @@ interface SkuBrowserPanelProps {
   selectedSkuId: string;
   onSelectSku: (skuId: string) => void;
   language: SkuForecastLanguage;
+  targetInventoryDays: number;
 }
 
 const urgencyStyles = {
@@ -123,6 +124,7 @@ export function SkuBrowserPanel({
   selectedSkuId,
   onSelectSku,
   language,
+  targetInventoryDays,
 }: SkuBrowserPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -138,8 +140,8 @@ export function SkuBrowserPanel({
     watch: rows.filter((r) => getUrgency(r) === "watch").length,
     high: rows.filter((r) => getUrgency(r) === "healthy").length,
     low: rows.filter((r) => (r.back ?? 0) < 0).length,
-    order: rows.filter((r) => recommendedContainerQty(r) > 0).length,
-  }), [rows]);
+    order: rows.filter((r) => recommendedContainerQty(r, undefined, targetInventoryDays) > 0).length,
+  }), [rows, targetInventoryDays]);
 
   // Apply filter then sort
   const filteredRows = useMemo(() => {
@@ -148,10 +150,10 @@ export function SkuBrowserPanel({
       case "watch":    return rows.filter((r) => getUrgency(r) === "watch");
       case "high":     return rows.filter((r) => getUrgency(r) === "healthy");
       case "low":      return rows.filter((r) => (r.back ?? 0) < 0);
-      case "order":    return rows.filter((r) => recommendedContainerQty(r) > 0);
+      case "order":    return rows.filter((r) => recommendedContainerQty(r, undefined, targetInventoryDays) > 0);
       default:         return rows;
     }
-  }, [rows, skuFilter]);
+  }, [rows, skuFilter, targetInventoryDays]);
 
   const sortedRows = useMemo(
     () => [...filteredRows].sort((left, right) => {
@@ -167,11 +169,11 @@ export function SkuBrowserPanel({
         const rightDays = daysUntil(right.sod);
         result = (leftDays ?? Number.POSITIVE_INFINITY) - (rightDays ?? Number.POSITIVE_INFINITY);
       } else {
-        result = recommendedContainerQty(left) - recommendedContainerQty(right);
+        result = recommendedContainerQty(left, undefined, targetInventoryDays) - recommendedContainerQty(right, undefined, targetInventoryDays);
       }
       return sortDirection === "asc" ? result : -result;
     }),
-    [filteredRows, sortDirection, sortKey],
+    [filteredRows, sortDirection, sortKey, targetInventoryDays],
   );
 
   // Track scroll container height
@@ -311,7 +313,7 @@ export function SkuBrowserPanel({
               const selected = selectedSkuId === row.sku;
               const urgency = getUrgency(row);
               const days = daysUntil(row.sod);
-              const recommendedQty = recommendedContainerQty(row);
+              const recommendedQty = recommendedContainerQty(row, undefined, targetInventoryDays);
               return (
                 <button
                   key={row.sku}

@@ -1,4 +1,5 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
+import { planningLocalDateString } from "@/lib/planning/date-utils";
 import type { ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyStatus } from "@/types/demand-planning";
 
 export const TINT_COLORS: Record<string, string> = {
@@ -49,7 +50,7 @@ export const GROUP_BTN_COLORS: Record<string, string> = {
   con:    "#0D2535",
 };
 
-export const TODAY = new Date().toISOString().slice(0, 10);
+export const TODAY = planningLocalDateString();
 
 export function daysTo(d: string | null | undefined): number | null {
   if (!d) return null;
@@ -89,8 +90,8 @@ export function compactContainerList(value: string | null | undefined): string {
     .join(", ");
 }
 
-function avgAtLeastOneHundredth(value: number | null | undefined): number | "" {
-  return value === null || value === undefined ? "" : Math.max(0.01, value);
+function avgOrBlank(value: number | null | undefined): number | "" {
+  return value === null || value === undefined ? "" : value;
 }
 
 export type CellContent =
@@ -148,9 +149,9 @@ export const ALL_COLS: ColDef[] = [
   { id: "epre", grp: "esales", label: "E Pre\n30D", w: 38, align: "num", tint: "t-esales", gh: "gh-esales", val: (r) => r.east_30d_pre || 0 },
   // West Avg Daily
   { id: "wavg_p", grp: "wavg", label: "W Avg\n이전", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.avg_daily_prev || "" },
-  { id: "wavg_r", grp: "wavg", label: "W Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgAtLeastOneHundredth(r.avg_daily_real) },
+  { id: "wavg_r", grp: "wavg", label: "W Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.avg_daily_real) },
   { id: "wavg_c", grp: "wavg", label: "W Avg\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => {
-    const v = avgAtLeastOneHundredth(r.avg_daily_curr);
+    const v = avgOrBlank(r.avg_daily_curr);
     if (v === "") return "";
     if (v >= 10) return { html: `<span class="lv-crit">${v}</span>` };
     if (v >= 5)  return { html: `<span class="lv-warn">${v}</span>` };
@@ -158,11 +159,11 @@ export const ALL_COLS: ColDef[] = [
   }},
   // East Avg Daily
   { id: "eavg_p", grp: "eavg", label: "E Avg\n이전", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.east_avg_prev || "" },
-  { id: "eavg_r", grp: "eavg", label: "E Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgAtLeastOneHundredth(r.east_avg_real) },
-  { id: "eavg_c", grp: "eavg", label: "E Avg\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => avgAtLeastOneHundredth(r.east_avg_curr) },
+  { id: "eavg_r", grp: "eavg", label: "E Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.east_avg_real) },
+  { id: "eavg_c", grp: "eavg", label: "E Avg\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => avgOrBlank(r.east_avg_curr) },
   // FBA Avg
-  { id: "fba_r", grp: "fba", label: "FBA\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_real || "" },
-  { id: "fba_c", grp: "fba", label: "FBA\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_curr || "" },
+  { id: "fba_r", grp: "fba", label: "FBA\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.fba_avg_real) },
+  { id: "fba_c", grp: "fba", label: "FBA\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.fba_avg_curr) },
   // 30D Sales
   { id: "wfbm30", grp: "s30", label: "W FBM\n30D",  w: 50, align: "num", tint: "t-total", gh: "gh-total", val: (r) => r.west_fbm_30d || 0 },
   { id: "efbm30", grp: "s30", label: "E FBM\n30D",  w: 44, align: "num", tint: "t-total", gh: "gh-total", val: (r) => r.east_fbm_30d || 0 },

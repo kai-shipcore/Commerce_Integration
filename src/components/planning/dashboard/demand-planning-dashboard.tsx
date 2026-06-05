@@ -27,13 +27,14 @@ import type { CellColorSettings, ColumnColorSettings, ColumnVisibility, ColumnWi
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
+import { planningLocalDateString } from "@/lib/planning/date-utils";
 import {
   DEFAULT_SEASONAL_FACTORS,
   SEASONAL_FACTORS_STORAGE_KEY,
   loadSavedSeasonalFactors,
   type SeasonalFactors,
 } from "@/lib/planning/seasonal-factors";
-import type { CategoryFilter, ColumnGroupKey, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+import type { CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 
 const AgDemandPlanningGrid = dynamic(
   () => import("./ag-demand-planning-grid").then((module) => module.AgDemandPlanningGrid),
@@ -60,13 +61,12 @@ type ColumnSettings = {
   groupVis: Record<ColumnGroupKey, boolean>;
   columnVis: ColumnVisibility;
   compactMode: boolean;
-  showRemaining: boolean;
   showMistake: boolean;
   showZeroSales: boolean;
   freezeUntil: string;
 };
 
-const COLORABLE_COLUMNS = [
+const BASE_COLORABLE_COLUMNS = [
   ...ALL_COLS.map((column) => ({
     id: column.id,
     label: column.label.replace("\n", " "),
@@ -134,6 +134,16 @@ function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
+}
+
+function containerMatchesCategory(container: ContainerMeta, categoryFilter: CategoryFilter) {
+  if (container.status === "baseline") return true;
+  if (!container.categories?.length) {
+    if (container.name.endsWith("-FLOOR")) return categoryFilter === "fm";
+    if (container.name.endsWith("-SEAT")) return categoryFilter === "sc";
+    return categoryFilter === "cc";
+  }
+  return container.categories.includes(categoryFilter.toUpperCase());
 }
 
 function getColumnVisibilityForPreset(preset: "all" | "core" | "compact"): ColumnVisibility {
@@ -209,7 +219,6 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
       groupVis,
       columnVis,
       compactMode,
-      showRemaining: typeof stored.showRemaining === "boolean" ? stored.showRemaining : undefined,
       showMistake: typeof stored.showMistake === "boolean" ? stored.showMistake : undefined,
       showZeroSales: typeof stored.showZeroSales === "boolean" ? stored.showZeroSales : undefined,
       freezeUntil,
@@ -242,9 +251,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(EMPTY_SKU_PART_FILTERS);
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
+  const [selectedColorColumn, setSelectedColorColumn] = useState(BASE_COLORABLE_COLUMNS[0]?.id ?? "");
 
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = planningLocalDateString();
     // Hydration-safe: browser-local date is only available after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTodayStr(today);
@@ -260,6 +270,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     if (filter === categoryFilter) return;
     if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
 
+    setSelectedColorColumn((current) => current.startsWith("container:") ? (BASE_COLORABLE_COLUMNS[0]?.id ?? "") : current);
     setIsCategoryLoading(true);
     categoryChangeTimerRef.current = window.setTimeout(() => {
       startCategoryTransition(() => {
@@ -296,7 +307,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
   const [columnVis, setColumnVis] = useState<ColumnVisibility>(() => getColumnVisibilityForPreset("all"));
   const [compactMode, setCompactMode] = useState(false);
-  const [showRemaining, setShowRemaining] = useState(true);
   const [showMistake, setShowMistake] = useState(true);
   const [showZeroSales, setShowZeroSales] = useState(false);
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
@@ -306,13 +316,27 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
-  const [selectedColorColumn, setSelectedColorColumn] = useState(COLORABLE_COLUMNS[0]?.id ?? "");
   const [seasonalFactors, setSeasonalFactors] = useState<SeasonalFactors>(DEFAULT_SEASONAL_FACTORS);
+  const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
   const columnWidthsRef = useRef<ColumnWidths>({});
+  const prefSaveTimerRef = useRef<number | null>(null);
   const skuFiltersRef = useRef<HTMLDivElement>(null);
   const containerAutoLoadKeyRef = useRef<string | null>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Debounced save of all preferences to DB (1.5s delay to batch rapid changes)
+  const savePrefsToDb = useCallback((prefs: Record<string, unknown>) => {
+    if (prefSaveTimerRef.current !== null) window.clearTimeout(prefSaveTimerRef.current);
+    prefSaveTimerRef.current = window.setTimeout(() => {
+      prefSaveTimerRef.current = null;
+      fetch("/api/user/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferences: prefs }),
+      }).catch(() => {});
+    }, 1500);
+  }, []);
 
   useEffect(() => {
     const saved = loadSavedColumnWidths();
@@ -346,12 +370,66 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         setGroupVis(saved.groupVis);
       }
       if (saved.compactMode !== undefined) setCompactMode(saved.compactMode);
-      if (saved.showRemaining !== undefined) setShowRemaining(saved.showRemaining);
       if (saved.showMistake !== undefined) setShowMistake(saved.showMistake);
       if (saved.showZeroSales !== undefined) setShowZeroSales(saved.showZeroSales);
       if (saved.freezeUntil) setFreezeUntil(saved.freezeUntil);
       setColumnSettingsLoaded(true);
     });
+  }, []);
+
+  // Load all preferences from DB on mount — overrides localStorage if DB has newer values
+  useEffect(() => {
+    fetch("/api/user/preferences")
+      .then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>)
+      .then((json) => {
+        if (!json.success || !json.data) return;
+        const d = json.data;
+
+        // Column settings
+        const cs = d[COLUMN_SETTINGS_STORAGE_KEY];
+        if (cs && typeof cs === "object" && !Array.isArray(cs)) {
+          window.localStorage.setItem(COLUMN_SETTINGS_STORAGE_KEY, JSON.stringify(cs));
+          const saved = cs as Record<string, unknown>;
+          const colVis = normalizeColumnVisibility(saved.columnVis);
+          if (colVis) { setColumnVis(colVis); setGroupVis(getGroupVisibilityFromColumns(colVis)); }
+          if (typeof saved.compactMode === "boolean") setCompactMode(saved.compactMode);
+          if (typeof saved.showMistake === "boolean") setShowMistake(saved.showMistake);
+          if (typeof saved.showZeroSales === "boolean") setShowZeroSales(saved.showZeroSales);
+          if (typeof saved.freezeUntil === "string") setFreezeUntil(saved.freezeUntil);
+        }
+
+        // Column widths
+        const cw = d[COLUMN_WIDTHS_STORAGE_KEY];
+        if (cw && typeof cw === "object" && !Array.isArray(cw)) {
+          window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(cw));
+          const widths = cw as ColumnWidths;
+          columnWidthsRef.current = widths;
+          setColumnWidths(widths);
+        }
+
+        // Column colors
+        const cc = d[COLUMN_COLORS_STORAGE_KEY];
+        if (cc && typeof cc === "object" && !Array.isArray(cc)) {
+          window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(cc));
+          setColumnColors(cc as ColumnColorSettings);
+        }
+
+        // Cell colors
+        const cellC = d[CELL_COLORS_STORAGE_KEY];
+        if (cellC && typeof cellC === "object" && !Array.isArray(cellC)) {
+          window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(cellC));
+          setCellColors(cellC as CellColorSettings);
+        }
+
+        // Seasonal factors
+        const sf = d[SEASONAL_FACTORS_STORAGE_KEY];
+        if (sf && typeof sf === "object" && !Array.isArray(sf)) {
+          window.localStorage.setItem(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(sf));
+          setSeasonalFactors(sf as SeasonalFactors);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setDbPrefsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -362,13 +440,24 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         groupVis,
         columnVis,
         compactMode,
-        showRemaining,
         showMistake,
         showZeroSales,
         freezeUntil,
       }),
     );
-  }, [columnSettingsLoaded, groupVis, columnVis, compactMode, showRemaining, showMistake, showZeroSales, freezeUntil]);
+  }, [columnSettingsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil]);
+
+  // Save all preferences to DB whenever any setting changes (debounced, after initial load)
+  useEffect(() => {
+    if (!columnSettingsLoaded || !dbPrefsLoaded) return;
+    savePrefsToDb({
+      [COLUMN_SETTINGS_STORAGE_KEY]: { groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil },
+      [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
+      [COLUMN_COLORS_STORAGE_KEY]: columnColors,
+      [CELL_COLORS_STORAGE_KEY]: cellColors,
+      [SEASONAL_FACTORS_STORAGE_KEY]: seasonalFactors,
+    });
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, seasonalFactors, savePrefsToDb]);
 
   useEffect(() => {
     if (!data.rows.length || containerDetailsLoaded || containerDetailsLoading) return;
@@ -550,6 +639,21 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       .filter((c) => columnVis[c.id] !== false),
     [columnVis],
   );
+
+  const colorableColumns = useMemo(
+    () => [
+      ...BASE_COLORABLE_COLUMNS,
+      ...data.containers
+        .filter((container) => containerMatchesCategory(container, categoryFilter))
+        .map((container) => ({
+          id: `container:${container.name}`,
+          label: `Container Header: ${container.name}`,
+        })),
+    ],
+    [categoryFilter, data.containers],
+  );
+  const selectedColorColumnIsContainerHeader = selectedColorColumn.startsWith("container:");
+
   // ─────────────────────────────────────────────────────────────────────────────
 
   const skuFilterOptions = useMemo(() => {
@@ -956,10 +1060,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   Options
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showRemaining ? "rgba(59,130,246,.06)" : "transparent" }}>
-                    <input type="checkbox" checked={showRemaining} onChange={() => setShowRemaining((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
-                    <span style={{ fontSize: 12, fontWeight: 500, color: showRemaining ? "#1E3A5F" : "#94A3B8" }}>Show Remaining Qty</span>
-                  </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent" }}>
                     <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
                     <span style={{ fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>Show Zero-Sales SKUs</span>
@@ -1219,7 +1319,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       onChange={(event) => setSelectedColorColumn(event.target.value)}
                       style={{ width: "100%", fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
                     >
-                      {COLORABLE_COLUMNS.map((column) => (
+                      {colorableColumns.map((column) => (
                         <option key={column.id} value={column.id}>
                           {column.label}
                         </option>
@@ -1233,9 +1333,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             {target === "cell" ? "Cell" : "Header"}
                             <input
                               type="color"
+                              disabled={target === "cell" && selectedColorColumnIsContainerHeader}
                               value={current}
                               onChange={(event) => handleColumnColorChange(selectedColorColumn, target, event.target.value)}
-                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: target === "cell" && selectedColorColumnIsContainerHeader ? "default" : "pointer", opacity: target === "cell" && selectedColorColumnIsContainerHeader ? 0.45 : 1 }}
                             />
                           </label>
                         );
@@ -1547,7 +1648,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           groupVis={groupVis}
           columnVis={columnVis}
           compactMode={compactMode}
-          showRemaining={showRemaining}
           showMistake={showMistake}
           showZeroSales={showZeroSales}
           freezeUntil={freezeUntil}
@@ -1573,7 +1673,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           groupVis={groupVis}
           columnVis={columnVis}
           compactMode={compactMode}
-          showRemaining={showRemaining}
           showMistake={showMistake}
           showZeroSales={showZeroSales}
           freezeUntil={freezeUntil}

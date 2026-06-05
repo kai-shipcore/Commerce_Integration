@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
-import { daysUntil, formatNumber, TARGET_INVENTORY_DAYS } from "../types";
+import { daysUntil, formatNumber } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
 
 type InboundContainer = {
@@ -15,7 +15,15 @@ type InboundContainer = {
   cbm: number;
 };
 
-export function InventoryInboundTab({ sku, language }: { sku: DemandRow; language: SkuForecastLanguage }) {
+export function InventoryInboundTab({
+  sku,
+  language,
+  targetInventoryDays,
+}: {
+  sku: DemandRow;
+  language: SkuForecastLanguage;
+  targetInventoryDays: number;
+}) {
   const [inboundState, setInboundState] = useState<{ sku: string; rows: InboundContainer[] } | null>(null);
 
   useEffect(() => {
@@ -40,7 +48,7 @@ export function InventoryInboundTab({ sku, language }: { sku: DemandRow; languag
   const loading = inboundState?.sku !== sku.sku;
   const inboundQty = sku.total_inbound_qty ?? 0;
   const projected = sku.total_stock + inboundQty + Math.min(sku.back, 0);
-  const targetStock = Math.ceil(sku.total_avg_curr * TARGET_INVENTORY_DAYS);
+  const targetStock = Math.ceil(sku.total_avg_curr * targetInventoryDays);
   const coveragePercent = targetStock > 0 ? (projected / targetStock) * 100 : 0;
   const progressPercent = Math.min(Math.max(coveragePercent, 3), 100);
   const days = daysUntil(sku.sod);
@@ -60,7 +68,7 @@ export function InventoryInboundTab({ sku, language }: { sku: DemandRow; languag
         <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
           <span>{pick(language, "예상 재고 확보율", "Projected Inventory Coverage")}</span>
           <span className="font-mono font-semibold text-foreground">
-            {pick(language, `${TARGET_INVENTORY_DAYS}일 목표의 `, "")}{formatNumber(coveragePercent, 1)}%{pick(language, "", ` of ${TARGET_INVENTORY_DAYS}-day target`)}
+            {pick(language, `${targetInventoryDays}일 목표의 `, "")}{formatNumber(coveragePercent, 1)}%{pick(language, "", ` of ${targetInventoryDays}-day target`)}
           </span>
         </div>
         <div className="planning-muted mt-2 h-6 overflow-hidden rounded-full border">

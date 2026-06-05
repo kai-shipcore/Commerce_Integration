@@ -24,7 +24,7 @@ const gunzipAsync = promisify(gunzip);
 
 export function planningDashboardCacheKey(mode: string, includeContainers = false, asOfDate?: string) {
   const dateSuffix = asOfDate ? `:${asOfDate}` : "";
-  return `planning:dashboard:v3:${mode}:${includeContainers ? "detail" : "summary"}${dateSuffix}`;
+  return `planning:dashboard:v7:${mode}:${includeContainers ? "detail" : "summary"}${dateSuffix}`;
 }
 
 async function withTimeout<T>(work: Promise<T>, fallback: T): Promise<T> {

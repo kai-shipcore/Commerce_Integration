@@ -6,12 +6,13 @@
 //         is_custom = 'Y' → 'Custom', is_custom = 'N' → 'Original'
 //         velocity_link_snapshot → fc_stats, velocity_custom_snapshot → fc_stats_custom
 //         order_type mapping: 'sales' → west, 'ttm' → east, 'preorder' → west_30d_pre.
-//         No trailing lag — windows run up to CURRENT_DATE to match the velocity page.
+//         No trailing lag — windows use the LA planning date to match the dashboard.
 
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { planningLocalDateString } from "@/lib/planning/date-utils";
 import {
   currentDailyAverage,
   fbmThirtyDayAverage,
@@ -23,6 +24,10 @@ function errorMessage(e: unknown): string {
 }
 
 const BATCH = 500;
+
+function planningDateQuery(sql: string): string {
+  return sql.replaceAll("CURRENT_DATE", "$1::date");
+}
 
 async function batchUpsert(
   primary: ReturnType<typeof getPrimaryPool>,
@@ -94,6 +99,8 @@ export async function POST() {
     ]);
 
     // ── Step 2: Sales velocity ───────────────────────────────────────────────
+    const planningDate = planningLocalDateString();
+
     // Zero out velocity + avg columns first so SKUs with no recent sales show 0.
     const zeroVelocity = `
       west_90d = 0, west_60d = 0, west_30d = 0, west_15d = 0, west_7d = 0, west_30d_pre = 0,
@@ -110,8 +117,8 @@ export async function POST() {
     ]);
 
     // All SKUs — velocity_link_snapshot → written to fc_stats
-    // WHERE extends to CURRENT_DATE - 98 to cover the prev window (shifted back 7 days).
-    const linkSalesResult = await primary.query(`
+    // WHERE extends to the LA planning date - 98 to cover the prev window (shifted back 7 days).
+    const linkSalesResult = await primary.query(planningDateQuery(`
       SELECT
         vls.link_master_sku AS master_sku,
         CASE WHEN MAX(vls.is_custom) = 'Y' THEN 'Custom' ELSE 'Original' END AS sales_status,
@@ -126,7 +133,7 @@ export async function POST() {
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_30d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_15d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_7d,
-        SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric AS east_30d_pre,
+        0::numeric AS east_30d_pre,
         -- avg_daily_real (west, FBA excluded): weighted avg over current window
         (
           SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 90 * 0.10 +
@@ -151,8 +158,7 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_real,
         -- east_avg_prev (ttm): shifted back 7 days
         (
@@ -160,13 +166,12 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 60 * 0.15 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.30 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_prev,
         -- fba_avg_real: FBA 30D / 30 (simple daily average, matches Google Sheet)
-        GREATEST(0.01, SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30) AS fba_avg_real,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::numeric / 30 AS fba_avg_real,
         -- fba_avg_prev: FBA 30D (prev window, shifted 7 days back) / 30
-        GREATEST(0.01, SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30) AS fba_avg_prev,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN link_qty ELSE 0 END)::numeric / 30 AS fba_avg_prev,
         -- fba raw windows (used to exclude FBA from west_fbm_30d)
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_90d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_60d,
@@ -177,10 +182,10 @@ export async function POST() {
       WHERE vls.link_master_sku IS NOT NULL
         AND vls.order_date >= CURRENT_DATE - 98
       GROUP BY vls.link_master_sku
-    `);
+    `), [planningDate]);
 
     // All SKUs — velocity_custom_snapshot → written to fc_stats_custom
-    const customSalesResult = await primary.query(`
+    const customSalesResult = await primary.query(planningDateQuery(`
       SELECT
         vcs.custom_master_sku AS master_sku,
         CASE WHEN MAX(vcs.is_custom) = 'Y' THEN 'Custom' ELSE 'Original' END AS sales_status,
@@ -195,7 +200,7 @@ export async function POST() {
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_30d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_15d,
         SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_7d,
-        SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric AS east_30d_pre,
+        0::numeric AS east_30d_pre,
         (
           SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
           SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
@@ -217,19 +222,17 @@ export async function POST() {
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_real,
         (
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 98 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 90 * 0.10 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 68 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 60 * 0.15 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.30 +
           SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 23 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= CURRENT_DATE - 15 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 7  * 0.15
         ) AS east_avg_prev,
-        GREATEST(0.01, SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30) AS fba_avg_real,
-        GREATEST(0.01, SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30) AS fba_avg_prev,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::numeric / 30 AS fba_avg_real,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 38 AND order_date <= CURRENT_DATE - 9 THEN custom_qty ELSE 0 END)::numeric / 30 AS fba_avg_prev,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 91 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_90d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 61 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_60d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_30d,
@@ -239,7 +242,7 @@ export async function POST() {
       WHERE vcs.custom_master_sku IS NOT NULL
         AND vcs.order_date >= CURRENT_DATE - 98
       GROUP BY vcs.custom_master_sku
-    `);
+    `), [planningDate]);
 
     const salesCols = [
       "master_sku", "sales_status",
@@ -286,18 +289,16 @@ export async function POST() {
     const linkRows   = linkSalesResult.rows   as Record<string, unknown>[];
     const customRows = customSalesResult.rows as Record<string, unknown>[];
 
-    const round2 = (n: number) => Math.round(n * 100) / 100;
-
     for (const r of [...linkRows, ...customRows]) {
-      // Round the SQL-computed values first so all subsequent arithmetic uses the same precision.
+      // Keep source precision for calculations; UI can round display values separately.
       const categoryCode = forecastCategoryCodeForSku(String(r.master_sku));
-      const wPrev   = round2(Number(r.avg_daily_prev));
-      const wReal   = round2(Number(r.avg_daily_real));
-      const ePrev   = round2(Number(r.east_avg_prev));
-      const eReal   = round2(Number(r.east_avg_real));
-      const fbaReal = round2(Number(r.fba_avg_real ?? 0));
-      const wCurr   = round2(currentDailyAverage(wPrev, wReal, categoryCode));
-      const eCurr   = round2(currentDailyAverage(ePrev, eReal, categoryCode));
+      const wPrev   = Number(r.avg_daily_prev);
+      const wReal   = Number(r.avg_daily_real);
+      const ePrev   = Number(r.east_avg_prev);
+      const eReal   = Number(r.east_avg_real);
+      const fbaReal = Number(r.fba_avg_real ?? 0);
+      const wCurr   = currentDailyAverage(wPrev, wReal, categoryCode);
+      const eCurr   = currentDailyAverage(ePrev, eReal, categoryCode);
       const fbaCurr = fbaReal; // FBA 현재 = FBA 실제 (no blending, matches Google Sheet)
 
       r.avg_daily_prev  = wPrev;
@@ -306,9 +307,9 @@ export async function POST() {
       r.east_avg_real   = eReal;
       r.avg_daily_curr  = wCurr;
       r.east_avg_curr   = eCurr;
-      r.total_avg_prev  = round2(wPrev + ePrev);
-      r.total_avg_real  = round2(wReal + eReal + fbaReal);
-      r.total_avg_curr  = round2(wCurr + eCurr + fbaCurr);
+      r.total_avg_prev  = wPrev + ePrev;
+      r.total_avg_real  = wReal + eReal + fbaReal;
+      r.total_avg_curr  = wCurr + eCurr + fbaCurr;
       r.fba_avg_real    = fbaReal;
       r.fba_avg_curr    = fbaCurr;
 

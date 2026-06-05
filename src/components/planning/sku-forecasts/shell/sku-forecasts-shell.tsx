@@ -12,6 +12,7 @@ import { SkuForecastTabs } from "./sku-forecast-tabs";
 import { SkuHeader } from "./sku-header";
 import { SkuKpiStrip } from "./sku-kpi-strip";
 import {
+  DEFAULT_TARGET_INVENTORY_DAYS,
   defaultMasterMeta,
   productKeyForRow,
   type ProductKey,
@@ -20,6 +21,9 @@ import {
 import { pick, productLabel, type SkuForecastLanguage } from "../language";
 
 const LANGUAGE_STORAGE_KEY = "sku-forecasts-language";
+const TARGET_INVENTORY_DAYS_STORAGE_KEY = "sku-forecasts-target-inventory-days";
+const MIN_TARGET_INVENTORY_DAYS = 1;
+const MAX_TARGET_INVENTORY_DAYS = 365;
 
 type SkuMasterResponse = {
   success: boolean;
@@ -32,6 +36,7 @@ export function SkuForecastsShell() {
   const [search, setSearch] = useState("");
   const [selectedSkuId, setSelectedSkuId] = useState<string>("");
   const [language, setLanguage] = useState<SkuForecastLanguage>("en");
+  const [targetInventoryDays, setTargetInventoryDays] = useState(DEFAULT_TARGET_INVENTORY_DAYS);
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
   const masterLoadingRef = useRef<Set<string>>(new Set());
 
@@ -40,11 +45,21 @@ export function SkuForecastsShell() {
     if (stored === "ko" || stored === "en") {
       queueMicrotask(() => setLanguage(stored));
     }
+    const storedTargetDays = normalizeTargetInventoryDays(window.localStorage.getItem(TARGET_INVENTORY_DAYS_STORAGE_KEY));
+    if (storedTargetDays !== null) {
+      queueMicrotask(() => setTargetInventoryDays(storedTargetDays));
+    }
   }, []);
 
   function changeLanguage(nextLanguage: SkuForecastLanguage) {
     setLanguage(nextLanguage);
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+  }
+
+  function changeTargetInventoryDays(nextValue: string) {
+    const nextDays = normalizeTargetInventoryDays(nextValue) ?? DEFAULT_TARGET_INVENTORY_DAYS;
+    setTargetInventoryDays(nextDays);
+    window.localStorage.setItem(TARGET_INVENTORY_DAYS_STORAGE_KEY, String(nextDays));
   }
 
   const {
@@ -127,6 +142,17 @@ export function SkuForecastsShell() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <label className="flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-xs font-semibold text-[#1A1917] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100">
+            <span className="whitespace-nowrap">{pick(language, "목표 재고일", "Target days")}</span>
+            <input
+              type="number"
+              min={MIN_TARGET_INVENTORY_DAYS}
+              max={MAX_TARGET_INVENTORY_DAYS}
+              value={targetInventoryDays}
+              onChange={(event) => changeTargetInventoryDays(event.target.value)}
+              className="h-7 w-14 rounded border bg-background px-2 text-right font-mono text-xs outline-none focus:border-[#1a5cdb] dark:border-zinc-600"
+            />
+          </label>
           <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
             {(["ko", "en"] as SkuForecastLanguage[]).map((option) => (
               <button
@@ -179,6 +205,7 @@ export function SkuForecastsShell() {
           selectedSkuId={selectedRow?.sku ?? ""}
           onSelectSku={setSelectedSkuId}
           language={language}
+          targetInventoryDays={targetInventoryDays}
         />
 
         <div className="min-w-0 overflow-y-auto pr-1">
@@ -190,9 +217,9 @@ export function SkuForecastsShell() {
                 language={language}
                 sales={<SalesAnalysisTab sku={selectedRow} language={language} />}
                 inventory={
-                  <InventoryInboundTab sku={selectedRow} language={language} />
+                  <InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} />
                 }
-                purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} />}
+                purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} />}
               />
             </div>
           ) : (
@@ -204,4 +231,11 @@ export function SkuForecastsShell() {
       </div>
     </section>
   );
+}
+
+function normalizeTargetInventoryDays(value: string | null): number | null {
+  if (value === null || value.trim() === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(MIN_TARGET_INVENTORY_DAYS, Math.min(MAX_TARGET_INVENTORY_DAYS, Math.floor(parsed)));
 }

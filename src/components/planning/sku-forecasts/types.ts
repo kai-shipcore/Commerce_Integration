@@ -22,10 +22,10 @@ export const productLabels: Record<ProductKey, string> = {
   sc: "Seat Cover",
 };
 
-export const TARGET_INVENTORY_DAYS = 90;
+export const DEFAULT_TARGET_INVENTORY_DAYS = 90;
 
-export function recommendedContainerQty(row: DemandRow, multiple?: number): number {
-  const targetQty = Math.ceil(row.total_avg_curr * TARGET_INVENTORY_DAYS);
+export function recommendedContainerQty(row: DemandRow, multiple?: number, targetInventoryDays = DEFAULT_TARGET_INVENTORY_DAYS): number {
+  const targetQty = Math.ceil(row.total_avg_curr * targetInventoryDays);
   const projectedQty = row.total_stock + (row.total_inbound_qty ?? 0) + Math.min(row.back, 0);
   const rawQty = Math.max(targetQty - projectedQty, 0);
   const fallbackMultiple = productKeyForRow(row) === "cc" ? 3 : 5;

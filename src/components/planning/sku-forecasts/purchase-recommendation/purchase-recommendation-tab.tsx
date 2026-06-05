@@ -2,25 +2,27 @@
 
 import { useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
-import { formatNumber, recommendedContainerQty, TARGET_INVENTORY_DAYS, type SkuMasterMeta } from "../types";
+import { formatNumber, recommendedContainerQty, type SkuMasterMeta } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
 
 export function PurchaseRecommendationTab({
   sku,
   master,
   language,
+  targetInventoryDays,
 }: {
   sku: DemandRow;
   master: SkuMasterMeta;
   language: SkuForecastLanguage;
+  targetInventoryDays: number;
 }) {
   const dailyAvg = sku.total_avg_curr;
-  const targetQty = Math.ceil(dailyAvg * TARGET_INVENTORY_DAYS);
+  const targetQty = Math.ceil(dailyAvg * targetInventoryDays);
   const inboundQty = sku.total_inbound_qty ?? 0;
   const projectedQty = sku.total_stock + inboundQty + Math.min(sku.back, 0);
   const rawQty = Math.max(targetQty - projectedQty, 0);
   const orderMultiple = Math.max(master.orderMultiple || master.moq || 1, 1);
-  const recommendedQty = recommendedContainerQty(sku, orderMultiple);
+  const recommendedQty = recommendedContainerQty(sku, orderMultiple, targetInventoryDays);
   const recommendedCbm = recommendedQty * master.cbmPerUnit;
   const recentDaily = (sku.west_7d + sku.east_7d) / 7;
   const thirtyDayDaily = (sku.west_30d + sku.east_30d) / 30;
@@ -53,7 +55,7 @@ export function PurchaseRecommendationTab({
           <div className="mt-3 space-y-2 text-sm">
             <Reason>
               {pick(language, "목표 재고는", "Target stock is")} <Strong>{formatNumber(targetQty)}</Strong> {pick(language, "개입니다:", "units:")}
-              {" "}<Strong>{formatNumber(dailyAvg, 2)}/d</Strong> {pick(language, "현재 판매 속도 x", "current velocity x")} <Strong>{TARGET_INVENTORY_DAYS} {pick(language, "일", "days")}</Strong>.
+              {" "}<Strong>{formatNumber(dailyAvg, 2)}/d</Strong> {pick(language, "현재 판매 속도 x", "current velocity x")} <Strong>{targetInventoryDays} {pick(language, "일", "days")}</Strong>.
             </Reason>
             <Reason>
               {pick(language, "현재 재고, 입고, 백오더 영향을 반영한 예상 재고는", "Projected stock is")} <Strong>{formatNumber(projectedQty)}</Strong> {pick(language, "개입니다.", "units after current stock, inbound, and backorder impact.")}
@@ -85,7 +87,7 @@ export function PurchaseRecommendationTab({
         <h3 className="text-sm font-semibold">{pick(language, "계산 내역", "Calculation")}</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           {[
-            [pick(language, "목표 일수", "Target Days"), `${TARGET_INVENTORY_DAYS} ${pick(language, "일", "days")}`],
+            [pick(language, "목표 일수", "Target Days"), `${targetInventoryDays} ${pick(language, "일", "days")}`],
             [pick(language, "일평균 판매", "Daily Average"), `${formatNumber(dailyAvg, 2)}/d`],
             [pick(language, "목표 재고", "Target Stock"), formatNumber(targetQty)],
             [pick(language, "현재 재고", "Current Stock"), formatNumber(sku.total_stock)],

@@ -589,7 +589,6 @@ export function AgDemandPlanningGrid({
   groupVis,
   columnVis,
   compactMode,
-  showRemaining,
   showZeroSales,
   freezeUntil,
   columnWidths,
@@ -681,13 +680,13 @@ export function AgDemandPlanningGrid({
   const subColumns = useMemo(
     () => {
       const visibleColumns = CON_SUBCOLS.filter((column) =>
-        (column.id !== "remaining" || showRemaining) && columnVis[`con:${column.id}`] !== false);
+        columnVis[`con:${column.id}`] !== false);
       const cbmColumn = visibleColumns.find((column) => column.id === "ccbm");
       return cbmColumn
         ? [cbmColumn, ...visibleColumns.filter((column) => column.id !== "ccbm")]
         : visibleColumns;
     },
-    [columnVis, showRemaining],
+    [columnVis],
   );
 
   const containerColumnTotals = useMemo(() => {
@@ -952,6 +951,7 @@ export function AgDemandPlanningGrid({
         groups.push({
           groupId: `container-${container.name}`,
           headerName: container.name,
+          headerStyle: headerStyleForColor(columnColors[`container:${container.name}`]?.header),
           headerGroupComponent: ContainerGroupHeader,
           headerGroupComponentParams: {
             eta: container.eta,
