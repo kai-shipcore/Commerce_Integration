@@ -358,6 +358,8 @@ export function DemandPlanningGrid({
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
+      // Pinned reference rows always visible regardless of any filter.
+      if (r.is_pinned) return true;
       if (categoryCodeForRow(r) !== categoryFilter.toUpperCase()) return false;
       if (!showZeroSales &&
           !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
@@ -376,11 +378,15 @@ export function DemandPlanningGrid({
 
   const displayedRows = useMemo(() => {
     const getSortValue = sortColumnId ? SORT_VALUE_BY_COLUMN[sortColumnId] : undefined;
-    if (!getSortValue) return filteredRows;
-    return [...filteredRows].sort((left, right) => {
-      const result = compareAscending(getSortValue(left), getSortValue(right));
-      return sortDirection === "asc" ? result : -result;
-    });
+    const pinned = filteredRows.filter((r) => r.is_pinned);
+    const rest   = filteredRows.filter((r) => !r.is_pinned);
+    const sorted = getSortValue
+      ? [...rest].sort((left, right) => {
+          const result = compareAscending(getSortValue(left), getSortValue(right));
+          return sortDirection === "asc" ? result : -result;
+        })
+      : rest;
+    return [...pinned, ...sorted];
   }, [filteredRows, sortColumnId, sortDirection]);
 
   const handleSort = useCallback((columnId: string) => {
@@ -913,14 +919,14 @@ export function DemandPlanningGrid({
                 {virtualRows.rows.map((r, visibleIdx) => {
                 const idx = virtualRows.start + visibleIdx;
                 const u: UrgencyStatus = urgStatus(r);
-                const rowBg = u === "crit" ? "#FFF5F5" : idx % 2 === 1 ? "#FAFAF7" : "#fff";
+                const rowBg = r.is_pinned ? "#FFFBEB" : u === "crit" ? "#FFF5F5" : idx % 2 === 1 ? "#FAFAF7" : "#fff";
                 const displayRow = {
                   ...(rowTotalOverrides.has(r.sku) ? { ...r, ...rowTotalOverrides.get(r.sku) } : r),
                   ...(cbmOverrides.has(r.sku) ? { cbm_per_unit: cbmOverrides.get(r.sku) } : {}),
                 };
                 return (
                   <tr
-                    key={r.sku}
+                    key={r.is_pinned ? `pin_${r.sku}` : r.sku}
                     data-row-sku={r.sku}
                     onClick={(event) => {
                       tableRef.current?.querySelector("tbody tr.row-selected")?.classList.remove("row-selected");
@@ -1008,6 +1014,17 @@ export function DemandPlanningGrid({
                             />
                           ) : isCbmSaving ? (
                             <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
+                          ) : fullTextValue && col.id === "sku" && r.is_pinned ? (
+                            <FullTextCell label={col.label.replace("\n", " ")} value={fullTextValue}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                {renderCell(col.val(displayRow, idx, u))}
+                                <span style={{
+                                  fontSize: 9, fontWeight: 700, letterSpacing: "0.03em",
+                                  padding: "1px 4px", borderRadius: 3,
+                                  background: "#F59E0B", color: "#fff", flexShrink: 0,
+                                }}>{r.pin_label ?? "Ref"}</span>
+                              </span>
+                            </FullTextCell>
                           ) : fullTextValue ? (
                             <FullTextCell label={col.label.replace("\n", " ")} value={fullTextValue}>
                               {renderCell(col.val(displayRow, idx, u))}

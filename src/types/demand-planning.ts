@@ -92,6 +92,8 @@ export interface DemandRow {
   next_eta: string | null;
   sod: string | null;
   containers: Record<string, ContainerRowData>;
+  is_pinned?: boolean;
+  pin_label?: string;
 }
 
 export interface DemandPlanningData {
