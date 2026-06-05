@@ -7,10 +7,11 @@ export function forecastCategoryCodeForSku(sku: string): ForecastCategoryCode {
   return "SC";
 }
 
-export function currentDailyAverage(_prev: number, real: number, _categoryCode?: ForecastCategoryCode): number {
-  void _prev;
-  void _categoryCode;
-  return real;
+export function currentDailyAverage(prev: number, real: number, _categoryCode?: ForecastCategoryCode): number {
+  if (prev === 0) return real;
+  const change = Math.abs((real - prev) / prev);
+  if (change < 0.5) return prev * 0.1 + real * 0.9;
+  return prev * 0.2 + real * 0.8;
 }
 
 export function fbmThirtyDayAverage(

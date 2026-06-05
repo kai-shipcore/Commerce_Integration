@@ -233,7 +233,7 @@ export async function POST() {
          WHERE c.master_sku  IS NOT NULL
            AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
-           AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND c.tags IS NOT NULL AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
+           AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
       ),
     ]);

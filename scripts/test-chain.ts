@@ -7,7 +7,7 @@
  * Leave any expected field as null to skip checking it (still prints the actual).
  */
 
-import { fbmThirtyDayAverage, inventoryLifeDays } from "../src/lib/planning/forecast-calculations";
+import { fbmThirtyDayAverage, inventoryLifeDays, currentDailyAverage } from "../src/lib/planning/forecast-calculations";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "../src/lib/planning/seasonal-factors";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -32,12 +32,12 @@ const WEST_REAL = {
 
 // East (TTM) — total units sold over each window (real period)
 const EAST_REAL = {
-  d90: 447,
-  d60: 427,
-  d30: 239,
-  d15: 111,
-  d7:  51,
-  // Note: east has no preorder component (always 0)
+  d90:     447,
+  d60:     427,
+  d30:     239,
+  d30_pre: 2,    // east preorder (reference includes this; our code currently hardcodes to 0)
+  d15:     111,
+  d7:      51,
 };
 
 // Amazon FBA
@@ -123,9 +123,9 @@ function westWeightedDailyRate(d90: number, d60: number, d30: number, d30_pre: n
   return d90/90*0.10 + d60/60*0.15 + d30/30*0.30 + d15/15*0.20 + d7/7*0.15 + d30_pre/30*0.10;
 }
 
-// East (TTM) weighted daily rate — same weights, no preorder component
-function eastWeightedDailyRate(d90: number, d60: number, d30: number, d15: number, d7: number): number {
-  return d90/90*0.10 + d60/60*0.15 + d30/30*0.30 + d15/15*0.20 + d7/7*0.15;
+// East (TTM) weighted daily rate — same weights as west including preorder; MAX(0.01) floor matches reference
+function eastWeightedDailyRate(d90: number, d60: number, d30: number, d30_pre: number, d15: number, d7: number): number {
+  return Math.max(0.01, d90/90*0.10 + d60/60*0.15 + d30/30*0.30 + d30_pre/30*0.10 + d15/15*0.20 + d7/7*0.15);
 }
 
 // Date arithmetic helper
@@ -145,22 +145,22 @@ function daysBetween(from: string, to: string): number {
 
 // ── West FBM rates ────────────────────────────────────────────────────────
 const avg_daily_real = westWeightedDailyRate(WEST_REAL.d90, WEST_REAL.d60, WEST_REAL.d30, WEST_REAL.d30_pre, WEST_REAL.d15, WEST_REAL.d7);
-const avg_daily_prev = null; // prev period data not available
-const avg_daily_curr = avg_daily_real; // currentDailyAverage just returns real
+const avg_daily_prev = 13.22; // hardcoded from reference
+const avg_daily_curr = currentDailyAverage(avg_daily_prev, avg_daily_real);
 
 // ── East (TTM) rates ──────────────────────────────────────────────────────
-const east_avg_real = eastWeightedDailyRate(EAST_REAL.d90, EAST_REAL.d60, EAST_REAL.d30, EAST_REAL.d15, EAST_REAL.d7);
-const east_avg_prev = null; // prev period data not available
-const east_avg_curr = east_avg_real; // currentDailyAverage just returns real
+const east_avg_real = eastWeightedDailyRate(EAST_REAL.d90, EAST_REAL.d60, EAST_REAL.d30, EAST_REAL.d30_pre, EAST_REAL.d15, EAST_REAL.d7);
+const east_avg_prev = 5.85336990657143; // hardcoded from reference
+const east_avg_curr = currentDailyAverage(east_avg_prev, east_avg_real);
 
 // ── FBA rates ─────────────────────────────────────────────────────────────
-const fba_avg_real = fba_30d_real / 30;
+const fba_avg_real = Math.max(0.01, fba_30d_real / 30); // MAX(0.01) floor matches reference
 const fba_avg_prev = null; // prev period data not available
 const fba_avg_curr = fba_avg_real; // API sets _fba_curr = fbaReal directly
 
 // ── 30-day totals ─────────────────────────────────────────────────────────
 const west_fbm_30d = fbmThirtyDayAverage(WEST_REAL.d90, WEST_REAL.d60, WEST_REAL.d30, WEST_REAL.d30_pre, WEST_REAL.d15, WEST_REAL.d7);
-const east_fbm_30d = fbmThirtyDayAverage(EAST_REAL.d90, EAST_REAL.d60, EAST_REAL.d30, 0, EAST_REAL.d15, EAST_REAL.d7); // east has no preorder
+const east_fbm_30d = fbmThirtyDayAverage(EAST_REAL.d90, EAST_REAL.d60, EAST_REAL.d30, EAST_REAL.d30_pre, EAST_REAL.d15, EAST_REAL.d7);
 const total_30d    = west_fbm_30d + east_fbm_30d + fba_30d_real;
 
 // ── Total combined rates ──────────────────────────────────────────────────
