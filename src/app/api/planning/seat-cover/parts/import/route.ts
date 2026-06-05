@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       if (isNaN(receivedAt.getTime())) continue;
 
       await prisma.$executeRaw`
-        INSERT INTO shipcore.replacement_parts
+        INSERT INTO shipcore.fc_replacement_parts
           ("requestReceivedAt", "orderNumber", "partNumber", "correspondingSku",
            qty, "orderRequest", "partSku", "partSkuValue", note, "orderStatus",
            "shipheroOrder", "shippingStatus", "deleteYN", "createdAt", "updatedAt")

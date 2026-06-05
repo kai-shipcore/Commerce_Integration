@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const deletedOnly = searchParams.get("deleted") === "true";
   try {
     const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-      SELECT * FROM shipcore.replacement_parts
+      SELECT * FROM shipcore.fc_replacement_parts
       WHERE "deleteYN" = ${deletedOnly ? "Y" : "N"}
       ORDER BY "requestReceivedAt" ASC
     `;
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     const receivedAt = new Date(requestReceivedAt);
 
     await prisma.$executeRaw`
-      INSERT INTO shipcore.replacement_parts
+      INSERT INTO shipcore.fc_replacement_parts
         ("requestReceivedAt", "orderNumber", "partNumber", "correspondingSku",
          qty, "orderRequest", "partSku", "partSkuValue", note, "orderStatus",
          "shipheroOrder", "shippingStatus", "createdAt", "updatedAt")

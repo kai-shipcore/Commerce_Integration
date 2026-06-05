@@ -91,7 +91,16 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [name]: value };
+      if (name === "orderNumber") {
+        const expectedPrev = prev.orderNumber ? `RE-${prev.orderNumber}` : "";
+        if (prev.shipheroOrder === "" || prev.shipheroOrder === expectedPrev) {
+          next.shipheroOrder = value ? `RE-${value}` : "";
+        }
+      }
+      return next;
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {

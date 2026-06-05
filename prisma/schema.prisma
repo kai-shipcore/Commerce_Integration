@@ -583,7 +583,7 @@ model PartOrder {
 
   @@index([orderNumber])
   @@index([shippingStatus])
-  @@map("replacement_parts")
+  @@map("fc_replacement_parts")
   @@schema("shipcore")
 }
 

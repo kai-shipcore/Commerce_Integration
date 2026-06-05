@@ -39,7 +39,7 @@ export async function PATCH(
     const rowId = BigInt(id);
 
     await prisma.$executeRaw`
-      UPDATE shipcore.replacement_parts
+      UPDATE shipcore.fc_replacement_parts
       SET
         "requestReceivedAt" = ${receivedAt},
         "orderNumber"       = ${orderNumber},
@@ -88,7 +88,7 @@ export async function DELETE(
     const { orderNumber } = body;
 
     await prisma.$executeRaw`
-      UPDATE shipcore.replacement_parts SET "deleteYN" = 'Y' WHERE id = ${BigInt(id)}
+      UPDATE shipcore.fc_replacement_parts SET "deleteYN" = 'Y' WHERE id = ${BigInt(id)}
     `;
 
     const session = await auth();

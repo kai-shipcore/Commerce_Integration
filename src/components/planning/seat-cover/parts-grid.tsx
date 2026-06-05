@@ -7,6 +7,7 @@ import {
   AllCommunityModule,
   themeQuartz,
   type ColDef,
+  type RowClassParams,
 } from "ag-grid-community";
 import * as XLSX from "xlsx";
 import { PartDialog } from "./add-part-dialog";
@@ -47,6 +48,37 @@ export type PartOrderRow = {
   shippingStatus: string | null;
   updatedAt: string;
 };
+
+const SHIPPING_STATUS_STYLE: Record<string, { background: string; color: string }> = {
+  "Ready":     { background: "#DCFCE7", color: "#166534" },
+  "Not Ready": { background: "#FEF3C7", color: "#92400E" },
+  "Shipped":   { background: "#DBEAFE", color: "#1E40AF" },
+  "Canceled":  { background: "#FEE2E2", color: "#991B1B" },
+};
+
+function ShippingStatusCell({ value }: { value: string | null }) {
+  const v = value ?? "";
+  const s = SHIPPING_STATUS_STYLE[v];
+  if (!s) return <>{v}</>;
+  return (
+    <span style={{
+      background: s.background,
+      color: s.color,
+      padding: "2px 8px",
+      borderRadius: 9999,
+      fontSize: 12,
+      fontWeight: 600,
+      whiteSpace: "nowrap",
+    }}>{v}</span>
+  );
+}
+
+function isOlderThan90Days(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 90);
+  return new Date(dateStr) < cutoff;
+}
 
 function fmtDate(value: string | null | undefined) {
   if (!value) return "";
@@ -130,6 +162,17 @@ export function PartsGrid() {
     return rows; // deleted — API already filtered by deleteYN='Y'
   }, [rows, activeFilter]);
 
+  const getRowStyle = useCallback(
+    (params: RowClassParams<PartOrderRow>) => {
+      if (activeFilter !== "ready-not-ready") return undefined;
+      if (isOlderThan90Days(params.data?.requestReceivedAt)) {
+        return { background: "#FFF3E0" };
+      }
+      return undefined;
+    },
+    [activeFilter]
+  );
+
   const numFilterParams = {
     filterOptions: ["greaterThan", "equals", "notEqual", "lessThan", "inRange"],
     defaultOption: "greaterThan",
@@ -202,6 +245,7 @@ export function PartsGrid() {
         headerName: "Shipping Status",
         field: "shippingStatus",
         width: 140,
+        cellRenderer: ShippingStatusCell,
       },
       {
         headerName: "Last Updated Date",
@@ -427,6 +471,7 @@ export function PartsGrid() {
               rowData={filteredRows}
               columnDefs={colDefs}
               defaultColDef={defaultColDef}
+              getRowStyle={getRowStyle}
               suppressCellFocus={false}
               enableCellTextSelection
               rowSelection="single"
