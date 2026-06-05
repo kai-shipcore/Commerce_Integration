@@ -8,7 +8,7 @@
  *   channels — comma-separated channels (e.g. "Coverland,Amazon")
  *   mode     — "sales" | "ttm" | "preorder"
  *   ranges   — comma-separated "from:to" date pairs (e.g. "2025-01-01:2025-03-31,2025-04-01:2025-04-30")
- *              ignored for preorder mode
+ *              ignored for preorder mode (preorder always uses a fixed 30-day window)
  *   tz       — "utc" (default) | "la" — which date column to filter on
  */
 
@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
         `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
          FROM shipcore.velocity_link_snapshot
          WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
+           AND order_date >= CURRENT_DATE - INTERVAL '30 days'
          GROUP BY link_master_sku ORDER BY qty DESC`,
         [items, channels]
       );
@@ -65,6 +66,7 @@ export async function GET(req: NextRequest) {
         `SELECT link_master_sku AS master_sku, SUM(link_qty)::int AS qty
          FROM shipcore.velocity_link_snapshot
          WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'ttm_preorder'
+           AND order_date >= CURRENT_DATE - INTERVAL '30 days'
          GROUP BY link_master_sku ORDER BY qty DESC`,
         [items, channels]
       );
@@ -73,6 +75,7 @@ export async function GET(req: NextRequest) {
             `SELECT custom_master_sku AS master_sku, SUM(custom_qty)::int AS qty
              FROM shipcore.velocity_custom_snapshot
              WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
+               AND order_date >= CURRENT_DATE - INTERVAL '30 days'
              GROUP BY custom_master_sku ORDER BY qty DESC`,
             [items, channels]
           )
