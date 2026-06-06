@@ -173,9 +173,11 @@ function computeContainerChain(
     const backorder = Math.max(0, estimatedSales - available);
     const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
     const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
-    const sodFromContainer = inventoryLife === null
+    const adjustedRate = dailyRate * seasonalFactor;
+    const invLifeFloor = adjustedRate > 0 ? Math.floor(carryover / adjustedRate) : null;
+    const sodFromContainer = invLifeFloor === null
       ? null
-      : new Date(new Date(eta).getTime() + inventoryLife * 86400000).toISOString().slice(0, 10);
+      : new Date(new Date(eta).getTime() + invLifeFloor * 86400000).toISOString().slice(0, 10);
     const estimatedSod = (!qty || carryover === 0)
       ? previousSod
       : previousSod && sodFromContainer

@@ -641,9 +641,11 @@ export async function GET(req: Request) {
         const backorderC = Math.max(0, estSales - availQtyC);
         const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
         const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
+        const adjustedRate = dailyRate * seasonalFactor;
+        const invLifeFloor = adjustedRate > 0 ? Math.floor(carryoverC / adjustedRate) : null;
 
-        const sodFromThis = invLifeC !== null
-          ? new Date(new Date(eta).getTime() + invLifeC * 86400000).toISOString().slice(0, 10)
+        const sodFromThis = invLifeFloor !== null
+          ? new Date(new Date(eta).getTime() + invLifeFloor * 86400000).toISOString().slice(0, 10)
           : null;
         const estSodC: string | null = (!qty || carryoverC === 0)
           ? prevSod
