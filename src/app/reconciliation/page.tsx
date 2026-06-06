@@ -429,7 +429,7 @@ function SalesDataPane() {
   }, []);
 
   const columns = useMemo(() => {
-    if (mode === "preorder") return createPreOrderColumns();
+    if (mode === "preorder") return createPreOrderColumns(["90D", "60D", "30D", "15D", "7D"]);
     if (mode === "ttm") return createTtmColumns(["90D", "60D", "30D", "15D", "7D"]);
     return createSalesSalesColumns(["90D", "60D", "30D", "15D", "7D"]);
   }, [mode]);
