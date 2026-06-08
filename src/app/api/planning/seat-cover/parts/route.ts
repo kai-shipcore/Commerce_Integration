@@ -117,11 +117,14 @@ export async function POST(req: Request) {
           await prisma.$executeRaw`
             UPDATE shipcore.fc_replacement_parts
             SET "shipheroOrderId" = ${result.id}
-            WHERE "orderNumber" = ${String(orderNumber)}
-              AND "shipheroOrder" = ${String(shipheroOrder)}
-              AND "shipheroOrderId" IS NULL
-            ORDER BY "createdAt" DESC
-            LIMIT 1
+            WHERE id = (
+              SELECT id FROM shipcore.fc_replacement_parts
+              WHERE "orderNumber" = ${String(orderNumber)}
+                AND "shipheroOrder" = ${String(shipheroOrder)}
+                AND "shipheroOrderId" IS NULL
+              ORDER BY "createdAt" DESC
+              LIMIT 1
+            )
           `;
           return NextResponse.json({ success: true, shipHeroOrderNumber: result.order_number }, { status: 201 });
         } catch (err) {
