@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notifySlack } from "@/lib/slack";
-import { getShipHeroOrder, updateShipHeroLineItemSku } from "@/lib/shiphero";
+import { getShipHeroOrderLineItems, updateShipHeroLineItemSku } from "@/lib/shiphero";
 
 export async function PATCH(
   req: Request,
@@ -66,9 +66,9 @@ export async function PATCH(
 
     if (partSkuValue && shipheroOrderId && shipheroOrder) {
       try {
-        const orderInfo = await getShipHeroOrder(String(shipheroOrder));
-        if (orderInfo && orderInfo.line_items.length > 0) {
-          await updateShipHeroLineItemSku(orderInfo.line_items[0].id, String(partSkuValue));
+        const lineItems = await getShipHeroOrderLineItems(String(shipheroOrder));
+        if (lineItems.length > 0) {
+          await updateShipHeroLineItemSku(lineItems[0].id, String(partSkuValue));
         }
       } catch (err) {
         console.error("[parts PATCH] ShipHero line_item_update error", err);

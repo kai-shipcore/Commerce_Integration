@@ -159,11 +159,6 @@ export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrd
                     first_name last_name address1 address2
                     city state state_code zip country country_code email phone company
                   }
-                  line_items {
-                    edges {
-                      node { id sku }
-                    }
-                  }
                 }
               }
             }
@@ -190,13 +185,62 @@ export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrd
       order_number:     node.order_number ?? cleanedNumber,
       shop_name:        node.shop_name ?? null,
       shipping_address: node.shipping_address ?? {},
-      line_items: (node.line_items?.edges ?? []).map(
-        (e: { node: { id: string; sku: string | null } }) => ({ id: e.node.id, sku: e.node.sku ?? null })
-      ),
+      line_items:       [],
     };
   }
 
   return null;
+}
+
+export async function getShipHeroOrderLineItems(orderNumber: string): Promise<ShipHeroLineItem[]> {
+  const cleanedNumber = orderNumber;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await getToken();
+
+    const res = await fetch(GQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query: `query($orderNumber: String) {
+          orders(order_number: $orderNumber) {
+            data {
+              edges {
+                node {
+                  line_items {
+                    edges {
+                      node { id sku }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        variables: { orderNumber: cleanedNumber },
+      }),
+    });
+
+    if (res.status === 401) {
+      cachedToken = null;
+      tokenExpiry = 0;
+      continue;
+    }
+
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const node = json?.data?.orders?.data?.edges?.[0]?.node;
+    if (!node) return [];
+
+    return (node.line_items?.edges ?? []).map(
+      (e: { node: { id: string; sku: string | null } }) => ({ id: e.node.id, sku: e.node.sku ?? null })
+    );
+  }
+
+  return [];
 }
 
 function toGqlInput(obj: unknown): string {
