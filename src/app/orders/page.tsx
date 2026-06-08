@@ -4,13 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { endOfDay, format, startOfDay, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { AppLayout } from "@/components/layout/app-layout";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -29,7 +22,7 @@ import {
   OrderDetailDialog,
   type OrderDetail,
 } from "@/components/orders/order-detail-dialog";
-import { Download, Loader2, ShoppingCart } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Loader2, ShoppingCart } from "lucide-react";
 
 type OrderDatePreset = "today" | "yesterday" | "last7" | "last30" | "custom";
 
@@ -103,6 +96,7 @@ export default function OrdersPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
   const orderDetailCache = useRef<Map<number, { data: OrderDetail; ts: number }>>(new Map());
   const preloadingRef = useRef<Set<number>>(new Set());
 
@@ -161,6 +155,7 @@ export default function OrdersPage() {
   }, [pagination, sorting, debouncedSearch, platformFilter, orderStatusFilter, activeDateRange, hasLoadedMeta]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial API load is intentionally started after filter changes.
     fetchOrders();
   }, [fetchOrders]);
 
@@ -350,15 +345,15 @@ export default function OrdersPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between gap-4">
+      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Orders</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-lg font-semibold">Orders</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
               Channel order feed from external sales orders and line item tables
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Select value={datePreset} onValueChange={handleDatePresetChange}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Order date" />
@@ -442,71 +437,76 @@ export default function OrdersPage() {
               Refresh
             </Button>
           </div>
+        </header>
+
+        <div className="border-b border-[#e2dfd8] bg-[#f0eee9]">
+          <button
+            type="button"
+            onClick={() => setSummaryCollapsed((current) => !current)}
+            className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-2 text-left transition-colors hover:bg-[#ebe8df]"
+            aria-expanded={!summaryCollapsed}
+          >
+            <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span className="font-semibold text-[#1a1917]">Summary</span>
+              <span className="text-muted-foreground">
+                Orders{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {summary?.totalOrders.toLocaleString() ?? "-"}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                Revenue{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {formatOrdersCurrency(summary?.totalRevenue)}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                Page Units{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {formatOrderUnits(rows, summary)}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                Platforms{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {summary?.totalPlatforms.toLocaleString() ?? "-"}
+                </span>
+              </span>
+            </span>
+            {summaryCollapsed ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+          </button>
+          {!summaryCollapsed ? (
+            <div className="grid grid-cols-2 border-t border-[#e2dfd8] md:grid-cols-4">
+              <OrdersStat
+                label="Total Orders"
+                value={summary?.totalOrders.toLocaleString() ?? "-"}
+                sub={platformFilter === "all" ? "All platform sources" : platformFilter}
+              />
+              <OrdersStat
+                label="Revenue"
+                value={formatOrdersCurrency(summary?.totalRevenue)}
+                sub="Gross order value in filtered result set"
+              />
+              <OrdersStat
+                label="Units"
+                value={formatOrderUnits(rows, summary)}
+                sub="Net quantity on this page"
+              />
+              <OrdersStat
+                label="Platforms"
+                value={summary?.totalPlatforms.toLocaleString() ?? "-"}
+                sub="Distinct platform sources in current filter"
+              />
+            </div>
+          ) : null}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardHeader>
-              <CardDescription>Total Orders</CardDescription>
-              <CardTitle className="text-3xl">
-                {summary?.totalOrders.toLocaleString() ?? "-"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              {platformFilter === "all" ? "All platform sources" : platformFilter}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardDescription>Revenue</CardDescription>
-              <CardTitle className="text-3xl">
-                {summary
-                  ? new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                      maximumFractionDigits: 0,
-                    }).format(summary.totalRevenue)
-                  : "-"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Gross order value in filtered result set
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardDescription>Units</CardDescription>
-              <CardTitle className="text-3xl">
-                {rows.length > 0
-                  ? rows.reduce((s, r) => s + r.unitCount, 0).toLocaleString()
-                  : (summary ? "0" : "-")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Net quantity on this page
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardDescription>Platforms</CardDescription>
-              <CardTitle className="text-3xl">
-                {summary?.totalPlatforms.toLocaleString() ?? "-"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Distinct platform sources in current filter
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Orders Grid</CardTitle>
-            <CardDescription>
-              Click an order row to inspect its order items and channel metadata.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div className="flex min-h-0 flex-1 flex-col bg-white">
+          <div className="min-h-0 flex-1 overflow-auto p-5">
             {!loading && !error ? (
               <div className="mb-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
                 <span>
@@ -548,25 +548,27 @@ export default function OrdersPage() {
                 </p>
               </div>
             ) : (
-              <DataTable
-                columns={columns}
-                data={rows}
-                totalRows={totalRows}
-                pageCount={pageCount}
-                pagination={pagination}
-                searchPlaceholder="Search order ID, order number, buyer, master SKU, or web SKU..."
-                onPaginationChange={handlePaginationChange}
-                onSortingChange={handleSortingChange}
-                onSearchChange={handleSearchChange}
-                onFilteredRowsChange={setFilteredRows}
-                onRowClick={openOrderDetail}
-                onRowMouseEnter={preloadOrderDetail}
-                isLoading={loading}
-              />
+              <div className="min-w-[1180px]">
+                <DataTable
+                  columns={columns}
+                  data={rows}
+                  totalRows={totalRows}
+                  pageCount={pageCount}
+                  pagination={pagination}
+                  searchPlaceholder="Search order ID, order number, buyer, master SKU, or web SKU..."
+                  onPaginationChange={handlePaginationChange}
+                  onSortingChange={handleSortingChange}
+                  onSearchChange={handleSearchChange}
+                  onFilteredRowsChange={setFilteredRows}
+                  onRowClick={openOrderDetail}
+                  onRowMouseEnter={preloadOrderDetail}
+                  isLoading={loading}
+                />
+              </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </section>
 
       <OrderDetailDialog
         open={detailOpen}
@@ -581,5 +583,31 @@ export default function OrdersPage() {
         }}
       />
     </AppLayout>
+  );
+}
+
+function formatOrdersCurrency(value: number | null | undefined) {
+  if (value == null) return "-";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatOrderUnits(rows: OrderTableRow[], summary: OrdersSummary | null) {
+  if (rows.length > 0) {
+    return rows.reduce((sum, row) => sum + row.unitCount, 0).toLocaleString();
+  }
+  return summary ? "0" : "-";
+}
+
+function OrdersStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0">
+      <div className="text-[10px] uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-xl font-semibold">{value}</div>
+      <div className="text-xs text-muted-foreground">{sub}</div>
+    </div>
   );
 }

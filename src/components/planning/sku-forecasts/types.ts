@@ -42,6 +42,26 @@ export function productKeyForRow(row: DemandRow): ProductKey {
   return "sc";
 }
 
+export function forecastProductKeyForRow(row: DemandRow): ProductKey | null {
+  if (row.category_code === "SC") return "sc";
+  if (row.category_code === "CC") return "cc";
+  if (row.category_code === "FM") return "fm";
+  if (row.category_code) return null;
+
+  const sku = row.sku.toUpperCase();
+  if (sku.startsWith("CC-")) return "cc";
+  if (sku.startsWith("CA-FM-") || sku.split("-").includes("FM")) return "fm";
+  if (sku.startsWith("CA-SC-") || sku.startsWith("CL-SC-")) return "sc";
+  return null;
+}
+
+export function hasRecentSales(row: DemandRow): boolean {
+  return Boolean(
+    row.west_90d || row.west_60d || row.west_30d || row.west_15d || row.west_7d ||
+    row.east_90d || row.east_60d || row.east_30d || row.east_15d || row.east_7d
+  );
+}
+
 export function defaultMasterMeta(row: DemandRow): SkuMasterMeta {
   const productKey = productKeyForRow(row);
   const moq = productKey === "cc" ? 3 : 5;

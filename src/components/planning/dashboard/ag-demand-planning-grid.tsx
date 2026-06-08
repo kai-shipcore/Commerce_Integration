@@ -641,8 +641,6 @@ export function AgDemandPlanningGrid({
   const visibleRows = useMemo(() => {
     const query = search.toLowerCase();
     const filtered = data.rows.filter((row) => {
-      // Pinned reference rows always pass through all filters.
-      if (row.is_pinned) return true;
       if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) return false;
       if (!showZeroSales &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&

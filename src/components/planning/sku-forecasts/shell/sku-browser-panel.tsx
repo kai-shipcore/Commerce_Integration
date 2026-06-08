@@ -235,7 +235,7 @@ export function SkuBrowserPanel({
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder={pick(language, "Master SKU 검색...", "Search master SKU...")}
-            className="h-9 w-full rounded-md border bg-[#f0eee9] px-3 text-sm outline-none focus:border-[#1a5cdb] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-blue-500 pr-8"
+            className="h-9 w-full rounded-md border bg-white px-3 text-sm outline-none focus:border-[#1a5cdb] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-blue-500 pr-8"
           />
           {search ? (
             <button

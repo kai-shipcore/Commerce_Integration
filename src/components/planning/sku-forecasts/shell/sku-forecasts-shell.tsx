@@ -14,6 +14,8 @@ import { SkuKpiStrip } from "./sku-kpi-strip";
 import {
   DEFAULT_TARGET_INVENTORY_DAYS,
   defaultMasterMeta,
+  forecastProductKeyForRow,
+  hasRecentSales,
   productKeyForRow,
   type ProductKey,
   type SkuMasterMeta,
@@ -23,6 +25,7 @@ import { pick, productLabel, type SkuForecastLanguage } from "../language";
 const LANGUAGE_STORAGE_KEY = "sku-forecasts-language";
 const TARGET_INVENTORY_DAYS_STORAGE_KEY = "sku-forecasts-target-inventory-days";
 const INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY = "sku-forecasts-include-draft-containers";
+const SALES_ONLY_STORAGE_KEY = "sku-forecasts-sales-only";
 const MIN_TARGET_INVENTORY_DAYS = 1;
 const MAX_TARGET_INVENTORY_DAYS = 365;
 
@@ -39,6 +42,7 @@ export function SkuForecastsShell() {
   const [language, setLanguage] = useState<SkuForecastLanguage>("en");
   const [targetInventoryDays, setTargetInventoryDays] = useState(DEFAULT_TARGET_INVENTORY_DAYS);
   const [includeDraftContainers, setIncludeDraftContainers] = useState(false);
+  const [salesOnly, setSalesOnly] = useState(true);
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
   const masterLoadingRef = useRef<Set<string>>(new Set());
 
@@ -53,6 +57,9 @@ export function SkuForecastsShell() {
     }
     if (window.localStorage.getItem(INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY) === "1") {
       queueMicrotask(() => setIncludeDraftContainers(true));
+    }
+    if (window.localStorage.getItem(SALES_ONLY_STORAGE_KEY) === "0") {
+      queueMicrotask(() => setSalesOnly(false));
     }
   }, []);
 
@@ -72,6 +79,11 @@ export function SkuForecastsShell() {
     window.localStorage.setItem(INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY, nextValue ? "1" : "0");
   }
 
+  function changeSalesOnly(nextValue: boolean) {
+    setSalesOnly(nextValue);
+    window.localStorage.setItem(SALES_ONLY_STORAGE_KEY, nextValue ? "1" : "0");
+  }
+
   const {
     data,
     loading,
@@ -82,13 +94,16 @@ export function SkuForecastsShell() {
   const rowsByProduct = useMemo(() => {
     const grouped: Record<ProductKey, DemandRow[]> = { sc: [], cc: [], fm: [] };
     for (const row of data.rows) {
-      grouped[productKeyForRow(row)].push(row);
+      if (salesOnly && !hasRecentSales(row)) continue;
+      const productKey = forecastProductKeyForRow(row);
+      if (!productKey) continue;
+      grouped[productKey].push(row);
     }
     for (const key of Object.keys(grouped) as ProductKey[]) {
       grouped[key].sort((a, b) => a.sku.localeCompare(b.sku, undefined, { numeric: true }));
     }
     return grouped;
-  }, [data.rows]);
+  }, [data.rows, salesOnly]);
 
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -103,9 +118,9 @@ export function SkuForecastsShell() {
   const selectedRow = useMemo(
     () => {
       const visibleSelected = visibleRows.find((row) => row.sku === selectedSkuId);
-      return visibleSelected ?? visibleRows[0] ?? data.rows.find((row) => row.sku === selectedSkuId) ?? null;
+      return visibleSelected ?? visibleRows[0] ?? null;
     },
-    [data.rows, selectedSkuId, visibleRows],
+    [selectedSkuId, visibleRows],
   );
 
   useEffect(() => {
@@ -152,6 +167,25 @@ export function SkuForecastsShell() {
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
+            {[
+              { value: true, label: pick(language, "Sales 있는 SKU", "Sales SKUs") },
+              { value: false, label: pick(language, "전체 SKU", "All SKUs") },
+            ].map((option) => (
+              <button
+                key={String(option.value)}
+                type="button"
+                onClick={() => changeSalesOnly(option.value)}
+                className={`px-3 text-xs font-semibold ${
+                  salesOnly === option.value
+                    ? "bg-[#1A1917] text-white dark:bg-white dark:text-[#1A1917]"
+                    : "text-muted-foreground hover:bg-[#f0eee9] dark:hover:bg-zinc-700"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
             {[
               { value: false, label: pick(language, "Active 컨테이너", "Active Containers") },

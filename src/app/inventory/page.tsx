@@ -2,13 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import {
@@ -22,7 +15,7 @@ import {
   createInventoryColumns,
   type InventoryTableRow,
 } from "@/components/inventory/inventory-table-columns";
-import { Boxes, Download, Loader2 } from "lucide-react";
+import { Boxes, ChevronDown, ChevronUp, Download, Loader2 } from "lucide-react";
 
 interface InventoryRow {
   masterSku: string;
@@ -76,6 +69,7 @@ export default function InventoryPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warehouseOptions, setWarehouseOptions] = useState<string[]>([]);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
 
   const fetchInventory = useCallback(async () => {
     setLoading(true);
@@ -241,15 +235,15 @@ export default function InventoryPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between gap-4">
+      <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-lg font-semibold">Inventory</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
               Live inventory snapshot from the external coverland inventory feed
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant={groupBy === "product" ? "default" : "outline"}
@@ -295,66 +289,84 @@ export default function InventoryPage() {
               {exporting ? "Exporting..." : "Export CSV"}
             </Button>
           </div>
+        </header>
+
+        <div className="border-b border-[#e2dfd8] bg-[#f0eee9]">
+          <button
+            type="button"
+            onClick={() => setSummaryCollapsed((current) => !current)}
+            className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-2 text-left transition-colors hover:bg-[#ebe8df]"
+            aria-expanded={!summaryCollapsed}
+          >
+            <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span className="font-semibold text-[#1a1917]">Summary</span>
+              <span className="text-muted-foreground">
+                Products{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {summary?.totalProducts.toLocaleString() ?? "-"}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                Rows{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {summary?.totalRows.toLocaleString() ?? "-"}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                On Hand{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {summary?.onHand.toLocaleString() ?? "-"}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                Available{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {summary?.available.toLocaleString() ?? "-"}
+                </span>
+              </span>
+              <span className="text-muted-foreground">
+                Warehouses{" "}
+                <span className="font-mono font-semibold text-foreground">
+                  {summary?.totalWarehouses.toLocaleString() ?? "-"}
+                </span>
+              </span>
+            </span>
+            {summaryCollapsed ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+          </button>
+          {!summaryCollapsed ? (
+            <div className="grid grid-cols-2 border-t border-[#e2dfd8] md:grid-cols-4">
+              <InventoryStat
+                label="Total Products"
+                value={summary?.totalProducts.toLocaleString() ?? "-"}
+                sub={groupBy === "product"
+                  ? `${summary?.totalRows.toLocaleString() ?? "-"} source warehouse rows`
+                  : `${summary?.totalRows.toLocaleString() ?? "-"} warehouse rows`}
+              />
+              <InventoryStat
+                label="On Hand"
+                value={summary?.onHand.toLocaleString() ?? "-"}
+                sub="Across all warehouses"
+              />
+              <InventoryStat
+                label="Available"
+                value={summary?.available.toLocaleString() ?? "-"}
+                sub="Sellable inventory from source feed"
+              />
+              <InventoryStat
+                label="Warehouses"
+                value={summary?.totalWarehouses.toLocaleString() ?? "-"}
+                sub="Distinct warehouse values in source feed"
+              />
+            </div>
+          ) : null}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card>
-            <CardHeader>
-              <CardDescription>Total Products</CardDescription>
-              <CardTitle className="text-3xl">
-                {summary?.totalProducts.toLocaleString() ?? "-"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              {groupBy === "product"
-                ? `${summary?.totalRows.toLocaleString() ?? "-"} source warehouse rows`
-                : `${summary?.totalRows.toLocaleString() ?? "-"} warehouse rows`}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardDescription>On Hand</CardDescription>
-              <CardTitle className="text-3xl">
-                {summary?.onHand.toLocaleString() ?? "-"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Across all warehouses
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardDescription>Available</CardDescription>
-              <CardTitle className="text-3xl">
-                {summary?.available.toLocaleString() ?? "-"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Sellable inventory from source feed
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardDescription>Warehouses</CardDescription>
-              <CardTitle className="text-3xl">
-                {summary?.totalWarehouses.toLocaleString() ?? "-"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Distinct warehouse values in source feed
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Inventory Rows</CardTitle>
-            <CardDescription>
-              Source table fields available today are on hand, allocated, available,
-              backorder, warehouse, and created timestamp.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div className="flex min-h-0 flex-1 flex-col bg-white">
+          <div className="min-h-0 flex-1 overflow-auto p-5">
             {groupBy === "product" && (
               <p className="mb-4 text-sm text-muted-foreground">
                 Grouped by product rolls all warehouse rows into one master SKU total.
@@ -405,9 +417,19 @@ export default function InventoryPage() {
                 isLoading={loading}
               />
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </section>
     </AppLayout>
+  );
+}
+
+function InventoryStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0">
+      <div className="text-[10px] uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-xl font-semibold">{value}</div>
+      <div className="text-xs text-muted-foreground">{sub}</div>
+    </div>
   );
 }

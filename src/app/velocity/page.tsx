@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
-import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import {
   AlertDialog,
@@ -84,7 +83,7 @@ function periodsToRanges(periods: number[]): PeriodRange[] {
   });
 }
 
-// ─── Period Chip Editor ───────────────────────────────────────────────────────
+// Period Chip Editor
 
 interface PeriodEditorProps {
   periods: number[];
@@ -212,7 +211,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
   );
 }
 
-// ─── Toggle Button ────────────────────────────────────────────────────────────
+// Toggle Button
 
 function ToggleBtn({
   active,
@@ -238,7 +237,7 @@ function ToggleBtn({
   );
 }
 
-// ─── Shared helpers ───────────────────────────────────────────────────────────
+// Shared helpers
 
 type ApiData = {
   link: { masterSku: string; qtys: number[] }[];
@@ -300,7 +299,7 @@ async function fetchModeRows(
   return responseToRows(data as ApiData, ranges.length);
 }
 
-// ─── Custom Range Editor ──────────────────────────────────────────────────────
+// Custom Range Editor
 
 interface CustomRangeEditorProps {
   ranges: PeriodRange[];
@@ -400,7 +399,7 @@ function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
   );
 }
 
-// ─── Velocity Pane ────────────────────────────────────────────────────────────
+// Velocity Pane
 
 interface PaneProps {
   mode: "sales" | "ttm" | "preorder";
@@ -431,11 +430,13 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
   const rangesKey = ranges.map((r) => `${r.from}:${r.to}`).join(",");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset pagination after velocity filter changes.
     setPagination((p) => ({ ...p, page: 1 }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Start table loading after velocity query changes.
     setLoading(true);
     fetchModeRows(mode, selectedItem, selectedChannels, ranges, timezone)
       .then((rows) => setAllRows(rows))
@@ -516,8 +517,8 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
   }, [selectedItem, selectedChannels, ranges, labels, label, timezone]);
 
   return (
-    <Card>
-      <div className="flex items-center justify-end gap-2 px-4 pt-3 pb-1">
+    <div className="min-w-[1320px]">
+      <div className="mb-3 flex items-center justify-end gap-2">
         <button
           onClick={handleExportCurrent}
           disabled={loading || allRows.length === 0}
@@ -535,28 +536,26 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
           {exportingAll ? "Exporting..." : "Export All"}
         </button>
       </div>
-      <CardContent className="p-0">
-        <DataTable
-          columns={columns}
-          data={pageData}
-          totalRows={sorted.length}
-          pageCount={pageCount}
-          pagination={pagination}
-          onPaginationChange={(page, pageSize) => setPagination({ page, pageSize })}
-          onSortingChange={(sortBy, sortOrder) => {
-            setSorting({ sortBy, sortOrder });
-            setPagination((p) => ({ ...p, page: 1 }));
-          }}
-          onSearchChange={(q) => { setSearch(q); setPagination((p) => ({ ...p, page: 1 })); }}
-          searchPlaceholder="Search Master SKU..."
-          isLoading={loading}
-        />
-      </CardContent>
-    </Card>
+      <DataTable
+        columns={columns}
+        data={pageData}
+        totalRows={sorted.length}
+        pageCount={pageCount}
+        pagination={pagination}
+        onPaginationChange={(page, pageSize) => setPagination({ page, pageSize })}
+        onSortingChange={(sortBy, sortOrder) => {
+          setSorting({ sortBy, sortOrder });
+          setPagination((p) => ({ ...p, page: 1 }));
+        }}
+        onSearchChange={(q) => { setSearch(q); setPagination((p) => ({ ...p, page: 1 })); }}
+        searchPlaceholder="Search Master SKU..."
+        isLoading={loading}
+      />
+    </div>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// Main Page
 
 export default function VelocityPage() {
   const [selectedItem, setSelectedItem] = useState<string>("");
@@ -622,11 +621,18 @@ export default function VelocityPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col gap-4 p-6">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-5 w-5" />
-          <h1 className="text-xl font-semibold">Velocity</h1>
-          <div className="ml-auto flex items-center gap-3">
+      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            <div>
+              <h1 className="text-lg font-semibold">Velocity</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Compare sales velocity by product, channel, mode, and period.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
             {formattedSyncTime && (
               <span className="text-xs text-muted-foreground">
                 Last synced: {formattedSyncTime}
@@ -662,7 +668,7 @@ export default function VelocityPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Sync Velocity Data</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Supabase에서 최신 데이터를 동기화합니다. 계속하시겠습니까?
+                    Sync the latest velocity data from Supabase. Continue?
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -672,104 +678,98 @@ export default function VelocityPage() {
               </AlertDialogContent>
             </AlertDialog>
           </div>
-        </div>
+        </header>
 
-        {/* Filter panel */}
-        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-          {/* Row 1: Item */}
-          <div className="flex items-center gap-3">
-            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Item</span>
-            <div className="flex items-center gap-2 flex-wrap">
-              {ITEMS.map((item) => (
-                <ToggleBtn
-                  key={item}
-                  active={selectedItem === item}
-                  onClick={() => selectItem(item)}
-                >
-                  {item}
-                </ToggleBtn>
-              ))}
-            </div>
-          </div>
-
-          {/* Row 2: Channel */}
-          <div className="flex items-center gap-3">
-            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Channel</span>
-            <div className="flex items-center gap-2 flex-wrap">
-              <ToggleBtn
-                active={selectedChannels.length === CHANNELS.length}
-                onClick={() =>
-                  setSelectedChannels(selectedChannels.length === CHANNELS.length ? [] : [...CHANNELS])
-                }
-              >
-                All
-              </ToggleBtn>
-              {CHANNELS.map((ch) => (
-                <ToggleBtn
-                  key={ch}
-                  active={selectedChannels.includes(ch)}
-                  onClick={() => toggleChannel(ch)}
-                >
-                  {ch}
-                </ToggleBtn>
-              ))}
-            </div>
-          </div>
-
-          {/* Row 3: Mode + Periods */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Mode</span>
-            <div className="flex items-center gap-2">
-              <ToggleBtn active={mode === "sales"} onClick={() => setMode("sales")}>Sales</ToggleBtn>
-              <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>TTM</ToggleBtn>
-              <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre Order</ToggleBtn>
-            </div>
-            <div className="ml-auto flex items-center gap-3">
-              {/* Period type toggle */}
-              <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs">
-                <button
-                  onClick={() => setPeriodMode("period")}
-                  className={cn("rounded px-2.5 py-1 font-medium transition-colors",
-                    periodMode === "period" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Period
-                </button>
-                <button
-                  onClick={() => setPeriodMode("custom")}
-                  className={cn("rounded px-2.5 py-1 font-medium transition-colors",
-                    periodMode === "custom" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Custom
-                </button>
+        <div className="border-b border-[#e2dfd8] bg-white px-5 py-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Item</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {ITEMS.map((item) => (
+                    <ToggleBtn
+                      key={item}
+                      active={selectedItem === item}
+                      onClick={() => selectItem(item)}
+                    >
+                      {item}
+                    </ToggleBtn>
+                  ))}
+                </div>
               </div>
-              {periodMode === "period" ? (
-                <PeriodEditor periods={periods} onChange={setPeriods} />
-              ) : (
-                <CustomRangeEditor ranges={customRanges} onChange={setCustomRanges} />
-              )}
+
+              <div className="flex items-center gap-3">
+                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Channel</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ToggleBtn
+                    active={selectedChannels.length === CHANNELS.length}
+                    onClick={() =>
+                      setSelectedChannels(selectedChannels.length === CHANNELS.length ? [] : [...CHANNELS])
+                    }
+                  >
+                    All
+                  </ToggleBtn>
+                  {CHANNELS.map((ch) => (
+                    <ToggleBtn
+                      key={ch}
+                      active={selectedChannels.includes(ch)}
+                      onClick={() => toggleChannel(ch)}
+                    >
+                      {ch}
+                    </ToggleBtn>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Mode</span>
+                <div className="flex items-center gap-2">
+                  <ToggleBtn active={mode === "sales"} onClick={() => setMode("sales")}>Sales</ToggleBtn>
+                  <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>TTM</ToggleBtn>
+                  <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre Order</ToggleBtn>
+                </div>
+                <div className="ml-auto flex items-center gap-3">
+                  <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs">
+                    <button
+                      onClick={() => setPeriodMode("period")}
+                      className={cn("rounded px-2.5 py-1 font-medium transition-colors",
+                        periodMode === "period" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Period
+                    </button>
+                    <button
+                      onClick={() => setPeriodMode("custom")}
+                      className={cn("rounded px-2.5 py-1 font-medium transition-colors",
+                        periodMode === "custom" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Custom
+                    </button>
+                  </div>
+                  {periodMode === "period" ? (
+                    <PeriodEditor periods={periods} onChange={setPeriods} />
+                  ) : (
+                    <CustomRangeEditor ranges={customRanges} onChange={setCustomRanges} />
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
         </div>
 
-        {/* Grid */}
-        {selectedItem === "" ? (
-          <Card>
-            <CardContent className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-              아이템을 선택하세요
-            </CardContent>
-          </Card>
-        ) : selectedChannels.length === 0 ? (
-          <Card>
-            <CardContent className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-              채널을 하나 이상 선택하세요
-            </CardContent>
-          </Card>
-        ) : (
-          <VelocityPane mode={mode} ranges={activeRanges} selectedItem={selectedItem} selectedChannels={selectedChannels} timezone={timezone} />
-        )}
-      </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-white p-5">
+          {selectedItem === "" ? (
+            <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
+              Select an item
+            </div>
+          ) : selectedChannels.length === 0 ? (
+            <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
+              Select at least one channel
+            </div>
+          ) : (
+            <VelocityPane mode={mode} ranges={activeRanges} selectedItem={selectedItem} selectedChannels={selectedChannels} timezone={timezone} />
+          )}
+        </div>
+      </section>
     </AppLayout>
   );
 }
