@@ -308,7 +308,7 @@ export async function GET(req: Request) {
             SUM(a.qty)::int AS allocated_remaining_qty
           FROM shipcore.fc_container_item_allocations a
           JOIN shipcore.fc_available_stock s ON s.id = a.source_stock_id
-          WHERE s.source_type = 'remaining'
+          WHERE s.source_type IN ('remaining', 'mistake')
           GROUP BY a.container_id, s.master_sku
         ) ar ON ar.container_id = ci.container_id
              AND ar.master_sku = ci.master_sku

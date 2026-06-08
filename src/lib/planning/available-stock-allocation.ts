@@ -23,9 +23,9 @@ export async function syncRemainingAllocationForContainerItem(
   const lockedStocks = await client.query<{ id: string }>(
     `SELECT id::text
      FROM shipcore.fc_available_stock
-     WHERE source_type = 'remaining'
+     WHERE source_type IN ('remaining', 'mistake')
        AND master_sku = $1
-     ORDER BY id
+     ORDER BY CASE source_type WHEN 'remaining' THEN 0 ELSE 1 END, id
      FOR UPDATE`,
     [masterSku],
   );
@@ -55,7 +55,7 @@ export async function syncRemainingAllocationForContainerItem(
      JOIN shipcore.fc_available_stock s ON s.id = a.source_stock_id
      WHERE a.container_id = $1::bigint
        AND s.master_sku = $2
-       AND s.source_type = 'remaining'
+       AND s.source_type IN ('remaining', 'mistake')
      FOR UPDATE OF a`,
     [input.containerId, masterSku],
   );
@@ -105,7 +105,7 @@ export async function deleteRemainingAllocationsForContainerItem(
      WHERE s.id = a.source_stock_id
        AND a.container_id = $1::bigint
        AND s.master_sku = $2
-       AND s.source_type = 'remaining'`,
+       AND s.source_type IN ('remaining', 'mistake')`,
     [input.containerId, input.masterSku.trim().toUpperCase()],
   );
 }
