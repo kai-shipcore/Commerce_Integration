@@ -1,7 +1,9 @@
 "use client";
 
+import { Suspense } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { endOfDay, format, startOfDay, subDays } from "date-fns";
+import { useSearchParams } from "next/navigation";
+import { endOfDay, format, startOfDay, startOfYear, subDays, subMonths, subYears } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { AppLayout } from "@/components/layout/app-layout";
 import { DataTable } from "@/components/ui/data-table/data-table";
@@ -24,7 +26,7 @@ import {
 } from "@/components/orders/order-detail-dialog";
 import { ChevronDown, ChevronUp, Download, Loader2, ShoppingCart } from "lucide-react";
 
-type OrderDatePreset = "today" | "yesterday" | "last7" | "last30" | "custom";
+type OrderDatePreset = "today" | "yesterday" | "last7" | "last30" | "last90" | "last6m" | "last1y" | "ytd" | "custom";
 
 function getPresetRange(preset: OrderDatePreset): DateRange | undefined {
   const now = new Date();
@@ -36,12 +38,13 @@ function getPresetRange(preset: OrderDatePreset): DateRange | undefined {
       const yesterday = subDays(now, 1);
       return { from: startOfDay(yesterday), to: endOfDay(yesterday) };
     }
-    case "last7":
-      return { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
-    case "last30":
-      return { from: startOfDay(subDays(now, 29)), to: endOfDay(now) };
-    case "custom":
-      return undefined;
+    case "last7":   return { from: startOfDay(subDays(now, 6)),   to: endOfDay(now) };
+    case "last30":  return { from: startOfDay(subDays(now, 29)),  to: endOfDay(now) };
+    case "last90":  return { from: startOfDay(subDays(now, 89)),  to: endOfDay(now) };
+    case "last6m":  return { from: startOfDay(subMonths(now, 6)), to: endOfDay(now) };
+    case "last1y":  return { from: startOfDay(subYears(now, 1)),  to: endOfDay(now) };
+    case "ytd":     return { from: startOfYear(now),              to: endOfDay(now) };
+    case "custom":  return undefined;
   }
 }
 
@@ -62,7 +65,9 @@ interface SortingState {
   sortOrder: "asc" | "desc";
 }
 
-export default function OrdersPage() {
+function OrdersPageContent() {
+  const searchParams = useSearchParams();
+
   const [rows, setRows] = useState<OrderTableRow[]>([]);
   const [filteredRows, setFilteredRows] = useState<OrderTableRow[]>([]);
   const [summary, setSummary] = useState<OrdersSummary | null>(null);
@@ -71,9 +76,18 @@ export default function OrdersPage() {
   const [orderStatuses, setOrderStatuses] = useState<string[]>([]);
   const [orderStatusFilter, setOrderStatusFilter] = useState("all");
   const [datePreset, setDatePreset] = useState<OrderDatePreset>("today");
-  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(
-    undefined
-  );
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
+
+  // Apply URL preset params — runs on mount and whenever URL searchParams change.
+  // Using useEffect (not useState initializer) is the reliable pattern for useSearchParams.
+  useEffect(() => {
+    const p = searchParams.get("preset") as OrderDatePreset | null;
+    if (!p) return;
+    const knownPresets: OrderDatePreset[] = ["today", "yesterday", "last7", "last30", "last90", "last6m", "last1y", "ytd", "custom"];
+    if (knownPresets.includes(p)) {
+      setDatePreset(p);
+    }
+  }, [searchParams]);
   const [pagination, setPagination] = useState<PaginationState>({
     page: 1,
     pageSize: 20,
@@ -363,6 +377,10 @@ export default function OrdersPage() {
                 <SelectItem value="yesterday">Yesterday</SelectItem>
                 <SelectItem value="last7">Last 7 days</SelectItem>
                 <SelectItem value="last30">Last 30 days</SelectItem>
+                <SelectItem value="last90">Last 90 days</SelectItem>
+                <SelectItem value="last6m">Last 6 months</SelectItem>
+                <SelectItem value="last1y">Last 1 year</SelectItem>
+                <SelectItem value="ytd">Year to date</SelectItem>
                 <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>
@@ -521,13 +539,15 @@ export default function OrdersPage() {
                     ? activeDateRange?.from && activeDateRange?.to
                       ? `${format(activeDateRange.from, "MMM d, yyyy")} - ${format(activeDateRange.to, "MMM d, yyyy")}`
                       : "Custom range"
-                    : datePreset === "today"
-                      ? "Today"
-                      : datePreset === "yesterday"
-                        ? "Yesterday"
-                        : datePreset === "last7"
-                          ? "Last 7 days"
-                          : "Last 30 days"}
+                    : datePreset === "today"    ? "Today"
+                    : datePreset === "yesterday" ? "Yesterday"
+                    : datePreset === "last7"     ? "Last 7 days"
+                    : datePreset === "last30"    ? "Last 30 days"
+                    : datePreset === "last90"    ? "Last 90 days"
+                    : datePreset === "last6m"    ? "Last 6 months"
+                    : datePreset === "last1y"    ? "Last 1 year"
+                    : datePreset === "ytd"       ? "Year to date"
+                    : "Last 30 days"}
                 </span>
               </div>
             ) : null}
@@ -600,6 +620,14 @@ function formatOrderUnits(rows: OrderTableRow[], summary: OrdersSummary | null) 
     return rows.reduce((sum, row) => sum + row.unitCount, 0).toLocaleString();
   }
   return summary ? "0" : "-";
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense>
+      <OrdersPageContent />
+    </Suspense>
+  );
 }
 
 function OrdersStat({ label, value, sub }: { label: string; value: string; sub: string }) {

@@ -31,7 +31,7 @@ export const navigationItems: NavigationItem[] = [
   {
     id: "dashboard",
     name: "Command Center",
-    href: "/dashboard",
+    href: "/",
     icon: LayoutDashboard,
     group: "Commerce",
     hideable: true,
@@ -98,7 +98,7 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     id: "demand-planning",
-    name: "Dashboard",
+    name: "Demand Planning",
     href: "/planning/dashboard-ag-grid",
     icon: LayoutDashboard,
     group: "Planning",

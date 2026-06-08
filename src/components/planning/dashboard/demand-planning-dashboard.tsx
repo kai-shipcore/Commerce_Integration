@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
@@ -253,12 +254,24 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumn, setSelectedColorColumn] = useState(BASE_COLORABLE_COLUMNS[0]?.id ?? "");
 
+  const searchParams = useSearchParams();
+
   useEffect(() => {
     const today = planningLocalDateString();
     // Hydration-safe: browser-local date is only available after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTodayStr(today);
     setAsOfDate((current) => current || today);
+
+    const productParam = searchParams.get("product");
+    if (productParam === "fm" || productParam === "cc" || productParam === "sc" || productParam === "ac") {
+      setCategoryFilter(productParam);
+    }
+    const statusParam = searchParams.get("status");
+    if (statusParam === "crit" || statusParam === "warn" || statusParam === "bo") {
+      setUrgencyFilter(statusParam);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleProductFilter = useCallback((filter: ProductFilter) => {
