@@ -29,6 +29,7 @@ export interface ContainerRowData {
   item_id?: number | null;       // fc_container_items.id — used for inline editing
   cbm_unit?: number | null;      // fc_container_items.cbm_unit — used to recompute total_cbm on qty edit
   inbound_qty?: number | null;   // fc_container_items.qty — raw units in this container
+  allocated_remaining_qty?: number | null;
   open_orders: number | null;
   avail_qty: number | null;
   est_sales: number | null;

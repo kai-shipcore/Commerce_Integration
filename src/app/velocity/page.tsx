@@ -23,7 +23,7 @@ import {
   createFloorMatColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
-import { TrendingUp, Check, X, Plus, RefreshCw, Download } from "lucide-react";
+import { Gauge, Check, X, Plus, RefreshCw, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { exportCurrentVelocity, exportAllVelocity } from "@/lib/velocity-export";
 
@@ -131,7 +131,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
       {periods.map((p, i) => (
         <span
           key={`${p}-${i}`}
-          className="flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 text-sm"
+          className="flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 text-sm text-foreground dark:border-slate-700 dark:bg-slate-800"
         >
           {editingIdx === i ? (
             <>
@@ -176,7 +176,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
       ))}
 
       {adding ? (
-        <span className="flex items-center gap-1 rounded-full border border-primary bg-muted px-3 py-1.5 text-sm">
+        <span className="flex items-center gap-1 rounded-full border border-primary bg-muted px-3 py-1.5 text-sm text-foreground dark:bg-slate-800">
           <input
             ref={addInputRef}
             type="number"
@@ -202,7 +202,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
       ) : periods.length < 5 ? (
         <button
           onClick={() => setAdding(true)}
-          className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-foreground hover:text-foreground dark:border-slate-700 dark:hover:border-slate-300 dark:hover:text-slate-50"
         >
           <Plus className="h-3.5 w-3.5" />
           Add
@@ -230,7 +230,7 @@ function ToggleBtn({
         "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
         active
           ? "bg-primary text-primary-foreground"
-          : "border border-border bg-background text-foreground hover:bg-muted"
+          : "border border-border bg-background text-foreground hover:bg-muted dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
       )}
     >
       {children}
@@ -340,7 +340,7 @@ function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
     <div className="flex items-center gap-1.5 flex-wrap">
       <span className="text-xs text-muted-foreground font-medium shrink-0">Periods:</span>
       {ranges.map((r, i) => (
-        <span key={i} className="flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 text-sm">
+        <span key={i} className="flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 text-sm text-foreground dark:border-slate-700 dark:bg-slate-800">
           {editingIdx === i ? (
             <>
               <input type="date" value={editFrom} onChange={(e) => setEditFrom(e.target.value)}
@@ -374,7 +374,7 @@ function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
         </span>
       ))}
       {adding ? (
-        <span className="flex items-center gap-1 rounded-full border border-primary bg-muted px-3 py-1.5 text-sm">
+        <span className="flex items-center gap-1 rounded-full border border-primary bg-muted px-3 py-1.5 text-sm text-foreground dark:bg-slate-800">
           <input type="date" value={addFrom} onChange={(e) => setAddFrom(e.target.value)}
             className="bg-transparent text-sm outline-none" />
           <span className="text-muted-foreground">~</span>
@@ -523,7 +523,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
         <button
           onClick={handleExportCurrent}
           disabled={loading || allRows.length === 0}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
         >
           <Download className="h-3.5 w-3.5" />
           Export
@@ -531,7 +531,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
         <button
           onClick={handleExportAll}
           disabled={exportingAll || selectedItem === "" || selectedChannels.length === 0}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
         >
           <Download className="h-3.5 w-3.5" />
           {exportingAll ? "Exporting..." : "Export All"}
@@ -628,10 +628,10 @@ export default function VelocityPage() {
 
   return (
     <AppLayout>
-      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
+      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-start gap-2">
+            <Gauge className="mt-1 h-5 w-5" />
             <div>
               <h1 className="text-lg font-semibold">Velocity</h1>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -646,7 +646,7 @@ export default function VelocityPage() {
                 Last synced: {formattedSyncTime}
               </span>
             )}
-            <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs">
+            <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
               {(["utc", "la"] as const).map((t) => (
                 <button
                   key={t}
@@ -654,8 +654,8 @@ export default function VelocityPage() {
                   className={cn(
                     "rounded px-2.5 py-1 font-medium transition-colors",
                     timezone === t
-                      ? "bg-background shadow-sm text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-background shadow-sm text-foreground dark:bg-slate-950 dark:text-slate-50"
+                      : "text-muted-foreground hover:text-foreground dark:text-slate-300 dark:hover:text-slate-50"
                   )}
                 >
                   {t === "utc" ? "UTC" : "LA Time"}
@@ -666,7 +666,7 @@ export default function VelocityPage() {
               <AlertDialogTrigger asChild>
                 <button
                   disabled={syncing}
-                  className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
                 >
                   <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
                   {syncing ? "Syncing..." : "Sync"}
@@ -688,7 +688,7 @@ export default function VelocityPage() {
           </div>
         </header>
 
-        <div className="border-b border-[#e2dfd8] bg-white px-5 py-4">
+        <div className="border-b border-[#e2dfd8] bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
                 <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Item</span>
@@ -736,11 +736,11 @@ export default function VelocityPage() {
                   <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre Order</ToggleBtn>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
-                  <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs">
+                  <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
                     <button
                       onClick={() => setPeriodMode("period")}
                       className={cn("rounded px-2.5 py-1 font-medium transition-colors",
-                        periodMode === "period" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                        periodMode === "period" ? "bg-background shadow-sm text-foreground dark:bg-slate-950 dark:text-slate-50" : "text-muted-foreground hover:text-foreground dark:text-slate-300 dark:hover:text-slate-50"
                       )}
                     >
                       Period
@@ -748,7 +748,7 @@ export default function VelocityPage() {
                     <button
                       onClick={() => setPeriodMode("custom")}
                       className={cn("rounded px-2.5 py-1 font-medium transition-colors",
-                        periodMode === "custom" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                        periodMode === "custom" ? "bg-background shadow-sm text-foreground dark:bg-slate-950 dark:text-slate-50" : "text-muted-foreground hover:text-foreground dark:text-slate-300 dark:hover:text-slate-50"
                       )}
                     >
                       Custom
@@ -764,7 +764,7 @@ export default function VelocityPage() {
             </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto bg-white p-5">
+        <div className="min-h-0 flex-1 overflow-auto bg-white p-5 dark:bg-slate-950">
           {selectedItem === "" ? (
             <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
               Select an item

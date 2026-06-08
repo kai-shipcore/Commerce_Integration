@@ -1,14 +1,18 @@
 import {
   BarChart3,
+  Boxes,
   Building2,
+  ClipboardList,
+  Database,
   FileSpreadsheet,
   FolderKanban,
+  Gauge,
   LayoutDashboard,
   Package,
   Plug,
   ShieldCheck,
+  Ship,
   ShoppingCart,
-  Store,
   TrendingUp,
   Warehouse,
 } from "lucide-react";
@@ -34,7 +38,7 @@ export const navigationItems: NavigationItem[] = [
     href: "/",
     icon: LayoutDashboard,
     group: "Commerce",
-    hideable: true,
+    hideable: false,
   },
   {
     id: "products",
@@ -57,7 +61,7 @@ export const navigationItems: NavigationItem[] = [
     id: "orders",
     name: "Orders",
     href: "/orders",
-    icon: Store,
+    icon: ClipboardList,
     group: "Commerce",
     hideable: true,
   },
@@ -92,7 +96,7 @@ export const navigationItems: NavigationItem[] = [
     id: "velocity",
     name: "Velocity",
     href: "/velocity",
-    icon: TrendingUp,
+    icon: Gauge,
     group: "Analytics",
     hideable: true,
   },
@@ -116,7 +120,7 @@ export const navigationItems: NavigationItem[] = [
     id: "container-planning",
     name: "Container Planning",
     href: "/planning/container-planning",
-    icon: Warehouse,
+    icon: Ship,
     group: "Planning",
     hideable: true,
   },
@@ -124,7 +128,7 @@ export const navigationItems: NavigationItem[] = [
     id: "available-stock",
     name: "Available Stock",
     href: "/planning/available-stock",
-    icon: Package,
+    icon: Boxes,
     group: "Planning",
     hideable: true,
   },
@@ -141,7 +145,7 @@ export const navigationItems: NavigationItem[] = [
     id: "sku-master",
     name: "SKU Master",
     href: "/planning/sku-master",
-    icon: Package,
+    icon: Database,
     group: "Planning",
     hideable: true,
   },
@@ -192,7 +196,15 @@ export const adminDefaultVisibleMenuIds = navigationItems
   .filter((item) => item.hideable !== false && !item.hidden)
   .map((item) => item.id);
 
-export const userDefaultVisibleMenuIds = ["velocity"];
+export const userDefaultVisibleMenuIds = [
+  "velocity",
+  "demand-planning",
+  "sku-forecasts",
+  "container-planning",
+  "available-stock",
+  "inventory",
+  "orders",
+];
 
 export function isAdminLikeRole(role?: string | null): boolean {
   return role === "admin" || role === "dev";
@@ -255,24 +267,5 @@ export function getDefaultLandingPath(
   value: unknown,
   role?: string | null
 ): string {
-  const visibleMenuIds = sanitizeVisibleMenuIds(value, role);
-  const visibleMenuIdSet = new Set(visibleMenuIds);
-
-  if (visibleMenuIdSet.has("dashboard")) {
-    return "/dashboard";
-  }
-
-  if (visibleMenuIdSet.has("inventory")) {
-    return "/inventory";
-  }
-
-  if (visibleMenuIdSet.has("orders")) {
-    return "/orders";
-  }
-
-  const fallbackItem = navigationItems.find(
-    (item) => item.hideable !== false && !item.hidden && visibleMenuIdSet.has(item.id)
-  );
-
-  return fallbackItem?.href ?? "/inventory";
+  return "/";
 }

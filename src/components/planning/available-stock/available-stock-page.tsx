@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Boxes } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type StockSourceType = "remaining" | "mistake";
@@ -403,11 +404,14 @@ export function AvailableStockPage() {
   return (
     <section className="available-stock-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-white shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] px-6 py-4">
-        <div>
-          <h1 className="text-lg font-semibold">Available Stock Management</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Manage produced stock held in Remaining and Mistake Order lists before container allocation.
-          </p>
+        <div className="flex items-start gap-2">
+          <Boxes className="mt-1 h-5 w-5" />
+          <div>
+            <h1 className="text-lg font-semibold">Available Stock Management</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Manage produced stock held in Remaining and Mistake Order lists before container allocation.
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input

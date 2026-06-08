@@ -1,21 +1,38 @@
 // Code Guide: PATCH /api/planning/containers/items/[id]
-// Updates qty (and recomputes total_cbm = qty * cbm_unit) for a single
-// fc_container_items row. Used by inline editing on the planning dashboard.
+// Updates qty for a single fc_container_items row and keeps remaining-stock
+// allocations synchronized.
 //
 // DELETE /api/planning/containers/items/[id]
-// Removes the row entirely. Called when the user sets qty to 0.
+// Removes the item and any remaining-stock allocations attached to it.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import {
+  deleteRemainingAllocationsForContainerItem,
+  syncRemainingAllocationForContainerItem,
+} from "@/lib/planning/available-stock-allocation";
 import { z } from "zod";
 
 const BodySchema = z.object({
   qty: z.number().int().min(0),
 });
 
+type ItemRow = {
+  id: number;
+  container_id: number;
+  master_sku: string;
+  cbm_unit: string;
+  total_cbm: string;
+};
+
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Unknown error";
+}
+
+function parseItemId(id: string) {
+  const itemId = parseInt(id, 10);
+  return Number.isNaN(itemId) ? null : itemId;
 }
 
 export async function DELETE(
@@ -23,25 +40,45 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const itemId = parseInt(id);
-  if (isNaN(itemId)) {
+  const itemId = parseItemId(id);
+  if (itemId == null) {
     return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
   }
 
+  const client = await getPrimaryPool().connect();
   try {
-    const primary = getPrimaryPool();
-    const result = await primary.query(
-      `DELETE FROM shipcore.fc_container_items WHERE id = $1`,
+    await client.query("BEGIN");
+
+    const itemResult = await client.query<ItemRow>(
+      `SELECT id, container_id::int, master_sku, cbm_unit::float8, total_cbm::float8
+       FROM shipcore.fc_container_items
+       WHERE id = $1
+       FOR UPDATE`,
       [itemId],
     );
-    if (result.rowCount === 0) {
+
+    if (itemResult.rowCount === 0) {
+      await client.query("ROLLBACK");
       return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
     }
+
+    const item = itemResult.rows[0];
+    await deleteRemainingAllocationsForContainerItem(client, {
+      containerId: item.container_id,
+      masterSku: item.master_sku,
+    });
+
+    await client.query(`DELETE FROM shipcore.fc_container_items WHERE id = $1`, [itemId]);
+
+    await client.query("COMMIT");
     await invalidatePlanningDashboardCache();
     return NextResponse.json({ success: true });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("Container item DELETE failed:", error);
     return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+  } finally {
+    client.release();
   }
 }
 
@@ -50,8 +87,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const itemId = parseInt(id);
-  if (isNaN(itemId)) {
+  const itemId = parseItemId(id);
+  if (itemId == null) {
     return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
   }
 
@@ -62,32 +99,55 @@ export async function PATCH(
   }
 
   const { qty } = parsed.data;
+  const client = await getPrimaryPool().connect();
 
   try {
-    const primary = getPrimaryPool();
-    // total_cbm is a generated column — omit it from SET; DB recomputes it on qty change.
-    const result = await primary.query<{ id: number; cbm_unit: string; total_cbm: string }>(
+    await client.query("BEGIN");
+
+    const existingResult = await client.query<ItemRow>(
+      `SELECT id, container_id::int, master_sku, cbm_unit::float8, total_cbm::float8
+       FROM shipcore.fc_container_items
+       WHERE id = $1
+       FOR UPDATE`,
+      [itemId],
+    );
+
+    if (existingResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
+    }
+
+    const existing = existingResult.rows[0];
+    const result = await client.query<{ id: number; cbm_unit: string; total_cbm: string }>(
       `UPDATE shipcore.fc_container_items
-       SET qty        = $1,
+       SET qty = $1,
            updated_at = NOW()
        WHERE id = $2
        RETURNING id, cbm_unit::float8, total_cbm::float8`,
       [qty, itemId],
     );
 
-    if (result.rowCount === 0) {
-      return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
-    }
+    const allocatedQty = await syncRemainingAllocationForContainerItem(client, {
+      containerId: existing.container_id,
+      masterSku: existing.master_sku,
+      targetQty: qty,
+    });
 
+    await client.query("COMMIT");
     await invalidatePlanningDashboardCache();
+
     return NextResponse.json({
-      success:   true,
+      success: true,
       qty,
-      cbm_unit:  parseFloat(result.rows[0].cbm_unit),
+      allocated_qty: allocatedQty,
+      cbm_unit: parseFloat(result.rows[0].cbm_unit),
       total_cbm: parseFloat(result.rows[0].total_cbm),
     });
   } catch (error) {
+    await client.query("ROLLBACK");
     console.error("Container item PATCH failed:", error);
     return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+  } finally {
+    client.release();
   }
 }

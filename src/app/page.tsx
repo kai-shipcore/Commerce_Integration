@@ -49,11 +49,11 @@ export default async function HomePage() {
       .map((item) => item.href)
   );
 
-  const links = quickLinks.filter((link) => visibleHrefs.has(link.href));
+  const allowedHrefs = Array.from(visibleHrefs);
 
   return (
     <AppLayout>
-      <HomeDashboard links={links} />
+      <HomeDashboard links={quickLinks} allowedHrefs={allowedHrefs} />
     </AppLayout>
   );
 }

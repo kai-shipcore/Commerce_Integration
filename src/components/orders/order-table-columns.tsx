@@ -60,7 +60,7 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
       ),
       cell: ({ row }) => {
         const { webSku, webSkuCount } = row.original;
-        if (!webSku) return <span className="text-muted-foreground">—</span>;
+        if (!webSku) return <span className="text-muted-foreground">-</span>;
         return (
           <div className="flex items-center gap-1">
             <span className="font-medium tabular-nums">{webSku}</span>
@@ -80,7 +80,7 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
       ),
       cell: ({ row }) => {
         const { masterSku, masterSkuCount } = row.original;
-        if (!masterSku) return <span className="text-muted-foreground">—</span>;
+        if (!masterSku) return <span className="text-muted-foreground">-</span>;
         return (
           <div className="flex items-center gap-1">
             <span className="font-medium tabular-nums">{masterSku}</span>

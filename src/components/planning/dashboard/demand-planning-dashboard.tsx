@@ -811,7 +811,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           overflowX: "auto",
         }}
       >
-        <label style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+<label style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
           <select
             aria-label="Product category"
             value={categoryFilter}

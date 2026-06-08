@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Ship } from "lucide-react";
 import {
   containerStatusLabels,
   mockSkus,
@@ -50,10 +50,10 @@ const statusColors: Record<ContainerStatus, string> = {
 };
 
 const statusPillClasses: Record<ContainerStatus, string> = {
-  draft: "bg-[#fce4ec] text-[#880e4f]",
-  "final-list-sent": "bg-[#fef3e2] text-[#8a5300]",
-  "packing-list-received": "bg-[#ebf0fd] text-[#1a4db0]",
-  complete: "bg-[#e6f7ee] text-[#166534]",
+  draft: "bg-[#fce4ec] text-[#880e4f] dark:bg-pink-950/60 dark:text-pink-300",
+  "final-list-sent": "bg-[#fef3e2] text-[#8a5300] dark:bg-amber-950/60 dark:text-amber-300",
+  "packing-list-received": "bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/60 dark:text-blue-300",
+  complete: "bg-[#e6f7ee] text-[#166534] dark:bg-emerald-950/60 dark:text-emerald-300",
 };
 
 type InlineSkuDraft = {
@@ -125,9 +125,9 @@ type WarehouseOption = {
 type ContainerListTab = "active" | "completed";
 
 const productBadgeClasses: Record<ProductKey, string> = {
-  sc: "bg-[#e6f5f0] text-[#0a5e45]",
-  cc: "bg-[#ebf0fd] text-[#1a4db0]",
-  fm: "bg-[#fef3e2] text-[#8a5300]",
+  sc: "bg-[#e6f5f0] text-[#0a5e45] dark:bg-emerald-950/60 dark:text-emerald-300",
+  cc: "bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/60 dark:text-blue-300",
+  fm: "bg-[#fef3e2] text-[#8a5300] dark:bg-amber-950/60 dark:text-amber-300",
 };
 
 const productLabels: Record<ProductKey, string> = {
@@ -1315,19 +1315,22 @@ export function ContainerPlanningPage() {
   }
 
   return (
-    <section className="container-planning-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4">
-        <div>
-          <h1 className="text-lg font-semibold">Container Planning</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Register inbound containers, assign SKU quantities, and monitor packing-list status.
-          </p>
+    <section className="container-planning-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-start gap-2">
+          <Ship className="mt-1 h-5 w-5" />
+          <div>
+            <h1 className="text-lg font-semibold">Container Planning</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Register inbound containers, assign SKU quantities, and monitor packing-list status.
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="form-input h-9 w-72 bg-white"
+            className="form-input h-9 w-72 bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
             placeholder="Search container"
           />
           <button
@@ -1340,15 +1343,15 @@ export function ContainerPlanningPage() {
         </div>
       </header>
 
-      <div className="border-b border-[#e2dfd8] bg-[#f0eee9]">
+      <div className="border-b border-[#e2dfd8] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900">
         <button
           type="button"
           onClick={() => setSummaryCollapsed((current) => !current)}
-          className="flex w-full flex-wrap items-center justify-between gap-3 px-6 py-2 text-left transition-colors hover:bg-[#ebe8df]"
+          className="flex w-full flex-wrap items-center justify-between gap-3 px-6 py-2 text-left transition-colors hover:bg-[#ebe8df] dark:hover:bg-slate-800"
           aria-expanded={!summaryCollapsed}
         >
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            <span className="font-semibold text-[#1a1917]">Summary</span>
+            <span className="font-semibold text-[#1a1917] dark:text-slate-50">Summary</span>
             <span className="text-muted-foreground">
               Total <span className="font-mono font-semibold text-foreground">{containers.length}</span>
             </span>
@@ -1372,7 +1375,7 @@ export function ContainerPlanningPage() {
           )}
         </button>
         {!summaryCollapsed ? (
-          <div className="grid grid-cols-2 border-t border-[#e2dfd8] md:grid-cols-4">
+          <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
             <ContainerStat label="Total Containers" value={containers.length} sub="Registered plans" />
             <ContainerStat label="Inbound Units" value={formatNumber(totalUnits)} sub="Across all SKUs" />
             <ContainerStat label="Total CBM" value={totalCbm.toFixed(2)} sub="Current usage" />
@@ -1381,10 +1384,10 @@ export function ContainerPlanningPage() {
         ) : null}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 bg-white lg:grid-cols-[420px_1fr]">
-        <aside className="border-r border-[#e2dfd8] bg-white">
-          <div className="flex flex-col gap-2 border-b border-[#e2dfd8] px-4 py-3">
-            <div className="grid grid-cols-2 rounded-md border border-[#d8d6ce] bg-[#f5f4f0] p-1">
+      <div className="grid min-h-0 flex-1 grid-cols-1 bg-white dark:bg-slate-950 lg:grid-cols-[420px_1fr]">
+        <aside className="border-r border-[#e2dfd8] bg-white dark:border-slate-700 dark:bg-slate-950">
+          <div className="flex flex-col gap-2 border-b border-[#e2dfd8] px-4 py-3 dark:border-slate-700">
+            <div className="grid grid-cols-2 rounded-md border border-[#d8d6ce] bg-[#f5f4f0] p-1 dark:border-slate-700 dark:bg-slate-900">
               {([
                 { id: "active", label: "Active", count: activeContainers },
                 { id: "completed", label: "Completed", count: completedContainers },
@@ -1410,8 +1413,8 @@ export function ContainerPlanningPage() {
                     }}
                     className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
                       isActive
-                        ? "bg-white text-[#1a1917] shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
+                        ? "bg-white text-[#1a1917] shadow-sm ring-1 ring-inset ring-[#1a5cdb] dark:bg-blue-950/50 dark:text-blue-100 dark:ring-blue-500"
+                        : "text-muted-foreground hover:text-foreground dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                     }`}
                   >
                     {tab.label}
@@ -1424,7 +1427,7 @@ export function ContainerPlanningPage() {
               <span className="text-sm font-semibold text-muted-foreground">
                 {filteredContainers.length}
                 {(statusFilter || productFilter) ? (
-                  <span className="ml-1 text-[11px] font-normal text-[#1a5cdb]">
+                  <span className="ml-1 text-[11px] font-normal text-[#1a5cdb] dark:text-blue-300">
                     (filtered)
                   </span>
                 ) : null}
@@ -1440,8 +1443,8 @@ export function ContainerPlanningPage() {
                       onClick={() => setStatusFilter(isActive ? null : status.value)}
                       className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors ${
                         isActive
-                          ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4]"
-                          : "hover:text-foreground"
+                          ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4] dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-600"
+                          : "hover:text-foreground dark:hover:text-slate-50"
                       }`}
                     >
                       <span className="h-2 w-2 rounded-full" style={{ backgroundColor: statusColors[status.value] }} />
@@ -1462,8 +1465,8 @@ export function ContainerPlanningPage() {
                     onClick={() => setProductFilter(isActive ? null : key)}
                     className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors ${
                       isActive
-                        ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4]"
-                        : "hover:text-foreground"
+                        ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4] dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-600"
+                        : "hover:text-foreground dark:hover:text-slate-50"
                     }`}
                   >
                     <span
@@ -1503,8 +1506,8 @@ export function ContainerPlanningPage() {
                       setExpandedId(container.id);
                       setIsFormOpen(false);
                     }}
-                    className={`flex w-full items-start gap-3 border-b border-[#e2dfd8] px-4 py-3 text-left transition-colors hover:bg-[#f0eee9] ${
-                      selectedContainer?.id === container.id && !isFormOpen ? "border-l-4 border-l-[#1a5cdb] bg-[#ebf0fd]" : ""
+                    className={`flex w-full items-start gap-3 border-b border-[#e2dfd8] px-4 py-3 text-left transition-colors hover:bg-[#f0eee9] dark:border-slate-700 dark:hover:bg-slate-900 ${
+                      selectedContainer?.id === container.id && !isFormOpen ? "border-l-4 border-l-[#1a5cdb] bg-[#ebf0fd] dark:bg-blue-950/40" : ""
                     }`}
                   >
                     <span
@@ -1536,7 +1539,7 @@ export function ContainerPlanningPage() {
                 <button
                   type="button"
                   onClick={openForm}
-                  className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0] dark:border-slate-700 dark:bg-slate-900 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-200"
                 >
                   <span className="text-3xl">+</span>
                   <span className="text-sm font-semibold">
@@ -1553,7 +1556,7 @@ export function ContainerPlanningPage() {
           </div>
         </aside>
 
-        <main className="min-w-0 bg-white">
+        <main className="min-w-0 bg-white dark:bg-slate-950">
           {isFormOpen ? (
             <div className="h-full overflow-y-auto px-7 py-6">
               <ContainerCreateForm
@@ -1669,7 +1672,7 @@ export function ContainerPlanningPage() {
 
 function ContainerStat({ label, value, sub }: { label: string; value: string | number; sub: string }) {
   return (
-    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0">
+    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0 dark:border-slate-700">
       <div className="text-[10px] uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
       <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>

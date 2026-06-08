@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Building2 } from "lucide-react";
 
 type FactoryRecord = {
   id: string;
@@ -221,11 +222,14 @@ export function FactoriesPage() {
 
         {/* Header */}
         <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold">🏭 Factory Management</h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Manage factory master records used across planning workflows
-            </p>
+          <div className="flex items-start gap-2">
+            <Building2 className="mt-1 h-5 w-5" />
+            <div>
+              <h1 className="text-lg font-semibold">Factory Management</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Manage factory master records used across planning workflows
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input

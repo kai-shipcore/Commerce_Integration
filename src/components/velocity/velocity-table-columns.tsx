@@ -33,7 +33,7 @@ function QtyCell({ value, isTotal }: { value: number | null; isTotal?: boolean }
 }
 
 function PlaceholderCell() {
-  return <span className="text-muted-foreground/40 tabular-nums select-none">—</span>;
+  return <span className="text-muted-foreground/40 tabular-nums select-none">-</span>;
 }
 
 function makeQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {

@@ -24,7 +24,7 @@ import {
   OrderDetailDialog,
   type OrderDetail,
 } from "@/components/orders/order-detail-dialog";
-import { ChevronDown, ChevronUp, Download, Loader2, ShoppingCart } from "lucide-react";
+import { ChevronDown, ChevronUp, ClipboardList, Download, Loader2, ShoppingCart } from "lucide-react";
 
 type OrderDatePreset = "today" | "yesterday" | "last7" | "last30" | "last90" | "last6m" | "last1y" | "ytd" | "custom";
 
@@ -359,13 +359,16 @@ function OrdersPageContent() {
 
   return (
     <AppLayout>
-      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
-          <div>
-            <h1 className="text-lg font-semibold">Orders</h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Channel order feed from external sales orders and line item tables
-            </p>
+      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-start gap-2">
+            <ClipboardList className="mt-1 h-5 w-5" />
+            <div>
+              <h1 className="text-lg font-semibold">Orders</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Channel order feed from external sales orders and line item tables
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={datePreset} onValueChange={handleDatePresetChange}>
@@ -457,15 +460,15 @@ function OrdersPageContent() {
           </div>
         </header>
 
-        <div className="border-b border-[#e2dfd8] bg-[#f0eee9]">
+        <div className="border-b border-[#e2dfd8] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900">
           <button
             type="button"
             onClick={() => setSummaryCollapsed((current) => !current)}
-            className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-2 text-left transition-colors hover:bg-[#ebe8df]"
+            className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-2 text-left transition-colors hover:bg-[#ebe8df] dark:hover:bg-slate-800"
             aria-expanded={!summaryCollapsed}
           >
             <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-              <span className="font-semibold text-[#1a1917]">Summary</span>
+              <span className="font-semibold text-[#1a1917] dark:text-slate-50">Summary</span>
               <span className="text-muted-foreground">
                 Orders{" "}
                 <span className="font-mono font-semibold text-foreground">
@@ -498,7 +501,7 @@ function OrdersPageContent() {
             )}
           </button>
           {!summaryCollapsed ? (
-            <div className="grid grid-cols-2 border-t border-[#e2dfd8] md:grid-cols-4">
+            <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
               <OrdersStat
                 label="Total Orders"
                 value={summary?.totalOrders.toLocaleString() ?? "-"}
@@ -523,7 +526,7 @@ function OrdersPageContent() {
           ) : null}
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col bg-white">
+        <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-slate-950">
           <div className="min-h-0 flex-1 overflow-auto p-5">
             {!loading && !error ? (
               <div className="mb-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
@@ -632,7 +635,7 @@ export default function OrdersPage() {
 
 function OrdersStat({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0">
+    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0 dark:border-slate-700">
       <div className="text-[10px] uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
       <div className="text-xs text-muted-foreground">{sub}</div>

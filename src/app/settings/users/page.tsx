@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Search, ShieldAlert } from "lucide-react";
+import { Loader2, Search, ShieldAlert, ShieldCheck } from "lucide-react";
 
 interface ManagedUser {
   id: string;
@@ -272,13 +272,16 @@ export default function UserAccessPage() {
 
   return (
     <AppLayout>
-      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
-          <div>
-            <h1 className="text-lg font-semibold">User Access</h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Review users in the list, then open one user to manage role and menu access.
-            </p>
+      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="mt-1 h-5 w-5" />
+            <div>
+              <h1 className="text-lg font-semibold">User Access</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Review users in the list, then open one user to manage role and menu access.
+              </p>
+            </div>
           </div>
           <Badge variant="secondary">{pagination.total.toLocaleString()} users</Badge>
         </header>
@@ -290,8 +293,8 @@ export default function UserAccessPage() {
         )}
 
         <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(400px,0.85fr)]">
-          <div className="flex min-h-[560px] flex-col border-b border-[#e2dfd8] bg-white xl:min-h-0 xl:border-b-0 xl:border-r xl:border-[#e2dfd8]">
-            <div className="space-y-4 border-b border-[#e2dfd8] px-5 py-4">
+          <div className="flex min-h-[560px] flex-col border-b border-[#e2dfd8] bg-white dark:border-slate-700 dark:bg-slate-950 xl:min-h-0 xl:border-b-0 xl:border-r xl:border-[#e2dfd8] xl:dark:border-slate-700">
+            <div className="space-y-4 border-b border-[#e2dfd8] px-5 py-4 dark:border-slate-700">
               <div className="flex items-center justify-between gap-4">
                 <h2 className="text-sm font-semibold">User List</h2>
                 <span className="text-xs text-muted-foreground">
@@ -307,7 +310,7 @@ export default function UserAccessPage() {
                   className="pl-9"
                 />
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4 text-sm text-muted-foreground dark:border-slate-700">
                 <div className="flex items-center gap-2">
                   <span>Rows</span>
                   <select
@@ -317,7 +320,7 @@ export default function UserAccessPage() {
                       page: 1,
                       limit: Number(event.target.value),
                     }))}
-                    className="h-8 rounded-md border bg-background px-2 text-foreground"
+                    className="h-8 rounded-md border bg-background px-2 text-foreground dark:border-slate-700 dark:bg-slate-950"
                   >
                     {[10, 20, 50].map((size) => (
                       <option key={size} value={size}>{size}</option>
@@ -350,9 +353,9 @@ export default function UserAccessPage() {
               </div>
             </div>
             <div className="min-h-0 flex-1 p-5">
-              <div className="h-full overflow-y-auto rounded-md border border-[#e2dfd8]">
+              <div className="h-full overflow-y-auto rounded-md border border-[#e2dfd8] dark:border-slate-700">
                 <Table>
-                  <TableHeader className="sticky top-0 z-10 bg-[#f8f7f4]">
+                  <TableHeader className="sticky top-0 z-10 bg-[#f8f7f4] dark:bg-slate-900">
                     <TableRow>
                       <TableHead>User ID</TableHead>
                       <TableHead>Email</TableHead>
@@ -404,8 +407,8 @@ export default function UserAccessPage() {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col bg-white">
-            <div className="flex flex-col gap-3 border-b border-[#e2dfd8] px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-h-0 flex-col bg-white dark:bg-slate-950">
+            <div className="flex flex-col gap-3 border-b border-[#e2dfd8] px-5 py-4 dark:border-slate-700 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <h2 className="text-sm font-semibold">
                   {selectedUser ? selectedUser.name?.trim() || selectedUser.email : "User Details"}
@@ -451,7 +454,7 @@ export default function UserAccessPage() {
             </div>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               {!selectedUser ? (
-                <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground dark:border-slate-700">
                   Select a user from the list to manage detailed permissions.
                 </div>
               ) : (
@@ -463,7 +466,7 @@ export default function UserAccessPage() {
                     </div>
                   )}
 
-                  <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
+                  <div className="grid gap-3 rounded-lg border p-4 text-sm dark:border-slate-700 sm:grid-cols-2">
                     <div>
                       <p className="font-medium">User ID</p>
                       <p className="break-all text-muted-foreground">{selectedUser.id}</p>
@@ -597,7 +600,7 @@ export default function UserAccessPage() {
                               return (
                                 <div
                                   key={`${selectedUser.id}-${item.id}`}
-                                  className="flex items-center justify-between rounded-lg border px-4 py-3"
+                                  className="flex items-center justify-between rounded-lg border px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40"
                                 >
                                   <div className="space-y-0.5">
                                     <Label

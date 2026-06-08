@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { subDays, subMonths, subYears, format } from "date-fns";
+import { toast } from "sonner";
 import {
-  LineChart, Line, BarChart, Bar,
+  AreaChart, Area, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { AlertTriangle, Loader2, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, DollarSign, LayoutDashboard, Loader2, Package, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import { QuickLinks, type QuickLink } from "./quick-links";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -23,8 +24,8 @@ interface SalesSummary { totalUnits: number; totalRevenue: number; growthPct: nu
 
 type CategoryKey = "fm" | "cc" | "sc";
 type Period = "7d" | "30d" | "90d" | "6m" | "1y" | "ytd";
-type ViewMode = "revenue" | "quantity";
-type ChartType = "line" | "bar";
+type ViewMode = "revenue" | "orders";
+type ChartType = "area" | "line" | "bar";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,13 @@ function Skeleton({ className }: { className?: string }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function HomeDashboard({ links }: { links: QuickLink[] }) {
+export function HomeDashboard({
+  links,
+  allowedHrefs,
+}: {
+  links: QuickLink[];
+  allowedHrefs: string[];
+}) {
   // Planning KPIs
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
@@ -80,7 +87,7 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
   // Sales chart
   const [period, setPeriod] = useState<Period>("7d");
   const [viewMode, setViewMode] = useState<ViewMode>("revenue");
-  const [chartType, setChartType] = useState<ChartType>("line");
+  const [chartType, setChartType] = useState<ChartType>("area");
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [chartLoading, setChartLoading] = useState(true);
@@ -162,12 +169,28 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
 
   const cat      = stats?.byCategory?.[activeCat];
   const dashLink = `/planning/dashboard-ag-grid?product=${activeCat}`;
+  const canOpenHref = useCallback((href: string) => {
+    const pathname = href.startsWith("http")
+      ? new URL(href).pathname
+      : href.split("?")[0];
+    const canOpen = allowedHrefs.includes(pathname);
+    if (!canOpen) {
+      toast.error("이 페이지에 접근 권한이 없습니다. 관리자에게 권한을 요청하세요.");
+    }
+    return canOpen;
+  }, [allowedHrefs]);
+
+  const guardLinkClick = useCallback((event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (canOpenHref(href)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, [canOpenHref]);
 
   const chartData = trendData.map((d) => ({
     ...d,
     dateLabel: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
   }));
-  const dataKey  = viewMode === "revenue" ? "revenue" : "quantity";
+  const dataKey = viewMode === "revenue" ? "revenue" : "quantity";
   const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? period;
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -176,9 +199,12 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Command Center</h1>
-          {syncLabel && <p className="mt-0.5 text-xs text-muted-foreground">{syncLabel}</p>}
+        <div className="flex items-start gap-2">
+          <LayoutDashboard className="mt-1.5 h-5 w-5" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Command Center</h1>
+            {syncLabel && <p className="mt-0.5 text-xs text-muted-foreground">{syncLabel}</p>}
+          </div>
         </div>
         <button
           type="button"
@@ -222,6 +248,7 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
         ) : (
           <>
             <Link href={`${dashLink}&status=crit`}
+              onClick={(event) => guardLinkClick(event, `${dashLink}&status=crit`)}
               className="rounded-xl border bg-white p-4 transition-colors hover:bg-red-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-red-950/30">
               <p className="text-xs font-medium text-muted-foreground">Critical</p>
               <p className="mt-1 text-3xl font-bold text-red-600 dark:text-red-400">{(cat?.critical ?? 0).toLocaleString()}</p>
@@ -229,6 +256,7 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
             </Link>
 
             <Link href={`${dashLink}&status=warn`}
+              onClick={(event) => guardLinkClick(event, `${dashLink}&status=warn`)}
               className="rounded-xl border bg-white p-4 transition-colors hover:bg-amber-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-amber-950/30">
               <p className="text-xs font-medium text-muted-foreground">Warning</p>
               <p className="mt-1 text-3xl font-bold text-amber-600 dark:text-amber-400">{(cat?.warning ?? 0).toLocaleString()}</p>
@@ -236,6 +264,7 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
             </Link>
 
             <Link href={`${dashLink}&status=bo`}
+              onClick={(event) => guardLinkClick(event, `${dashLink}&status=bo`)}
               className="rounded-xl border bg-white p-4 transition-colors hover:bg-orange-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-orange-950/30">
               <div className="flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3 text-orange-500" />
@@ -268,31 +297,37 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
                 ))}
               </select>
               {/* View mode */}
-              <div className="flex h-7 overflow-hidden rounded border border-[#C2BFB5] dark:border-zinc-600">
-                {(["revenue", "quantity"] as ViewMode[]).map((m) => (
+              <div className="flex h-8 overflow-hidden rounded-lg border border-[#C2BFB5] bg-[#f5f4f0] p-0.5 dark:border-zinc-600 dark:bg-zinc-900">
+                {(["revenue", "orders"] as ViewMode[]).map((m) => {
+                  const active = viewMode === m;
+                  const Icon = m === "revenue" ? DollarSign : Package;
+                  return (
                   <button
                     key={m}
                     type="button"
                     onClick={() => setViewMode(m)}
-                    className={`px-2.5 text-xs font-medium ${viewMode === m ? "bg-[#1A1917] text-white dark:bg-white dark:text-[#1A1917]" : "text-muted-foreground hover:bg-[#f0eee9] dark:hover:bg-zinc-700"}`}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors ${
+                      active
+                        ? "bg-[#1A1917] text-white shadow-sm dark:bg-white dark:text-[#1A1917]"
+                        : "text-muted-foreground hover:bg-white dark:hover:bg-zinc-800"
+                    }`}
                   >
-                    {m === "revenue" ? "Revenue" : "Qty"}
+                    <Icon className="h-3.5 w-3.5" />
+                    {m === "revenue" ? "Revenue" : "Orders"}
                   </button>
-                ))}
+                  );
+                })}
               </div>
-              {/* Chart type */}
-              <div className="flex h-7 overflow-hidden rounded border border-[#C2BFB5] dark:border-zinc-600">
-                {(["line", "bar"] as ChartType[]).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setChartType(t)}
-                    className={`px-2.5 text-xs font-medium capitalize ${chartType === t ? "bg-[#1A1917] text-white dark:bg-white dark:text-[#1A1917]" : "text-muted-foreground hover:bg-[#f0eee9] dark:hover:bg-zinc-700"}`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+              <select
+                value={chartType}
+                onChange={(e) => setChartType(e.target.value as ChartType)}
+                className="h-8 rounded-lg border border-[#C2BFB5] bg-white px-2.5 text-xs font-semibold text-[#1A1917] outline-none focus:border-[#1a5cdb] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                aria-label="Chart type"
+              >
+                <option value="area">Area</option>
+                <option value="line">Line</option>
+                <option value="bar">Bar</option>
+              </select>
             </div>
           </div>
 
@@ -308,7 +343,24 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
           ) : (
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                {chartType === "line" ? (
+                {chartType === "area" ? (
+                  <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="homeSalesTrendFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.28} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis dataKey="dateLabel" axisLine={false} tickLine={false}
+                      tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} width={52}
+                      tickFormatter={(v) => viewMode === "revenue" ? `$${(v / 1000).toFixed(0)}k` : String(v)} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Area type="monotone" dataKey={dataKey} stroke="#3b82f6" strokeWidth={2}
+                      fill="url(#homeSalesTrendFill)" fillOpacity={1} activeDot={{ r: 4 }} connectNulls />
+                  </AreaChart>
+                ) : chartType === "line" ? (
                   <LineChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis dataKey="dateLabel" axisLine={false} tickLine={false}
@@ -336,7 +388,11 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
         </div>
 
         {/* Sales summary — matches selected period, links to Orders page */}
-        <Link href={ordersHref} className="rounded-xl border bg-white p-4 transition-colors hover:bg-[#f0eee9] dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700/60 block">
+        <Link
+          href={ordersHref}
+          onClick={(event) => guardLinkClick(event, ordersHref)}
+          className="rounded-xl border bg-white p-4 transition-colors hover:bg-[#f0eee9] dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700/60 block"
+        >
           <h2 className="mb-3 text-sm font-semibold">Sales — {periodLabel}</h2>
 
           {chartLoading ? (
@@ -379,7 +435,7 @@ export function HomeDashboard({ links }: { links: QuickLink[] }) {
           <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Quick Links
           </h2>
-          <QuickLinks links={links} />
+          <QuickLinks links={links} onNavigate={canOpenHref} />
         </div>
       )}
     </div>
@@ -395,7 +451,7 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: { paylo
     <div className="rounded-lg border border-border bg-popover p-2.5 shadow-lg text-xs">
       <p className="mb-1 font-medium">{d.dateLabel}</p>
       <p><span className="text-muted-foreground">Revenue: </span><span className="font-medium">${d.revenue.toLocaleString()}</span></p>
-      <p><span className="text-muted-foreground">Qty: </span><span className="font-medium">{d.quantity.toLocaleString()}</span></p>
+      <p><span className="text-muted-foreground">Orders: </span><span className="font-medium">{d.quantity.toLocaleString()}</span></p>
     </div>
   );
 }

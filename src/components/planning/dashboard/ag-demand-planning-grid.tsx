@@ -55,6 +55,7 @@ type QtyOverride = {
   cbm: number | null;
   cbm_unit?: number | null;
   item_id?: number;
+  allocated_remaining_qty?: number | null;
 };
 
 type ChainDerived = {
@@ -796,6 +797,7 @@ export function AgDemandPlanningGrid({
             cbm: item.total_cbm,
             cbm_unit: item.cbm_unit,
             item_id: previous?.item_id ?? raw?.item_id ?? item.item_id,
+            allocated_remaining_qty: previous?.allocated_remaining_qty ?? raw?.allocated_remaining_qty ?? null,
           });
         }
         return next;
@@ -817,7 +819,7 @@ export function AgDemandPlanningGrid({
     const oldQty = previous?.inbound_qty ?? raw.inbound_qty ?? 0;
     if (nextQty === oldQty || (!itemId && nextQty === 0)) return true;
 
-    let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number };
+    let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
     if (itemId && nextQty === 0) {
       json = await fetch(`/api/planning/containers/items/${itemId}`, { method: "DELETE" }).then((response) => response.json());
     } else if (itemId) {
@@ -841,12 +843,15 @@ export function AgDemandPlanningGrid({
     if (!json.success) return false;
 
     const nextOverrides = new Map(qtyOverrides);
+    const oldAllocatedQty = previous?.allocated_remaining_qty ?? raw.allocated_remaining_qty ?? 0;
+    const nextAllocatedQty = nextQty === 0 ? 0 : (json.allocated_qty ?? oldAllocatedQty);
     nextOverrides.set(key, {
       inbound_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
       avail_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
       cbm: nextQty === 0 ? null : (json.total_cbm ?? 0),
       cbm_unit: previous?.cbm_unit ?? raw.cbm_unit,
       item_id: nextQty === 0 ? undefined : (json.item_id ?? itemId),
+      allocated_remaining_qty: nextAllocatedQty,
     });
     setQtyOverrides(nextOverrides);
     setChainMap((current) => new Map(current).set(row.sku, computeContainerChain(row, containers, nextOverrides, seasonalFactors)));
@@ -862,6 +867,18 @@ export function AgDemandPlanningGrid({
         next.set(row.sku, {
           total_inbound_qty: Math.max(0, currentTotal - oldQty + nextQty),
           containers_list: entries.join(", ") || null,
+        });
+        return next;
+      });
+    }
+    if (nextAllocatedQty !== oldAllocatedQty) {
+      setRowOverrides((current) => {
+        const next = new Map(current);
+        const currentRow = current.get(row.sku) ?? {};
+        const currentRemaining = currentRow.remaining ?? row.remaining ?? 0;
+        next.set(row.sku, {
+          ...currentRow,
+          remaining: Math.max(0, currentRemaining - (nextAllocatedQty - oldAllocatedQty)),
         });
         return next;
       });
@@ -1012,7 +1029,7 @@ export function AgDemandPlanningGrid({
               const key = `${params.data.sku}::${container.name}`;
               const raw = params.data.containers?.[container.name] ?? {
                 item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
-                est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
+                allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
                 inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
               };
               const value = { ...raw, ...(qtyOverrides.get(key) ?? {}), ...(chainMap.get(params.data.sku)?.get(container.name) ?? {}) };
@@ -1024,7 +1041,7 @@ export function AgDemandPlanningGrid({
               if (!row) return { onSave: async () => false };
               const raw = row.containers?.[container.name] ?? {
                 item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
-                est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
+                allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
                 inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
               };
               return { onSave: (qty: number) => saveQty(row, container, raw, qty) };

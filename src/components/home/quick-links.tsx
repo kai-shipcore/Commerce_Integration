@@ -8,7 +8,13 @@ export interface QuickLink {
   label: string;
 }
 
-export function QuickLinks({ links }: { links: QuickLink[] }) {
+export function QuickLinks({
+  links,
+  onNavigate,
+}: {
+  links: QuickLink[];
+  onNavigate?: (href: string) => boolean;
+}) {
   const router = useRouter();
 
   return (
@@ -18,7 +24,10 @@ export function QuickLinks({ links }: { links: QuickLink[] }) {
           key={link.href}
           variant="outline"
           className="h-12"
-          onClick={() => router.push(link.href)}
+          onClick={() => {
+            if (onNavigate && !onNavigate(link.href)) return;
+            router.push(link.href);
+          }}
         >
           {link.label}
         </Button>

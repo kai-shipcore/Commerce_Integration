@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Database } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
 
@@ -366,11 +366,14 @@ export function SkuMasterPage() {
   return (
     <section className="sku-master-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
-        <div>
-          <h1 className="text-lg font-semibold">SKU Master Management</h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Manage CBM and MOQ. Click Edit to update values inline.
-          </p>
+        <div className="flex items-start gap-2">
+          <Database className="mt-1 h-5 w-5" />
+          <div>
+            <h1 className="text-lg font-semibold">SKU Master Management</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Manage CBM and MOQ. Click Edit to update values inline.
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -460,15 +463,15 @@ export function SkuMasterPage() {
         </div>
       </header>
 
-      <div className="border-b border-[#e2dfd8] bg-[#f0eee9]">
+      <div className="border-b border-[#e2dfd8] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900">
         <button
           type="button"
           onClick={() => setSummaryCollapsed((current) => !current)}
-          className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-2 text-left transition-colors hover:bg-[#ebe8df]"
+          className="flex w-full flex-wrap items-center justify-between gap-3 px-5 py-2 text-left transition-colors hover:bg-[#ebe8df] dark:hover:bg-slate-800"
           aria-expanded={!summaryCollapsed}
         >
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            <span className="font-semibold text-[#1a1917]">Summary</span>
+            <span className="font-semibold text-[#1a1917] dark:text-slate-50">Summary</span>
             <span className="text-muted-foreground">
               Total <span className="font-mono font-semibold text-foreground">{numberFormatter.format(pagination.total)}</span>
             </span>
@@ -492,7 +495,7 @@ export function SkuMasterPage() {
           )}
         </button>
         {!summaryCollapsed ? (
-          <div className="grid grid-cols-2 border-t border-[#e2dfd8] md:grid-cols-4">
+          <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
             <SkuStat
               label="Total SKUs"
               value={numberFormatter.format(pagination.total)}
@@ -640,7 +643,7 @@ function formatCsvCell(value: string | number) {
 
 function SkuStat({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
-    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0">
+    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0 dark:border-slate-700">
       <div className="text-[10px] uppercase tracking-[0.04em] text-muted-foreground">{label}</div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
       <div className="text-xs text-muted-foreground">{sub}</div>

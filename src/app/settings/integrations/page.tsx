@@ -41,6 +41,7 @@ import {
 import {
   Plus,
   Pencil,
+  Plug,
   RefreshCw,
   Trash2,
   CheckCircle,
@@ -73,12 +74,6 @@ interface ConnectionCheckResult {
 }
 
 type IntegrationPlatform = "shopify" | "amazon" | "ebay" | "walmart";
-type SecretFieldKey =
-  | "accessToken"
-  | "lwaClientSecret"
-  | "lwaRefreshToken"
-  | "clientSecret"
-  | "privateKey";
 
 interface IntegrationDetail extends Integration {
   config: Partial<Record<keyof IntegrationFormState, string>>;
@@ -121,6 +116,10 @@ const initialFormState: IntegrationFormState = {
   channelType: "",
   environment: "production",
 };
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
 
 export default function IntegrationsPage() {
   const { data: session } = useSession();
@@ -213,8 +212,8 @@ export default function IntegrationsPage() {
       setAddDialogOpen(false);
       setFormData(initialFormState);
       fetchIntegrations();
-    } catch (error: any) {
-      setFormError(error.message);
+    } catch (error: unknown) {
+      setFormError(getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -237,8 +236,8 @@ export default function IntegrationsPage() {
       setEditingIntegrationId(integrationId);
       setEditFormData(buildFormStateFromIntegration(integration));
       setEditDialogOpen(true);
-    } catch (error: any) {
-      setEditFormError(error.message);
+    } catch (error: unknown) {
+      setEditFormError(getErrorMessage(error));
     } finally {
       setLoadingEditId(null);
     }
@@ -274,8 +273,8 @@ export default function IntegrationsPage() {
       setEditingIntegrationId(null);
       setEditFormData(initialFormState);
       fetchIntegrations();
-    } catch (error: any) {
-      setEditFormError(error.message);
+    } catch (error: unknown) {
+      setEditFormError(getErrorMessage(error));
     } finally {
       setUpdating(false);
     }
@@ -356,12 +355,12 @@ export default function IntegrationsPage() {
       if (status === "connected") {
         fetchIntegrations();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setConnectionResults((current) => ({
         ...current,
         [integrationId]: {
           tone: "error",
-          message: error.message || "Connection check failed.",
+          message: getErrorMessage(error) || "Connection check failed.",
         },
       }));
     } finally {
@@ -379,6 +378,10 @@ export default function IntegrationsPage() {
 
   const addDialogMeta = getDialogMeta(formData.platform, "add");
   const editDialogMeta = getDialogMeta(editFormData.platform, "edit");
+  const activeCount = integrations.filter((integration) => integration.isActive).length;
+  const syncedCount = integrations.filter((integration) => integration.lastSyncStatus === "success").length;
+  const failedCount = integrations.filter((integration) => integration.lastSyncStatus === "failed").length;
+  const totalOrdersSynced = integrations.reduce((sum, integration) => sum + integration.totalOrdersSynced, 0);
 
   const getStatusBadge = (integration: Integration) => {
     if (!integration.isActive) {
@@ -389,7 +392,7 @@ export default function IntegrationsPage() {
     }
     if (integration.lastSyncStatus === "success") {
       return (
-        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+        <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-950/60">
           <CheckCircle className="h-3 w-3 mr-1" />
           Synced
         </Badge>
@@ -405,11 +408,12 @@ export default function IntegrationsPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col gap-6">
+      <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
         {/* eBay re-auth result banner */}
         {reauthBanner && (
           <Alert
             variant={reauthBanner.type === "error" ? "destructive" : "default"}
+            className="m-4 mb-0 bg-white dark:bg-slate-900"
           >
             {reauthBanner.type === "success" ? (
               <CheckCircle className="h-4 w-4" />
@@ -429,18 +433,19 @@ export default function IntegrationsPage() {
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              Marketplace APIs
-            </h1>
-            <p className="text-muted-foreground">
-              Connect e-Commerce platform accounts to sync sales data
-            </p>
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex items-start gap-2">
+            <Plug className="mt-1 h-5 w-5" />
+            <div>
+              <h1 className="text-lg font-semibold">Marketplace APIs</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Connect e-Commerce platform accounts to sync sales data
+              </p>
+            </div>
           </div>
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="bg-[#1a5cdb] hover:bg-[#1650c4]">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Market Place
               </Button>
@@ -520,16 +525,24 @@ export default function IntegrationsPage() {
               </form>
             </DialogContent>
           </Dialog>
+        </header>
+
+        <div className="grid grid-cols-2 border-b border-[#e2dfd8] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4">
+          <IntegrationStat label="Total APIs" value={integrations.length.toLocaleString()} sub="Marketplace connections" />
+          <IntegrationStat label="Active" value={activeCount.toLocaleString()} sub="Enabled sync sources" />
+          <IntegrationStat label="Synced" value={syncedCount.toLocaleString()} sub={`${failedCount.toLocaleString()} failed`} />
+          <IntegrationStat label="Orders Synced" value={totalOrdersSynced.toLocaleString()} sub="All integrations" />
         </div>
 
+        <main className="min-h-0 flex-1 overflow-y-auto bg-white p-5 dark:bg-slate-950">
         {/* Integrations List */}
         {loading ? (
-          <div className="h-64 flex items-center justify-center">
+          <div className="flex h-64 items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : integrations.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
+          <div className="rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex flex-col items-center justify-center px-6 py-12">
               <ShoppingBag className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">No integrations yet</h3>
               <p className="text-muted-foreground text-center mb-4">
@@ -540,12 +553,12 @@ export default function IntegrationsPage() {
                 <Plus className="mr-2 h-4 w-4" />
                 Add Market Place
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ) : (
           <div className="grid gap-4">
             {integrations.map((integration) => (
-              <Card key={integration.id}>
+              <Card key={integration.id} className="overflow-hidden rounded-lg border-[#e2dfd8] shadow-none dark:border-slate-700 dark:bg-slate-900">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <div className="flex items-center gap-4">
                     {getPlatformIcon(integration.platform)}
@@ -611,7 +624,7 @@ export default function IntegrationsPage() {
                   {integration.tokenStatus && (
                     <div className="mb-4">
                       {integration.tokenStatus === "valid" && (
-                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-950/60">
                           <CheckCircle className="h-3 w-3 mr-1" />
                           Access Token 유효
                         </Badge>
@@ -801,10 +814,10 @@ export default function IntegrationsPage() {
                       <p
                         className={
                           connectionResults[integration.id]?.tone === "success"
-                            ? "text-green-700"
+                            ? "text-green-700 dark:text-green-300"
                             : connectionResults[integration.id]?.tone ===
                                 "warning"
-                              ? "text-amber-700"
+                              ? "text-amber-700 dark:text-amber-300"
                               : "text-destructive"
                         }
                       >
@@ -819,7 +832,7 @@ export default function IntegrationsPage() {
         )}
 
         {/* Info Card */}
-        <Card>
+        <Card className="mt-5 rounded-lg border-[#e2dfd8] shadow-none dark:border-slate-700 dark:bg-slate-900">
           <CardHeader>
             <CardTitle className="text-base">How Sync Works</CardTitle>
           </CardHeader>
@@ -843,8 +856,19 @@ export default function IntegrationsPage() {
             </p>
           </CardContent>
         </Card>
-      </div>
+        </main>
+      </section>
     </AppLayout>
+  );
+}
+
+function IntegrationStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="border-r border-[#e2dfd8] px-5 py-3 last:border-r-0 dark:border-slate-700">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mt-1 text-xl font-semibold text-foreground">{value}</div>
+      <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>
+    </div>
   );
 }
 

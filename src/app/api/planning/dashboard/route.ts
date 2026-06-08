@@ -184,9 +184,17 @@ export async function GET(req: Request) {
     `),
       // 3. Available stock (remaining / mistake)
       primary.query<{ master_sku: string; source_type: string; total_qty: string }>(`
-        SELECT master_sku, source_type, SUM(total_qty)::int::text AS total_qty
-        FROM shipcore.fc_available_stock
-        GROUP BY master_sku, source_type
+        SELECT
+          s.master_sku,
+          s.source_type,
+          SUM(GREATEST(s.total_qty - COALESCE(alloc.allocated_qty, 0), 0))::int::text AS total_qty
+        FROM shipcore.fc_available_stock s
+        LEFT JOIN (
+          SELECT source_stock_id, SUM(qty)::int AS allocated_qty
+          FROM shipcore.fc_container_item_allocations
+          GROUP BY source_stock_id
+        ) alloc ON alloc.source_stock_id = s.id
+        GROUP BY s.master_sku, s.source_type
       `),
       // 4. Last sync timestamp
       primary.query<{ last_sync: string | null }>(
@@ -280,6 +288,7 @@ export async function GET(req: Request) {
           ci.master_sku              AS sku,
           c.container_number         AS container_name,
           ci.qty::int                AS inbound_qty,
+          COALESCE(ar.allocated_remaining_qty, 0)::int AS allocated_remaining_qty,
           ci.qty::int                AS avail_qty,
           ci.cbm_unit::float8        AS cbm_unit,
           ci.total_cbm::float8       AS cbm,
@@ -292,6 +301,17 @@ export async function GET(req: Request) {
           NULL::text                 AS plan_sod
         FROM shipcore.fc_container_items ci
         JOIN shipcore.fc_containers c ON c.id = ci.container_id
+        LEFT JOIN (
+          SELECT
+            a.container_id,
+            s.master_sku,
+            SUM(a.qty)::int AS allocated_remaining_qty
+          FROM shipcore.fc_container_item_allocations a
+          JOIN shipcore.fc_available_stock s ON s.id = a.source_stock_id
+          WHERE s.source_type = 'remaining'
+          GROUP BY a.container_id, s.master_sku
+        ) ar ON ar.container_id = ci.container_id
+             AND ar.master_sku = ci.master_sku
       `) : Promise.resolve({ rows: [] }),
       // Pin containers: test inbound quantities for pinned reference rows
       primary.query<{ pin_id: number; container_ref: string; arrives_on: string; test_qty: number; test_cbm_unit: number }>(`
@@ -319,6 +339,7 @@ export async function GET(req: Request) {
         item_id:     null,
         cbm_unit:    cbmUnit,
         inbound_qty: row.test_qty,
+        allocated_remaining_qty: null,
         open_orders: null,
         avail_qty:   null,
         est_sales:   null,
@@ -507,6 +528,7 @@ export async function GET(req: Request) {
         item_id:     r.item_id,
         cbm_unit:    r.cbm_unit,
         inbound_qty: r.inbound_qty,
+        allocated_remaining_qty: r.allocated_remaining_qty ?? 0,
         open_orders: r.open_orders,
         avail_qty:   r.avail_qty,
         est_sales:   r.est_sales,

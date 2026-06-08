@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { DemandRow } from "@/types/demand-planning";
 import { InventoryInboundTab } from "../inventory-inbound/inventory-inbound-tab";
@@ -158,12 +158,15 @@ export function SkuForecastsShell() {
   return (
     <section className="flex h-[calc(100vh-7.5rem)] min-h-[680px] flex-col gap-3 overflow-hidden">
       <div className="flex shrink-0 items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">{pick(language, "SKU 계획", "SKU Planning")}</h1>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {data.last_sync
-              ? `${pick(language, "동기화", "Synced")} ${data.last_sync.slice(0, 16).replace("T", " ")}`
-              : pick(language, "동기화되지 않음", "Not synced")}
+        <div className="flex items-start gap-2">
+          <TrendingUp className="mt-1 h-5 w-5" />
+          <div>
+            <h1 className="text-xl font-semibold">{pick(language, "SKU 계획", "SKU Planning")}</h1>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {data.last_sync
+                ? `${pick(language, "동기화", "Synced")} ${data.last_sync.slice(0, 16).replace("T", " ")}`
+                : pick(language, "동기화되지 않음", "Not synced")}
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
