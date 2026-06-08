@@ -452,7 +452,7 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  @@map("sc_user")
+  @@map("fc_user")
   @@schema("shipcore")
 }
 
@@ -536,7 +536,7 @@ model PlatformIntegration {
   @@unique([platform, name])
   @@index([platform])
   @@index([isActive])
-  @@map("sc_platform_integration")
+  @@map("fc_platform_integration")
   @@schema("shipcore")
 }
 
@@ -555,7 +555,7 @@ model VelocityLinkSnapshot {
   @@index([itemCategory, channel, orderType, orderDate], map: "vls_cat_ch_type_date_idx")
   @@index([itemCategory, channel, orderType, orderDateLa], map: "vls_cat_ch_type_date_la_idx")
   @@index([linkMasterSku])
-  @@map("velocity_link_snapshot")
+  @@map("fc_velocity_link_snapshot")
   @@schema("shipcore")
 }
 
@@ -602,6 +602,6 @@ model VelocityCustomSnapshot {
   @@index([itemCategory, channel, orderType, orderDate], map: "vcs_cat_ch_type_date_idx")
   @@index([itemCategory, channel, orderType, orderDateLa], map: "vcs_cat_ch_type_date_la_idx")
   @@index([customMasterSku])
-  @@map("velocity_custom_snapshot")
+  @@map("fc_velocity_custom_snapshot")
   @@schema("shipcore")
 }

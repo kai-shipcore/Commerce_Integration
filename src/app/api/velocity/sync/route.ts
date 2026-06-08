@@ -1,10 +1,10 @@
 /**
  * Code Guide:
- * GET  /api/velocity/sync — Returns the most recent synced_at timestamp from velocity_link_snapshot.
+ * GET  /api/velocity/sync — Returns the most recent synced_at timestamp from fc_velocity_link_snapshot.
  * POST /api/velocity/sync — Pulls data from two Supabase views independently.
  *                           Stores both UTC date (order_date) and LA date (order_date_la) per row,
  *                           grouped by both dates so timezone-based filtering works without re-sync.
- *                           Batch-upserts into velocity_link_snapshot and velocity_custom_snapshot
+ *                           Batch-upserts into fc_velocity_link_snapshot and fc_velocity_custom_snapshot
  *                           (500 rows per batch each).
  */
 
@@ -99,7 +99,7 @@ async function upsertLink(rows: LinkRow[], syncedAt: Date): Promise<number> {
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
     await primaryPool().query(
-      `INSERT INTO shipcore.velocity_link_snapshot
+      `INSERT INTO shipcore.fc_velocity_link_snapshot
          (order_date, order_date_la, item_category, channel, order_type, link_master_sku, link_qty, synced_at, is_custom)
        SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
               UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[]),
@@ -131,7 +131,7 @@ async function upsertCustom(rows: CustomRow[], syncedAt: Date): Promise<number> 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
     await primaryPool().query(
-      `INSERT INTO shipcore.velocity_custom_snapshot
+      `INSERT INTO shipcore.fc_velocity_custom_snapshot
          (order_date, order_date_la, item_category, channel, order_type, custom_master_sku, custom_qty, synced_at, is_custom)
        SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
               UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[]),
@@ -164,7 +164,7 @@ export async function GET() {
   try {
     const pool = getPrimaryPool();
     const result = await pool.query<{ last_synced_at: Date | null }>(
-      "SELECT MAX(synced_at) AS last_synced_at FROM shipcore.velocity_link_snapshot"
+      "SELECT MAX(synced_at) AS last_synced_at FROM shipcore.fc_velocity_link_snapshot"
     );
     const lastSyncedAt = result.rows[0]?.last_synced_at ?? null;
     return NextResponse.json({ success: true, lastSyncedAt });

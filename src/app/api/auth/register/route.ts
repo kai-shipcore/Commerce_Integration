@@ -17,6 +17,10 @@ const RegisterSchema = z.object({
     .max(72, "Password is too long"),
 });
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -57,7 +61,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: error.issues[0]?.message ?? "Invalid input" },
@@ -66,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }

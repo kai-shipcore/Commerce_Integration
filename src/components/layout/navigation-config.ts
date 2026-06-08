@@ -43,6 +43,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Package,
     group: "Commerce",
     hideable: true,
+    hidden: true,
   },
   {
     id: "inventory",
@@ -85,6 +86,7 @@ export const navigationItems: NavigationItem[] = [
     icon: BarChart3,
     group: "Analytics",
     hideable: true,
+    hidden: true,
   },
   {
     id: "velocity",
@@ -218,20 +220,13 @@ export function sanitizeVisibleMenuIds(
 
   const allowedIds = new Set(
     navigationItems
-      .filter((item) => item.hideable !== false)
+      .filter((item) => item.hideable !== false && !item.hidden)
       .map((item) => item.id)
   );
 
   const filtered = value.filter(
     (entry): entry is string => typeof entry === "string" && allowedIds.has(entry)
   );
-
-  // Older saved preferences used "inventory" for the products page. Preserve
-  // product visibility when those preferences are loaded after the new
-  // dedicated inventory page is introduced.
-  if (filtered.includes("inventory") && !filtered.includes("products")) {
-    filtered.unshift("products");
-  }
 
   // Merge any newly added default items that are missing from saved preferences
   // so existing users automatically see new menu items without clearing storage.
@@ -251,7 +246,7 @@ export function sanitizeVisibleMenuIds(
 export function filterToValidMenuIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const allowedIds = new Set(
-    navigationItems.filter((item) => item.hideable !== false).map((item) => item.id)
+    navigationItems.filter((item) => item.hideable !== false && !item.hidden).map((item) => item.id)
   );
   return value.filter((id): id is string => typeof id === "string" && allowedIds.has(id));
 }
@@ -267,10 +262,6 @@ export function getDefaultLandingPath(
     return "/dashboard";
   }
 
-  if (visibleMenuIdSet.has("products")) {
-    return "/skus";
-  }
-
   if (visibleMenuIdSet.has("inventory")) {
     return "/inventory";
   }
@@ -280,8 +271,8 @@ export function getDefaultLandingPath(
   }
 
   const fallbackItem = navigationItems.find(
-    (item) => item.hideable !== false && visibleMenuIdSet.has(item.id)
+    (item) => item.hideable !== false && !item.hidden && visibleMenuIdSet.has(item.id)
   );
 
-  return fallbackItem?.href ?? "/skus";
+  return fallbackItem?.href ?? "/inventory";
 }

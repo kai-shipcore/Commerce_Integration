@@ -372,8 +372,8 @@ export async function GET(req: Request) {
     const customVelMap = new Map<string, VelRow>();
 
     if (!isToday) {
-      function velQuery(table: "shipcore.velocity_link_snapshot", skuCol: "link_master_sku", qtyCol: "link_qty"): string;
-      function velQuery(table: "shipcore.velocity_custom_snapshot", skuCol: "custom_master_sku", qtyCol: "custom_qty"): string;
+      function velQuery(table: "shipcore.fc_velocity_link_snapshot", skuCol: "link_master_sku", qtyCol: "link_qty"): string;
+      function velQuery(table: "shipcore.fc_velocity_custom_snapshot", skuCol: "custom_master_sku", qtyCol: "custom_qty"): string;
       function velQuery(table: string, skuCol: string, qtyCol: string): string {
         return `
           SELECT
@@ -407,8 +407,8 @@ export async function GET(req: Request) {
       // custom mode: everything uses custom_snapshot
       // Keep two separate maps so rows.map() can select by category_code.
       const [linkVelResult, customVelResult] = await Promise.all([
-        mode === "link" ? primary.query<VelRow>(velQuery("shipcore.velocity_link_snapshot", "link_master_sku", "link_qty"), [todayStr]) : Promise.resolve({ rows: [] as VelRow[] }),
-        primary.query<VelRow>(velQuery("shipcore.velocity_custom_snapshot", "custom_master_sku", "custom_qty"), [todayStr]),
+        mode === "link" ? primary.query<VelRow>(velQuery("shipcore.fc_velocity_link_snapshot", "link_master_sku", "link_qty"), [todayStr]) : Promise.resolve({ rows: [] as VelRow[] }),
+        primary.query<VelRow>(velQuery("shipcore.fc_velocity_custom_snapshot", "custom_master_sku", "custom_qty"), [todayStr]),
       ]);
 
       function buildVelEntry(r: VelRow): VelRow {

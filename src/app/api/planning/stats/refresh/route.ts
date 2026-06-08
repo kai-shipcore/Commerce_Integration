@@ -4,7 +4,7 @@
 //         Warehouse mapping: 'Fullerton' → west, 'TTM Group' → east.
 // Step 2: sales velocity — reads both snapshots; sales_status derived from is_custom column:
 //         is_custom = 'Y' → 'Custom', is_custom = 'N' → 'Original'
-//         velocity_link_snapshot → fc_stats, velocity_custom_snapshot → fc_stats_custom
+//         fc_velocity_link_snapshot → fc_stats, fc_velocity_custom_snapshot → fc_stats_custom
 //         order_type mapping: 'sales' → west, 'ttm' → east, 'preorder' → west_30d_pre.
 //         No trailing lag — windows use the LA planning date to match the dashboard.
 
@@ -116,7 +116,7 @@ export async function POST() {
       primary.query(`UPDATE shipcore.fc_stats_custom SET ${zeroVelocity}`),
     ]);
 
-    // All SKUs — velocity_link_snapshot → written to fc_stats
+    // All SKUs — fc_velocity_link_snapshot → written to fc_stats
     // WHERE extends to the LA planning date - 98 to cover the prev window (shifted back 7 days).
     const linkSalesResult = await primary.query(planningDateQuery(`
       SELECT
@@ -178,13 +178,13 @@ export async function POST() {
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_30d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_15d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN link_qty ELSE 0 END)::int AS fba_7d
-      FROM shipcore.velocity_link_snapshot vls
+      FROM shipcore.fc_velocity_link_snapshot vls
       WHERE vls.link_master_sku IS NOT NULL
         AND vls.order_date >= CURRENT_DATE - 98
       GROUP BY vls.link_master_sku
     `), [planningDate]);
 
-    // All SKUs — velocity_custom_snapshot → written to fc_stats_custom
+    // All SKUs — fc_velocity_custom_snapshot → written to fc_stats_custom
     const customSalesResult = await primary.query(planningDateQuery(`
       SELECT
         vcs.custom_master_sku AS master_sku,
@@ -238,7 +238,7 @@ export async function POST() {
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 31 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_30d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 16 AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_15d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_date >= CURRENT_DATE - 8  AND order_date <= CURRENT_DATE - 2 THEN custom_qty ELSE 0 END)::int AS fba_7d
-      FROM shipcore.velocity_custom_snapshot vcs
+      FROM shipcore.fc_velocity_custom_snapshot vcs
       WHERE vcs.custom_master_sku IS NOT NULL
         AND vcs.order_date >= CURRENT_DATE - 98
       GROUP BY vcs.custom_master_sku

@@ -45,12 +45,12 @@ function bucketLabelExpression(bucket: Bucket): string {
 function tableForCategory(category: ForecastCategoryCode) {
   return category === "SC"
     ? {
-        table: "shipcore.velocity_link_snapshot",
+        table: "shipcore.fc_velocity_link_snapshot",
         skuColumn: "link_master_sku",
         qtyColumn: "link_qty",
       }
     : {
-        table: "shipcore.velocity_custom_snapshot",
+        table: "shipcore.fc_velocity_custom_snapshot",
         skuColumn: "custom_master_sku",
         qtyColumn: "custom_qty",
       };

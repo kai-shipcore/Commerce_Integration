@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Moon, Sun } from "lucide-react";
 
 export default function SettingsPage() {
-  const { data: session, status, update } = useSession();
+  const { status, update } = useSession();
   const { resolvedTheme, setTheme } = useTheme();
 
   const [loading, setLoading] = useState(true);
@@ -22,6 +22,7 @@ export default function SettingsPage() {
     name: "",
     email: "",
     role: "",
+    createdAt: "",
   });
 
   useEffect(() => {
@@ -48,10 +49,11 @@ export default function SettingsPage() {
           name: profileResult.data?.name || "",
           email: profileResult.data?.email || "",
           role: profileResult.data?.role || "user",
+          createdAt: profileResult.data?.createdAt || "",
         });
         setError(null);
-      } catch (fetchError: any) {
-        setError(fetchError.message);
+      } catch (fetchError: unknown) {
+        setError(getErrorMessage(fetchError));
       } finally {
         setLoading(false);
       }
@@ -83,6 +85,7 @@ export default function SettingsPage() {
         ...current,
         name: result.data?.name || current.name,
         email: result.data?.email || current.email,
+        createdAt: result.data?.createdAt || current.createdAt,
       }));
 
       await update({
@@ -91,8 +94,8 @@ export default function SettingsPage() {
           email: result.data?.email,
         },
       });
-    } catch (saveError: any) {
-      setError(saveError.message);
+    } catch (saveError: unknown) {
+      setError(getErrorMessage(saveError));
     } finally {
       setSavingProfile(false);
     }
@@ -161,6 +164,17 @@ export default function SettingsPage() {
                     {profile.role}
                   </span>
                 </div>
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div>
+                    <p className="text-sm font-medium">Joined</p>
+                    <p className="text-sm text-muted-foreground">
+                      First account registration date.
+                    </p>
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {formatJoinedDate(profile.createdAt)}
+                  </span>
+                </div>
                 <div className="flex justify-end">
                   <Button type="button" onClick={() => void saveProfile()} disabled={savingProfile}>
                     {savingProfile ? "Saving..." : "Save Profile"}
@@ -203,4 +217,19 @@ export default function SettingsPage() {
       </div>
     </AppLayout>
   );
+}
+
+function formatJoinedDate(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
 }

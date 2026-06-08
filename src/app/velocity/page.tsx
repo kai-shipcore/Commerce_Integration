@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AppLayout } from "@/components/layout/app-layout";
 import { DataTable } from "@/components/ui/data-table/data-table";
 import {
@@ -407,9 +408,10 @@ interface PaneProps {
   selectedItem: string;
   selectedChannels: string[];
   timezone: "utc" | "la";
+  exportSlot: HTMLDivElement | null;
 }
 
-function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }: PaneProps) {
+function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, exportSlot }: PaneProps) {
   const [allRows, setAllRows] = useState<VelocityRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -516,9 +518,8 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
     }
   }, [selectedItem, selectedChannels, ranges, labels, label, timezone]);
 
-  return (
-    <div className="min-w-[1320px]">
-      <div className="mb-3 flex items-center justify-end gap-2">
+  const exportButtons = (
+    <div className="flex items-center gap-2">
         <button
           onClick={handleExportCurrent}
           disabled={loading || allRows.length === 0}
@@ -535,7 +536,12 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone }
           <Download className="h-3.5 w-3.5" />
           {exportingAll ? "Exporting..." : "Export All"}
         </button>
-      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-w-[1320px]">
+      {exportSlot ? createPortal(exportButtons, exportSlot) : null}
       <DataTable
         columns={columns}
         data={pageData}
@@ -566,6 +572,7 @@ export default function VelocityPage() {
   const [customRanges, setCustomRanges] = useState<PeriodRange[]>(() => defaultRanges());
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [exportSlot, setExportSlot] = useState<HTMLDivElement | null>(null);
   const [timezone, setTimezone] = useState<"utc" | "la">(() =>
     typeof window !== "undefined"
       ? ((localStorage.getItem("velocity_tz") as "utc" | "la") ?? "utc")
@@ -633,6 +640,7 @@ export default function VelocityPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <div ref={setExportSlot} className="flex items-center gap-2" />
             {formattedSyncTime && (
               <span className="text-xs text-muted-foreground">
                 Last synced: {formattedSyncTime}
@@ -766,7 +774,14 @@ export default function VelocityPage() {
               Select at least one channel
             </div>
           ) : (
-            <VelocityPane mode={mode} ranges={activeRanges} selectedItem={selectedItem} selectedChannels={selectedChannels} timezone={timezone} />
+            <VelocityPane
+              mode={mode}
+              ranges={activeRanges}
+              selectedItem={selectedItem}
+              selectedChannels={selectedChannels}
+              timezone={timezone}
+              exportSlot={exportSlot}
+            />
           )}
         </div>
       </section>

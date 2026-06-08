@@ -9,7 +9,6 @@ import {
   isAdminLikeRole,
   navigationItems,
 } from "@/components/layout/navigation-config";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -273,26 +272,31 @@ export default function UserAccessPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">User Access</h1>
-          <p className="text-muted-foreground">
-            Review users in the list, then open one user to manage role and menu access.
-          </p>
-        </div>
+      <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
+          <div>
+            <h1 className="text-lg font-semibold">User Access</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Review users in the list, then open one user to manage role and menu access.
+            </p>
+          </div>
+          <Badge variant="secondary">{pagination.total.toLocaleString()} users</Badge>
+        </header>
 
         {error && (
-          <Alert variant="destructive">
+          <Alert variant="destructive" className="m-5 mb-0">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        <div className="grid gap-6 xl:h-[calc(100vh-13rem)] xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-          <Card className="flex min-h-[560px] flex-col xl:min-h-0">
-            <CardHeader className="space-y-4">
+        <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(400px,0.85fr)]">
+          <div className="flex min-h-[560px] flex-col border-b border-[#e2dfd8] bg-white xl:min-h-0 xl:border-b-0 xl:border-r xl:border-[#e2dfd8]">
+            <div className="space-y-4 border-b border-[#e2dfd8] px-5 py-4">
               <div className="flex items-center justify-between gap-4">
-                <CardTitle>User List</CardTitle>
-                <Badge variant="secondary">{pagination.total.toLocaleString()} users</Badge>
+                <h2 className="text-sm font-semibold">User List</h2>
+                <span className="text-xs text-muted-foreground">
+                  Page {pagination.total === 0 ? 0 : pagination.page} / {pagination.total === 0 ? 0 : pagination.totalPages}
+                </span>
               </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -303,7 +307,7 @@ export default function UserAccessPage() {
                   className="pl-9"
                 />
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <span>Rows</span>
                   <select
@@ -344,15 +348,16 @@ export default function UserAccessPage() {
                   </Button>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1">
-              <div className="h-full overflow-y-auto">
+            </div>
+            <div className="min-h-0 flex-1 p-5">
+              <div className="h-full overflow-y-auto rounded-md border border-[#e2dfd8]">
                 <Table>
-                  <TableHeader className="sticky top-0 z-10 bg-background">
+                  <TableHeader className="sticky top-0 z-10 bg-[#f8f7f4]">
                     <TableRow>
                       <TableHead>User ID</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Role</TableHead>
+                      <TableHead>Joined</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -360,7 +365,7 @@ export default function UserAccessPage() {
                       <TableRow
                         className="hover:bg-transparent"
                       >
-                        <TableCell colSpan={3} className="py-8 text-center text-muted-foreground">
+                        <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                           No users match your search.
                         </TableCell>
                       </TableRow>
@@ -387,21 +392,24 @@ export default function UserAccessPage() {
                               {user.role}
                             </Badge>
                           </TableCell>
+                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                            {formatJoinedDate(user.createdAt)}
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
                   </TableBody>
                 </Table>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-h-0 flex-col bg-white">
+            <div className="flex flex-col gap-3 border-b border-[#e2dfd8] px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
-                <CardTitle>
+                <h2 className="text-sm font-semibold">
                   {selectedUser ? selectedUser.name?.trim() || selectedUser.email : "User Details"}
-                </CardTitle>
+                </h2>
                 <p className="text-sm text-muted-foreground">
                   {selectedUser
                     ? selectedUser.email
@@ -440,8 +448,8 @@ export default function UserAccessPage() {
                   </Badge>
                 </div>
               )}
-            </CardHeader>
-            <CardContent className="space-y-4">
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               {!selectedUser ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                   Select a user from the list to manage detailed permissions.
@@ -472,6 +480,12 @@ export default function UserAccessPage() {
                       <p className="font-medium">Name</p>
                       <p className="text-muted-foreground">
                         {selectedUser.name?.trim() || "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-medium">Joined</p>
+                      <p className="text-muted-foreground">
+                        {formatJoinedDate(selectedUser.createdAt)}
                       </p>
                     </div>
                   </div>
@@ -616,10 +630,21 @@ export default function UserAccessPage() {
                   </div>
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
     </AppLayout>
   );
+}
+
+function formatJoinedDate(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }

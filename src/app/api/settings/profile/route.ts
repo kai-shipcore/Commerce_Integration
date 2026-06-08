@@ -12,6 +12,10 @@ const UpdateProfileSchema = z.object({
     .transform((value) => value.toLowerCase()),
 });
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
 export async function GET() {
   try {
     const session = await auth();
@@ -31,6 +35,7 @@ export async function GET() {
         email: true,
         image: true,
         role: true,
+        createdAt: true,
       },
     });
 
@@ -38,9 +43,9 @@ export async function GET() {
       success: true,
       data: user,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }
@@ -84,6 +89,7 @@ export async function PATCH(request: NextRequest) {
         email: true,
         image: true,
         role: true,
+        createdAt: true,
       },
     });
 
@@ -91,7 +97,7 @@ export async function PATCH(request: NextRequest) {
       success: true,
       data: user,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: error.issues[0]?.message ?? "Invalid request" },
@@ -100,7 +106,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }

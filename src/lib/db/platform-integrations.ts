@@ -134,7 +134,7 @@ export async function listPlatformIntegrations(): Promise<PlatformIntegrationRec
         "totalRecordsSynced",
         "createdAt",
         "updatedAt"
-      FROM "shipcore"."sc_platform_integration"
+      FROM "shipcore"."fc_platform_integration"
       ORDER BY "createdAt" DESC NULLS LAST, name ASC`
     );
 
@@ -161,7 +161,7 @@ export async function listActivePlatformIntegrations(): Promise<PlatformIntegrat
         "totalRecordsSynced",
         "createdAt",
         "updatedAt"
-      FROM "shipcore"."sc_platform_integration"
+      FROM "shipcore"."fc_platform_integration"
       WHERE "isActive" = TRUE
       ORDER BY "createdAt" DESC NULLS LAST, name ASC`
     );
@@ -191,7 +191,7 @@ export async function getPlatformIntegrationById(
         "totalRecordsSynced",
         "createdAt",
         "updatedAt"
-      FROM "shipcore"."sc_platform_integration"
+      FROM "shipcore"."fc_platform_integration"
       WHERE id = $1
       LIMIT 1`,
       [id]
@@ -214,7 +214,7 @@ export async function createPlatformIntegration(
 
   const record = await withClient(async (client) => {
     const result = await client.query<PlatformIntegrationRow>(
-      `INSERT INTO "shipcore"."sc_platform_integration" (
+      `INSERT INTO "shipcore"."fc_platform_integration" (
         id,
         platform,
         name,
@@ -343,7 +343,7 @@ export async function updatePlatformIntegration(
 
   const record = await withClient(async (client) => {
     const result = await client.query<PlatformIntegrationRow>(
-      `UPDATE "shipcore"."sc_platform_integration"
+      `UPDATE "shipcore"."fc_platform_integration"
       SET ${sets.join(", ")}
       WHERE id = $1
       RETURNING
@@ -380,7 +380,7 @@ export async function updatePlatformIntegration(
 export async function deletePlatformIntegration(id: string): Promise<boolean> {
   const deleted = await withClient(async (client) => {
     const result = await client.query<{ id: string }>(
-      `DELETE FROM "shipcore"."sc_platform_integration"
+      `DELETE FROM "shipcore"."fc_platform_integration"
       WHERE id = $1
       RETURNING id`,
       [id]

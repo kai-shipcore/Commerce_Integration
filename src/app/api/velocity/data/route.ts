@@ -1,6 +1,6 @@
 /**
  * Code Guide:
- * GET /api/velocity/data — Queries velocity_link_snapshot and velocity_custom_snapshot
+ * GET /api/velocity/data — Queries fc_velocity_link_snapshot and fc_velocity_custom_snapshot
  * for the given filters and returns aggregated rows for display on the Velocity page.
  *
  * Query params:
@@ -67,14 +67,14 @@ export async function GET(req: NextRequest) {
 
       const linkQuery = pool.query(
         `SELECT link_master_sku AS master_sku, ${linkCols}
-         FROM shipcore.velocity_link_snapshot
+         FROM shipcore.fc_velocity_link_snapshot
          WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
          GROUP BY link_master_sku ORDER BY qty_0 DESC`,
         [items, channels]
       );
       const ttmQuery = pool.query(
         `SELECT link_master_sku AS master_sku, ${linkCols}
-         FROM shipcore.velocity_link_snapshot
+         FROM shipcore.fc_velocity_link_snapshot
          WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'ttm_preorder'
          GROUP BY link_master_sku ORDER BY qty_0 DESC`,
         [items, channels]
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
                   `SUM(CASE WHEN ${dateCol} >= '${from}' AND ${dateCol} <= '${to}' THEN custom_qty ELSE 0 END)::int AS qty_${i}`
               )
               .join(", ")}
-             FROM shipcore.velocity_custom_snapshot
+             FROM shipcore.fc_velocity_custom_snapshot
              WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
              GROUP BY custom_master_sku ORDER BY qty_0 DESC`,
             [items, channels]
@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
 
     const linkQuery = pool.query(
       `SELECT link_master_sku AS master_sku, ${linkCols}
-       FROM shipcore.velocity_link_snapshot
+       FROM shipcore.fc_velocity_link_snapshot
        WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = $3
        GROUP BY link_master_sku
        ORDER BY qty_0 DESC`,
@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
                 `SUM(CASE WHEN ${dateCol} >= '${from}' AND ${dateCol} <= '${to}' THEN custom_qty ELSE 0 END)::int AS qty_${i}`
             )
             .join(", ")}
-           FROM shipcore.velocity_custom_snapshot
+           FROM shipcore.fc_velocity_custom_snapshot
            WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = $3
            GROUP BY custom_master_sku
            ORDER BY qty_0 DESC`,

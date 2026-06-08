@@ -1,7 +1,7 @@
 -- fc_stats_custom
 -- Schema: shipcore
--- Mirror of fc_stats, populated entirely from velocity_custom_snapshot for ALL SKUs.
--- fc_stats uses velocity_link_snapshot; fc_stats_custom uses velocity_custom_snapshot.
+-- Mirror of fc_stats, populated entirely from fc_velocity_custom_snapshot for ALL SKUs.
+-- fc_stats uses fc_velocity_link_snapshot; fc_stats_custom uses fc_velocity_custom_snapshot.
 -- The planning dashboard switches between these two tables via the Link/Custom toggle.
 --
 -- Populated by: POST /api/planning/stats/refresh (same endpoint as fc_stats)
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_stats_custom (
 );
 
 COMMENT ON TABLE shipcore.fc_stats_custom IS
-    'Same schema as fc_stats. Velocity sourced from velocity_custom_snapshot for all SKUs. '
+    'Same schema as fc_stats. Velocity sourced from fc_velocity_custom_snapshot for all SKUs. '
     'Planning dashboard uses this table when mode=custom is selected.';
 
 CREATE INDEX IF NOT EXISTS idx_fc_stats_custom_master_sku
