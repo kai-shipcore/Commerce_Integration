@@ -35,6 +35,53 @@ export interface WarehouseStock {
   available: number;
 }
 
+export interface ShipHeroAddress {
+  first_name:   string | null;
+  last_name:    string | null;
+  address1:     string | null;
+  address2:     string | null;
+  city:         string | null;
+  state:        string | null;
+  state_code:   string | null;
+  zip:          string | null;
+  country:      string | null;
+  country_code: string | null;
+  email:        string | null;
+  phone:        string | null;
+  company:      string | null;
+}
+
+export interface ShipHeroOrderInfo {
+  order_number:     string;
+  shop_name:        string | null;
+  shipping_address: ShipHeroAddress;
+}
+
+export interface CreateOrderLineItem {
+  sku:                          string;
+  quantity:                     number;
+  product_name:                 string;
+  price:                        string;
+  fulfillment_status:           string;
+  quantity_pending_fulfillment: number;
+  partner_line_item_id:         string;
+}
+
+export interface CreateOrderInput {
+  order_number:      string;
+  shop_name:         string | null;
+  fulfillment_status: string;
+  shipping_lines:    { title: string; price: string };
+  shipping_address:  ShipHeroAddress;
+  billing_address:   ShipHeroAddress;
+  line_items:        CreateOrderLineItem[];
+}
+
+export interface CreatedOrderResult {
+  id:           string;
+  order_number: string;
+}
+
 export async function getShipHeroInventory(sku: string): Promise<WarehouseStock[] | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const token = await getToken();
@@ -78,6 +125,122 @@ export async function getShipHeroInventory(sku: string): Promise<WarehouseStock[
       warehouse: wp.warehouse_identifier ?? "",
       available: wp.available ?? 0,
     }));
+  }
+
+  return null;
+}
+
+export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrderInfo | null> {
+  const cleanedNumber = orderNumber;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await getToken();
+
+    const res = await fetch(GQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query: `query($orderNumber: String) {
+          orders(order_number: $orderNumber) {
+            data {
+              edges {
+                node {
+                  order_number
+                  shop_name
+                  shipping_address {
+                    first_name last_name address1 address2
+                    city state state_code zip country country_code email phone company
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        variables: { orderNumber: cleanedNumber },
+      }),
+    });
+
+    if (res.status === 401) {
+      cachedToken = null;
+      tokenExpiry = 0;
+      continue;
+    }
+
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const node = json?.data?.orders?.data?.edges?.[0]?.node;
+    if (!node) return null;
+
+    return {
+      order_number:     node.order_number ?? cleanedNumber,
+      shop_name:        node.shop_name ?? null,
+      shipping_address: node.shipping_address ?? {},
+    };
+  }
+
+  return null;
+}
+
+function toGqlInput(obj: unknown): string {
+  if (obj === null || obj === undefined) return "null";
+  if (typeof obj === "string") return JSON.stringify(obj);
+  if (typeof obj === "number" || typeof obj === "boolean") return String(obj);
+  if (Array.isArray(obj)) return `[${obj.map(toGqlInput).join(", ")}]`;
+  if (typeof obj === "object") {
+    const fields = Object.entries(obj as Record<string, unknown>)
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([k, v]) => `${k}: ${toGqlInput(v)}`)
+      .join(", ");
+    return `{ ${fields} }`;
+  }
+  return String(obj);
+}
+
+export async function createShipHeroOrder(data: CreateOrderInput): Promise<CreatedOrderResult | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await getToken();
+
+    const res = await fetch(GQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query: `mutation {
+          order_create(data: ${toGqlInput(data)}) {
+            request_id
+            order {
+              id
+              order_number
+            }
+          }
+        }`,
+      }),
+    });
+
+    if (res.status === 401) {
+      cachedToken = null;
+      tokenExpiry = 0;
+      continue;
+    }
+
+    if (!res.ok) return null;
+
+    const json = await res.json();
+
+    if (json?.errors?.length) {
+      console.error("[createShipHeroOrder] GraphQL error:", json.errors[0]?.message);
+      return null;
+    }
+
+    const order = json?.data?.order_create?.order;
+    if (!order) return null;
+
+    return { id: order.id, order_number: order.order_number };
   }
 
   return null;

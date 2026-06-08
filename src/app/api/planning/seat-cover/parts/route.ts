@@ -1,9 +1,10 @@
 // Code Guide: GET /api/planning/seat-cover/parts — returns all replacement parts sorted by request date asc
-// POST /api/planning/seat-cover/parts — inserts a new replacement part row
+// POST /api/planning/seat-cover/parts — inserts a new replacement part row; pass createShipHeroOrder:true to also create a ShipHero order
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notifySlack } from "@/lib/slack";
+import { getShipHeroOrder, createShipHeroOrder } from "@/lib/shiphero";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -86,6 +87,43 @@ export async function POST(req: Request) {
     const session = await auth();
     const userName = session?.user?.name ?? session?.user?.email ?? "Unknown";
     notifySlack(`[Parts] ${userName} added a new row — Order #${orderNumber}`);
+
+    if (body.createShipHeroOrder && partSku && shipheroOrder) {
+      const qtyNum = parseInt(body.orderRequest ?? "0", 10);
+      if (qtyNum >= 1) {
+        try {
+          const orderInfo = await getShipHeroOrder(String(orderNumber));
+          if (!orderInfo) {
+            return NextResponse.json({ success: true, shipHeroError: `Original ShipHero order not found: ${orderNumber}` }, { status: 201 });
+          }
+          const result = await createShipHeroOrder({
+            order_number:       String(shipheroOrder),
+            shop_name:          orderInfo.shop_name,
+            fulfillment_status: "pending",
+            shipping_lines:     { title: "Standard", price: "0.00" },
+            shipping_address:   orderInfo.shipping_address,
+            billing_address:    orderInfo.shipping_address,
+            line_items: [{
+              sku:                          String(partSku),
+              quantity:                     qtyNum,
+              product_name:                 String(partSku),
+              price:                        "0.00",
+              fulfillment_status:           "pending",
+              quantity_pending_fulfillment: qtyNum,
+              partner_line_item_id:         `${String(shipheroOrder)}-1`,
+            }],
+          });
+          if (!result) {
+            return NextResponse.json({ success: true, shipHeroError: "ShipHero order creation failed" }, { status: 201 });
+          }
+          return NextResponse.json({ success: true, shipHeroOrderNumber: result.order_number }, { status: 201 });
+        } catch (err) {
+          console.error("[parts] shiphero order error", err);
+          const msg = err instanceof Error ? err.message : "ShipHero error";
+          return NextResponse.json({ success: true, shipHeroError: msg }, { status: 201 });
+        }
+      }
+    }
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (err: unknown) {

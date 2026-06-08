@@ -1,0 +1,57 @@
+import { NextResponse } from "next/server";
+import { getShipHeroOrder, createShipHeroOrder } from "@/lib/shiphero";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { orderNumber, shipheroOrderNumber, partSku, qty } = body ?? {};
+
+    if (!orderNumber || !shipheroOrderNumber || !partSku || !qty || qty < 1) {
+      return NextResponse.json(
+        { success: false, error: "orderNumber, shipheroOrderNumber, partSku, qty (>= 1) required" },
+        { status: 400 }
+      );
+    }
+
+    const orderInfo = await getShipHeroOrder(orderNumber);
+    if (!orderInfo) {
+      return NextResponse.json(
+        { success: false, error: `Original ShipHero order not found: ${orderNumber}` },
+        { status: 404 }
+      );
+    }
+
+    const result = await createShipHeroOrder({
+      order_number:      shipheroOrderNumber,
+      shop_name:         orderInfo.shop_name,
+      fulfillment_status: "pending",
+      shipping_lines:    { title: "Standard", price: "0.00" },
+      shipping_address:  orderInfo.shipping_address,
+      billing_address:   orderInfo.shipping_address,
+      line_items: [{
+        sku:                          partSku,
+        quantity:                     qty,
+        product_name:                 partSku,
+        price:                        "0.00",
+        fulfillment_status:           "pending",
+        quantity_pending_fulfillment: qty,
+        partner_line_item_id:         `${shipheroOrderNumber}-1`,
+      }],
+    });
+
+    if (!result) {
+      return NextResponse.json(
+        { success: false, error: "ShipHero order creation failed" },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json(
+      { success: true, orderId: result.id, orderNumber: result.order_number },
+      { status: 201 }
+    );
+  } catch (err) {
+    console.error("[parts/shiphero-order] error", err);
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
+  }
+}

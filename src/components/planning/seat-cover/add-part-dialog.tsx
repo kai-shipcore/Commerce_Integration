@@ -229,6 +229,9 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
   const [inventoryWarehouses, setInventoryWarehouses] = useState<WarehouseStock[] | null>(null);
   const [inventoryQueried, setInventoryQueried] = useState(false);
   const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [createOrderLoading, setCreateOrderLoading] = useState(false);
+  const [createOrderError, setCreateOrderError] = useState<string | null>(null);
+  const [createOrderSuccess, setCreateOrderSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -245,6 +248,9 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       setInventoryWarehouses(null);
       setInventoryQueried(false);
       setInventoryLoading(false);
+      setCreateOrderLoading(false);
+      setCreateOrderError(null);
+      setCreateOrderSuccess(null);
     }
   }, [open, editData]);
 
@@ -290,7 +296,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       if (name === "orderNumber") {
         const expectedPrev = prev.orderNumber ? `RE-${prev.orderNumber}` : "";
         if (prev.shipheroOrder === "" || prev.shipheroOrder === expectedPrev) {
-          next.shipheroOrder = value ? `RE-${value}` : "";
+          next.shipheroOrder = value ? `RE-${value.replace(/^#/, "")}` : "";
         }
       }
       if (name === "partNumber") {
@@ -353,7 +359,67 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
   }
 
   function handleClose(val: boolean) {
-    if (!loading) onOpenChange(val);
+    if (!loading && !createOrderLoading) onOpenChange(val);
+  }
+
+  async function handleSaveAndCreate() {
+    setCreateOrderError(null);
+    setCreateOrderSuccess(null);
+
+    if (!formData.requestReceivedAt || !formData.orderNumber || !formData.partNumber) {
+      setCreateOrderError("Request Received Date, Order Number, Part Number are required.");
+      return;
+    }
+    if (!formData.partSku) {
+      setCreateOrderError("Part SKU is required to create a ShipHero order.");
+      return;
+    }
+    if (!formData.shipheroOrder) {
+      setCreateOrderError("Shiphero Order number is required.");
+      return;
+    }
+    const qtyNum = parseInt(formData.orderRequest, 10);
+    if (!qtyNum || qtyNum < 1) {
+      setCreateOrderError("Order Request quantity must be a positive integer.");
+      return;
+    }
+
+    setCreateOrderLoading(true);
+    try {
+      const url = isEdit
+        ? `/api/planning/seat-cover/parts/${editData!.id}`
+        : "/api/planning/seat-cover/parts";
+      const method = isEdit ? "PATCH" : "POST";
+
+      const saveRes = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          qty: Number(formData.qty) || 0,
+          createShipHeroOrder: !isEdit,
+        }),
+      });
+      const saveJson = await saveRes.json();
+      if (!saveJson.success) {
+        setCreateOrderError(saveJson.error ?? "Failed to save part record.");
+        return;
+      }
+
+      if (saveJson.shipHeroError) {
+        setCreateOrderError(`Part saved, but ShipHero order failed: ${saveJson.shipHeroError}`);
+        onSuccess();
+        return;
+      }
+
+      setCreateOrderSuccess(`ShipHero order ${saveJson.shipHeroOrderNumber} created successfully.`);
+      onSuccess();
+      setTimeout(() => onOpenChange(false), 1500);
+    } catch {
+      setCreateOrderError("Network error while creating order.");
+    } finally {
+      setCreateOrderLoading(false);
+    }
   }
 
   const field = (label: string, name: keyof FormData, type = "text", required = false, placeholder?: string) => (
@@ -752,15 +818,29 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
           )}
 
           {error && (
-            <p style={{ fontSize: 13, color: "#e53e3e", marginBottom: 12 }}>{error}</p>
+            <p style={{ fontSize: 13, color: "#e53e3e", marginBottom: 8 }}>{error}</p>
+          )}
+          {createOrderError && (
+            <p style={{ fontSize: 13, color: "#e53e3e", marginBottom: 8 }}>{createOrderError}</p>
+          )}
+          {createOrderSuccess && (
+            <p style={{ fontSize: 13, color: "#166534", fontWeight: 600, marginBottom: 8 }}>{createOrderSuccess}</p>
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={loading}>
+            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={loading || createOrderLoading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || createOrderLoading}>
               {loading ? "Saving…" : "Save"}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveAndCreate}
+              disabled={loading || createOrderLoading}
+              style={{ background: "#1d4ed8", color: "#fff" }}
+            >
+              {createOrderLoading ? "Creating Order…" : "Save and Create Order"}
             </Button>
           </DialogFooter>
         </form>
