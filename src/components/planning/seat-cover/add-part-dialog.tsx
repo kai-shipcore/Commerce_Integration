@@ -189,6 +189,11 @@ function rowToForm(row: PartOrderRow): FormData {
   };
 }
 
+interface WarehouseStock {
+  warehouse: string;
+  available: number;
+}
+
 interface OrderItem {
   sku: string;
   productName: string;
@@ -221,6 +226,9 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
   const [partSearch, setPartSearch] = useState("");
   const [partLookupLoading, setPartLookupLoading] = useState(false);
   const [partNotFound, setPartNotFound] = useState(false);
+  const [inventoryWarehouses, setInventoryWarehouses] = useState<WarehouseStock[] | null>(null);
+  const [inventoryQueried, setInventoryQueried] = useState(false);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -234,6 +242,9 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       setPartSearch("");
       setPartLookupLoading(false);
       setPartNotFound(false);
+      setInventoryWarehouses(null);
+      setInventoryQueried(false);
+      setInventoryLoading(false);
     }
   }, [open, editData]);
 
@@ -292,6 +303,10 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
             next.partSkuValue = newPartSku;
           }
         }
+      }
+      if (name === "qty" && inventoryQueried && inventoryWarehouses !== null) {
+        const totalInv = inventoryWarehouses.reduce((sum, w) => sum + w.available, 0);
+        next.orderRequest = String(Math.max(0, (Number(value) || 0) - totalInv));
       }
       if (name === "partSku") {
         if (prev.partSkuValue === "" || prev.partSkuValue === prev.partSku) {
@@ -610,6 +625,77 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                 {field("Order Request", "orderRequest")}
                 {field("PART SKU", "partSku")}
                 {field("PART SKU (VALUE)", "partSkuValue")}
+                <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <Label style={{ fontSize: 12, color: "#7A766F" }}>Shiphero Inventory</Label>
+                  <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <div style={{
+                      flex: 1, minHeight: 32, padding: "6px 10px",
+                      border: "1px solid #D8D6CE", borderRadius: 6,
+                      background: "#F7F6F3", display: "flex", flexDirection: "column", gap: 2,
+                      fontSize: 13,
+                    }}>
+                      {inventoryLoading ? (
+                        <span style={{ color: "#A8A49E" }}>조회 중…</span>
+                      ) : !inventoryQueried ? (
+                        <span style={{ color: "#A8A49E" }}>—</span>
+                      ) : inventoryWarehouses === null ? (
+                        <span style={{ color: "#c0392b", fontWeight: 600 }}>찾을 수 없음</span>
+                      ) : (
+                        (() => {
+                          const nonZero = inventoryWarehouses.filter((w) => w.available > 0);
+                          if (nonZero.length === 0) return <span style={{ color: "#c0392b", fontWeight: 600 }}>0개</span>;
+                          return nonZero.map((w) => (
+                            <span key={w.warehouse} style={{ color: "#166534", fontWeight: 600 }}>
+                              {w.warehouse}: {w.available}개
+                            </span>
+                          ));
+                        })()
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!formData.partSku || inventoryLoading) return;
+                        setInventoryLoading(true);
+                        setInventoryWarehouses(null);
+                        setInventoryQueried(false);
+                        try {
+                          const res = await fetch(
+                            `/api/planning/seat-cover/parts/inventory?sku=${encodeURIComponent(formData.partSku)}`
+                          );
+                          const json = await res.json();
+                          const warehouses: WarehouseStock[] | null = json.warehouses ?? null;
+                          setInventoryWarehouses(warehouses);
+                          setInventoryQueried(true);
+                          if (warehouses !== null) {
+                            const totalInv = warehouses.reduce((sum, w) => sum + w.available, 0);
+                            const qty = Number(formData.qty) || 0;
+                            setFormData((prev) => ({
+                              ...prev,
+                              orderRequest: String(Math.max(0, qty - totalInv)),
+                            }));
+                          }
+                        } catch {
+                          setInventoryWarehouses(null);
+                          setInventoryQueried(true);
+                        } finally {
+                          setInventoryLoading(false);
+                        }
+                      }}
+                      disabled={!formData.partSku || inventoryLoading}
+                      style={{
+                        fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0,
+                        color: formData.partSku && !inventoryLoading ? "#fff" : "#A8A49E",
+                        background: formData.partSku && !inventoryLoading ? "#2A2825" : "#F0EEE9",
+                        border: "1px solid #D8D6CE", borderRadius: 6,
+                        padding: "0 12px", height: 32,
+                        cursor: formData.partSku && !inventoryLoading ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      재고 확인
+                    </button>
+                  </div>
+                </div>
                 {field("Note", "note")}
                 {field("Order Status", "orderStatus")}
                 {field("Shiphero Order", "shipheroOrder")}
