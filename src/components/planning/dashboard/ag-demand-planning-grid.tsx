@@ -642,7 +642,7 @@ export function AgDemandPlanningGrid({
     const query = search.toLowerCase();
     const filtered = data.rows.filter((row) => {
       if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) return false;
-      if (!showZeroSales &&
+      if (!showZeroSales && !urgencyFilter &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (productFilter === "orig" && row.sales_status !== "Original") return false;
@@ -652,7 +652,7 @@ export function AgDemandPlanningGrid({
       if (query && !displaySku.includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       const urgency = urgStatus(row);
       if (urgencyFilter === "crit") return urgency === "crit";
-      if (urgencyFilter === "warn") return urgency === "warn" || urgency === "crit";
+      if (urgencyFilter === "warn") return urgency === "warn";
       if (urgencyFilter === "bo") return (row.back ?? 0) < 0;
       if (conQtyFilter) {
         const qty = qtyOverrides.get(`${row.sku}::${conQtyFilter}`)?.inbound_qty

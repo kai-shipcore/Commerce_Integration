@@ -359,16 +359,16 @@ export function DemandPlanningGrid({
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
       if (categoryCodeForRow(r) !== categoryFilter.toUpperCase()) return false;
-      if (!showZeroSales &&
-          !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
-          !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
+      if (!showZeroSales && !urgencyFilter &&
+        !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
+        !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original") return false;
       if (productFilter === "cust" && r.sales_status !== "Custom")   return false;
       if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
       const u: UrgencyStatus = urgStatus(r);
       if (urgencyFilter === "crit") return u === "crit";
-      if (urgencyFilter === "warn") return u === "warn" || u === "crit";
+      if (urgencyFilter === "warn") return u === "warn";
       if (urgencyFilter === "bo")   return (r.back || 0) < 0;
       return true;
     });
