@@ -22,18 +22,16 @@ export async function POST(req: Request) {
     }
 
     const result = await createShipHeroOrder({
-      order_number:      shipheroOrderNumber,
-      shop_name:         orderInfo.shop_name,
-      fulfillment_status: "pending",
-      shipping_lines:    { title: "Standard", price: "0.00" },
-      shipping_address:  orderInfo.shipping_address,
-      billing_address:   orderInfo.shipping_address,
+      order_number:    shipheroOrderNumber,
+      shop_name:       orderInfo.shop_name,
+      shipping_lines:  { title: "Standard", price: "0.00" },
+      shipping_address: orderInfo.shipping_address,
+      billing_address:  orderInfo.shipping_address,
       line_items: [{
         sku:                          partSku,
         quantity:                     qty,
         product_name:                 partSku,
         price:                        "0.00",
-        fulfillment_status:           "pending",
         quantity_pending_fulfillment: qty,
         partner_line_item_id:         `${shipheroOrderNumber}-1`,
       }],

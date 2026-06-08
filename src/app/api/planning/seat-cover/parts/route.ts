@@ -97,18 +97,16 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: true, shipHeroError: `Original ShipHero order not found: ${orderNumber}` }, { status: 201 });
           }
           const result = await createShipHeroOrder({
-            order_number:       String(shipheroOrder),
-            shop_name:          orderInfo.shop_name,
-            fulfillment_status: "pending",
-            shipping_lines:     { title: "Standard", price: "0.00" },
-            shipping_address:   orderInfo.shipping_address,
-            billing_address:    orderInfo.shipping_address,
+            order_number:    String(shipheroOrder),
+            shop_name:       orderInfo.shop_name,
+            shipping_lines:  { title: "Standard", price: "0.00" },
+            shipping_address: orderInfo.shipping_address,
+            billing_address:  orderInfo.shipping_address,
             line_items: [{
               sku:                          String(partSku),
               quantity:                     qtyNum,
               product_name:                 String(partSku),
               price:                        "0.00",
-              fulfillment_status:           "pending",
               quantity_pending_fulfillment: qtyNum,
               partner_line_item_id:         `${String(shipheroOrder)}-1`,
             }],

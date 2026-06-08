@@ -69,19 +69,17 @@ export interface CreateOrderLineItem {
   quantity:                     number;
   product_name:                 string;
   price:                        string;
-  fulfillment_status:           string;
   quantity_pending_fulfillment: number;
   partner_line_item_id:         string;
 }
 
 export interface CreateOrderInput {
-  order_number:      string;
-  shop_name:         string | null;
-  fulfillment_status: string;
-  shipping_lines:    { title: string; price: string };
-  shipping_address:  ShipHeroAddress;
-  billing_address:   ShipHeroAddress;
-  line_items:        CreateOrderLineItem[];
+  order_number:    string;
+  shop_name:       string | null;
+  shipping_lines:  { title: string; price: string };
+  shipping_address: ShipHeroAddress;
+  billing_address:  ShipHeroAddress;
+  line_items:       CreateOrderLineItem[];
 }
 
 export interface CreatedOrderResult {
