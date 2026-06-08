@@ -45,6 +45,7 @@ export type PartOrderRow = {
   note: string | null;
   orderStatus: string | null;
   shipheroOrder: string | null;
+  shipheroOrderId: string | null;
   shippingStatus: string | null;
   updatedAt: string;
 };

@@ -342,7 +342,11 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, qty: Number(formData.qty) || 0 }),
+        body: JSON.stringify({
+          ...formData,
+          qty: Number(formData.qty) || 0,
+          ...(isEdit && { shipheroOrderId: editData?.shipheroOrderId ?? null }),
+        }),
       });
       const json = await res.json();
       if (!json.success) {

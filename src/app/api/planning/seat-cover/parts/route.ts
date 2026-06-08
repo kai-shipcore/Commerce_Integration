@@ -116,6 +116,15 @@ export async function POST(req: Request) {
           if (!result) {
             return NextResponse.json({ success: true, shipHeroError: "ShipHero order creation failed" }, { status: 201 });
           }
+          await prisma.$executeRaw`
+            UPDATE shipcore.fc_replacement_parts
+            SET "shipheroOrderId" = ${result.id}
+            WHERE "orderNumber" = ${String(orderNumber)}
+              AND "shipheroOrder" = ${String(shipheroOrder)}
+              AND "shipheroOrderId" IS NULL
+            ORDER BY "createdAt" DESC
+            LIMIT 1
+          `;
           return NextResponse.json({ success: true, shipHeroOrderNumber: result.order_number }, { status: 201 });
         } catch (err) {
           console.error("[parts] shiphero order error", err);

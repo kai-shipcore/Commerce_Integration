@@ -51,10 +51,17 @@ export interface ShipHeroAddress {
   company:      string | null;
 }
 
+export interface ShipHeroLineItem {
+  id:  string;
+  sku: string | null;
+}
+
 export interface ShipHeroOrderInfo {
+  id:               string;
   order_number:     string;
   shop_name:        string | null;
   shipping_address: ShipHeroAddress;
+  line_items:       ShipHeroLineItem[];
 }
 
 export interface CreateOrderLineItem {
@@ -147,11 +154,17 @@ export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrd
             data {
               edges {
                 node {
+                  id
                   order_number
                   shop_name
                   shipping_address {
                     first_name last_name address1 address2
                     city state state_code zip country country_code email phone company
+                  }
+                  line_items {
+                    edges {
+                      node { id sku }
+                    }
                   }
                 }
               }
@@ -175,9 +188,13 @@ export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrd
     if (!node) return null;
 
     return {
+      id:               node.id ?? "",
       order_number:     node.order_number ?? cleanedNumber,
       shop_name:        node.shop_name ?? null,
       shipping_address: node.shipping_address ?? {},
+      line_items: (node.line_items?.edges ?? []).map(
+        (e: { node: { id: string; sku: string | null } }) => ({ id: e.node.id, sku: e.node.sku ?? null })
+      ),
     };
   }
 
@@ -197,6 +214,50 @@ function toGqlInput(obj: unknown): string {
     return `{ ${fields} }`;
   }
   return String(obj);
+}
+
+export async function updateShipHeroLineItemSku(
+  lineItemId: string,
+  newSku: string
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await getToken();
+
+    const res = await fetch(GQL_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query: `mutation {
+          line_item_update(data: { line_item_id: ${JSON.stringify(lineItemId)}, sku: ${JSON.stringify(newSku)} }) {
+            request_id
+            line_item { id sku }
+          }
+        }`,
+      }),
+    });
+
+    if (res.status === 401) {
+      cachedToken = null;
+      tokenExpiry = 0;
+      continue;
+    }
+
+    if (!res.ok) return false;
+
+    const json = await res.json();
+
+    if (json?.errors?.length) {
+      console.error("[updateShipHeroLineItemSku] GraphQL error:", json.errors[0]?.message);
+      return false;
+    }
+
+    return !!json?.data?.line_item_update?.line_item;
+  }
+
+  return false;
 }
 
 export async function createShipHeroOrder(data: CreateOrderInput): Promise<CreatedOrderResult | null> {
