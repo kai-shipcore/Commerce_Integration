@@ -9,7 +9,6 @@
 
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
 import { getPlanningDashboardCache, setPlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import {
@@ -87,9 +86,11 @@ export async function GET(req: Request) {
 
     // CC and FM SKUs always use custom velocity; SC uses the mode selection.
     // In custom mode all SKUs come from fc_stats_custom so no UNION needed.
-    const statsSource = mode === "custom"
-      ? "shipcore.fc_stats_custom"
-      : `(
+    const statsSource = (() => {
+      if (mode === "custom") return "shipcore.fc_stats_custom";
+      if (categoryCode === "CC" || categoryCode === "FM") return "shipcore.fc_stats_custom";
+      if (categoryCode === "SC") return "shipcore.fc_stats";
+      return `(
           SELECT s.* FROM shipcore.fc_stats_custom s
           WHERE EXISTS (
             SELECT 1 FROM shipcore.fc_products p
@@ -102,12 +103,12 @@ export async function GET(req: Request) {
             WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
           )
         )`;
+    })();
 
     const primary = getPrimaryPool();
-    const lookup  = getLookupPool();
 
-    // ── 1-5 run in parallel: containers, stats rows, available stock, last sync, backorders, pinned rows ──
-    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly, boResultEarly, pinnedRowsResult] = await Promise.all([
+    // ── 1-5 run in parallel: containers, stats rows, available stock, last sync, pinned rows ──
+    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly, pinnedRowsResult] = await Promise.all([
       // 1. Container headers
       primary.query<{ id: number; name: string; eta: string; cbm_cap: number; status: string }>(`
         SELECT
@@ -223,18 +224,7 @@ export async function GET(req: Request) {
       primary.query<{ last_sync: string | null }>(
         `SELECT to_char(MAX(calculated_at) AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD HH24:MI') AS last_sync FROM shipcore.fc_stats`
       ),
-      // 5. Backorders from Supabase (best-effort, runs concurrently)
-      lookup
-        ? lookup.query<{ master_sku: string; backorder: string }>(`
-            SELECT
-              BTRIM(master_sku)                 AS master_sku,
-              SUM(COALESCE(backorder, 0))::text AS backorder
-            FROM ecommerce_data.coverland_inventory
-            WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
-            GROUP BY BTRIM(master_sku)
-          `).catch(() => ({ rows: [] as { master_sku: string; backorder: string }[] }))
-        : Promise.resolve({ rows: [] as { master_sku: string; backorder: string }[] }),
-      // 6. Pinned reference rows (raw inputs only; derived values computed at runtime)
+      // 5. Pinned reference rows (raw inputs only; derived values computed at runtime)
       primary.query(`
         SELECT
           p.id::int                                                         AS _pin_id,
@@ -393,11 +383,6 @@ export async function GET(req: Request) {
       if (r.source_type === "remaining") entry.remaining = parseInt(r.total_qty) || 0;
       if (r.source_type === "mistake")   entry.mistake   = parseInt(r.total_qty) || 0;
       availStockMap.set(r.master_sku, entry);
-    }
-
-    const backorderMap = new Map<string, number>();
-    for (const r of boResultEarly.rows) {
-      backorderMap.set(r.master_sku, parseInt(r.backorder) || 0);
     }
 
     const lastSync = lastSyncResultEarly.rows[0]?.last_sync ?? null;

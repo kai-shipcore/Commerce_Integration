@@ -1167,7 +1167,7 @@ export function AgDemandPlanningGrid({
           <AgGridReact<DemandRow>
             ref={gridRef}
             theme={planningTheme}
-            loading={loading || containerDetailsLoading}
+            loading={loading}
             rowData={visibleRows}
             columnDefs={columnDefs}
             defaultColDef={{

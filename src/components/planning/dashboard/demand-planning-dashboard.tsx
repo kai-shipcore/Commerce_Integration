@@ -338,7 +338,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
   const skuFiltersRef = useRef<HTMLDivElement>(null);
-  const containerAutoLoadKeyRef = useRef<string | null>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -475,23 +474,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [SEASONAL_FACTORS_STORAGE_KEY]: seasonalFactors,
     });
   }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, seasonalFactors, savePrefsToDb]);
-
-  useEffect(() => {
-    if (!data.rows.length || containerDetailsLoaded || containerDetailsLoading) return;
-    const loadKey = `${velocityMode}|${isHistoricalDate ? asOfDate : "current"}|${data.last_sync ?? ""}|${data.rows.length}`;
-    if (containerAutoLoadKeyRef.current === loadKey) return;
-    containerAutoLoadKeyRef.current = loadKey;
-    loadContainerDetails();
-  }, [
-    asOfDate,
-    containerDetailsLoaded,
-    containerDetailsLoading,
-    data.last_sync,
-    data.rows.length,
-    isHistoricalDate,
-    loadContainerDetails,
-    velocityMode,
-  ]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
