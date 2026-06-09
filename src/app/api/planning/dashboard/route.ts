@@ -62,6 +62,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get("mode") === "custom" ? "custom" : "link";
     const includeContainers = searchParams.get("includeContainers") === "1";
+    const rawContainers = includeContainers && searchParams.get("rawContainers") === "1";
     const includeDrafts = searchParams.get("includeDrafts") === "1";
     const inboundStatuses = includeDrafts ? "('shipped', 'packing_received', 'draft')" : ACTIVE;
     const categoryParam = (searchParams.get("product") ?? searchParams.get("category") ?? "").toUpperCase();
@@ -77,7 +78,7 @@ export async function GET(req: Request) {
     const asOfParam = searchParams.get("asOf");
     const todayStr = asOfParam && /^\d{4}-\d{2}-\d{2}$/.test(asOfParam) ? asOfParam : todayDefault;
     const isToday = todayStr === todayDefault;
-    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined);
+    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers);
     if (cached) {
       return NextResponse.json(cached, {
         headers: { "x-planning-dashboard-cache": "HIT" },
@@ -647,21 +648,23 @@ export async function GET(req: Request) {
         ? new Date(asOfMs + invLife * 86400000).toISOString().slice(0, 10)
         : null;
 
-      containersObj["기준"] = {
-        item_id:     null,
-        cbm_unit:    null,
-        inbound_qty: null,
-        open_orders: 0,
-        avail_qty:   availQty,
-        est_sales:   0,
-        backorder:   availQty < 0 ? Math.abs(availQty) : 0,
-        carryover:   carryover,
-        eta:         todayStr,
-        inv_life:    invLife,
-        est_sod:     sod,
-        plan_sod:    planSod,
-        cbm:         0,
-      };
+      if (!rawContainers) {
+        containersObj["기준"] = {
+          item_id:     null,
+          cbm_unit:    null,
+          inbound_qty: null,
+          open_orders: 0,
+          avail_qty:   availQty,
+          est_sales:   0,
+          backorder:   availQty < 0 ? Math.abs(availQty) : 0,
+          carryover:   carryover,
+          eta:         todayStr,
+          inv_life:    invLife,
+          est_sod:     sod,
+          plan_sod:    planSod,
+          cbm:         0,
+        };
+      }
 
       // Chain: iterate real containers left-to-right, each block reads prior block's outputs
       let prevCarryover = carryover;
@@ -670,7 +673,7 @@ export async function GET(req: Request) {
       let prevEta       = todayStr;
       let cumulativeAvailQty = availQty;
 
-      for (const c of containers.slice(1)) {
+      for (const c of rawContainers ? [] : containers.slice(1)) {
         const raw  = containersObj[c.name];
         // Pinned rows only process their explicitly listed test containers
         // (skipping avoids past ETAs corrupting prevEta / the days calculation)
@@ -777,7 +780,7 @@ export async function GET(req: Request) {
     });
 
     const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, last_sync: lastSync } };
-    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined);
+    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },
     });

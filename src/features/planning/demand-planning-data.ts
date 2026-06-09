@@ -114,7 +114,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     const categorySuffix = category ? `&product=${category}` : "";
     const abortController = new AbortController();
     const timeoutId = window.setTimeout(() => abortController.abort(), 60_000);
-    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}${draftSuffix}${categorySuffix}`, {
+    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1&rawContainers=1${asOfSuffix}${draftSuffix}${categorySuffix}`, {
       signal: abortController.signal,
     })
       .then((res) => {
