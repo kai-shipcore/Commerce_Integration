@@ -71,7 +71,6 @@ export async function GET(req: Request) {
     const categoryParams = categoryCode ? [categoryCode] : [];
     const categoryWhere = categoryCode ? "AND p.category_code = $1" : "";
     const productCategoryWhere = categoryCode ? "WHERE p.category_code = $1" : "";
-    const pinnedCategoryWhere = categoryCode ? "WHERE pr.category_code = $1" : "";
     const categoryJoinWhere = categoryCode ? "AND p.category_code = $1" : "";
     const todayDefault = planningLocalDateString();
     const asOfParam = searchParams.get("asOf");
@@ -107,8 +106,8 @@ export async function GET(req: Request) {
 
     const primary = getPrimaryPool();
 
-    // ── 1-5 run in parallel: containers, stats rows, available stock, last sync, pinned rows ──
-    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly, pinnedRowsResult] = await Promise.all([
+    // ── 1-4 run in parallel: containers, stats rows, available stock, last sync ──
+    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly] = await Promise.all([
       // 1. Container headers
       primary.query<{ id: number; name: string; eta: string; cbm_cap: number; status: string }>(`
         SELECT
@@ -224,65 +223,11 @@ export async function GET(req: Request) {
       primary.query<{ last_sync: string | null }>(
         `SELECT to_char(MAX(calculated_at) AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD HH24:MI') AS last_sync FROM shipcore.fc_stats`
       ),
-      // 5. Pinned reference rows (raw inputs only; derived values computed at runtime)
-      primary.query(`
-        SELECT
-          p.id::int                                                         AS _pin_id,
-          p.master_sku                                                      AS sku,
-          p.label                                                           AS _pin_label,
-          p.sort_order                                                      AS _sort_order,
-          COALESCE(agg.total_inbound_qty, 0)::int                           AS total_inbound_qty,
-          agg.containers_list,
-          agg.next_eta,
-          agg.cbm_unit,
-          agg.latest_container,
-          agg.latest_eta,
-          agg.latest_qty,
-          'Original'::text                                                  AS sales_status,
-          pr.category_code                                                  AS category_code,
-          COALESCE(pr.cbm_per_unit, 0)::float8                              AS cbm_per_unit,
-          COALESCE(pr.moq, 1)::int                                          AS moq,
-          COALESCE(pr.order_multiple, pr.moq, 1)::int                       AS order_multiple,
-          p.back::int,
-          p.west_stock::int,
-          p.east_stock::int,
-          p.total_stock::int,
-          p.west_90d::float8, p.west_60d::float8, p.west_30d::float8,
-          p.west_15d::float8, p.west_7d::float8, p.west_30d_pre::float8,
-          p.east_90d::float8, p.east_60d::float8, p.east_30d::float8,
-          p.east_15d::float8, p.east_7d::float8, p.east_30d_pre::float8,
-          p.fba_30d::int,
-          p.avg_daily_prev::float8, p.east_avg_prev::float8,
-          0::float8 AS avg_daily_real, 0::float8 AS avg_daily_curr,
-          0::float8 AS east_avg_real,  0::float8 AS east_avg_curr,
-          0::float8 AS fba_avg_real,   0::float8 AS fba_avg_curr,
-          0::int AS west_fbm_30d, 0::int AS east_fbm_30d,
-          0::int AS total_30d,
-          0::float8 AS total_avg_prev, 0::float8 AS total_avg_real, 0::float8 AS total_avg_curr
-        FROM shipcore.fc_pinned_rows p
-        LEFT JOIN shipcore.fc_products pr ON pr.master_sku = p.master_sku
-        LEFT JOIN (
-          SELECT
-            pc.pin_id,
-            SUM(pc.test_qty)::int                                                                   AS total_inbound_qty,
-            STRING_AGG(pc.container_ref || ' (' || pc.test_qty || ')', ', '
-              ORDER BY pc.arrives_on NULLS LAST)                                                    AS containers_list,
-            MIN(pc.arrives_on)::text                                                                AS next_eta,
-            0::float8                                                                               AS cbm_unit,
-            (ARRAY_AGG(pc.container_ref ORDER BY pc.arrives_on NULLS LAST))[1]                     AS latest_container,
-            (ARRAY_AGG(pc.arrives_on::text ORDER BY pc.arrives_on NULLS LAST))[1]                  AS latest_eta,
-            (ARRAY_AGG(pc.test_qty     ORDER BY pc.arrives_on NULLS LAST))[1]::int                 AS latest_qty
-          FROM shipcore.fc_pin_containers pc
-          GROUP BY pc.pin_id
-        ) agg ON agg.pin_id = p.id
-        ${pinnedCategoryWhere}
-        ORDER BY p.sort_order, p.id
-      `, categoryParams).catch(() => ({ rows: [] })),
     ]);
 
     // ── 1b + cross: run in parallel after containersResult is available ──────
     const containerIds = containersResult.rows.map((r) => r.id);
-    const [categoriesResult, crossResult, pinContainersResult] = await Promise.all([
+    const [categoriesResult, crossResult] = await Promise.all([
       // 1b. Category codes per container
       containerIds.length > 0
         ? primary.query<{ container_id: number; category_code: string }>(`
@@ -330,45 +275,9 @@ export async function GET(req: Request) {
         WHERE c.status IN ${inboundStatuses}
           ${categoryJoinWhere}
       `, categoryParams) : Promise.resolve({ rows: [] }),
-      // Pin containers: test inbound quantities for pinned reference rows
-      primary.query<{ pin_id: number; container_ref: string; arrives_on: string; test_qty: number; test_cbm_unit: number }>(`
-        SELECT
-          pc.pin_id::int,
-          pc.container_ref,
-          pc.arrives_on::text,
-          pc.test_qty::int,
-          COALESCE(NULLIF(pc.test_cbm_unit, 0), pr.cbm_per_unit, 0)::float8  AS effective_cbm_unit
-        FROM shipcore.fc_pin_containers pc
-        JOIN shipcore.fc_pinned_rows p ON p.id = pc.pin_id
-        LEFT JOIN shipcore.fc_products pr ON pr.master_sku = p.master_sku
-        ${pinnedCategoryWhere}
-        ORDER BY pc.pin_id, pc.arrives_on
-      `, categoryParams).catch(() => ({ rows: [] as { pin_id: number; container_ref: string; arrives_on: string; test_qty: number; effective_cbm_unit: number }[] })),
     ]);
 
     // Build derived maps from parallel results
-
-    // pin_id → container_ref → ContainerRowData (raw, no chain values yet)
-    const pinContainerMap = new Map<number, Map<string, ContainerRowData>>();
-    for (const row of pinContainersResult.rows) {
-      if (!pinContainerMap.has(row.pin_id)) pinContainerMap.set(row.pin_id, new Map());
-      const cbmUnit = (row as { effective_cbm_unit?: number }).effective_cbm_unit ?? 0;
-      pinContainerMap.get(row.pin_id)!.set(row.container_ref, {
-        item_id:     null,
-        cbm_unit:    cbmUnit,
-        inbound_qty: row.test_qty,
-        allocated_remaining_qty: null,
-        open_orders: null,
-        avail_qty:   null,
-        est_sales:   null,
-        backorder:   null,
-        eta:         row.arrives_on,
-        inv_life:    null,
-        est_sod:     null,
-        plan_sod:    null,
-        cbm:         cbmUnit * row.test_qty,
-      });
-    }
 
     const categoriesByContainer = new Map<number, string[]>();
     for (const row of categoriesResult.rows) {
@@ -484,40 +393,6 @@ export async function GET(req: Request) {
       for (const r of customVelResult.rows) customVelMap.set(r.master_sku, buildVelEntry(r));
     }
 
-    // Builds a VelRow-equivalent from a pinned row's stored raw windows,
-    // using the same weighted formulas as buildVelEntry / the snapshot SQL.
-    function buildPinnedVelEntry(r: Record<string, unknown>): VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number } {
-      const cc = inferCategoryCode(r.sku as string);
-      const catCode = (cc === "SC" || cc === "CC" || cc === "FM") ? cc : "SC";
-      const w90 = Number(r.west_90d), w60 = Number(r.west_60d), w30 = Number(r.west_30d),
-            w15 = Number(r.west_15d), w7  = Number(r.west_7d),  wp  = Number(r.west_30d_pre);
-      const e90 = Number(r.east_90d), e60 = Number(r.east_60d), e30 = Number(r.east_30d),
-            e15 = Number(r.east_15d), e7  = Number(r.east_7d),  ep  = Number(r.east_30d_pre);
-      const fba30  = Number(r.fba_30d);
-      const wPrev  = Number(r.avg_daily_prev);
-      const ePrev  = Number(r.east_avg_prev);
-      const wReal  = w90/90*0.10 + w60/60*0.15 + w30/30*0.30 + wp/30*0.10 + w15/15*0.20 + w7/7*0.15;
-      const eReal  = Math.max(0.01, e90/90*0.10 + e60/60*0.15 + e30/30*0.30 + ep/30*0.10 + e15/15*0.20 + e7/7*0.15);
-      const fbaReal = fba30 / 30;
-      return {
-        master_sku:     r.sku as string,
-        west_90d: w90,  west_60d: w60,  west_30d: w30,  west_15d: w15,  west_7d: w7,  west_30d_pre: wp,
-        east_90d: e90,  east_60d: e60,  east_30d: e30,  east_15d: e15,  east_7d: e7,  east_30d_pre: ep,
-        avg_daily_prev: wPrev, avg_daily_real: wReal,
-        east_avg_prev:  ePrev, east_avg_real:  eReal,
-        fba_avg_real: fbaReal, fba_avg_prev: 0, fba_30d: fba30,
-        _avg_curr:  currentDailyAverage(wPrev, wReal, catCode),
-        _east_curr: currentDailyAverage(ePrev, eReal, catCode),
-        _fba_curr:  fbaReal,
-      } as VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number };
-    }
-
-    // Prepend pinned rows (marked with _is_pinned) before the regular stats rows.
-    const allStatsRows = [
-      ...pinnedRowsResult.rows.map(r => ({ ...r, _is_pinned: true })),
-      ...rowsResult.rows,
-    ];
-
     // ── Assemble response ────────────────────────────────────────────────────
 
     const containers: ContainerMeta[] = [
@@ -554,12 +429,9 @@ export async function GET(req: Request) {
       });
     }
 
-    const rows: DemandRow[] = allStatsRows.map((r) => {
-      const isPinned = !!(r as { _is_pinned?: boolean })._is_pinned;
-      // Pinned rows get a synthetic sku key that cannot collide with any real SKU.
-      // The real SKU is stored in base_sku for display. All grid Maps key by sku.
+    const rows: DemandRow[] = rowsResult.rows.map((r) => {
       const masterSku    = r.sku as string;
-      const rowSku       = isPinned ? `__pin__${(r as { _pin_id?: number })._pin_id ?? 0}` : masterSku;
+      const rowSku       = masterSku;
       const { seat, no, color, tone } = parseSku(masterSku);
       const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC"
         ? r.category_code
@@ -569,9 +441,8 @@ export async function GET(req: Request) {
         ? `${r.latest_eta ?? ""} - (${r.latest_container}) - ${r.latest_qty ?? ""}`
         : "";
 
-      const pinId    = isPinned ? (r as { _pin_id?: number })._pin_id ?? 0 : 0;
       const skuCross = includeContainers
-        ? (isPinned ? pinContainerMap.get(pinId) : crossMap.get(masterSku))
+        ? crossMap.get(masterSku)
         : undefined;
       const containersObj: Record<string, ContainerRowData> = {};
       if (skuCross) {
@@ -580,11 +451,8 @@ export async function GET(req: Request) {
 
       // For historical dates, pick velocity from the correct snapshot source:
       // CC/FM use custom_snapshot; SC uses link_snapshot (mirrors statsSource logic).
-      // Pinned rows bypass the snapshot lookup and use stored windows instead.
       const velSourceMap = (categoryCode === "CC" || categoryCode === "FM") ? customVelMap : linkVelMap;
-      const vel = isPinned
-        ? buildPinnedVelEntry(r as Record<string, unknown>)
-        : velSourceMap.get(masterSku) as (VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number }) | undefined;
+      const vel = velSourceMap.get(masterSku) as (VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number }) | undefined;
       const west_90d     = vel ? vel.west_90d     : r.west_90d as number;
       const west_60d     = vel ? vel.west_60d     : r.west_60d as number;
       const west_30d     = vel ? vel.west_30d     : r.west_30d as number;
@@ -660,9 +528,6 @@ export async function GET(req: Request) {
 
       for (const c of rawContainers ? [] : containers.slice(1)) {
         const raw  = containersObj[c.name];
-        // Pinned rows only process their explicitly listed test containers
-        // (skipping avoids past ETAs corrupting prevEta / the days calculation)
-        if (isPinned && !raw) continue;
         const qty  = raw?.inbound_qty ?? 0;
         const eta  = c.eta ?? todayStr;
         cumulativeAvailQty += qty;
@@ -721,7 +586,6 @@ export async function GET(req: Request) {
         sales_status:      (r.sales_status as "Original" | "Custom" | "Hold"),
         category_code:     categoryCode,
         sku:               rowSku,
-        base_sku:          isPinned ? masterSku : undefined,
         west_stock:        r.west_stock,
         east_stock:        r.east_stock,
         total_stock:       r.total_stock,
@@ -759,8 +623,6 @@ export async function GET(req: Request) {
         mistake:           availStockMap.get(masterSku)?.mistake   ?? 0,
         sod,
         containers:        includeContainers ? containersObj : {},
-        is_pinned:         isPinned || undefined,
-        pin_label:         isPinned ? (r as { _pin_label?: string })._pin_label : undefined,
       };
     });
 

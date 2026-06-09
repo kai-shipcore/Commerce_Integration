@@ -10,7 +10,7 @@ import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v7";
+const CACHE_KEY = "home:planning-stats:v8";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -38,9 +38,8 @@ export async function GET() {
     type SyncRow = { last_sync: string | null };
     type ContainerRow = { name: string; eta: string | null; total_qty: string; status: string };
     type SalesRow = { qty: string; revenue: string };
-    type PinnedStatsRow = { cat: string; critical: string; warning: string; backorder: string };
 
-    const [catStatsResult, pinnedStatsResult, syncResult, containersResult, sales30Result, salesPrev30Result] =
+    const [catStatsResult, syncResult, containersResult, sales30Result, salesPrev30Result] =
       await Promise.all([
         // Per-category SOD counts, joined with inbound quantities
         // Mirrors urgStatus() in columns.ts:
@@ -87,74 +86,6 @@ export async function GET() {
           LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
           GROUP BY cat
         `),
-
-        pool.query<PinnedStatsRow>(`
-          WITH pinned_rows AS (
-            SELECT
-              CASE
-                WHEN UPPER(pr.category_code) = 'CC' THEN 'cc'
-                WHEN UPPER(pr.category_code) = 'SC' THEN 'sc'
-                WHEN UPPER(pr.category_code) = 'FM' THEN 'fm'
-                WHEN UPPER(p.master_sku) LIKE 'CC-%' THEN 'cc'
-                WHEN UPPER(p.master_sku) LIKE 'CA-FM-%'
-                  OR 'FM' = ANY(string_to_array(UPPER(p.master_sku), '-')) THEN 'fm'
-                WHEN UPPER(p.master_sku) LIKE 'CA-SC-%'
-                  OR UPPER(p.master_sku) LIKE 'CL-SC-%' THEN 'sc'
-                ELSE 'ac'
-              END AS cat,
-              p.back::float8 AS back,
-              p.total_stock::float8 AS total_stock,
-              (
-                CASE
-                  WHEN p.avg_daily_prev = 0 THEN west_real
-                  WHEN ABS((west_real - p.avg_daily_prev) / p.avg_daily_prev) < 0.5 THEN p.avg_daily_prev * 0.1 + west_real * 0.9
-                  ELSE p.avg_daily_prev * 0.2 + west_real * 0.8
-                END
-                +
-                CASE
-                  WHEN p.east_avg_prev = 0 THEN east_real
-                  WHEN ABS((east_real - p.east_avg_prev) / p.east_avg_prev) < 0.5 THEN p.east_avg_prev * 0.1 + east_real * 0.9
-                  ELSE p.east_avg_prev * 0.2 + east_real * 0.8
-                END
-                + fba_real
-              )::float8 AS total_avg_curr
-            FROM shipcore.fc_pinned_rows p
-            LEFT JOIN shipcore.fc_products pr ON pr.master_sku = p.master_sku
-            CROSS JOIN LATERAL (
-              SELECT
-                (p.west_90d / 90 * 0.10
-                  + p.west_60d / 60 * 0.15
-                  + p.west_30d / 30 * 0.30
-                  + p.west_30d_pre / 30 * 0.10
-                  + p.west_15d / 15 * 0.20
-                  + p.west_7d / 7 * 0.15)::float8 AS west_real,
-                GREATEST(0.01,
-                  p.east_90d / 90 * 0.10
-                  + p.east_60d / 60 * 0.15
-                  + p.east_30d / 30 * 0.30
-                  + p.east_30d_pre / 30 * 0.10
-                  + p.east_15d / 15 * 0.20
-                  + p.east_7d / 7 * 0.15
-                )::float8 AS east_real,
-                (p.fba_30d::float8 / 30)::float8 AS fba_real
-            ) calc
-          )
-          SELECT
-            cat,
-            COUNT(*) FILTER (
-              WHERE back < 0
-                 OR (total_avg_curr > 0 AND FLOOR(total_stock / total_avg_curr) <= 30)
-            )::text AS critical,
-            COUNT(*) FILTER (
-              WHERE back >= 0
-                AND total_avg_curr > 0
-                AND FLOOR(total_stock / total_avg_curr) > 30
-                AND FLOOR(total_stock / total_avg_curr) <= 60
-            )::text AS warning,
-            COALESCE(SUM(CASE WHEN back < 0 THEN ABS(back) ELSE 0 END), 0)::text AS backorder
-          FROM pinned_rows
-          GROUP BY cat
-        `).catch(() => ({ rows: [] as PinnedStatsRow[] })),
 
         pool.query<SyncRow>(`SELECT MAX(calculated_at)::text AS last_sync FROM shipcore.fc_stats`),
 
@@ -206,15 +137,6 @@ export async function GET() {
         };
       }
     }
-    for (const row of pinnedStatsResult.rows) {
-      const key = row.cat as "fm" | "cc" | "sc";
-      if (key in byCategory) {
-        byCategory[key].critical += parseInt(row.critical, 10);
-        byCategory[key].warning += parseInt(row.warning, 10);
-        byCategory[key].backorder += parseInt(row.backorder, 10);
-      }
-    }
-
     const containers = containersResult.rows.map((r) => ({
       name: r.name,
       eta: r.eta ?? null,
