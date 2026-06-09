@@ -11,7 +11,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v10";
+const CACHE_KEY = "home:planning-stats:v11";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -163,9 +163,8 @@ export async function GET() {
          GROUP BY BTRIM(master_sku)`,
         [skuList],
       );
-      const criticalParts = partBackResult.rows.filter((row) => Number(row.back) < 0);
-      byCategory.sc.critical += criticalParts.length;
-      byCategory.sc.backorder += criticalParts.reduce((sum, row) => sum + Math.abs(Number(row.back)), 0);
+      const backorderedParts = partBackResult.rows.filter((row) => Number(row.back) < 0);
+      byCategory.sc.backorder += backorderedParts.reduce((sum, row) => sum + Math.abs(Number(row.back)), 0);
     }
 
     const containers = containersResult.rows.map((r) => ({
