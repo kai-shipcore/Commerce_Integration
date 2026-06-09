@@ -8,9 +8,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v4";
+const CACHE_KEY = "home:planning-stats:v6";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -30,6 +31,7 @@ export async function GET() {
 
   try {
     const pool = getPrimaryPool();
+    const lookup = getLookupPool();
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
@@ -38,6 +40,8 @@ export async function GET() {
     type SyncRow = { last_sync: string | null };
     type ContainerRow = { name: string; eta: string | null; total_qty: string; status: string };
     type SalesRow = { qty: string; revenue: string };
+    type PartSkuRow = { sku: string };
+    type PartBackRow = { sku: string; back: number };
 
     const [catStatsResult, syncResult, containersResult, sales30Result, salesPrev30Result] =
       await Promise.all([
@@ -136,6 +140,32 @@ export async function GET() {
           backorder: parseInt(row.backorder, 10),
         };
       }
+    }
+
+    const partSkusResult = await pool.query<PartSkuRow>(`
+      SELECT DISTINCT "partSkuValue" AS sku
+      FROM shipcore.fc_replacement_parts
+      WHERE "partSkuValue" IS NOT NULL
+        AND "shippingStatus" = 'Not Ready'
+        AND "deleteYN" = 'N'
+        AND "orderRequest" ~ '^[0-9]+$'
+        AND "orderRequest"::int > 0
+    `);
+
+    if (lookup && partSkusResult.rows.length > 0) {
+      const skuList = partSkusResult.rows.map((row) => row.sku);
+      const partBackResult = await lookup.query<PartBackRow>(
+        `SELECT
+           BTRIM(master_sku) AS sku,
+           (-SUM(COALESCE(backorder, 0)))::int AS back
+         FROM ecommerce_data.coverland_inventory
+         WHERE BTRIM(master_sku) = ANY($1)
+         GROUP BY BTRIM(master_sku)`,
+        [skuList],
+      );
+      const criticalParts = partBackResult.rows.filter((row) => Number(row.back) < 0);
+      byCategory.sc.critical += criticalParts.length;
+      byCategory.sc.backorder += criticalParts.reduce((sum, row) => sum + Math.abs(Number(row.back)), 0);
     }
 
     const containers = containersResult.rows.map((r) => ({
