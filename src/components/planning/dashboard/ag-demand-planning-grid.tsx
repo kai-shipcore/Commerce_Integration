@@ -589,6 +589,7 @@ function ContainerGroupHeader(
 
 export function AgDemandPlanningGrid({
   data,
+  loading,
   categoryFilter,
   productFilter,
   urgencyFilter,
@@ -1166,6 +1167,7 @@ export function AgDemandPlanningGrid({
           <AgGridReact<DemandRow>
             ref={gridRef}
             theme={planningTheme}
+            loading={loading || containerDetailsLoading}
             rowData={visibleRows}
             columnDefs={columnDefs}
             defaultColDef={{

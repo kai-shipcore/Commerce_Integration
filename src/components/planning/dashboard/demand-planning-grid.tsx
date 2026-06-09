@@ -45,6 +45,7 @@ export interface DemandPlanningGridProps {
   search: string;
   skuPartFilters: SkuPartFilters;
   onFilteredRowsChange: (rows: DemandRow[]) => void;
+  loading: boolean;
   onLoadContainerDetails: () => void;
   containerDetailsLoading: boolean;
   containerDetailsLoaded: boolean;

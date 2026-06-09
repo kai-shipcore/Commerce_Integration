@@ -1653,6 +1653,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         )}
         {gridMode === "ag-grid" ? <AgDemandPlanningGrid
           data={data}
+          loading={loading}
           categoryFilter={categoryFilter}
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
@@ -1678,6 +1679,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onExportReady={handleAgGridExportReady}
         /> : <DemandPlanningGrid
           data={data}
+          loading={loading}
           categoryFilter={categoryFilter}
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}

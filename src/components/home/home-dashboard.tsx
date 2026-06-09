@@ -164,7 +164,7 @@ export function HomeDashboard({
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const syncLabel = stats?.lastSync
-    ? `Synced ${stats.lastSync.slice(0, 16).replace("T", " ")}`
+    ? `Synced ${new Date(stats.lastSync).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
     : null;
 
   const cat      = stats?.byCategory?.[activeCat];
