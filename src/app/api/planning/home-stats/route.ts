@@ -11,7 +11,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v12";
+const CACHE_KEY = "home:planning-stats:v13";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -42,7 +42,7 @@ export async function GET() {
     type SalesRow = { qty: string; revenue: string };
     type PartSkuRow = { sku: string };
     type PartBackRow = { sku: string; back: number };
-    type VisiblePartRow = { sku: string };
+    type MissingCriticalPartRow = { sku: string };
 
     const [catStatsResult, syncResult, containersResult, sales30Result, salesPrev30Result] =
       await Promise.all([
@@ -168,16 +168,34 @@ export async function GET() {
       byCategory.sc.backorder += backorderedParts.reduce((sum, row) => sum + Math.abs(Number(row.back)), 0);
 
       if (backorderedParts.length > 0) {
-        const visiblePartResult = await pool.query<VisiblePartRow>(
-          `SELECT DISTINCT s.master_sku AS sku
-           FROM shipcore.fc_stats s
-           JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
-           WHERE p.category_code = 'SC'
-             AND COALESCE(s.sales_status, 'Original') = 'Part'
-             AND s.master_sku = ANY($1)`,
+        const missingCriticalPartResult = await pool.query<MissingCriticalPartRow>(
+          `WITH stats_source AS (
+             SELECT s.* FROM shipcore.fc_stats s
+             WHERE NOT EXISTS (
+               SELECT 1 FROM shipcore.fc_products p
+               WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
+             )
+           )
+           SELECT part_sku AS sku
+           FROM unnest($1::text[]) AS part_skus(part_sku)
+           WHERE NOT EXISTS (
+             SELECT 1
+             FROM stats_source s
+             LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
+             WHERE s.master_sku = part_sku
+               AND (
+                 UPPER(p.category_code) = 'SC'
+                 OR UPPER(s.master_sku) LIKE 'CA-SC-%'
+                 OR UPPER(s.master_sku) LIKE 'CL-SC-%'
+               )
+               AND (
+                 s.back < 0
+                 OR (s.total_avg_curr > 0 AND FLOOR(s.total_stock::float / s.total_avg_curr) <= 30)
+               )
+           )`,
           [backorderedParts.map((row) => row.sku)],
         );
-        byCategory.sc.critical += visiblePartResult.rows.length;
+        byCategory.sc.critical += missingCriticalPartResult.rows.length;
       }
     }
 
