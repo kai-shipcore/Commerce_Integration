@@ -691,7 +691,11 @@ export function AgDemandPlanningGrid({
   }, []);
 
   useEffect(() => {
-    if (groupVis.con && !containerDetailsLoaded && !containerDetailsLoading) onLoadContainerDetails();
+    if (!groupVis.con || containerDetailsLoaded || containerDetailsLoading) return;
+    const timer = window.setTimeout(() => {
+      window.requestAnimationFrame(() => onLoadContainerDetails());
+    }, 600);
+    return () => window.clearTimeout(timer);
   }, [containerDetailsLoaded, containerDetailsLoading, groupVis.con, onLoadContainerDetails]);
 
   const subColumns = useMemo(

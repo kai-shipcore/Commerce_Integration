@@ -351,9 +351,11 @@ export function DemandPlanningGrid({
     ? (CONS.length * visSubCols.length) + (showContainerLoadingColumn ? 1 : 0)
     : 0;
   useEffect(() => {
-    if (showCon && !containerDetailsLoaded && !containerDetailsLoading) {
-      onLoadContainerDetails();
-    }
+    if (!showCon || containerDetailsLoaded || containerDetailsLoading) return;
+    const timer = window.setTimeout(() => {
+      window.requestAnimationFrame(() => onLoadContainerDetails());
+    }, 600);
+    return () => window.clearTimeout(timer);
   }, [showCon, containerDetailsLoaded, containerDetailsLoading, onLoadContainerDetails]);
 
   const filteredRows = useMemo(() => {
