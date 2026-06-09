@@ -64,11 +64,20 @@ export async function GET(req: Request) {
     const includeContainers = searchParams.get("includeContainers") === "1";
     const includeDrafts = searchParams.get("includeDrafts") === "1";
     const inboundStatuses = includeDrafts ? "('shipped', 'packing_received', 'draft')" : ACTIVE;
+    const categoryParam = (searchParams.get("product") ?? searchParams.get("category") ?? "").toUpperCase();
+    const categoryCode = categoryParam === "SC" || categoryParam === "CC" || categoryParam === "FM" || categoryParam === "AC"
+      ? categoryParam
+      : null;
+    const categoryParams = categoryCode ? [categoryCode] : [];
+    const categoryWhere = categoryCode ? "AND p.category_code = $1" : "";
+    const productCategoryWhere = categoryCode ? "WHERE p.category_code = $1" : "";
+    const pinnedCategoryWhere = categoryCode ? "WHERE pr.category_code = $1" : "";
+    const categoryJoinWhere = categoryCode ? "AND p.category_code = $1" : "";
     const todayDefault = planningLocalDateString();
     const asOfParam = searchParams.get("asOf");
     const todayStr = asOfParam && /^\d{4}-\d{2}-\d{2}$/.test(asOfParam) ? asOfParam : todayDefault;
     const isToday = todayStr === todayDefault;
-    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr, includeDrafts);
+    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined);
     if (cached) {
       return NextResponse.json(cached, {
         headers: { "x-planning-dashboard-cache": "HIT" },
@@ -108,11 +117,19 @@ export async function GET(req: Request) {
           status
         FROM shipcore.fc_containers
         WHERE status != 'complete'
+          ${categoryCode ? `AND EXISTS (
+            SELECT 1
+            FROM shipcore.fc_container_items ci
+            JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
+            WHERE ci.container_id = fc_containers.id
+              AND ci.qty > 0
+              AND p.category_code = $1
+          )` : ""}
         ORDER BY
           CASE WHEN status IN ${ACTIVE} THEN 0 ELSE 1 END,
           eta_date NULLS LAST,
           id
-      `),
+      `, categoryParams),
       // 2. Per-SKU stats rows
       primary.query(`
         SELECT
@@ -177,11 +194,14 @@ export async function GET(req: Request) {
           (ARRAY_AGG(ci.qty               ORDER BY c.eta_date NULLS LAST))[1]::int     AS latest_qty
         FROM shipcore.fc_container_items ci
         JOIN shipcore.fc_containers c ON c.id = ci.container_id
+        JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
         WHERE c.status IN ${inboundStatuses}
+          ${categoryWhere}
         GROUP BY ci.master_sku
       ) agg ON agg.master_sku = s.master_sku
+      ${productCategoryWhere}
       ORDER BY s.master_sku
-    `),
+    `, categoryParams),
       // 3. Available stock (remaining / mistake)
       primary.query<{ master_sku: string; source_type: string; total_qty: string }>(`
         SELECT
@@ -189,13 +209,15 @@ export async function GET(req: Request) {
           s.source_type,
           SUM(GREATEST(s.total_qty - COALESCE(alloc.allocated_qty, 0), 0))::int::text AS total_qty
         FROM shipcore.fc_available_stock s
+        JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
         LEFT JOIN (
           SELECT source_stock_id, SUM(qty)::int AS allocated_qty
           FROM shipcore.fc_container_item_allocations
           GROUP BY source_stock_id
         ) alloc ON alloc.source_stock_id = s.id
+        ${productCategoryWhere}
         GROUP BY s.master_sku, s.source_type
-      `),
+      `, categoryParams),
       // 4. Last sync timestamp
       primary.query<{ last_sync: string | null }>(
         `SELECT to_char(MAX(calculated_at) AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD HH24:MI') AS last_sync FROM shipcore.fc_stats`
@@ -262,8 +284,9 @@ export async function GET(req: Request) {
           FROM shipcore.fc_pin_containers pc
           GROUP BY pc.pin_id
         ) agg ON agg.pin_id = p.id
+        ${pinnedCategoryWhere}
         ORDER BY p.sort_order, p.id
-      `).catch(() => ({ rows: [] })),
+      `, categoryParams).catch(() => ({ rows: [] })),
     ]);
 
     // ── 1b + cross: run in parallel after containersResult is available ──────
@@ -301,6 +324,7 @@ export async function GET(req: Request) {
           NULL::text                 AS plan_sod
         FROM shipcore.fc_container_items ci
         JOIN shipcore.fc_containers c ON c.id = ci.container_id
+        JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
         LEFT JOIN (
           SELECT
             a.container_id,
@@ -312,7 +336,9 @@ export async function GET(req: Request) {
           GROUP BY a.container_id, s.master_sku
         ) ar ON ar.container_id = ci.container_id
              AND ar.master_sku = ci.master_sku
-      `) : Promise.resolve({ rows: [] }),
+        WHERE c.status IN ${inboundStatuses}
+          ${categoryJoinWhere}
+      `, categoryParams) : Promise.resolve({ rows: [] }),
       // Pin containers: test inbound quantities for pinned reference rows
       primary.query<{ pin_id: number; container_ref: string; arrives_on: string; test_qty: number; test_cbm_unit: number }>(`
         SELECT
@@ -324,8 +350,9 @@ export async function GET(req: Request) {
         FROM shipcore.fc_pin_containers pc
         JOIN shipcore.fc_pinned_rows p ON p.id = pc.pin_id
         LEFT JOIN shipcore.fc_products pr ON pr.master_sku = p.master_sku
+        ${pinnedCategoryWhere}
         ORDER BY pc.pin_id, pc.arrives_on
-      `).catch(() => ({ rows: [] as { pin_id: number; container_ref: string; arrives_on: string; test_qty: number; effective_cbm_unit: number }[] })),
+      `, categoryParams).catch(() => ({ rows: [] as { pin_id: number; container_ref: string; arrives_on: string; test_qty: number; effective_cbm_unit: number }[] })),
     ]);
 
     // Build derived maps from parallel results
@@ -750,7 +777,7 @@ export async function GET(req: Request) {
     });
 
     const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, last_sync: lastSync } };
-    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts);
+    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },
     });

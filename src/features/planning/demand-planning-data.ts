@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { DemandPlanningData } from "@/types/demand-planning";
+import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], last_sync: null };
 
@@ -17,7 +17,7 @@ export interface DemandPlanningDataState {
   loadContainerDetails: () => void;
 }
 
-export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: string, includeDrafts = false): DemandPlanningDataState {
+export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: string, includeDrafts = false, category?: CategoryFilter): DemandPlanningDataState {
   const [data, setData] = useState<DemandPlanningData>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [containerDetailsLoading, setContainerDetailsLoading] = useState(false);
@@ -26,7 +26,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
   const dataScopeRef = useRef<string>("");
   const containerDetailsInFlightRef = useRef<string | null>(null);
 
-  const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}`;
+  const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category ?? "all"}`;
 
   function fetchDashboard(withRefresh: boolean) {
     let cancelled = false;
@@ -35,7 +35,8 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    const dashUrl = `/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}`;
+    const categorySuffix = category ? `&product=${category}` : "";
+    const dashUrl = `/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}`;
     const dashFetch = withRefresh
       ? fetch("/api/planning/stats/refresh", { method: "POST" }).then((res) => {
           if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
@@ -48,9 +49,11 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
       }),
-      fetch("/api/planning/dashboard/part-rows")
-        .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; back: number }[] }>)
-        .catch(() => ({ success: false, rows: [] as { sku: string; back: number }[] })),
+      category === "sc"
+        ? fetch("/api/planning/dashboard/part-rows")
+          .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; back: number }[] }>)
+          .catch(() => ({ success: false, rows: [] as { sku: string; back: number }[] }))
+        : Promise.resolve({ success: false, rows: [] as { sku: string; back: number }[] }),
     ])
       .then(([json, partJson]) => {
         if (cancelled) return;
@@ -94,7 +97,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial API load is intentionally started after mode/date changes.
     return fetchDashboard(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode, date, and inbound scope.
-  }, [mode, asOfDate, includeDrafts]);
+  }, [mode, asOfDate, includeDrafts, category]);
 
   // Sync button: refresh stats first, then load
   function reload() { fetchDashboard(true); }
@@ -108,9 +111,10 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
+    const categorySuffix = category ? `&product=${category}` : "";
     const abortController = new AbortController();
     const timeoutId = window.setTimeout(() => abortController.abort(), 60_000);
-    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}${draftSuffix}`, {
+    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}${draftSuffix}${categorySuffix}`, {
       signal: abortController.signal,
     })
       .then((res) => {

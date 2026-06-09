@@ -234,6 +234,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [todayStr, setTodayStr] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
+  const searchParams = useSearchParams();
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(() => {
+    const productParam = searchParams.get("product");
+    return productParam === "fm" || productParam === "cc" || productParam === "sc" || productParam === "ac"
+      ? productParam
+      : "fm";
+  });
   const {
     data,
     loading,
@@ -242,8 +249,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     error: loadError,
     reload,
     loadContainerDetails,
-  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined);
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("fm");
+  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, false, categoryFilter);
   const [isCategoryPending, startCategoryTransition] = useTransition();
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
@@ -253,8 +259,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumn, setSelectedColorColumn] = useState(BASE_COLORABLE_COLUMNS[0]?.id ?? "");
-
-  const searchParams = useSearchParams();
 
   useEffect(() => {
     const today = planningLocalDateString();
