@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DemandPlanningData } from "@/types/demand-planning";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], last_sync: null };
@@ -23,6 +23,10 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
   const [containerDetailsLoading, setContainerDetailsLoading] = useState(false);
   const [containerDetailsLoaded, setContainerDetailsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dataScopeRef = useRef<string>("");
+  const containerDetailsInFlightRef = useRef<string | null>(null);
+
+  const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}`;
 
   function fetchDashboard(withRefresh: boolean) {
     let cancelled = false;
@@ -69,6 +73,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
             containers: {},
           }));
           setData({ ...json.data, rows: [...json.data.rows, ...partRows] });
+          dataScopeRef.current = scopeKey();
           setContainerDetailsLoaded(false);
         }
         else setError(json.error ?? "Failed to load data");
@@ -95,7 +100,9 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
   function reload() { fetchDashboard(true); }
 
   function loadContainerDetails() {
-    if (containerDetailsLoading || containerDetailsLoaded) return;
+    const requestKey = scopeKey();
+    if (containerDetailsLoaded || containerDetailsInFlightRef.current === requestKey) return;
+    containerDetailsInFlightRef.current = requestKey;
     setContainerDetailsLoading(true);
     setError(null);
 
@@ -110,6 +117,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
         if (!json.success || !json.data) {
           throw new Error(json.error ?? "Failed to load container details");
         }
+        if (dataScopeRef.current !== requestKey) return;
         const detailBySku = new Map(json.data.rows.map((row) => [row.sku, row.containers]));
         setData((current) => ({
           containers: json.data?.containers ?? current.containers,
@@ -122,9 +130,16 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
         setContainerDetailsLoaded(true);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Network error");
+        if (dataScopeRef.current === requestKey) {
+          setError(err instanceof Error ? err.message : "Network error");
+        }
       })
-      .finally(() => setContainerDetailsLoading(false));
+      .finally(() => {
+        if (containerDetailsInFlightRef.current === requestKey) {
+          containerDetailsInFlightRef.current = null;
+          setContainerDetailsLoading(false);
+        }
+      });
   }
 
   return { data, loading, containerDetailsLoading, containerDetailsLoaded, error, reload, loadContainerDetails };
