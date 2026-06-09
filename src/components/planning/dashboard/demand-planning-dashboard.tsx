@@ -549,6 +549,21 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     window.localStorage.removeItem(CELL_COLORS_STORAGE_KEY);
   }, []);
 
+  const selectedCellKeys = useMemo(
+    () => selectedAgCells.map((cell) => `${cell.rowId}::${cell.columnId}`),
+    [selectedAgCells],
+  );
+
+  const selectedCellColorInfo = useMemo(() => {
+    if (!selectedAgCell) return { color: "#FFFFFF", label: "No cell" };
+    const keys = selectedCellKeys.length ? selectedCellKeys : [`${selectedAgCell.rowId}::${selectedAgCell.columnId}`];
+    const colors = keys.map((key) => cellColors[key] ?? "#FFFFFF");
+    const unique = Array.from(new Set(colors));
+    return unique.length === 1
+      ? { color: unique[0], label: unique[0] === "#FFFFFF" ? "Default" : unique[0].toUpperCase() }
+      : { color: "#FFFFFF", label: "Mixed" };
+  }, [cellColors, selectedAgCell, selectedCellKeys]);
+
   const handleSeasonalFactorsChange = useCallback((next: SeasonalFactors) => {
     setSeasonalFactors(next);
     window.localStorage.setItem(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(next));
@@ -1389,11 +1404,25 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         {selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-                        <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Cell</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: 3,
+                              border: "1px solid #CBD5E1",
+                              background: selectedCellColorInfo.label === "Mixed"
+                                ? "linear-gradient(135deg, #F87171 0 33%, #FACC15 33% 66%, #60A5FA 66% 100%)"
+                                : selectedCellColorInfo.color,
+                            }}
+                          />
+                          {selectedCellColorInfo.label}
+                        </span>
                         <input
                           type="color"
                           disabled={!selectedAgCell}
-                          value={selectedAgCell ? (cellColors[`${selectedAgCell.rowId}::${selectedAgCell.columnId}`] ?? "#FFFFFF") : "#FFFFFF"}
+                          value={selectedAgCell ? selectedCellColorInfo.color : "#FFFFFF"}
                           onChange={(event) => handleSelectedCellColorChange(event.target.value)}
                           style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: selectedAgCell ? "pointer" : "default" }}
                         />
@@ -1663,6 +1692,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           seasonalFactors={seasonalFactors}
           columnColors={columnColors}
           cellColors={cellColors}
+          selectedCellKeys={selectedCellKeys}
           onAgCellSelected={(selection) => {
             setSelectedAgCell({ rowId: selection.rowId, columnId: selection.columnId, label: selection.label });
             setSelectedAgCells(selection.cells?.length ? selection.cells : [{ rowId: selection.rowId, columnId: selection.columnId, label: selection.label }]);
@@ -1692,6 +1722,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           seasonalFactors={seasonalFactors}
           columnColors={columnColors}
           cellColors={cellColors}
+          selectedCellKeys={selectedCellKeys}
         />}
       </div>
     </div>

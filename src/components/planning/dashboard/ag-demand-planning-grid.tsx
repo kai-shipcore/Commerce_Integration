@@ -650,6 +650,7 @@ export function AgDemandPlanningGrid({
   seasonalFactors,
   columnColors = {},
   cellColors = {},
+  selectedCellKeys = [],
   onAgCellSelected,
   onExportReady,
 }: DemandPlanningGridProps) {
@@ -970,6 +971,7 @@ export function AgDemandPlanningGrid({
     gridWidth,
     pinnedBaseColumnLayout.width + MIN_SCROLLABLE_CENTER_WIDTH,
   );
+  const selectedCellKeySet = useMemo(() => new Set(selectedCellKeys), [selectedCellKeys]);
 
   const columnDefs = useMemo<Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>>(() => {
     const visibleBaseColumns = ALL_COLS
@@ -1025,12 +1027,17 @@ export function AgDemandPlanningGrid({
             })
         : undefined,
       headerStyle: headerStyleForColor(columnColors[column.id]?.header),
-      cellStyle: (params) => ({
-          backgroundColor: cellColors[cellColorKey(params.data?.sku, column.id)] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
+      cellStyle: (params) => {
+        const key = cellColorKey(params.data?.sku, column.id);
+        const selected = selectedCellKeySet.has(key);
+        return {
+          backgroundColor: cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
           fontWeight: column.bold ? 700 : 400,
           textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
           ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-        }),
+          ...(selected ? { outline: "2px solid #2563EB", outlineOffset: "-2px", boxShadow: "inset 0 0 0 1px #FFFFFF" } : {}),
+        };
+      },
       });
       baseGroups.set(column.grp, columns);
     });
@@ -1104,11 +1111,14 @@ export function AgDemandPlanningGrid({
             } : undefined,
             cellStyle: (params) => {
               const columnId = `${container.name}::${column.id}`;
+              const key = cellColorKey(params.data?.sku, columnId);
+              const selected = selectedCellKeySet.has(key);
               return {
-                backgroundColor: cellColors[cellColorKey(params.data?.sku, columnId)] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E8F5E0" : TINT_COLORS[column.tint] || "#fff"),
+                backgroundColor: cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E8F5E0" : TINT_COLORS[column.tint] || "#fff"),
                 ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
                 textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
                 ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
+                ...(selected ? { outline: "2px solid #2563EB", outlineOffset: "-2px", boxShadow: "inset 0 0 0 1px #FFFFFF" } : {}),
               };
             },
           })),
@@ -1116,7 +1126,7 @@ export function AgDemandPlanningGrid({
       }
     }
     return groups;
-  }, [cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+  }, [cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, selectedCellKeySet, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
