@@ -108,7 +108,11 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}${draftSuffix}`)
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(() => abortController.abort(), 60_000);
+    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1${asOfSuffix}${draftSuffix}`, {
+      signal: abortController.signal,
+    })
       .then((res) => {
         if (!res.ok) throw new Error(`Container details failed: HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
@@ -135,6 +139,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
         }
       })
       .finally(() => {
+        window.clearTimeout(timeoutId);
         if (containerDetailsInFlightRef.current === requestKey) {
           containerDetailsInFlightRef.current = null;
           setContainerDetailsLoading(false);
