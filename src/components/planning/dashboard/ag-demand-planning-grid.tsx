@@ -7,7 +7,8 @@ import {
   themeQuartz,
   type ColDef as AgColDef,
   type ColGroupDef,
-  type GridApi,
+  type CellMouseDownEvent,
+  type CellMouseOverEvent,
   type ICellRendererParams,
   type IHeaderGroupParams,
   type IHeaderParams,
@@ -79,6 +80,7 @@ type ContainerTotalColumn = {
 };
 
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
+type DragCellAnchor = { rowIndex: number; columnId: string };
 
 function readableTextColor(backgroundColor: string) {
   const match = backgroundColor.match(/^#([0-9a-fA-F]{6})$/);
@@ -100,28 +102,36 @@ function headerStyleForColor(backgroundColor: string | undefined) {
     : undefined;
 }
 
-function selectedCellsFromRanges(api: GridApi<DemandRow>): SelectedAgCell[] {
-  const ranges = api.getCellRanges() ?? [];
+function selectedCellsBetween(
+  event: CellMouseDownEvent<DemandRow> | CellMouseOverEvent<DemandRow>,
+  anchor: DragCellAnchor,
+): SelectedAgCell[] {
+  if (event.rowIndex === null) return [];
+  const columns = event.api.getAllDisplayedColumns();
+  const anchorColumnIndex = columns.findIndex((column) => column.getColId() === anchor.columnId);
+  const currentColumnIndex = columns.findIndex((column) => column.getColId() === event.column.getColId());
+  if (anchorColumnIndex < 0 || currentColumnIndex < 0) return [];
+
+  const startRowIndex = Math.min(anchor.rowIndex, event.rowIndex);
+  const endRowIndex = Math.max(anchor.rowIndex, event.rowIndex);
+  const startColumnIndex = Math.min(anchorColumnIndex, currentColumnIndex);
+  const endColumnIndex = Math.max(anchorColumnIndex, currentColumnIndex);
   const selected = new Map<string, SelectedAgCell>();
 
-  for (const range of ranges) {
-    if (!range.startRow || !range.endRow) continue;
-    const startIndex = Math.min(range.startRow.rowIndex, range.endRow.rowIndex);
-    const endIndex = Math.max(range.startRow.rowIndex, range.endRow.rowIndex);
-    for (let rowIndex = startIndex; rowIndex <= endIndex; rowIndex += 1) {
-      const rowNode = api.getDisplayedRowAtIndex(rowIndex);
-      const row = rowNode?.data;
-      if (!row) continue;
-      for (const column of range.columns) {
-        const columnId = column.getColId();
-        const key = `${row.sku}::${columnId}`;
-        if (selected.has(key)) continue;
-        selected.set(key, {
-          rowId: row.sku,
-          columnId,
-          label: `${row.base_sku ?? row.sku} / ${column.getColDef().headerName ?? columnId}`,
-        });
-      }
+  for (let rowIndex = startRowIndex; rowIndex <= endRowIndex; rowIndex += 1) {
+    const rowNode = event.api.getDisplayedRowAtIndex(rowIndex);
+    const row = rowNode?.data;
+    if (!row) continue;
+    for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
+      const column = columns[columnIndex];
+      const columnId = column.getColId();
+      const key = `${row.sku}::${columnId}`;
+      if (selected.has(key)) continue;
+      selected.set(key, {
+        rowId: row.sku,
+        columnId,
+        label: `${row.base_sku ?? row.sku} / ${column.getColDef().headerName ?? columnId}`,
+      });
     }
   }
 
@@ -645,6 +655,7 @@ export function AgDemandPlanningGrid({
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const gridHostRef = useRef<HTMLDivElement>(null);
+  const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
@@ -788,6 +799,14 @@ export function AgDemandPlanningGrid({
   useEffect(() => {
     gridRef.current?.api?.refreshHeader();
   }, [gridWidth]);
+
+  useEffect(() => {
+    const handlePointerUp = () => {
+      dragCellAnchorRef.current = null;
+    };
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
+  }, []);
 
   const updateEta = useCallback((container: ContainerMeta, eta: string) => {
     if (!eta || !container.container_id) return;
@@ -1215,27 +1234,25 @@ export function AgDemandPlanningGrid({
               checkboxes: false,
               enableClickSelection: true,
             }}
-            cellSelection
-            onCellClicked={(event) => {
-              event.node.setSelected(true, true);
-              if (!event.data) return;
-              const columnId = event.column.getColId();
+            onCellMouseDown={(event) => {
+              if (!event.data || event.rowIndex === null) return;
+              dragCellAnchorRef.current = { rowIndex: event.rowIndex, columnId: event.column.getColId() };
+              const cells = selectedCellsBetween(event, dragCellAnchorRef.current);
+              if (!cells.length) return;
               onAgCellSelected?.({
-                rowId: event.data.sku,
-                columnId,
-                label: `${event.data.base_sku ?? event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
-                cells: [{
-                  rowId: event.data.sku,
-                  columnId,
-                  label: `${event.data.base_sku ?? event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
-                }],
+                ...cells[0],
+                cells,
               });
             }}
-            onCellSelectionChanged={(event) => {
-              if (!event.finished) return;
-              const cells = selectedCellsFromRanges(event.api);
+            onCellMouseOver={(event) => {
+              const anchor = dragCellAnchorRef.current;
+              if (!anchor) return;
+              const cells = selectedCellsBetween(event, anchor);
               if (!cells.length) return;
               onAgCellSelected?.({ ...cells[0], cells });
+            }}
+            onCellClicked={(event) => {
+              event.node.setSelected(true, true);
             }}
             rowHeight={28}
             headerHeight={45}
