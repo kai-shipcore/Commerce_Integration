@@ -198,7 +198,7 @@ export async function GET(req: Request) {
       `),
       // 4. Last sync timestamp
       primary.query<{ last_sync: string | null }>(
-        `SELECT MAX(calculated_at)::text AS last_sync FROM shipcore.fc_stats`
+        `SELECT to_char(MAX(calculated_at) AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD HH24:MI') AS last_sync FROM shipcore.fc_stats`
       ),
       // 5. Backorders from Supabase (best-effort, runs concurrently)
       lookup
