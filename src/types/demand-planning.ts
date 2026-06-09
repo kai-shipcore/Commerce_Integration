@@ -50,7 +50,7 @@ export interface DemandRow {
   color: string;
   tone: string;
   back: number;
-  sales_status: "Original" | "Custom" | "Hold";
+  sales_status: "Original" | "Custom" | "Hold" | "Part";
   category_code?: "SC" | "CC" | "FM";
   sku: string;
   west_stock: number;

@@ -15,7 +15,7 @@ export function SkuHeader({
 }) {
   const urgency = getUrgency(sku);
   const salesStatus = language === "ko"
-    ? { Original: "일반", Custom: "커스텀", Hold: "보류" }[sku.sales_status]
+    ? ({ Original: "일반", Custom: "커스텀", Hold: "보류", Part: "부품" } as Record<string, string>)[sku.sales_status]
     : sku.sales_status;
   const urgencyClass =
     urgency === "critical"

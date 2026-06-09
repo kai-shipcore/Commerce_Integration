@@ -643,7 +643,7 @@ export function AgDemandPlanningGrid({
     const query = search.toLowerCase();
     const filtered = data.rows.filter((row) => {
       if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) return false;
-      if (!showZeroSales && !urgencyFilter &&
+      if (row.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (productFilter === "orig" && row.sales_status !== "Original") return false;
@@ -663,10 +663,11 @@ export function AgDemandPlanningGrid({
       }
       return true;
     });
-    // Pinned rows always appear at the top regardless of sort order.
+    // Pinned rows at the top, Part rows at the bottom.
     const pinned = filtered.filter((r) => r.is_pinned);
-    const rest   = filtered.filter((r) => !r.is_pinned);
-    return [...pinned, ...rest].map((row) => ({
+    const parts  = filtered.filter((r) => r.sales_status === "Part");
+    const rest   = filtered.filter((r) => !r.is_pinned && r.sales_status !== "Part");
+    return [...pinned, ...rest, ...parts].map((row) => ({
       ...row,
       ...(rowOverrides.get(row.sku) ?? {}),
       ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),

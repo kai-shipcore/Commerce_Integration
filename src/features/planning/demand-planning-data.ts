@@ -32,22 +32,43 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
     const dashUrl = `/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}`;
-    const pipeline = withRefresh
+    const dashFetch = withRefresh
       ? fetch("/api/planning/stats/refresh", { method: "POST" }).then((res) => {
           if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
           return fetch(dashUrl);
         })
       : fetch(dashUrl);
 
-    pipeline
-      .then((res) => {
+    Promise.all([
+      dashFetch.then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
-      })
-      .then((json) => {
+      }),
+      fetch("/api/planning/dashboard/part-rows")
+        .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; back: number }[] }>)
+        .catch(() => ({ success: false, rows: [] as { sku: string; back: number }[] })),
+    ])
+      .then(([json, partJson]) => {
         if (cancelled) return;
         if (json.success && json.data) {
-          setData(json.data);
+          const partRows: DemandPlanningData["rows"] = (partJson.rows ?? []).map((p) => ({
+            sku:               p.sku,
+            category_code:     "SC" as const,
+            sales_status:      "Part" as const,
+            back:              p.back,
+            container_info: "", cbm: 0, seat: "", no: 0, color: "", tone: "",
+            west_stock: 0, east_stock: 0, total_stock: 0,
+            west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
+            east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
+            avg_daily_prev: 0, avg_daily_real: 0, avg_daily_curr: 0,
+            east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
+            fba_avg_real: 0, fba_avg_curr: 0,
+            west_fbm_30d: 0, east_fbm_30d: 0, fba_30d: 0, total_30d: 0,
+            total_avg_prev: 0, total_avg_real: 0, total_avg_curr: 0,
+            total_inbound_qty: null, containers_list: null, next_eta: null, sod: null,
+            containers: {},
+          }));
+          setData({ ...json.data, rows: [...json.data.rows, ...partRows] });
           setContainerDetailsLoaded(false);
         }
         else setError(json.error ?? "Failed to load data");

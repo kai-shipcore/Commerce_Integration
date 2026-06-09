@@ -359,7 +359,7 @@ export function DemandPlanningGrid({
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
       if (categoryCodeForRow(r) !== categoryFilter.toUpperCase()) return false;
-      if (!showZeroSales && !urgencyFilter &&
+      if (r.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original") return false;
@@ -376,11 +376,16 @@ export function DemandPlanningGrid({
 
   const displayedRows = useMemo(() => {
     const getSortValue = sortColumnId ? SORT_VALUE_BY_COLUMN[sortColumnId] : undefined;
-    if (!getSortValue) return filteredRows;
-    return [...filteredRows].sort((left, right) => {
-      const result = compareAscending(getSortValue(left), getSortValue(right));
-      return sortDirection === "asc" ? result : -result;
-    });
+    const sorted = getSortValue
+      ? [...filteredRows].sort((left, right) => {
+          const result = compareAscending(getSortValue(left), getSortValue(right));
+          return sortDirection === "asc" ? result : -result;
+        })
+      : filteredRows;
+    // "Part" 행은 항상 하단
+    const normal = sorted.filter((r) => r.sales_status !== "Part");
+    const parts  = sorted.filter((r) => r.sales_status === "Part");
+    return [...normal, ...parts];
   }, [filteredRows, sortColumnId, sortDirection]);
 
   const handleSort = useCallback((columnId: string) => {
@@ -537,6 +542,7 @@ export function DemandPlanningGrid({
         .sc-orig { background: #E5EEFF; color: #1238A0; }
         .sc-cust { background: #E3F5EC; color: #0A6A45; }
         .sc-hold { background: #FEF3D8; color: #9A5200; }
+        .sc-part { background: #EDE9FE; color: #5B21B6; }
         .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; vertical-align: middle; }
         .d-crit { background: #FF4444; }
         .d-warn { background: #EF9F27; }
