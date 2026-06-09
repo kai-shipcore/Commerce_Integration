@@ -62,7 +62,7 @@ export interface DemandPlanningGridProps {
   seasonalFactors: SeasonalFactors;
   columnColors?: ColumnColorSettings;
   cellColors?: CellColorSettings;
-  onAgCellSelected?: (cell: { rowId: string; columnId: string; label: string }) => void;
+  onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
   onExportReady?: (exporter: (() => Promise<void>) | null) => void;
 }
 

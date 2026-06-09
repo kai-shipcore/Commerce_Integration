@@ -7,6 +7,7 @@ import {
   themeQuartz,
   type ColDef as AgColDef,
   type ColGroupDef,
+  type GridApi,
   type ICellRendererParams,
   type IHeaderGroupParams,
   type IHeaderParams,
@@ -77,6 +78,8 @@ type ContainerTotalColumn = {
   total?: number;
 };
 
+type SelectedAgCell = { rowId: string; columnId: string; label: string };
+
 function readableTextColor(backgroundColor: string) {
   const match = backgroundColor.match(/^#([0-9a-fA-F]{6})$/);
   if (!match) return "#fff";
@@ -95,6 +98,34 @@ function headerStyleForColor(backgroundColor: string | undefined) {
         color: readableTextColor(backgroundColor),
       }
     : undefined;
+}
+
+function selectedCellsFromRanges(api: GridApi<DemandRow>): SelectedAgCell[] {
+  const ranges = api.getCellRanges() ?? [];
+  const selected = new Map<string, SelectedAgCell>();
+
+  for (const range of ranges) {
+    if (!range.startRow || !range.endRow) continue;
+    const startIndex = Math.min(range.startRow.rowIndex, range.endRow.rowIndex);
+    const endIndex = Math.max(range.startRow.rowIndex, range.endRow.rowIndex);
+    for (let rowIndex = startIndex; rowIndex <= endIndex; rowIndex += 1) {
+      const rowNode = api.getDisplayedRowAtIndex(rowIndex);
+      const row = rowNode?.data;
+      if (!row) continue;
+      for (const column of range.columns) {
+        const columnId = column.getColId();
+        const key = `${row.sku}::${columnId}`;
+        if (selected.has(key)) continue;
+        selected.set(key, {
+          rowId: row.sku,
+          columnId,
+          label: `${row.base_sku ?? row.sku} / ${column.getColDef().headerName ?? columnId}`,
+        });
+      }
+    }
+  }
+
+  return Array.from(selected.values());
 }
 
 function cellColorKey(rowId: string | undefined, columnId: string) {
@@ -1184,6 +1215,7 @@ export function AgDemandPlanningGrid({
               checkboxes: false,
               enableClickSelection: true,
             }}
+            cellSelection
             onCellClicked={(event) => {
               event.node.setSelected(true, true);
               if (!event.data) return;
@@ -1192,7 +1224,18 @@ export function AgDemandPlanningGrid({
                 rowId: event.data.sku,
                 columnId,
                 label: `${event.data.base_sku ?? event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
+                cells: [{
+                  rowId: event.data.sku,
+                  columnId,
+                  label: `${event.data.base_sku ?? event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
+                }],
               });
+            }}
+            onCellSelectionChanged={(event) => {
+              if (!event.finished) return;
+              const cells = selectedCellsFromRanges(event.api);
+              if (!cells.length) return;
+              onAgCellSelected?.({ ...cells[0], cells });
             }}
             rowHeight={28}
             headerHeight={45}

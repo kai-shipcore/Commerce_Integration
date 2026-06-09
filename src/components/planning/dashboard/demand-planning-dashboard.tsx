@@ -333,6 +333,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
+  const [selectedAgCells, setSelectedAgCells] = useState<{ rowId: string; columnId: string; label: string }[]>([]);
   const [seasonalFactors, setSeasonalFactors] = useState<SeasonalFactors>(DEFAULT_SEASONAL_FACTORS);
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
   const columnWidthsRef = useRef<ColumnWidths>({});
@@ -515,20 +516,25 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   const handleSelectedCellColorChange = useCallback((color: string) => {
     if (!selectedAgCell) return;
-    const key = `${selectedAgCell.rowId}::${selectedAgCell.columnId}`;
+    const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
     setCellColors((current) => {
-      const next = { ...current, [key]: color };
+      const next = { ...current };
+      for (const cell of targets) {
+        next[`${cell.rowId}::${cell.columnId}`] = color;
+      }
       window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, [selectedAgCell]);
+  }, [selectedAgCell, selectedAgCells]);
 
   const resetSelectedCellColor = useCallback(() => {
     if (!selectedAgCell) return;
-    const key = `${selectedAgCell.rowId}::${selectedAgCell.columnId}`;
+    const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
     setCellColors((current) => {
       const next = { ...current };
-      delete next[key];
+      for (const cell of targets) {
+        delete next[`${cell.rowId}::${cell.columnId}`];
+      }
       if (Object.keys(next).length) {
         window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(next));
       } else {
@@ -536,7 +542,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       }
       return next;
     });
-  }, [selectedAgCell]);
+  }, [selectedAgCell, selectedAgCells]);
 
   const resetCellColors = useCallback(() => {
     setCellColors({});
@@ -1366,7 +1372,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                       <div
-                        title={selectedAgCell?.label}
+                        title={selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell?.label}
                         style={{
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -1380,7 +1386,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           padding: "5px 8px",
                         }}
                       >
-                        {selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
+                        {selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
                         <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>Cell</span>
@@ -1657,7 +1663,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           seasonalFactors={seasonalFactors}
           columnColors={columnColors}
           cellColors={cellColors}
-          onAgCellSelected={setSelectedAgCell}
+          onAgCellSelected={(selection) => {
+            setSelectedAgCell({ rowId: selection.rowId, columnId: selection.columnId, label: selection.label });
+            setSelectedAgCells(selection.cells?.length ? selection.cells : [{ rowId: selection.rowId, columnId: selection.columnId, label: selection.label }]);
+          }}
           onExportReady={handleAgGridExportReady}
         /> : <DemandPlanningGrid
           data={data}
