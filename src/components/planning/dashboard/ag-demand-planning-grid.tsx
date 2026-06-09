@@ -652,11 +652,14 @@ export function AgDemandPlanningGrid({
   cellColors = {},
   selectedCellKeys = [],
   onAgCellSelected,
+  onCellSelectionChange,
   onExportReady,
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const gridHostRef = useRef<HTMLDivElement>(null);
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
+  const selectedCellsRef = useRef<Set<string>>(new Set());
+  const lastSelectedRef = useRef<string | null>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
@@ -971,8 +974,6 @@ export function AgDemandPlanningGrid({
     gridWidth,
     pinnedBaseColumnLayout.width + MIN_SCROLLABLE_CENTER_WIDTH,
   );
-  const selectedCellKeySet = useMemo(() => new Set(selectedCellKeys), [selectedCellKeys]);
-
   const columnDefs = useMemo<Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>>(() => {
     const visibleBaseColumns = ALL_COLS
       .filter((column) => column.grp === "fix" || groupVis[column.grp])
@@ -1029,13 +1030,12 @@ export function AgDemandPlanningGrid({
       headerStyle: headerStyleForColor(columnColors[column.id]?.header),
       cellStyle: (params) => {
         const key = cellColorKey(params.data?.sku, column.id);
-        const selected = selectedCellKeySet.has(key);
+        const selected = selectedCellsRef.current.has(key);
         return {
-          backgroundColor: cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
+          backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
           fontWeight: column.bold ? 700 : 400,
           textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
           ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-          ...(selected ? { outline: "2px solid #2563EB", outlineOffset: "-2px", boxShadow: "inset 0 0 0 1px #FFFFFF" } : {}),
         };
       },
       });
@@ -1112,13 +1112,12 @@ export function AgDemandPlanningGrid({
             cellStyle: (params) => {
               const columnId = `${container.name}::${column.id}`;
               const key = cellColorKey(params.data?.sku, columnId);
-              const selected = selectedCellKeySet.has(key);
+              const selected = selectedCellsRef.current.has(key);
               return {
-                backgroundColor: cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E8F5E0" : TINT_COLORS[column.tint] || "#fff"),
+                backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
                 ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
                 textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
                 ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-                ...(selected ? { outline: "2px solid #2563EB", outlineOffset: "-2px", boxShadow: "inset 0 0 0 1px #FFFFFF" } : {}),
               };
             },
           })),
@@ -1126,7 +1125,7 @@ export function AgDemandPlanningGrid({
       }
     }
     return groups;
-  }, [cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, selectedCellKeySet, subColumns, updateEta]);
+  }, [cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -1263,6 +1262,27 @@ export function AgDemandPlanningGrid({
             }}
             onCellClicked={(event) => {
               event.node.setSelected(true, true);
+              if (!event.data) return;
+              const columnId = event.column.getColId();
+              const key = `${event.data.sku}::${columnId}`;
+              const nativeEvt = event.event as MouseEvent | undefined;
+              if (nativeEvt?.ctrlKey || nativeEvt?.metaKey) {
+                if (selectedCellsRef.current.has(key)) selectedCellsRef.current.delete(key);
+                else { selectedCellsRef.current.add(key); lastSelectedRef.current = key; }
+              } else if (nativeEvt?.shiftKey && lastSelectedRef.current) {
+                const lastSku = lastSelectedRef.current.split("::")[0];
+                const skus = visibleRows.map((r) => r.sku);
+                const a = skus.indexOf(lastSku), b = skus.indexOf(event.data.sku);
+                const [lo, hi] = a <= b ? [a, b] : [b, a];
+                for (let i = lo; i <= hi; i++) selectedCellsRef.current.add(`${skus[i]}::${columnId}`);
+              } else {
+                selectedCellsRef.current.clear();
+                selectedCellsRef.current.add(key);
+                lastSelectedRef.current = key;
+              }
+              gridRef.current?.api.refreshCells({ force: true });
+              onCellSelectionChange?.([...selectedCellsRef.current]);
+              onAgCellSelected?.({ rowId: event.data.sku, columnId, label: `${event.data.base_sku ?? event.data.sku} / ${event.column.getColDef().headerName ?? columnId}` });
             }}
             rowHeight={28}
             headerHeight={45}

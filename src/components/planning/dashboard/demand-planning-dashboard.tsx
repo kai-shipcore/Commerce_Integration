@@ -1695,7 +1695,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           selectedCellKeys={selectedCellKeys}
           onAgCellSelected={(selection) => {
             setSelectedAgCell({ rowId: selection.rowId, columnId: selection.columnId, label: selection.label });
-            setSelectedAgCells(selection.cells?.length ? selection.cells : [{ rowId: selection.rowId, columnId: selection.columnId, label: selection.label }]);
+          }}
+          onCellSelectionChange={(keys) => {
+            const cells = keys.map((key) => {
+              const sep = key.indexOf("::");
+              const rowId = key.substring(0, sep);
+              const columnId = key.substring(sep + 2);
+              return { rowId, columnId, label: `${rowId} / ${columnId}` };
+            });
+            setSelectedAgCells(cells);
           }}
           onExportReady={handleAgGridExportReady}
         /> : <DemandPlanningGrid

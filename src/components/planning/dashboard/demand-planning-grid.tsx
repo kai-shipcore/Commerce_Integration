@@ -64,6 +64,7 @@ export interface DemandPlanningGridProps {
   cellColors?: CellColorSettings;
   selectedCellKeys?: string[];
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
+  onCellSelectionChange?: (keys: string[]) => void;
   onExportReady?: (exporter: (() => Promise<void>) | null) => void;
 }
 
