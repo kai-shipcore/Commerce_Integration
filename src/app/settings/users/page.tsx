@@ -357,8 +357,8 @@ export default function UserAccessPage() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-[#f8f7f4] dark:bg-slate-900">
                     <TableRow>
-                      <TableHead>User ID</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Joined</TableHead>
                     </TableRow>
@@ -380,11 +380,11 @@ export default function UserAccessPage() {
                           data-state={selectedUser?.id === user.id ? "selected" : undefined}
                           onClick={() => setSelectedUserId(user.id)}
                         >
-                          <TableCell className="max-w-[220px] truncate font-medium">
-                            {user.id}
-                          </TableCell>
-                          <TableCell className="max-w-[240px] truncate">
+                          <TableCell className="max-w-[240px] truncate font-medium">
                             {user.email}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate text-muted-foreground">
+                            {user.name ?? "—"}
                           </TableCell>
                           <TableCell>
                             <Badge
