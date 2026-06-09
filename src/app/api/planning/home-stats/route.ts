@@ -11,7 +11,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v9";
+const CACHE_KEY = "home:planning-stats:v10";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -85,7 +85,7 @@ export async function GET() {
                 AND FLOOR(s.total_stock::float / s.total_avg_curr) > 30
                 AND FLOOR(s.total_stock::float / s.total_avg_curr) <= 60
             )::text AS warning,
-            COUNT(*) FILTER (WHERE s.back < 0)::text AS backorder
+            COALESCE(SUM(CASE WHEN s.back < 0 THEN ABS(s.back) ELSE 0 END), 0)::text AS backorder
           FROM stats_source s
           LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
           GROUP BY cat
@@ -163,9 +163,9 @@ export async function GET() {
          GROUP BY BTRIM(master_sku)`,
         [skuList],
       );
-      const partBackorderRows = partBackResult.rows.filter((row) => Number(row.back) < 0).length;
-      byCategory.sc.critical += partBackorderRows;
-      byCategory.sc.backorder += partBackorderRows;
+      const criticalParts = partBackResult.rows.filter((row) => Number(row.back) < 0);
+      byCategory.sc.critical += criticalParts.length;
+      byCategory.sc.backorder += criticalParts.reduce((sum, row) => sum + Math.abs(Number(row.back)), 0);
     }
 
     const containers = containersResult.rows.map((r) => ({

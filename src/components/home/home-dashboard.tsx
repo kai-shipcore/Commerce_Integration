@@ -271,7 +271,7 @@ export function HomeDashboard({
                 <p className="text-xs font-medium text-muted-foreground">Backorder</p>
               </div>
               <p className="mt-1 text-3xl font-bold text-orange-600 dark:text-orange-400">{(cat?.backorder ?? 0).toLocaleString()}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">SKUs</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Units</p>
             </Link>
           </>
         )}
