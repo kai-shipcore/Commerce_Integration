@@ -8,9 +8,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v8";
+const CACHE_KEY = "home:planning-stats:v9";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -30,6 +31,7 @@ export async function GET() {
 
   try {
     const pool = getPrimaryPool();
+    const lookup = getLookupPool();
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
@@ -38,6 +40,8 @@ export async function GET() {
     type SyncRow = { last_sync: string | null };
     type ContainerRow = { name: string; eta: string | null; total_qty: string; status: string };
     type SalesRow = { qty: string; revenue: string };
+    type PartSkuRow = { sku: string };
+    type PartBackRow = { sku: string; back: number };
 
     const [catStatsResult, syncResult, containersResult, sales30Result, salesPrev30Result] =
       await Promise.all([
@@ -81,7 +85,7 @@ export async function GET() {
                 AND FLOOR(s.total_stock::float / s.total_avg_curr) > 30
                 AND FLOOR(s.total_stock::float / s.total_avg_curr) <= 60
             )::text AS warning,
-            COALESCE(SUM(CASE WHEN s.back < 0 THEN ABS(s.back) ELSE 0 END), 0)::text AS backorder
+            COUNT(*) FILTER (WHERE s.back < 0)::text AS backorder
           FROM stats_source s
           LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
           GROUP BY cat
@@ -137,6 +141,33 @@ export async function GET() {
         };
       }
     }
+
+    const partSkusResult = await pool.query<PartSkuRow>(`
+      SELECT DISTINCT "partSkuValue" AS sku
+      FROM shipcore.fc_replacement_parts
+      WHERE "partSkuValue" IS NOT NULL
+        AND "shippingStatus" = 'Not Ready'
+        AND "deleteYN" = 'N'
+        AND "orderRequest" ~ '^[0-9]+$'
+        AND "orderRequest"::int > 0
+    `);
+
+    if (lookup && partSkusResult.rows.length > 0) {
+      const skuList = partSkusResult.rows.map((row) => row.sku);
+      const partBackResult = await lookup.query<PartBackRow>(
+        `SELECT
+           BTRIM(master_sku) AS sku,
+           (-SUM(COALESCE(backorder, 0)))::int AS back
+         FROM ecommerce_data.coverland_inventory
+         WHERE BTRIM(master_sku) = ANY($1)
+         GROUP BY BTRIM(master_sku)`,
+        [skuList],
+      );
+      const partBackorderRows = partBackResult.rows.filter((row) => Number(row.back) < 0).length;
+      byCategory.sc.critical += partBackorderRows;
+      byCategory.sc.backorder += partBackorderRows;
+    }
+
     const containers = containersResult.rows.map((r) => ({
       name: r.name,
       eta: r.eta ?? null,
