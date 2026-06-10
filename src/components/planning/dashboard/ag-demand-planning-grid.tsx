@@ -172,7 +172,10 @@ function computeContainerChain(
   seasonalFactors: SeasonalFactors,
 ): Map<string, ChainDerived> {
   const result = new Map<string, ChainDerived>();
-  const availableQty = (row.total_stock ?? 0) + (row.back ?? 0);
+  const effectiveTotal = row.stock_mode === 'available'
+    ? ((row.west_available_stock ?? 0) + (row.east_available_stock ?? 0) + (row.transit_stock ?? 0))
+    : (row.total_stock ?? 0);
+  const availableQty = effectiveTotal + (row.back ?? 0);
   const dailyRate = row.total_avg_curr ?? 0;
   let previousCarryover = Math.max(0, availableQty);
   let previousBackorder = availableQty < 0 ? Math.abs(availableQty) : 0;
@@ -1085,8 +1088,10 @@ export function AgDemandPlanningGrid({
       map.set(row.sku, { ...(cur.get(row.sku) ?? {}), stock_mode: next });
       return map;
     });
+    const updatedRow = { ...row, stock_mode: next };
+    setChainMap((cur) => new Map(cur).set(row.sku, computeContainerChain(updatedRow, containers, qtyOverrides, seasonalFactors)));
     gridRef.current?.api.refreshCells({ force: true });
-  }, []);
+  }, [containers, qtyOverrides, seasonalFactors]);
 
   const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS
