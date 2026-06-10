@@ -382,5 +382,9 @@ export const CON_SUBCOLS: ConSubColDef[] = [
     return { html: `<span class="${cls}">${cd.est_sod}</span>` };
   }},
   { id: "psod",  label: "Plan\nSOD",    w: 84, align: "ctr", tint: "t-cn-sod",  val: (cd) => cd.plan_sod ? { html: `<span style="font-size:9px;color:#9A9790">${cd.plan_sod}</span>` } : "" },
-  { id: "ccbm",  label: "CBM",          w: 58, align: "num", tint: "t-cn",      val: (cd) => cd.cbm ? (Math.round(cd.cbm * 100) / 100).toFixed(2) : "" },
+  { id: "ccbm",  label: "CBM",          w: 58, align: "num", tint: "t-cn",      val: (cd, _c, row) => {
+    const qty = cd.inbound_qty ?? 0;
+    const cbmUnit = row?.cbm_per_unit ?? 0;
+    return qty && cbmUnit ? (Math.round(qty * cbmUnit * 100) / 100).toFixed(2) : "";
+  } },
 ];

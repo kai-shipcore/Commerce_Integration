@@ -883,7 +883,8 @@ export function AgDemandPlanningGrid({
         const raw = row.containers?.[container.name];
         const override = qtyOverrides.get(key);
         const derived = chainMap.get(row.sku)?.get(container.name);
-        containerTotals.ccbm! += override !== undefined ? override.cbm ?? 0 : raw?.cbm ?? 0;
+        const conQty = override?.inbound_qty ?? raw?.inbound_qty ?? 0;
+        containerTotals.ccbm! += conQty * (row.cbm_per_unit ?? 0);
         containerTotals.inb_qty! += override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
         containerTotals.remaining! += row.remaining ?? 0;
         containerTotals.mistake! += row.mistake ?? 0;
