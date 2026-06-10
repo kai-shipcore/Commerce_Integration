@@ -8,7 +8,7 @@ type SortDirection = "asc" | "desc";
 
 interface SkuBrowserPanelProps {
   product: ProductKey;
-  productCounts: Record<ProductKey, number>;
+  productCounts: Record<ProductKey, number | null>;
   onProductChange: (product: ProductKey) => void;
   search: string;
   onSearchChange: (value: string) => void;
@@ -225,7 +225,9 @@ export function SkuBrowserPanel({
             onClick={() => onProductChange(key)}
           >
             {productLabel(language, key)}
-            <span className="ml-1 font-mono text-[10px]">{formatNumber(productCounts[key])}</span>
+            <span className="ml-1 font-mono text-[10px]">
+              {productCounts[key] === null ? "-" : formatNumber(productCounts[key] ?? 0)}
+            </span>
           </button>
         ))}
       </div>

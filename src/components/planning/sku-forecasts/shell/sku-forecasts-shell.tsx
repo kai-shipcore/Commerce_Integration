@@ -44,6 +44,7 @@ export function SkuForecastsShell() {
   const [includeDraftContainers, setIncludeDraftContainers] = useState(false);
   const [salesOnly, setSalesOnly] = useState(true);
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
+  const [loadedCounts, setLoadedCounts] = useState<Record<ProductKey, number | null>>({ sc: null, cc: null, fm: null });
   const masterLoadingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -89,7 +90,7 @@ export function SkuForecastsShell() {
     loading,
     error,
     reload,
-  } = useDemandPlanningData("link", undefined, includeDraftContainers);
+  } = useDemandPlanningData("link", undefined, includeDraftContainers, product);
 
   const rowsByProduct = useMemo(() => {
     const grouped: Record<ProductKey, DemandRow[]> = { sc: [], cc: [], fm: [] };
@@ -104,6 +105,16 @@ export function SkuForecastsShell() {
     }
     return grouped;
   }, [data.rows, salesOnly]);
+
+  useEffect(() => {
+    if (loading) return;
+    const count = rowsByProduct[product].length;
+    queueMicrotask(() => {
+      setLoadedCounts((current) => (
+        current[product] === count ? current : { ...current, [product]: count }
+      ));
+    });
+  }, [loading, product, rowsByProduct]);
 
   const visibleRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -256,11 +267,7 @@ export function SkuForecastsShell() {
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[580px_minmax(0,1fr)]">
         <SkuBrowserPanel
           product={product}
-          productCounts={{
-            sc: rowsByProduct.sc.length,
-            cc: rowsByProduct.cc.length,
-            fm: rowsByProduct.fm.length,
-          }}
+          productCounts={{ ...loadedCounts, [product]: rowsByProduct[product].length }}
           onProductChange={(nextProduct) => {
             setProduct(nextProduct);
             setSearch("");

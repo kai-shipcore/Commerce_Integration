@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], last_sync: null };
+const dashboardMemoryCache = new Map<string, DemandPlanningData>();
 
 export type VelocityMode = "link" | "custom";
 
@@ -30,6 +31,17 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
 
   function fetchDashboard(withRefresh: boolean) {
     let cancelled = false;
+    const requestScopeKey = scopeKey();
+    const cachedData = dashboardMemoryCache.get(requestScopeKey);
+    if (!withRefresh && cachedData) {
+      setData(cachedData);
+      dataScopeRef.current = requestScopeKey;
+      setContainerDetailsLoaded(false);
+      setLoading(false);
+      setError(null);
+      return () => { cancelled = true; };
+    }
+
     setLoading(true);
     setError(null);
 
@@ -76,7 +88,8 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
             containers: {},
           }));
           setData({ ...json.data, rows: [...json.data.rows, ...partRows] });
-          dataScopeRef.current = scopeKey();
+          dashboardMemoryCache.set(requestScopeKey, { ...json.data, rows: [...json.data.rows, ...partRows] });
+          dataScopeRef.current = requestScopeKey;
           setContainerDetailsLoaded(false);
         }
         else setError(json.error ?? "Failed to load data");
