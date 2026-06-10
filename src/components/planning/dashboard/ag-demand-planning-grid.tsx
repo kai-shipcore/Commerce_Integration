@@ -464,6 +464,88 @@ function QtyCellRenderer({
   );
 }
 
+function TransitCellRenderer({
+  value,
+  node,
+  onSave,
+}: ICellRendererParams<DemandRow, CellContent> & {
+  onSave: (qty: number) => Promise<boolean>;
+}) {
+  const displayValue = value === null || value === undefined || value === "" ? "0" : String(value);
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState(displayValue);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    if (!editing && !savingRef.current) setInputValue(displayValue);
+  }, [displayValue, editing]);
+
+  async function commit() {
+    if (savingRef.current) return;
+    const next = Number.parseInt(inputValue, 10);
+    if (!Number.isFinite(next) || next < 0) {
+      setInputValue(displayValue);
+      setEditing(false);
+      return;
+    }
+    if (String(next) === displayValue) {
+      setEditing(false);
+      return;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const saved = await onSave(next);
+      if (!saved) setInputValue(displayValue);
+    } catch {
+      setInputValue(displayValue);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="relative h-full w-full">
+        <input
+          autoFocus
+          type="number"
+          min={0}
+          value={inputValue}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") { setInputValue(displayValue); setEditing(false); }
+            if (event.key === "Enter") { event.preventDefault(); void commit(); }
+          }}
+          onBlur={() => void commit()}
+          className="absolute right-0 top-0 h-full min-w-[88px] border border-[#1a5cdb] bg-[#FFFDE7] px-2 text-right font-mono text-[11px] outline-none"
+          style={{ zIndex: 100 }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      title="Click to edit transit stock"
+      onClick={(event) => {
+        event.stopPropagation();
+        node.setSelected(true, true);
+        setEditing(true);
+      }}
+      className="h-full w-full border-0 bg-transparent px-1 text-right font-mono text-[11px] font-semibold text-[#1A4FC0]"
+    >
+      {saving ? "..." : displayValue}
+    </button>
+  );
+}
+
 function CbmCellRenderer({
   value,
   node,
@@ -946,6 +1028,23 @@ export function AgDemandPlanningGrid({
     return true;
   }, [containers, qtyOverrides, seasonalFactors]);
 
+  const saveTransit = useCallback(async (row: DemandRow, nextVal: number): Promise<boolean> => {
+    const res = await fetch(`/api/planning/sku/${encodeURIComponent(row.sku)}/transit-stock`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transit_stock: nextVal }),
+    });
+    if (!res.ok) return false;
+    setRowOverrides((cur) => {
+      const next = new Map(cur);
+      const existing = cur.get(row.sku) ?? {};
+      const newTotal = (row.west_stock || 0) + (row.east_stock || 0) + nextVal;
+      next.set(row.sku, { ...existing, transit_stock: nextVal, total_stock: newTotal });
+      return next;
+    });
+    return true;
+  }, []);
+
   const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS
       .filter((column) => column.grp === "fix" || groupVis[column.grp])
@@ -1013,7 +1112,7 @@ export function AgDemandPlanningGrid({
         }
         return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
       },
-      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : CellRenderer,
+      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : column.id === "transit" ? TransitCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
         ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
             copyValue: column.id === "sku"
@@ -1025,6 +1124,10 @@ export function AgDemandPlanningGrid({
         : column.id === "cbm"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
               onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
+            })
+        : column.id === "transit"
+          ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
+              onSave: (qty: number) => params.data ? saveTransit(params.data, qty) : Promise.resolve(false),
             })
         : undefined,
       headerStyle: headerStyleForColor(columnColors[column.id]?.header),

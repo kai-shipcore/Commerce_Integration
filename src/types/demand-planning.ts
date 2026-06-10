@@ -55,6 +55,7 @@ export interface DemandRow {
   sku: string;
   west_stock: number;
   east_stock: number;
+  transit_stock?: number;
   total_stock: number;
   west_90d: number;
   west_60d: number;

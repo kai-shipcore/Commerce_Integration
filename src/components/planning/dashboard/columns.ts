@@ -132,6 +132,7 @@ export const ALL_COLS: ColDef[] = [
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }) },
   { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.west_stock || 0 },
   { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.east_stock || 0 },
+  { id: "transit",   grp: "stock", label: "Transit\nStock",   w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.transit_stock || 0 },
   { id: "total",     grp: "stock", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.total_stock || 0, bold: true },
   // West Sales
   { id: "w90",  grp: "wsales", label: "West\n90D",  w: 44, align: "num", tint: "t-wsales", gh: "gh-wsales", val: (r) => r.west_90d || 0 },
