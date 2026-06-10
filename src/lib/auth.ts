@@ -59,6 +59,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      allowDangerousEmailAccountLinking: true,
     })
   );
 }
@@ -71,10 +72,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     strategy: "jwt",
   },
   callbacks: {
+    async signIn({ account, profile }) {
+      if (account?.provider === "google") {
+        return (profile as { email_verified?: boolean | null } | undefined)
+          ?.email_verified === true;
+      }
+
+      return true;
+    },
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role || "user";
+        token.role = user.role || "user";
         token.name = user.name ?? null;
         token.email = user.email ?? null;
       }
@@ -91,7 +100,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string;
         session.user.name = token.name as string | null | undefined;
         session.user.email = typeof token.email === "string" ? token.email : "";
-        (session.user as any).role = token.role as string;
+        session.user.role = token.role as string;
       }
       return session;
     },
@@ -104,6 +113,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
 // Type augmentation for session
 declare module "next-auth" {
+  interface User {
+    role?: string;
+  }
+
   interface Session {
     user: {
       id: string;
@@ -112,5 +125,12 @@ declare module "next-auth" {
       image?: string | null;
       role: string;
     };
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string;
+    role?: string;
   }
 }
