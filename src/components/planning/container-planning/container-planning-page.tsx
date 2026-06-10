@@ -131,10 +131,12 @@ const productBadgeClasses: Record<ProductKey, string> = {
 };
 
 const productLabels: Record<ProductKey, string> = {
-  cc: "Car Cover",
   fm: "Floor Mat",
+  cc: "Car Cover",
   sc: "Seat Cover",
 };
+
+const productFilterOrder: ProductKey[] = ["fm", "cc", "sc"];
 
 const productFilterColors: Record<ProductKey, string> = {
   cc: "#1a4db0",
@@ -260,7 +262,7 @@ export function ContainerPlanningPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ContainerStatus | null>(null);
-  const [productFilter, setProductFilter] = useState<ProductKey | null>(null);
+  const [productFilter, setProductFilter] = useState<ProductKey | null>(targetContainerId ? null : "fm");
   const [containerListTab, setContainerListTab] = useState<ContainerListTab>("active");
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
@@ -323,7 +325,12 @@ export function ContainerPlanningPage() {
     setLoadingContainers(true);
     setContainersError(null);
     try {
-      const response = await fetch("/api/containers?includeReceived=true&includeDetails=true", {
+      const params = new URLSearchParams({
+        includeReceived: "true",
+        includeDetails: "true",
+      });
+      if (productFilter) params.set("product", productFilter);
+      const response = await fetch(`/api/containers?${params.toString()}`, {
         cache: "no-store",
       });
       const json = await response.json();
@@ -412,8 +419,14 @@ export function ContainerPlanningPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchContainers();
-    void fetchWarehouses();
-    void fetchFactories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Product changes intentionally reload the container list from the API.
+  }, [productFilter]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void fetchWarehouses();
+      void fetchFactories();
+    });
   }, []);
 
   useEffect(() => {
@@ -1456,7 +1469,8 @@ export function ContainerPlanningPage() {
               ) : null}
             </div>
             <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
-              {(Object.entries(productLabels) as [ProductKey, string][]).map(([key, label]) => {
+              {productFilterOrder.map((key) => {
+                const label = productLabels[key];
                 const isActive = productFilter === key;
                 return (
                   <button

@@ -51,9 +51,17 @@ export async function GET(request: NextRequest) {
     const city = searchParams.get("city")?.trim() ?? "";
     const includeReceived = searchParams.get("includeReceived") === "true";
     const includeDetails = searchParams.get("includeDetails") === "true";
+    const product = searchParams.get("product")?.trim().toLowerCase() ?? "";
+    const categoryCode = product === "fm" ? "FM" : product === "cc" ? "CC" : product === "sc" ? "SC" : null;
 
     const filters: string[] = [];
     const params: unknown[] = [];
+    const categoryParamIndex = categoryCode
+      ? (() => {
+          params.push(categoryCode);
+          return params.length;
+        })()
+      : null;
 
     if (!includeReceived) {
       filters.push("c.status <> 'received'");
@@ -68,7 +76,21 @@ export async function GET(request: NextRequest) {
       filters.push(`(${destinationFilters.join(" OR ")})`);
     }
 
+    if (categoryParamIndex) {
+      filters.push(`EXISTS (
+        SELECT 1
+        FROM shipcore.fc_container_items ci_filter
+        JOIN shipcore.fc_products p_filter ON p_filter.master_sku = ci_filter.master_sku
+        WHERE ci_filter.container_id = c.id
+          AND p_filter.category_code = $${categoryParamIndex}
+      )`);
+    }
+
     const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+    const itemCategoryJoin = categoryParamIndex
+      ? `JOIN shipcore.fc_products p_item ON p_item.master_sku = fc_container_items.master_sku
+         AND p_item.category_code = $${categoryParamIndex}`
+      : "";
 
     const result = await getPrimaryPool().query(
       `SELECT
@@ -89,16 +111,20 @@ export async function GET(request: NextRequest) {
        FROM shipcore.fc_containers c
        LEFT JOIN (
          SELECT
-           container_id,
+           fc_container_items.container_id,
            COUNT(*)::int AS item_count,
-           COALESCE(SUM(qty), 0)::int AS total_qty,
-           COALESCE(SUM(total_cbm), 0)::numeric AS total_cbm,
+           COALESCE(SUM(fc_container_items.qty), 0)::int AS total_qty,
+           COALESCE(SUM(fc_container_items.total_cbm), 0)::numeric AS total_cbm,
            json_agg(
              json_build_object(
-               'id', id::text,
-               'sku', master_sku,
-               'qty', qty,
-               'cbm', COALESCE(cbm_unit, CASE WHEN qty > 0 THEN total_cbm / qty ELSE 0 END, 0),
+               'id', fc_container_items.id::text,
+               'sku', fc_container_items.master_sku,
+               'qty', fc_container_items.qty,
+               'cbm', COALESCE(
+                 fc_container_items.cbm_unit,
+                 CASE WHEN fc_container_items.qty > 0 THEN fc_container_items.total_cbm / fc_container_items.qty ELSE 0 END,
+                 0
+               ),
                'allocations', COALESCE((
                  SELECT json_agg(
                    json_build_object(
@@ -117,10 +143,11 @@ export async function GET(request: NextRequest) {
                    AND stock.master_sku = fc_container_items.master_sku
                ), '[]'::json)
              )
-             ORDER BY id
+             ORDER BY fc_container_items.id
            ) AS items
          FROM shipcore.fc_container_items
-         GROUP BY container_id
+         ${itemCategoryJoin}
+         GROUP BY fc_container_items.container_id
        ) item_summary ON item_summary.container_id = c.id
        ${where}
        ORDER BY c.eta_date NULLS LAST, c.id DESC`,
