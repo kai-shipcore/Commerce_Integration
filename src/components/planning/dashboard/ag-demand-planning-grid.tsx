@@ -546,6 +546,33 @@ function TransitCellRenderer({
   );
 }
 
+function StockModeCellRenderer({
+  value,
+  node,
+  onToggle,
+}: ICellRendererParams<DemandRow, CellContent> & { onToggle: () => Promise<void> }) {
+  const [toggling, setToggling] = useState(false);
+  const isAvailable = value === "available";
+  return (
+    <button
+      type="button"
+      disabled={toggling}
+      title={isAvailable ? "Available stock — click for Onhand" : "Onhand stock — click for Available"}
+      onClick={async (e) => {
+        e.stopPropagation();
+        node.setSelected(true, true);
+        setToggling(true);
+        await onToggle();
+        setToggling(false);
+      }}
+      className="h-full w-full border-0 bg-transparent text-[9px] font-bold"
+      style={{ color: isAvailable ? "#1A4FC0" : "#6B7280" }}
+    >
+      {toggling ? "…" : isAvailable ? "AV" : "OH"}
+    </button>
+  );
+}
+
 function CbmCellRenderer({
   value,
   node,
@@ -1045,6 +1072,22 @@ export function AgDemandPlanningGrid({
     return true;
   }, []);
 
+  const saveStockMode = useCallback(async (row: DemandRow): Promise<void> => {
+    const next: 'onhand' | 'available' = (row.stock_mode ?? 'onhand') === 'onhand' ? 'available' : 'onhand';
+    const res = await fetch(`/api/planning/sku/${encodeURIComponent(row.sku)}/stock-mode`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stock_mode: next }),
+    });
+    if (!res.ok) return;
+    setRowOverrides((cur) => {
+      const map = new Map(cur);
+      map.set(row.sku, { ...(cur.get(row.sku) ?? {}), stock_mode: next });
+      return map;
+    });
+    gridRef.current?.api.refreshCells({ force: true });
+  }, []);
+
   const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS
       .filter((column) => column.grp === "fix" || groupVis[column.grp])
@@ -1112,7 +1155,7 @@ export function AgDemandPlanningGrid({
         }
         return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
       },
-      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : column.id === "transit" ? TransitCellRenderer : CellRenderer,
+      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : column.id === "transit" ? TransitCellRenderer : column.id === "mode" ? StockModeCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
         ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
             copyValue: column.id === "sku"
@@ -1128,6 +1171,10 @@ export function AgDemandPlanningGrid({
         : column.id === "transit"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
               onSave: (qty: number) => params.data ? saveTransit(params.data, qty) : Promise.resolve(false),
+            })
+        : column.id === "mode"
+          ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
+              onToggle: () => params.data ? saveStockMode(params.data) : Promise.resolve(),
             })
         : undefined,
       headerStyle: headerStyleForColor(columnColors[column.id]?.header),
