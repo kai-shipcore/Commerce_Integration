@@ -33,15 +33,18 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10) || 1);
     const limit = Math.min(100, Math.max(5, Number.parseInt(searchParams.get("limit") ?? "10", 10) || 10));
     const search = searchParams.get("search")?.trim() ?? "";
-    const where = search
+    const roleFilter = searchParams.get("role")?.trim() ?? "";
+    const searchClause = search
       ? {
           OR: [
             { id: { contains: search, mode: "insensitive" as const } },
             { email: { contains: search, mode: "insensitive" as const } },
             { name: { contains: search, mode: "insensitive" as const } },
-            { role: { contains: search, mode: "insensitive" as const } },
           ],
         }
+      : undefined;
+    const where = searchClause || roleFilter
+      ? { AND: [...(searchClause ? [searchClause] : []), ...(roleFilter ? [{ role: roleFilter }] : [])] }
       : undefined;
 
     const [total, users] = await prisma.$transaction([

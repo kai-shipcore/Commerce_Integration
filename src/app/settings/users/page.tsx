@@ -76,6 +76,7 @@ export default function UserAccessPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [pagination, setPagination] = useState<UserPagination>({
     page: 1,
@@ -116,6 +117,7 @@ export default function UserAccessPage() {
           limit: String(pagination.limit),
         });
         if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
+        if (roleFilter) params.set("role", roleFilter);
         const response = await fetch(`/api/admin/users?${params.toString()}`, {
           cache: "no-store",
         });
@@ -143,7 +145,7 @@ export default function UserAccessPage() {
     };
 
     void loadUsers();
-  }, [debouncedSearchTerm, pagination.limit, pagination.page, session?.user?.role, status]);
+  }, [debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, session?.user?.role, status]);
 
   const selectedUser =
     users.find((user) => user.id === selectedUserId) ||
@@ -156,6 +158,7 @@ export default function UserAccessPage() {
       limit: String(pagination.limit),
     });
     if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
+    if (roleFilter) params.set("role", roleFilter);
     const reloadResponse = await fetch(`/api/admin/users?${params.toString()}`, { cache: "no-store" });
     const reloadResult = await reloadResponse.json();
     if (reloadResponse.ok && reloadResult.success) {
@@ -301,14 +304,30 @@ export default function UserAccessPage() {
                   Page {pagination.total === 0 ? 0 : pagination.page} / {pagination.total === 0 ? 0 : pagination.totalPages}
                 </span>
               </div>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by id, email, name, or role"
-                  className="pl-9"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search by email or name"
+                    className="pl-9"
+                  />
+                </div>
+                <select
+                  value={roleFilter}
+                  onChange={(event) => {
+                    setRoleFilter(event.target.value);
+                    setPagination((current) => ({ ...current, page: 1 }));
+                  }}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground dark:border-slate-700 dark:bg-slate-950"
+                >
+                  <option value="">All Roles</option>
+                  <option value="user">user</option>
+                  <option value="admin">admin</option>
+                  <option value="dev">dev</option>
+                  <option value="planner">planner</option>
+                </select>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4 text-sm text-muted-foreground dark:border-slate-700">
                 <div className="flex items-center gap-2">
