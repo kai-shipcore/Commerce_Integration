@@ -68,31 +68,37 @@ export async function POST() {
 
     // ── Step 1: Inventory from coverland_inventory ───────────────────────────
     const invResult = await lookup.query<{
-      master_sku:  string;
-      west_stock:  number;
-      east_stock:  number;
-      total_stock: number;
-      back:        number;
+      master_sku:           string;
+      west_stock:           number;
+      east_stock:           number;
+      total_stock:          number;
+      back:                 number;
+      west_available_stock: number;
+      east_available_stock: number;
     }>(`
       SELECT
-        BTRIM(master_sku)                                                              AS master_sku,
-        SUM(CASE WHEN warehouse = 'Fullerton' THEN COALESCE(on_hand, 0) ELSE 0 END)::int AS west_stock,
-        SUM(CASE WHEN warehouse = 'TTM Group' THEN COALESCE(on_hand, 0) ELSE 0 END)::int AS east_stock,
-        SUM(COALESCE(on_hand,   0))::int                                               AS total_stock,
-        -SUM(COALESCE(backorder, 0))::int                                              AS back
+        BTRIM(master_sku)                                                                       AS master_sku,
+        SUM(CASE WHEN warehouse = 'Fullerton' THEN COALESCE(on_hand,   0) ELSE 0 END)::int     AS west_stock,
+        SUM(CASE WHEN warehouse = 'TTM Group' THEN COALESCE(on_hand,   0) ELSE 0 END)::int     AS east_stock,
+        SUM(COALESCE(on_hand,   0))::int                                                        AS total_stock,
+        -SUM(COALESCE(backorder, 0))::int                                                       AS back,
+        SUM(CASE WHEN warehouse = 'Fullerton' THEN COALESCE(available, 0) ELSE 0 END)::int     AS west_available_stock,
+        SUM(CASE WHEN warehouse = 'TTM Group' THEN COALESCE(available, 0) ELSE 0 END)::int     AS east_available_stock
       FROM ecommerce_data.coverland_inventory
       WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
       GROUP BY BTRIM(master_sku)
     `);
 
     const invRows = invResult.rows as Record<string, unknown>[];
-    const invCols = ["master_sku", "west_stock", "east_stock", "total_stock", "back"];
-    const invUpdate = `west_stock    = EXCLUDED.west_stock,
-       east_stock    = EXCLUDED.east_stock,
-       total_stock   = EXCLUDED.total_stock,
-       back          = EXCLUDED.back,
-       calculated_at = NOW(),
-       updated_at    = NOW()`;
+    const invCols = ["master_sku", "west_stock", "east_stock", "total_stock", "back", "west_available_stock", "east_available_stock"];
+    const invUpdate = `west_stock            = EXCLUDED.west_stock,
+       east_stock            = EXCLUDED.east_stock,
+       total_stock           = EXCLUDED.total_stock,
+       back                  = EXCLUDED.back,
+       west_available_stock  = EXCLUDED.west_available_stock,
+       east_available_stock  = EXCLUDED.east_available_stock,
+       calculated_at         = NOW(),
+       updated_at            = NOW()`;
     await Promise.all([
       batchUpsert(primary, "shipcore.fc_stats",        invRows, invCols, invUpdate),
       batchUpsert(primary, "shipcore.fc_stats_custom", invRows, invCols, invUpdate),
