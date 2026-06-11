@@ -7,7 +7,6 @@
  */
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,10 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, LogOut } from "lucide-react";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, authPath } from "@/lib/api-path";
 
 export function UserMenu() {
-  const router = useRouter();
   const { data: session, status } = useSession();
   const user = session?.user;
 
@@ -45,7 +43,7 @@ export function UserMenu() {
     : user.email?.[0]?.toUpperCase() || "U";
 
   const handleSignOut = async () => {
-    const callbackUrl = "/auth/signin";
+    const callbackUrl = authPath("/auth/signin");
     try {
       const csrfResponse = await fetch(apiPath("/api/auth/csrf"), {
         credentials: "same-origin",
@@ -65,8 +63,7 @@ export function UserMenu() {
         credentials: "same-origin",
       });
     } finally {
-      router.push(callbackUrl);
-      router.refresh();
+      window.location.assign(callbackUrl);
     }
   };
 

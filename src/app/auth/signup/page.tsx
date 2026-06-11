@@ -2,17 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, Loader2 } from "lucide-react";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, authPath, withBasePath } from "@/lib/api-path";
 
 export default function SignUpPage() {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,20 +43,34 @@ export default function SignUpPage() {
         return;
       }
 
-      const signInResult = await signIn("credentials", {
-        email,
-        password,
-        callbackUrl: "/",
-        redirect: false,
+      const csrfResponse = await fetch(apiPath("/api/auth/csrf"), {
+        credentials: "same-origin",
       });
+      const csrfData = (await csrfResponse.json()) as { csrfToken?: string };
 
-      if (signInResult?.error) {
-        router.push("/auth/signin");
+      const signInResponse = await fetch(apiPath("/api/auth/callback/credentials"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Auth-Return-Redirect": "1",
+        },
+        body: new URLSearchParams({
+          email,
+          password,
+          csrfToken: csrfData.csrfToken ?? "",
+          callbackUrl: withBasePath("/"),
+        }),
+        credentials: "same-origin",
+      });
+      const signInResult = (await signInResponse.json()) as { url?: string };
+      const signInUrl = signInResult.url ? new URL(signInResult.url, window.location.origin) : null;
+
+      if (!signInResponse.ok || signInUrl?.searchParams.get("error")) {
+        window.location.assign(authPath("/auth/signin"));
         return;
       }
 
-      router.push("/");
-      router.refresh();
+      window.location.assign(withBasePath("/"));
     } catch (requestError: unknown) {
       setError(
         requestError instanceof Error ? requestError.message : "Failed to create account"

@@ -13,6 +13,17 @@ export function apiPath(path: string): string {
   return withBasePath(path);
 }
 
+export function authPath(path: string): string {
+  return withBasePath(path);
+}
+
+export function stripBasePath(path: string): string {
+  if (!basePath) return path;
+  if (path === basePath) return "/";
+  if (path.startsWith(`${basePath}/`)) return path.slice(basePath.length) || "/";
+  return path;
+}
+
 function normalizeBasePath(value: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "/") return "";

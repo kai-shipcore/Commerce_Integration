@@ -11,6 +11,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
+import { authPath } from "@/lib/api-path";
 
 // Build providers list dynamically
 const providers: Provider[] = [
@@ -107,8 +108,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   pages: {
-    signIn: "/auth/signin",
-    error: "/auth/error",
+    signIn: authPath("/auth/signin"),
+    error: authPath("/auth/error"),
   },
 });
 

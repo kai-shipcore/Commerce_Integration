@@ -6,7 +6,7 @@
 
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
-import { withBasePath } from "@/lib/api-path";
+import { authPath, stripBasePath, withBasePath } from "@/lib/api-path";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -32,10 +32,10 @@ export async function middleware(req: NextRequest) {
 
   // If not authenticated and trying to access protected route
   if (!token && !isPublicRoute) {
-    const signInUrl = new URL(withBasePath("/auth/signin"), req.url);
+    const signInUrl = new URL(authPath("/auth/signin"), req.url);
     signInUrl.searchParams.set(
       "callbackUrl",
-      withBasePath(`${pathname}${req.nextUrl.search || ""}`)
+      withBasePath(stripBasePath(`${pathname}${req.nextUrl.search || ""}`))
     );
     return NextResponse.redirect(signInUrl);
   }

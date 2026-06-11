@@ -3,25 +3,24 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, TrendingUp } from "lucide-react";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, stripBasePath, withBasePath } from "@/lib/api-path";
 
 interface SignInContentProps {
   googleEnabled: boolean;
 }
 
 function SignInCardContent({ googleEnabled }: SignInContentProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const rawCallbackUrl = searchParams.get("callbackUrl") || "/";
   const callbackPath = toLocalCallbackPath(rawCallbackUrl);
-  const callbackUrl = stripBasePath(callbackPath);
+  const callbackUrl = withBasePath(stripBasePath(callbackPath));
   const queryError = searchParams.get("error");
 
   const [email, setEmail] = useState("");
@@ -65,8 +64,7 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      window.location.assign(callbackUrl);
     } catch {
       setSignInError("CredentialsSignin");
     } finally {
@@ -206,14 +204,6 @@ function toLocalCallbackPath(callbackUrl: string) {
   } catch {
     return "/";
   }
-}
-
-function stripBasePath(path: string) {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  if (!basePath || basePath === "/") return path;
-  if (path === basePath) return "/";
-  if (path.startsWith(`${basePath}/`)) return path.slice(basePath.length);
-  return path;
 }
 
 function LoadingFallback() {
