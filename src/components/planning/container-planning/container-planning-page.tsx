@@ -146,9 +146,9 @@ const productFilterColors: Record<ProductKey, string> = {
 };
 
 const productFilterIcons: Record<ProductKey, string> = {
-  cc: "ðŸš—",
-  fm: "ðŸ§©",
-  sc: "ðŸ’º",
+  cc: "🚗",
+  fm: "🧩",
+  sc: "💺",
 };
 
 const SKU_LIST_COLLAPSED_STORAGE_KEY = "container-planning-sku-list-collapsed";
