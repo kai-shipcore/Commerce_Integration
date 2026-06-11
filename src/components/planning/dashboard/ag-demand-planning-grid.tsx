@@ -894,7 +894,7 @@ export function AgDemandPlanningGrid({
         const override = qtyOverrides.get(key);
         const derived = chainMap.get(row.sku)?.get(container.name);
         const conQty = override?.inbound_qty ?? raw?.inbound_qty ?? 0;
-        containerTotals.ccbm! += conQty * (row.cbm_per_unit ?? 0);
+        containerTotals.ccbm! += (conQty / (row.case_qty || 1)) * (row.cbm_per_unit ?? 0);
         containerTotals.inb_qty! += override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
         containerTotals.remaining! += row.remaining ?? 0;
         containerTotals.mistake! += row.mistake ?? 0;
@@ -1106,7 +1106,7 @@ export function AgDemandPlanningGrid({
         const key = `${r.sku}::${container.name}`;
         const existingQty = qtyOverrides.get(key)?.inbound_qty ?? r.containers?.[container.name]?.inbound_qty ?? 0;
         if (existingQty > 0) {
-          usedCbm += existingQty * (r.cbm_per_unit ?? 0);
+          usedCbm += (existingQty / (r.case_qty || 1)) * (r.cbm_per_unit ?? 0);
           return false; // skip — already has Con Qty
         }
         return true;
@@ -1119,7 +1119,7 @@ export function AgDemandPlanningGrid({
         return {
           sku: row.sku,
           adj_daily: row.total_avg_curr * seasonFactor,
-          cbm_per_unit: row.cbm_per_unit ?? 0,
+          cbm_per_unit: (row.cbm_per_unit ?? 0) / (row.case_qty || 1),
           moq: row.moq ?? 1,
           order_multiple: row.order_multiple ?? 1,
           remaining_at_arrival: prev?.carryover ?? 0,
