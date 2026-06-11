@@ -11,7 +11,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
-import { authPath, externalAuthApiBaseUrl } from "@/lib/api-path";
+import { authPath } from "@/lib/api-path";
 
 // Build providers list dynamically
 const providers: Provider[] = [
@@ -67,8 +67,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  basePath: "/api/auth",
-  redirectProxyUrl: externalAuthApiBaseUrl(),
+  basePath: authPath("/api/auth"),
   providers,
   trustHost: true,
   session: {
