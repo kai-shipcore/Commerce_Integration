@@ -5,8 +5,9 @@
  * Shared layout component used across app screens.
  * Navigation, shell structure, and session-aware controls are kept here so individual pages stay focused on their own content.
  */
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,8 +19,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, LogOut } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 export function UserMenu() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const user = session?.user;
 
@@ -40,6 +43,32 @@ export function UserMenu() {
         .join("")
         .toUpperCase()
     : user.email?.[0]?.toUpperCase() || "U";
+
+  const handleSignOut = async () => {
+    const callbackUrl = "/auth/signin";
+    try {
+      const csrfResponse = await fetch(apiPath("/api/auth/csrf"), {
+        credentials: "same-origin",
+      });
+      const csrfData = (await csrfResponse.json()) as { csrfToken?: string };
+
+      await fetch(apiPath("/api/auth/signout"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Auth-Return-Redirect": "1",
+        },
+        body: new URLSearchParams({
+          csrfToken: csrfData.csrfToken ?? "",
+          callbackUrl,
+        }),
+        credentials: "same-origin",
+      });
+    } finally {
+      router.push(callbackUrl);
+      router.refresh();
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -68,7 +97,7 @@ export function UserMenu() {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/auth/signin" })}>
+        <DropdownMenuItem onClick={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>Sign out</span>
         </DropdownMenuItem>

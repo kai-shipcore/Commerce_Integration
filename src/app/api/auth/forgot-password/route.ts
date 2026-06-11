@@ -8,6 +8,7 @@ import {
   hashPasswordResetToken,
 } from "@/lib/auth/password-reset";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { basePath, withBasePath } from "@/lib/api-path";
 
 const ForgotPasswordSchema = z.object({
   email: z
@@ -45,7 +46,11 @@ export async function POST(request: NextRequest) {
       process.env.NEXT_PUBLIC_APP_URL ||
       process.env.NEXTAUTH_URL ||
       "http://localhost:3000";
-    const resetUrl = `${baseUrl}/auth/reset-password?token=${encodeURIComponent(rawToken)}`;
+    const resetPath = withBasePath(`/auth/reset-password?token=${encodeURIComponent(rawToken)}`);
+    const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
+    const resetUrl = normalizedBaseUrl.endsWith(basePath)
+      ? `${normalizedBaseUrl}${resetPath.slice(basePath.length)}`
+      : `${normalizedBaseUrl}${resetPath}`;
 
     await prisma.verificationToken.deleteMany({
       where: { identifier },

@@ -3,32 +3,75 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, TrendingUp } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface SignInContentProps {
   googleEnabled: boolean;
 }
 
 function SignInCardContent({ googleEnabled }: SignInContentProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
-  const error = searchParams.get("error");
+  const rawCallbackUrl = searchParams.get("callbackUrl") || "/";
+  const callbackPath = toLocalCallbackPath(rawCallbackUrl);
+  const callbackUrl = stripBasePath(callbackPath);
+  const queryError = searchParams.get("error");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
+  const error = signInError ?? queryError;
 
   const handleCredentialsSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await signIn("credentials", { email, password, callbackUrl });
-    setLoading(false);
+    setSignInError(null);
+
+    try {
+      const csrfResponse = await fetch(apiPath("/api/auth/csrf"), {
+        credentials: "same-origin",
+      });
+      const csrfData = (await csrfResponse.json()) as { csrfToken?: string };
+
+      const response = await fetch(apiPath("/api/auth/callback/credentials"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Auth-Return-Redirect": "1",
+        },
+        body: new URLSearchParams({
+          email,
+          password,
+          csrfToken: csrfData.csrfToken ?? "",
+          callbackUrl,
+        }),
+        credentials: "same-origin",
+      });
+
+      const result = (await response.json()) as { url?: string };
+      const resultUrl = result.url ? new URL(result.url, window.location.origin) : null;
+      const error = resultUrl?.searchParams.get("error");
+
+      if (!response.ok || error) {
+        setSignInError(error ?? "CredentialsSignin");
+        return;
+      }
+
+      router.push(callbackUrl);
+      router.refresh();
+    } catch {
+      setSignInError("CredentialsSignin");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -152,6 +195,25 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
       </CardContent>
     </Card>
   );
+}
+
+function toLocalCallbackPath(callbackUrl: string) {
+  if (!callbackUrl.startsWith("http")) return callbackUrl;
+
+  try {
+    const url = new URL(callbackUrl);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
+function stripBasePath(path: string) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  if (!basePath || basePath === "/") return path;
+  if (path === basePath) return "/";
+  if (path.startsWith(`${basePath}/`)) return path.slice(basePath.length);
+  return path;
 }
 
 function LoadingFallback() {

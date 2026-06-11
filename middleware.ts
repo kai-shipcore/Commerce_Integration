@@ -21,9 +21,9 @@ export async function middleware(req: NextRequest) {
 
   // Public routes that don't require authentication
   const publicRoutes = ["/auth/signin", "/auth/signup", "/auth/forgot-password", "/auth/reset-password", "/auth/error", "/api/auth"];
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
+  const isPublicRoute = publicRoutes.some((route) => pathStartsWithBaseAware(pathname, route));
   const isAuthPage =
-    pathname.startsWith("/auth/signin") || pathname.startsWith("/auth/signup");
+    pathStartsWithBaseAware(pathname, "/auth/signin") || pathStartsWithBaseAware(pathname, "/auth/signup");
 
   // If authenticated and visiting auth pages, go to the app instead
   if (token && isAuthPage) {
@@ -35,12 +35,16 @@ export async function middleware(req: NextRequest) {
     const signInUrl = new URL(withBasePath("/auth/signin"), req.url);
     signInUrl.searchParams.set(
       "callbackUrl",
-      `${pathname}${req.nextUrl.search || ""}`
+      withBasePath(`${pathname}${req.nextUrl.search || ""}`)
     );
     return NextResponse.redirect(signInUrl);
   }
 
   return NextResponse.next();
+}
+
+function pathStartsWithBaseAware(pathname: string, route: string) {
+  return pathname.startsWith(route) || pathname.startsWith(withBasePath(route));
 }
 
 export const config = {
