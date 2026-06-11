@@ -16,7 +16,7 @@ const TEMPLATE_HEADERS = [
   "Request Received Date",
   "Order Number",
   "Part Number",
-  "í•´ë‹¹SKU",
+  "해당SKU",
   "QTY",
   "Order Request",
   "PART SKU",
@@ -36,8 +36,8 @@ const HEADER_ALIASES: Record<string, string> = {
   "ordernumber": "Order Number",
   "part number": "Part Number",
   "partnumber": "Part Number",
-  "í•´ë‹¹sku": "í•´ë‹¹SKU",
-  "correspondingsku": "í•´ë‹¹SKU",
+  "해당sku": "해당SKU",
+  "correspondingsku": "해당SKU",
   "qty": "QTY",
   "order request": "Order Request",
   "orderrequest": "Order Request",
@@ -94,7 +94,7 @@ function validateRows(rows: Record<string, string>[]): ValidationError[] {
         errors.push({
           rowNum,
           field: "Duplicate",
-          message: `Row ${seen.get(key)}ì™€ Request Received Date Â· Order Number Â· Part Number ì¡°í•©ì´ ì¤‘ë³µë©ë‹ˆë‹¤`,
+          message: `Row ${seen.get(key)}와 Request Received Date · Order Number · Part Number 조합이 중복됩니다`,
         });
       } else {
         seen.set(key, rowNum);
@@ -189,7 +189,7 @@ export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportParts
         requestReceivedAt: r["Request Received Date"] ?? "",
         orderNumber: r["Order Number"] ?? "",
         partNumber: r["Part Number"] ?? "",
-        correspondingSku: r["í•´ë‹¹SKU"] ?? "",
+        correspondingSku: r["해당SKU"] ?? "",
         qty: r["QTY"] ?? "0",
         orderRequest: r["Order Request"] ?? "",
         partSku: r["PART SKU"] ?? "",
@@ -259,11 +259,11 @@ export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportParts
               overflowY: "auto",
             }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#c0392b", marginBottom: 6 }}>
-                {validationErrors.length} error{validationErrors.length > 1 ? "s" : ""} found â€” fix the Excel file and re-upload.
+                {validationErrors.length} error{validationErrors.length > 1 ? "s" : ""} found — fix the Excel file and re-upload.
               </p>
               {validationErrors.map((e, i) => (
                 <p key={i} style={{ fontSize: 12, color: "#c0392b", margin: "2px 0" }}>
-                  Row {e.rowNum} Â· {e.field}: {e.message}
+                  Row {e.rowNum} · {e.field}: {e.message}
                 </p>
               ))}
             </div>
@@ -272,14 +272,14 @@ export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportParts
           {/* Ready state */}
           {isReady && (
             <p style={{ fontSize: 13, color: "#2A7A2A", fontWeight: 600 }}>
-              âœ“ {parsedRows.length} rows ready to upload.
+              ✓ {parsedRows.length} rows ready to upload.
             </p>
           )}
 
           {/* Upload result */}
           {result && (
             <p style={{ fontSize: 13, color: "#2A7A2A", fontWeight: 600 }}>
-              âœ“ {result.upserted} rows upserted successfully.
+              ✓ {result.upserted} rows upserted successfully.
             </p>
           )}
 
@@ -310,7 +310,7 @@ export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportParts
               borderRadius: "50%",
               animation: "spin 0.8s linear infinite",
             }} />
-            <span style={{ fontSize: 13, color: "#1A1917", fontWeight: 600 }}>Uploadingâ€¦</span>
+            <span style={{ fontSize: 13, color: "#1A1917", fontWeight: 600 }}>Uploading…</span>
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         )}

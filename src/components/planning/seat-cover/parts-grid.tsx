@@ -103,7 +103,7 @@ function exportToExcel(rows: PartOrderRow[], tabKey: string) {
     "Request Received Date": fmtDate(r.requestReceivedAt),
     "Order Number": r.orderNumber,
     "Part Number": r.partNumber,
-    "í•´ë‹¹SKU": r.correspondingSku ?? "",
+    "해당SKU": r.correspondingSku ?? "",
     QTY: r.qty,
     "Order Request": r.orderRequest ?? "",
     "PART SKU": r.partSku ?? "",
@@ -161,7 +161,7 @@ export function PartsGrid() {
       return rows.filter((r) => r.shippingStatus === "Shipped");
     if (activeFilter === "canceled")
       return rows.filter((r) => r.shippingStatus === "Canceled");
-    return rows; // deleted â€” API already filtered by deleteYN='Y'
+    return rows; // deleted — API already filtered by deleteYN='Y'
   }, [rows, activeFilter]);
 
   const getRowStyle = useCallback(
@@ -203,7 +203,7 @@ export function PartsGrid() {
         minWidth: 110,
       },
       {
-        headerName: "í•´ë‹¹SKU",
+        headerName: "해당SKU",
         field: "correspondingSku",
         flex: 2,
         minWidth: 110,
@@ -314,7 +314,7 @@ export function PartsGrid() {
       >
         <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1917" }}>Parts</span>
         {loading && (
-          <span style={{ fontSize: 13, color: "#7A766F" }}>Loadingâ€¦</span>
+          <span style={{ fontSize: 13, color: "#7A766F" }}>Loading…</span>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           <button
@@ -369,7 +369,7 @@ export function PartsGrid() {
                 </button>
               }
               title="Delete Part"
-              description={`Order #${selectedRow?.orderNumber ?? ""} í–‰ì„ ì‚­ì œí•©ë‹ˆë‹¤. ë˜ëŒë¦´ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.`}
+              description={`Order #${selectedRow?.orderNumber ?? ""} 행을 삭제합니다. 되돌릴 수 없습니다.`}
               onConfirm={async () => {
                 await fetch(apiPath(`/api/planning/seat-cover/parts/${selectedRow!.id}`), {
                   method: "DELETE",

@@ -454,10 +454,10 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
 
         <form onSubmit={handleSubmit}>
           {!isEdit ? (
-            /* â”€â”€ Add ëª¨ë“œ: ì¢Œìš° ë¶„ë¦¬ â”€â”€ */
+            /* ── Add 모드: 좌우 분리 ── */
             <div style={{ display: "flex", gap: 24, alignItems: "flex-start", padding: "12px 0 20px" }}>
 
-              {/* ì™¼ìª½: ì¡°íšŒ íŒ¨ë„ */}
+              {/* 왼쪽: 조회 패널 */}
               <div style={{ width: 340, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   <Label htmlFor="orderNumber" style={{ fontSize: 12, color: "#7A766F" }}>
@@ -490,7 +490,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                         flexShrink: 0,
                       }}
                     >
-                      {lookupLoading ? "ì¡°íšŒ ì¤‘â€¦" : "ì¡°íšŒ"}
+                      {lookupLoading ? "조회 중…" : "조회"}
                     </button>
                   </div>
                 </div>
@@ -511,14 +511,14 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                           width: 14, height: 14, borderRadius: "50%",
                           border: "2px solid #D8D6CE", borderTopColor: "#2A2825",
                         }} />
-                        <span style={{ fontSize: 12, color: "#7A766F" }}>ì¡°íšŒ ì¤‘â€¦</span>
+                        <span style={{ fontSize: 12, color: "#7A766F" }}>조회 중…</span>
                       </div>
                     )}
 
                     {!lookupLoading && orderItems.length > 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: "#7A766F", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                          SKU / ìƒí’ˆ ì„ íƒ
+                          SKU / 상품 선택
                         </span>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
                           {orderItems.filter((item) => item.sku.includes("SC")).map((item) => {
@@ -560,7 +560,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                     {selectedOrderSku && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: "#7A766F", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                          í•´ë‹¹SKU ì„ íƒ
+                          해당SKU 선택
                         </span>
                         {sizeOptions.length > 0 ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -594,7 +594,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                             })}
                           </div>
                         ) : (
-                          <span style={{ fontSize: 12, color: "#A8A49E" }}>í•´ë‹¹ SKUì˜ component ì—†ìŒ</span>
+                          <span style={{ fontSize: 12, color: "#A8A49E" }}>해당 SKU의 component 없음</span>
                         )}
                       </div>
                     )}
@@ -603,15 +603,15 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: "#7A766F", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                            Part ì„ íƒ
+                            Part 선택
                           </span>
                           {partLookupLoading && (
-                            <span style={{ fontSize: 11, color: "#7A766F" }}>ì¡°íšŒ ì¤‘â€¦</span>
+                            <span style={{ fontSize: 11, color: "#7A766F" }}>조회 중…</span>
                           )}
                         </div>
                         <input
                           type="text"
-                          placeholder="ê²€ìƒ‰â€¦"
+                          placeholder="검색…"
                           value={partSearch}
                           onChange={(e) => setPartSearch(e.target.value)}
                           style={{
@@ -683,15 +683,15 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                 )}
               </div>
 
-              {/* êµ¬ë¶„ì„  */}
+              {/* 구분선 */}
               <div style={{ width: 1, background: "#E5E3DC", alignSelf: "stretch" }} />
 
-              {/* ì˜¤ë¥¸ìª½: í¼ í•„ë“œ */}
+              {/* 오른쪽: 폼 필드 */}
               <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px", alignContent: "start" }}>
                 {field("Request Received Date", "requestReceivedAt", "date", true)}
                 <div />
-                {field("Part Number", "partNumber", "text", true, partNotFound ? "í•´ë‹¹ ë˜ëŠ” Part Number ì—†ìŒ" : undefined)}
-                {field("í•´ë‹¹SKU", "correspondingSku")}
+                {field("Part Number", "partNumber", "text", true, partNotFound ? "해당 되는 Part Number 없음" : undefined)}
+                {field("해당SKU", "correspondingSku")}
                 {field("QTY", "qty", "number")}
                 {field("Order Request", "orderRequest")}
                 {field("PART SKU", "partSku")}
@@ -706,18 +706,18 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                       fontSize: 13,
                     }}>
                       {inventoryLoading ? (
-                        <span style={{ color: "#A8A49E" }}>ì¡°íšŒ ì¤‘â€¦</span>
+                        <span style={{ color: "#A8A49E" }}>조회 중…</span>
                       ) : !inventoryQueried ? (
-                        <span style={{ color: "#A8A49E" }}>â€”</span>
+                        <span style={{ color: "#A8A49E" }}>—</span>
                       ) : inventoryWarehouses === null ? (
-                        <span style={{ color: "#c0392b", fontWeight: 600 }}>ì°¾ì„ ìˆ˜ ì—†ìŒ</span>
+                        <span style={{ color: "#c0392b", fontWeight: 600 }}>찾을 수 없음</span>
                       ) : (
                         (() => {
                           const nonZero = inventoryWarehouses.filter((w) => w.available > 0);
-                          if (nonZero.length === 0) return <span style={{ color: "#c0392b", fontWeight: 600 }}>0ê°œ</span>;
+                          if (nonZero.length === 0) return <span style={{ color: "#c0392b", fontWeight: 600 }}>0개</span>;
                           return nonZero.map((w) => (
                             <span key={w.warehouse} style={{ color: "#166534", fontWeight: 600 }}>
-                              {w.warehouse}: {w.available}ê°œ
+                              {w.warehouse}: {w.available}개
                             </span>
                           ));
                         })()
@@ -763,7 +763,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                         cursor: formData.partSku && !inventoryLoading ? "pointer" : "not-allowed",
                       }}
                     >
-                      ìž¬ê³  í™•ì¸
+                      재고 확인
                     </button>
                   </div>
                 </div>
@@ -790,12 +790,12 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
             </div>
 
           ) : (
-            /* â”€â”€ Edit ëª¨ë“œ: 2ì—´ ê·¸ë¦¬ë“œ â”€â”€ */
+            /* ── Edit 모드: 2열 그리드 ── */
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", padding: "8px 0 16px" }}>
               {field("Request Received Date", "requestReceivedAt", "date", true)}
               {field("Order Number", "orderNumber", "text", true)}
               {field("Part Number", "partNumber", "text", true)}
-              {field("í•´ë‹¹SKU", "correspondingSku")}
+              {field("해당SKU", "correspondingSku")}
               {field("QTY", "qty", "number")}
               {field("Order Request", "orderRequest")}
               {field("PART SKU", "partSku")}
@@ -837,7 +837,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
               Cancel
             </Button>
             <Button type="submit" disabled={loading || createOrderLoading}>
-              {loading ? "Savingâ€¦" : "Save"}
+              {loading ? "Saving…" : "Save"}
             </Button>
             <Button
               type="button"
@@ -845,7 +845,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
               disabled={loading || createOrderLoading}
               style={{ background: "#1d4ed8", color: "#fff" }}
             >
-              {createOrderLoading ? "Creating Orderâ€¦" : "Save and Create Order"}
+              {createOrderLoading ? "Creating Order…" : "Save and Create Order"}
             </Button>
           </DialogFooter>
         </form>
