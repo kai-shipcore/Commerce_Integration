@@ -565,8 +565,8 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
 // Main Page
 
 export default function VelocityPage() {
-  const [selectedItem, setSelectedItem] = useState<string>("");
-  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [selectedItem, setSelectedItem] = useState<string>("Car Cover");
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([...CHANNELS]);
   const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
   const [periodMode, setPeriodMode] = useState<"period" | "custom">("period");
   const [periods, setPeriods] = useState<number[]>(DEFAULT_PERIODS);
