@@ -1712,7 +1712,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               whiteSpace: "nowrap",
             }}
           >
-            {loading ? "Loadingâ€¦" : "Sync"}
+            {loading ? "Loading..." : "Sync"}
           </button>
         </div>
       </div>
@@ -1741,7 +1741,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         )}
         {!hasData && loading && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", zIndex: 5, fontSize: 13, color: "#7A766F" }}>
-            Loadingâ€¦
+            Loading...
           </div>
         )}
         {hasData && (isCategoryLoading || isCategoryPending) && (
