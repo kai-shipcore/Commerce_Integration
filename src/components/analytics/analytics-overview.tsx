@@ -17,6 +17,7 @@ import {
   Package,
 } from "lucide-react";
 import Link from "next/link";
+import { apiPath } from "@/lib/api-path";
 
 interface DashboardData {
   overview: {
@@ -67,7 +68,7 @@ export function AnalyticsOverview() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch("/api/analytics/dashboard");
+        const res = await fetch(apiPath("/api/analytics/dashboard"));
         const result = await res.json();
         if (result.success) {
           setData(result.data);

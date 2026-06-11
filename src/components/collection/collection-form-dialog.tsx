@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Plus, X } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface CollectionFormData {
   name: string;
@@ -76,7 +77,7 @@ export function CollectionFormDialog({
   // Fetch SKUs when dialog opens
   useEffect(() => {
     if (open) {
-      fetch("/api/skus?limit=100")
+      fetch(apiPath("/api/skus?limit=100"))
         .then((res) => res.json())
         .then((result) => {
           if (result.success) {
@@ -91,7 +92,7 @@ export function CollectionFormDialog({
     setLoading(true);
 
     try {
-      const url = isEditMode ? `/api/collections/${editData.id}` : "/api/collections";
+      const url = isEditMode ? apiPath(`/api/collections/${editData.id}`) : apiPath("/api/collections");
       const method = isEditMode ? "PATCH" : "POST";
 
       const response = await fetch(url, {

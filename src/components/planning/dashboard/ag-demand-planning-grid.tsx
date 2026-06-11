@@ -32,6 +32,7 @@ import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seaso
 import type { CellContent } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
+import { apiPath } from "@/lib/api-path";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -560,7 +561,7 @@ function StockModeCellRenderer({
     <button
       type="button"
       disabled={toggling}
-      title={isAvailable ? "Available stock — click for Onhand" : "Onhand stock — click for Available"}
+      title={isAvailable ? "Available stock â€” click for Onhand" : "Onhand stock â€” click for Available"}
       onClick={async (e) => {
         e.stopPropagation();
         node.setSelected(true, true);
@@ -571,7 +572,7 @@ function StockModeCellRenderer({
       className="h-full w-full border-0 bg-transparent text-[9px] font-bold"
       style={{ color: isAvailable ? "#1A4FC0" : "#6B7280" }}
     >
-      {toggling ? "…" : isAvailable ? "AV" : "OH"}
+      {toggling ? "â€¦" : isAvailable ? "AV" : "OH"}
     </button>
   );
 }
@@ -682,7 +683,7 @@ function ConQtyHeader(params: IHeaderParams & {
     >
       <span>Con. Qty</span>
       {params.isFiltered && (
-        <span style={{ color: "#1a5cdb", fontSize: 9, lineHeight: 1 }}>▼</span>
+        <span style={{ color: "#1a5cdb", fontSize: 9, lineHeight: 1 }}>â–¼</span>
       )}
     </div>
   );
@@ -930,7 +931,7 @@ export function AgDemandPlanningGrid({
     setEtaOverrides((current) => new Map(current).set(container.container_id!, eta));
     const nextContainers = containers.map((entry) => entry.container_id === container.container_id ? { ...entry, eta } : entry);
     setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides, seasonalFactors)])));
-    void fetch(`/api/containers?id=${container.container_id}`, {
+    void fetch(apiPath(`/api/containers?id=${container.container_id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ eta }),
@@ -940,7 +941,7 @@ export function AgDemandPlanningGrid({
   const saveCbm = useCallback(async (row: DemandRow, nextCbm: number) => {
     if (!Number.isFinite(nextCbm) || nextCbm < 0) return false;
     if (nextCbm === row.cbm_per_unit) return true;
-    const response = await fetch(`/api/planning/products/${encodeURIComponent(row.sku)}`, {
+    const response = await fetch(apiPath(`/api/planning/products/${encodeURIComponent(row.sku)}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cbm_per_unit: nextCbm }),
@@ -994,15 +995,15 @@ export function AgDemandPlanningGrid({
 
     let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
     if (itemId && nextQty === 0) {
-      json = await fetch(`/api/planning/containers/items/${itemId}`, { method: "DELETE" }).then((response) => response.json());
+      json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), { method: "DELETE" }).then((response) => response.json());
     } else if (itemId) {
-      json = await fetch(`/api/planning/containers/items/${itemId}`, {
+      json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ qty: nextQty }),
       }).then((response) => response.json());
     } else {
-      json = await fetch("/api/planning/containers/items", {
+      json = await fetch(apiPath("/api/planning/containers/items"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1060,7 +1061,7 @@ export function AgDemandPlanningGrid({
   }, [containers, qtyOverrides, seasonalFactors]);
 
   const saveTransit = useCallback(async (row: DemandRow, nextVal: number): Promise<boolean> => {
-    const res = await fetch(`/api/planning/sku/${encodeURIComponent(row.sku)}/transit-stock`, {
+    const res = await fetch(apiPath(`/api/planning/sku/${encodeURIComponent(row.sku)}/transit-stock`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transit_stock: nextVal }),
@@ -1078,7 +1079,7 @@ export function AgDemandPlanningGrid({
 
   const saveStockMode = useCallback(async (row: DemandRow): Promise<void> => {
     const next: 'onhand' | 'available' = (row.stock_mode ?? 'onhand') === 'onhand' ? 'available' : 'onhand';
-    const res = await fetch(`/api/planning/sku/${encodeURIComponent(row.sku)}/stock-mode`, {
+    const res = await fetch(apiPath(`/api/planning/sku/${encodeURIComponent(row.sku)}/stock-mode`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stock_mode: next }),
@@ -1138,11 +1139,11 @@ export function AgDemandPlanningGrid({
       ? pinnedBaseColumnLayout.widths[column.id]
       : columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column);
     const headerName = column.id === "tavg_p"
-      ? "T. Avg 이전"
+      ? "T. Avg ì´ì „"
       : column.id === "tavg_r"
-        ? "T. Avg 실제"
+        ? "T. Avg ì‹¤ì œ"
         : column.id === "tavg_c"
-          ? "T. Avg 현재"
+          ? "T. Avg í˜„ìž¬"
           : column.label.replace("\n", " ");
     columns.push({
       colId: column.id,
@@ -1499,7 +1500,7 @@ export function AgDemandPlanningGrid({
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#FFF5F5"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               >
-                ✕ 필터 해제
+                âœ• í•„í„° í•´ì œ
               </button>
             ) : (
               <button
@@ -1509,7 +1510,7 @@ export function AgDemandPlanningGrid({
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               >
-                ▼ Qty &gt; 0 만 표시
+                â–¼ Qty &gt; 0 ë§Œ í‘œì‹œ
               </button>
             )}
           </div>

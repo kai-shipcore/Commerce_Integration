@@ -14,6 +14,7 @@ import {
 } from "@/components/velocity/velocity-table-columns";
 import { Download, RefreshCw, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiPath } from "@/lib/api-path";
 
 const SALES_COL_TO_SORT: Record<string, string> = {
   masterSku: "masterSku",
@@ -99,7 +100,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
       });
       if (nextSearch) params.set("search", nextSearch);
 
-      const res = await fetch(`/api/reconciliation/velocity?${params}`, { cache: "no-store" });
+      const res = await fetch(apiPath(`/api/reconciliation/velocity?${params}`), { cache: "no-store" });
       const result = await res.json();
       if (!res.ok || !result.success) {
         throw new Error(result.error || "Failed to load");
@@ -179,7 +180,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
       });
       if (search) params.set("search", search);
 
-      const res = await fetch(`/api/reconciliation/velocity?${params}`, { cache: "no-store" });
+      const res = await fetch(apiPath(`/api/reconciliation/velocity?${params}`), { cache: "no-store" });
       const result = await res.json();
       if (!result.success) throw new Error(result.error || "Export failed");
 
@@ -205,7 +206,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
       ];
 
       const csv = csvRows.map((r) => r.map(escape).join(",")).join("\n");
-      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob(["ï»¿" + csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -288,7 +289,7 @@ function ChannelVelocityPane({ apiParams }: PaneProps) {
   );
 }
 
-// ─── Sales Data Pane ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Sales Data Pane â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function SalesDataPane() {
   const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
@@ -306,10 +307,10 @@ function SalesDataPane() {
   const source = mode === "ttm" ? "link-ttm" : mode === "preorder" ? "link-preorder" : "link";
   const enrichPath =
     mode === "ttm"
-      ? "/api/velocity/ttm-enrich"
+      ? apiPath("/api/velocity/ttm-enrich")
       : mode === "preorder"
-      ? "/api/velocity/preorder-enrich"
-      : "/api/velocity/custom-enrich";
+      ? apiPath("/api/velocity/preorder-enrich")
+      : apiPath("/api/velocity/custom-enrich");
 
   const fetchData = useCallback(async (overrides: FetchOverrides = {}) => {
     const fetchId = ++fetchIdRef.current;
@@ -328,7 +329,7 @@ function SalesDataPane() {
       });
       if (nextSearch) params.set("search", nextSearch);
 
-      const res = await fetch(`/api/velocity?${params}`, { cache: "no-store" });
+      const res = await fetch(apiPath(`/api/velocity?${params}`), { cache: "no-store" });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result: any = await res.json();
       if (!res.ok || !result.success) throw new Error(result.error || "Failed to load");
@@ -442,7 +443,7 @@ function SalesDataPane() {
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
-      const res = await fetch("/api/velocity/sales-export", { cache: "no-store" });
+      const res = await fetch(apiPath("/api/velocity/sales-export"), { cache: "no-store" });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -509,7 +510,7 @@ function SalesDataPane() {
         <CardContent className="p-0">
           {!hasFetched && !loading ? (
             <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-              Refresh를 눌러 데이터를 로드하세요
+              Refreshë¥¼ ëˆŒëŸ¬ ë°ì´í„°ë¥¼ ë¡œë“œí•˜ì„¸ìš”
             </div>
           ) : (
             <DataTable
@@ -547,7 +548,7 @@ function SalesDataPane() {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function ReconciliationPage() {
   const [view, setView] = useState<"channel" | "sales">("channel");

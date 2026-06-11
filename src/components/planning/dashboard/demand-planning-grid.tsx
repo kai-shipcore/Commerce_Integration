@@ -36,6 +36,7 @@ import type {
   UrgencyFilter,
   UrgencyStatus,
 } from "@/types/demand-planning";
+import { apiPath } from "@/lib/api-path";
 
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
@@ -313,14 +314,14 @@ export function DemandPlanningGrid({
   type EditingKey = `${string}::${string}`;
   const [editingKey, setEditingKey] = useState<EditingKey | null>(null);
   const [editingVal, setEditingVal] = useState("");
-  // Ref always holds the latest typed value — avoids stale-closure bugs in event handlers
+  // Ref always holds the latest typed value â€” avoids stale-closure bugs in event handlers
   const editingValRef = useRef("");
   const [savingKey, setSavingKey] = useState<EditingKey | null>(null);
   // Local overrides: key = `${sku}::${containerName}`, value = partial ContainerRowData
   // item_id is stored here after a POST so subsequent edits use PATCH
   const [qtyOverrides, setQtyOverrides] = useState<Map<EditingKey, { inbound_qty: number | null; avail_qty: number | null; cbm: number | null; item_id?: number }>>(new Map());
   const [containerChainMap, setContainerChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
-  // Row-level corrections for active-container aggregates (sku → partial DemandRow overrides)
+  // Row-level corrections for active-container aggregates (sku â†’ partial DemandRow overrides)
   const [rowTotalOverrides, setRowTotalOverrides] = useState<Map<string, { total_inbound_qty?: number; containers_list?: string | null }>>(new Map());
 
   useEffect(() => {
@@ -387,7 +388,7 @@ export function DemandPlanningGrid({
           return sortDirection === "asc" ? result : -result;
         })
       : filteredRows;
-    // "Part" 행은 항상 하단
+    // "Part" í–‰ì€ í•­ìƒ í•˜ë‹¨
     const normal = sorted.filter((r) => r.sales_status !== "Part");
     const parts  = sorted.filter((r) => r.sales_status === "Part");
     return [...normal, ...parts];
@@ -624,7 +625,7 @@ export function DemandPlanningGrid({
                     height: 20,
                   }}
                 >
-                  🚢 컨테이너별 재고·SOD
+                  ðŸš¢ ì»¨í…Œì´ë„ˆë³„ ìž¬ê³ Â·SOD
                 </th>
               )}
             </tr>
@@ -687,7 +688,7 @@ export function DemandPlanningGrid({
                   >
                     {isBaseline ? c.name : (
                       <>
-                        {isDraft ? "✏ " : ""}{c.name}{" | ETA "}
+                        {isDraft ? "âœ " : ""}{c.name}{" | ETA "}
                         <input
                           type="date"
                           value={c.eta ?? ""}
@@ -707,7 +708,7 @@ export function DemandPlanningGrid({
                               }
                               return next;
                             });
-                            void fetch(`/api/containers?id=${c.container_id}`, {
+                            void fetch(apiPath(`/api/containers?id=${c.container_id}`), {
                               method: "PATCH",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ eta: newEta }),
@@ -815,7 +816,7 @@ export function DemandPlanningGrid({
                   ))}
                   {sortColumnId === col.id ? (
                     <span style={{ marginLeft: 3, color: "#67E8F9" }}>
-                      {sortDirection === "asc" ? "▲" : "▼"}
+                      {sortDirection === "asc" ? "â–²" : "â–¼"}
                     </span>
                   ) : null}
                   {resizableColumnId ? (
@@ -908,7 +909,7 @@ export function DemandPlanningGrid({
                   colSpan={visCols.length + containerColumnCount}
                   style={{ padding: 20, textAlign: "center", color: "#9A9790" }}
                 >
-                  조건에 맞는 SKU 없음
+                  ì¡°ê±´ì— ë§žëŠ” SKU ì—†ìŒ
                 </td>
               </tr>
             ) : (
@@ -960,7 +961,7 @@ export function DemandPlanningGrid({
                         if (isNaN(newCbm) || newCbm === displayRow.cbm_per_unit) return;
                         setCbmSavingSku(r.sku);
                         try {
-                          const res = await fetch(`/api/planning/products/${encodeURIComponent(r.sku)}`, {
+                          const res = await fetch(apiPath(`/api/planning/products/${encodeURIComponent(r.sku)}`), {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ cbm_per_unit: newCbm }),
@@ -1018,7 +1019,7 @@ export function DemandPlanningGrid({
                               }}
                             />
                           ) : isCbmSaving ? (
-                            <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
+                            <span style={{ color: "#9A9790", fontStyle: "italic" }}>â€¦</span>
                           ) : fullTextValue ? (
                             <FullTextCell label={col.label.replace("\n", " ")} value={fullTextValue}>
                               {renderCell(col.val(displayRow, idx, u))}
@@ -1051,7 +1052,7 @@ export function DemandPlanningGrid({
                         const isSaving = isQtyCol && savingKey === eKey;
                         const isEditable = isQtyCol && !isBaseline;
 
-                        // Shared save — called by both Enter and blur.
+                        // Shared save â€” called by both Enter and blur.
                         // saveStarted prevents double-execution if blur fires
                         // after Enter already initiated the save.
                         let saveStarted = false;
@@ -1062,10 +1063,10 @@ export function DemandPlanningGrid({
                           console.log("[commitSave]", { sku: r.sku, container: c.name, container_id: c.container_id, val, newQty, inbound_qty: cd.inbound_qty, item_id: rawCd.item_id ?? override?.item_id });
                           setEditingKey(null);
                           if (isNaN(newQty) || newQty === cd.inbound_qty) {
-                            console.log("[commitSave] skipped — no change or invalid value");
+                            console.log("[commitSave] skipped â€” no change or invalid value");
                             return;
                           }
-                          // When an override exists, its item_id takes precedence —
+                          // When an override exists, its item_id takes precedence â€”
                           // after a DELETE the override has item_id=undefined even though rawCd still has the old id.
                           const effectiveItemId = override !== undefined ? override.item_id : rawCd.item_id;
                           if (!effectiveItemId && newQty === 0) return;
@@ -1076,8 +1077,8 @@ export function DemandPlanningGrid({
                             const oldQty = cd.inbound_qty ?? 0;
 
                             if (effectiveItemId && newQty === 0) {
-                              // qty → 0 on an existing row: delete it and blank the cell
-                              const res = await fetch(`/api/planning/containers/items/${effectiveItemId}`, { method: "DELETE" });
+                              // qty â†’ 0 on an existing row: delete it and blank the cell
+                              const res = await fetch(apiPath(`/api/planning/containers/items/${effectiveItemId}`), { method: "DELETE" });
                               json = await res.json() as typeof json;
                               if (json.success) {
                                 const nextOverrides = new Map(qtyOverrides);
@@ -1101,14 +1102,14 @@ export function DemandPlanningGrid({
                               }
                               return;
                             } else if (effectiveItemId) {
-                              const res = await fetch(`/api/planning/containers/items/${effectiveItemId}`, {
+                              const res = await fetch(apiPath(`/api/planning/containers/items/${effectiveItemId}`), {
                                 method: "PATCH",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ qty: newQty }),
                               });
                               json = await res.json() as typeof json;
                             } else {
-                              const res = await fetch("/api/planning/containers/items", {
+                              const res = await fetch(apiPath("/api/planning/containers/items"), {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
@@ -1141,10 +1142,10 @@ export function DemandPlanningGrid({
                                   const entry = `${c.name} (${newQty})`;
                                   let newList: string;
                                   if (oldQty === 0 || !curList.includes(`${c.name} (`)) {
-                                    // POST — container not yet in list, append
+                                    // POST â€” container not yet in list, append
                                     newList = curList ? `${curList}, ${entry}` : entry;
                                   } else {
-                                    // PATCH — update existing entry's qty
+                                    // PATCH â€” update existing entry's qty
                                     newList = curList.split(", ").map((e) => e.startsWith(`${c.name} (`) ? entry : e).join(", ");
                                   }
                                   next.set(r.sku, { total_inbound_qty: Math.max(0, curTotal - oldQty + newQty), containers_list: newList });
@@ -1217,7 +1218,7 @@ export function DemandPlanningGrid({
                                 }}
                               />
                             ) : isSaving ? (
-                              <span style={{ color: "#9A9790", fontStyle: "italic" }}>…</span>
+                              <span style={{ color: "#9A9790", fontStyle: "italic" }}>â€¦</span>
                             ) : (
                               renderCell(sc.val(cd, c, displayRow))
                             )}

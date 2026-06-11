@@ -25,6 +25,7 @@ import {
   type OrderDetail,
 } from "@/components/orders/order-detail-dialog";
 import { ChevronDown, ChevronUp, ClipboardList, Download, Loader2, ShoppingCart } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 type OrderDatePreset = "today" | "yesterday" | "last7" | "last30" | "last90" | "last6m" | "last1y" | "ytd" | "custom";
 
@@ -78,7 +79,7 @@ function OrdersPageContent() {
   const [datePreset, setDatePreset] = useState<OrderDatePreset>("today");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
 
-  // Apply URL preset params — runs on mount and whenever URL searchParams change.
+  // Apply URL preset params â€” runs on mount and whenever URL searchParams change.
   // Using useEffect (not useState initializer) is the reliable pattern for useSearchParams.
   useEffect(() => {
     const p = searchParams.get("preset") as OrderDatePreset | null;
@@ -141,7 +142,7 @@ function OrdersPageContent() {
       params.set("endDate", format(activeDateRange.to, "yyyy-MM-dd"));
     }
 
-    fetch(`/api/orders?${params.toString()}`, { cache: "no-store" })
+    fetch(apiPath(`/api/orders?${params.toString()}`), { cache: "no-store" })
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
@@ -186,7 +187,7 @@ function OrdersPageContent() {
     }
 
     setDetailLoading(true);
-    fetch(`/api/orders/${selectedOrderId}`, { cache: "no-store" })
+    fetch(apiPath(`/api/orders/${selectedOrderId}`), { cache: "no-store" })
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
@@ -246,7 +247,7 @@ function OrdersPageContent() {
     const cached = orderDetailCache.current.get(id);
     if ((cached && Date.now() - cached.ts < 30_000) || preloadingRef.current.has(id)) return;
     preloadingRef.current.add(id);
-    fetch(`/api/orders/${id}`, { cache: "no-store" })
+    fetch(apiPath(`/api/orders/${id}`), { cache: "no-store" })
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
@@ -280,7 +281,7 @@ function OrdersPageContent() {
         params.set("endDate", format(activeDateRange.to, "yyyy-MM-dd"));
       }
 
-      const response = await fetch(`/api/orders?${params.toString()}`, {
+      const response = await fetch(apiPath(`/api/orders?${params.toString()}`), {
         cache: "no-store",
       });
       const result = await response.json();

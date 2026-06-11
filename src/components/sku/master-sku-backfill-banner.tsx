@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Database, CheckCircle2, XCircle } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface BackfillStats {
   skus: {
@@ -40,7 +41,7 @@ export function MasterSkuBackfillBanner() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch("/api/skus/backfill-master");
+      const res = await fetch(apiPath("/api/skus/backfill-master"));
       const data = await res.json();
       if (data.success) {
         setStats(data.stats);
@@ -59,7 +60,7 @@ export function MasterSkuBackfillBanner() {
     setError(null);
 
     try {
-      const res = await fetch("/api/skus/backfill-master", {
+      const res = await fetch(apiPath("/api/skus/backfill-master"), {
         method: "POST",
       });
       const data = await res.json();

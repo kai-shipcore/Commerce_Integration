@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Loader2 } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 type Period = "7d" | "30d" | "90d" | "6m" | "1y" | "ytd" | "custom";
 type ViewMode = "revenue" | "quantity";
@@ -102,7 +103,7 @@ export function SalesTrends({ className }: SalesTrendsProps) {
   const fetchTrendData = useCallback(async () => {
     setLoading(true);
     try {
-      let url = "/api/analytics/dashboard";
+      let url = apiPath("/api/analytics/dashboard");
 
       if (period === "custom" && customDateRange?.from && customDateRange?.to) {
         const startDate = format(customDateRange.from, "yyyy-MM-dd");

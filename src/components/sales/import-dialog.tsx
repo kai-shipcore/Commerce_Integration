@@ -34,6 +34,7 @@ import {
   XCircle,
   AlertTriangle,
 } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface ImportResult {
   row: number;
@@ -198,7 +199,7 @@ export function SalesImportDialog({ onImportComplete }: SalesImportDialogProps) 
     setStep("importing");
 
     try {
-      const res = await fetch("/api/sales/import", {
+      const res = await fetch(apiPath("/api/sales/import"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows: parsedRows }),
@@ -229,7 +230,7 @@ export function SalesImportDialog({ onImportComplete }: SalesImportDialogProps) 
   };
 
   const downloadTemplate = () => {
-    window.location.href = "/api/sales/import";
+    window.location.href = apiPath("/api/sales/import");
   };
 
   return (

@@ -19,6 +19,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { apiPath } from "@/lib/api-path";
 
 interface SalesTrendData {
   date: string;
@@ -44,7 +45,7 @@ export function SalesTrend() {
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    fetch(`/api/analytics/dashboard?period=${period}`)
+    fetch(apiPath(`/api/analytics/dashboard?period=${period}`))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
@@ -144,7 +145,7 @@ export function SalesTrend() {
           <CardTitle>Sales Trend</CardTitle>
           {data.length > 0 && (
             <p className="text-sm text-muted-foreground mt-1">
-              {totalQuantity.toLocaleString()} units • ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {totalQuantity.toLocaleString()} units â€¢ ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )}
         </div>

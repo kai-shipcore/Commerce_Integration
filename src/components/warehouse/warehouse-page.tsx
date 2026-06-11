@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PackageOpen, Warehouse } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
+import { apiPath } from "@/lib/api-path";
 
 type WarehouseType = "own" | "fba" | "3pl" | "transit";
 
@@ -48,25 +49,25 @@ type WarehouseContainer = {
 const warehouseTypes: Record<WarehouseType, { label: string; icon: string; badge: string; iconBg: string }> = {
   own: {
     label: "Owned Warehouse",
-    icon: "🏢",
+    icon: "ðŸ¢",
     badge: "bg-[#ebf0fd] text-[#1a4db0]",
     iconBg: "#ebf0fd",
   },
   fba: {
     label: "Amazon FBA",
-    icon: "📦",
+    icon: "ðŸ“¦",
     badge: "bg-[#e6f5f0] text-[#0a5e45]",
     iconBg: "#e6f5f0",
   },
   "3pl": {
     label: "3PL External",
-    icon: "🚛",
+    icon: "ðŸš›",
     badge: "bg-[#fef3e2] text-[#8a5300]",
     iconBg: "#fef3e2",
   },
   transit: {
     label: "In Transit",
-    icon: "🚢",
+    icon: "ðŸš¢",
     badge: "bg-[#fce4ec] text-[#880e4f]",
     iconBg: "#fce4ec",
   },
@@ -118,7 +119,7 @@ export function WarehousePage() {
   async function fetchWarehouses() {
     setLoading(true);
     try {
-      const res = await fetch("/api/warehouses");
+      const res = await fetch(apiPath("/api/warehouses"));
       const json = await res.json();
       if (json.success) {
         setWarehouses(json.data);
@@ -128,7 +129,7 @@ export function WarehousePage() {
         }
       }
     } catch {
-      // silently fail — page will show empty list
+      // silently fail â€” page will show empty list
     } finally {
       setLoading(false);
     }
@@ -154,7 +155,7 @@ export function WarehousePage() {
       });
       if (warehouse.city) params.set("city", warehouse.city);
 
-      const res = await fetch(`/api/containers?${params.toString()}`, { cache: "no-store" });
+      const res = await fetch(apiPath(`/api/containers?${params.toString()}`), { cache: "no-store" });
       const json = await res.json();
       if (json.success) {
         setWarehouseContainers(json.data);
@@ -243,7 +244,7 @@ export function WarehousePage() {
       const payload = { ...form, warehouseCode: code, warehouseName: name };
 
       if (isNew) {
-        const res = await fetch("/api/warehouses", {
+        const res = await fetch(apiPath("/api/warehouses"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -253,7 +254,7 @@ export function WarehousePage() {
         setSelectedId(json.data.id);
         setIsNew(false);
       } else if (selectedId) {
-        const res = await fetch(`/api/warehouses/${selectedId}`, {
+        const res = await fetch(apiPath(`/api/warehouses/${selectedId}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -263,7 +264,7 @@ export function WarehousePage() {
       }
 
       setEditMode(false);
-      setSavedMessage("✓ Saved");
+      setSavedMessage("âœ“ Saved");
       window.setTimeout(() => setSavedMessage(""), 2500);
       await fetchWarehouses();
     } finally {
@@ -276,7 +277,7 @@ export function WarehousePage() {
     const nextActive = !selectedWarehouse.isActive;
     setSaving(true);
     try {
-      const res = await fetch(`/api/warehouses/${selectedWarehouse.id}`, {
+      const res = await fetch(apiPath(`/api/warehouses/${selectedWarehouse.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: nextActive }),
@@ -295,7 +296,7 @@ export function WarehousePage() {
     if (!window.confirm(`Delete warehouse "${selectedWarehouse.warehouseCode}"?`)) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/warehouses/${selectedWarehouse.id}`, { method: "DELETE" });
+      const res = await fetch(apiPath(`/api/warehouses/${selectedWarehouse.id}`), { method: "DELETE" });
       const json = await res.json();
       if (!json.success) { window.alert(json.error ?? "Failed to delete warehouse"); return; }
       setSelectedId(null);
@@ -389,7 +390,7 @@ export function WarehousePage() {
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
                       style={{ backgroundColor: warehouseTypes[w.warehouseType as WarehouseType]?.iconBg ?? "#f0eee9" }}
                     >
-                      {warehouseTypes[w.warehouseType as WarehouseType]?.icon ?? "🏭"}
+                      {warehouseTypes[w.warehouseType as WarehouseType]?.icon ?? "ðŸ­"}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-mono text-xs font-bold">{w.warehouseCode}</span>
@@ -411,7 +412,7 @@ export function WarehousePage() {
                     onClick={startNewWarehouse}
                     className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                   >
-                    <span className="text-3xl">🏭</span>
+                    <span className="text-3xl">ðŸ­</span>
                     <span className="text-sm font-semibold">Add your first warehouse</span>
                     <span className="text-xs">Click the + Add Warehouse button</span>
                   </button>
@@ -439,7 +440,7 @@ export function WarehousePage() {
               />
             ) : (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-                <div className="text-5xl opacity-50">🏭</div>
+                <div className="text-5xl opacity-50">ðŸ­</div>
                 <div className="text-sm font-medium">Select a warehouse or add a new one</div>
                 <div className="text-xs">Click a warehouse in the left list to view details</div>
                 <button
@@ -516,11 +517,11 @@ function WarehouseDetail({
       <div className="mb-5 flex items-start justify-between gap-4 border-b border-[#e2dfd8] pb-4">
         <div>
           <div className="font-mono text-base font-semibold">
-            {isNew ? "🏭 New Warehouse" : `${detailType?.icon ?? "🏭"} ${form.warehouseCode}`}{" "}
+            {isNew ? "ðŸ­ New Warehouse" : `${detailType?.icon ?? "ðŸ­"} ${form.warehouseCode}`}{" "}
             {!isNew ? <WarehouseTypeBadge type={form.warehouseType} /> : null}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            {isNew ? "Enter the details and save" : `${form.warehouseName}${form.city ? ` · ${form.city}, ${form.stateRegion}` : ""}`}
+            {isNew ? "Enter the details and save" : `${form.warehouseName}${form.city ? ` Â· ${form.city}, ${form.stateRegion}` : ""}`}
           </div>
         </div>
         <div className="flex gap-2">
@@ -557,20 +558,20 @@ function WarehouseDetail({
           </WarehouseField>
           <WarehouseField label="Warehouse Type (warehouse_type)">
             <select className={editableFieldClass} disabled={readonly} value={form.warehouseType} onChange={(e) => onChange("warehouseType", e.target.value as WarehouseType)}>
-              <option value="own">own — Owned Warehouse</option>
-              <option value="fba">fba — Amazon FBA</option>
-              <option value="3pl">3pl — External 3PL warehouse</option>
-              <option value="transit">transit — In-transit virtual warehouse</option>
+              <option value="own">own â€” Owned Warehouse</option>
+              <option value="fba">fba â€” Amazon FBA</option>
+              <option value="3pl">3pl â€” External 3PL warehouse</option>
+              <option value="transit">transit â€” In-transit virtual warehouse</option>
             </select>
           </WarehouseField>
           <WarehouseField label="Timezone (timezone)">
             <select className={editableFieldClass} disabled={readonly} value={form.timezone} onChange={(e) => onChange("timezone", e.target.value)}>
-              <option value="America/Los_Angeles">America/Los_Angeles (PT — California)</option>
-              <option value="America/New_York">America/New_York (ET — New Jersey/New York)</option>
-              <option value="America/Chicago">America/Chicago (CT — Central)</option>
-              <option value="America/Denver">America/Denver (MT — Mountain)</option>
-              <option value="Asia/Seoul">Asia/Seoul (KST — Korea)</option>
-              <option value="Asia/Shanghai">Asia/Shanghai (CST — China)</option>
+              <option value="America/Los_Angeles">America/Los_Angeles (PT â€” California)</option>
+              <option value="America/New_York">America/New_York (ET â€” New Jersey/New York)</option>
+              <option value="America/Chicago">America/Chicago (CT â€” Central)</option>
+              <option value="America/Denver">America/Denver (MT â€” Mountain)</option>
+              <option value="Asia/Seoul">Asia/Seoul (KST â€” Korea)</option>
+              <option value="Asia/Shanghai">Asia/Shanghai (CST â€” China)</option>
               <option value="UTC">UTC</option>
             </select>
           </WarehouseField>
@@ -638,7 +639,7 @@ function WarehouseDetail({
                   <div className="flex-1">
                     <div className="font-mono text-xs font-semibold">Container {container.containerNumber}</div>
                     <div className="text-xs text-muted-foreground">
-                      ETA: {container.etaDate ?? "-"} · {container.itemCount} SKUs · {formatNumber(container.totalQty)} units · {container.totalCbm.toFixed(2)} CBM
+                      ETA: {container.etaDate ?? "-"} Â· {container.itemCount} SKUs Â· {formatNumber(container.totalQty)} units Â· {container.totalCbm.toFixed(2)} CBM
                     </div>
                   </div>
                   <span className="rounded-lg bg-[#ebf0fd] px-2 py-0.5 text-[10px] font-semibold text-[#1a4db0]">

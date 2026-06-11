@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Trash2, Download, Loader2, AlertTriangle } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface SKUData {
   id: string;
@@ -44,7 +45,7 @@ export function BulkActionsBar({
     setError(null);
 
     try {
-      const res = await fetch("/api/skus/bulk", {
+      const res = await fetch(apiPath("/api/skus/bulk"), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: selectedRows.map((r) => r.id) }),

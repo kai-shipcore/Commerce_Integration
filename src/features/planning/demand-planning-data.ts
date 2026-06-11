@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
+import { apiPath } from "@/lib/api-path";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], last_sync: null };
 const dashboardMemoryCache = new Map<string, DemandPlanningData>();
@@ -48,9 +49,9 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
     const categorySuffix = category ? `&product=${category}` : "";
-    const dashUrl = `/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}`;
+    const dashUrl = apiPath(`/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}`);
     const dashFetch = withRefresh
-      ? fetch("/api/planning/stats/refresh", { method: "POST" }).then((res) => {
+      ? fetch(apiPath("/api/planning/stats/refresh"), { method: "POST" }).then((res) => {
           if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
           return fetch(dashUrl);
         })
@@ -62,7 +63,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
       }),
       category === "sc"
-        ? fetch("/api/planning/dashboard/part-rows")
+        ? fetch(apiPath("/api/planning/dashboard/part-rows"))
           .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; back: number }[] }>)
           .catch(() => ({ success: false, rows: [] as { sku: string; back: number }[] }))
         : Promise.resolve({ success: false, rows: [] as { sku: string; back: number }[] }),
@@ -127,7 +128,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
     const categorySuffix = category ? `&product=${category}` : "";
     const abortController = new AbortController();
     const timeoutId = window.setTimeout(() => abortController.abort(), 60_000);
-    fetch(`/api/planning/dashboard?mode=${mode}&includeContainers=1&rawContainers=1${asOfSuffix}${draftSuffix}${categorySuffix}`, {
+    fetch(apiPath(`/api/planning/dashboard?mode=${mode}&includeContainers=1&rawContainers=1${asOfSuffix}${draftSuffix}${categorySuffix}`), {
       signal: abortController.signal,
     })
       .then((res) => {

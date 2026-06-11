@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, Search, ShieldAlert, ShieldCheck } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface ManagedUser {
   id: string;
@@ -118,7 +119,7 @@ export default function UserAccessPage() {
         });
         if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
         if (roleFilter) params.set("role", roleFilter);
-        const response = await fetch(`/api/admin/users?${params.toString()}`, {
+        const response = await fetch(apiPath(`/api/admin/users?${params.toString()}`), {
           cache: "no-store",
         });
         const result = await response.json();
@@ -159,7 +160,7 @@ export default function UserAccessPage() {
     });
     if (debouncedSearchTerm) params.set("search", debouncedSearchTerm);
     if (roleFilter) params.set("role", roleFilter);
-    const reloadResponse = await fetch(`/api/admin/users?${params.toString()}`, { cache: "no-store" });
+    const reloadResponse = await fetch(apiPath(`/api/admin/users?${params.toString()}`), { cache: "no-store" });
     const reloadResult = await reloadResponse.json();
     if (reloadResponse.ok && reloadResult.success) {
       setUsers(reloadResult.data?.users ?? []);
@@ -179,7 +180,7 @@ export default function UserAccessPage() {
     );
 
     try {
-      const response = await fetch(`/api/admin/users/${userId}/menu`, {
+      const response = await fetch(apiPath(`/api/admin/users/${userId}/menu`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ visibleMenuIds: sanitized }),
@@ -220,7 +221,7 @@ export default function UserAccessPage() {
     );
 
     try {
-      const response = await fetch(`/api/admin/users/${userId}/role`, {
+      const response = await fetch(apiPath(`/api/admin/users/${userId}/role`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: nextRole }),
@@ -403,7 +404,7 @@ export default function UserAccessPage() {
                             {user.email}
                           </TableCell>
                           <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                            {user.name ?? "—"}
+                            {user.name ?? "â€”"}
                           </TableCell>
                           <TableCell>
                             <Badge

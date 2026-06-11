@@ -23,6 +23,7 @@ import {
   navigationItems,
   sanitizeVisibleMenuIds,
 } from "./navigation-config";
+import { apiPath } from "@/lib/api-path";
 
 let cachedVisibleMenuIds: string[] | null = null;
 const MENU_FETCH_TIMEOUT_MS = 2000;
@@ -99,7 +100,7 @@ export function MainNav() {
       );
 
       try {
-        const response = await fetch("/api/settings/menu", {
+        const response = await fetch(apiPath("/api/settings/menu"), {
           cache: "no-store",
           signal: controller.signal,
         });

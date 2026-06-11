@@ -51,6 +51,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { MarketplaceIcon } from "@/components/marketplaces/marketplace-icon";
+import { apiPath } from "@/lib/api-path";
 
 type TokenStatus = "valid" | "expiring_soon" | "expired" | "none";
 
@@ -155,7 +156,7 @@ export default function IntegrationsPage() {
 
   const fetchIntegrations = useCallback(async () => {
     try {
-      const res = await fetch("/api/integrations");
+      const res = await fetch(apiPath("/api/integrations"));
       const data = await res.json();
       if (data.success) {
         setIntegrations(data.data);
@@ -196,7 +197,7 @@ export default function IntegrationsPage() {
     setSubmitting(true);
 
     try {
-      const res = await fetch("/api/integrations", {
+      const res = await fetch(apiPath("/api/integrations"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildIntegrationPayload(formData)),
@@ -224,7 +225,7 @@ export default function IntegrationsPage() {
     setEditFormError(null);
 
     try {
-      const res = await fetch(`/api/integrations/${integrationId}`);
+      const res = await fetch(apiPath(`/api/integrations/${integrationId}`));
       const data = await res.json();
 
       if (!data.success) {
@@ -254,7 +255,7 @@ export default function IntegrationsPage() {
     setUpdating(true);
 
     try {
-      const res = await fetch(`/api/integrations/${editingIntegrationId}`, {
+      const res = await fetch(apiPath(`/api/integrations/${editingIntegrationId}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -287,7 +288,7 @@ export default function IntegrationsPage() {
     setSyncing(integrationId);
 
     try {
-      const res = await fetch(`/api/integrations/${integrationId}/sync`, {
+      const res = await fetch(apiPath(`/api/integrations/${integrationId}/sync`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fullSync }),
@@ -305,7 +306,7 @@ export default function IntegrationsPage() {
 
   const handleDelete = async (integrationId: string) => {
     try {
-      const res = await fetch(`/api/integrations/${integrationId}`, {
+      const res = await fetch(apiPath(`/api/integrations/${integrationId}`), {
         method: "DELETE",
       });
 
@@ -324,7 +325,7 @@ export default function IntegrationsPage() {
     setCheckingConnectionId(integrationId);
 
     try {
-      const res = await fetch(`/api/integrations/${integrationId}/check`, {
+      const res = await fetch(apiPath(`/api/integrations/${integrationId}/check`), {
         method: "POST",
       });
       const data = await res.json();
@@ -626,23 +627,23 @@ export default function IntegrationsPage() {
                       {integration.tokenStatus === "valid" && (
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-950/60">
                           <CheckCircle className="h-3 w-3 mr-1" />
-                          Access Token 유효
+                          Access Token ìœ íš¨
                         </Badge>
                       )}
                       {integration.tokenStatus === "expiring_soon" && (
                         <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
                           <AlertTriangle className="h-3 w-3 mr-1" />
-                          Access Token 곧 만료
+                          Access Token ê³§ ë§Œë£Œ
                         </Badge>
                       )}
                       {integration.tokenStatus === "expired" && (
                         <Badge variant="destructive">
                           <XCircle className="h-3 w-3 mr-1" />
-                          Access Token 만료됨
+                          Access Token ë§Œë£Œë¨
                         </Badge>
                       )}
                       {integration.tokenStatus === "none" && (
-                        <Badge variant="outline">Access Token 없음</Badge>
+                        <Badge variant="outline">Access Token ì—†ìŒ</Badge>
                       )}
                     </div>
                   )}
@@ -671,7 +672,7 @@ export default function IntegrationsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          window.location.href = `/api/integrations/${integration.id}/ebay-auth`;
+                          window.location.href = apiPath(`/api/integrations/${integration.id}/ebay-auth`);
                         }}
                         title="Get a new refresh token via eBay OAuth"
                       >

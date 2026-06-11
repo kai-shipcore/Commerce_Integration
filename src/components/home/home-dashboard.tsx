@@ -10,8 +10,9 @@ import {
 } from "recharts";
 import { AlertTriangle, DollarSign, LayoutDashboard, Loader2, Package, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import { QuickLinks, type QuickLink } from "./quick-links";
+import { apiPath } from "@/lib/api-path";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface CatStats { critical: number; warning: number; backorder: number }
 interface HomeStats {
@@ -27,7 +28,7 @@ type Period = "7d" | "30d" | "90d" | "6m" | "1y" | "ytd";
 type ViewMode = "revenue" | "orders";
 type ChartType = "area" | "line" | "bar";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const CATEGORY_TABS: { key: CategoryKey; label: string }[] = [
   { key: "fm", label: "Floor Mat" },
@@ -44,7 +45,7 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: "ytd", label: "Year to Date" },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 function getDateRange(period: Period) {
@@ -69,7 +70,7 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className ?? ""}`} />;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function HomeDashboard({
   links,
@@ -93,10 +94,10 @@ export function HomeDashboard({
   const [chartLoading, setChartLoading] = useState(true);
   const [ordersHref, setOrdersHref] = useState("/orders?preset=last7");
 
-  // ── KPI fetch ───────────────────────────────────────────────────────────────
+  // â”€â”€ KPI fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadKpi = useCallback((bust = false) => {
     setRefreshing(true);
-    fetch(bust ? "/api/planning/home-stats?bust=1" : "/api/planning/home-stats")
+    fetch(apiPath(bust ? "/api/planning/home-stats?bust=1" : "/api/planning/home-stats"))
       .then((r) => r.json())
       .then((res) => { if (res.success) setStats(res.data as HomeStats); })
       .catch(() => {})
@@ -108,7 +109,7 @@ export function HomeDashboard({
     return () => window.clearTimeout(timer);
   }, [loadKpi]);
 
-  // ── Sales trend fetch ───────────────────────────────────────────────────────
+  // â”€â”€ Sales trend fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const fetchTrend = useCallback(async (p: Period) => {
     setChartLoading(true);
     try {
@@ -136,7 +137,7 @@ export function HomeDashboard({
         prevEndDate:   fmt(pEnd),
       });
 
-      const res = await fetch(`/api/home/sales-trend?${params}`).then((r) => r.json());
+      const res = await fetch(apiPath(`/api/home/sales-trend?${params}`)).then((r) => r.json());
 
       if (res.success) {
         setTrendData(res.data.trend ?? []);
@@ -162,7 +163,7 @@ export function HomeDashboard({
     return () => window.clearTimeout(timer);
   }, [period, fetchTrend]);
 
-  // ── Derived ─────────────────────────────────────────────────────────────────
+  // â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const syncLabel = stats?.lastSync
     ? `Synced ${new Date(stats.lastSync).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
     : null;
@@ -175,7 +176,7 @@ export function HomeDashboard({
       : href.split("?")[0];
     const canOpen = allowedHrefs.includes(pathname);
     if (!canOpen) {
-      toast.error("이 페이지에 접근 권한이 없습니다. 관리자에게 권한을 요청하세요.");
+      toast.error("ì´ íŽ˜ì´ì§€ì— ì ‘ê·¼ ê¶Œí•œì´ ì—†ìŠµë‹ˆë‹¤. ê´€ë¦¬ìžì—ê²Œ ê¶Œí•œì„ ìš”ì²­í•˜ì„¸ìš”.");
     }
     return canOpen;
   }, [allowedHrefs]);
@@ -193,7 +194,7 @@ export function HomeDashboard({
   const dataKey = viewMode === "revenue" ? "revenue" : "quantity";
   const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? period;
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-2 py-6">
 
@@ -260,7 +261,7 @@ export function HomeDashboard({
               className="rounded-xl border bg-white p-4 transition-colors hover:bg-amber-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-amber-950/30">
               <p className="text-xs font-medium text-muted-foreground">Warning</p>
               <p className="mt-1 text-3xl font-bold text-amber-600 dark:text-amber-400">{(cat?.warning ?? 0).toLocaleString()}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">SOD 30–60 days</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">SOD 30â€“60 days</p>
             </Link>
 
             <Link href={`${dashLink}&status=bo`}
@@ -387,13 +388,13 @@ export function HomeDashboard({
           )}
         </div>
 
-        {/* Sales summary — matches selected period, links to Orders page */}
+        {/* Sales summary â€” matches selected period, links to Orders page */}
         <Link
           href={ordersHref}
           onClick={(event) => guardLinkClick(event, ordersHref)}
           className="rounded-xl border bg-white p-4 transition-colors hover:bg-[#f0eee9] dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700/60 block"
         >
-          <h2 className="mb-3 text-sm font-semibold">Sales — {periodLabel}</h2>
+          <h2 className="mb-3 text-sm font-semibold">Sales â€” {periodLabel}</h2>
 
           {chartLoading ? (
             <div className="space-y-3">
@@ -442,7 +443,7 @@ export function HomeDashboard({
   );
 }
 
-// ── Tooltip ───────────────────────────────────────────────────────────────────
+// â”€â”€ Tooltip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: { payload: TrendPoint & { dateLabel: string } }[] }) {
   if (!active || !payload?.length) return null;

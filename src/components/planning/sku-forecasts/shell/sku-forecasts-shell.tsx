@@ -21,6 +21,7 @@ import {
   type SkuMasterMeta,
 } from "../types";
 import { pick, productLabel, type SkuForecastLanguage } from "../language";
+import { apiPath } from "@/lib/api-path";
 
 const LANGUAGE_STORAGE_KEY = "sku-forecasts-language";
 const TARGET_INVENTORY_DAYS_STORAGE_KEY = "sku-forecasts-target-inventory-days";
@@ -138,7 +139,7 @@ export function SkuForecastsShell() {
     if (!selectedRow || masterBySku[selectedRow.sku] || masterLoadingRef.current.has(selectedRow.sku)) return;
     const sku = selectedRow.sku;
     masterLoadingRef.current.add(sku);
-    fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`)
+    fetch(apiPath(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`))
       .then((res) => res.json() as Promise<SkuMasterResponse>)
       .then((json) => {
         if (json.success && json.data) {
@@ -161,7 +162,7 @@ export function SkuForecastsShell() {
     return (
       <div className="flex h-[calc(100vh-9rem)] items-center justify-center text-sm text-muted-foreground">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        {pick(language, "SKU 계획 데이터를 불러오는 중...", "Loading SKU planning data...")}
+        {pick(language, "SKU ê³„íš ë°ì´í„°ë¥¼ ë¶ˆëŸ¬ì˜¤ëŠ” ì¤‘...", "Loading SKU planning data...")}
       </div>
     );
   }
@@ -172,19 +173,19 @@ export function SkuForecastsShell() {
         <div className="flex items-start gap-2">
           <TrendingUp className="mt-1 h-5 w-5" />
           <div>
-            <h1 className="text-xl font-semibold">{pick(language, "SKU 계획", "SKU Planning")}</h1>
+            <h1 className="text-xl font-semibold">{pick(language, "SKU ê³„íš", "SKU Planning")}</h1>
             <div className="mt-1 text-xs text-muted-foreground">
               {data.last_sync
-                ? `${pick(language, "동기화", "Synced")} ${data.last_sync.slice(0, 16).replace("T", " ")}`
-                : pick(language, "동기화되지 않음", "Not synced")}
+                ? `${pick(language, "ë™ê¸°í™”", "Synced")} ${data.last_sync.slice(0, 16).replace("T", " ")}`
+                : pick(language, "ë™ê¸°í™”ë˜ì§€ ì•ŠìŒ", "Not synced")}
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
             {[
-              { value: true, label: pick(language, "Sales 있는 SKU", "Sales SKUs") },
-              { value: false, label: pick(language, "전체 SKU", "All SKUs") },
+              { value: true, label: pick(language, "Sales ìžˆëŠ” SKU", "Sales SKUs") },
+              { value: false, label: pick(language, "ì „ì²´ SKU", "All SKUs") },
             ].map((option) => (
               <button
                 key={String(option.value)}
@@ -202,8 +203,8 @@ export function SkuForecastsShell() {
           </div>
           <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
             {[
-              { value: false, label: pick(language, "Active 컨테이너", "Active Containers") },
-              { value: true, label: pick(language, "Draft 포함", "Active + Draft") },
+              { value: false, label: pick(language, "Active ì»¨í…Œì´ë„ˆ", "Active Containers") },
+              { value: true, label: pick(language, "Draft í¬í•¨", "Active + Draft") },
             ].map((option) => (
               <button
                 key={String(option.value)}
@@ -220,7 +221,7 @@ export function SkuForecastsShell() {
             ))}
           </div>
           <label className="flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-xs font-semibold text-[#1A1917] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100">
-            <span className="whitespace-nowrap">{pick(language, "목표 재고일", "Target days")}</span>
+            <span className="whitespace-nowrap">{pick(language, "ëª©í‘œ ìž¬ê³ ì¼", "Target days")}</span>
             <input
               type="number"
               min={MIN_TARGET_INVENTORY_DAYS}
@@ -242,7 +243,7 @@ export function SkuForecastsShell() {
                     : "text-muted-foreground hover:bg-[#f0eee9] dark:hover:bg-zinc-700"
                 }`}
               >
-                {option === "ko" ? "한" : "EN"}
+                {option === "ko" ? "í•œ" : "EN"}
               </button>
             ))}
           </div>
@@ -253,7 +254,7 @@ export function SkuForecastsShell() {
             className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-semibold text-[#1A1917] disabled:cursor-default disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            {pick(language, "동기화", "Sync")}
+            {pick(language, "ë™ê¸°í™”", "Sync")}
           </button>
         </div>
       </div>
@@ -295,7 +296,7 @@ export function SkuForecastsShell() {
             </div>
           ) : (
             <div className="planning-panel flex h-full items-center justify-center rounded-lg border text-sm text-muted-foreground">
-              {pick(language, "SKU를 선택하세요", "Select a SKU")}
+              {pick(language, "SKUë¥¼ ì„ íƒí•˜ì„¸ìš”", "Select a SKU")}
             </div>
           )}
         </div>

@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Package, AlertCircle, ChevronDown, ChevronRight, BarChart3, ArrowLeft } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 const SALES_PERIODS = [
   { value: "30", label: "30 days" },
@@ -87,7 +88,7 @@ export default function SKUDetailPage({
 
   const fetchSKU = useCallback(() => {
     setLoading(true);
-    fetch(`/api/skus/${id}`)
+    fetch(apiPath(`/api/skus/${id}`))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) setSKU(result.data);
@@ -109,7 +110,7 @@ export default function SKUDetailPage({
         startDate.setDate(startDate.getDate() - parseInt(salesPeriod, 10));
         params.set("startDate", startDate.toISOString());
       }
-      const response = await fetch(`/api/sales?${params.toString()}`);
+      const response = await fetch(apiPath(`/api/sales?${params.toString()}`));
       const result = await response.json();
       if (result.success && result.data) {
         type RawRow = { date: string; platform: string; totalQuantity: number; totalRevenue: number; orderCount: number };

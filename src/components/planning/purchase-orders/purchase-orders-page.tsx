@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import { isAdminLikeRole, isPOApproverRole } from "@/components/layout/navigation-config";
+import { apiPath } from "@/lib/api-path";
 
 type PurchaseOrderStatus = "draft" | "pending" | "approved" | "sent";
 type PurchaseOrderStatusFilter = "draft" | "pending" | "sent";
@@ -191,7 +192,7 @@ export function PurchaseOrdersPage() {
     setLoadingOrders(true);
     setOrdersError(null);
     try {
-      const response = await fetch("/api/purchase-orders", { cache: "no-store" });
+      const response = await fetch(apiPath("/api/purchase-orders"), { cache: "no-store" });
       const json = await response.json();
 
       if (!json.success) {
@@ -216,7 +217,7 @@ export function PurchaseOrdersPage() {
   async function fetchWarehouses() {
     setLoadingWarehouses(true);
     try {
-      const response = await fetch("/api/warehouses?active=true", { cache: "no-store" });
+      const response = await fetch(apiPath("/api/warehouses?active=true"), { cache: "no-store" });
       const json = await response.json();
       if (json.success) {
         setWarehouses((json.data as WarehouseOption[]).filter((warehouse) => warehouse.isActive));
@@ -233,7 +234,7 @@ export function PurchaseOrdersPage() {
   async function fetchFactories() {
     setLoadingFactories(true);
     try {
-      const response = await fetch("/api/factories?active=true", { cache: "no-store" });
+      const response = await fetch(apiPath("/api/factories?active=true"), { cache: "no-store" });
       const json = await response.json();
       if (json.success) {
         setFactories((json.data as FactoryOption[]).filter((factory) => factory.isActive));
@@ -254,7 +255,7 @@ export function PurchaseOrdersPage() {
 
     setSavingFactory(true);
     try {
-      const response = await fetch("/api/factories", {
+      const response = await fetch(apiPath("/api/factories"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factoryName: trimmed }),
@@ -327,7 +328,7 @@ export function PurchaseOrdersPage() {
     try {
       const isEditing = Boolean(editingPoId);
       const response = await fetch(
-        isEditing ? `/api/purchase-orders?id=${encodeURIComponent(editingPoId ?? "")}` : "/api/purchase-orders",
+        apiPath(isEditing ? `/api/purchase-orders?id=${encodeURIComponent(editingPoId ?? "")}` : "/api/purchase-orders"),
         {
           method: isEditing ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -352,14 +353,14 @@ export function PurchaseOrdersPage() {
   }
 
   async function workflowAction(orderId: string, action: "request_review" | "approve" | "reject" | "send_to_factory") {
-    const response = await fetch(`/api/purchase-orders?id=${encodeURIComponent(orderId)}&workflow=true`, {
+    const response = await fetch(apiPath(`/api/purchase-orders?id=${encodeURIComponent(orderId)}&workflow=true`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     });
     const json = await response.json();
     if (!response.ok || !json.success) {
-      window.alert(json.error ?? "상태 변경에 실패했습니다.");
+      window.alert(json.error ?? "ìƒíƒœ ë³€ê²½ì— ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤.");
       return;
     }
     await fetchOrders();
@@ -375,7 +376,7 @@ export function PurchaseOrdersPage() {
 
     setDeletingPoId(order.id);
     try {
-      const response = await fetch(`/api/purchase-orders?id=${encodeURIComponent(order.id)}`, {
+      const response = await fetch(apiPath(`/api/purchase-orders?id=${encodeURIComponent(order.id)}`), {
         method: "DELETE",
       });
       const json = await response.json();
@@ -401,7 +402,7 @@ export function PurchaseOrdersPage() {
     const results = await Promise.all(
       distinctSkus.map(async (sku) => {
         try {
-          const response = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`, {
+          const response = await fetch(apiPath(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`), {
             cache: "no-store",
           });
           return response.ok ? null : sku;
@@ -433,7 +434,7 @@ export function PurchaseOrdersPage() {
 
     let nextNumber = defaultPoForm.number;
     try {
-      const res = await fetch("/api/purchase-orders?nextNumber=true", { cache: "no-store" });
+      const res = await fetch(apiPath("/api/purchase-orders?nextNumber=true"), { cache: "no-store" });
       const json = await res.json();
       if (json.success) nextNumber = json.data.nextNumber as string;
     } catch {
@@ -498,7 +499,7 @@ export function PurchaseOrdersPage() {
     const sku = rawSku.toUpperCase();
 
     try {
-      const response = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`, {
+      const response = await fetch(apiPath(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`), {
         cache: "no-store",
       });
       const json = await response.json();
@@ -528,7 +529,7 @@ export function PurchaseOrdersPage() {
     if (!sku || (cbm <= 0 && moq <= 0)) return;
 
     try {
-      const response = await fetch("/api/planning/sku-master", {
+      const response = await fetch(apiPath("/api/planning/sku-master"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -735,7 +736,7 @@ export function PurchaseOrdersPage() {
             />
           ) : (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-              <div className="text-5xl opacity-50">▦</div>
+              <div className="text-5xl opacity-50">â–¦</div>
               <div className="text-sm font-medium">Select a purchase order or add a new one</div>
               <div className="text-xs">Click a PO in the left list to view SKU details</div>
               <button
@@ -843,11 +844,11 @@ function PurchaseOrderCreateForm({
       <div className="border-b border-[#e2dfd8] bg-white px-6 py-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <StepPill active>Drafting</StepPill>
-          <span>→</span>
+          <span>â†’</span>
           <StepPill>Under Review</StepPill>
-          <span>→</span>
+          <span>â†’</span>
           <StepPill>Approved</StepPill>
-          <span>→</span>
+          <span>â†’</span>
           <StepPill>Sent to Factory</StepPill>
         </div>
       </div>
@@ -1001,7 +1002,7 @@ function PurchaseOrderCreateForm({
 
       <div className="flex items-center justify-between border-t border-[#e2dfd8] bg-white px-5 py-3">
         <div className="font-mono text-xs text-muted-foreground">
-          {form.number} · {statusLabel}
+          {form.number} Â· {statusLabel}
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">
@@ -1210,7 +1211,7 @@ function PoMeta({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// ─── Workflow stepper ────────────────────────────────────────────────────────
+// â”€â”€â”€ Workflow stepper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const WORKFLOW_STEPS: Array<{ status: PurchaseOrderStatus; label: string }> = [
   { status: "draft",    label: "Drafting"    },
@@ -1246,7 +1247,7 @@ function PoWorkflowStepper({ status }: { status: PurchaseOrderStatus }) {
               {step.label}
             </span>
             {idx < WORKFLOW_STEPS.length - 1 ? (
-              <span className={`text-[10px] ${isFuture ? "text-[#cccac4]" : "text-[#0a5e45]"}`}>→</span>
+              <span className={`text-[10px] ${isFuture ? "text-[#cccac4]" : "text-[#0a5e45]"}`}>â†’</span>
             ) : null}
           </div>
         );
@@ -1341,7 +1342,7 @@ function PoWorkflowActions({
           </>
         ) : (
           <span className="rounded-lg bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45]">
-            Approved — pending factory dispatch by manager
+            Approved â€” pending factory dispatch by manager
           </span>
         )}
       </div>

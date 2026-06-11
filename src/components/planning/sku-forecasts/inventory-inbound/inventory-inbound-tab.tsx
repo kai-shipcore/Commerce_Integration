@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
 import { daysUntil, formatNumber } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
+import { apiPath } from "@/lib/api-path";
 
 type InboundContainer = {
   id: number;
@@ -31,7 +32,7 @@ export function InventoryInboundTab({
   useEffect(() => {
     let cancelled = false;
     const draftSuffix = includeDraftContainers ? "&includeDrafts=1" : "";
-    fetch(`/api/planning/sku-forecasts/inbound?masterSku=${encodeURIComponent(sku.sku)}${draftSuffix}`)
+    fetch(apiPath(`/api/planning/sku-forecasts/inbound?masterSku=${encodeURIComponent(sku.sku)}${draftSuffix}`))
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json() as Promise<{ success: boolean; data?: InboundContainer[] }>;
@@ -71,11 +72,11 @@ export function InventoryInboundTab({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          {pick(language, "재고 및 입고", "Inventory and inbound")}
+          {pick(language, "ìž¬ê³  ë° ìž…ê³ ", "Inventory and inbound")}
         </div>
         {includeDraftContainers ? (
           <div className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-            {pick(language, "Draft 포함", "Draft included")}
+            {pick(language, "Draft í¬í•¨", "Draft included")}
             {draftQty > 0 ? ` +${formatNumber(draftQty)}` : ""}
           </div>
         ) : null}
@@ -83,39 +84,39 @@ export function InventoryInboundTab({
 
       <div className="planning-panel rounded-lg border p-4">
         <div className="grid gap-3 md:grid-cols-4">
-          <Summary label={pick(language, "West 재고", "West Stock")} value={sku.west_stock} />
-          <Summary label={pick(language, "East 재고", "East Stock")} value={sku.east_stock} />
-          <Summary label={pick(language, "백오더", "Backorder")} value={sku.back} danger={sku.back < 0} />
-          <Summary label="SOD" value={sku.sod ?? "-"} sub={days === null ? undefined : `${days}${pick(language, "일", " days")}`} />
+          <Summary label={pick(language, "West ìž¬ê³ ", "West Stock")} value={sku.west_stock} />
+          <Summary label={pick(language, "East ìž¬ê³ ", "East Stock")} value={sku.east_stock} />
+          <Summary label={pick(language, "ë°±ì˜¤ë”", "Backorder")} value={sku.back} danger={sku.back < 0} />
+          <Summary label="SOD" value={sku.sod ?? "-"} sub={days === null ? undefined : `${days}${pick(language, "ì¼", " days")}`} />
         </div>
         <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>{pick(language, "예상 재고 확보율", "Projected Inventory Coverage")}</span>
+          <span>{pick(language, "ì˜ˆìƒ ìž¬ê³  í™•ë³´ìœ¨", "Projected Inventory Coverage")}</span>
           <span className="font-mono font-semibold text-foreground">
-            {pick(language, `${targetInventoryDays}일 목표의 `, "")}{formatNumber(coveragePercent, 1)}%{pick(language, "", ` of ${targetInventoryDays}-day target`)}
+            {pick(language, `${targetInventoryDays}ì¼ ëª©í‘œì˜ `, "")}{formatNumber(coveragePercent, 1)}%{pick(language, "", ` of ${targetInventoryDays}-day target`)}
           </span>
         </div>
         <div className="planning-muted mt-2 h-6 overflow-hidden rounded-full border">
           <div className="h-full bg-[#1a5cdb]" style={{ width: `${progressPercent}%` }} />
         </div>
         <div className="mt-1 text-right font-mono text-xs text-muted-foreground">
-          {pick(language, "예상", "Projected")} {formatNumber(projected)} / {pick(language, "목표", "Target")} {formatNumber(targetStock)} {pick(language, "개", "units")}
+          {pick(language, "ì˜ˆìƒ", "Projected")} {formatNumber(projected)} / {pick(language, "ëª©í‘œ", "Target")} {formatNumber(targetStock)} {pick(language, "ê°œ", "units")}
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="planning-panel rounded-lg border p-4">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold">{pick(language, "입고 컨테이너", "Inbound Containers")}</h3>
+            <h3 className="text-sm font-semibold">{pick(language, "ìž…ê³  ì»¨í…Œì´ë„ˆ", "Inbound Containers")}</h3>
             <span className="text-xs text-muted-foreground">
-              {loading ? pick(language, "불러오는 중...", "Loading...") : pick(language, "준비됨", "Ready")}
+              {loading ? pick(language, "ë¶ˆëŸ¬ì˜¤ëŠ” ì¤‘...", "Loading...") : pick(language, "ì¤€ë¹„ë¨", "Ready")}
             </span>
           </div>
           <div className="mt-4 space-y-2">
             {loading && inboundRows.length === 0 ? (
-              <div className="rounded-md border bg-[#f8f7f4] p-4 text-sm text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">{pick(language, "컨테이너 상세를 불러오는 중...", "Loading container details...")}</div>
+              <div className="rounded-md border bg-[#f8f7f4] p-4 text-sm text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">{pick(language, "ì»¨í…Œì´ë„ˆ ìƒì„¸ë¥¼ ë¶ˆëŸ¬ì˜¤ëŠ” ì¤‘...", "Loading container details...")}</div>
             ) : inboundRows.length === 0 ? (
               <div className="rounded-md border bg-[#f8f7f4] p-4 text-sm text-muted-foreground dark:border-zinc-700 dark:bg-zinc-800">
-                {includeDraftContainers ? pick(language, "입고 컨테이너가 없습니다.", "No inbound containers.") : pick(language, "활성 입고 컨테이너가 없습니다.", "No active inbound containers.")}
+                {includeDraftContainers ? pick(language, "ìž…ê³  ì»¨í…Œì´ë„ˆê°€ ì—†ìŠµë‹ˆë‹¤.", "No inbound containers.") : pick(language, "í™œì„± ìž…ê³  ì»¨í…Œì´ë„ˆê°€ ì—†ìŠµë‹ˆë‹¤.", "No active inbound containers.")}
               </div>
             ) : (
               inboundRows.map((container) => {
@@ -134,14 +135,14 @@ export function InventoryInboundTab({
                         <div className="truncate font-semibold">{container.name}</div>
                         {isDraft ? <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">Draft</span> : null}
                       </div>
-                      <div className="text-xs text-muted-foreground group-hover:text-current">{container.status ?? pick(language, "상태 미상", "status unknown")}</div>
+                      <div className="text-xs text-muted-foreground group-hover:text-current">{container.status ?? pick(language, "ìƒíƒœ ë¯¸ìƒ", "status unknown")}</div>
                     </div>
                     <div>
                       <div className="text-xs text-muted-foreground group-hover:text-current">ETA</div>
                       <div className="font-mono">{container.eta ?? "-"}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs text-muted-foreground group-hover:text-current">{pick(language, "수량", "Qty")}</div>
+                      <div className="text-xs text-muted-foreground group-hover:text-current">{pick(language, "ìˆ˜ëŸ‰", "Qty")}</div>
                       <div className="font-mono font-semibold">{formatNumber(container.inbound_qty)}</div>
                     </div>
                     <div className="text-right">
@@ -156,10 +157,10 @@ export function InventoryInboundTab({
         </div>
 
         <div className="grid gap-3">
-          <SummaryCard label={pick(language, "현재 재고", "Current Stock")} value={sku.total_stock} />
-          <SummaryCard label={includeDraftContainers ? pick(language, "입고 (Draft 포함)", "Inbound incl. Draft") : pick(language, "입고", "Inbound")} value={inboundQty} prefix="+" />
-          <SummaryCard label={pick(language, "예상 재고", "Projected Stock")} value={projected} />
-          <SummaryCard label={pick(language, "잔여 / 오류", "Remaining / Mistake")} value={`${formatNumber(sku.remaining)} / ${formatNumber(sku.mistake)}`} />
+          <SummaryCard label={pick(language, "í˜„ìž¬ ìž¬ê³ ", "Current Stock")} value={sku.total_stock} />
+          <SummaryCard label={includeDraftContainers ? pick(language, "ìž…ê³  (Draft í¬í•¨)", "Inbound incl. Draft") : pick(language, "ìž…ê³ ", "Inbound")} value={inboundQty} prefix="+" />
+          <SummaryCard label={pick(language, "ì˜ˆìƒ ìž¬ê³ ", "Projected Stock")} value={projected} />
+          <SummaryCard label={pick(language, "ìž”ì—¬ / ì˜¤ë¥˜", "Remaining / Mistake")} value={`${formatNumber(sku.remaining)} / ${formatNumber(sku.mistake)}`} />
         </div>
       </div>
     </div>

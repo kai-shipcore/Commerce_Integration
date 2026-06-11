@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ShoppingCart } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface SalesFormData {
   skuId: string;
@@ -67,7 +68,7 @@ export function SalesFormDialog({ onSuccess, trigger }: SalesFormDialogProps) {
   // Fetch SKUs when dialog opens
   useEffect(() => {
     if (open) {
-      fetch("/api/skus?limit=100")
+      fetch(apiPath("/api/skus?limit=100"))
         .then((res) => res.json())
         .then((result) => {
           if (result.success) {
@@ -88,7 +89,7 @@ export function SalesFormDialog({ onSuccess, trigger }: SalesFormDialogProps) {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/sales", {
+      const response = await fetch(apiPath("/api/sales"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

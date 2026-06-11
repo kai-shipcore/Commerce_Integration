@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SalesFormDialog } from "@/components/sales/sales-form-dialog";
 import { SalesImportDialog } from "@/components/sales/import-dialog";
 import { ShoppingCart, Calendar } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface SalesRecord {
   id: string;
@@ -47,7 +48,7 @@ export default function SalesPage() {
   const [storeId, setStoreId] = useState<string>("all");
 
   const fetchIntegrations = useCallback(() => {
-    fetch("/api/integrations")
+    fetch(apiPath("/api/integrations"))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
@@ -64,7 +65,7 @@ export default function SalesPage() {
     if (storeId !== "all") params.set("integrationId", storeId);
     params.set("limit", "50");
 
-    fetch(`/api/sales?${params}`)
+    fetch(apiPath(`/api/sales?${params}`))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {

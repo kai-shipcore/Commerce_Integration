@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CollectionFormDialog } from "@/components/collection/collection-form-dialog";
 import { FolderKanban, Package } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface Collection {
   id: string;
@@ -30,7 +31,7 @@ export default function CollectionsPage() {
 
   const fetchCollections = useCallback(() => {
     setLoading(true);
-    fetch("/api/collections")
+    fetch(apiPath("/api/collections"))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {

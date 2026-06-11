@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { apiPath } from "@/lib/api-path";
 
 type SortBy = "masterSku" | "qty90d" | "qty60d" | "qty30d" | "qty15d" | "qty7d";
 type SortOrder = "asc" | "desc";
@@ -158,7 +159,7 @@ export function SalesLinkReportTable() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/sales-link-report?${queryString}`, {
+      const response = await fetch(apiPath(`/api/sales-link-report?${queryString}`), {
         cache: "no-store",
       });
       const result = (await response.json()) as SalesLinkResponse;
@@ -403,7 +404,7 @@ export function SalesLinkReportTable() {
                       <span className="text-sm text-muted-foreground">
                         {hasRequestedData
                           ? "No sales rows found."
-                          : "Load Data 버튼을 눌러 Sales 데이터를 가져오세요."}
+                          : "Load Data ë²„íŠ¼ì„ ëˆŒëŸ¬ Sales ë°ì´í„°ë¥¼ ê°€ì ¸ì˜¤ì„¸ìš”."}
                       </span>
                     </TableCell>
                   </TableRow>
@@ -437,7 +438,7 @@ export function SalesLinkReportTable() {
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-muted-foreground">
-          Page {totalRows === 0 ? 0 : page} of {totalPages} · {totalRows.toLocaleString()} rows
+          Page {totalRows === 0 ? 0 : page} of {totalPages} Â· {totalRows.toLocaleString()} rows
         </div>
         <div className="flex items-center gap-2">
           <Button

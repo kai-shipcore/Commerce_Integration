@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, LockKeyhole } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -27,7 +28,7 @@ function ResetPasswordContent() {
     setSuccess(null);
 
     try {
-      const response = await fetch("/api/auth/reset-password", {
+      const response = await fetch(apiPath("/api/auth/reset-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password, confirmPassword }),

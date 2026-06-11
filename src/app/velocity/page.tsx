@@ -26,6 +26,7 @@ import {
 import { Gauge, Check, X, Plus, RefreshCw, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { exportCurrentVelocity, exportAllVelocity } from "@/lib/velocity-export";
+import { apiPath } from "@/lib/api-path";
 
 const ITEMS = ["Car Cover", "Seat Cover", "Floor Mat"] as const;
 const CHANNELS = [
@@ -294,7 +295,7 @@ async function fetchModeRows(
     ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
     tz,
   });
-  const res = await fetch(`/api/velocity/data?${params}`);
+  const res = await fetch(apiPath(`/api/velocity/data?${params}`));
   const data = await res.json();
   if (!data.success) return [];
   return responseToRows(data as ApiData, ranges.length);
@@ -586,7 +587,7 @@ export default function VelocityPage() {
   const activeRanges = periodMode === "period" ? periodsToRanges(periods) : customRanges;
 
   useEffect(() => {
-    fetch("/api/velocity/sync")
+    fetch(apiPath("/api/velocity/sync"))
       .then((r) => r.json())
       .then((data) => { if (data.success) setLastSyncedAt(data.lastSyncedAt); })
       .catch(() => {});
@@ -595,10 +596,10 @@ export default function VelocityPage() {
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const res = await fetch("/api/velocity/sync", { method: "POST" });
+      const res = await fetch(apiPath("/api/velocity/sync"), { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        const refresh = await fetch("/api/velocity/sync");
+        const refresh = await fetch(apiPath("/api/velocity/sync"));
         const refreshData = await refresh.json();
         if (refreshData.success) setLastSyncedAt(refreshData.lastSyncedAt);
       }

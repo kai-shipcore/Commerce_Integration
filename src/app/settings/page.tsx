@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Moon, Sun } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 export default function SettingsPage() {
   const { status, update } = useSession();
@@ -37,7 +38,7 @@ export default function SettingsPage() {
       }
 
       try {
-        const profileResponse = await fetch("/api/settings/profile", { cache: "no-store" });
+        const profileResponse = await fetch(apiPath("/api/settings/profile"), { cache: "no-store" });
 
         const profileResult = await profileResponse.json();
 
@@ -67,7 +68,7 @@ export default function SettingsPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/settings/profile", {
+      const response = await fetch(apiPath("/api/settings/profile"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, AlertTriangle, Package, CheckCircle, XCircle } from "lucide-react";
 import Link from "next/link";
+import { apiPath } from "@/lib/api-path";
 
 interface LowStockSKU {
   id: string;
@@ -57,11 +58,11 @@ export function InventoryStatus() {
     async function fetchData() {
       try {
         // Fetch dashboard data for low stock info
-        const dashboardRes = await fetch("/api/analytics/dashboard");
+        const dashboardRes = await fetch(apiPath("/api/analytics/dashboard"));
         const dashboardData = await dashboardRes.json();
 
         // Fetch all SKUs for inventory distribution
-        const skusRes = await fetch("/api/skus?limit=100");
+        const skusRes = await fetch(apiPath("/api/skus?limit=100"));
         const skusData = await skusRes.json();
 
         if (dashboardData.success) {

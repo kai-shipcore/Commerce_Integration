@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Download, RefreshCw, Loader2 } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface PaginationState {
   page: number;
@@ -67,7 +68,7 @@ export default function SKUsPage() {
     params.set("salesPeriod", salesPeriod);
     if (categoryFilter && categoryFilter !== "all") params.set("category", categoryFilter);
 
-    fetch(`/api/skus?${params}`)
+    fetch(apiPath(`/api/skus?${params}`))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
@@ -129,7 +130,7 @@ export default function SKUsPage() {
     setSyncing(true);
     setSyncMessage(null);
     try {
-      const response = await fetch("/api/products/sync", { method: "POST" });
+      const response = await fetch(apiPath("/api/products/sync"), { method: "POST" });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || "Products sync failed");
@@ -147,7 +148,7 @@ export default function SKUsPage() {
     setSyncingVehicles(true);
     setSyncMessage(null);
     try {
-      const response = await fetch("/api/product-vehicles/sync", { method: "POST" });
+      const response = await fetch(apiPath("/api/product-vehicles/sync"), { method: "POST" });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || "Vehicle sync failed");
@@ -164,7 +165,7 @@ export default function SKUsPage() {
     setSyncingMapping(true);
     setSyncMessage(null);
     try {
-      const response = await fetch("/api/sku-mappings/sync", { method: "POST" });
+      const response = await fetch(apiPath("/api/sku-mappings/sync"), { method: "POST" });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || "Mapping sync failed");

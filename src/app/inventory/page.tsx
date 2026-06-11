@@ -16,6 +16,7 @@ import {
   type InventoryTableRow,
 } from "@/components/inventory/inventory-table-columns";
 import { Boxes, ChevronDown, ChevronUp, Download, Loader2, Warehouse } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface InventoryRow {
   masterSku: string;
@@ -86,7 +87,7 @@ export default function InventoryPage() {
     }
 
     try {
-      const response = await fetch(`/api/inventory?${params.toString()}`, {
+      const response = await fetch(apiPath(`/api/inventory?${params.toString()}`), {
         cache: "no-store",
       });
       const result = await response.json();
@@ -138,7 +139,7 @@ export default function InventoryPage() {
         params.set("warehouse", warehouseFilter);
       }
 
-      const response = await fetch(`/api/inventory?${params.toString()}`, {
+      const response = await fetch(apiPath(`/api/inventory?${params.toString()}`), {
         cache: "no-store",
       });
       const result = await response.json();

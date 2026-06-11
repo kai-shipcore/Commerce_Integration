@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiPath } from "@/lib/api-path";
 
 interface TopSeller {
   sku: {
@@ -38,7 +39,7 @@ export function TopSellers() {
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    fetch(`/api/analytics/dashboard?period=${period}`)
+    fetch(apiPath(`/api/analytics/dashboard?period=${period}`))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {

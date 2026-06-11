@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Building2 } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 type FactoryRecord = {
   id: string;
@@ -49,7 +50,7 @@ function toForm(f: FactoryRecord): FactoryForm {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "â€”";
   return new Date(iso).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -73,7 +74,7 @@ export function FactoriesPage() {
   async function fetchFactories() {
     setLoading(true);
     try {
-      const res = await fetch("/api/factories", { cache: "no-store" });
+      const res = await fetch(apiPath("/api/factories"), { cache: "no-store" });
       const json = await res.json();
       if (json.success) {
         setFactories(json.data as FactoryRecord[]);
@@ -170,7 +171,7 @@ export function FactoriesPage() {
       };
 
       if (isNew) {
-        const res = await fetch("/api/factories", {
+        const res = await fetch(apiPath("/api/factories"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -180,7 +181,7 @@ export function FactoriesPage() {
         setSelectedId((json.data as FactoryRecord).id);
         setIsNew(false);
       } else if (selectedId) {
-        const res = await fetch(`/api/factories/${selectedId}`, {
+        const res = await fetch(apiPath(`/api/factories/${selectedId}`), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -190,7 +191,7 @@ export function FactoriesPage() {
       }
 
       setEditMode(false);
-      setSavedMessage("✓ Saved");
+      setSavedMessage("âœ“ Saved");
       window.setTimeout(() => setSavedMessage(""), 2500);
       await fetchFactories();
     } finally {
@@ -203,7 +204,7 @@ export function FactoriesPage() {
     const next = !selectedFactory.isActive;
     setSaving(true);
     try {
-      const res = await fetch(`/api/factories/${selectedFactory.id}`, {
+      const res = await fetch(apiPath(`/api/factories/${selectedFactory.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: next }),
@@ -288,7 +289,7 @@ export function FactoriesPage() {
                     }`}
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0eee9] text-base">
-                      🏭
+                      ðŸ­
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">
@@ -323,7 +324,7 @@ export function FactoriesPage() {
                     onClick={startNew}
                     className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                   >
-                    <span className="text-3xl">🏭</span>
+                    <span className="text-3xl">ðŸ­</span>
                     <span className="text-sm font-semibold">Add your first factory</span>
                     <span className="text-xs">Click the + Add Factory button</span>
                   </button>
@@ -351,7 +352,7 @@ export function FactoriesPage() {
               />
             ) : (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-                <div className="text-5xl opacity-50">🏭</div>
+                <div className="text-5xl opacity-50">ðŸ­</div>
                 <div className="text-sm font-medium">Select a factory or add a new one</div>
                 <div className="text-xs">Click a factory in the left list to view details</div>
                 <button
@@ -438,19 +439,19 @@ function FactoryDetail({
         <div>
           <div className="text-base font-semibold">
             {isNew
-              ? "🏭 New Factory"
-              : `🏭 ${form.factoryName}`}
+              ? "ðŸ­ New Factory"
+              : `ðŸ­ ${form.factoryName}`}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {isNew
               ? "Enter the details and save"
-              : `${form.factoryCode || "No code"}${form.origin ? ` · ${form.origin}` : ""}`}
+              : `${form.factoryCode || "No code"}${form.origin ? ` Â· ${form.origin}` : ""}`}
           </div>
           {selectedFactory ? (
             <div className="mt-1 text-[10px] text-muted-foreground">
               Created {formatDate(selectedFactory.createdAt)}
               {selectedFactory.updatedAt && selectedFactory.updatedAt !== selectedFactory.createdAt
-                ? ` · Updated ${formatDate(selectedFactory.updatedAt)}`
+                ? ` Â· Updated ${formatDate(selectedFactory.updatedAt)}`
                 : ""}
             </div>
           ) : null}

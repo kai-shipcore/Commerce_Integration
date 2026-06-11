@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Database } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
+import { apiPath } from "@/lib/api-path";
 
 type SkuMasterRow = {
   masterSku: string;
@@ -179,7 +180,7 @@ export function SkuMasterPage() {
       if (statusFilter !== "active") params.set("status", statusFilter);
       params.set("page", String(page));
       params.set("limit", String(limit));
-      const res = await fetch(`/api/planning/sku-master?${params.toString()}`, { cache: "no-store" });
+      const res = await fetch(apiPath(`/api/planning/sku-master?${params.toString()}`), { cache: "no-store" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error ?? "Failed to load SKU master");
       setRows(json.data);
@@ -222,7 +223,7 @@ export function SkuMasterPage() {
   }
 
   async function saveRow(row: SkuMasterRow) {
-    const res = await fetch("/api/planning/sku-master", {
+    const res = await fetch(apiPath("/api/planning/sku-master"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -242,7 +243,7 @@ export function SkuMasterPage() {
     setSyncing(true);
     setMessage("");
     try {
-      const res = await fetch("/api/planning/sku-master", { method: "POST" });
+      const res = await fetch(apiPath("/api/planning/sku-master"), { method: "POST" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error ?? "Failed to sync SKU master");
       setMessage(`Synced ${json.upserted ?? 0} SKUs from coverland_inventory`);
@@ -267,7 +268,7 @@ export function SkuMasterPage() {
         throw new Error("No valid Master SKU / CBM rows found in the Excel file");
       }
 
-      const res = await fetch("/api/planning/sku-master", {
+      const res = await fetch(apiPath("/api/planning/sku-master"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows: importRows }),
@@ -305,7 +306,7 @@ export function SkuMasterPage() {
         params.set("page", String(exportPage));
         params.set("limit", String(exportLimit));
 
-        const res = await fetch(`/api/planning/sku-master?${params.toString()}`, { cache: "no-store" });
+        const res = await fetch(apiPath(`/api/planning/sku-master?${params.toString()}`), { cache: "no-store" });
         const json = await res.json();
         if (!json.success) throw new Error(json.error ?? "Failed to export SKU master");
         exportRows.push(...json.data);
@@ -621,7 +622,7 @@ export function SkuMasterPage() {
 
         {visibleSkus.length === 0 ? (
           <div className="flex min-h-[360px] flex-col items-center justify-center gap-2 text-muted-foreground">
-            <div className="text-4xl opacity-50">⌕</div>
+            <div className="text-4xl opacity-50">âŒ•</div>
             <div className="text-sm font-medium">{loading ? "Loading SKU master..." : "No matching SKUs"}</div>
             <div className="text-xs">
               {loading ? "Reading fc_products" : "Click Sync Inventory or change the SKU search term."}

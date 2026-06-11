@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import { PartDialog } from "./add-part-dialog";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
 import { ImportPartsDialog } from "./import-parts-dialog";
+import { apiPath } from "@/lib/api-path";
 
 const modules = [AllCommunityModule];
 
@@ -102,7 +103,7 @@ function exportToExcel(rows: PartOrderRow[], tabKey: string) {
     "Request Received Date": fmtDate(r.requestReceivedAt),
     "Order Number": r.orderNumber,
     "Part Number": r.partNumber,
-    "해당SKU": r.correspondingSku ?? "",
+    "í•´ë‹¹SKU": r.correspondingSku ?? "",
     QTY: r.qty,
     "Order Request": r.orderRequest ?? "",
     "PART SKU": r.partSku ?? "",
@@ -139,9 +140,9 @@ export function PartsGrid() {
 
   const loadRows = useCallback(() => {
     setLoading(true);
-    const url = activeFilter === "deleted"
+    const url = apiPath(activeFilter === "deleted"
       ? "/api/planning/seat-cover/parts?deleted=true"
-      : "/api/planning/seat-cover/parts";
+      : "/api/planning/seat-cover/parts");
     fetch(url)
       .then((r) => r.json())
       .then((json) => setRows(json.data ?? []))
@@ -160,7 +161,7 @@ export function PartsGrid() {
       return rows.filter((r) => r.shippingStatus === "Shipped");
     if (activeFilter === "canceled")
       return rows.filter((r) => r.shippingStatus === "Canceled");
-    return rows; // deleted — API already filtered by deleteYN='Y'
+    return rows; // deleted â€” API already filtered by deleteYN='Y'
   }, [rows, activeFilter]);
 
   const getRowStyle = useCallback(
@@ -202,7 +203,7 @@ export function PartsGrid() {
         minWidth: 110,
       },
       {
-        headerName: "해당SKU",
+        headerName: "í•´ë‹¹SKU",
         field: "correspondingSku",
         flex: 2,
         minWidth: 110,
@@ -313,7 +314,7 @@ export function PartsGrid() {
       >
         <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1917" }}>Parts</span>
         {loading && (
-          <span style={{ fontSize: 13, color: "#7A766F" }}>Loading…</span>
+          <span style={{ fontSize: 13, color: "#7A766F" }}>Loadingâ€¦</span>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           <button
@@ -368,9 +369,9 @@ export function PartsGrid() {
                 </button>
               }
               title="Delete Part"
-              description={`Order #${selectedRow?.orderNumber ?? ""} 행을 삭제합니다. 되돌릴 수 없습니다.`}
+              description={`Order #${selectedRow?.orderNumber ?? ""} í–‰ì„ ì‚­ì œí•©ë‹ˆë‹¤. ë˜ëŒë¦´ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.`}
               onConfirm={async () => {
-                await fetch(`/api/planning/seat-cover/parts/${selectedRow!.id}`, {
+                await fetch(apiPath(`/api/planning/seat-cover/parts/${selectedRow!.id}`), {
                   method: "DELETE",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ orderNumber: selectedRow!.orderNumber }),

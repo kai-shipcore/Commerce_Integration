@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes } from "lucide-react";
 import * as XLSX from "xlsx";
+import { apiPath } from "@/lib/api-path";
 
 type StockSourceType = "remaining" | "mistake";
 type StockSortColumn = "referenceNo" | "plNo" | "masterSku" | "totalQty" | "allocatedQty" | "availableQty" | "cbm" | "totalCbm" | "note";
@@ -160,7 +161,7 @@ export function AvailableStockPage() {
   async function loadRows() {
     setLoading(true);
     try {
-      const response = await fetch("/api/container-available-stock", { cache: "no-store" });
+      const response = await fetch(apiPath("/api/container-available-stock"), { cache: "no-store" });
       const json = await response.json();
       if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load available stock.");
       setRows(json.data as AvailableStockRow[]);
@@ -221,7 +222,7 @@ export function AvailableStockPage() {
     const sku = masterSku.trim().toUpperCase();
     if (!sku) return null;
     try {
-      const response = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`, {
+      const response = await fetch(apiPath(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`), {
         cache: "no-store",
       });
       const json = await response.json();
@@ -279,7 +280,7 @@ export function AvailableStockPage() {
     setSaving(true);
     setMessage("");
     try {
-      const response = await fetch("/api/container-available-stock", {
+      const response = await fetch(apiPath("/api/container-available-stock"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sourceType, ...parsed }),
@@ -323,7 +324,7 @@ export function AvailableStockPage() {
     setSaving(true);
     setMessage("");
     try {
-      const response = await fetch("/api/container-available-stock", {
+      const response = await fetch(apiPath("/api/container-available-stock"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: row.id, sourceType: row.sourceType, ...parsed }),
@@ -345,7 +346,7 @@ export function AvailableStockPage() {
     setSaving(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/container-available-stock?stockId=${encodeURIComponent(row.id)}`, {
+      const response = await fetch(apiPath(`/api/container-available-stock?stockId=${encodeURIComponent(row.id)}`), {
         method: "DELETE",
       });
       const json = await response.json();
@@ -369,7 +370,7 @@ export function AvailableStockPage() {
       if (importRows.length === 0) {
         throw new Error("No valid Remaining or Mistake Order stock rows were found in the Excel file.");
       }
-      const response = await fetch("/api/container-available-stock", {
+      const response = await fetch(apiPath("/api/container-available-stock"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "import", rows: importRows }),

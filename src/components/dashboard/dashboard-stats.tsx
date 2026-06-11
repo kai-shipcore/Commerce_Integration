@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Package, Plug, DollarSign, TrendingUp } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface DashboardData {
   overview: {
@@ -31,7 +32,7 @@ export function DashboardStats() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/analytics/dashboard")
+    fetch(apiPath("/api/analytics/dashboard"))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {

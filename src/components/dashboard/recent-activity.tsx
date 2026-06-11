@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Package, ShoppingCart } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface Activity {
   type: string;
@@ -23,7 +24,7 @@ export function RecentActivity() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/analytics/dashboard")
+    fetch(apiPath("/api/analytics/dashboard"))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {

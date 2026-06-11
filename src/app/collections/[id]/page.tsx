@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { CollectionFormDialog } from "@/components/collection/collection-form-dialog";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
 import { Package, Edit, Trash2 } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface CollectionMember {
   sku: {
@@ -49,7 +50,7 @@ export default function CollectionDetailPage({
 
   const fetchCollection = useCallback(() => {
     setLoading(true);
-    fetch(`/api/collections/${id}`)
+    fetch(apiPath(`/api/collections/${id}`))
       .then((res) => res.json())
       .then((result) => {
         if (result.success) {
@@ -65,7 +66,7 @@ export default function CollectionDetailPage({
   }, [fetchCollection]);
 
   const handleDelete = async () => {
-    const response = await fetch(`/api/collections/${id}`, { method: "DELETE" });
+    const response = await fetch(apiPath(`/api/collections/${id}`), { method: "DELETE" });
     const result = await response.json();
 
     if (result.success) {

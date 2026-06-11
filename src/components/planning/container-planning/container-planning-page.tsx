@@ -12,6 +12,7 @@ import {
   type ProductKey,
 } from "@/features/planning/mock-data";
 import { isPOApproverRole } from "@/components/layout/navigation-config";
+import { apiPath } from "@/lib/api-path";
 
 type ContainerItem = MockContainer["items"][number];
 
@@ -145,9 +146,9 @@ const productFilterColors: Record<ProductKey, string> = {
 };
 
 const productFilterIcons: Record<ProductKey, string> = {
-  cc: "🚗",
-  fm: "🧩",
-  sc: "💺",
+  cc: "ðŸš—",
+  fm: "ðŸ§©",
+  sc: "ðŸ’º",
 };
 
 const SKU_LIST_COLLAPSED_STORAGE_KEY = "container-planning-sku-list-collapsed";
@@ -330,7 +331,7 @@ export function ContainerPlanningPage() {
         includeDetails: "true",
       });
       if (productFilter) params.set("product", productFilter);
-      const response = await fetch(`/api/containers?${params.toString()}`, {
+      const response = await fetch(apiPath(`/api/containers?${params.toString()}`), {
         cache: "no-store",
       });
       const json = await response.json();
@@ -374,7 +375,7 @@ export function ContainerPlanningPage() {
   async function fetchWarehouses() {
     setLoadingWarehouses(true);
     try {
-      const response = await fetch("/api/warehouses?active=true", { cache: "no-store" });
+      const response = await fetch(apiPath("/api/warehouses?active=true"), { cache: "no-store" });
       const json = await response.json();
 
       if (json.success) {
@@ -391,7 +392,7 @@ export function ContainerPlanningPage() {
 
   async function fetchFactories() {
     try {
-      const response = await fetch("/api/factories?active=true", { cache: "no-store" });
+      const response = await fetch(apiPath("/api/factories?active=true"), { cache: "no-store" });
       const json = await response.json();
       if (json.success) setFactories(json.data as FactoryOption[]);
     } catch {
@@ -404,7 +405,7 @@ export function ContainerPlanningPage() {
     if (!trimmed) return;
     if (factories.some((f) => f.factoryName.toLowerCase() === trimmed.toLowerCase())) return;
     try {
-      const response = await fetch("/api/factories", {
+      const response = await fetch(apiPath("/api/factories"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factoryName: trimmed }),
@@ -412,7 +413,7 @@ export function ContainerPlanningPage() {
       const json = await response.json();
       if (json.success) await fetchFactories();
     } catch {
-      // silently ignore — factory field still holds the typed value
+      // silently ignore â€” factory field still holds the typed value
     }
   }
 
@@ -485,7 +486,7 @@ export function ContainerPlanningPage() {
     if (!sku) return null;
 
     try {
-      const response = await fetch(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`, {
+      const response = await fetch(apiPath(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`), {
         cache: "no-store",
       });
       const json = await response.json();
@@ -501,7 +502,7 @@ export function ContainerPlanningPage() {
     if (!Number.isFinite(cbm) || cbm <= 0) return "CBM must be greater than 0.";
 
     try {
-      const response = await fetch("/api/planning/sku-master", {
+      const response = await fetch(apiPath("/api/planning/sku-master"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -659,7 +660,7 @@ export function ContainerPlanningPage() {
     if (editingContainerId) {
       setSavingContainer(true);
       try {
-        const response = await fetch(`/api/containers?id=${encodeURIComponent(editingContainerId)}`, {
+        const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(editingContainerId)}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -691,7 +692,7 @@ export function ContainerPlanningPage() {
 
     setSavingContainer(true);
     try {
-      const response = await fetch("/api/containers", {
+      const response = await fetch(apiPath("/api/containers"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -751,7 +752,7 @@ export function ContainerPlanningPage() {
     }
 
     try {
-      const response = await fetch(`/api/containers?id=${encodeURIComponent(containerId)}`, {
+      const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
@@ -775,7 +776,7 @@ export function ContainerPlanningPage() {
     allocations: Array<{ stockId: string; qty: number }>
   ) {
     try {
-      const response = await fetch("/api/container-available-stock", {
+      const response = await fetch(apiPath("/api/container-available-stock"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "allocate", containerId, allocations }),
@@ -804,7 +805,7 @@ export function ContainerPlanningPage() {
     if (!window.confirm(prompt)) return false;
     try {
       const response = await fetch(
-        `/api/container-available-stock?allocationIds=${encodeURIComponent(allocationIds.join(","))}`,
+        apiPath(`/api/container-available-stock?allocationIds=${encodeURIComponent(allocationIds.join(","))}`),
         { method: "DELETE" }
       );
       const json = await response.json();
@@ -833,7 +834,7 @@ export function ContainerPlanningPage() {
     }
 
     try {
-      const response = await fetch(`/api/containers?id=${encodeURIComponent(containerId)}`, {
+      const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}`), {
         method: "DELETE",
       });
       const json = await response.json();
@@ -927,7 +928,7 @@ export function ContainerPlanningPage() {
     }
 
     if (isQuantityOnly && originalItem?.id && /^\d+$/.test(originalItem.id)) {
-      const response = await fetch(`/api/planning/containers/items/${encodeURIComponent(originalItem.id)}`, {
+      const response = await fetch(apiPath(`/api/planning/containers/items/${encodeURIComponent(originalItem.id)}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ qty }),
@@ -999,7 +1000,7 @@ export function ContainerPlanningPage() {
       return true;
     }
 
-    const response = await fetch(`/api/containers?id=${encodeURIComponent(container.id)}`, {
+    const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(container.id)}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1651,7 +1652,7 @@ export function ContainerPlanningPage() {
             </div>
           ) : (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-              <div className="text-5xl opacity-50">▦</div>
+              <div className="text-5xl opacity-50">â–¦</div>
               <div className="text-sm font-medium">Select a container or add a new one</div>
               <div className="text-xs">Click a container in the left list to view SKU details</div>
               <button
@@ -1778,7 +1779,7 @@ function ContainerCreateForm({
           aria-label="Close container form"
           className="flex h-8 w-8 items-center justify-center rounded-full border border-[#cccac4] bg-white text-lg leading-none text-muted-foreground transition-colors hover:bg-[#f0eee9] hover:text-foreground"
         >
-          ×
+          Ã—
         </button>
       </div>
 
@@ -1972,7 +1973,7 @@ function ContainerCreateForm({
             <div className="font-mono text-xs text-muted-foreground">
               {skuInput && cbmInput && qtyInput
                 ? (parseFloat(cbmInput) * parseInt(qtyInput, 10) || 0).toFixed(4)
-                : "—"}
+                : "â€”"}
             </div>
             <div />
           </div>
@@ -2527,7 +2528,7 @@ function ContainerCard({
               </span>
             </div>
             <div className="text-xs">
-              {container.factory} · ETA {container.eta}
+              {container.factory} Â· ETA {container.eta}
             </div>
           </div>
 
@@ -2798,7 +2799,7 @@ function AvailableStockModal({
     setLoading(true);
     try {
       const response = await fetch(
-        `/api/container-available-stock?containerId=${encodeURIComponent(containerId)}`,
+        apiPath(`/api/container-available-stock?containerId=${encodeURIComponent(containerId)}`),
         { cache: "no-store" }
       );
       const json = await response.json();
@@ -2888,7 +2889,7 @@ function AvailableStockModal({
     setCreating(true);
     setMessage("");
     try {
-      const response = await fetch("/api/container-available-stock", {
+      const response = await fetch(apiPath("/api/container-available-stock"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

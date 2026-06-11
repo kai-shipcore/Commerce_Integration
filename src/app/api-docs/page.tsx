@@ -1,4 +1,5 @@
 import Script from "next/script";
+import { withBasePath } from "@/lib/api-path";
 
 export const metadata = {
   title: "API Docs | Demand Pilot",
@@ -6,6 +7,8 @@ export const metadata = {
 };
 
 export default function ApiDocsPage() {
+  const openApiUrl = withBasePath("/api/openapi");
+
   return (
     <div className="min-h-screen bg-white">
       <link
@@ -31,7 +34,7 @@ export default function ApiDocsPage() {
             window.addEventListener('load', function () {
               if (!window.SwaggerUIBundle) return;
               window.SwaggerUIBundle({
-                url: '/api/openapi',
+                url: ${JSON.stringify(openApiUrl)},
                 dom_id: '#swagger-ui',
                 deepLinking: true,
                 presets: [window.SwaggerUIBundle.presets.apis],

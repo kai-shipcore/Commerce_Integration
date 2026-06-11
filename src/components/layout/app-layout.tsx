@@ -19,6 +19,7 @@ import {
   isAdminLikeRole,
   navigationItems,
 } from "./navigation-config";
+import { apiPath } from "@/lib/api-path";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -55,7 +56,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       }
 
       try {
-        const response = await fetch("/api/settings/menu", { cache: "no-store" });
+        const response = await fetch(apiPath("/api/settings/menu"), { cache: "no-store" });
         if (response.status === 401) {
           router.replace("/auth/signin");
           return;
@@ -78,7 +79,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         }
 
         setAccessState("denied");
-        toast.error("이 페이지에 접근 권한이 없습니다. 관리자에게 권한을 요청하세요.");
+        toast.error("ì´ íŽ˜ì´ì§€ì— ì ‘ê·¼ ê¶Œí•œì´ ì—†ìŠµë‹ˆë‹¤. ê´€ë¦¬ìžì—ê²Œ ê¶Œí•œì„ ìš”ì²­í•˜ì„¸ìš”.");
         router.replace(getDefaultLandingPath(visibleMenuIds, role));
       } catch {
         if (!cancelled) {

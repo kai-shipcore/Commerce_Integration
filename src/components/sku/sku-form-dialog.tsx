@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
+import { apiPath } from "@/lib/api-path";
 
 interface SKUFormData {
   skuCode: string;
@@ -59,7 +60,7 @@ export function SKUFormDialog({ onSuccess, trigger, editData }: SKUFormDialogPro
     setLoading(true);
 
     try {
-      const url = isEditMode ? `/api/skus/${editData.id}` : "/api/skus";
+      const url = isEditMode ? apiPath(`/api/skus/${editData.id}`) : apiPath("/api/skus");
       const method = isEditMode ? "PATCH" : "POST";
 
       const response = await fetch(url, {

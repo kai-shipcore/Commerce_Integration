@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiPath } from "@/lib/api-path";
 
 export type SalesHistoryBucket = "day" | "week" | "month";
 
@@ -57,7 +58,7 @@ export function useSalesAnalysis({ enabled, sku, category, from, to, bucket }: U
       setError(null);
     });
 
-    fetch(`/api/planning/sku-forecasts/sales-history?${params.toString()}`, {
+    fetch(apiPath(`/api/planning/sku-forecasts/sales-history?${params.toString()}`), {
       cache: "no-store",
       signal: controller.signal,
     })
