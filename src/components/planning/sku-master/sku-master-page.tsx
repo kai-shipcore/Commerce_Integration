@@ -217,7 +217,7 @@ export function SkuMasterPage() {
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "caseQty" | "weightKg" | "status">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
@@ -230,6 +230,7 @@ export function SkuMasterPage() {
         masterSku: row.masterSku,
         cbmPerUnit: row.cbmPerUnit,
         moq: row.moq,
+        orderMultiple: row.orderMultiple,
         caseQty: row.caseQty,
         weightKg: row.weightKg,
         status: row.status,
@@ -560,19 +561,21 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[920px] grid-cols-[190px_310px_130px_150px_100px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[1100px] grid-cols-[180px_290px_120px_140px_90px_110px_90px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">Product</div>
           <div className="px-4 py-3">Master SKU</div>
           <div className="px-4 py-3">Status</div>
           <div className="px-4 py-3">CBM / Unit</div>
           <div className="px-4 py-3">MOQ</div>
+          <div className="px-4 py-3">Order Mult</div>
+          <div className="px-4 py-3">Case Qty</div>
           <div className="px-4 py-3 text-right">Actions</div>
         </div>
 
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[920px] grid-cols-[190px_310px_130px_150px_100px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            className="grid min-w-[1100px] grid-cols-[180px_290px_120px_140px_90px_110px_90px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
@@ -595,6 +598,18 @@ export function SkuMasterPage() {
               value={sku.moq}
               decimals={0}
               onChange={(value) => updateRow(sku.masterSku, { moq: value })}
+            />
+            <EditableNumber
+              active={editingSku === sku.masterSku}
+              value={sku.orderMultiple}
+              decimals={0}
+              onChange={(value) => updateRow(sku.masterSku, { orderMultiple: value })}
+            />
+            <EditableNumber
+              active={editingSku === sku.masterSku}
+              value={sku.caseQty}
+              decimals={0}
+              onChange={(value) => updateRow(sku.masterSku, { caseQty: value })}
             />
             <div className="flex min-w-0 flex-nowrap justify-end px-4 py-3">
               <button

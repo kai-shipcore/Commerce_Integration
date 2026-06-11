@@ -330,7 +330,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openSkuFilterKey]);
 
-  // â”€â”€ Column visibility state (lifted from grid) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
   const [columnVis, setColumnVis] = useState<ColumnVisibility>(() => getColumnVisibilityForPreset("all"));
   const [compactMode, setCompactMode] = useState(false);
@@ -413,7 +413,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  // Load all preferences from DB on mount â€” overrides localStorage if DB has newer values
+  // Load all preferences from DB on mount — overrides localStorage if DB has newer values
   useEffect(() => {
     fetch(apiPath("/api/user/preferences"))
       .then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>)
@@ -703,7 +703,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   );
   const selectedColorColumnIsContainerHeader = selectedColorColumn.startsWith("container:");
 
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const skuFilterOptions = useMemo(() => {
     const options: Record<SkuPartFilterKey, Set<string>> = {
@@ -916,7 +916,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             flexShrink: 0,
           }}
         >
-          <option value="">â€” All Status</option>
+          <option value="">— All Status</option>
           <option value="crit">Critical</option>
           <option value="warn">Warning</option>
           <option value="bo">BackOrder</option>
@@ -1006,7 +1006,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   flexShrink: 0,
                 }}
               >
-                âŠž Columns
+                ⊞ Columns
                 {compactMode ? (
                   <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 8, background: "#E5EEFF", color: "#1A4FC0" }}>
                     Compact
@@ -1016,7 +1016,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     {hiddenColumnCount} hidden
                   </span>
                 ) : null}
-                {" â–¾"}
+                {" ▾"}
               </button>
             </PopoverTrigger>
             <PopoverContent
@@ -1038,7 +1038,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 <PopoverClose asChild>
                   <button
                     type="button"
-                    aria-label="ë‹«ê¸°"
+                    aria-label="닫기"
                     style={{
                       width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center",
                       borderRadius: 4, border: "none", background: "transparent", cursor: "pointer",
@@ -1047,7 +1047,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F1F5F9"; (e.currentTarget as HTMLButtonElement).style.color = "#475569"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; (e.currentTarget as HTMLButtonElement).style.color = "#94A3B8"; }}
                   >
-                    âœ•
+                    ✕
                   </button>
                 </PopoverClose>
               </div>
@@ -1102,7 +1102,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 </button>
               </div>
 
-              {/* Options â€” placed before Column Visibility in DOM so stacked layout keeps it below Quick Preset */}
+              {/* Options — placed before Column Visibility in DOM so stacked layout keeps it below Quick Preset */}
               {/* Options */}
               <div style={{ gridColumn: 1, gridRow: 3, padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -1171,7 +1171,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {skuFilterSummary(selectedValues)}
                                 </span>
-                                <span style={{ flexShrink: 0, color: "#64748B", fontSize: 10 }}>â–¼</span>
+                                <span style={{ flexShrink: 0, color: "#64748B", fontSize: 10 }}>▼</span>
                               </summary>
                               <div
                                 style={{
@@ -1292,7 +1292,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             onClick={() => handleToggleColumnVisibilityGroupOpen(group)}
                             style={{ width: 18, height: 18, border: "none", background: "transparent", cursor: "pointer", color: "#64748B", fontSize: 10, padding: 0, lineHeight: "18px" }}
                           >
-                            {isOpen ? "â–¼" : "â–¶"}
+                            {isOpen ? "▼" : "▶"}
                           </button>
                           <input
                             type="checkbox"
@@ -1409,7 +1409,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                   </div>
 
-                  {/* Selected Cell Color â€” merged into same column 3 container */}
+                  {/* Selected Cell Color — merged into same column 3 container */}
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       Selected Cell Color
@@ -1614,7 +1614,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             <span style={{ color: "#C42020", fontSize: 11 }}>Error: {loadError}</span>
           )}
           <span suppressHydrationWarning style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}>
-            {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "â€”"}
+            {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "—"}
           </span>
           <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <span style={{ color: "#5A5750", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>As of</span>
@@ -1712,7 +1712,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               whiteSpace: "nowrap",
             }}
           >
-            {loading ? "Loading..." : "Sync"}
+            {loading ? "Loading…" : "Sync"}
           </button>
         </div>
       </div>
@@ -1741,7 +1741,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         )}
         {!hasData && loading && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F0EEE9", zIndex: 5, fontSize: 13, color: "#7A766F" }}>
-            Loading...
+            Loading…
           </div>
         )}
         {hasData && (isCategoryLoading || isCategoryPending) && (

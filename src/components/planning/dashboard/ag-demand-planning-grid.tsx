@@ -568,7 +568,7 @@ function StockModeCellRenderer({
     <button
       type="button"
       disabled={toggling}
-      title={isAvailable ? "Available stock â€” click for Onhand" : "Onhand stock â€” click for Available"}
+      title={isAvailable ? "Available stock — click for Onhand" : "Onhand stock — click for Available"}
       onClick={async (e) => {
         e.stopPropagation();
         node.setSelected(true, true);
@@ -579,7 +579,7 @@ function StockModeCellRenderer({
       className="h-full w-full border-0 bg-transparent text-[9px] font-bold"
       style={{ color: isAvailable ? "#1A4FC0" : "#6B7280" }}
     >
-      {toggling ? "â€¦" : isAvailable ? "AV" : "OH"}
+      {toggling ? "…" : isAvailable ? "AV" : "OH"}
     </button>
   );
 }
@@ -690,7 +690,7 @@ function ConQtyHeader(params: IHeaderParams & {
     >
       <span>Con. Qty</span>
       {params.isFiltered && (
-        <span style={{ color: "#1a5cdb", fontSize: 9, lineHeight: 1 }}>â–¼</span>
+        <span style={{ color: "#1a5cdb", fontSize: 9, lineHeight: 1 }}>▼</span>
       )}
     </div>
   );
@@ -1249,11 +1249,11 @@ export function AgDemandPlanningGrid({
       ? pinnedBaseColumnLayout.widths[column.id]
       : columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column);
     const headerName = column.id === "tavg_p"
-      ? "T. Avg ì´ì „"
+      ? "T. Avg 이전"
       : column.id === "tavg_r"
-        ? "T. Avg ì‹¤ì œ"
+        ? "T. Avg 실제"
         : column.id === "tavg_c"
-          ? "T. Avg í˜„ìž¬"
+          ? "T. Avg 현재"
           : column.label.replace("\n", " ");
     columns.push({
       colId: column.id,
@@ -1631,7 +1631,7 @@ export function AgDemandPlanningGrid({
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#FFF5F5"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               >
-                âœ• í•„í„° í•´ì œ
+                ✕ 필터 해제
               </button>
             ) : (
               <button
@@ -1641,7 +1641,7 @@ export function AgDemandPlanningGrid({
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               >
-                â–¼ Qty &gt; 0 ë§Œ í‘œì‹œ
+                ▼ Qty &gt; 0 만 표시
               </button>
             )}
           </div>

@@ -390,6 +390,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const moq = body.moq == null ? null : Math.max(1, Number(body.moq));
+    const orderMultiple = body.orderMultiple == null ? null : Math.max(1, Number(body.orderMultiple));
     const caseQty = body.caseQty == null ? null : Math.max(1, Number(body.caseQty));
     const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.000001, Number(body.cbmPerUnit));
     const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
@@ -404,16 +405,16 @@ export async function PATCH(request: NextRequest) {
     const result = await pool.query(
       `UPDATE shipcore.fc_products
        SET moq = COALESCE($2, moq),
-           order_multiple = COALESCE($2, order_multiple),
-           cbm_per_unit = COALESCE($3, cbm_per_unit),
-           case_qty = COALESCE($4, case_qty),
-           weight_kg = COALESCE($5, weight_kg),
-           is_custom_sku = COALESCE($6, is_custom_sku),
-           status = COALESCE($7::shipcore.fc_product_status, status),
+           order_multiple = COALESCE($3, order_multiple),
+           cbm_per_unit = COALESCE($4, cbm_per_unit),
+           case_qty = COALESCE($5, case_qty),
+           weight_kg = COALESCE($6, weight_kg),
+           is_custom_sku = COALESCE($7, is_custom_sku),
+           status = COALESCE($8::shipcore.fc_product_status, status),
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,
-      [masterSku, moq, cbmPerUnit, caseQty, weightKg, isCustomSku, statusValue]
+      [masterSku, moq, orderMultiple, cbmPerUnit, caseQty, weightKg, isCustomSku, statusValue]
     );
 
     if (result.rowCount === 0) {

@@ -50,7 +50,7 @@ function toForm(f: FactoryRecord): FactoryForm {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "â€”";
+  if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -191,7 +191,7 @@ export function FactoriesPage() {
       }
 
       setEditMode(false);
-      setSavedMessage("âœ“ Saved");
+      setSavedMessage("✓ Saved");
       window.setTimeout(() => setSavedMessage(""), 2500);
       await fetchFactories();
     } finally {
@@ -289,7 +289,7 @@ export function FactoriesPage() {
                     }`}
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0eee9] text-base">
-                      ðŸ­
+                      🏭
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">
@@ -324,7 +324,7 @@ export function FactoriesPage() {
                     onClick={startNew}
                     className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                   >
-                    <span className="text-3xl">ðŸ­</span>
+                    <span className="text-3xl">🏭</span>
                     <span className="text-sm font-semibold">Add your first factory</span>
                     <span className="text-xs">Click the + Add Factory button</span>
                   </button>
@@ -352,7 +352,7 @@ export function FactoriesPage() {
               />
             ) : (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-                <div className="text-5xl opacity-50">ðŸ­</div>
+                <div className="text-5xl opacity-50">🏭</div>
                 <div className="text-sm font-medium">Select a factory or add a new one</div>
                 <div className="text-xs">Click a factory in the left list to view details</div>
                 <button
@@ -439,8 +439,8 @@ function FactoryDetail({
         <div>
           <div className="text-base font-semibold">
             {isNew
-              ? "ðŸ­ New Factory"
-              : `ðŸ­ ${form.factoryName}`}
+              ? "🏭 New Factory"
+              : `🏭 ${form.factoryName}`}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {isNew

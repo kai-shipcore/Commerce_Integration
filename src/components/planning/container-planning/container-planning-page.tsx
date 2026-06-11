@@ -2528,7 +2528,7 @@ function ContainerCard({
               </span>
             </div>
             <div className="text-xs">
-              {container.factory} Â· ETA {container.eta}
+              {container.factory} · ETA {container.eta}
             </div>
           </div>
 
