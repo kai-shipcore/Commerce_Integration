@@ -67,6 +67,8 @@ export interface DemandPlanningGridProps {
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
   onCellSelectionChange?: (keys: string[]) => void;
   onExportReady?: (exporter: (() => Promise<void>) | null) => void;
+  gradient?: import("@/lib/planning/order-optimizer").GradientTier[];
+  gradientSC?: import("@/lib/planning/order-optimizer").GradientTier[];
 }
 
 const ROW_HEIGHT = 28;

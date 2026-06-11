@@ -29,6 +29,13 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
+import {
+  findOptimalBaseTarget,
+  generateOrders,
+  getTier,
+  type GradientTier,
+  type SkuOrderInput,
+} from "@/lib/planning/order-optimizer";
 import type { CellContent } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
@@ -767,6 +774,8 @@ export function AgDemandPlanningGrid({
   onAgCellSelected,
   onCellSelectionChange,
   onExportReady,
+  gradient = [],
+  gradientSC = [],
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const gridHostRef = useRef<HTMLDivElement>(null);
@@ -1077,6 +1086,107 @@ export function AgDemandPlanningGrid({
     return true;
   }, []);
 
+  const autoFill = useCallback(async (container: ContainerMeta, containerIndex: number): Promise<void> => {
+    if (!container.container_id) return;
+    const prevContainer = containers[containerIndex - 1];
+    if (!prevContainer) return;
+    const nextContainer = containers[containerIndex + 1];
+    const nextGapDays = nextContainer
+      ? Math.round((new Date(nextContainer.eta).getTime() - new Date(container.eta).getTime()) / 86400000)
+      : 0;
+    const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
+
+    // CBM already consumed by SKUs that already have Con Qty
+    let usedCbm = 0;
+    const skuInputs: SkuOrderInput[] = visibleRows
+      .filter((r) => {
+        const cat = r.category_code;
+        if (cat !== "CC" && cat !== "SC") return false;
+        if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
+        const key = `${r.sku}::${container.name}`;
+        const existingQty = qtyOverrides.get(key)?.inbound_qty ?? r.containers?.[container.name]?.inbound_qty ?? 0;
+        if (existingQty > 0) {
+          usedCbm += existingQty * (r.cbm_per_unit ?? 0);
+          return false; // skip — already has Con Qty
+        }
+        return true;
+      })
+      .map((row) => {
+        const isSC = row.category_code === "SC";
+        const activeGradient = isSC && gradientSC.length > 0 ? gradientSC : gradient;
+        const tier = getTier(row.total_avg_curr * seasonFactor, activeGradient);
+        const prev = chainMap.get(row.sku)?.get(prevContainer.name);
+        return {
+          sku: row.sku,
+          adj_daily: row.total_avg_curr * seasonFactor,
+          cbm_per_unit: row.cbm_per_unit ?? 0,
+          moq: row.moq ?? 1,
+          order_multiple: row.order_multiple ?? 1,
+          remaining_at_arrival: prev?.carryover ?? 0,
+          backorder_at_arrival: prev?.backorder ?? 0,
+          tier_bonus: tier.bonus,
+          use_gap_days: !isSC,
+        };
+      });
+
+    const remainingCap = Math.max(0, container.cbm_cap - usedCbm);
+    const base = findOptimalBaseTarget(skuInputs, remainingCap, nextGapDays);
+    const orders = generateOrders(skuInputs, base, nextGapDays);
+    if (orders.length === 0) return;
+
+    const res = await fetch(`/api/planning/containers/${container.container_id}/auto-fill`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: orders.map((o) => ({ sku: o.sku, qty: o.qty })) }),
+    });
+    const json = await res.json() as { success: boolean; items?: Array<{ sku: string; item_id: number; qty: number; cbm_unit: number; total_cbm: number; allocated_qty: number }> };
+    if (!json.success || !json.items) return;
+
+    const rowMap = new Map(visibleRows.map((r) => [r.sku, r]));
+    setQtyOverrides((cur) => {
+      const next = new Map(cur);
+      for (const item of json.items ?? []) {
+        const key = `${item.sku}::${container.name}`;
+        const raw = rowMap.get(item.sku)?.containers?.[container.name];
+        next.set(key, {
+          inbound_qty: item.qty,
+          avail_qty: item.qty,
+          cbm: item.total_cbm,
+          cbm_unit: item.cbm_unit,
+          item_id: item.item_id,
+          allocated_remaining_qty: raw?.allocated_remaining_qty ?? null,
+        });
+      }
+      return next;
+    });
+  }, [containers, chainMap, visibleRows, gradient, gradientSC, seasonalFactors]);
+
+  const autoFilledRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!containerDetailsLoaded || gradient.length === 0 || chainMap.size === 0) return;
+
+    for (const [containerIndex, container] of containers.entries()) {
+      if (!container.container_id || containerIndex === 0) continue;
+      if (autoFilledRef.current.has(container.name)) continue;
+
+      // Check if there are any CC/SC SKUs with no Con Qty that need filling
+      const hasEmptySlots = visibleRows.some((row) => {
+        const cat = row.category_code;
+        if (cat !== "CC" && cat !== "SC") return false;
+        if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
+        const key = `${row.sku}::${container.name}`;
+        const existingQty = qtyOverrides.get(key)?.inbound_qty ?? row.containers?.[container.name]?.inbound_qty ?? 0;
+        return existingQty === 0;
+      });
+
+      if (hasEmptySlots) {
+        autoFilledRef.current.add(container.name);
+        void autoFill(container, containerIndex);
+      }
+    }
+  }, [containerDetailsLoaded, chainMap, gradient, containers, visibleRows, qtyOverrides, autoFill]);
+
   const saveStockMode = useCallback(async (row: DemandRow): Promise<void> => {
     const next: 'onhand' | 'available' = (row.stock_mode ?? 'onhand') === 'onhand' ? 'available' : 'onhand';
     const res = await fetch(apiPath(`/api/planning/sku/${encodeURIComponent(row.sku)}/stock-mode`), {
@@ -1206,7 +1316,7 @@ export function AgDemandPlanningGrid({
     }));
 
     if (groupVis.con) {
-      for (const container of containers) {
+      for (const [containerIndex, container] of containers.entries()) {
         const baseline = container.status === "baseline";
         groups.push({
           groupId: `container-${container.name}`,
@@ -1255,6 +1365,27 @@ export function AgDemandPlanningGrid({
               const value = { ...raw, ...(qtyOverrides.get(key) ?? {}), ...(chainMap.get(params.data.sku)?.get(container.name) ?? {}) };
               return column.val(value, container, params.data);
             },
+            comparator: column.id === "life" || column.id === "inb_qty" || column.id === "avail" || column.id === "est" || column.id === "cbo" || column.id === "carry" || column.id === "remaining"
+              ? (_a, _b, nodeA, nodeB) => {
+                  const getNum = (node: typeof nodeA): number => {
+                    if (!node.data) return -1;
+                    const key = `${node.data.sku}::${container.name}`;
+                    const raw = node.data.containers?.[container.name];
+                    const chain = chainMap.get(node.data.sku)?.get(container.name);
+                    const override = qtyOverrides.get(key);
+                    const merged = { ...raw, ...override, ...chain };
+                    if (column.id === "life") return merged.inv_life ?? -1;
+                    if (column.id === "inb_qty") return override?.inbound_qty ?? raw?.inbound_qty ?? 0;
+                    if (column.id === "avail") return merged.avail_qty ?? -1;
+                    if (column.id === "est") return merged.est_sales ?? -1;
+                    if (column.id === "cbo") return merged.backorder ?? -1;
+                    if (column.id === "carry") return merged.carryover ?? -1;
+                    if (column.id === "remaining") return (raw as { remaining?: number })?.remaining ?? -1;
+                    return -1;
+                  };
+                  return getNum(nodeA) - getNum(nodeB);
+                }
+              : undefined,
             cellRenderer: column.id === "inb_qty" && !baseline ? QtyCellRenderer : CellRenderer,
             cellRendererParams: column.id === "inb_qty" && !baseline ? (params: ICellRendererParams<DemandRow, CellContent>) => {
               const row = params.data;
