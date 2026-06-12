@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Database } from "lucide-react";
+import { ChevronDown, ChevronUp, Database, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
 import { apiPath } from "@/lib/api-path";
@@ -637,7 +637,7 @@ export function SkuMasterPage() {
 
         {visibleSkus.length === 0 ? (
           <div className="flex min-h-[360px] flex-col items-center justify-center gap-2 text-muted-foreground">
-            <div className="text-4xl opacity-50">âŒ•</div>
+            <Search className="h-10 w-10 opacity-40" aria-hidden="true" />
             <div className="text-sm font-medium">{loading ? "Loading SKU master..." : "No matching SKUs"}</div>
             <div className="text-xs">
               {loading ? "Reading fc_products" : "Click Sync Inventory or change the SKU search term."}

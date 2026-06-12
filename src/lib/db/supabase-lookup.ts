@@ -165,6 +165,19 @@ export interface SalesOrdersQueryResult {
   };
 }
 
+function isOrderIdentifierSearch(search: string): boolean {
+  const trimmed = search.trim();
+  if (!trimmed) return false;
+  if (/^\d+$/.test(trimmed)) return true;
+
+  const withoutHash = trimmed.replace(/^#/, "");
+  if (/^[a-zA-Z]{1,8}-?\d+[a-zA-Z0-9-]*$/.test(withoutHash)) {
+    return !withoutHash.toUpperCase().startsWith("CL-SC-");
+  }
+
+  return false;
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -595,42 +608,71 @@ export async function getSalesOrders(
 
   try {
     const filters: string[] = [];
-    const params: Array<string | number> = [];
+    const params: Array<string | number | string[]> = [];
 
     if (search) {
-      params.push(`%${search}%`);
-      const likeParamIndex = params.length;
-      const orderIdFilter = /^\d+$/.test(search)
-        ? `OR so.id = $${params.push(Number(search))}`
-        : "";
-      const masterSkuFilter = /^[\d-]+$/.test(search)
-        ? ""
-        : `OR EXISTS (
-                  SELECT 1
-                  FROM ecommerce_data.vw_sales_order_items sku_lookup
-                  WHERE sku_lookup.order_sku = search_soi.sku
-                    AND sku_lookup.master_sku ILIKE $${likeParamIndex}
-                )`;
-      filters.push(
-        `(
-          COALESCE(so.order_number, '') ILIKE $${likeParamIndex}
-          OR REPLACE(COALESCE(so.order_number, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
-          OR COALESCE(so.external_order_id, '') ILIKE $${likeParamIndex}
-          OR REPLACE(COALESCE(so.external_order_id, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
-          OR COALESCE(so.buyer_email, '') ILIKE $${likeParamIndex}
-          OR COALESCE(so.customer_email, '') ILIKE $${likeParamIndex}
-          ${orderIdFilter}
-          OR EXISTS (
-            SELECT 1
-            FROM ecommerce_data.sales_order_items search_soi
-            WHERE search_soi.order_id = so.id
-              AND (
-                COALESCE(search_soi.sku, '') ILIKE $${likeParamIndex}
-                ${masterSkuFilter}
-              )
-          )
-        )`,
-      );
+      const isNumericId = /^\d+$/.test(search);
+      if (isOrderIdentifierSearch(search)) {
+        const withoutHash = search.replace(/^#/, "");
+        const withHash = withoutHash.startsWith("#") ? withoutHash : `#${withoutHash}`;
+        const compact = withoutHash.replace(/-/g, "").toLowerCase();
+        const exactValues = [search, withoutHash, withHash];
+        const compactValues = [compact];
+        const orderConditions: string[] = [];
+
+        if (isNumericId) {
+          params.push(Number(search));
+          orderConditions.push(`so.id = $${params.length}`);
+          exactValues.push(`#CL-${search}`, `CL-${search}`, `#${search}`);
+          compactValues.push(`cl${search}`);
+        }
+
+        params.push(
+          Array.from(new Set(exactValues.map((value) => value.toLowerCase()))),
+          Array.from(new Set(compactValues)),
+        );
+        const exactParamIndex = params.length - 1;
+        const compactParamIndex = params.length;
+
+        orderConditions.push(
+          `LOWER(COALESCE(so.order_number, '')) = ANY($${exactParamIndex}::text[])`,
+          `LOWER(COALESCE(so.external_order_id, '')) = ANY($${exactParamIndex}::text[])`,
+          `LOWER(REPLACE(REPLACE(COALESCE(so.order_number, ''), '#', ''), '-', '')) = ANY($${compactParamIndex}::text[])`,
+          `LOWER(REPLACE(REPLACE(COALESCE(so.external_order_id, ''), '#', ''), '-', '')) = ANY($${compactParamIndex}::text[])`,
+        );
+
+        filters.push(`(${orderConditions.join(" OR ")})`);
+      } else {
+        params.push(`%${search}%`);
+        const likeParamIndex = params.length;
+        const masterSkuFilter = /^[\d-]+$/.test(search)
+          ? ""
+          : `OR EXISTS (
+                    SELECT 1
+                    FROM ecommerce_data.vw_sales_order_items sku_lookup
+                    WHERE sku_lookup.order_sku = search_soi.sku
+                      AND sku_lookup.master_sku ILIKE $${likeParamIndex}
+                  )`;
+        filters.push(
+          `(
+            COALESCE(so.order_number, '') ILIKE $${likeParamIndex}
+            OR REPLACE(COALESCE(so.order_number, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
+            OR COALESCE(so.external_order_id, '') ILIKE $${likeParamIndex}
+            OR REPLACE(COALESCE(so.external_order_id, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
+            OR COALESCE(so.buyer_email, '') ILIKE $${likeParamIndex}
+            OR COALESCE(so.customer_email, '') ILIKE $${likeParamIndex}
+            OR EXISTS (
+              SELECT 1
+              FROM ecommerce_data.sales_order_items search_soi
+              WHERE search_soi.order_id = so.id
+                AND (
+                  COALESCE(search_soi.sku, '') ILIKE $${likeParamIndex}
+                  ${masterSkuFilter}
+                )
+            )
+          )`,
+        );
+      }
     }
 
     if (platformSource && platformSource !== "all") {
