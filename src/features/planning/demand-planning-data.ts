@@ -64,9 +64,9 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
       }),
       category === "sc"
         ? fetch(apiPath("/api/planning/dashboard/part-rows"))
-          .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }>)
-          .catch(() => ({ success: false, rows: [] as { sku: string; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }))
-        : Promise.resolve({ success: false, rows: [] as { sku: string; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }),
+          .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }>)
+          .catch(() => ({ success: false, rows: [] as { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }))
+        : Promise.resolve({ success: false, rows: [] as { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }),
     ])
       .then(([json, partJson]) => {
         if (cancelled) return;
@@ -76,6 +76,7 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
             category_code:     "SC" as const,
             sales_status:      "Part" as const,
             back:              p.back,
+            cbm_per_unit:      p.cbm_per_unit ?? 0,
             container_info: "", cbm: 0, seat: "", no: 0, color: "", tone: "",
             west_stock:               p.west_stock  ?? 0,
             east_stock:               p.east_stock  ?? 0,

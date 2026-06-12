@@ -4,16 +4,19 @@ import { getLookupPool } from "@/lib/db/supabase-lookup";
 
 export async function GET() {
   try {
-    // Step 1: Not Ready + orderRequest > 0 인 Part SKU 목록 (primary DB)
-    const partSkus = await prisma.$queryRaw<{ sku: string }[]>`
-      SELECT DISTINCT "partSkuValue" AS sku
-      FROM shipcore.fc_replacement_parts
-      WHERE "partSkuValue" IS NOT NULL
-        AND "shippingStatus" = 'Not Ready'
-        AND "deleteYN" = 'N'
-        AND "orderRequest" ~ '^[0-9]+$'
-        AND "orderRequest"::int > 0
-      ORDER BY "partSkuValue"
+    // Step 1: Not Ready + orderRequest > 0 인 Part SKU 목록 + fc_products에서 cbm_per_unit (primary DB)
+    const partSkus = await prisma.$queryRaw<{ sku: string; cbm_per_unit: number }[]>`
+      SELECT DISTINCT
+        r."partSkuValue" AS sku,
+        COALESCE(p.cbm_per_unit, 0)::float8 AS cbm_per_unit
+      FROM shipcore.fc_replacement_parts r
+      LEFT JOIN shipcore.fc_products p ON p.master_sku = r."partSkuValue"
+      WHERE r."partSkuValue" IS NOT NULL
+        AND r."shippingStatus" = 'Not Ready'
+        AND r."deleteYN" = 'N'
+        AND r."orderRequest" ~ '^[0-9]+$'
+        AND r."orderRequest"::int > 0
+      ORDER BY r."partSkuValue"
     `;
 
     if (partSkus.length === 0) {
@@ -22,6 +25,7 @@ export async function GET() {
     }
 
     const skuList = partSkus.map((r) => r.sku);
+    const cbmMap = new Map(partSkus.map((r) => [r.sku, Number(r.cbm_per_unit)]));
 
     // Step 2: backorder from Supabase coverland_inventory (same source as Original/Custom)
     const pool = getLookupPool();
@@ -64,12 +68,13 @@ export async function GET() {
     // Step 3: merge — 인벤토리 없으면 0, orderRequest > 0이면 무조건 표시
     const data = skuList.map((sku) => ({
       sku,
-      west_stock:  invMap.get(sku)?.west_stock  ?? 0,
-      east_stock:  invMap.get(sku)?.east_stock  ?? 0,
-      total_stock: invMap.get(sku)?.total_stock ?? 0,
-      west_avail:  invMap.get(sku)?.west_avail  ?? 0,
-      east_avail:  invMap.get(sku)?.east_avail  ?? 0,
-      back:        invMap.get(sku)?.back        ?? 0,
+      cbm_per_unit: cbmMap.get(sku)             ?? 0,
+      west_stock:   invMap.get(sku)?.west_stock  ?? 0,
+      east_stock:   invMap.get(sku)?.east_stock  ?? 0,
+      total_stock:  invMap.get(sku)?.total_stock ?? 0,
+      west_avail:   invMap.get(sku)?.west_avail  ?? 0,
+      east_avail:   invMap.get(sku)?.east_avail  ?? 0,
+      back:         invMap.get(sku)?.back        ?? 0,
     }));
 
     console.log("[dashboard/part-rows] returned", data.length, "rows");
