@@ -704,6 +704,7 @@ function ContainerGroupHeader(
     onEtaChange: (value: string) => void;
     onAutoFill?: () => void;
     onSave?: () => void;
+    onReset?: () => void;
     autoFilling?: boolean;
     saving?: boolean;
     dirty?: boolean;
@@ -729,19 +730,28 @@ function ContainerGroupHeader(
               onClick={props.onAutoFill}
               disabled={props.autoFilling}
               title="Con qty 자동 계산 (저장 전 미리보기)"
-              className="rounded px-1 text-[8px] bg-white/10 hover:bg-white/20 disabled:opacity-40 cursor-pointer"
+              className="rounded px-3 py-1.5 text-[15px] bg-white/10 hover:bg-white/20 disabled:opacity-40 cursor-pointer"
             >
               {props.autoFilling ? "…" : "⟳"}
             </button>
             {props.dirty && (
-              <button
-                onClick={props.onSave}
-                disabled={props.saving}
-                title="DB에 저장"
-                className="rounded px-1 text-[8px] bg-green-600/70 hover:bg-green-600 disabled:opacity-40 cursor-pointer"
-              >
-                {props.saving ? "…" : "💾"}
-              </button>
+              <>
+                <button
+                  onClick={props.onReset}
+                  title="DB 원래 값으로 초기화"
+                  className="rounded px-3 py-1.5 text-[15px] bg-red-500/70 hover:bg-red-500 cursor-pointer"
+                >
+                  ↺
+                </button>
+                <button
+                  onClick={props.onSave}
+                  disabled={props.saving}
+                  title="DB에 저장"
+                  className="rounded px-3 py-1.5 text-[15px] bg-green-600/70 hover:bg-green-600 disabled:opacity-40 cursor-pointer"
+                >
+                  {props.saving ? "…" : "💾"}
+                </button>
+              </>
             )}
           </>
         )}
@@ -1429,6 +1439,16 @@ export function AgDemandPlanningGrid({
             onSave: () => {
               if (!window.confirm('변경 사항을 저장하시겠습니까?')) return;
               void saveContainer(container);
+            },
+            onReset: () => {
+              setQtyOverrides((prev) => {
+                const next = new Map(prev);
+                for (const key of next.keys()) {
+                  if (key.endsWith(`::${container.name}`)) next.delete(key);
+                }
+                return next;
+              });
+              setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
             },
             autoFilling: autoFillingContainers.has(container.name),
             saving: savingContainers.has(container.name),
