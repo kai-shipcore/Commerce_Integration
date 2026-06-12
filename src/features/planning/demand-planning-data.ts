@@ -64,9 +64,9 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
       }),
       category === "sc"
         ? fetch(apiPath("/api/planning/dashboard/part-rows"))
-          .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; back: number }[] }>)
-          .catch(() => ({ success: false, rows: [] as { sku: string; back: number }[] }))
-        : Promise.resolve({ success: false, rows: [] as { sku: string; back: number }[] }),
+          .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }>)
+          .catch(() => ({ success: false, rows: [] as { sku: string; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }))
+        : Promise.resolve({ success: false, rows: [] as { sku: string; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }),
     ])
       .then(([json, partJson]) => {
         if (cancelled) return;
@@ -77,7 +77,12 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
             sales_status:      "Part" as const,
             back:              p.back,
             container_info: "", cbm: 0, seat: "", no: 0, color: "", tone: "",
-            west_stock: 0, east_stock: 0, total_stock: 0,
+            west_stock:               p.west_stock  ?? 0,
+            east_stock:               p.east_stock  ?? 0,
+            total_stock:              p.total_stock ?? 0,
+            west_available_stock:     p.west_avail  ?? 0,
+            east_available_stock:     p.east_avail  ?? 0,
+            transit_stock: 0,
             west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
             east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
             avg_daily_prev: 0, avg_daily_real: 0, avg_daily_curr: 0,
@@ -88,8 +93,11 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
             total_inbound_qty: null, containers_list: null, next_eta: null, sod: null,
             containers: {},
           }));
-          setData({ ...json.data, rows: [...json.data.rows, ...partRows] });
-          dashboardMemoryCache.set(requestScopeKey, { ...json.data, rows: [...json.data.rows, ...partRows] });
+          // Part SKU가 fc_stats에 'Original'로 있을 경우 중복 제거
+          const partSkuSet = new Set(partRows.map((r) => r.sku));
+          const mainRows = json.data.rows.filter((r) => !partSkuSet.has(r.sku));
+          setData({ ...json.data, rows: [...mainRows, ...partRows] });
+          dashboardMemoryCache.set(requestScopeKey, { ...json.data, rows: [...mainRows, ...partRows] });
           dataScopeRef.current = requestScopeKey;
           setContainerDetailsLoaded(false);
         }
