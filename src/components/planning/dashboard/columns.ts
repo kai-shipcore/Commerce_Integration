@@ -111,6 +111,7 @@ export interface ColDef {
   bold?: boolean;
   fontSize?: number;
   val: (row: DemandRow, idx: number, urg: UrgencyStatus) => CellContent;
+  sortVal?: (row: DemandRow) => string | number | null | undefined;
 }
 
 export interface ConSubColDef {
@@ -127,9 +128,9 @@ export const ALL_COLS: ColDef[] = [
   { id: "row_num",   grp: "fix", label: "#",                w: 36,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
   { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 190, align: "left", tint: "",        gh: "gh-fix",    fontSize: 10, val: (r) => r.container_info || "" },
   { id: "cbm",       grp: "fix", label: "CBM",              w: 56,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "" },
-  { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); } },
-  { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Part" ? "sc-part" : "sc-orig"}">${r.sales_status || ""}</span>` }) },
-  { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }) },
+  { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
+  { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Part" ? "sc-part" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
+  { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }), sortVal: (r) => r.base_sku ?? r.sku },
   { id: "mode",      grp: "stock", label: "Mode",             w: 32,  align: "ctr",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.stock_mode || 'onhand' },
   { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.stock_mode === 'available' ? (r.west_available_stock || 0) : (r.west_stock || 0) },
   { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.stock_mode === 'available' ? (r.east_available_stock || 0) : (r.east_stock || 0) },
@@ -159,7 +160,7 @@ export const ALL_COLS: ColDef[] = [
     if (n >= 10) return { html: `<span class="lv-crit">${s}</span>` };
     if (n >= 5)  return { html: `<span class="lv-warn">${s}</span>` };
     return s;
-  }},
+  }, sortVal: (r) => r.avg_daily_curr ?? -1 },
   // East Avg Daily
   { id: "eavg_p", grp: "eavg", label: "E Avg\n이전", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.east_avg_prev) },
   { id: "eavg_r", grp: "eavg", label: "E Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.east_avg_real) },
@@ -180,16 +181,16 @@ export const ALL_COLS: ColDef[] = [
   { id: "inb_qty",  grp: "inb", label: "Inbound\nQty",       w: 52,  align: "num",  tint: "t-inb", gh: "gh-inb", val: (r) => {
     const v = r.total_inbound_qty || 0;
     return v > 0 ? { html: `<span class="inb-pos">+${v}</span>` } : { html: `<span class="lv-dim">0</span>` };
-  }},
+  }, sortVal: (r) => r.total_inbound_qty ?? 0 },
   { id: "inb_lst",  grp: "inb", label: "Containers\nList",   w: 152, align: "left", tint: "t-inb", gh: "gh-inb", val: (r) => compactContainerList(r.containers_list) },
   { id: "next_eta", grp: "inb", label: "Next\nETA",          w: 78,  align: "ctr",  tint: "t-inb", gh: "gh-inb", val: (r) => {
     const d = daysTo(r.next_eta);
     const color = d !== null && d < 0 ? "#C42020" : d !== null && d <= 14 ? "#9A5200" : "#1A4FC0";
     return { html: `<span style="font-family:monospace;font-size:9px;color:${color};font-weight:${d !== null && d <= 14 ? 600 : 400}">${r.next_eta || "—"}</span>` };
-  }},
+  }, sortVal: (r) => r.next_eta ?? "" },
   { id: "sod",      grp: "inb", label: "S.O.D\n품절예상일", w: 82,  align: "ctr",  tint: "t-inb", gh: "gh-inb", val: (r, _i, u) => ({
     html: `<span class="${u === "crit" ? "sod-crit" : u === "warn" ? "sod-warn" : "sod-ok"}">${r.sod || "—"}</span>`,
-  })},
+  }), sortVal: (r) => r.sod ?? "" },
 ];
 
 // ── Column visibility / toolbar shared exports ───────────────────────────────

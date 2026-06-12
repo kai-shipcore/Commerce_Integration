@@ -1360,6 +1360,17 @@ export function AgDemandPlanningGrid({
         width,
         minWidth: Math.min(36, column.w),
         sortable: column.id !== "row_num",
+        comparator: column.sortVal
+          ? (_a, _b, nodeA, nodeB) => {
+              const a = nodeA.data ? column.sortVal!(nodeA.data) : null;
+              const b = nodeB.data ? column.sortVal!(nodeB.data) : null;
+              if (a === b) return 0;
+              if (a === null || a === undefined) return -1;
+              if (b === null || b === undefined) return 1;
+              if (typeof a === "number" && typeof b === "number") return a - b;
+              return String(a).localeCompare(String(b));
+            }
+          : undefined,
       pinned: shouldPin ? "left" : undefined,
       valueGetter: (params) => {
         if (!params.data) return "";
