@@ -277,7 +277,7 @@ export async function GET(req: Request) {
           GROUP BY a.container_id, s.master_sku
         ) ar ON ar.container_id = ci.container_id
              AND ar.master_sku = ci.master_sku
-        WHERE c.status IN ${inboundStatuses}
+        WHERE ${rawContainers ? `c.status != 'complete'` : `c.status IN ${inboundStatuses}`}
           ${categoryJoinWhere}
       `, categoryParams) : Promise.resolve({ rows: [] }),
     ]);

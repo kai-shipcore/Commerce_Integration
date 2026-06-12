@@ -63,15 +63,15 @@ export function computeContainerChain(
     cumulativeAvailQty += qty;
 
     const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
-    const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
+    const availQtyC  = Math.round(prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder);
 
     const daysBetween = Math.round(
       (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
     );
     const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
     const estSales   = Math.round(daysBetween * dailyRate * seasonalFactor);
-    const backorderC = Math.max(0, estSales - availQtyC);
-    const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
+    const backorderC = Math.max(0, Math.round(estSales - availQtyC));
+    const carryoverC = backorderC >= 1 ? 0 : Math.max(0, Math.round(availQtyC - estSales));
     const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
     const adjustedRate = dailyRate * seasonalFactor;
     const invLifeFloor = adjustedRate > 0 ? Math.floor(carryoverC / adjustedRate) : null;

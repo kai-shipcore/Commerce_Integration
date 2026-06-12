@@ -219,12 +219,12 @@ function computeContainerChain(
     cumulativeAvailableQty += qty;
     const eta = container.eta ?? TODAY;
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
-    const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
+    const available = Math.round(previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder);
     const days = Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000);
     const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
-    const estimatedSales = days * dailyRate * seasonalFactor;
-    const backorder = Math.max(0, estimatedSales - available);
-    const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
+    const estimatedSales = Math.round(days * dailyRate * seasonalFactor);
+    const backorder = Math.max(0, Math.round(estimatedSales - available));
+    const carryover = backorder >= 1 ? 0 : Math.max(0, Math.round(available - estimatedSales));
     const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
     const adjustedRate = dailyRate * seasonalFactor;
     const invLifeFloor = adjustedRate > 0 ? Math.floor(carryover / adjustedRate) : null;
@@ -702,6 +702,11 @@ function ContainerGroupHeader(
     baseline: boolean;
     totalColumns: ContainerTotalColumn[];
     onEtaChange: (value: string) => void;
+    onAutoFill?: () => void;
+    onSave?: () => void;
+    autoFilling?: boolean;
+    saving?: boolean;
+    dirty?: boolean;
   },
 ) {
   return (
@@ -720,6 +725,24 @@ function ContainerGroupHeader(
                 className="w-[94px] rounded border border-white/30 bg-transparent px-1 text-[9px] text-white"
               />
             </label>
+            <button
+              onClick={props.onAutoFill}
+              disabled={props.autoFilling}
+              title="Con qty 자동 계산 (저장 전 미리보기)"
+              className="rounded px-1 text-[8px] bg-white/10 hover:bg-white/20 disabled:opacity-40 cursor-pointer"
+            >
+              {props.autoFilling ? "…" : "⟳"}
+            </button>
+            {props.dirty && (
+              <button
+                onClick={props.onSave}
+                disabled={props.saving}
+                title="DB에 저장"
+                className="rounded px-1 text-[8px] bg-green-600/70 hover:bg-green-600 disabled:opacity-40 cursor-pointer"
+              >
+                {props.saving ? "…" : "💾"}
+              </button>
+            )}
           </>
         )}
       </div>
@@ -785,11 +808,15 @@ export function AgDemandPlanningGrid({
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
+  const [chainReadyAfterLoad, setChainReadyAfterLoad] = useState(true);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const [rowOverrides, setRowOverrides] = useState<Map<string, Partial<DemandRow>>>(new Map());
   const [gridWidth, setGridWidth] = useState(0);
   const [conQtyFilter, setConQtyFilter] = useState<string | null>(null);
   const [qtyCtxMenu, setQtyCtxMenu] = useState<{ x: number; y: number; containerName: string } | null>(null);
+  const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
+  const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
+  const [savingContainers, setSavingContainers] = useState<Set<string>>(new Set());
 
   const containers = useMemo(
     () => data.containers
@@ -906,12 +933,40 @@ export function AgDemandPlanningGrid({
   }, [chainMap, containers, qtyOverrides, visibleRows]);
 
   useEffect(() => {
+    if (!containerDetailsLoaded) return;
+    setChainReadyAfterLoad(false);
+    // Seed qtyOverrides with DB values so the grid displays them immediately.
+    // Only sets keys not already overridden by the user.
+    setQtyOverrides((prev) => {
+      const next = new Map(prev);
+      for (const row of data.rows) {
+        for (const [containerName, cd] of Object.entries(row.containers ?? {})) {
+          if (!cd || (cd.inbound_qty ?? 0) <= 0) continue;
+          const key = `${row.sku}::${containerName}`;
+          if (!next.has(key)) {
+            next.set(key, {
+              inbound_qty: cd.inbound_qty ?? null,
+              avail_qty: cd.inbound_qty ?? null,
+              cbm: cd.cbm ?? null,
+              item_id: cd.item_id ?? undefined,
+              cbm_unit: cd.cbm_unit ?? undefined,
+            });
+          }
+        }
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerDetailsLoaded]);
+
+  useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
       setChainMap(new Map(
         data.rows.map((row) => [row.sku, computeContainerChain(row, containers, qtyOverrides, seasonalFactors)]),
       ));
+      setChainReadyAfterLoad(true);
     });
     return () => { cancelled = true; };
   }, [containers, data.rows, qtyOverrides, seasonalFactors]);
@@ -1086,7 +1141,11 @@ export function AgDemandPlanningGrid({
     return true;
   }, []);
 
-  const autoFill = useCallback(async (container: ContainerMeta, containerIndex: number): Promise<void> => {
+  const autoFill = useCallback(async (
+    container: ContainerMeta,
+    containerIndex: number,
+    force = false,
+  ): Promise<void> => {
     if (!container.container_id) return;
     const prevContainer = containers[containerIndex - 1];
     if (!prevContainer) return;
@@ -1094,18 +1153,22 @@ export function AgDemandPlanningGrid({
     const nextGapDays = nextContainer
       ? Math.round((new Date(nextContainer.eta).getTime() - new Date(container.eta).getTime()) / 86400000)
       : 0;
+    // SC: gap before = days from prev container arrival to this container arrival
+    const gapBeforeDays = Math.round(
+      (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
+    );
     const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
 
-    // CBM already consumed by SKUs that already have Con Qty
+    // CBM already consumed by SKUs that already have Con Qty (skipped in force mode)
     let usedCbm = 0;
     const skuInputs: SkuOrderInput[] = visibleRows
       .filter((r) => {
         const cat = r.category_code;
-        if (cat !== "CC" && cat !== "SC") return false;
+        if ((cat ?? "").toLowerCase() !== categoryFilter) return false;
         if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
         const key = `${r.sku}::${container.name}`;
         const existingQty = qtyOverrides.get(key)?.inbound_qty ?? r.containers?.[container.name]?.inbound_qty ?? 0;
-        if (existingQty > 0) {
+        if (!force && existingQty > 0) {
           usedCbm += (existingQty / (r.case_qty || 1)) * (r.cbm_per_unit ?? 0);
           return false; // skip — already has Con Qty
         }
@@ -1114,27 +1177,57 @@ export function AgDemandPlanningGrid({
       .map((row) => {
         const isSC = row.category_code === "SC";
         const activeGradient = isSC && gradientSC.length > 0 ? gradientSC : gradient;
-        const tier = getTier(row.total_avg_curr * seasonFactor, activeGradient);
+        const adjDaily = row.total_avg_curr * seasonFactor;
+        const tier = getTier(adjDaily, activeGradient);
         const prev = chainMap.get(row.sku)?.get(prevContainer.name);
+        const prevCarryover = prev?.carryover ?? 0;
+        // SC Python: pre-deduct gap sales from carryover to get actual stock at this container's arrival
+        const remainingAtArrival = isSC
+          ? Math.max(0, prevCarryover - adjDaily * gapBeforeDays)
+          : prevCarryover;
         return {
           sku: row.sku,
-          adj_daily: row.total_avg_curr * seasonFactor,
+          adj_daily: adjDaily,
           cbm_per_unit: (row.cbm_per_unit ?? 0) / (row.case_qty || 1),
           moq: row.moq ?? 1,
           order_multiple: row.order_multiple ?? 1,
-          remaining_at_arrival: prev?.carryover ?? 0,
+          remaining_at_arrival: remainingAtArrival,
           backorder_at_arrival: prev?.backorder ?? 0,
           tier_bonus: tier.bonus,
           use_gap_days: !isSC,
         };
       });
 
-    const remainingCap = Math.max(0, container.cbm_cap - usedCbm);
+    const remainingCap = force ? container.cbm_cap : Math.max(0, container.cbm_cap - usedCbm);
     const base = findOptimalBaseTarget(skuInputs, remainingCap, nextGapDays);
     const orders = generateOrders(skuInputs, base, nextGapDays);
     if (orders.length === 0) return;
 
-    const res = await fetch(`/api/planning/containers/${container.container_id}/auto-fill`, {
+    if (force) {
+      // Local-only update — do not save to DB; user must click Save
+      const rowMap = new Map(visibleRows.map((r) => [r.sku, r]));
+      setQtyOverrides((cur) => {
+        const next = new Map(cur);
+        for (const order of orders) {
+          const key = `${order.sku}::${container.name}`;
+          const raw = rowMap.get(order.sku);
+          const cbmUnit = (raw?.cbm_per_unit ?? 0) / (raw?.case_qty || 1);
+          next.set(key, {
+            inbound_qty: order.qty,
+            avail_qty: order.qty,
+            cbm: order.qty * cbmUnit,
+            cbm_unit: cbmUnit,
+            item_id: raw?.containers?.[container.name]?.item_id ?? undefined,
+            allocated_remaining_qty: raw?.containers?.[container.name]?.allocated_remaining_qty ?? null,
+          });
+        }
+        return next;
+      });
+      setDirtyContainers((s) => new Set(s).add(container.name));
+      return;
+    }
+
+    const res = await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: orders.map((o) => ({ sku: o.sku, qty: o.qty })) }),
@@ -1161,31 +1254,26 @@ export function AgDemandPlanningGrid({
     });
   }, [containers, chainMap, visibleRows, gradient, gradientSC, seasonalFactors]);
 
-  const autoFilledRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!containerDetailsLoaded || gradient.length === 0 || chainMap.size === 0) return;
-
-    for (const [containerIndex, container] of containers.entries()) {
-      if (!container.container_id || containerIndex === 0) continue;
-      if (autoFilledRef.current.has(container.name)) continue;
-
-      // Check if there are any CC/SC SKUs with no Con Qty that need filling
-      const hasEmptySlots = visibleRows.some((row) => {
-        const cat = row.category_code;
-        if (cat !== "CC" && cat !== "SC") return false;
-        if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
-        const key = `${row.sku}::${container.name}`;
-        const existingQty = qtyOverrides.get(key)?.inbound_qty ?? row.containers?.[container.name]?.inbound_qty ?? 0;
-        return existingQty === 0;
-      });
-
-      if (hasEmptySlots) {
-        autoFilledRef.current.add(container.name);
-        void autoFill(container, containerIndex);
-      }
+  const saveContainer = useCallback(async (container: ContainerMeta): Promise<void> => {
+    if (!container.container_id) return;
+    setSavingContainers((s) => new Set(s).add(container.name));
+    const items: Array<{ sku: string; qty: number }> = [];
+    for (const [key, val] of qtyOverrides.entries()) {
+      if (!key.endsWith(`::${container.name}`)) continue;
+      const sku = key.slice(0, -(container.name.length + 2));
+      if ((val.inbound_qty ?? 0) > 0) items.push({ sku, qty: val.inbound_qty! });
     }
-  }, [containerDetailsLoaded, chainMap, gradient, containers, visibleRows, qtyOverrides, autoFill]);
+    if (items.length > 0) {
+      await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+    }
+    setSavingContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
+    setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
+  }, [qtyOverrides]);
 
   const saveStockMode = useCallback(async (row: DemandRow): Promise<void> => {
     const next: 'onhand' | 'available' = (row.stock_mode ?? 'onhand') === 'onhand' ? 'available' : 'onhand';
@@ -1332,6 +1420,19 @@ export function AgDemandPlanningGrid({
               total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
             })),
             onEtaChange: (eta: string) => updateEta(container, eta),
+            onAutoFill: () => {
+              setAutoFillingContainers((s) => new Set(s).add(container.name));
+              void autoFill(container, containerIndex, true).finally(() => {
+                setAutoFillingContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
+              });
+            },
+            onSave: () => {
+              if (!window.confirm('변경 사항을 저장하시겠습니까?')) return;
+              void saveContainer(container);
+            },
+            autoFilling: autoFillingContainers.has(container.name),
+            saving: savingContainers.has(container.name),
+            dirty: dirtyContainers.has(container.name),
           },
           children: subColumns.map((column, columnIndex) => ({
             headerStyle: headerStyleForColor(columnColors[`con:${column.id}`]?.header),
@@ -1493,8 +1594,10 @@ export function AgDemandPlanningGrid({
   }, [exportCurrentView, onExportReady]);
 
   return (
+    <>
     <div ref={gridHostRef} className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white">
       <style>{`
+        @keyframes planning-spin { to { transform: rotate(360deg); } }
         .planning-ag-grid .ag-row-selected {
           outline: 1px solid #7aa7e8;
           outline-offset: -1px;
@@ -1648,5 +1751,16 @@ export function AgDemandPlanningGrid({
         </>
       )}
     </div>
+    {(savingContainers.size > 0 || containerDetailsLoading || !chainReadyAfterLoad || autoFillingContainers.size > 0) && (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "32px 48px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+          <div style={{ width: 36, height: 36, border: "3px solid #E2E8F0", borderTopColor: "#3B82F6", borderRadius: "50%", animation: "planning-spin 0.7s linear infinite" }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B" }}>
+            {savingContainers.size > 0 ? "저장 중..." : autoFillingContainers.size > 0 ? "발주량 계산 중..." : "컨테이너 데이터 로딩 중..."}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

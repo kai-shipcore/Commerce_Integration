@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
@@ -240,6 +240,7 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
 }
 
 export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "native" | "ag-grid" }) {
+  const router = useRouter();
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
   const [todayStr, setTodayStr] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
@@ -299,13 +300,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
     setSelectedColorColumn((current) => current.startsWith("container:") ? (BASE_COLORABLE_COLUMNS[0]?.id ?? "") : current);
     setIsCategoryLoading(true);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("product", filter);
+    router.replace(`?${params.toString()}`, { scroll: false });
     categoryChangeTimerRef.current = window.setTimeout(() => {
       startCategoryTransition(() => {
         setCategoryFilter(filter);
       });
       categoryChangeTimerRef.current = null;
     }, 60);
-  }, [categoryFilter]);
+  }, [categoryFilter, router, searchParams]);
 
   useEffect(() => {
     if (!isCategoryLoading) return;
@@ -1496,102 +1500,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           inline
           seasonalFactors={seasonalFactors}
           onSeasonalFactorsChange={handleSeasonalFactorsChange}
+          gradient={gradient}
+          gradientSC={gradientSC}
+          onGradientChange={handleGradientChange}
+          onGradientSCChange={handleGradientSCChange}
         />
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              style={{
-                flexShrink: 0,
-                height: 26,
-                padding: "2px 8px",
-                borderRadius: 4,
-                border: "1px solid #C2BFB5",
-                background: "#F5F4EF",
-                color: "#1A1917",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Gradient
-            </button>
-          </PopoverTrigger>
-          <PopoverContent style={{ width: 420, padding: 12 }}>
-            <div style={{ display: "flex", gap: 16 }}>
-              {([
-                { label: "Car Cover", tiers: gradient, defaults: DEFAULT_GRADIENT, onChange: handleGradientChange },
-                { label: "Seat Cover", tiers: gradientSC, defaults: DEFAULT_GRADIENT_SC, onChange: handleGradientSCChange },
-              ] as const).map((section) => (
-                <div key={section.label} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#1A1917" }}>{section.label}</div>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: "left", padding: "2px 3px", color: "#7A766F", fontWeight: 600 }}>Tier</th>
-                        <th style={{ textAlign: "right", padding: "2px 3px", color: "#7A766F", fontWeight: 600 }}>Min</th>
-                        <th style={{ textAlign: "right", padding: "2px 3px", color: "#7A766F", fontWeight: 600 }}>Bonus</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {section.tiers.map((tier, i) => (
-                        <tr key={tier.tier} style={{ borderTop: "1px solid #E8E6E0" }}>
-                          <td style={{ padding: "2px 3px", fontWeight: 700, color: "#1A1917" }}>{tier.tier}</td>
-                          <td style={{ padding: "2px 3px" }}>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              value={tier.min_sales}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                if (!Number.isFinite(val)) return;
-                                section.onChange(section.tiers.map((t, j) => j === i ? { ...t, min_sales: val } : t));
-                              }}
-                              style={{ width: "100%", textAlign: "right", border: "1px solid #C2BFB5", borderRadius: 3, padding: "1px 3px", fontSize: 11, background: "#FAFAF8" }}
-                            />
-                          </td>
-                          <td style={{ padding: "2px 3px" }}>
-                            <input
-                              type="number"
-                              step="1"
-                              value={tier.bonus}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value, 10);
-                                if (!Number.isFinite(val)) return;
-                                section.onChange(section.tiers.map((t, j) => j === i ? { ...t, bonus: val } : t));
-                              }}
-                              style={{ width: "100%", textAlign: "right", border: "1px solid #C2BFB5", borderRadius: 3, padding: "1px 3px", fontSize: 11, background: "#FAFAF8" }}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <button
-                    type="button"
-                    onClick={() => section.onChange([...section.defaults])}
-                    style={{ fontSize: 10, padding: "1px 6px", borderRadius: 3, border: "1px solid #C2BFB5", background: "#F5F4EF", cursor: "pointer", color: "#5A5750", alignSelf: "flex-end" }}
-                  >
-                    Reset
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-              <PopoverClose asChild>
-                <button
-                  type="button"
-                  style={{ fontSize: 11, padding: "2px 10px", borderRadius: 3, border: "1px solid #1A4FC0", background: "#1A4FC0", cursor: "pointer", color: "#fff", fontWeight: 600 }}
-                >
-                  Done
-                </button>
-              </PopoverClose>
-            </div>
-          </PopoverContent>
-        </Popover>
 
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 10 }}>
           {hasData ? (
