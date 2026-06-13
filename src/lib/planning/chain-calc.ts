@@ -1,4 +1,4 @@
-import { inventoryLifeDays } from "./forecast-calculations";
+import { projectInventoryLifeDays } from "./forecast-calculations";
 import { seasonalFactorForEta, type SeasonalFactors } from "./seasonal-factors";
 import type { ContainerMeta, DemandRow } from "@/types/demand-planning";
 
@@ -35,8 +35,7 @@ export function computeContainerChain(
   let prevEta = todayStr;
   let cumulativeAvailQty = availQty;
   const baseline = cons[0];
-  const baselineSeasonalFactor = seasonalFactorForEta(baseline?.eta ?? todayStr, seasonalFactors);
-  const baselineInventoryLife = inventoryLifeDays(carryover, dailyRate, baselineSeasonalFactor);
+  const baselineInventoryLife = projectInventoryLifeDays(carryover, dailyRate, baseline?.eta ?? todayStr, seasonalFactors);
   const baselinePlanSod = baselineInventoryLife === null
     ? null
     : new Date(new Date(baseline?.eta ?? todayStr).getTime() + baselineInventoryLife * 86400000).toISOString().slice(0, 10);
@@ -72,16 +71,16 @@ export function computeContainerChain(
     const estSales   = Math.round(daysBetween * dailyRate * seasonalFactor);
     const backorderC = Math.max(0, Math.round(estSales - availQtyC));
     const carryoverC = backorderC >= 1 ? 0 : Math.max(0, Math.round(availQtyC - estSales));
-    const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
-    const adjustedRate = dailyRate * seasonalFactor;
-    const invLifeFloor = adjustedRate > 0 ? Math.floor(carryoverC / adjustedRate) : null;
+    const invLifeC   = projectInventoryLifeDays(carryoverC, dailyRate, eta, seasonalFactors);
 
-    const sodFromThis = invLifeFloor !== null
-      ? new Date(new Date(eta).getTime() + invLifeFloor * 86400000).toISOString().slice(0, 10)
+    const sodFromThis = invLifeC !== null
+      ? new Date(new Date(eta).getTime() + invLifeC * 86400000).toISOString().slice(0, 10)
       : null;
     const estSodC: string | null = (!qty || carryoverC === 0)
       ? prevSod
-      : prevSod && sodFromThis ? (prevSod > sodFromThis ? prevSod : sodFromThis) : (sodFromThis ?? prevSod);
+      : sodFromThis === null
+        ? null
+        : (prevSod && prevSod > sodFromThis ? prevSod : sodFromThis);
 
     result.set(c.name, {
       open_orders: openOrders,

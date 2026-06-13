@@ -175,8 +175,8 @@ export const ALL_COLS: ColDef[] = [
   { id: "tot30",  grp: "s30", label: "Total\n30D",  w: 52, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => r.total_30d || 0 },
   // Total Avg Daily
   { id: "tavg_p", grp: "tavg", label: "T.Avg\n이전", w: 56, align: "num", tint: "t-total", gh: "gh-total", val: (r) => avgOrBlank(r.total_avg_prev) },
-  { id: "tavg_r", grp: "tavg", label: "T.Avg\n실제", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => avgOrBlank((r.avg_daily_real ?? 0) + (r.east_avg_real ?? 0) + Math.max(0.01, r.fba_avg_real ?? 0)) },
-  { id: "tavg_c", grp: "tavg", label: "T.Avg\n현재", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => avgOrBlank((r.avg_daily_curr ?? 0) + (r.east_avg_curr ?? 0) + Math.max(0.01, r.fba_avg_curr ?? 0)) },
+  { id: "tavg_r", grp: "tavg", label: "T.Avg\n실제", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => avgOrBlank(r.total_avg_real) },
+  { id: "tavg_c", grp: "tavg", label: "T.Avg\n현재", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => avgOrBlank(r.total_avg_curr) },
   // Inbound / SOD
   { id: "inb_qty",  grp: "inb", label: "Inbound\nQty",       w: 52,  align: "num",  tint: "t-inb", gh: "gh-inb", val: (r) => {
     const v = r.total_inbound_qty || 0;
@@ -361,7 +361,7 @@ export const CON_SUBCOLS: ConSubColDef[] = [
   { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd) => cd.inbound_qty !== null && cd.inbound_qty !== undefined ? cd.inbound_qty : "" },
   { id: "remaining", label: "Rem. Qty",    w: 54, align: "num", tint: "t-cn",      val: (_cd, _c, row) => {
     const total = (row.remaining ?? 0) + (row.mistake ?? 0);
-    return total || "";
+    return total > 0 ? total : "";
   } },
   { id: "oo",        label: "Open\nOrders", w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.open_orders || 0 },
   { id: "avail", label: "Avail\nQty",   w: 44, align: "num", tint: "t-cn",      val: (cd) => cd.avail_qty !== null && cd.avail_qty !== undefined ? cd.avail_qty : "" },

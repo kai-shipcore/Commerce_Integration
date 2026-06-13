@@ -27,7 +27,7 @@ import {
 } from "./columns";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
+import { projectInventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
   findOptimalBaseTarget,
@@ -191,8 +191,7 @@ function computeContainerChain(
   let previousEta = TODAY;
   let cumulativeAvailableQty = availableQty;
   const baseline = containers[0];
-  const baselineSeasonalFactor = seasonalFactorForEta(baseline?.eta ?? TODAY, seasonalFactors);
-  const baselineInventoryLife = inventoryLifeDays(previousCarryover, dailyRate, baselineSeasonalFactor);
+  const baselineInventoryLife = projectInventoryLifeDays(previousCarryover, dailyRate, baseline?.eta ?? TODAY, seasonalFactors);
   const baselinePlanSod = baselineInventoryLife === null
     ? null
     : new Date(new Date(baseline?.eta ?? TODAY).getTime() + baselineInventoryLife * 86400000).toISOString().slice(0, 10);
@@ -225,17 +224,15 @@ function computeContainerChain(
     const estimatedSales = Math.round(days * dailyRate * seasonalFactor);
     const backorder = Math.max(0, Math.round(estimatedSales - available));
     const carryover = backorder >= 1 ? 0 : Math.max(0, Math.round(available - estimatedSales));
-    const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
-    const adjustedRate = dailyRate * seasonalFactor;
-    const invLifeFloor = adjustedRate > 0 ? Math.floor(carryover / adjustedRate) : null;
-    const sodFromContainer = invLifeFloor === null
-      ? null
-      : new Date(new Date(eta).getTime() + invLifeFloor * 86400000).toISOString().slice(0, 10);
+    const inventoryLife = projectInventoryLifeDays(carryover, dailyRate, eta, seasonalFactors);
+    const sodFromContainer = inventoryLife !== null
+      ? new Date(new Date(eta).getTime() + inventoryLife * 86400000).toISOString().slice(0, 10)
+      : null;
     const estimatedSod = (!qty || carryover === 0)
       ? previousSod
-      : previousSod && sodFromContainer
-        ? (previousSod > sodFromContainer ? previousSod : sodFromContainer)
-        : (sodFromContainer ?? previousSod);
+      : sodFromContainer === null
+        ? null
+        : (previousSod && previousSod > sodFromContainer ? previousSod : sodFromContainer);
 
     result.set(container.name, {
       open_orders: openOrders,

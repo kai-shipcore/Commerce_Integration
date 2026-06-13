@@ -1,3 +1,48 @@
+import type { SeasonalFactors } from "./seasonal-factors";
+
+const MONTH_KEYS_FC = [
+  "jan", "feb", "mar", "apr", "may", "jun",
+  "jul", "aug", "sep", "oct", "nov", "dec",
+] as const;
+
+export function projectInventoryLifeDays(
+  carryover: number,
+  dailyRate: number,
+  startDateStr: string,
+  seasonalFactors: SeasonalFactors,
+  maxDays = 730,
+): number | null {
+  if (carryover <= 0) return 0;
+  if (dailyRate <= 0) return null;
+
+  let remaining = carryover;
+  let date = new Date(startDateStr + "T00:00:00Z");
+  let totalDays = 0;
+
+  while (totalDays < maxDays) {
+    const month = date.getUTCMonth();
+    const factor = seasonalFactors[MONTH_KEYS_FC[month]] ?? 1;
+    const adjRate = dailyRate * factor;
+
+    const lastDayOfMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    const daysLeftInMonth = lastDayOfMonth - date.getUTCDate() + 1;
+    const daysToCheck = Math.min(daysLeftInMonth, maxDays - totalDays);
+
+    if (adjRate > 0) {
+      const daysToDeplete = remaining / adjRate;
+      if (daysToDeplete <= daysToCheck) {
+        return totalDays + Math.ceil(daysToDeplete);
+      }
+      remaining -= adjRate * daysToCheck;
+    }
+
+    totalDays += daysToCheck;
+    date = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+  }
+
+  return null;
+}
+
 export type ForecastCategoryCode = "SC" | "CC" | "FM";
 
 export function forecastCategoryCodeForSku(sku: string): ForecastCategoryCode {
