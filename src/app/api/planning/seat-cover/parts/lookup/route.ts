@@ -28,13 +28,17 @@ export async function GET(req: Request) {
   const client = await pool.connect();
   try {
     if (orderNumber) {
+      const normalizedOrderNumber = orderNumber.trim().replace(/^#/, "");
+      const orderNumberCandidates = Array.from(
+        new Set([orderNumber.trim(), normalizedOrderNumber, `#${normalizedOrderNumber}`].filter(Boolean))
+      );
       const result = await client.query<{ sku: string; product_name: string | null }>(
         `SELECT soi.sku, soi.product_name
          FROM ecommerce_data.sales_orders so
          JOIN ecommerce_data.sales_order_items soi ON soi.order_id = so.id
-         WHERE so.order_number = $1
+         WHERE so.order_number = ANY($1::text[])
            AND soi.sku IS NOT NULL`,
-        [orderNumber]
+        [orderNumberCandidates]
       );
       const items = result.rows.map((r) => ({
         sku: r.sku,

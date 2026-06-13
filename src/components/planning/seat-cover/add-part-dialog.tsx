@@ -470,6 +470,11 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                       type="text"
                       value={formData.orderNumber}
                       onChange={handleChange}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter") return;
+                        event.preventDefault();
+                        void handleOrderNumberBlur();
+                      }}
                       required
                       style={{ fontSize: 13, height: 32 }}
                     />
