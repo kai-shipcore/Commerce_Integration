@@ -77,12 +77,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (categoryParamIndex) {
-      filters.push(`EXISTS (
-        SELECT 1
-        FROM shipcore.fc_container_items ci_filter
-        JOIN shipcore.fc_products p_filter ON p_filter.master_sku = ci_filter.master_sku
-        WHERE ci_filter.container_id = c.id
-          AND p_filter.category_code = $${categoryParamIndex}
+      filters.push(`(
+        NOT EXISTS (
+          SELECT 1
+          FROM shipcore.fc_container_items ci_any
+          WHERE ci_any.container_id = c.id
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM shipcore.fc_container_items ci_filter
+          JOIN shipcore.fc_products p_filter ON p_filter.master_sku = ci_filter.master_sku
+          WHERE ci_filter.container_id = c.id
+            AND p_filter.category_code = $${categoryParamIndex}
+        )
       )`);
     }
 

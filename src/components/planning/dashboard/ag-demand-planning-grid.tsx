@@ -835,7 +835,7 @@ export function AgDemandPlanningGrid({
         if (!container.categories?.length) {
           if (container.name.endsWith("-FLOOR")) return categoryFilter === "fm";
           if (container.name.endsWith("-SEAT")) return categoryFilter === "sc";
-          return categoryFilter === "cc";
+          return true;
         }
         return container.categories.includes(categoryFilter.toUpperCase());
       }),

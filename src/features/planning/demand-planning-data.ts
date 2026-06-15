@@ -40,10 +40,9 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
       setContainerDetailsLoaded(false);
       setLoading(false);
       setError(null);
-      return () => { cancelled = true; };
     }
 
-    setLoading(true);
+    if (!cachedData) setLoading(true);
     setError(null);
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";

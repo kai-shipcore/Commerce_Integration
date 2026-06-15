@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { ChevronDown, ChevronUp, Ship } from "lucide-react";
+import { ChevronDown, ChevronUp, PackageOpen, Ship } from "lucide-react";
 import {
   containerStatusLabels,
   mockSkus,
@@ -299,7 +299,7 @@ export function ContainerPlanningPage() {
       if (containerListTab === "active" && container.status === "complete") return false;
       if (containerListTab === "completed" && container.status !== "complete") return false;
       if (statusFilter && container.status !== statusFilter) return false;
-      if (productFilter && !getContainerProducts(container).has(productFilter)) return false;
+      if (productFilter && container.items.length > 0 && !getContainerProducts(container).has(productFilter)) return false;
       if (!normalizedQuery) return true;
       return [
         container.number,
@@ -430,17 +430,28 @@ export function ContainerPlanningPage() {
     });
   }, []);
 
+  function getDefaultWarehouseCode(list: WarehouseOption[]): string {
+    const primary = list.find(
+      (w) => w.warehouseCode === "Fullerton Primary" || w.warehouseName === "Fullerton Primary"
+    );
+    if (primary) return primary.warehouseCode;
+    const fullerton = list.find(
+      (w) => w.warehouseCode.toLowerCase().includes("fullerton") || w.warehouseName.toLowerCase().includes("fullerton")
+    );
+    return fullerton?.warehouseCode ?? list[0]?.warehouseCode ?? "";
+  }
+
   useEffect(() => {
     if (!isFormOpen || form.destination || !warehouses[0]) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm((current) => ({ ...current, destination: warehouses[0].warehouseCode }));
+    setForm((current) => ({ ...current, destination: getDefaultWarehouseCode(warehouses) }));
   }, [form.destination, isFormOpen, warehouses]);
 
   function openForm() {
     setEditingContainerId(null);
     setForm({
       ...defaultFormState,
-      destination: warehouses[0]?.warehouseCode ?? "",
+      destination: getDefaultWarehouseCode(warehouses),
     });
     setDraftItems([]);
     setSkuInput("");
@@ -630,11 +641,6 @@ export function ContainerPlanningPage() {
 
     if (!eta) {
       setFormError("Please select an ETA.");
-      return;
-    }
-
-    if (!editingContainerId && draftItems.length === 0) {
-      setFormError("Please add at least one SKU.");
       return;
     }
 
@@ -1652,7 +1658,7 @@ export function ContainerPlanningPage() {
             </div>
           ) : (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-              <div className="text-5xl opacity-50">â–¦</div>
+              <PackageOpen className="h-12 w-12 opacity-40" aria-hidden="true" />
               <div className="text-sm font-medium">Select a container or add a new one</div>
               <div className="text-xs">Click a container in the left list to view SKU details</div>
               <button
@@ -1779,7 +1785,7 @@ function ContainerCreateForm({
           aria-label="Close container form"
           className="flex h-8 w-8 items-center justify-center rounded-full border border-[#cccac4] bg-white text-lg leading-none text-muted-foreground transition-colors hover:bg-[#f0eee9] hover:text-foreground"
         >
-          Ã—
+          X
         </button>
       </div>
 
@@ -1973,7 +1979,7 @@ function ContainerCreateForm({
             <div className="font-mono text-xs text-muted-foreground">
               {skuInput && cbmInput && qtyInput
                 ? (parseFloat(cbmInput) * parseInt(qtyInput, 10) || 0).toFixed(4)
-                : "â€”"}
+                : "-"}
             </div>
             <div />
           </div>

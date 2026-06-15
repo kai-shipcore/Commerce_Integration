@@ -154,7 +154,7 @@ function containerMatchesCategory(container: ContainerMeta, categoryFilter: Cate
   if (!container.categories?.length) {
     if (container.name.endsWith("-FLOOR")) return categoryFilter === "fm";
     if (container.name.endsWith("-SEAT")) return categoryFilter === "sc";
-    return categoryFilter === "cc";
+    return true;
   }
   return container.categories.includes(categoryFilter.toUpperCase());
 }
@@ -252,7 +252,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const productParam = searchParams.get("product");
     return productParam === "fm" || productParam === "cc" || productParam === "sc" || productParam === "ac"
       ? productParam
-      : "fm";
+      : "sc";
   });
   const {
     data,

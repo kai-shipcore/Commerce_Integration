@@ -118,13 +118,20 @@ export async function GET(req: Request) {
           status
         FROM shipcore.fc_containers
         WHERE status != 'complete'
-          ${categoryCode ? `AND EXISTS (
-            SELECT 1
-            FROM shipcore.fc_container_items ci
-            JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
-            WHERE ci.container_id = fc_containers.id
-              AND ci.qty > 0
-              AND p.category_code = $1
+          ${categoryCode ? `AND (
+            NOT EXISTS (
+              SELECT 1
+              FROM shipcore.fc_container_items ci_any
+              WHERE ci_any.container_id = fc_containers.id
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM shipcore.fc_container_items ci
+              JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
+              WHERE ci.container_id = fc_containers.id
+                AND ci.qty > 0
+                AND p.category_code = $1
+            )
           )` : ""}
         ORDER BY
           CASE WHEN status IN ${ACTIVE} THEN 0 ELSE 1 END,
