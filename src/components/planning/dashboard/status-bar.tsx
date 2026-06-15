@@ -1,7 +1,7 @@
 "use client";
 
 import { RotateCcw, Settings } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_SEASONAL_FACTORS,
   SEASONAL_FACTOR_FIELDS,
@@ -138,12 +138,46 @@ function SeasonalFactorSettings({
           <Settings size={14} strokeWidth={2} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" style={{ width: 720, padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>Planning Settings</div>
-          <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.4, color: "#64748B" }}>
-            Seasonal multipliers and auto-fill gradient tiers.
+      <PopoverContent align="end" style={{ width: "min(960px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>Planning Settings</div>
+            <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.4, color: "#64748B" }}>
+              Seasonal multipliers and auto-fill gradient tiers.
+            </div>
           </div>
+          <PopoverClose asChild>
+            <button
+              type="button"
+              aria-label="Close"
+              style={{
+                width: 24,
+                height: 24,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                borderRadius: 4,
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                color: "#94A3B8",
+                fontSize: 14,
+                lineHeight: 1,
+                fontWeight: 700,
+              }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = "#F1F5F9";
+                event.currentTarget.style.color = "#475569";
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = "transparent";
+                event.currentTarget.style.color = "#94A3B8";
+              }}
+            >
+              X
+            </button>
+          </PopoverClose>
         </div>
 
         <div style={{ display: "flex", gap: 0 }}>
@@ -212,15 +246,15 @@ function SeasonalFactorSettings({
                     <thead>
                       <tr>
                         <th style={{ textAlign: "left", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11 }}>Tier</th>
-                        <th style={{ textAlign: "right", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11 }}>Min Sales</th>
-                        <th style={{ textAlign: "right", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11 }}>Bonus (days)</th>
+                        <th style={{ textAlign: "right", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11, width: 84 }}>Min Sales</th>
+                        <th style={{ textAlign: "right", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11, width: 92 }}>Bonus (days)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {section.tiers.map((tier, i) => (
                         <tr key={tier.tier} style={{ borderTop: "1px solid #E8E6E0" }}>
                           <td style={{ padding: "4px 6px", fontWeight: 700, color: "#1A1917", width: 40 }}>{tier.tier}</td>
-                          <td style={{ padding: "4px 6px" }}>
+                          <td style={{ padding: "4px 6px", textAlign: "right" }}>
                             <input
                               type="number"
                               step="0.1"
@@ -234,7 +268,7 @@ function SeasonalFactorSettings({
                               style={{ width: 72, height: 28, textAlign: "right", border: "1px solid #C2BFB5", borderRadius: 4, padding: "2px 6px", fontSize: 12, background: "#FAFAF8", boxSizing: "border-box" }}
                             />
                           </td>
-                          <td style={{ padding: "4px 6px" }}>
+                          <td style={{ padding: "4px 6px", textAlign: "right" }}>
                             <input
                               type="number"
                               step="1"
