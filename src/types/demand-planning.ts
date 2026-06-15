@@ -51,7 +51,7 @@ export interface DemandRow {
   tone: string;
   back: number;
   sales_status: "Original" | "Custom" | "Hold" | "Part";
-  category_code?: "SC" | "CC" | "FM";
+  category_code?: "SC" | "CC" | "FM" | "AC";
   sku: string;
   west_stock: number;
   east_stock: number;

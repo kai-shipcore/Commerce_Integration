@@ -17,3 +17,13 @@ export function planningLocalDateString(date = new Date()): string {
   }
   return `${year}-${month}-${day}`;
 }
+
+export function addSheetDays(dateStr: string, days: number): string {
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match || !Number.isFinite(days)) return dateStr;
+
+  const startUtc = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const serial = startUtc / 86400000 + 25569;
+  const resultSerial = Math.floor(serial + days);
+  return new Date((resultSerial - 25569) * 86400000).toISOString().slice(0, 10);
+}

@@ -27,7 +27,8 @@ import {
 } from "./columns";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { projectInventoryLifeDays } from "@/lib/planning/forecast-calculations";
+import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
+import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
   findOptimalBaseTarget,
@@ -189,12 +190,15 @@ function computeContainerChain(
   let previousBackorder = availableQty < 0 ? Math.abs(availableQty) : 0;
   let previousSod = row.sod;
   let previousEta = TODAY;
-  let cumulativeAvailableQty = availableQty;
   const baseline = containers[0];
-  const baselineInventoryLife = projectInventoryLifeDays(previousCarryover, dailyRate, baseline?.eta ?? TODAY, seasonalFactors);
+  const baselineInventoryLife = inventoryLifeDays(
+    previousCarryover,
+    dailyRate,
+    seasonalFactorForEta(baseline?.eta ?? TODAY, seasonalFactors),
+  );
   const baselinePlanSod = baselineInventoryLife === null
     ? null
-    : new Date(new Date(baseline?.eta ?? TODAY).getTime() + baselineInventoryLife * 86400000).toISOString().slice(0, 10);
+    : addSheetDays(baseline?.eta ?? TODAY, baselineInventoryLife);
 
   if (baseline) {
     result.set(baseline.name, {
@@ -215,18 +219,17 @@ function computeContainerChain(
     // Pinned rows only chain their own test containers; others would corrupt prevEta
     if (row.is_pinned && !raw) continue;
     const qty = overrides.get(key)?.inbound_qty ?? raw?.inbound_qty ?? 0;
-    cumulativeAvailableQty += qty;
     const eta = container.eta ?? TODAY;
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
-    const available = Math.round(previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder);
+    const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
     const days = Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000);
     const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
-    const estimatedSales = Math.round(days * dailyRate * seasonalFactor);
-    const backorder = Math.max(0, Math.round(estimatedSales - available));
-    const carryover = backorder >= 1 ? 0 : Math.max(0, Math.round(available - estimatedSales));
-    const inventoryLife = projectInventoryLifeDays(carryover, dailyRate, eta, seasonalFactors);
+    const estimatedSales = days * dailyRate * seasonalFactor;
+    const backorder = Math.max(0, estimatedSales - available);
+    const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
+    const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
     const sodFromContainer = inventoryLife !== null
-      ? new Date(new Date(eta).getTime() + inventoryLife * 86400000).toISOString().slice(0, 10)
+      ? addSheetDays(eta, inventoryLife)
       : null;
     const estimatedSod = (!qty || carryover === 0)
       ? previousSod
@@ -236,7 +239,7 @@ function computeContainerChain(
 
     result.set(container.name, {
       open_orders: openOrders,
-      avail_qty: cumulativeAvailableQty,
+      avail_qty: available,
       est_sales: estimatedSales,
       backorder,
       carryover,

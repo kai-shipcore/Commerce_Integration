@@ -1,4 +1,5 @@
-import { projectInventoryLifeDays } from "./forecast-calculations";
+import { inventoryLifeDays } from "./forecast-calculations";
+import { addSheetDays } from "./date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "./seasonal-factors";
 import type { ContainerMeta, DemandRow } from "@/types/demand-planning";
 
@@ -33,12 +34,15 @@ export function computeContainerChain(
   let prevBackorder = availQty < 0 ? Math.abs(availQty) : 0;
   let prevSod: string | null = row.sod;
   let prevEta = todayStr;
-  let cumulativeAvailQty = availQty;
   const baseline = cons[0];
-  const baselineInventoryLife = projectInventoryLifeDays(carryover, dailyRate, baseline?.eta ?? todayStr, seasonalFactors);
+  const baselineInventoryLife = inventoryLifeDays(
+    carryover,
+    dailyRate,
+    seasonalFactorForEta(baseline?.eta ?? todayStr, seasonalFactors),
+  );
   const baselinePlanSod = baselineInventoryLife === null
     ? null
-    : new Date(new Date(baseline?.eta ?? todayStr).getTime() + baselineInventoryLife * 86400000).toISOString().slice(0, 10);
+    : addSheetDays(baseline?.eta ?? todayStr, baselineInventoryLife);
 
   if (baseline) {
     result.set(baseline.name, {
@@ -59,22 +63,20 @@ export function computeContainerChain(
     const rawData = row.containers?.[c.name];
     const qty = ov !== undefined ? (ov.inbound_qty ?? 0) : (rawData?.inbound_qty ?? 0);
     const eta = c.eta ?? todayStr;
-    cumulativeAvailQty += qty;
-
     const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
-    const availQtyC  = Math.round(prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder);
+    const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
 
     const daysBetween = Math.round(
       (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
     );
     const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
-    const estSales   = Math.round(daysBetween * dailyRate * seasonalFactor);
-    const backorderC = Math.max(0, Math.round(estSales - availQtyC));
-    const carryoverC = backorderC >= 1 ? 0 : Math.max(0, Math.round(availQtyC - estSales));
-    const invLifeC   = projectInventoryLifeDays(carryoverC, dailyRate, eta, seasonalFactors);
+    const estSales   = daysBetween * dailyRate * seasonalFactor;
+    const backorderC = Math.max(0, estSales - availQtyC);
+    const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
+    const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
 
     const sodFromThis = invLifeC !== null
-      ? new Date(new Date(eta).getTime() + invLifeC * 86400000).toISOString().slice(0, 10)
+      ? addSheetDays(eta, invLifeC)
       : null;
     const estSodC: string | null = (!qty || carryoverC === 0)
       ? prevSod
@@ -84,7 +86,7 @@ export function computeContainerChain(
 
     result.set(c.name, {
       open_orders: openOrders,
-      avail_qty:   cumulativeAvailQty,
+      avail_qty:   availQtyC,
       est_sales:   estSales,
       backorder:   backorderC,
       carryover:   carryoverC,

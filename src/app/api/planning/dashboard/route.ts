@@ -1,21 +1,21 @@
-// Code Guide: Returns DemandPlanningData for the /planning/dashboard page.
+﻿// Code Guide: Returns DemandPlanningData for the /planning/dashboard page.
 // Phase 1 data sources:
-//   fc_containers          — container headers (primary DB)
-//   fc_container_items     — per-SKU inbound qty per container (primary DB)
-//   fc_stats               — pre-calculated sales/inventory stats (primary DB, LEFT JOIN)
-//                            Empty table is fine — all stats columns default to 0.
-//   coverland_inventory    — backorder qty (Supabase lookup, best-effort)
+//   fc_containers          â€” container headers (primary DB)
+//   fc_container_items     â€” per-SKU inbound qty per container (primary DB)
+//   fc_stats               â€” pre-calculated sales/inventory stats (primary DB, LEFT JOIN)
+//                            Empty table is fine â€” all stats columns default to 0.
+//   coverland_inventory    â€” backorder qty (Supabase lookup, best-effort)
 // Run prisma/sql/fc_stats.sql once before using this route.
 
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { planningLocalDateString } from "@/lib/planning/date-utils";
+import { addSheetDays, planningLocalDateString } from "@/lib/planning/date-utils";
 import { getPlanningDashboardCache, setPlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import {
   currentDailyAverage,
   fbmThirtyDayAverage,
   forecastCategoryCodeForSku,
-  projectInventoryLifeDays,
+  inventoryLifeDays,
 } from "@/lib/planning/forecast-calculations";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import type {
@@ -49,6 +49,24 @@ function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" {
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
+}
+
+function weightedDailyAverage(
+  sales90d: number,
+  sales60d: number,
+  sales30d: number,
+  preorder30d: number,
+  sales15d: number,
+  sales7d: number,
+): number {
+  return (
+    sales90d / 90 * 0.10
+    + sales60d / 60 * 0.15
+    + sales30d / 30 * 0.30
+    + preorder30d / 30 * 0.10
+    + sales15d / 15 * 0.20
+    + sales7d / 7 * 0.15
+  );
 }
 
 // DB status values for containers that have confirmed quantities.
@@ -106,8 +124,8 @@ export async function GET(req: Request) {
 
     const primary = getPrimaryPool();
 
-    // ── 1-4 run in parallel: containers, stats rows, available stock, last sync ──
-    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly] = await Promise.all([
+    // â”€â”€ 1-4 run in parallel: containers, stats rows, available stock, last sync â”€â”€
+    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly, pinnedRowsResult] = await Promise.all([
       // 1. Container headers
       primary.query<{ id: number; name: string; eta: string; cbm_cap: number; status: string }>(`
         SELECT
@@ -134,7 +152,6 @@ export async function GET(req: Request) {
             )
           )` : ""}
         ORDER BY
-          CASE WHEN status IN ${ACTIVE} THEN 0 ELSE 1 END,
           eta_date NULLS LAST,
           id
       `, categoryParams),
@@ -235,11 +252,87 @@ export async function GET(req: Request) {
       primary.query<{ last_sync: string | null }>(
         `SELECT to_char(MAX(calculated_at) AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD HH24:MI') AS last_sync FROM shipcore.fc_stats`
       ),
+      // 5. Pinned reference/sample rows
+      primary.query<{
+        id: number;
+        master_sku: string;
+        label: string;
+        sort_order: number;
+        back: number;
+        west_stock: number;
+        east_stock: number;
+        total_stock: number;
+        west_90d: number;
+        west_60d: number;
+        west_30d: number;
+        west_15d: number;
+        west_7d: number;
+        west_30d_pre: number;
+        east_90d: number;
+        east_60d: number;
+        east_30d: number;
+        east_15d: number;
+        east_7d: number;
+        east_30d_pre: number;
+        fba_30d: number;
+        avg_daily_prev: number;
+        east_avg_prev: number;
+        category_code: "SC" | "CC" | "FM" | "AC" | null;
+        cbm_per_unit: number | null;
+        case_qty: number | null;
+        moq: number | null;
+        order_multiple: number | null;
+      }>(`
+        SELECT
+          pr.id::int,
+          pr.master_sku,
+          pr.label,
+          pr.sort_order,
+          pr.back::int,
+          pr.west_stock::int,
+          pr.east_stock::int,
+          pr.total_stock::int,
+          pr.west_90d::float8,
+          pr.west_60d::float8,
+          pr.west_30d::float8,
+          pr.west_15d::float8,
+          pr.west_7d::float8,
+          pr.west_30d_pre::float8,
+          pr.east_90d::float8,
+          pr.east_60d::float8,
+          pr.east_30d::float8,
+          pr.east_15d::float8,
+          pr.east_7d::float8,
+          pr.east_30d_pre::float8,
+          pr.fba_30d::int,
+          pr.avg_daily_prev::float8,
+          pr.east_avg_prev::float8,
+          COALESCE(p.category_code, CASE
+            WHEN pr.master_sku LIKE 'CC-%' THEN 'CC'
+            WHEN pr.master_sku LIKE 'CA-FM-%' OR pr.master_sku LIKE '%-FM-%' THEN 'FM'
+            WHEN pr.master_sku LIKE 'CA-SC-%' OR pr.master_sku LIKE 'CL-SC-%' THEN 'SC'
+            ELSE 'AC'
+          END)::text AS category_code,
+          p.cbm_per_unit::float8,
+          p.case_qty::int,
+          p.moq::int,
+          COALESCE(p.order_multiple, p.moq)::int AS order_multiple
+        FROM shipcore.fc_pinned_rows pr
+        LEFT JOIN shipcore.fc_products p ON p.master_sku = pr.master_sku
+        WHERE ($1::text IS NULL OR COALESCE(p.category_code, CASE
+          WHEN pr.master_sku LIKE 'CC-%' THEN 'CC'
+          WHEN pr.master_sku LIKE 'CA-FM-%' OR pr.master_sku LIKE '%-FM-%' THEN 'FM'
+          WHEN pr.master_sku LIKE 'CA-SC-%' OR pr.master_sku LIKE 'CL-SC-%' THEN 'SC'
+          ELSE 'AC'
+        END)::text = $1)
+        ORDER BY pr.sort_order, pr.id
+      `, [categoryCode]),
     ]);
 
-    // ── 1b + cross: run in parallel after containersResult is available ──────
+    // â”€â”€ 1b + cross: run in parallel after containersResult is available â”€â”€â”€â”€â”€â”€
     const containerIds = containersResult.rows.map((r) => r.id);
-    const [categoriesResult, crossResult] = await Promise.all([
+    const pinnedRowIds = pinnedRowsResult.rows.map((r) => r.id);
+    const [categoriesResult, crossResult, pinContainersResult] = await Promise.all([
       // 1b. Category codes per container
       containerIds.length > 0
         ? primary.query<{ container_id: number; category_code: string }>(`
@@ -287,6 +380,31 @@ export async function GET(req: Request) {
         WHERE ${rawContainers ? `c.status != 'complete'` : `c.status IN ${inboundStatuses}`}
           ${categoryJoinWhere}
       `, categoryParams) : Promise.resolve({ rows: [] }),
+      pinnedRowIds.length > 0
+        ? primary.query<{
+            pin_id: number;
+            container_ref: string;
+            arrives_on: string;
+            test_qty: number;
+            test_cbm_unit: number;
+          }>(`
+            SELECT
+              pin_id::int,
+              container_ref,
+              arrives_on::text,
+              test_qty::int,
+              test_cbm_unit::float8
+            FROM shipcore.fc_pin_containers
+            WHERE pin_id = ANY($1::int[])
+            ORDER BY arrives_on, id
+          `, [pinnedRowIds])
+        : Promise.resolve({ rows: [] as {
+            pin_id: number;
+            container_ref: string;
+            arrives_on: string;
+            test_qty: number;
+            test_cbm_unit: number;
+          }[] }),
     ]);
 
     // Build derived maps from parallel results
@@ -296,6 +414,13 @@ export async function GET(req: Request) {
       const arr = categoriesByContainer.get(row.container_id) ?? [];
       arr.push(row.category_code);
       categoriesByContainer.set(row.container_id, arr);
+    }
+
+    const pinContainersByPinId = new Map<number, typeof pinContainersResult.rows>();
+    for (const row of pinContainersResult.rows) {
+      const arr = pinContainersByPinId.get(row.pin_id) ?? [];
+      arr.push(row);
+      pinContainersByPinId.set(row.pin_id, arr);
     }
 
     const availStockMap = new Map<string, { remaining: number; mistake: number }>();
@@ -308,9 +433,9 @@ export async function GET(req: Request) {
 
     const lastSync = lastSyncResultEarly.rows[0]?.last_sync ?? null;
 
-    // ── 6b. Historical velocity (when asOf != today) ─────────────────────────
+    // â”€â”€ 6b. Historical velocity (when asOf != today) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Re-compute velocity windows from snapshot tables using asOf as reference.
-    // Inventory (west_stock etc.) always stays current — no historical snapshots.
+    // Inventory (west_stock etc.) always stays current â€” no historical snapshots.
     type VelRow = {
       master_sku: string; west_90d: number; west_60d: number; west_30d: number;
       west_15d: number; west_7d: number; west_30d_pre: number;
@@ -405,10 +530,10 @@ export async function GET(req: Request) {
       for (const r of customVelResult.rows) customVelMap.set(r.master_sku, buildVelEntry(r));
     }
 
-    // ── Assemble response ────────────────────────────────────────────────────
+    // â”€â”€ Assemble response â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const containers: ContainerMeta[] = [
-      { col: 0, name: "기준", eta: todayStr, cbm_cap: 0, status: "baseline" },
+      { col: 0, name: "Base", eta: todayStr, cbm_cap: 0, status: "baseline" },
       ...containersResult.rows.map((r, i) => ({
         col:          i + 1,
         container_id: r.id,
@@ -420,7 +545,32 @@ export async function GET(req: Request) {
       })),
     ];
 
-    // cross-data lookup: sku → container_name → ContainerRowData
+    // cross-data lookup: sku â†’ container_name â†’ ContainerRowData
+    containers[0] = { col: 0, name: "Base", eta: todayStr, cbm_cap: 0, status: "baseline" };
+    const existingContainerNames = new Set(containers.map((container) => container.name));
+    for (const pin of pinContainersResult.rows) {
+      if (existingContainerNames.has(pin.container_ref)) continue;
+      containers.push({
+        col: containers.length,
+        name: pin.container_ref,
+        eta: pin.arrives_on,
+        cbm_cap: 0,
+        status: "pin-test",
+        categories: [],
+      });
+      existingContainerNames.add(pin.container_ref);
+    }
+    const orderedContainers = containers.slice(1).sort((a, b) => {
+      const aTime = a.eta ? new Date(a.eta).getTime() : Number.POSITIVE_INFINITY;
+      const bTime = b.eta ? new Date(b.eta).getTime() : Number.POSITIVE_INFINITY;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.name.localeCompare(b.name);
+    });
+    containers.splice(1, containers.length - 1, ...orderedContainers.map((container, i) => ({
+      ...container,
+      col: i + 1,
+    })));
+
     const crossMap = new Map<string, Map<string, ContainerRowData>>();
     for (const r of crossResult.rows) {
       if (!crossMap.has(r.sku)) crossMap.set(r.sku, new Map());
@@ -498,7 +648,7 @@ export async function GET(req: Request) {
       const availQty  = (r.total_stock as number) + (r.back as number);
       const carryover = availQty >= 0 ? availQty : 0;
       const dailyRate = total_avg_curr;
-      const invLife   = projectInventoryLifeDays(carryover, dailyRate, todayStr, DEFAULT_SEASONAL_FACTORS);
+      const invLife   = inventoryLifeDays(carryover, dailyRate, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
       const asOfMs    = new Date(todayStr).getTime();
       const sod       = (() => {
         const rate = total_avg_curr;
@@ -509,11 +659,11 @@ export async function GET(req: Request) {
         return d.toISOString().slice(0, 10);
       })();
       const planSod   = invLife !== null
-        ? new Date(asOfMs + invLife * 86400000).toISOString().slice(0, 10)
+        ? addSheetDays(todayStr, invLife)
         : null;
 
       if (!rawContainers) {
-        containersObj["기준"] = {
+        containersObj["Base"] = {
           item_id:     null,
           cbm_unit:    null,
           inbound_qty: null,
@@ -530,18 +680,22 @@ export async function GET(req: Request) {
         };
       }
 
+      if (!rawContainers && !containersObj.Base) {
+        const baselineData = Object.values(containersObj).find((value) => value.eta === todayStr && value.est_sales === 0 && value.cbm === 0);
+        if (baselineData) containersObj.Base = baselineData;
+      }
+
       // Chain: iterate real containers left-to-right, each block reads prior block's outputs
       let prevCarryover = carryover;
       let prevBackorder = availQty < 0 ? Math.abs(availQty) : 0;
       let prevSod       = sod;
       let prevEta       = todayStr;
-      let cumulativeAvailQty = availQty;
 
       for (const c of rawContainers ? [] : containers.slice(1)) {
         const raw  = containersObj[c.name];
+        if (!raw) continue;
         const qty  = raw?.inbound_qty ?? 0;
         const eta  = c.eta ?? todayStr;
-        cumulativeAvailQty += qty;
 
         const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
         const availQtyC  = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
@@ -550,13 +704,13 @@ export async function GET(req: Request) {
           (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
         );
         const seasonalFactor = seasonalFactorForEta(eta, DEFAULT_SEASONAL_FACTORS);
-        const estSales   = Math.round(daysBetween * dailyRate * seasonalFactor);
+        const estSales   = daysBetween * dailyRate * seasonalFactor;
         const backorderC = Math.max(0, estSales - availQtyC);
         const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
-        const invLifeC   = projectInventoryLifeDays(carryoverC, dailyRate, eta, DEFAULT_SEASONAL_FACTORS);
+        const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
 
         const sodFromThis = invLifeC !== null
-          ? new Date(new Date(eta).getTime() + invLifeC * 86400000).toISOString().slice(0, 10)
+          ? addSheetDays(eta, invLifeC)
           : null;
         const estSodC: string | null = (!qty || carryoverC === 0)
           ? prevSod
@@ -568,7 +722,7 @@ export async function GET(req: Request) {
         containersObj[c.name] = {
           ...(raw ?? { item_id: null, cbm_unit: null, inbound_qty: null, cbm: 0, eta }),
           open_orders: openOrders,
-          avail_qty:   cumulativeAvailQty,
+          avail_qty:   availQtyC,
           est_sales:   estSales,
           backorder:   backorderC,
           carryover:   carryoverC,
@@ -642,7 +796,208 @@ export async function GET(req: Request) {
       };
     });
 
-    const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, last_sync: lastSync } };
+    const pinnedRows: DemandRow[] = pinnedRowsResult.rows.map((pinned) => {
+      const masterSku = pinned.master_sku;
+      const rowSku = `${masterSku}::pin:${pinned.id}`;
+      const { seat, no, color, tone } = parseSku(masterSku);
+      const categoryCode = pinned.category_code === "SC" || pinned.category_code === "CC" || pinned.category_code === "FM" || pinned.category_code === "AC"
+        ? pinned.category_code
+        : inferCategoryCode(masterSku);
+      const pinContainers = pinContainersByPinId.get(pinned.id) ?? [];
+      const firstPin = pinContainers[0];
+      const cbmPerUnit = Number(pinned.cbm_per_unit ?? firstPin?.test_cbm_unit ?? 0);
+      const containerInfo = firstPin
+        ? `${firstPin.arrives_on ?? ""} - (${firstPin.container_ref}) - ${firstPin.test_qty ?? ""}`
+        : "";
+
+      const west_90d = Number(pinned.west_90d);
+      const west_60d = Number(pinned.west_60d);
+      const west_30d = Number(pinned.west_30d);
+      const west_15d = Number(pinned.west_15d);
+      const west_7d = Number(pinned.west_7d);
+      const west_30d_pre = Number(pinned.west_30d_pre);
+      const east_90d = Number(pinned.east_90d);
+      const east_60d = Number(pinned.east_60d);
+      const east_30d = Number(pinned.east_30d);
+      const east_15d = Number(pinned.east_15d);
+      const east_7d = Number(pinned.east_7d);
+      const east_30d_pre = Number(pinned.east_30d_pre);
+      const avg_daily_prev = Number(pinned.avg_daily_prev);
+      const avg_daily_real = weightedDailyAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d);
+      const avg_daily_curr = currentDailyAverage(avg_daily_prev, avg_daily_real, categoryCode);
+      const east_avg_prev = Math.max(0.01, Number(pinned.east_avg_prev));
+      const east_avg_real = Math.max(0.01, weightedDailyAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d));
+      const east_avg_curr = currentDailyAverage(east_avg_prev, east_avg_real, categoryCode);
+      const fba_30d = Number(pinned.fba_30d);
+      const fba_avg_real = fba_30d / 30;
+      const fba_avg_curr = fba_avg_real;
+      const west_fbm_30d = fbmThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d);
+      const east_fbm_30d = fbmThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d);
+      const total_30d = west_fbm_30d + east_fbm_30d + fba_30d;
+      const total_avg_prev = avg_daily_prev + east_avg_prev;
+      const total_avg_real = avg_daily_real + east_avg_real + fba_avg_real;
+      const total_avg_curr = avg_daily_curr + east_avg_curr + fba_avg_curr;
+      const back = Number(pinned.back);
+      const totalStock = Number(pinned.total_stock);
+      const availQty = totalStock + back;
+      const carryover = availQty >= 0 ? availQty : 0;
+      const invLife = inventoryLifeDays(carryover, total_avg_curr, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
+      const asOfMs = new Date(todayStr).getTime();
+      const sod = total_avg_curr
+        ? new Date(asOfMs + Math.floor(totalStock / total_avg_curr) * 86400000).toISOString().slice(0, 10)
+        : null;
+      const planSod = invLife !== null
+        ? addSheetDays(todayStr, invLife)
+        : null;
+      const containersObj: Record<string, ContainerRowData> = {};
+
+      if (includeContainers) {
+        if (!rawContainers) {
+          containersObj.Base = {
+            item_id: null,
+            cbm_unit: null,
+            inbound_qty: null,
+            open_orders: 0,
+            avail_qty: availQty,
+            est_sales: 0,
+            backorder: availQty < 0 ? Math.abs(availQty) : 0,
+            carryover,
+            eta: todayStr,
+            inv_life: invLife,
+            est_sod: sod,
+            plan_sod: planSod,
+            cbm: 0,
+          };
+        }
+        for (const pin of pinContainers) {
+          const unit = Number(pin.test_cbm_unit || cbmPerUnit || 0);
+          containersObj[pin.container_ref] = {
+            item_id: null,
+            cbm_unit: unit,
+            inbound_qty: Number(pin.test_qty),
+            allocated_remaining_qty: 0,
+            open_orders: null,
+            avail_qty: Number(pin.test_qty),
+            est_sales: null,
+            backorder: null,
+            eta: pin.arrives_on,
+            inv_life: null,
+            est_sod: null,
+            plan_sod: null,
+            cbm: Number(pin.test_qty) * unit,
+          };
+        }
+
+        let prevCarryover = carryover;
+        let prevBackorder = availQty < 0 ? Math.abs(availQty) : 0;
+        let prevSod = sod;
+        let prevEta = todayStr;
+
+        for (const c of rawContainers ? [] : containers.slice(1)) {
+          const raw = containersObj[c.name];
+          if (!raw) continue;
+          const qty = raw.inbound_qty ?? 0;
+          const eta = c.eta ?? todayStr;
+          const openOrders = prevCarryover > 0 ? 0 : (prevBackorder > qty ? -qty : -prevBackorder);
+          const availQtyC = prevCarryover > 0 ? prevCarryover + qty : qty - prevBackorder;
+          const daysBetween = Math.round((new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000);
+          const seasonalFactor = seasonalFactorForEta(eta, DEFAULT_SEASONAL_FACTORS);
+          const estSales = daysBetween * total_avg_curr * seasonalFactor;
+          const backorderC = Math.max(0, estSales - availQtyC);
+          const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
+          const invLifeC = inventoryLifeDays(carryoverC, total_avg_curr, seasonalFactor);
+          const sodFromThis = invLifeC !== null
+            ? addSheetDays(eta, invLifeC)
+            : null;
+          const estSodC: string | null = (!qty || carryoverC === 0)
+            ? prevSod
+            : sodFromThis === null
+              ? null
+              : (prevSod && prevSod > sodFromThis ? prevSod : sodFromThis);
+
+          containersObj[c.name] = {
+            ...raw,
+            open_orders: openOrders,
+            avail_qty: availQtyC,
+            est_sales: estSales,
+            backorder: backorderC,
+            carryover: carryoverC,
+            inv_life: invLifeC,
+            est_sod: estSodC,
+            plan_sod: sodFromThis,
+          };
+          prevCarryover = carryoverC;
+          prevBackorder = backorderC;
+          prevSod = estSodC;
+          prevEta = eta;
+        }
+      }
+
+      return {
+        container_info: containerInfo,
+        cbm: cbmPerUnit,
+        cbm_per_unit: cbmPerUnit,
+        case_qty: Number(pinned.case_qty ?? 1),
+        moq: Number(pinned.moq ?? 1),
+        order_multiple: Number(pinned.order_multiple ?? pinned.moq ?? 1),
+        seat,
+        no,
+        color,
+        tone,
+        back,
+        sales_status: "Original",
+        category_code: categoryCode,
+        sku: rowSku,
+        base_sku: masterSku,
+        is_pinned: true,
+        pin_label: pinned.label,
+        west_stock: Number(pinned.west_stock),
+        east_stock: Number(pinned.east_stock),
+        west_available_stock: 0,
+        east_available_stock: 0,
+        transit_stock: 0,
+        total_stock: totalStock,
+        stock_mode: "onhand",
+        west_90d,
+        west_60d,
+        west_30d,
+        west_15d,
+        west_7d,
+        west_30d_pre,
+        east_90d,
+        east_60d,
+        east_30d,
+        east_15d,
+        east_7d,
+        east_30d_pre,
+        avg_daily_prev,
+        avg_daily_real,
+        avg_daily_curr,
+        east_avg_prev,
+        east_avg_real,
+        east_avg_curr,
+        fba_avg_real,
+        fba_avg_curr,
+        west_fbm_30d,
+        east_fbm_30d,
+        fba_30d,
+        total_30d,
+        total_avg_prev,
+        total_avg_real,
+        total_avg_curr,
+        total_inbound_qty: pinContainers.reduce((sum, pin) => sum + Number(pin.test_qty), 0),
+        containers_list: pinContainers.length
+          ? pinContainers.map((pin) => `${pin.container_ref} (${pin.test_qty})`).join(", ")
+          : null,
+        next_eta: firstPin?.arrives_on ?? null,
+        remaining: 0,
+        mistake: 0,
+        sod,
+        containers: includeContainers ? containersObj : {},
+      };
+    });
+
+    const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows: [...pinnedRows, ...rows], last_sync: lastSync } };
     setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },

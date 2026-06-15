@@ -53,6 +53,7 @@ export function forecastCategoryCodeForSku(sku: string): ForecastCategoryCode {
 }
 
 export function currentDailyAverage(prev: number, real: number, _categoryCode?: ForecastCategoryCode): number {
+  void _categoryCode;
   if (prev === 0) return real;
   const change = Math.abs((real - prev) / prev);
   if (change < 0.5) return prev * 0.1 + real * 0.9;
@@ -79,5 +80,5 @@ export function fbmThirtyDayAverage(
 
 export function inventoryLifeDays(carryover: number, dailyRate: number, seasonalFactor: number): number | null {
   const adjustedDailyRate = dailyRate * seasonalFactor;
-  return adjustedDailyRate > 0 ? Math.round(carryover / adjustedDailyRate) : null;
+  return adjustedDailyRate > 0 ? carryover / adjustedDailyRate : null;
 }
