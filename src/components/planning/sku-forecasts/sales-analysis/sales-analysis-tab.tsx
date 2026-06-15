@@ -33,7 +33,7 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
   const history = useSalesAnalysis({
     enabled: viewMode === "history",
     sku: sku.sku,
-    category: sku.category_code,
+    category: supportedSalesCategory(sku.category_code),
     from: fromDate,
     to: toDate,
     bucket,
@@ -229,6 +229,10 @@ function localDateString(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function supportedSalesCategory(category: DemandRow["category_code"]): "SC" | "CC" | "FM" | undefined {
+  return category === "SC" || category === "CC" || category === "FM" ? category : undefined;
 }
 
 function SegmentedControl<T extends string>({
