@@ -139,7 +139,7 @@ function selectedCellsBetween(
       selected.set(key, {
         rowId: row.sku,
         columnId,
-        label: `${row.base_sku ?? row.sku} / ${column.getColDef().headerName ?? columnId}`,
+        label: `${row.sku} / ${column.getColDef().headerName ?? columnId}`,
       });
     }
   }
@@ -216,8 +216,6 @@ function computeContainerChain(
   for (const container of containers.slice(1)) {
     const key = `${row.sku}::${container.name}`;
     const raw = row.containers?.[container.name];
-    // Pinned rows only chain their own test containers; others would corrupt prevEta
-    if (row.is_pinned && !raw) continue;
     const qty = overrides.get(key)?.inbound_qty ?? raw?.inbound_qty ?? 0;
     const eta = container.eta ?? TODAY;
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
@@ -855,8 +853,7 @@ export function AgDemandPlanningGrid({
       if (productFilter === "orig" && row.sales_status !== "Original") return false;
       if (productFilter === "cust" && row.sales_status !== "Custom") return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
-      const displaySku = (row.base_sku ?? row.sku).toLowerCase();
-      if (query && !displaySku.includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
+      if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       const urgency = urgStatus(row);
       if (urgencyFilter === "crit") return urgency === "crit";
       if (urgencyFilter === "warn") return urgency === "warn";
@@ -869,11 +866,9 @@ export function AgDemandPlanningGrid({
       }
       return true;
     });
-    // Pinned rows at the top, Part rows at the bottom.
-    const pinned = filtered.filter((r) => r.is_pinned);
     const parts  = filtered.filter((r) => r.sales_status === "Part");
-    const rest   = filtered.filter((r) => !r.is_pinned && r.sales_status !== "Part");
-    return [...pinned, ...rest, ...parts].map((row) => ({
+    const rest   = filtered.filter((r) => r.sales_status !== "Part");
+    return [...rest, ...parts].map((row) => ({
       ...row,
       ...(rowOverrides.get(row.sku) ?? {}),
       ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
@@ -1374,21 +1369,15 @@ export function AgDemandPlanningGrid({
       pinned: shouldPin ? "left" : undefined,
       valueGetter: (params) => {
         if (!params.data) return "";
-        // For pinned rows' SKU cell, show the real SKU (base_sku) not the synthetic key.
-        if (column.id === "sku" && params.data.is_pinned) {
-          const realSku = params.data.base_sku ?? params.data.sku;
-          return { html: `<span class="dot d-ok"></span>${realSku}` };
-        }
         return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
       },
       cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : column.id === "transit" ? TransitCellRenderer : column.id === "mode" ? StockModeCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
         ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
             copyValue: column.id === "sku"
-              ? (params.data?.base_sku ?? params.data?.sku ?? "")
+              ? (params.data?.sku ?? "")
               : params.data?.containers_list ?? "",
             label: column.id === "sku" ? "Master SKU" : "Containers List",
-            badge: column.id === "sku" && params.data?.is_pinned ? (params.data.pin_label ?? "Ref") : undefined,
           })
         : column.id === "cbm"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
@@ -1704,7 +1693,7 @@ export function AgDemandPlanningGrid({
               }
               gridRef.current?.api.refreshCells({ force: true });
               onCellSelectionChange?.([...selectedCellsRef.current]);
-              onAgCellSelected?.({ rowId: event.data.sku, columnId, label: `${event.data.base_sku ?? event.data.sku} / ${event.column.getColDef().headerName ?? columnId}` });
+              onAgCellSelected?.({ rowId: event.data.sku, columnId, label: `${event.data.sku} / ${event.column.getColDef().headerName ?? columnId}` });
             }}
             rowHeight={28}
             headerHeight={45}
@@ -1723,7 +1712,6 @@ export function AgDemandPlanningGrid({
             }}
             getRowStyle={(params) => {
               if (!params.data) return undefined;
-              if (params.data.is_pinned) return { backgroundColor: "#FFFBEB" };
               if (urgStatus(params.data) === "crit") return { backgroundColor: "#FFF5F5" };
               return undefined;
             }}
