@@ -285,7 +285,8 @@ async function fetchModeRows(
   item: string,
   channels: string[],
   ranges: PeriodRange[],
-  tz: "utc" | "la" = "utc"
+  tz: "utc" | "la" = "utc",
+  combined?: boolean
 ): Promise<VelocityRow[]> {
   const dbChannels = [...new Set(channels.map((ch) => CHANNEL_DB_KEY[ch] ?? ch))];
   const params = new URLSearchParams({
@@ -294,6 +295,7 @@ async function fetchModeRows(
     mode,
     ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
     tz,
+    ...(combined ? { combined: "1" } : {}),
   });
   const res = await fetch(apiPath(`/api/velocity/data?${params}`));
   const data = await res.json();
@@ -441,7 +443,8 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Start table loading after velocity query changes.
     setLoading(true);
-    fetchModeRows(mode, selectedItem, selectedChannels, ranges, timezone)
+    const combined = selectedItem === "Car Cover" && mode === "preorder";
+    fetchModeRows(mode, selectedItem, selectedChannels, ranges, timezone, combined)
       .then((rows) => setAllRows(rows))
       .catch(() => {})
       .finally(() => setLoading(false));

@@ -58,6 +58,9 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: true, link: [], custom: [], ttm: [] });
       }
 
+      // combined=1: preorder + ttm_preorder를 master_sku 기준으로 합산 (Car Cover용)
+      const combined = p.get("combined") === "1";
+
       const linkCols = ranges
         .map(
           ({ from, to }, i) =>
@@ -65,20 +68,26 @@ export async function GET(req: NextRequest) {
         )
         .join(", ");
 
+      const linkOrderFilter = combined
+        ? `order_type IN ('preorder', 'ttm_preorder')`
+        : `order_type = 'preorder'`;
+
       const linkQuery = pool.query(
         `SELECT link_master_sku AS master_sku, ${linkCols}
          FROM shipcore.fc_velocity_link_snapshot
-         WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
+         WHERE item_category = ANY($1) AND channel = ANY($2) AND ${linkOrderFilter}
          GROUP BY link_master_sku ORDER BY qty_0 DESC`,
         [items, channels]
       );
-      const ttmQuery = pool.query(
-        `SELECT link_master_sku AS master_sku, ${linkCols}
-         FROM shipcore.fc_velocity_link_snapshot
-         WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'ttm_preorder'
-         GROUP BY link_master_sku ORDER BY qty_0 DESC`,
-        [items, channels]
-      );
+      const ttmQuery = combined
+        ? Promise.resolve({ rows: [] as Record<string, unknown>[] })
+        : pool.query(
+            `SELECT link_master_sku AS master_sku, ${linkCols}
+             FROM shipcore.fc_velocity_link_snapshot
+             WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'ttm_preorder'
+             GROUP BY link_master_sku ORDER BY qty_0 DESC`,
+            [items, channels]
+          );
       const customQuery = needsCustom
         ? pool.query(
             `SELECT custom_master_sku AS master_sku, ${ranges

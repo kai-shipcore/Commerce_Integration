@@ -215,7 +215,10 @@ export async function POST() {
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
            AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
-           AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
+           AND (
+             LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
+             OR COALESCE(l.is_preorder::boolean, false)
+           )
            AND NOT (l.platform_source::text = 'SHOPIFY_ICARCOVER' AND l.tags IS NOT NULL AND (l.tags ILIKE '%ebay%' OR l.tags ILIKE '%influencer%'))
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
       ),
@@ -232,7 +235,10 @@ export async function POST() {
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
            AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
-           AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
+           AND (
+             LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded')
+             OR COALESCE(c.is_preorder::boolean, false)
+           )
            AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
       ),
