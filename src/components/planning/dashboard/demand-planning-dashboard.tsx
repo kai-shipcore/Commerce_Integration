@@ -38,6 +38,8 @@ import {
 import {
   DEFAULT_GRADIENT,
   DEFAULT_GRADIENT_SC,
+  GRADIENT_SC_STORAGE_KEY,
+  GRADIENT_STORAGE_KEY,
   loadSavedGradient,
   loadSavedGradientSC,
   saveGradient,
@@ -396,7 +398,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setGradient(loadSavedGradient());
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setGradientSC(loadSavedGradientSC());
   }, []);
 
@@ -467,6 +468,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           window.localStorage.setItem(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(sf));
           setSeasonalFactors(sf as SeasonalFactors);
         }
+
+        // Gradient tiers
+        const gd = d[GRADIENT_STORAGE_KEY];
+        if (Array.isArray(gd) && gd.length > 0) {
+          window.localStorage.setItem(GRADIENT_STORAGE_KEY, JSON.stringify(gd));
+          setGradient(gd as GradientTier[]);
+        }
+
+        const gdSC = d[GRADIENT_SC_STORAGE_KEY];
+        if (Array.isArray(gdSC) && gdSC.length > 0) {
+          window.localStorage.setItem(GRADIENT_SC_STORAGE_KEY, JSON.stringify(gdSC));
+          setGradientSC(gdSC as GradientTier[]);
+        }
       })
       .catch(() => {})
       .finally(() => setDbPrefsLoaded(true));
@@ -496,8 +510,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
       [CELL_COLORS_STORAGE_KEY]: cellColors,
       [SEASONAL_FACTORS_STORAGE_KEY]: seasonalFactors,
+      [GRADIENT_STORAGE_KEY]: gradient,
+      [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, seasonalFactors, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, seasonalFactors, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
