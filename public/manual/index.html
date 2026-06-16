@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demand Pilot – 사용자 매뉴얼</title>
+<style>
+  :root {
+    --brand: #1a56db;
+    --brand-dark: #1239a0;
+    --accent: #0ea5e9;
+    --green: #16a34a;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --yellow: #ca8a04;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-400: #9ca3af;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --radius: 10px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.09);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* ── 레이아웃 ── */
+  .layout { display: flex; min-height: 100vh; }
+
+  /* 사이드바 */
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--gray-900);
+    color: #e2e8f0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 28px 0 40px;
+  }
+  .sidebar-logo {
+    padding: 0 24px 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 16px;
+  }
+  .sidebar-logo h1 { font-size: 18px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+  .sidebar-logo p { font-size: 11px; color: var(--gray-400); margin-top: 3px; }
+  .nav-section { padding: 8px 24px 4px; font-size: 10px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 24px; cursor: pointer; text-decoration: none;
+    color: #cbd5e1; font-size: 13.5px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
+  .nav-item.active { background: rgba(26,86,219,0.25); border-left-color: var(--brand); color: #fff; font-weight: 600; }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-sub { padding: 4px 24px 4px 54px; font-size: 12px; color: #94a3b8; text-decoration: none; display: block; }
+  .nav-sub:hover { color: #e2e8f0; }
+
+  /* 본문 */
+  .main { flex: 1; min-width: 0; }
+  .page-section {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 56px 48px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .page-section:last-child { border-bottom: none; }
+
+  /* 커버 */
+  .cover {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #1a56db 100%);
+    color: #fff;
+    padding: 80px 48px;
+    max-width: 100%;
+  }
+  .cover-inner { max-width: 980px; margin: 0 auto; }
+  .cover h1 { font-size: 40px; font-weight: 800; letter-spacing: -1px; margin-bottom: 16px; }
+  .cover h1 span { color: #60a5fa; }
+  .cover p { font-size: 17px; color: #94a3b8; max-width: 560px; margin-bottom: 36px; }
+  .cover-badges { display: flex; gap: 10px; flex-wrap: wrap; }
+  .badge {
+    padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: rgba(255,255,255,0.12); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2);
+  }
+
+  /* 섹션 헤더 */
+  .section-header {
+    display: flex; align-items: flex-start; gap: 18px;
+    margin-bottom: 36px; padding-bottom: 24px; border-bottom: 2px solid var(--gray-200);
+  }
+  .section-icon {
+    width: 56px; height: 56px; border-radius: 14px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+  }
+  .section-header h2 { font-size: 26px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.5px; }
+  .section-header .subtitle { font-size: 14px; color: var(--gray-600); margin-top: 4px; }
+  .menu-path {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: 6px;
+    padding: 4px 10px; font-size: 12px; color: var(--gray-600); margin-bottom: 10px;
+  }
+
+  /* 스크린샷 */
+  .screenshot-box {
+    width: 100%; border-radius: var(--radius); overflow: hidden;
+    border: 1px solid var(--gray-200); box-shadow: var(--shadow);
+    margin: 24px 0; position: relative; background: var(--gray-100);
+  }
+  .screenshot-box img { width: 100%; display: block; }
+  .screenshot-placeholder {
+    height: 360px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    background: linear-gradient(135deg, #e0e7ff 0%, #dbeafe 100%);
+  }
+  .screenshot-placeholder .ph-icon { font-size: 40px; opacity: 0.5; }
+  .screenshot-placeholder p { color: var(--gray-600); font-size: 14px; }
+  .screenshot-caption {
+    display: flex; align-items: center; gap-6px;
+    background: var(--gray-800); color: #e2e8f0;
+    padding: 8px 16px; font-size: 12px;
+  }
+
+  /* 카드 그리드 */
+  .card-grid { display: grid; gap: 16px; margin: 20px 0; }
+  .card-grid.col2 { grid-template-columns: 1fr 1fr; }
+  .card-grid.col3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card {
+    background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius);
+    padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .card h4 { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .card p { font-size: 13px; color: var(--gray-600); line-height: 1.6; }
+  .card ul { padding-left: 16px; font-size: 13px; color: var(--gray-600); line-height: 1.8; }
+
+  /* 스텝 */
+  .steps { counter-reset: step; display: flex; flex-direction: column; gap: 0; }
+  .step {
+    display: flex; gap: 20px; padding: 20px 0;
+    border-bottom: 1px solid var(--gray-200);
+    counter-increment: step;
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700;
+  }
+  .step h4 { font-size: 15px; font-weight: 700; color: var(--gray-800); margin-bottom: 6px; }
+  .step p { font-size: 13.5px; color: var(--gray-600); }
+
+  /* 콜아웃 */
+  .callout {
+    display: flex; gap: 14px; padding: 16px 18px; border-radius: 8px; margin: 20px 0;
+    font-size: 13.5px;
+  }
+  .callout.tip { background: #eff6ff; border-left: 4px solid var(--brand); color: #1e40af; }
+  .callout.warn { background: #fefce8; border-left: 4px solid var(--yellow); color: #713f12; }
+  .callout.info { background: #f0fdf4; border-left: 4px solid var(--green); color: #14532d; }
+  .callout-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .callout b { font-weight: 700; }
+
+  /* UI 레이블 */
+  .ui-label {
+    display: inline-block; background: var(--gray-800); color: #e2e8f0;
+    border-radius: 4px; padding: 1px 7px; font-size: 12px; font-family: monospace;
+    vertical-align: middle;
+  }
+  .btn-label {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--gray-100); border: 1px solid var(--gray-300);
+    border-radius: 5px; padding: 2px 9px; font-size: 12px; color: var(--gray-700);
+    vertical-align: middle;
+  }
+  kbd { background: var(--gray-200); border: 1px solid var(--gray-300); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+
+  /* 기능 테이블 */
+  .feat-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 20px 0; }
+  .feat-table th {
+    background: var(--gray-800); color: #e2e8f0; text-align: left;
+    padding: 10px 16px; font-weight: 600; font-size: 12px;
+  }
+  .feat-table td { padding: 10px 16px; border-bottom: 1px solid var(--gray-200); vertical-align: top; }
+  .feat-table tr:last-child td { border-bottom: none; }
+  .feat-table tr:hover td { background: var(--gray-50); }
+  .feat-table .label { font-weight: 600; color: var(--gray-800); white-space: nowrap; }
+
+  /* 상태 뱃지 */
+  .status { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .status.draft { background: #f3f4f6; color: #6b7280; }
+  .status.final { background: #dbeafe; color: #1d4ed8; }
+  .status.packing { background: #fef9c3; color: #854d0e; }
+  .status.complete { background: #dcfce7; color: #15803d; }
+  .status.critical { background: #fee2e2; color: #991b1b; }
+  .status.warn { background: #fef9c3; color: #854d0e; }
+
+  /* TOC */
+  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 32px; }
+  .toc-item {
+    display: flex; align-items: center; gap: 14px;
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 10px;
+    padding: 16px 18px; text-decoration: none; color: var(--gray-800);
+    transition: all 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .toc-item:hover { border-color: var(--brand); box-shadow: 0 2px 8px rgba(26,86,219,0.12); }
+  .toc-num { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0; }
+  .toc-item h3 { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .toc-item p { font-size: 12px; color: var(--gray-500); }
+
+  h3 { font-size: 18px; font-weight: 700; color: var(--gray-800); margin: 32px 0 14px; }
+  h3.sub { font-size: 15px; font-weight: 700; margin: 24px 0 10px; color: var(--gray-700); border-left: 3px solid var(--brand); padding-left: 10px; }
+  p { margin-bottom: 10px; }
+  ul, ol { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; font-size: 14px; color: var(--gray-700); }
+
+  .divider { height: 1px; background: var(--gray-200); margin: 32px 0; }
+  .tip-row { display: flex; gap: 16px; }
+  .tip-row .callout { flex: 1; margin: 0; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .page-section { padding: 32px 20px; }
+    .card-grid.col2, .card-grid.col3 { grid-template-columns: 1fr; }
+    .toc { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ───────── 사이드바 ───────── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>📦 Demand Pilot</h1>
+    <p>사용자 매뉴얼 v1.0</p>
+  </div>
+  <div class="nav-section">목차</div>
+  <a class="nav-item" href="#overview"><span class="icon">🏠</span> 시작하기</a>
+  <a class="nav-item" href="#demand-planning"><span class="icon">📊</span> Demand Planning</a>
+  <a class="nav-sub" href="#dp-filters">필터 & 검색</a>
+  <a class="nav-sub" href="#dp-containers">컨테이너 열람</a>
+  <a class="nav-sub" href="#dp-autofill">자동계산 버튼 (⟳ ⟳₂ ⟳₃)</a>
+  <a class="nav-item" href="#sku-planning"><span class="icon">🔍</span> SKU Planning</a>
+  <a class="nav-sub" href="#sp-browser">SKU 목록 패널</a>
+  <a class="nav-sub" href="#sp-kpi">KPI 요약 카드</a>
+  <a class="nav-sub" href="#sp-analysis">판매 분석 탭</a>
+  <a class="nav-sub" href="#sp-inventory">재고 및 입고 탭</a>
+  <a class="nav-sub" href="#sp-recommend">컨테이너 추천 탭</a>
+  <a class="nav-item" href="#container-planning"><span class="icon">🚢</span> Container Planning</a>
+  <a class="nav-sub" href="#cp-create">컨테이너 등록</a>
+  <a class="nav-sub" href="#cp-status">상태 관리</a>
+  <a class="nav-sub" href="#cp-complete">Complete와 Demand Planning</a>
+  <a class="nav-item" href="#available-stock"><span class="icon">📦</span> Available Stock</a>
+  <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU Master</a>
+  <div class="nav-section" style="margin-top:20px">부록</div>
+  <a class="nav-item" href="#glossary"><span class="icon">📖</span> 용어 설명</a>
+</nav>
+
+<!-- ───────── 본문 ───────── -->
+<main class="main">
+
+<!-- 커버 -->
+<section class="cover" id="top">
+  <div class="cover-inner">
+    <h1>📦 Demand Pilot<br><span>사용자 매뉴얼</span></h1>
+    <p>시트 커버 · 카 커버 · 플로어 매트 상품의 재고 계획, 컨테이너 관리, 발주 최적화를 위한 운영 가이드입니다.</p>
+    <div class="cover-badges">
+      <span class="badge">📊 Demand Planning</span>
+      <span class="badge">🔍 SKU Planning</span>
+      <span class="badge">🚢 Container Planning</span>
+      <span class="badge">📦 Available Stock</span>
+      <span class="badge">🗂️ SKU Master</span>
+    </div>
+  </div>
+</section>
+
+<!-- 개요 -->
+<section class="page-section" id="overview">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">🏠</div>
+    <div>
+      <h2>시작하기</h2>
+      <p class="subtitle">Demand Pilot의 전체 메뉴 구조와 사용 흐름을 안내합니다.</p>
+    </div>
+  </div>
+
+  <p>Demand Pilot은 아마존 기반 시트 커버 · 카 커버 · 플로어 매트 상품의 <strong>재고 현황 파악 → 발주 계획 → 컨테이너 입고 관리</strong>를 하나의 화면에서 처리하는 운영 도구입니다.</p>
+
+  <h3>메뉴 구성</h3>
+  <div class="toc">
+    <a class="toc-item" href="#demand-planning">
+      <div class="toc-num" style="background:#dbeafe;color:#1d4ed8">1</div>
+      <div><h3>Demand Planning</h3><p>SKU별 재고 현황과 컨테이너 발주 계획을 한눈에</p></div>
+    </a>
+    <a class="toc-item" href="#sku-planning">
+      <div class="toc-num" style="background:#dcfce7;color:#15803d">2</div>
+      <div><h3>SKU Planning</h3><p>개별 SKU의 판매 추이와 발주 권장량 분석</p></div>
+    </a>
+    <a class="toc-item" href="#container-planning">
+      <div class="toc-num" style="background:#fef9c3;color:#854d0e">3</div>
+      <div><h3>Container Planning</h3><p>컨테이너 등록 · 패킹 리스트 · 상태 관리</p></div>
+    </a>
+    <a class="toc-item" href="#available-stock">
+      <div class="toc-num" style="background:#ffe4e6;color:#9f1239">4</div>
+      <div><h3>Available Stock</h3><p>여유 재고 · 미스테이크 오더 목록 관리</p></div>
+    </a>
+    <a class="toc-item" href="#sku-master" style="grid-column:1/-1">
+      <div class="toc-num" style="background:#f3e8ff;color:#6b21a8">5</div>
+      <div><h3>SKU Master</h3><p>SKU별 CBM · MOQ · 케이스 수량 기준 데이터 관리</p></div>
+    </a>
+  </div>
+
+  <h3>기본 사용 흐름</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>SKU Master 확인</h4><p>CBM(부피)·MOQ·발주 배수가 정확히 등록되어 있어야 발주 계산이 올바르게 동작합니다. 신규 SKU 추가 시 가장 먼저 확인하세요.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Container Planning에서 컨테이너 등록</h4><p>입고 예정 컨테이너를 등록하고 ETA(도착 예정일)를 입력합니다. SKU별 수량을 패킹 리스트로 관리합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>Demand Planning으로 발주 계획</h4><p>재고 현황과 컨테이너 체인을 확인하며 자동 계산 버튼으로 최적 발주 수량을 산출합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div><h4>Available Stock에서 여유 재고 배정</h4><p>창고에 이미 있는 여유 재고(Remaining / Mistake Order)를 컨테이너에 배정해 입고량을 조정합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div><h4>SKU Planning으로 세부 분석</h4><p>판매 트렌드가 궁금한 SKU를 선택해 판매 추이와 재고 소진일을 확인합니다.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     1. DEMAND PLANNING
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="demand-planning">
+  <div class="section-header">
+    <div class="section-icon" style="background:#dbeafe;font-size:28px">📊</div>
+    <div>
+      <div class="menu-path">메뉴 › Demand Planning</div>
+      <h2>Demand Planning</h2>
+      <p class="subtitle">전체 SKU의 재고 현황과 컨테이너 발주 계획을 통합 관리하는 메인 화면입니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/01-demand-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>Demand Planning 전체 화면</p></div><div class=\'screenshot-caption\'>▲ Demand Planning – 메인 화면 (재고 현황 + 컨테이너 체인)</div>'" alt="Demand Planning 메인 화면">
+    <div class="screenshot-caption">▲ Demand Planning – 메인 화면 (재고 현황 + 컨테이너 체인)</div>
+  </div>
+
+  <!-- 상단 필터 -->
+  <h3 id="dp-filters">① 상단 필터 & 검색</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">컨트롤</th><th>설명</th></tr>
+    <tr><td class="label">제품 선택 드롭다운</td><td><strong>Seat Cover / Car Cover / Floor Mat / Accessories</strong> 중 하나를 선택해 해당 카테고리 SKU만 표시합니다. 선택에 따라 컨테이너 목록도 자동으로 필터링됩니다.</td></tr>
+    <tr><td class="label">제품 타입</td><td>Original / Custom으로 SKU를 추가 분류합니다.</td></tr>
+    <tr><td class="label">긴급도 필터</td><td><span class="status critical">Critical</span> <span class="status warn">Warning</span> <span class="status complete">BackOrder</span> 상태의 SKU만 추려볼 때 사용합니다.</td></tr>
+    <tr><td class="label">🔍 검색창</td><td>SKU 이름 또는 컨테이너 번호로 실시간 필터링합니다.</td></tr>
+    <tr><td class="label">Con Qty 필터</td><td>발주 수량이 입력된 SKU / 비어 있는 SKU만 표시합니다.</td></tr>
+    <tr><td class="label">날짜 (As of)</td><td>특정 날짜 기준 과거 재고 현황을 조회할 때 사용합니다. 기본값은 오늘입니다.</td></tr>
+    <tr><td class="label">Sync 버튼</td><td>서버에서 최신 재고 데이터를 다시 불러옵니다.</td></tr>
+    <tr><td class="label">Export 버튼</td><td>현재 필터가 적용된 데이터를 CSV로 내보냅니다.</td></tr>
+    <tr><td class="label">Import 버튼</td><td>Transit Stock(해상 운송 중 재고)을 엑셀로 일괄 업로드합니다.</td></tr>
+  </table>
+
+  <div class="screenshot-box">
+    <img src="screenshots/01b-demand-filters.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>필터 & 상단 컨트롤 영역</p></div>'" alt="필터 영역">
+  </div>
+
+  <!-- SKU 파트 필터 -->
+  <h3 class="sub">SKU 파트 필터 (Seat Cover 전용)</h3>
+  <p>Seat Cover를 선택하면 추가로 <strong>Seat / No. / Color / Tone</strong> 4가지 필터가 나타납니다. 각 드롭다운에서 원하는 값을 복수 선택해 특정 사양의 SKU만 볼 수 있습니다.</p>
+
+  <!-- 컬럼 설정 -->
+  <h3 id="dp-containers">② 테이블 컬럼 구성</h3>
+  <p><span class="btn-label">Columns</span> 버튼을 눌러 표시할 컬럼 그룹을 선택할 수 있습니다.</p>
+  <div class="card-grid col3">
+    <div class="card">
+      <h4>📌 고정 컬럼</h4>
+      <ul>
+        <li>SKU 이름</li>
+        <li>West / East / Total 재고</li>
+        <li>Transit Stock (운송 중)</li>
+        <li>Back 수량, SOD(재고 소진일)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📈 판매 컬럼</h4>
+      <ul>
+        <li>W30D / E30D – 서/동 30일 판매</li>
+        <li>Total30D – 총 30일 판매</li>
+        <li>Total Avg Curr – 현재 일평균 판매</li>
+        <li>Inbound – 입고 예정 수량</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🚢 컨테이너 컬럼</h4>
+      <ul>
+        <li>Con. Qty – 발주 수량 (편집 가능)</li>
+        <li>Avail Qty – 컨테이너 도착 후 가용 재고</li>
+        <li>Est. Sales – 예상 판매량</li>
+        <li>Back Order – 예상 재고 부족량</li>
+        <li>Rem. Qty – 잔여 재고</li>
+        <li>Inv. Life – 재고 유지 일수</li>
+        <li>EST. SOD – 예상 재고 소진일</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 id="dp-autofill">③ Con. Qty 자동계산 버튼</h3>
+  <p>각 컨테이너 헤더에는 두 가지 자동계산 버튼이 있습니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/01c-autofill.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⟳</div><p>자동계산 버튼 영역</p></div>'" alt="자동계산 버튼">
+  </div>
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#475569">
+    <strong>UI 배치:</strong> 컨테이너 헤더에는 <code>ETA 날짜</code> → <span class="btn-label">⟳</span> → <span style="border:1px solid #60a5fa;border-radius:4px;padding:1px 6px;font-size:12px;color:#3b82f6;font-weight:700">90</span>(숫자 입력) → <span class="btn-label">⟳₂</span> → <span class="btn-label">⟳₃</span> 순서로 배치되어 있습니다.<br>
+    <strong>숫자 입력칸(90)은 ⟳₂ 전용</strong>이며, ⟳와 ⟳₃은 이 값을 사용하지 않습니다.
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:120px">버튼</th><th>목표 일수 결정 방식</th><th>언제 사용?</th></tr>
+    <tr>
+      <td class="label">⟳</td>
+      <td><strong>자동 결정 (입력값 불필요)</strong> — 컨테이너 CBM 용량(기본 80 CBM)을 최대한 채우는 최적 Inv. Life를 <strong>이진탐색</strong>으로 계산. 판매량 티어별 보너스(±일수) 자동 적용.</td>
+      <td>컨테이너 공간을 최대 활용해 최적 발주 구성이 필요할 때</td>
+    </tr>
+    <tr>
+      <td class="label"><span style="color:#2563eb">90</span> 입력 후 ⟳₂</td>
+      <td><strong>숫자 입력칸의 목표 일수 사용</strong> — <code>발주량 = ROUNDUP((일판매 × 목표일 + BackOrder − 잔여재고) ÷ step) × step</code>. 모든 SKU에 동일한 목표 일수 적용.</td>
+      <td>특정 재고 유지 일수(예: 90일)를 모든 SKU에 동일하게 적용할 때</td>
+    </tr>
+    <tr>
+      <td class="label" style="color:#059669">⟳₃</td>
+      <td><strong>다이얼로그에서 구간별 목표 설정 (입력값 불필요)</strong> — 클릭 시 다이얼로그가 열리며 일판매량 구간별로 목표 일수를 다르게 설정. 기본: ≥10개→90일, ≥5개→80일, ≥3개→70일, 나머지→60일.</td>
+      <td>판매량 많은 SKU는 길게, 적은 SKU는 짧게 차등 적용할 때</td>
+    </tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>저장 전 미리보기:</b> 세 버튼 모두 클릭 시 즉시 수량이 반영되지만 DB에는 저장되지 않습니다. 확인 후 <span class="btn-label">💾 Save</span> 버튼을 눌러야 최종 저장됩니다. 되돌리려면 <span class="btn-label">↺ Reset</span>을 누르세요.</div>
+  </div>
+
+  <h3 class="sub">⟳₂ 버튼 목표 일수 변경 방법</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>⟳₂ 버튼 왼쪽의 숫자 입력칸 클릭</h4><p>기본값은 <strong>90</strong>입니다. 클릭 후 원하는 일수를 입력합니다 (예: 60, 120).</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>⟳₂ 버튼 클릭</h4><p>입력한 일수를 기준으로 모든 SKU의 발주 수량이 다시 계산됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>💾 Save 클릭</h4><p>결과가 맞으면 Save를 눌러 DB에 저장합니다.</p></div>
+    </div>
+  </div>
+
+  <h3 class="sub">⟳₃ 버튼 구간별 목표 설정 방법</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>⟳₃ 버튼 클릭</h4><p>다이얼로그가 열리며 현재 구간 설정이 표시됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>구간 설정 확인 및 수정</h4><p><strong>Min Avg Sales</strong>(일판매 최솟값)와 <strong>Target Days</strong>(목표 재고 일수)를 원하는 값으로 수정합니다. <span class="btn-label">+</span>로 구간 추가, <span class="btn-label">×</span>로 구간 삭제 가능합니다.</p>
+        <div style="margin-top:10px">
+          <table class="feat-table" style="font-size:12px">
+            <tr><th>기본 구간</th><th>Min Avg Sales</th><th>Target Days</th></tr>
+            <tr><td>구간 1</td><td>≥ 10개/일</td><td>90일</td></tr>
+            <tr><td>구간 2</td><td>≥ 5개/일</td><td>80일</td></tr>
+            <tr><td>구간 3</td><td>≥ 3개/일</td><td>70일</td></tr>
+            <tr><td>구간 4 (기본)</td><td>≥ 0개/일</td><td>60일</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>Apply 클릭</h4><p>각 SKU의 일판매량에 해당하는 구간의 목표 일수로 발주 수량이 계산됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div><h4>💾 Save 클릭</h4><p>결과가 맞으면 Save를 눌러 DB에 저장합니다.</p></div>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">✅</span>
+    <div><b>⟳₃ 구간 설정은 세션 동안 유지됩니다.</b> 한 번 설정한 구간은 페이지를 벗어나기 전까지 다른 컨테이너에 ⟳₃를 눌러도 동일하게 적용됩니다. 컨테이너마다 다른 구간을 쓰려면 매번 다이얼로그에서 수정하세요.</div>
+  </div>
+
+  <h3>④ 컨테이너 표시 조건</h3>
+  <p>Demand Planning의 컨테이너 열은 <strong>모든 상태의 컨테이너가 표시되지 않습니다.</strong> 아래 규칙에 따라 필터링됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">컨테이너 상태</th><th>Demand Planning 표시</th><th>비고</th></tr>
+    <tr><td><span class="status final">Final List Sent</span></td><td>✅ 항상 표시</td><td>공장 발송 완료 상태</td></tr>
+    <tr><td><span class="status packing">Packing List Rcvd</span></td><td>✅ 항상 표시</td><td>패킹 리스트 수령 상태</td></tr>
+    <tr><td><span class="status draft">Draft</span></td><td>⬜ Draft 포함 토글 ON 시만 표시</td><td>상단 필터에서 수동 활성화 필요</td></tr>
+    <tr style="background:#fff7ed"><td><span class="status complete">Complete</span></td><td style="color:#dc2626;font-weight:700">❌ 표시 안 됨</td><td>입고 완료 처리된 컨테이너는 계획 대상에서 제외</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Complete 컨테이너가 목록에 없다면?</b> Container Planning 페이지에서 해당 컨테이너의 상태를 확인하세요. 상태가 <span class="status complete">Complete</span>이면 입고 완료 처리된 것이며, Demand Planning과 SKU Planning 재고 및 입고 탭 모두에서 표시되지 않습니다. 자세한 내용은 <a href="#cp-complete" style="color:var(--brand)">Container Planning &gt; Complete 상태 설명</a>을 참고하세요.</div>
+  </div>
+
+  <h3>⑤ Gradient(티어) 설정</h3>
+  <p>판매량이 높은 SKU에는 더 긴 재고 목표를 적용하는 <strong>Gradient 티어</strong>가 자동 적용됩니다. 하단 상태바의 <span class="btn-label">Gradient</span> 영역에서 기준값을 직접 수정할 수 있습니다.</p>
+  <table class="feat-table">
+    <tr><th>티어</th><th>일판매 기준 (SC 기준)</th><th>보너스 일수</th></tr>
+    <tr><td><strong>TOP</strong></td><td>≥ 18개/일</td><td>+15일</td></tr>
+    <tr><td><strong>A</strong></td><td>≥ 8개/일</td><td>+5일</td></tr>
+    <tr><td><strong>B</strong></td><td>≥ 3개/일</td><td>±0일</td></tr>
+    <tr><td><strong>C</strong></td><td>≥ 0.3개/일</td><td>−5일</td></tr>
+    <tr><td><strong>D</strong></td><td>≥ 0.1개/일</td><td>−10일</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><b>계절 배수:</b> 컨테이너 ETA 월에 따라 일판매에 계절 배수가 자동 적용됩니다 (11월 ×1.25, 12월 ×1.3). 하단 상태바의 <span class="btn-label">Seasonal</span>에서 월별 배수를 수정할 수 있습니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     2. SKU PLANNING
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="sku-planning">
+  <div class="section-header">
+    <div class="section-icon" style="background:#dcfce7;font-size:28px">🔍</div>
+    <div>
+      <div class="menu-path">메뉴 › SKU Planning</div>
+      <h2>SKU Planning</h2>
+      <p class="subtitle">개별 SKU의 판매 추이, 재고·입고 현황, 발주 권장량을 한 화면에서 상세 분석합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/02-sku-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU Planning 전체 화면</p></div>'" alt="SKU Planning">
+    <div class="screenshot-caption">▲ SKU Planning – 좌측 SKU 브라우저 + 우측 3탭 상세 분석</div>
+  </div>
+
+  <!-- 화면 구성 개요 -->
+  <h3>화면 전체 구성</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📋 좌측 패널 – SKU 브라우저 (580px)</h4>
+      <ul>
+        <li>SC / CC / FM 제품 탭 전환 (건수 뱃지 표시)</li>
+        <li>검색창: SKU명·컨테이너 번호·판매 상태 실시간 필터</li>
+        <li>긴급도별 필터 뱃지 (All / Critical / Watch / High / Low / Order Required)</li>
+        <li>SKU 목록: 재고·일판매량·SOD·권장수량 열람 및 정렬</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📊 우측 패널 – SKU 상세 분석</h4>
+      <ul>
+        <li><strong>SKU 헤더</strong>: 이름·제품명·상태·MOQ·CBM·다음 ETA</li>
+        <li><strong>KPI Strip</strong>: 5개 핵심 지표 카드</li>
+        <li><strong>판매 분석</strong> 탭: 기간별 판매 추이 차트</li>
+        <li><strong>재고 및 입고</strong> 탭: 재고 커버리지·입고 컨테이너 목록</li>
+        <li><strong>컨테이너 추천</strong> 탭: 권장 발주 수량 + What-If 시뮬레이션</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 상단 컨트롤 -->
+  <h3>상단 전역 컨트롤</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">컨트롤 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">제품 탭 (SC / CC / FM)</td><td>Seat Cover · Car Cover · Floor Mat 중 하나를 선택합니다. 탭 우측에 해당 제품의 총 SKU 수가 표시됩니다.</td></tr>
+    <tr><td class="label">Sales 있는 SKU / 전체 SKU</td><td>토글. <strong>Sales 있는 SKU</strong>: 최근 판매 실적이 있는 SKU만 표시. <strong>전체 SKU</strong>: 판매 이력 없는 SKU까지 모두 표시.</td></tr>
+    <tr><td class="label">Active 컨테이너 / Draft 포함</td><td>토글. <strong>Active 컨테이너</strong>: 확정된 컨테이너 기준 재고 계산. <strong>Draft 포함</strong>: 초안(Draft) 컨테이너 입고량까지 포함하여 계산.</td></tr>
+    <tr><td class="label">목표 재고일 (1–365)</td><td>컨테이너 추천 탭의 목표 재고 일수를 설정합니다. 이 값이 커질수록 권장 발주 수량이 늘어납니다. KPI의 재고 유지일 기준이 됩니다.</td></tr>
+    <tr><td class="label">언어 전환 (KO / EN)</td><td>화면 레이블을 한국어·영어로 전환합니다. localStorage에 저장됩니다.</td></tr>
+    <tr><td class="label">🔄 동기화</td><td>서버에서 최신 수요 계획 데이터를 다시 불러옵니다.</td></tr>
+  </table>
+
+  <!-- SKU 브라우저 패널 -->
+  <h3 id="sp-browser">① 좌측 SKU 브라우저 패널</h3>
+
+  <h3 class="sub">검색 및 필터 뱃지</h3>
+  <p>검색창에 SKU 이름, 컨테이너 번호, 또는 판매 상태 일부를 입력하면 목록이 실시간으로 좁혀집니다. 검색창 아래에는 긴급도별 필터 뱃지가 있어 클릭 한 번으로 특정 상태의 SKU만 볼 수 있습니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">필터 뱃지</th><th>조건</th></tr>
+    <tr><td class="label">All</td><td>전체 SKU (필터 없음)</td></tr>
+    <tr><td class="label"><span class="status critical">Critical</span></td><td>긴급도 = Critical인 SKU (재고 소진 임박)</td></tr>
+    <tr><td class="label"><span class="status warn">Watch</span></td><td>긴급도 = Watch인 SKU (재고 주의 필요)</td></tr>
+    <tr><td class="label"><span class="status complete">High</span></td><td>긴급도 = Healthy인 SKU (재고 양호)</td></tr>
+    <tr><td class="label">Low</td><td>Back Order(재고 부족) 수치가 음수인 SKU</td></tr>
+    <tr><td class="label">Order Required</td><td>권장 발주 수량(Rec. Qty) > 0인 SKU</td></tr>
+  </table>
+
+  <h3 class="sub">SKU 목록 컬럼 (한국어 모드 기준)</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">컬럼 헤더</th><th>내용</th></tr>
+    <tr><td class="label">Master SKU</td><td>SKU 고유 식별자. 클릭 시 우측 패널에 상세 정보가 표시됩니다. 컬럼 헤더 클릭으로 알파벳 정렬 가능.</td></tr>
+    <tr><td class="label">재고</td><td>현재 총 재고 수량 (West + East). 클릭 시 오름차순/내림차순 정렬.</td></tr>
+    <tr><td class="label">평균</td><td>현재 일평균 판매량, 소수점 2자리. 클릭 시 정렬.</td></tr>
+    <tr><td class="label">SOD</td><td>재고 소진 예정일까지 남은 일수 뱃지. <span class="status critical">D-5</span>처럼 표시. 클릭 시 정렬.</td></tr>
+    <tr><td class="label">추천</td><td>권장 발주 수량. 0 초과 시 보라색으로 강조. 클릭 시 정렬.</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>가상 스크롤링:</b> SKU 목록은 36px 행 높이의 가상 스크롤로 구현되어 수천 개의 SKU도 빠르게 렌더링됩니다. 목록이 느리게 로드될 경우 상단 제품 탭이나 검색으로 범위를 좁혀보세요.</div>
+  </div>
+
+  <!-- KPI Strip -->
+  <h3 id="sp-kpi">② KPI 요약 카드 (5개)</h3>
+  <p>SKU를 선택하면 탭 위에 5가지 핵심 지표가 카드 형태로 표시됩니다.</p>
+  <div class="card-grid col3">
+    <div class="card">
+      <h4>📦 현재 재고</h4>
+      <p>현재 창고 총 재고. 하단에 <strong>West / East</strong> 창고별 분리 수량이 표시됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>🚢 입고</h4>
+      <p>입고 예정 총 수량. 부제목으로 Draft 포함 여부와 가장 가까운 다음 ETA 날짜가 표시됩니다. 입고 예정이 없으면 <em>"활성 입고 없음"</em> 표시.</p>
+    </div>
+    <div class="card">
+      <h4>📈 예상 재고</h4>
+      <p>현재 재고 + 입고 예정 + 백오더 영향을 합산한 <strong>예상 보유 재고</strong>. 부제목에 SKU의 CBM/개 값이 표시됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>📊 일평균 판매</h4>
+      <p>현재 일평균 판매 속도. 부제목에 최근 30일 총 판매량(단위: 개)이 표시됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>⏱️ 재고 유지일</h4>
+      <p>예상 재고 유지 일수와 예상 소진일(SOD). 입고가 있을 경우 <strong>"현재 재고만"</strong> 일수(입고 제외 시 몇 일인지)도 긴급도 색상으로 표시합니다.</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Draft 포함 토글 영향:</b> 상단에서 <strong>Draft 포함</strong>을 켜면 입고·예상 재고·재고 유지일 수치가 모두 Draft 컨테이너 입고량을 포함한 값으로 바뀝니다. 확정된 입고만 보려면 <strong>Active 컨테이너</strong>로 토글을 두세요.</div>
+  </div>
+
+  <!-- 판매 분석 탭 -->
+  <h3 id="sp-analysis">③ 판매 분석 탭</h3>
+
+  <div class="screenshot-box">
+    <img src="screenshots/02a-sku-sales.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>판매 분석 탭 – 기간별 판매 추이 차트</p></div>'" alt="판매 분석 탭">
+    <div class="screenshot-caption">▲ 판매 분석 탭 – 기간별 판매 추이 차트 (Default View)</div>
+  </div>
+
+  <p>선택한 SKU의 기간별 판매 데이터를 차트와 수치 표로 확인합니다. <strong>Default View</strong>와 <strong>History View</strong> 두 가지 모드가 있습니다.</p>
+
+  <h3 class="sub">기본 보기 – 기간별 요약</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">항목 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">판매 추이 차트</td><td>7D·15D·30D·60D·90D 기간별 판매량을 막대 또는 꺾은선 차트로 시각화. 차트 우측 상단 아이콘으로 <strong>선 / 막대</strong> 전환 가능.</td></tr>
+    <tr><td class="label">West 판매 표</td><td>서부 창고 기준 7D / 15D / 30D / 60D / 90D 판매량 5행 표.</td></tr>
+    <tr><td class="label">East 판매 표</td><td>동부 창고 기준 동일 구조 5행 표. West 판매와 나란히 배치되어 지역별 비교 용이.</td></tr>
+    <tr><td class="label">평균 카드 3개</td><td><strong>이전 평균</strong>(이전 기간 일평균) · <strong>실제 평균</strong>(실제 평균) · <strong>현재 평균</strong>(현재 일평균, 파란색 강조)</td></tr>
+  </table>
+
+  <h3 class="sub">히스토리 보기 – 사용자 정의 기간</h3>
+  <p>히스토리 보기 토글을 켜면 날짜 범위 입력 필드가 나타납니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">항목</th><th>설명</th></tr>
+    <tr><td class="label">날짜 범위 입력</td><td>시작일 ~ 종료일을 직접 입력합니다. <span class="btn-label">2024-Today</span> 버튼으로 2024년부터 오늘까지 범위를 한 번에 설정할 수 있습니다.</td></tr>
+    <tr><td class="label">집계 단위 (일 / 주 / 월)</td><td><strong>일 / 주 / 월</strong> 중 선택. 선택에 따라 차트 X축 구간이 변경됩니다.</td></tr>
+    <tr><td class="label">범위 요약</td><td>선택 기간의 총 판매량과 일평균이 우측에 표시됩니다.</td></tr>
+  </table>
+
+  <!-- 재고 및 입고 탭 -->
+  <h3 id="sp-inventory">④ 재고 및 입고 탭</h3>
+
+  <div class="screenshot-box">
+    <img src="screenshots/02b-sku-inventory.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🏭</div><p>재고 및 입고 탭 – 재고 커버리지 + 입고 컨테이너 목록</p></div>'" alt="재고 및 입고 탭">
+    <div class="screenshot-caption">▲ 재고 및 입고 탭 – 재고 커버리지 진행바 + 입고 컨테이너 카드</div>
+  </div>
+
+  <p>현재 재고가 목표 일수 대비 얼마나 확보되어 있는지, 어떤 컨테이너가 언제 입고 예정인지 한눈에 확인합니다.</p>
+
+  <h3 class="sub">재고 요약 카드 (4개)</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🏬 West 재고 / East 재고</h4>
+      <p>서부·동부 창고별 현재 재고 수량. Draft 포함 시 상단에 <strong>Draft 뱃지</strong>와 Draft 합산 수량이 주황색으로 표시됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>⚠️ 백오더 / SOD</h4>
+      <p><strong>백오더</strong>: 현재 재고 부족 수량 (음수면 빨간색 표시). <strong>SOD</strong>: 재고 소진 예정일과 D-Day 카운트다운.</p>
+    </div>
+  </div>
+
+  <h3 class="sub">예상 재고 확보율 진행바</h3>
+  <p>상단 헤더 레이블: <strong>"예상 재고 확보율"</strong></p>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">확보율 퍼센트</td><td>목표 재고일 대비 현재 예상 재고의 비율. 예: <code>90일 목표의 78%</code>. 100% 미만이면 주황, 100% 이상이면 초록 진행바.</td></tr>
+    <tr><td class="label">예상 / 목표 수치</td><td>진행바 아래에 <code>예상 {X} / 목표 {Y} 개</code> 형태로 구체적인 수량 비교가 표시됩니다.</td></tr>
+    <tr><td class="label">목표일 기준</td><td>상단 전역 컨트롤의 <strong>목표 재고일</strong> 값이 여기에 그대로 반영됩니다.</td></tr>
+  </table>
+
+  <h3 class="sub">입고 컨테이너 목록</h3>
+  <p>해당 SKU가 포함된 모든 입고 예정 컨테이너를 카드 형태로 나열합니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">항목 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">컨테이너 이름</td><td>컨테이너 번호. Draft 상태이면 <span class="status draft">Draft</span> 뱃지가 함께 표시되며 카드 테두리가 주황색으로 강조됩니다.</td></tr>
+    <tr><td class="label">상태</td><td>컨테이너의 현재 상태 (Draft / Final List Sent / Packing List Rcvd / Complete).</td></tr>
+    <tr><td class="label">ETA</td><td>도착 예정일. 가까운 순서로 정렬됩니다.</td></tr>
+    <tr><td class="label">수량</td><td>이 SKU에 배정된 입고 수량.</td></tr>
+    <tr><td class="label">CBM</td><td>이 SKU가 차지하는 CBM 부피.</td></tr>
+    <tr><td class="label">카드 클릭</td><td>해당 컨테이너의 Container Planning 상세 페이지로 바로 이동합니다.</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Draft 컨테이너 확인:</b> 상단 토글을 <strong>Draft 포함</strong>으로 설정하면 아직 확정되지 않은 Draft 컨테이너도 목록에 나타납니다. Draft 포함 여부는 예상 재고 확보율 진행바 수치에도 영향을 줍니다.</div>
+  </div>
+
+  <h3 class="sub">우측 요약 카드 (4개)</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>현재 재고</h4>
+      <p>현재 창고 총 재고 수량.</p>
+    </div>
+    <div class="card">
+      <h4>입고 / 입고 (Draft 포함)</h4>
+      <p>입고 예정 총 수량. Draft 포함 설정이면 "(Draft 포함)" 표기.</p>
+    </div>
+    <div class="card">
+      <h4>예상 재고</h4>
+      <p>현재 재고 + 입고 + 백오더 합산 예상 재고.</p>
+    </div>
+    <div class="card">
+      <h4>잔여 / 오류</h4>
+      <p>Available Stock에 등록된 여유 재고(잔여)와 미스테이크 오더(오류) 수량.</p>
+    </div>
+  </div>
+
+  <!-- 컨테이너 추천 탭 -->
+  <h3 id="sp-recommend">⑤ 컨테이너 추천 탭</h3>
+
+  <div class="screenshot-box">
+    <img src="screenshots/02c-sku-recommend.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>컨테이너 추천 탭 – 권장 발주 수량 + What-If 시뮬레이션</p></div>'" alt="컨테이너 추천 탭">
+    <div class="screenshot-caption">▲ 컨테이너 추천 탭 – 권장 발주량 · 시뮬레이션 · 상세 계산 내역</div>
+  </div>
+
+  <p>목표 재고 일수를 기준으로 <strong>권장 발주 수량</strong>을 산출하고, 임의의 수량과 ETA를 입력해 시나리오를 비교합니다.</p>
+
+  <h3 class="sub">추천 컨테이너 수량</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">추천 컨테이너 수량 (대형 숫자)</td><td>MOQ·발주 배수(주문 배수)를 자동 적용한 권장 컨테이너 입고 수량. 보라색 대형 텍스트로 표시.</td></tr>
+    <tr><td class="label">주문 배수</td><td>적용된 발주 배수. 예: 5 단위 → 5, 10, 15 …</td></tr>
+    <tr><td class="label">예상 CBM</td><td>권장 수량을 적재할 경우 필요한 CBM 부피 (단위: m³).</td></tr>
+  </table>
+
+  <h3 class="sub">권장 수량 산출 근거 (4줄 설명)</h3>
+  <p>권장 박스 우측에 4가지 계산 근거가 불릿 형태로 표시됩니다.</p>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>① 목표 재고</h4>
+      <p><code>일판매 × 목표 일수</code> = 확보해야 할 목표 재고량</p>
+    </div>
+    <div class="card">
+      <h4>② 예상 재고</h4>
+      <p><code>현재 재고 + 입고 예정 + 백오더 영향</code></p>
+    </div>
+    <div class="card">
+      <h4>③ 실제 필요량</h4>
+      <p><code>목표 재고 − 예상 재고</code>, 발주 배수 단위로 올림(ROUNDUP)</p>
+    </div>
+    <div class="card">
+      <h4>④ 속도 컨텍스트</h4>
+      <p>7D 평균 vs 30D 평균 비교 및 변화율(%). 최근 판매가 가속/감속 중인지 표시.</p>
+    </div>
+  </div>
+
+  <h3 class="sub">What-if 시뮬레이션</h3>
+  <p>권장 수량이 아닌 다른 수량·ETA로 발주했을 때 어떤 결과가 나오는지 미리 계산해 봅니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">입력 항목 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">제안 컨테이너 수량</td><td>실제 발주하려는 수량을 입력합니다. 주문 배수 단위로 증감 가능. 초기값은 권장 수량.</td></tr>
+    <tr><td class="label">가정 ETA</td><td>예상 도착일을 날짜 picker로 설정합니다. 초기값은 오늘부터 90일 후.</td></tr>
+    <tr><td class="label">추천값 초기화</td><td>입력값을 시스템 권장 수량·기본 ETA로 초기화합니다.</td></tr>
+  </table>
+
+  <h3 class="sub">시뮬레이션 결과 (5개 수치)</h3>
+  <div class="card-grid col3">
+    <div class="card">
+      <h4>ETA 전 수요</h4>
+      <p>ETA 이전까지 판매될 예상 수량 (일판매 × 남은 일수).</p>
+    </div>
+    <div class="card">
+      <h4>ETA 전 백오더</h4>
+      <p>ETA 도착 전에 재고가 먼저 소진될 경우 발생하는 백오더 수량. 0 초과면 위험 색상으로 강조.</p>
+    </div>
+    <div class="card">
+      <h4>ETA 후 백오더</h4>
+      <p>ETA 도착 후 상태 기준 백오더 잔량. 0 초과면 여전히 재고 부족을 의미.</p>
+    </div>
+    <div class="card">
+      <h4>필요 CBM</h4>
+      <p>입력한 발주 수량을 적재하는 데 필요한 CBM.</p>
+    </div>
+    <div class="card">
+      <h4>예상 SOD</h4>
+      <p>시뮬레이션 조건 기준의 재고 소진 예정일.</p>
+    </div>
+  </div>
+
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:13px;color:#14532d">
+    <strong>비교 라인:</strong> 시뮬레이션 결과 아래에 <code>현재 SOD | 시뮬레이션 SOD | ETA 후 잔여</code> 3가지 수치가 한 줄로 비교 표시되어 현재 상황 대비 개선폭을 즉시 파악할 수 있습니다.
+  </div>
+
+  <h3 class="sub">계산 내역 (4열 그리드)</h3>
+  <p>시뮬레이션 결과 아래에 8가지 계산 구성 요소가 상세히 표시됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">항목 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">목표 일수</td><td>상단 컨트롤에서 설정한 목표 재고 일수</td></tr>
+    <tr><td class="label">일평균 판매</td><td>현재 일평균 판매 속도</td></tr>
+    <tr><td class="label">목표 재고</td><td>= 일평균 판매 × 목표 일수</td></tr>
+    <tr><td class="label">현재 재고</td><td>현재 창고 총 재고</td></tr>
+    <tr><td class="label">입고 / 입고 (Draft 포함)</td><td>입고 예정 총 수량 (Draft 포함 여부 표기)</td></tr>
+    <tr><td class="label">백오더 영향</td><td>현재 백오더 수량 (음수이면 재고 감소 요인)</td></tr>
+    <tr><td class="label">예상 재고</td><td>= 현재 재고 + 입고 + 백오더 영향</td></tr>
+    <tr><td class="label">필요 수량</td><td>= 목표 재고 − 예상 재고 (주문 배수 올림 전 원시 필요량)</td></tr>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">✅</span>
+    <div><b>MOQ & 주문 배수 자동 적용:</b> 필요 수량이 MOQ보다 작으면 자동으로 MOQ를 적용합니다. 최종 권장 수량은 항상 주문 배수의 배수로 올림(ROUNDUP) 처리됩니다. SKU Master에 MOQ·주문 배수가 올바르게 설정되어 있어야 합니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     3. CONTAINER PLANNING
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="container-planning">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef9c3;font-size:28px">🚢</div>
+    <div>
+      <div class="menu-path">메뉴 › Container Planning</div>
+      <h2>Container Planning</h2>
+      <p class="subtitle">입고 예정 컨테이너를 등록하고, SKU별 수량을 관리하며, 패킹 리스트 상태를 추적합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning 전체 화면</p></div>'" alt="Container Planning">
+    <div class="screenshot-caption">▲ Container Planning – 좌측 컨테이너 목록 + 우측 상세</div>
+  </div>
+
+  <h3>컨테이너 상태 흐름</h3>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 24px">
+    <span class="status draft">Draft</span>
+    <span style="color:#9ca3af;font-size:20px">→</span>
+    <span class="status final">Final List Sent</span>
+    <span style="color:#9ca3af;font-size:20px">→</span>
+    <span class="status packing">Packing List Rcvd</span>
+    <span style="color:#9ca3af;font-size:20px">→</span>
+    <span class="status complete">Complete</span>
+  </div>
+
+  <h3 id="cp-create">① 컨테이너 등록하기</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>+ Add Container 클릭</h4><p>화면 우측 상단의 <span class="btn-label">+ Add Container</span> 버튼을 클릭합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>기본 정보 입력</h4><p><strong>컨테이너 번호</strong>(예: 182-CA-SEAT), <strong>ETA</strong>(도착 예정일), <strong>목적지 창고</strong>, <strong>CBM 용량</strong>(기본 80)을 입력합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>SKU 추가</h4><p>Master SKU를 입력하고 수량을 등록합니다. 엑셀 파일로 일괄 업로드도 가능합니다 (<span class="btn-label">Import Excel</span>).</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div><h4>Available Stock 배정 (선택)</h4><p>창고에 대기 중인 여유 재고를 이 컨테이너에 배정하려면 <span class="btn-label">Available Stock</span> 버튼을 사용합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div><h4>상태 변경</h4><p>공장에 발주서를 보냈으면 <span class="status final">Final List Sent</span>으로 변경합니다. 패킹 리스트를 받으면 <span class="status packing">Packing List Rcvd</span>로 변경하세요.</p></div>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 화면 (SKU 목록)</p></div>'" alt="컨테이너 상세">
+    <div class="screenshot-caption">▲ 컨테이너 상세 – SKU별 수량·CBM 목록</div>
+  </div>
+
+  <h3 id="cp-status">② 상태별 주의사항</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">상태</th><th>편집 가능 항목</th><th>Demand Planning 표시 여부</th><th>비고</th></tr>
+    <tr>
+      <td><span class="status draft">Draft</span></td>
+      <td>모든 항목 편집 가능</td>
+      <td style="text-align:center">✅ <span style="font-size:12px;color:#6b7280">(Draft 포함 토글 ON 시)</span></td>
+      <td>초안 단계. 자유롭게 수정하세요.</td>
+    </tr>
+    <tr>
+      <td><span class="status final">Final List Sent</span></td>
+      <td>수량만 편집 가능</td>
+      <td style="text-align:center">✅ 항상 표시</td>
+      <td>공장 발송 후. SKU 추가/삭제 불가.</td>
+    </tr>
+    <tr>
+      <td><span class="status packing">Packing List Rcvd</span></td>
+      <td>읽기 전용</td>
+      <td style="text-align:center">✅ 항상 표시</td>
+      <td>패킹 리스트 수신 후. 변경 불가.</td>
+    </tr>
+    <tr style="background:#fff7ed">
+      <td><span class="status complete">Complete</span></td>
+      <td>읽기 전용</td>
+      <td style="text-align:center;color:#dc2626;font-weight:700">❌ 표시 안 됨</td>
+      <td>입고 완료. <strong>Demand Planning에서 완전 제외.</strong> 삭제는 Planner/Admin만 가능.</td>
+    </tr>
+  </table>
+
+  <!-- Complete 상태 상세 설명 -->
+  <h3 id="cp-complete">③ Complete 상태와 Demand Planning 표시 규칙</h3>
+
+  <div class="callout warn" style="margin-bottom:16px">
+    <span class="callout-icon">⚠️</span>
+    <div>
+      <b>Complete 상태 컨테이너는 Demand Planning에 표시되지 않습니다.</b><br>
+      컨테이너를 <span class="status complete">Complete</span>로 변경하는 순간, 해당 컨테이너는 Demand Planning의 컨테이너 열 목록에서 즉시 사라지고, SKU별 발주 계획(Con. Qty) 계산에서도 제외됩니다.
+    </div>
+  </div>
+
+  <p>시스템이 이렇게 동작하는 이유는 <strong>입고가 완료된 재고는 이미 창고 실재고(Current Stock)에 반영되었기 때문</strong>입니다. 이후 발주 계획은 갱신된 실재고 수치를 기준으로 다시 계산하면 됩니다.</p>
+
+  <div class="card-grid col2" style="margin:20px 0">
+    <div class="card" style="border-left:4px solid #dc2626">
+      <h4>🚫 Demand Planning에서 제외되는 조건</h4>
+      <ul>
+        <li>상태 = <span class="status complete">Complete</span></li>
+        <li>컨테이너 열이 사라지고 Con. Qty 계산에서 제외</li>
+        <li>자동계산 버튼(⟳ / ⟳₂ / ⟳₃) 결과에도 미반영</li>
+        <li>SKU Planning &gt; 재고 및 입고 탭의 입고 컨테이너 목록에도 미표시</li>
+      </ul>
+    </div>
+    <div class="card" style="border-left:4px solid #16a34a">
+      <h4>✅ Demand Planning에 표시되는 조건</h4>
+      <ul>
+        <li>상태 = <span class="status final">Final List Sent</span></li>
+        <li>상태 = <span class="status packing">Packing List Rcvd</span></li>
+        <li>상태 = <span class="status draft">Draft</span> <em>(Draft 포함 토글 ON 시에만)</em></li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sub">상태 전환 시 Demand Planning 변화 흐름</h3>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 8px">
+    <span class="status draft">Draft</span>
+    <span style="color:#9ca3af">→</span>
+    <span class="status final">Final List Sent</span>
+    <span style="color:#9ca3af">→</span>
+    <span class="status packing">Packing List Rcvd</span>
+    <span style="color:#9ca3af">→</span>
+    <span class="status complete" style="outline:2px solid #dc2626;outline-offset:2px">Complete ❌</span>
+  </div>
+  <p style="font-size:13px;color:#6b7280;margin-top:6px">Complete로 변경되는 순간 Demand Planning 컨테이너 목록에서 제거됩니다.</p>
+
+  <table class="feat-table" style="margin-top:16px">
+    <tr><th style="width:220px">상황</th><th>권장 조치</th></tr>
+    <tr>
+      <td>실제 입고가 완료된 컨테이너</td>
+      <td><span class="status complete">Complete</span>로 변경 → 창고 재고에 반영되었으므로 Demand Planning에서 자동 제외. 이후 재고 현황은 Demand Planning의 현재 재고(Stock) 수치로 확인.</td>
+    </tr>
+    <tr>
+      <td>아직 창고 입고 전인데 Complete로 잘못 변경한 경우</td>
+      <td>Container Planning에서 해당 컨테이너를 찾아 상태를 <span class="status packing">Packing List Rcvd</span>로 되돌리면 Demand Planning에 즉시 다시 표시됩니다.</td>
+    </tr>
+    <tr>
+      <td>Complete 컨테이너 내역을 다시 보고 싶은 경우</td>
+      <td>Container Planning 페이지에서 직접 조회합니다. Demand Planning과 SKU Planning에서는 Complete 컨테이너가 표시되지 않습니다.</td>
+    </tr>
+  </table>
+
+  <div class="callout info" style="margin-top:20px">
+    <span class="callout-icon">✅</span>
+    <div>
+      <b>올바른 Complete 처리 순서:</b>
+      <ol style="margin-top:8px;padding-left:18px;line-height:2">
+        <li>실물 입고 확인 후 Container Planning에서 해당 컨테이너 클릭</li>
+        <li>상태를 <span class="status complete">Complete</span>로 변경</li>
+        <li>외부 재고 DB 동기화 후 Demand Planning에서 <span class="btn-label">🔄 Sync</span> 클릭</li>
+        <li>현재 재고(Stock) 수치가 갱신된 것을 확인하고 발주 계획을 재검토</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="tip-row" style="margin-top:20px">
+    <div class="callout tip">
+      <span class="callout-icon">💡</span>
+      <div><b>패킹 리스트 내보내기:</b> 컨테이너 상세 화면에서 <span class="btn-label">Export Excel</span>을 클릭하면 패킹 리스트를 엑셀 파일로 다운로드할 수 있습니다.</div>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">⚠️</span>
+      <div><b>CBM 초과 주의:</b> 화면 상단에 현재 CBM 사용률이 표시됩니다. 80 CBM을 초과하지 않도록 주의하세요.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     4. AVAILABLE STOCK
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="available-stock">
+  <div class="section-header">
+    <div class="section-icon" style="background:#ffe4e6;font-size:28px">📦</div>
+    <div>
+      <div class="menu-path">메뉴 › Available Stock</div>
+      <h2>Available Stock</h2>
+      <p class="subtitle">창고에 대기 중인 여유 재고와 미스테이크 오더를 등록·관리하고 컨테이너에 배정합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/04-available-stock.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>Available Stock 화면</p></div>'" alt="Available Stock">
+    <div class="screenshot-caption">▲ Available Stock – Remaining List / Mistake Order 탭</div>
+  </div>
+
+  <h3>탭 구성</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📋 Remaining List</h4>
+      <p>생산 완료 후 창고에 대기 중인 정상 재고입니다. TH(태국) 번호를 기준으로 관리합니다.</p>
+    </div>
+    <div class="card">
+      <h4>🔄 Mistake Order List</h4>
+      <p>발주 오류·취소 등으로 발생한 여유 재고입니다. Remaining과 동일한 방식으로 관리합니다.</p>
+    </div>
+  </div>
+
+  <h3>재고 등록하기</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>Reference No. 입력</h4><p>TH 번호(예: TH-2024-001)를 입력합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Master SKU 입력</h4><p>SKU를 입력하면 SKU Master에서 CBM을 자동으로 가져옵니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>수량 입력 후 Register</h4><p>총 수량을 입력하고 <span class="btn-label">Register</span>를 클릭합니다.</p></div>
+    </div>
+  </div>
+
+  <h3>수량 상태 이해하기</h3>
+  <table class="feat-table">
+    <tr><th>컬럼</th><th>의미</th></tr>
+    <tr><td class="label">Total Qty</td><td>등록된 전체 수량</td></tr>
+    <tr><td class="label">Allocated Qty</td><td>컨테이너에 이미 배정된 수량 (주황색으로 표시)</td></tr>
+    <tr><td class="label">Available Qty</td><td>아직 배정되지 않은 사용 가능 수량 (Total − Allocated)</td></tr>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">✅</span>
+    <div><b>일괄 등록:</b> <span class="btn-label">📥 Import Excel</span> 버튼을 사용하면 엑셀로 한 번에 여러 항목을 등록할 수 있습니다. <span class="btn-label">📄 Template</span>으로 양식을 먼저 다운로드하세요.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     5. SKU MASTER
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="sku-master">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f3e8ff;font-size:28px">🗂️</div>
+    <div>
+      <div class="menu-path">메뉴 › SKU Master</div>
+      <h2>SKU Master</h2>
+      <p class="subtitle">SKU별 CBM(부피)·MOQ(최소 발주)·발주 배수·케이스 수량 등 기준 데이터를 관리합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/05-sku-master.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU Master 화면</p></div>'" alt="SKU Master">
+    <div class="screenshot-caption">▲ SKU Master – 전체 SKU 목록 및 편집 화면</div>
+  </div>
+
+  <h3>주요 컬럼 설명</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">항목</th><th>설명</th><th style="width:120px">예시</th></tr>
+    <tr><td class="label">Master SKU</td><td>고유 SKU 식별자</td><td><code style="font-size:12px">CA-SC-10-F-10-BK-1TO</code></td></tr>
+    <tr><td class="label">CBM / Unit</td><td>박스 1개당 부피(㎥). 발주 계산의 핵심 값.</td><td>0.042500</td></tr>
+    <tr><td class="label">MOQ</td><td>최소 발주 수량. 이 수량 미만으로 발주 불가.</td><td>10</td></tr>
+    <tr><td class="label">Order Multiple</td><td>발주 수량의 배수 단위 (예: 5 → 5, 10, 15, 20…)</td><td>5</td></tr>
+    <tr><td class="label">Case Qty</td><td>박스 1개에 들어가는 제품 수량</td><td>1</td></tr>
+    <tr><td class="label">Status</td><td><span class="status complete">Active</span> / <span class="status draft">Inactive</span> – 비활성화 시 발주 계산에서 제외</td><td></td></tr>
+  </table>
+
+  <h3>SKU 정보 수정하기</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>검색으로 SKU 찾기</h4><p>상단 검색창에 SKU 이름 일부를 입력하거나 제품 타입 드롭다운으로 범위를 좁힙니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Edit 버튼 클릭</h4><p>수정할 SKU 행의 <span class="btn-label">Edit</span> 버튼을 클릭하면 CBM·MOQ·배수·케이스 수량 필드가 편집 가능해집니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>값 수정 후 Done 클릭</h4><p>수정 완료 후 <span class="btn-label">Done</span>을 클릭하면 자동으로 저장됩니다.</p></div>
+    </div>
+  </div>
+
+  <div class="card-grid col2">
+    <div class="callout tip" style="margin:0">
+      <span class="callout-icon">💡</span>
+      <div><b>일괄 CBM 업데이트:</b> <span class="btn-label">Import Excel</span>로 여러 SKU의 CBM을 한번에 업데이트할 수 있습니다.</div>
+    </div>
+    <div class="callout info" style="margin:0">
+      <span class="callout-icon">🔄</span>
+      <div><b>재고 동기화:</b> <span class="btn-label">Sync Inventory</span>를 누르면 외부 재고 DB에서 최신 데이터를 가져옵니다.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     부록: 용어 설명
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="glossary">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f9fafb">📖</div>
+    <div>
+      <h2>용어 설명</h2>
+      <p class="subtitle">Demand Pilot에서 자주 사용하는 용어 정리입니다.</p>
+    </div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:140px">용어</th><th>설명</th></tr>
+    <tr><td class="label">CBM</td><td>Cubic Meter. 박스 1개의 부피(㎥). 컨테이너 적재량 계산의 기준.</td></tr>
+    <tr><td class="label">MOQ</td><td>Minimum Order Quantity. 한 번에 발주 가능한 최소 수량.</td></tr>
+    <tr><td class="label">ETA</td><td>Estimated Time of Arrival. 컨테이너 도착 예정일.</td></tr>
+    <tr><td class="label">SOD</td><td>Sell-Out Date. 현재 재고가 모두 소진되는 예상 날짜.</td></tr>
+    <tr><td class="label">INV Life</td><td>Inventory Life. 현재 재고가 몇 일간 유지되는지 나타내는 지표 (재고 ÷ 일평균 판매).</td></tr>
+    <tr><td class="label">Back Order</td><td>재고 부족으로 발생한 미처리 수요. 음수 재고 상태.</td></tr>
+    <tr><td class="label">Carryover</td><td>컨테이너 도착 이후 남는 잔여 재고.</td></tr>
+    <tr><td class="label">Transit Stock</td><td>현재 해상 운송 중인 재고 (아직 창고에 미입고).</td></tr>
+    <tr><td class="label">Con. Qty</td><td>Container Quantity. 해당 컨테이너에 담을 발주 수량.</td></tr>
+    <tr><td class="label">Gradient Tier</td><td>일판매량 구간별 재고 목표 일수 보너스 테이블. TOP·A·B·C·D 5단계.</td></tr>
+    <tr><td class="label">Remaining List</td><td>생산 완료 후 창고에서 입고 대기 중인 정상 재고 목록.</td></tr>
+    <tr><td class="label">Mistake Order</td><td>발주 오류·취소 등으로 발생한 잉여 재고 목록.</td></tr>
+  </table>
+
+  <div class="divider"></div>
+  <p style="text-align:center;color:var(--gray-400);font-size:12px">Demand Pilot 사용자 매뉴얼 v1.0 · 2026.06 · shipcore.com</p>
+</section>
+
+</main>
+</div>
+
+<script>
+// 사이드바 활성 항목 하이라이트
+const sections = document.querySelectorAll('[id]');
+const navItems = document.querySelectorAll('.nav-item');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      navItems.forEach(item => item.classList.remove('active'));
+      const active = document.querySelector(`.nav-item[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { threshold: 0.3 });
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
