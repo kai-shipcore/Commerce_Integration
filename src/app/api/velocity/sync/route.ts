@@ -217,7 +217,7 @@ export async function POST() {
            AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
              LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
-             OR COALESCE(l.is_preorder::boolean, false)
+             OR (COALESCE(l.is_preorder::boolean, false) AND LOWER(l.item_status) != 'cancelled')
            )
            AND NOT (l.platform_source::text = 'SHOPIFY_ICARCOVER' AND l.tags IS NOT NULL AND (l.tags ILIKE '%ebay%' OR l.tags ILIKE '%influencer%'))
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
@@ -237,7 +237,7 @@ export async function POST() {
            AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
              LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
-             OR COALESCE(c.is_preorder::boolean, false)
+             OR (COALESCE(c.is_preorder::boolean, false) AND LOWER(c.item_status) != 'cancelled')
            )
            AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
