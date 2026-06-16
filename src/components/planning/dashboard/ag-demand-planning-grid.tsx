@@ -1300,15 +1300,15 @@ export function AgDemandPlanningGrid({
 
     setQtyOverrides((cur) => {
       const next = new Map(cur);
-      const sorted = [...visibleRows]
+      let usedCbm = 0;
+      const rowsInViewOrder = [...visibleRows]
         .filter((r) => {
           if ((r.category_code ?? "").toLowerCase() !== categoryFilter) return false;
           if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
           return true;
-        })
-        .sort((a, b) => b.total_avg_curr - a.total_avg_curr);
+        });
 
-      for (const row of sorted) {
+      for (const row of rowsInViewOrder) {
         const isSC = row.category_code === "SC";
         const adjDaily = row.total_avg_curr * seasonFactor;
         const step = row.order_multiple ?? 1;
@@ -1329,10 +1329,14 @@ export function AgDemandPlanningGrid({
 
         const key = `${row.sku}::${container.name}`;
         const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+        const orderCbm = qty * cbmUnit;
+        if (usedCbm + orderCbm > container.cbm_cap) break;
+        usedCbm += orderCbm;
+
         next.set(key, {
           inbound_qty: qty,
           avail_qty: qty,
-          cbm: qty * cbmUnit,
+          cbm: orderCbm,
           cbm_unit: cbmUnit,
           item_id: row.containers?.[container.name]?.item_id ?? undefined,
           allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
@@ -1346,13 +1350,40 @@ export function AgDemandPlanningGrid({
 
   const saveContainer = useCallback(async (container: ContainerMeta): Promise<void> => {
     if (!container.container_id) return;
-    setSavingContainers((s) => new Set(s).add(container.name));
     const items: Array<{ sku: string; qty: number }> = [];
+    const rowMap = new Map(visibleRows.map((row) => [row.sku, row]));
+    let totalQty = 0;
+    let totalCbm = 0;
     for (const [key, val] of qtyOverrides.entries()) {
       if (!key.endsWith(`::${container.name}`)) continue;
       const sku = key.slice(0, -(container.name.length + 2));
-      if ((val.inbound_qty ?? 0) > 0) items.push({ sku, qty: val.inbound_qty! });
+      const qty = val.inbound_qty ?? 0;
+      if (qty > 0) {
+        items.push({ sku, qty });
+        totalQty += qty;
+        const row = rowMap.get(sku);
+        const cbmUnit = val.cbm_unit ?? ((row?.cbm_per_unit ?? 0) / (row?.case_qty || 1));
+        totalCbm += qty * cbmUnit;
+      }
     }
+
+    const previewLines = items
+      .slice(0, 10)
+      .map((item) => `${item.sku}: ${item.qty.toLocaleString()}`);
+    const moreCount = Math.max(0, items.length - previewLines.length);
+    const confirmed = window.confirm([
+      `${container.name} Con. Qty를 저장하시겠습니까?`,
+      "",
+      `SKU: ${items.length.toLocaleString()}개`,
+      `Total Qty: ${totalQty.toLocaleString()}`,
+      `Total CBM: ${totalCbm.toFixed(2)}`,
+      "",
+      ...previewLines,
+      ...(moreCount > 0 ? [`외 ${moreCount.toLocaleString()}개 SKU`] : []),
+    ].join("\n"));
+    if (!confirmed) return;
+
+    setSavingContainers((s) => new Set(s).add(container.name));
     if (items.length > 0) {
       await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
         method: "POST",
@@ -1362,7 +1393,7 @@ export function AgDemandPlanningGrid({
     }
     setSavingContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
     setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
-  }, [qtyOverrides]);
+  }, [qtyOverrides, visibleRows]);
 
   const saveStockMode = useCallback(async (row: DemandRow): Promise<void> => {
     const next: 'onhand' | 'available' = (row.stock_mode ?? 'onhand') === 'onhand' ? 'available' : 'onhand';
@@ -1526,7 +1557,6 @@ export function AgDemandPlanningGrid({
               setAutoFillingContainers2((s) => { const n = new Set(s); n.delete(container.name); return n; });
             },
             onSave: () => {
-              if (!window.confirm('변경 사항을 저장하시겠습니까?')) return;
               void saveContainer(container);
             },
             onReset: () => {
