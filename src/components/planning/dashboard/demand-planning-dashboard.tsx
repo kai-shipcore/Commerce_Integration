@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
+import { ImportTransitStockDialog } from "./import-transit-stock-dialog";
 import { StatusBar } from "./status-bar";
 import {
   ALL_COLS,
@@ -272,6 +273,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumn, setSelectedColorColumn] = useState(BASE_COLORABLE_COLUMNS[0]?.id ?? "");
+  const [transitImportOpen, setTransitImportOpen] = useState(false);
 
   useEffect(() => {
     const today = planningLocalDateString();
@@ -825,11 +827,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [filteredRows, gridMode]);
 
   const hasData = data.rows.length > 0;
-  const containerStatusText = containerDetailsLoading
-    ? "Loading containers..."
-    : containerDetailsLoaded
-      ? "Containers ready"
-      : "Containers pending";
 
   return (
     <div
@@ -885,9 +882,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               cursor: "pointer",
             }}
           >
-            <option value="fm">Floor Mat</option>
-            <option value="cc">Car Cover</option>
             <option value="sc">Seat Cover</option>
+            <option value="cc">Car Cover</option>
+            <option value="fm">Floor Mat</option>
             <option value="ac">Accessories</option>
           </select>
         </label>
@@ -1523,22 +1520,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         />
 
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 10 }}>
-          {hasData ? (
-            <span
-              style={{
-                color: containerDetailsLoaded ? "#0A6A45" : "#7A766F",
-                background: containerDetailsLoaded ? "#E3F5EC" : "#F5F4EF",
-                border: "1px solid #D8D6CE",
-                borderRadius: 4,
-                padding: "3px 7px",
-                fontSize: 11,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {containerStatusText}
-            </span>
-          ) : null}
           {loadError && (
             <span style={{ color: "#C42020", fontSize: 11 }}>Error: {loadError}</span>
           )}
@@ -1546,7 +1527,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "—"}
           </span>
           <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <span style={{ color: "#5A5750", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>As of</span>
             <input
               type="date"
               value={asOfDate}
@@ -1602,6 +1582,24 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             }}
           >
             {gridMode === "ag-grid" ? "Excel" : "CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTransitImportOpen(true)}
+            title="Import Transit Stock from Excel"
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "5px 10px",
+              borderRadius: 4,
+              border: "1px solid #C2BFB5",
+              background: "#fff",
+              cursor: "pointer",
+              color: "#1A1917",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Import
           </button>
           <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
             {(["link", "custom"] as VelocityMode[]).map((m) => (
@@ -1788,6 +1786,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           selectedCellKeys={selectedCellKeys}
         />}
       </div>
+      <ImportTransitStockDialog
+        open={transitImportOpen}
+        onOpenChange={setTransitImportOpen}
+        onSuccess={reload}
+      />
     </div>
   );
 }

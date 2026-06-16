@@ -26,6 +26,13 @@ import {
   urgStatus,
 } from "./columns";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { addSheetDays } from "@/lib/planning/date-utils";
@@ -90,6 +97,14 @@ type ContainerTotalColumn = {
 
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
+type SalesTargetTier = { minSales: number; targetDays: number };
+
+const DEFAULT_BACKFILL3_TIERS: SalesTargetTier[] = [
+  { minSales: 10, targetDays: 90 },
+  { minSales: 5, targetDays: 80 },
+  { minSales: 3, targetDays: 70 },
+  { minSales: 0, targetDays: 60 },
+];
 
 function readableTextColor(backgroundColor: string) {
   const match = backgroundColor.match(/^#([0-9a-fA-F]{6})$/);
@@ -694,6 +709,109 @@ function ConQtyHeader(params: IHeaderParams & {
   );
 }
 
+function targetDaysForAverage(avgSales: number, tiers: SalesTargetTier[]): number {
+  const sorted = [...tiers]
+    .filter((tier) => Number.isFinite(tier.minSales) && Number.isFinite(tier.targetDays) && tier.targetDays > 0)
+    .sort((a, b) => b.minSales - a.minSales);
+  return sorted.find((tier) => avgSales >= tier.minSales)?.targetDays ?? 0;
+}
+
+function Backfill3Dialog({
+  open,
+  containerName,
+  tiers,
+  onTierChange,
+  onAddTier,
+  onRemoveTier,
+  onOpenChange,
+  onApply,
+}: {
+  open: boolean;
+  containerName: string;
+  tiers: SalesTargetTier[];
+  onTierChange: (index: number, patch: Partial<SalesTargetTier>) => void;
+  onAddTier: () => void;
+  onRemoveTier: (index: number) => void;
+  onOpenChange: (open: boolean) => void;
+  onApply: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent style={{ maxWidth: 560 }}>
+        <DialogHeader>
+          <DialogTitle>Backfill3 Target Days</DialogTitle>
+        </DialogHeader>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}>
+          <div style={{ fontSize: 12, color: "#7A766F" }}>
+            {containerName ? `${containerName} - ` : ""}Set target days by average daily sales range.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
+            <span>Min Avg Sales</span>
+            <span>Target Days</span>
+            <span />
+          </div>
+          {tiers.map((tier, index) => (
+            <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8 }}>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={tier.minSales}
+                onChange={(event) => onTierChange(index, { minSales: Math.max(0, Number(event.target.value) || 0) })}
+                style={{ height: 32, border: "1px solid #D8D6CE", borderRadius: 4, padding: "4px 8px", fontSize: 13 }}
+              />
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={tier.targetDays}
+                onChange={(event) => onTierChange(index, { targetDays: Math.max(1, Number(event.target.value) || 1) })}
+                style={{ height: 32, border: "1px solid #D8D6CE", borderRadius: 4, padding: "4px 8px", fontSize: 13 }}
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveTier(index)}
+                disabled={tiers.length <= 1}
+                title="Remove tier"
+                style={{
+                  height: 32,
+                  border: "1px solid #D8D6CE",
+                  borderRadius: 4,
+                  background: tiers.length <= 1 ? "#F5F4EF" : "#fff",
+                  color: tiers.length <= 1 ? "#A8A49E" : "#C42020",
+                  cursor: tiers.length <= 1 ? "default" : "pointer",
+                  fontSize: 16,
+                  lineHeight: "16px",
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <div>
+            <Button variant="outline" size="sm" onClick={onAddTier}>
+              Add Row
+            </Button>
+          </div>
+          <div style={{ fontSize: 12, color: "#7A766F" }}>
+            Higher Min Avg Sales rows are applied first. Use Min 0 for the lowest range.
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={onApply}>
+            Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
@@ -702,10 +820,12 @@ function ContainerGroupHeader(
     onEtaChange: (value: string) => void;
     onAutoFill?: () => void;
     onAutoFill2?: (days: number) => void;
+    onAutoFill3?: () => void;
     onSave?: () => void;
     onReset?: () => void;
     autoFilling?: boolean;
     autoFilling2?: boolean;
+    autoFilling3?: boolean;
     saving?: boolean;
     dirty?: boolean;
   },
@@ -756,6 +876,14 @@ function ContainerGroupHeader(
               className="rounded px-3 py-1.5 text-[15px] bg-blue-500/30 hover:bg-blue-500/50 disabled:opacity-40 cursor-pointer"
             >
               {props.autoFilling2 ? "…" : "⟳₂"}
+            </button>
+            <button
+              onClick={props.onAutoFill3}
+              disabled={props.autoFilling3}
+              title="Con qty 세일즈 구간별 목표 계산"
+              className="rounded px-3 py-1.5 text-[15px] bg-emerald-500/30 hover:bg-emerald-500/50 disabled:opacity-40 cursor-pointer"
+            >
+              {props.autoFilling3 ? "…" : "⟳₃"}
             </button>
             {props.dirty && (
               <>
@@ -850,7 +978,10 @@ export function AgDemandPlanningGrid({
   const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers2, setAutoFillingContainers2] = useState<Set<string>>(new Set());
+  const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>>(new Set());
   const [savingContainers, setSavingContainers] = useState<Set<string>>(new Set());
+  const [backfill3Dialog, setBackfill3Dialog] = useState<{ container: ContainerMeta; containerIndex: number } | null>(null);
+  const [backfill3Tiers, setBackfill3Tiers] = useState<SalesTargetTier[]>(DEFAULT_BACKFILL3_TIERS);
 
   const containers = useMemo(
     () => data.containers
@@ -904,6 +1035,14 @@ export function AgDemandPlanningGrid({
   useEffect(() => {
     onFilteredRowsChange(visibleRows);
   }, [onFilteredRowsChange, visibleRows]);
+
+  const rowsInDisplayOrder = useCallback((): DemandRow[] => {
+    const rows: DemandRow[] = [];
+    gridRef.current?.api.forEachNodeAfterFilterAndSort((node) => {
+      if (node.data) rows.push(node.data);
+    });
+    return rows.length > 0 ? rows : visibleRows;
+  }, [visibleRows]);
 
   useEffect(() => {
     const element = gridHostRef.current;
@@ -1343,6 +1482,65 @@ export function AgDemandPlanningGrid({
     setDirtyContainers((s) => new Set(s).add(container.name));
   }, [containers, chainMap, visibleRows, categoryFilter, seasonalFactors]);
 
+  const autoFill3 = useCallback((
+    container: ContainerMeta,
+    containerIndex: number,
+    tiers: SalesTargetTier[],
+  ): void => {
+    const prevContainer = containers[containerIndex - 1];
+    if (!prevContainer) return;
+
+    const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
+    const gapBeforeDays = Math.round(
+      (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
+    );
+
+    setQtyOverrides((cur) => {
+      const next = new Map(cur);
+      const rows = rowsInDisplayOrder().filter((row) => {
+        if ((row.category_code ?? "").toLowerCase() !== categoryFilter) return false;
+        if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
+        return true;
+      });
+
+      for (const row of rows) {
+        const targetDays = targetDaysForAverage(row.total_avg_curr ?? 0, tiers);
+        if (targetDays <= 0) continue;
+
+        const isSC = row.category_code === "SC";
+        const adjDaily = row.total_avg_curr * seasonFactor;
+        const step = row.order_multiple ?? 1;
+        const moq = row.moq ?? 1;
+        const prev = chainMap.get(row.sku)?.get(prevContainer.name);
+        const prevCarryover = prev?.carryover ?? 0;
+        const bo = prev?.backorder ?? 0;
+
+        const remainingAtArrival = isSC
+          ? Math.max(0, prevCarryover - adjDaily * gapBeforeDays)
+          : prevCarryover;
+
+        const need = adjDaily * targetDays + bo - remainingAtArrival;
+        if (need <= 0) continue;
+
+        const qty = Math.ceil(Math.max(need, moq) / step) * step;
+        if (qty <= 0) continue;
+
+        const key = `${row.sku}::${container.name}`;
+        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+        next.set(key, {
+          inbound_qty: qty,
+          avail_qty: qty,
+          cbm: qty * cbmUnit,
+          cbm_unit: cbmUnit,
+          item_id: row.containers?.[container.name]?.item_id ?? undefined,
+          allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
+        });
+      }
+      return next;
+    });
+    setDirtyContainers((s) => new Set(s).add(container.name));
+  }, [categoryFilter, chainMap, containers, rowsInDisplayOrder, seasonalFactors]);
+
 
   const saveContainer = useCallback(async (container: ContainerMeta): Promise<void> => {
     if (!container.container_id) return;
@@ -1525,6 +1723,9 @@ export function AgDemandPlanningGrid({
               autoFill2(container, containerIndex, days);
               setAutoFillingContainers2((s) => { const n = new Set(s); n.delete(container.name); return n; });
             },
+            onAutoFill3: () => {
+              setBackfill3Dialog({ container, containerIndex });
+            },
             onSave: () => {
               if (!window.confirm('변경 사항을 저장하시겠습니까?')) return;
               void saveContainer(container);
@@ -1541,6 +1742,7 @@ export function AgDemandPlanningGrid({
             },
             autoFilling: autoFillingContainers.has(container.name),
             autoFilling2: autoFillingContainers2.has(container.name),
+            autoFilling3: autoFillingContainers3.has(container.name),
             saving: savingContainers.has(container.name),
             dirty: dirtyContainers.has(container.name),
           },
@@ -1860,12 +2062,37 @@ export function AgDemandPlanningGrid({
         </>
       )}
     </div>
-    {(savingContainers.size > 0 || containerDetailsLoading || !chainReadyAfterLoad || autoFillingContainers.size > 0) && (
+    <Backfill3Dialog
+      open={backfill3Dialog !== null}
+      containerName={backfill3Dialog?.container.name ?? ""}
+      tiers={backfill3Tiers}
+      onTierChange={(index, patch) => {
+        setBackfill3Tiers((current) => current.map((tier, i) => i === index ? { ...tier, ...patch } : tier));
+      }}
+      onAddTier={() => {
+        setBackfill3Tiers((current) => [...current, { minSales: 0, targetDays: 60 }]);
+      }}
+      onRemoveTier={(index) => {
+        setBackfill3Tiers((current) => current.length <= 1 ? current : current.filter((_, i) => i !== index));
+      }}
+      onOpenChange={(open) => {
+        if (!open) setBackfill3Dialog(null);
+      }}
+      onApply={() => {
+        if (!backfill3Dialog) return;
+        const { container, containerIndex } = backfill3Dialog;
+        setAutoFillingContainers3((s) => new Set(s).add(container.name));
+        autoFill3(container, containerIndex, backfill3Tiers);
+        setAutoFillingContainers3((s) => { const n = new Set(s); n.delete(container.name); return n; });
+        setBackfill3Dialog(null);
+      }}
+    />
+    {(savingContainers.size > 0 || containerDetailsLoading || !chainReadyAfterLoad || autoFillingContainers.size > 0 || autoFillingContainers3.size > 0) && (
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
         <div style={{ background: "#fff", borderRadius: 12, padding: "32px 48px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
           <div style={{ width: 36, height: 36, border: "3px solid #E2E8F0", borderTopColor: "#3B82F6", borderRadius: "50%", animation: "planning-spin 0.7s linear infinite" }} />
           <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B" }}>
-            {savingContainers.size > 0 ? "저장 중..." : autoFillingContainers.size > 0 ? "발주량 계산 중..." : "컨테이너 데이터 로딩 중..."}
+            {savingContainers.size > 0 ? "저장 중..." : autoFillingContainers.size > 0 || autoFillingContainers3.size > 0 ? "발주량 계산 중..." : "컨테이너 데이터 로딩 중..."}
           </div>
         </div>
       </div>
