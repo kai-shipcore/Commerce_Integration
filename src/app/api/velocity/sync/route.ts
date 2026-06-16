@@ -220,6 +220,7 @@ export async function POST() {
              OR COALESCE(l.is_preorder::boolean, false)
            )
            AND NOT (l.platform_source::text = 'SHOPIFY_ICARCOVER' AND l.tags IS NOT NULL AND (l.tags ILIKE '%ebay%' OR l.tags ILIKE '%influencer%'))
+           AND NOT (l.tags ILIKE '%Test%')
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
       ),
       lookupPool.query<CustomRow>(
@@ -240,6 +241,7 @@ export async function POST() {
              OR COALESCE(c.is_preorder::boolean, false)
            )
            AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
+           AND NOT (c.tags ILIKE '%Test%')
          GROUP BY 1, 2, 3, 4, 5, 6, 8`
       ),
     ]);
