@@ -6,12 +6,15 @@ ALTER TABLE shipcore.fc_products
   USING cbm_per_unit::NUMERIC(14, 6);
 
 ALTER TABLE shipcore.fc_container_items
+  DROP COLUMN total_cbm;
+
+ALTER TABLE shipcore.fc_container_items
   ALTER COLUMN cbm_unit TYPE NUMERIC(14, 6)
   USING cbm_unit::NUMERIC(14, 6);
 
 ALTER TABLE shipcore.fc_container_items
-  ALTER COLUMN total_cbm TYPE NUMERIC(14, 6)
-  USING total_cbm::NUMERIC(14, 6);
+  ADD COLUMN total_cbm NUMERIC(14, 6)
+  GENERATED ALWAYS AS (round((cbm_unit * qty::numeric), 6)) STORED;
 
 DO $$
 BEGIN
@@ -35,8 +38,15 @@ BEGIN
       AND column_name = 'cbm_unit'
   ) THEN
     ALTER TABLE shipcore.fc_purchase_order_items
+      DROP COLUMN total_cbm;
+
+    ALTER TABLE shipcore.fc_purchase_order_items
       ALTER COLUMN cbm_unit TYPE NUMERIC(14, 6)
       USING cbm_unit::NUMERIC(14, 6);
+
+    ALTER TABLE shipcore.fc_purchase_order_items
+      ADD COLUMN total_cbm NUMERIC(14, 6)
+      GENERATED ALWAYS AS (round((cbm_unit * order_qty::numeric), 6)) STORED;
   END IF;
 END $$;
 
