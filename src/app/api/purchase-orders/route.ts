@@ -286,7 +286,7 @@ export async function POST(request: NextRequest) {
         `UPDATE shipcore.fc_products
          SET moq = $2::int,
              order_multiple = $2::int,
-             cbm_per_unit = COALESCE(NULLIF($3::numeric, 0), cbm_per_unit),
+             cbm_per_unit = COALESCE(NULLIF($3::numeric(14,6), 0), cbm_per_unit),
              updated_at = NOW()
          WHERE master_sku = $1`,
         [item.sku.trim(), item.moq, item.cbm]
@@ -295,7 +295,7 @@ export async function POST(request: NextRequest) {
       await client.query(
         `INSERT INTO shipcore.fc_purchase_order_items
            (po_id, master_sku, moq, order_qty, cbm_unit, unit_price)
-         VALUES ($1::bigint, $2, $3, $4, $5, $6)`,
+         VALUES ($1::bigint, $2, $3, $4, $5::numeric(14,6), $6)`,
         [
           poId,
           item.sku.trim(),
@@ -507,7 +507,7 @@ export async function PATCH(request: NextRequest) {
         `UPDATE shipcore.fc_products
          SET moq = $2::int,
              order_multiple = $2::int,
-             cbm_per_unit = COALESCE(NULLIF($3::numeric, 0), cbm_per_unit),
+             cbm_per_unit = COALESCE(NULLIF($3::numeric(14,6), 0), cbm_per_unit),
              updated_at = NOW()
          WHERE master_sku = $1`,
         [item.sku.trim(), item.moq, item.cbm]
@@ -516,7 +516,7 @@ export async function PATCH(request: NextRequest) {
       await client.query(
         `INSERT INTO shipcore.fc_purchase_order_items
            (po_id, master_sku, moq, order_qty, cbm_unit, unit_price)
-         VALUES ($1::bigint, $2, $3, $4, $5, $6)`,
+         VALUES ($1::bigint, $2, $3, $4, $5::numeric(14,6), $6)`,
         [
           id,
           item.sku.trim(),

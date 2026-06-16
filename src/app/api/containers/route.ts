@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
       await client.query(
         `INSERT INTO shipcore.fc_container_items
            (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-         VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
+         VALUES ($1::bigint, $2, $3::int, $4::numeric(14,6), NOW(), NOW())`,
         [containerId, item.sku.trim().toUpperCase(), item.qty, item.cbm]
       );
     }
@@ -449,7 +449,7 @@ export async function PATCH(request: NextRequest) {
         await client.query(
           `INSERT INTO shipcore.fc_container_items
              (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-           VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
+           VALUES ($1::bigint, $2, $3::int, $4::numeric(14,6), NOW(), NOW())`,
           [id, item.sku.trim().toUpperCase(), item.qty, item.cbm]
         );
       }

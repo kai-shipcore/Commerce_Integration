@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
         const result = await client.query(
           `INSERT INTO shipcore.fc_available_stock
              (source_type, reference_no, pl_no, master_sku, total_qty, cbm_unit, note)
-           SELECT $1::varchar, $2::varchar, $3::varchar, $4::varchar, $5::int, $6::numeric, $7::text
+           SELECT $1::varchar, $2::varchar, $3::varchar, $4::varchar, $5::int, $6::numeric(14,6), $7::text
            WHERE NOT EXISTS (
              SELECT 1 FROM shipcore.fc_available_stock
              WHERE source_type = $1::varchar
@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
       const result = await getPrimaryPool().query(
         `INSERT INTO shipcore.fc_available_stock
            (source_type, reference_no, pl_no, master_sku, total_qty, cbm_unit, note)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         VALUES ($1, $2, $3, $4, $5, $6::numeric(14,6), $7)
          RETURNING id::text`,
         [
           validated.sourceType,
@@ -378,7 +378,7 @@ export async function PATCH(request: NextRequest) {
            pl_no = $4,
            master_sku = $5,
            total_qty = $6::int,
-           cbm_unit = $7::numeric,
+           cbm_unit = $7::numeric(14,6),
            note = $8,
            updated_at = NOW()
        WHERE id = $1::bigint`,

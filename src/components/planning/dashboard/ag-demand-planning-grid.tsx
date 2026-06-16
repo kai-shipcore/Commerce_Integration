@@ -647,7 +647,7 @@ function CbmCellRenderer({
         autoFocus
         type="number"
         min={0}
-        step="0.0001"
+        step="0.000001"
         value={inputValue}
         onClick={(event) => event.stopPropagation()}
         onChange={(event) => setInputValue(event.target.value)}
@@ -820,11 +820,13 @@ function ContainerGroupHeader(
     onEtaChange: (value: string) => void;
     onAutoFill?: () => void;
     onAutoFill2?: (days: number) => void;
+    onAutoFill21?: (days: number) => void;
     onAutoFill3?: () => void;
     onSave?: () => void;
     onReset?: () => void;
     autoFilling?: boolean;
     autoFilling2?: boolean;
+    autoFilling21?: boolean;
     autoFilling3?: boolean;
     saving?: boolean;
     dirty?: boolean;
@@ -876,6 +878,14 @@ function ContainerGroupHeader(
               className="rounded px-3 py-1.5 text-[15px] bg-blue-500/30 hover:bg-blue-500/50 disabled:opacity-40 cursor-pointer"
             >
               {props.autoFilling2 ? "…" : "⟳₂"}
+            </button>
+            <button
+              onClick={() => props.onAutoFill21?.(targetDays)}
+              disabled={props.autoFilling21}
+              title={`Backfill2-1 Google Sheet formula (${targetDays} days)`}
+              className="rounded px-2.5 py-1.5 text-[12px] font-bold bg-sky-500/30 hover:bg-sky-500/50 disabled:opacity-40 cursor-pointer"
+            >
+              {props.autoFilling21 ? "..." : "2-1"}
             </button>
             <button
               onClick={props.onAutoFill3}
@@ -978,6 +988,7 @@ export function AgDemandPlanningGrid({
   const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers2, setAutoFillingContainers2] = useState<Set<string>>(new Set());
+  const [autoFillingContainers21, setAutoFillingContainers21] = useState<Set<string>>(new Set());
   const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>>(new Set());
   const [savingContainers, setSavingContainers] = useState<Set<string>>(new Set());
   const [backfill3Dialog, setBackfill3Dialog] = useState<{ container: ContainerMeta; containerIndex: number } | null>(null);
@@ -1439,13 +1450,14 @@ export function AgDemandPlanningGrid({
 
     setQtyOverrides((cur) => {
       const next = new Map(cur);
-      const sorted = [...visibleRows]
-        .filter((r) => {
-          if ((r.category_code ?? "").toLowerCase() !== categoryFilter) return false;
-          if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
-          return true;
-        })
-        .sort((a, b) => b.total_avg_curr - a.total_avg_curr);
+      const sorted = rowsInDisplayOrder().filter((r) => {
+        if ((r.category_code ?? "").toLowerCase() !== categoryFilter) return false;
+        if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
+        return true;
+      });
+
+      let usedCbm = 0;
+      const cbmCap = container.cbm_cap;
 
       for (const row of sorted) {
         const isSC = row.category_code === "SC";
@@ -1463,11 +1475,23 @@ export function AgDemandPlanningGrid({
         const need = adjDaily * targetDays + bo - remainingAtArrival;
         if (need <= 0) continue;
 
-        const qty = Math.ceil(Math.max(need, moq) / step) * step;
+        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+        const remainingCbm = cbmCap - usedCbm;
+        if (remainingCbm <= 0) continue;
+
+        let qty = Math.ceil(Math.max(need, moq) / step) * step;
         if (qty <= 0) continue;
 
+        // Cap qty so total CBM does not exceed container capacity
+        if (cbmUnit > 0 && qty * cbmUnit > remainingCbm) {
+          const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
+          if (maxQty < moq) continue;
+          qty = maxQty;
+        }
+
+        usedCbm += qty * cbmUnit;
+
         const key = `${row.sku}::${container.name}`;
-        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
         next.set(key, {
           inbound_qty: qty,
           avail_qty: qty,
@@ -1480,7 +1504,81 @@ export function AgDemandPlanningGrid({
       return next;
     });
     setDirtyContainers((s) => new Set(s).add(container.name));
-  }, [containers, chainMap, visibleRows, categoryFilter, seasonalFactors]);
+  }, [containers, chainMap, rowsInDisplayOrder, categoryFilter, seasonalFactors]);
+
+  const autoFill21 = useCallback((
+    container: ContainerMeta,
+    containerIndex: number,
+    targetDays: number,
+  ): void => {
+    const prevContainer = containers[containerIndex - 1];
+    if (!prevContainer) return;
+
+    const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
+
+    setQtyOverrides((cur) => {
+      const next = new Map(cur);
+      const rows = rowsInDisplayOrder().filter((row) => {
+        if ((row.category_code ?? "").toLowerCase() !== categoryFilter) return false;
+        if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
+        return true;
+      });
+
+      let usedCbm = 0;
+      const cbmCap = container.cbm_cap;
+
+      for (const row of rows) {
+        const adjDaily = row.total_avg_curr * seasonFactor;
+        const step = row.order_multiple ?? 1;
+        const moq = row.moq ?? 1;
+        const prev = chainMap.get(row.sku)?.get(prevContainer.name);
+        const prevCarryover = prev?.carryover ?? 0;
+        const bo = prev?.backorder ?? 0;
+
+        const need = adjDaily * targetDays + bo - prevCarryover;
+        const key = `${row.sku}::${container.name}`;
+        if (need <= 0) {
+          next.delete(key);
+          continue;
+        }
+
+        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+        const remainingCbm = cbmCap - usedCbm;
+        if (remainingCbm <= 0) {
+          next.delete(key);
+          continue;
+        }
+
+        let qty = Math.ceil(Math.max(need, moq) / step) * step;
+        if (qty <= 0) {
+          next.delete(key);
+          continue;
+        }
+
+        if (cbmUnit > 0 && qty * cbmUnit > remainingCbm) {
+          const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
+          if (maxQty < moq) {
+            next.delete(key);
+            continue;
+          }
+          qty = maxQty;
+        }
+
+        usedCbm += qty * cbmUnit;
+
+        next.set(key, {
+          inbound_qty: qty,
+          avail_qty: qty,
+          cbm: qty * cbmUnit,
+          cbm_unit: cbmUnit,
+          item_id: row.containers?.[container.name]?.item_id ?? undefined,
+          allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
+        });
+      }
+      return next;
+    });
+    setDirtyContainers((s) => new Set(s).add(container.name));
+  }, [categoryFilter, chainMap, containers, rowsInDisplayOrder, seasonalFactors]);
 
   const autoFill3 = useCallback((
     container: ContainerMeta,
@@ -1503,6 +1601,9 @@ export function AgDemandPlanningGrid({
         return true;
       });
 
+      let usedCbm = 0;
+      const cbmCap = container.cbm_cap;
+
       for (const row of rows) {
         const targetDays = targetDaysForAverage(row.total_avg_curr ?? 0, tiers);
         if (targetDays <= 0) continue;
@@ -1522,11 +1623,23 @@ export function AgDemandPlanningGrid({
         const need = adjDaily * targetDays + bo - remainingAtArrival;
         if (need <= 0) continue;
 
-        const qty = Math.ceil(Math.max(need, moq) / step) * step;
+        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+        const remainingCbm = cbmCap - usedCbm;
+        if (remainingCbm <= 0) continue;
+
+        let qty = Math.ceil(Math.max(need, moq) / step) * step;
         if (qty <= 0) continue;
 
+        // Cap qty so total CBM does not exceed container capacity
+        if (cbmUnit > 0 && qty * cbmUnit > remainingCbm) {
+          const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
+          if (maxQty < moq) continue;
+          qty = maxQty;
+        }
+
+        usedCbm += qty * cbmUnit;
+
         const key = `${row.sku}::${container.name}`;
-        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
         next.set(key, {
           inbound_qty: qty,
           avail_qty: qty,
@@ -1541,6 +1654,47 @@ export function AgDemandPlanningGrid({
     setDirtyContainers((s) => new Set(s).add(container.name));
   }, [categoryFilter, chainMap, containers, rowsInDisplayOrder, seasonalFactors]);
 
+
+  const buildContainerSaveSummary = useCallback((container: ContainerMeta): string => {
+    const rowsBySku = new Map(data.rows.map((row) => [row.sku, row]));
+    const lines: string[] = [];
+    let totalQty = 0;
+    let totalCbm = 0;
+
+    for (const [key, val] of qtyOverrides.entries()) {
+      if (!key.endsWith(`::${container.name}`)) continue;
+      const qty = val.inbound_qty ?? 0;
+      if (qty <= 0) continue;
+
+      const sku = key.slice(0, -(container.name.length + 2));
+      const row = rowsBySku.get(sku);
+      const currentQty = row?.containers?.[container.name]?.inbound_qty ?? 0;
+      const cbmUnit = val.cbm_unit ?? ((row?.cbm_per_unit ?? 0) / (row?.case_qty || 1));
+      const cbm = val.cbm ?? qty * cbmUnit;
+      const delta = qty - currentQty;
+
+      totalQty += qty;
+      totalCbm += cbm;
+      lines.push(`${sku}: ${currentQty} -> ${qty} (${delta >= 0 ? "+" : ""}${delta}), CBM ${cbm.toFixed(6)}`);
+    }
+
+    if (lines.length === 0) {
+      return `${container.name}\n\n저장할 Backfill 수량이 없습니다.\n그래도 변경 상태를 완료 처리하시겠습니까?`;
+    }
+
+    return [
+      `${container.name} Backfill 저장 전 확인`,
+      "",
+      `업데이트 SKU: ${lines.length}개`,
+      `총 Con. Qty: ${totalQty.toLocaleString()}`,
+      `총 CBM: ${totalCbm.toFixed(6)}`,
+      "",
+      "상세 변경:",
+      ...lines,
+      "",
+      "위 내용으로 저장하시겠습니까?",
+    ].join("\n");
+  }, [data.rows, qtyOverrides]);
 
   const saveContainer = useCallback(async (container: ContainerMeta): Promise<void> => {
     if (!container.container_id) return;
@@ -1723,11 +1877,16 @@ export function AgDemandPlanningGrid({
               autoFill2(container, containerIndex, days);
               setAutoFillingContainers2((s) => { const n = new Set(s); n.delete(container.name); return n; });
             },
+            onAutoFill21: (days: number) => {
+              setAutoFillingContainers21((s) => new Set(s).add(container.name));
+              autoFill21(container, containerIndex, days);
+              setAutoFillingContainers21((s) => { const n = new Set(s); n.delete(container.name); return n; });
+            },
             onAutoFill3: () => {
               setBackfill3Dialog({ container, containerIndex });
             },
             onSave: () => {
-              if (!window.confirm('변경 사항을 저장하시겠습니까?')) return;
+              if (!window.confirm(buildContainerSaveSummary(container))) return;
               void saveContainer(container);
             },
             onReset: () => {
@@ -1742,6 +1901,7 @@ export function AgDemandPlanningGrid({
             },
             autoFilling: autoFillingContainers.has(container.name),
             autoFilling2: autoFillingContainers2.has(container.name),
+            autoFilling21: autoFillingContainers21.has(container.name),
             autoFilling3: autoFillingContainers3.has(container.name),
             saving: savingContainers.has(container.name),
             dirty: dirtyContainers.has(container.name),
@@ -1826,7 +1986,7 @@ export function AgDemandPlanningGrid({
       }
     }
     return groups;
-  }, [cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+  }, [autoFill21, autoFillingContainers21, buildContainerSaveSummary, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -2087,7 +2247,7 @@ export function AgDemandPlanningGrid({
         setBackfill3Dialog(null);
       }}
     />
-    {(savingContainers.size > 0 || containerDetailsLoading || !chainReadyAfterLoad || autoFillingContainers.size > 0 || autoFillingContainers3.size > 0) && (
+    {(savingContainers.size > 0 || containerDetailsLoading || !chainReadyAfterLoad || autoFillingContainers.size > 0 || autoFillingContainers21.size > 0 || autoFillingContainers3.size > 0) && (
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
         <div style={{ background: "#fff", borderRadius: 12, padding: "32px 48px", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
           <div style={{ width: 36, height: 36, border: "3px solid #E2E8F0", borderTopColor: "#3B82F6", borderRadius: "50%", animation: "planning-spin 0.7s linear infinite" }} />

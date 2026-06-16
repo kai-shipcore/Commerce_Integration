@@ -1004,7 +1004,7 @@ export function DemandPlanningGrid({
                             <input
                               autoFocus
                               type="number"
-                              step="0.0001"
+                              step="0.000001"
                               min={0}
                               value={cbmEditingVal}
                               onChange={(e) => { cbmEditingValRef.current = e.target.value; setCbmEditingVal(e.target.value); }}

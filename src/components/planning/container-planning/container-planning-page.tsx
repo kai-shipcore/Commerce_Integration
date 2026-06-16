@@ -1243,10 +1243,10 @@ export function ContainerPlanningPage() {
           .join(", ") || "Container / Manual",
         item.qty,
         item.cbm,
-        Number((item.qty * item.cbm).toFixed(4)),
+        Number((item.qty * item.cbm).toFixed(6)),
       ]),
       [],
-      ["Total", null, totalQty, null, Number(totalCbm.toFixed(4))],
+      ["Total", null, totalQty, null, Number(totalCbm.toFixed(6))],
     ];
 
     const XLSX = await import("xlsx");
@@ -1933,8 +1933,8 @@ function ContainerCreateForm({
             <div key={item.sku} className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${canChangeStructure ? "grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
               <span className="font-mono text-xs font-medium">{item.sku}</span>
               <span>{formatNumber(item.qty)}</span>
-              <span className="font-mono text-xs">{item.cbm.toFixed(4)}</span>
-              <span className="font-mono text-xs">{(item.qty * item.cbm).toFixed(4)}</span>
+              <span className="font-mono text-xs">{item.cbm.toFixed(6)}</span>
+              <span className="font-mono text-xs">{(item.qty * item.cbm).toFixed(6)}</span>
               {canChangeStructure ? (
                 <div className="flex justify-end">
                   <button type="button" onClick={() => onRemoveDraftItem(item.sku)} className="text-xs font-semibold text-[#c42b2b] hover:underline">
@@ -1970,15 +1970,15 @@ function ContainerCreateForm({
             <input
               className="form-input font-mono text-xs"
               type="number"
-              step="0.0001"
+              step="0.000001"
               value={cbmInput}
               onChange={(event) => onCbmInputChange(event.target.value)}
               onBlur={() => void onCbmInputBlur()}
-              placeholder="0.048"
+              placeholder="0.048852"
             />
             <div className="font-mono text-xs text-muted-foreground">
               {skuInput && cbmInput && qtyInput
-                ? (parseFloat(cbmInput) * parseInt(qtyInput, 10) || 0).toFixed(4)
+                ? (parseFloat(cbmInput) * parseInt(qtyInput, 10) || 0).toFixed(6)
                 : "-"}
             </div>
             <div />
@@ -2415,7 +2415,7 @@ function ContainerCard({
                   <input
                     className="form-input"
                     type="number"
-                    step="0.001"
+                    step="0.000001"
                     value={inlineSkuDraft.cbm}
                     onChange={(event) => onUpdateInlineSkuDraft(container.id, { cbm: event.target.value })}
                     onBlur={() => void onUpdateInlineSkuCbm(container.id)}
@@ -2424,7 +2424,7 @@ function ContainerCard({
                 </div>
                 <div className="pb-2 font-mono text-xs text-muted-foreground">
                   {inlineSkuDraft.qty && inlineSkuDraft.cbm
-                    ? `${((Number.parseInt(inlineSkuDraft.qty, 10) || 0) * (Number.parseFloat(inlineSkuDraft.cbm) || 0)).toFixed(3)} m3`
+                    ? `${((Number.parseInt(inlineSkuDraft.qty, 10) || 0) * (Number.parseFloat(inlineSkuDraft.cbm) || 0)).toFixed(6)} m3`
                     : "-"}
                 </div>
                 <div className="flex justify-end gap-1">
@@ -2642,7 +2642,7 @@ function SkuRow({
           <input
             className="form-input"
             type="number"
-            step="0.001"
+            step="0.000001"
             value={editDraft.cbm}
             onChange={(event) => onUpdateDraft(containerId, item.sku, { cbm: event.target.value })}
             onBlur={() => void onUpdateCbm(containerId, item.sku)}
@@ -2652,7 +2652,7 @@ function SkuRow({
         </div>
         <div className="pb-2 font-mono text-xs text-muted-foreground">
           {editDraft.qty && editDraft.cbm
-            ? `${((Number.parseInt(editDraft.qty, 10) || 0) * (Number.parseFloat(editDraft.cbm) || 0)).toFixed(3)} m3`
+            ? `${((Number.parseInt(editDraft.qty, 10) || 0) * (Number.parseFloat(editDraft.cbm) || 0)).toFixed(6)} m3`
             : "-"}
         </div>
         <div className="flex justify-end gap-1">
@@ -2716,8 +2716,8 @@ function SkuRow({
         ) : null}
       </div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
-      <div className="font-mono text-xs text-muted-foreground">{item.cbm.toFixed(4)} m3</div>
-      <div className="font-mono text-xs font-semibold">{(item.qty * item.cbm).toFixed(3)} m3</div>
+      <div className="font-mono text-xs text-muted-foreground">{item.cbm.toFixed(6)} m3</div>
+      <div className="font-mono text-xs font-semibold">{(item.qty * item.cbm).toFixed(6)} m3</div>
       {readonly ? null : hasAllocatedStock ? (
         <div className="flex flex-col items-end gap-1">
           {allocations.map((allocation) => (
@@ -3102,7 +3102,7 @@ function AvailableStockModal({
                     onChange={(event) => setSelectedQty((current) => ({ ...current, [row.id]: event.target.value }))}
                     className="h-7 w-20 rounded border border-[#cccac4] px-2 text-sm"
                   />
-                  <span>{row.cbm.toFixed(4)}</span>
+                  <span>{row.cbm.toFixed(6)}</span>
                   <span>{(qty * row.cbm).toFixed(2)}</span>
                 </div>
               );

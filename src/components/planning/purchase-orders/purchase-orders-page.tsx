@@ -514,7 +514,7 @@ export function PurchaseOrdersPage() {
       updateDraftItem(index, {
         sku: data.masterSku,
         moq: String(data.moq),
-        cbm: data.cbmPerUnit ? data.cbmPerUnit.toFixed(4) : "",
+        cbm: data.cbmPerUnit ? data.cbmPerUnit.toFixed(6) : "",
       });
     } catch {
       window.alert(`Failed to look up SKU: ${sku}`);
@@ -964,10 +964,12 @@ function PurchaseOrderCreateForm({
                 <input className="form-input h-9 bg-white" value={item.stock} onChange={(event) => onUpdateItem(index, { stock: event.target.value })} placeholder="Stock" />
                 <input
                   className="form-input h-9 bg-white"
+                  type="number"
+                  step="0.000001"
                   value={item.cbm}
                   onChange={(event) => onUpdateItem(index, { cbm: event.target.value })}
                   onBlur={() => void onUpdateSkuMasterPlanningInfo(index)}
-                  placeholder="0.048"
+                  placeholder="0.048852"
                 />
                 <button type="button" onClick={() => onRemoveItem(index)} className="text-right text-xs font-semibold text-[#c42b2b]">
                   Delete
@@ -1153,8 +1155,8 @@ function PurchaseOrderDetail({
               <div className="truncate font-mono text-xs font-medium">{item.sku}</div>
               <div>{formatNumber(item.moq)}</div>
               <div className="font-semibold">{formatNumber(item.qty)} units</div>
-              <div className="text-xs text-muted-foreground">{item.cbm.toFixed(3)} m3</div>
-              <div className="font-semibold">{(item.qty * item.cbm).toFixed(2)} m3</div>
+              <div className="text-xs text-muted-foreground">{item.cbm.toFixed(6)} m3</div>
+              <div className="font-semibold">{(item.qty * item.cbm).toFixed(6)} m3</div>
             </div>
           ))}
 

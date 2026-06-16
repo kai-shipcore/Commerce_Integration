@@ -34,7 +34,7 @@ export async function PATCH(
     try {
       await client.query("BEGIN");
       await client.query(
-        `UPDATE shipcore.fc_products SET cbm_per_unit = $2::numeric, updated_at = NOW() WHERE master_sku = $1`,
+        `UPDATE shipcore.fc_products SET cbm_per_unit = $2::numeric(14,6), updated_at = NOW() WHERE master_sku = $1`,
         [sku, cbm],
       );
       const result = await client.query<{
@@ -44,7 +44,7 @@ export async function PATCH(
         total_cbm: number;
       }>(
         `UPDATE shipcore.fc_container_items ci
-         SET cbm_unit   = $2::numeric,
+         SET cbm_unit   = $2::numeric(14,6),
              updated_at = NOW()
          FROM shipcore.fc_containers c
          WHERE ci.container_id = c.id

@@ -514,7 +514,7 @@ export function AvailableStockPage() {
                 {editing ? <StockInput type="number" value={editForm.totalQty} onChange={(value) => setEditForm((form) => ({ ...form, totalQty: value }))} /> : <span>{row.totalQty}</span>}
                 <span className={allocated > 0 ? "font-semibold text-[#8a5300]" : ""}>{allocated}</span>
                 <span className="font-semibold">{row.availableQty}</span>
-                {editing ? <StockInput type="number" disabled={allocated > 0} value={editForm.cbm} onChange={(value) => setEditForm((form) => ({ ...form, cbm: value }))} /> : <span>{row.cbm.toFixed(4)}</span>}
+                {editing ? <StockInput type="number" disabled={allocated > 0} value={editForm.cbm} onChange={(value) => setEditForm((form) => ({ ...form, cbm: value }))} /> : <span>{row.cbm.toFixed(6)}</span>}
                 <span>{(row.totalQty * row.cbm).toFixed(2)}</span>
                 {editing ? <StockInput value={editForm.note} onChange={(value) => setEditForm((form) => ({ ...form, note: value }))} /> : <span className="truncate text-xs text-muted-foreground">{row.note || "-"}</span>}
                 <div className="flex gap-2">
