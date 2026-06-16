@@ -701,13 +701,16 @@ function ContainerGroupHeader(
     totalColumns: ContainerTotalColumn[];
     onEtaChange: (value: string) => void;
     onAutoFill?: () => void;
+    onAutoFill2?: (days: number) => void;
     onSave?: () => void;
     onReset?: () => void;
     autoFilling?: boolean;
+    autoFilling2?: boolean;
     saving?: boolean;
     dirty?: boolean;
   },
 ) {
+  const [targetDays, setTargetDays] = useState(90);
   return (
     <div className="flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px]">
       <div className="flex items-center justify-center gap-1 overflow-hidden">
@@ -731,6 +734,28 @@ function ContainerGroupHeader(
               className="rounded px-3 py-1.5 text-[15px] bg-white/10 hover:bg-white/20 disabled:opacity-40 cursor-pointer"
             >
               {props.autoFilling ? "…" : "⟳"}
+            </button>
+            <input
+              type="number"
+              value={targetDays}
+              onChange={(e) => setTargetDays(Math.max(1, Number(e.target.value)))}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              onKeyUp={(e) => e.stopPropagation()}
+              min={1}
+              max={365}
+              title="목표 INV Life (일)"
+              style={{ colorScheme: "dark" }}
+              className="w-[52px] rounded border border-blue-400/50 bg-blue-900/30 px-1.5 py-1 text-[11px] font-bold text-white text-center"
+            />
+            <button
+              onClick={() => props.onAutoFill2?.(targetDays)}
+              disabled={props.autoFilling2}
+              title={`Con qty 고정 목표 계산 (${targetDays}일 INV Life)`}
+              className="rounded px-3 py-1.5 text-[15px] bg-blue-500/30 hover:bg-blue-500/50 disabled:opacity-40 cursor-pointer"
+            >
+              {props.autoFilling2 ? "…" : "⟳₂"}
             </button>
             {props.dirty && (
               <>
@@ -824,6 +849,7 @@ export function AgDemandPlanningGrid({
   const [qtyCtxMenu, setQtyCtxMenu] = useState<{ x: number; y: number; containerName: string } | null>(null);
   const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
+  const [autoFillingContainers2, setAutoFillingContainers2] = useState<Set<string>>(new Set());
   const [savingContainers, setSavingContainers] = useState<Set<string>>(new Set());
 
   const containers = useMemo(
@@ -1259,6 +1285,64 @@ export function AgDemandPlanningGrid({
     });
   }, [containers, chainMap, visibleRows, gradient, gradientSC, seasonalFactors]);
 
+  const autoFill2 = useCallback((
+    container: ContainerMeta,
+    containerIndex: number,
+    targetDays: number,
+  ): void => {
+    const prevContainer = containers[containerIndex - 1];
+    if (!prevContainer) return;
+
+    const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
+    const gapBeforeDays = Math.round(
+      (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
+    );
+
+    setQtyOverrides((cur) => {
+      const next = new Map(cur);
+      const sorted = [...visibleRows]
+        .filter((r) => {
+          if ((r.category_code ?? "").toLowerCase() !== categoryFilter) return false;
+          if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
+          return true;
+        })
+        .sort((a, b) => b.total_avg_curr - a.total_avg_curr);
+
+      for (const row of sorted) {
+        const isSC = row.category_code === "SC";
+        const adjDaily = row.total_avg_curr * seasonFactor;
+        const step = row.order_multiple ?? 1;
+        const moq = row.moq ?? 1;
+        const prev = chainMap.get(row.sku)?.get(prevContainer.name);
+        const prevCarryover = prev?.carryover ?? 0;
+        const bo = prev?.backorder ?? 0;
+
+        const remainingAtArrival = isSC
+          ? Math.max(0, prevCarryover - adjDaily * gapBeforeDays)
+          : prevCarryover;
+
+        const need = adjDaily * targetDays + bo - remainingAtArrival;
+        if (need <= 0) continue;
+
+        const qty = Math.ceil(Math.max(need, moq) / step) * step;
+        if (qty <= 0) continue;
+
+        const key = `${row.sku}::${container.name}`;
+        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+        next.set(key, {
+          inbound_qty: qty,
+          avail_qty: qty,
+          cbm: qty * cbmUnit,
+          cbm_unit: cbmUnit,
+          item_id: row.containers?.[container.name]?.item_id ?? undefined,
+          allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
+        });
+      }
+      return next;
+    });
+    setDirtyContainers((s) => new Set(s).add(container.name));
+  }, [containers, chainMap, visibleRows, categoryFilter, seasonalFactors]);
+
 
   const saveContainer = useCallback(async (container: ContainerMeta): Promise<void> => {
     if (!container.container_id) return;
@@ -1436,6 +1520,11 @@ export function AgDemandPlanningGrid({
                 setAutoFillingContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
               });
             },
+            onAutoFill2: (days: number) => {
+              setAutoFillingContainers2((s) => new Set(s).add(container.name));
+              autoFill2(container, containerIndex, days);
+              setAutoFillingContainers2((s) => { const n = new Set(s); n.delete(container.name); return n; });
+            },
             onSave: () => {
               if (!window.confirm('변경 사항을 저장하시겠습니까?')) return;
               void saveContainer(container);
@@ -1451,6 +1540,7 @@ export function AgDemandPlanningGrid({
               setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
             },
             autoFilling: autoFillingContainers.has(container.name),
+            autoFilling2: autoFillingContainers2.has(container.name),
             saving: savingContainers.has(container.name),
             dirty: dirtyContainers.has(container.name),
           },
