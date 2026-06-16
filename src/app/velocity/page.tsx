@@ -571,9 +571,25 @@ export default function VelocityPage() {
   const [selectedItem, setSelectedItem] = useState<string>("Car Cover");
   const [selectedChannels, setSelectedChannels] = useState<string[]>([...CHANNELS]);
   const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
-  const [periodMode, setPeriodMode] = useState<"period" | "custom">("period");
-  const [periods, setPeriods] = useState<number[]>(DEFAULT_PERIODS);
-  const [customRanges, setCustomRanges] = useState<PeriodRange[]>(() => defaultRanges());
+  const [periodMode, setPeriodMode] = useState<"period" | "custom">(() =>
+    typeof window !== "undefined"
+      ? ((localStorage.getItem("velocity_period_mode") as "period" | "custom") ?? "period")
+      : "period"
+  );
+  const [periods, setPeriods] = useState<number[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("velocity_periods");
+      if (saved) { try { return JSON.parse(saved) as number[]; } catch { /* ignore */ } }
+    }
+    return DEFAULT_PERIODS;
+  });
+  const [customRanges, setCustomRanges] = useState<PeriodRange[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("velocity_custom_ranges");
+      if (saved) { try { return JSON.parse(saved) as PeriodRange[]; } catch { /* ignore */ } }
+    }
+    return defaultRanges();
+  });
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [exportSlot, setExportSlot] = useState<HTMLDivElement | null>(null);
@@ -583,9 +599,10 @@ export default function VelocityPage() {
       : "utc"
   );
 
-  useEffect(() => {
-    localStorage.setItem("velocity_tz", timezone);
-  }, [timezone]);
+  useEffect(() => { localStorage.setItem("velocity_tz", timezone); }, [timezone]);
+  useEffect(() => { localStorage.setItem("velocity_period_mode", periodMode); }, [periodMode]);
+  useEffect(() => { localStorage.setItem("velocity_periods", JSON.stringify(periods)); }, [periods]);
+  useEffect(() => { localStorage.setItem("velocity_custom_ranges", JSON.stringify(customRanges)); }, [customRanges]);
 
   const activeRanges = periodMode === "period" ? periodsToRanges(periods) : customRanges;
 
