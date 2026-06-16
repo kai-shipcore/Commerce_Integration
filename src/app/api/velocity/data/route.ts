@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
               )
               .join(", ")}
              FROM shipcore.fc_velocity_custom_snapshot
-             WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = 'preorder'
+             WHERE item_category = ANY($1) AND channel = ANY($2) AND ${combined ? `order_type IN ('preorder', 'ttm_preorder')` : `order_type = 'preorder'`}
              GROUP BY custom_master_sku ORDER BY qty_0 DESC`,
             [items, channels]
           )

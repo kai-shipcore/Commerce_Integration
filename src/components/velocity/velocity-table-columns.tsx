@@ -67,26 +67,6 @@ function makeQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
   };
 }
 
-function makeTtmQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
-  return {
-    id: `ttmQty_${periodIdx}`,
-    accessorFn: (row) => row.ttmQtys?.[periodIdx] ?? null,
-    header: () => <div className="text-right text-xs font-medium text-muted-foreground">{label}</div>,
-    cell: ({ row }) => {
-      const val = row.original.ttmQtys?.[periodIdx];
-      return (
-        <div className="text-right">
-          {val != null ? (
-            <QtyCell value={val} isTotal={row.original.isTotal} />
-          ) : (
-            <PlaceholderCell />
-          )}
-        </div>
-      );
-    },
-    enableSorting: false,
-  };
-}
 
 function makeCustomQtyCol(periodIdx: number, label: string): ColumnDef<VelocityRow> {
   return {
@@ -273,36 +253,6 @@ export function createPreOrderColumns(labels: string[]): ColumnDef<VelocityRow>[
           enableSorting: false,
         } as ColumnDef<VelocityRow>,
         ...labels.map((label, i) => makeCustomQtyCol(i, label)),
-      ],
-    },
-    {
-      id: "ttmPreOrderGroup",
-      header: "TTM Pre Order",
-      columns: [
-        {
-          id: "tpo_master_sku",
-          header: () => (
-            <div className="pl-6 border-l-2 border-border text-xs font-medium text-muted-foreground">
-              Master SKU
-            </div>
-          ),
-          cell: ({ row }: { row: { original: VelocityRow } }) => {
-            const tSku = row.original.ttmMasterSku;
-            return (
-              <div className="pl-6 border-l-2 border-border">
-                {row.original.isTotal ? (
-                  <span className="font-semibold text-xs">Total</span>
-                ) : tSku ? (
-                  <span className="font-mono text-xs">{tSku}</span>
-                ) : (
-                  <PlaceholderCell />
-                )}
-              </div>
-            );
-          },
-          enableSorting: false,
-        } as ColumnDef<VelocityRow>,
-        ...labels.map((label, i) => makeTtmQtyCol(i, label)),
       ],
     },
   ];

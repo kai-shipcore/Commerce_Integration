@@ -250,7 +250,28 @@ export async function POST() {
       upsertCustom(customRes.rows, syncedAt),
     ]);
 
-    return NextResponse.json({ success: true, linkUpserted, customUpserted });
+    const [linkDeleteRes, customDeleteRes] = await Promise.all([
+      primaryPool().query(
+        `DELETE FROM shipcore.fc_velocity_link_snapshot
+         WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
+           AND synced_at < $1`,
+        [syncedAt]
+      ),
+      primaryPool().query(
+        `DELETE FROM shipcore.fc_velocity_custom_snapshot
+         WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
+           AND synced_at < $1`,
+        [syncedAt]
+      ),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      linkUpserted,
+      customUpserted,
+      linkDeleted: linkDeleteRes.rowCount ?? 0,
+      customDeleted: customDeleteRes.rowCount ?? 0,
+    });
   } catch (error) {
     console.error("[velocity/sync] POST error:", getErrorMessage(error));
     return NextResponse.json(
