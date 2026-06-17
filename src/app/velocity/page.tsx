@@ -443,8 +443,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Start table loading after velocity query changes.
     setLoading(true);
-    const combined = mode === "preorder";
-    fetchModeRows(mode, selectedItem, selectedChannels, ranges, timezone, combined)
+    fetchModeRows(mode, selectedItem, selectedChannels, ranges, timezone, false)
       .then((rows) => setAllRows(rows))
       .catch(() => {})
       .finally(() => setLoading(false));
