@@ -23,6 +23,7 @@ import {
   loadSavedColumnColors,
   loadSavedCellColors,
   loadSavedColumnWidths,
+  skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
 import type { CellColorSettings, ColumnColorSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters } from "./columns";
@@ -123,10 +124,21 @@ const DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN = Object.fromEntries(
 ) as Record<ColumnGroupKey, boolean>;
 
 const SKU_FILTER_LABELS: Record<SkuPartFilterKey, string> = {
+  formula: "Type",
+  fabric: "Fabric",
   seat: "Seat",
   no: "No.",
+  size: "Size",
   color: "Color",
   tone: "Tone",
+  type: "Color Type",
+  prefix: "Prefix",
+  productCode: "Product",
+  surface: "Surface",
+  material: "Material",
+  vehiclePosition: "Position",
+  make: "Make",
+  model: "Model#",
 };
 
 function sortSkuFilterValues(values: Iterable<string>) {
@@ -139,6 +151,25 @@ function skuFilterSummary(values: string[]) {
   if (!values.length) return "All";
   if (values.length <= 2) return values.join(", ");
   return `${values.slice(0, 2).join(", ")} +${values.length - 2}`;
+}
+
+function skuFilterLabel(key: SkuPartFilterKey, product: CategoryFilter) {
+  if (product === "sc" && key === "seat") return "Seat Position";
+  if (product === "sc" && key === "no") return "Size";
+  if (product === "sc" && key === "tone") return "Color Type";
+  if (product === "fm") {
+    const floorMatLabels: Partial<Record<SkuPartFilterKey, string>> = {
+      prefix: "SKU 1",
+      productCode: "SKU 2",
+      surface: "SKU 3",
+      material: "SKU 4",
+      vehiclePosition: "SKU 5",
+      make: "SKU 6",
+      model: "SKU 7",
+    };
+    return floorMatLabels[key] ?? SKU_FILTER_LABELS[key];
+  }
+  return SKU_FILTER_LABELS[key];
 }
 
 function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
@@ -727,29 +758,33 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   // ─────────────────────────────────────────────────────────────────────────────
 
+  const activeSkuFilterKeys = useMemo(() => skuFilterKeysForProduct(categoryFilter), [categoryFilter]);
+  const activeSkuPartFilters = useMemo(() => {
+    const next = { ...EMPTY_SKU_PART_FILTERS };
+    activeSkuFilterKeys.forEach((key) => {
+      next[key] = skuPartFilters[key];
+    });
+    return next;
+  }, [activeSkuFilterKeys, skuPartFilters]);
+
   const skuFilterOptions = useMemo(() => {
-    const options: Record<SkuPartFilterKey, Set<string>> = {
-      seat: new Set(),
-      no: new Set(),
-      color: new Set(),
-      tone: new Set(),
-    };
+    const activeKeys = activeSkuFilterKeys;
+    const options = Object.fromEntries(
+      activeKeys.map((key) => [key, new Set<string>()]),
+    ) as Record<SkuPartFilterKey, Set<string>>;
     for (const row of data.rows) {
       if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) continue;
       const parts = skuPartsForRow(row);
-      (Object.keys(options) as SkuPartFilterKey[]).forEach((key) => {
+      activeKeys.forEach((key) => {
         if (parts[key]) options[key].add(parts[key]);
       });
     }
-    return {
-      seat: sortSkuFilterValues(options.seat),
-      no: sortSkuFilterValues(options.no),
-      color: sortSkuFilterValues(options.color),
-      tone: sortSkuFilterValues(options.tone),
-    };
-  }, [categoryFilter, data.rows]);
+    return Object.fromEntries(
+      activeKeys.map((key) => [key, sortSkuFilterValues(options[key])]),
+    ) as Record<SkuPartFilterKey, string[]>;
+  }, [activeSkuFilterKeys, categoryFilter, data.rows]);
 
-  const hasSkuPartFilters = (Object.keys(skuPartFilters) as SkuPartFilterKey[]).some((key) => skuPartFilters[key].length > 0);
+  const hasSkuPartFilters = activeSkuFilterKeys.some((key) => activeSkuPartFilters[key].length > 0);
 
   const handleSkuPartFilterToggle = useCallback((key: SkuPartFilterKey, value: string) => {
     setSkuPartFilters((current) => {
@@ -1153,11 +1188,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </button>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      {(["seat", "no", "color", "tone"] as SkuPartFilterKey[]).map((key) => {
-                        const selectedValues = skuPartFilters[key];
+                      {activeSkuFilterKeys.map((key) => {
+                        const selectedValues = activeSkuPartFilters[key];
+                        const optionValues = skuFilterOptions[key] ?? [];
                         return (
                           <div key={key} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{SKU_FILTER_LABELS[key]}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{skuFilterLabel(key, categoryFilter)}</span>
                             <details open={openSkuFilterKey === key} style={{ position: "relative" }}>
                               <summary
                                 title={selectedValues.length ? selectedValues.join(", ") : "All"}
@@ -1226,7 +1262,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                 >
                                   All
                                 </button>
-                                {skuFilterOptions[key].map((value) => {
+                                {optionValues.map((value) => {
                                   const checked = selectedValues.includes(value);
                                   return (
                                     <label
@@ -1726,7 +1762,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
           search={search}
-          skuPartFilters={skuPartFilters}
+          skuPartFilters={activeSkuPartFilters}
           onFilteredRowsChange={setFilteredRows}
           onLoadContainerDetails={loadContainerDetails}
           containerDetailsLoading={containerDetailsLoading}
@@ -1766,7 +1802,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           productFilter={productFilter}
           urgencyFilter={urgencyFilter}
           search={search}
-          skuPartFilters={skuPartFilters}
+          skuPartFilters={activeSkuPartFilters}
           onFilteredRowsChange={setFilteredRows}
           onLoadContainerDetails={loadContainerDetails}
           containerDetailsLoading={containerDetailsLoading}

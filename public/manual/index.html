@@ -228,20 +228,45 @@
   .divider { height: 1px; background: var(--gray-200); margin: 32px 0; }
   .tip-row { display: flex; gap: 16px; }
   .tip-row .callout { flex: 1; margin: 0; }
+  .en-only { display: none; }
+  body.lang-en .ko-only { display: none; }
+  body.lang-en .en-only { display: flex; }
+  body.lang-en nav.en-only { display: block; }
+  body.lang-en main.en-only { display: block; }
+  .language-toggle {
+    position: fixed; right: 22px; bottom: 22px; z-index: 50;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fff; border: 1px solid var(--gray-200); border-radius: 999px;
+    box-shadow: 0 8px 24px rgba(15,23,42,0.18); padding: 6px;
+  }
+  .language-toggle button {
+    border: 0; background: transparent; color: var(--gray-600);
+    border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 700;
+    cursor: pointer;
+  }
+  body:not(.lang-en) .language-toggle [data-lang-button="ko"],
+  body.lang-en .language-toggle [data-lang-button="en"] {
+    background: var(--brand); color: #fff;
+  }
 
   @media (max-width: 900px) {
     .sidebar { display: none; }
     .page-section { padding: 32px 20px; }
     .card-grid.col2, .card-grid.col3 { grid-template-columns: 1fr; }
     .toc { grid-template-columns: 1fr; }
+    .language-toggle { right: 14px; bottom: 14px; }
   }
 </style>
 </head>
 <body>
+<div class="language-toggle" aria-label="Language selector">
+  <button type="button" data-lang-button="ko">KO</button>
+  <button type="button" data-lang-button="en">EN</button>
+</div>
 <div class="layout">
 
 <!-- ───────── 사이드바 ───────── -->
-<nav class="sidebar">
+<nav class="sidebar ko-only">
   <div class="sidebar-logo">
     <h1>📦 Demand Pilot</h1>
     <p>사용자 매뉴얼 v1.0</p>
@@ -274,7 +299,7 @@
 </nav>
 
 <!-- ───────── 본문 ───────── -->
-<main class="main">
+<main class="main ko-only">
 
 <!-- 커버 -->
 <section class="cover" id="top">
@@ -390,8 +415,8 @@
   </div>
 
   <!-- SKU 파트 필터 -->
-  <h3 class="sub">SKU 파트 필터 (Seat Cover 전용)</h3>
-  <p>Seat Cover를 선택하면 추가로 <strong>Seat / No. / Color / Tone</strong> 4가지 필터가 나타납니다. 각 드롭다운에서 원하는 값을 복수 선택해 특정 사양의 SKU만 볼 수 있습니다.</p>
+  <h3 class="sub">SKU 파트 필터 (상품별)</h3>
+  <p>선택한 제품 카테고리에 따라 Columns 패널의 <strong>SKU Filters</strong> 영역에 각기 다른 SKU 세부 필터 세트가 표시됩니다. 각 드롭다운은 복수 선택이 가능하며 <strong>AND 조건</strong>으로 조합됩니다.</p>
 
   <!-- Columns 패널 전체 -->
   <h3 id="dp-columns">② Columns 패널</h3>
@@ -514,31 +539,64 @@
     </div>
   </div>
 
-  <h3 class="sub" id="dp-col-sku-filter" style="margin-top:28px">SKU Filters — SKU 파트 필터</h3>
-  <p>제품 필터에서 <strong>Seat Cover</strong>를 선택한 경우에만 Options 영역 하단에 SKU 파트 필터 4개가 표시됩니다. 각 드롭다운은 복수 선택이 가능하며, 선택된 값에 해당하는 SKU만 테이블에 표시됩니다.</p>
+  <h3 class="sub" id="dp-col-sku-filter" style="margin-top:28px">SKU Filters — 상품별 SKU 파트 필터</h3>
+  <p>선택한 제품 카테고리에 따라 Options 영역 하단에 다른 SKU 파트 필터 세트가 표시됩니다. 각 드롭다운은 복수 선택이 가능하며 <strong>AND 조건</strong>으로 조합됩니다. 오른쪽 상단 <span class="btn-label">Reset</span>으로 모든 SKU 필터를 한 번에 초기화합니다.</p>
 
-  <table class="feat-table">
-    <tr><th style="width:120px">필터</th><th>설명</th><th>예시</th></tr>
-    <tr><td><strong>Seat</strong></td><td>시트 포지션 (앞좌석 / 뒷좌석 등)</td><td>F, B, FB</td></tr>
-    <tr><td><strong>No.</strong></td><td>차종 모델 번호</td><td>001, 042, 083</td></tr>
-    <tr><td><strong>Color</strong></td><td>컬러 코드</td><td>BK, GY, BE</td></tr>
-    <tr><td><strong>Tone</strong></td><td>톤/변형 구분</td><td>1, 2, P</td></tr>
-  </table>
-
-  <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
-    <div class="callout info" style="flex:1;min-width:260px">
-      <span class="callout-icon">ℹ️</span>
-      <div>각 드롭다운의 선택지는 <b>현재 카테고리에 존재하는 값만</b> 동적으로 표시됩니다. 목록 위의 <span class="btn-label">All</span>을 클릭하면 해당 필터 선택을 초기화합니다.</div>
+  <div class="card-grid col2" style="margin:16px 0">
+    <div class="card" style="border-left:4px solid #3b82f6">
+      <h4>🪑 Seat Cover (SC) — 4개 필터</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+        <tr style="background:#eff6ff"><th style="padding:4px 8px;text-align:left;width:110px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명</th><th style="padding:4px 8px;text-align:left">예시</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat Position</td><td style="padding:4px 8px">시트 포지션</td><td style="padding:4px 8px">F, B, FB</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">사이즈</td><td style="padding:4px 8px">001, 042, 083</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">컬러 코드</td><td style="padding:4px 8px">BK, GY, BE</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Color Type</td><td style="padding:4px 8px">컬러 타입</td><td style="padding:4px 8px">1TO, STI</td></tr>
+      </table>
     </div>
-    <div class="callout tip" style="flex:1;min-width:260px">
-      <span class="callout-icon">💡</span>
-      <div>여러 필터를 동시에 적용하면 <b>AND 조건</b>으로 동작합니다. Seat=F, Color=BK 선택 시 앞좌석이면서 블랙 컬러인 SKU만 표시됩니다. 오른쪽 상단 <span class="btn-label">Reset</span>으로 모든 SKU 필터를 한 번에 초기화합니다.</div>
+    <div class="card" style="border-left:4px solid #10b981">
+      <h4>🚗 Car Cover (CC) — 5개 필터</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+        <tr style="background:#f0fdf4"><th style="padding:4px 8px;text-align:left;width:110px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Type</td><td style="padding:4px 8px">제품 타입 구분</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Fabric</td><td style="padding:4px 8px">원단 재질</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">사이즈</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">컬러 코드</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Color Type</td><td style="padding:4px 8px">컬러 타입</td></tr>
+      </table>
+    </div>
+    <div class="card" style="border-left:4px solid #f59e0b">
+      <h4>🧩 Floor Mat (FM) — 7개 필터</h4>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px">SKU 코드의 각 파트를 위치 기준(SKU 1~7)으로 분리해 필터링합니다.</p>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="background:#fffbeb"><th style="padding:4px 8px;text-align:left;width:60px">필터</th><th style="padding:4px 8px;text-align:left">대응 SKU 파트</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 1</td><td style="padding:4px 8px">Prefix</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 2</td><td style="padding:4px 8px">Product Code</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 3</td><td style="padding:4px 8px">Surface</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 4</td><td style="padding:4px 8px">Material</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 5</td><td style="padding:4px 8px">Vehicle Position</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 6</td><td style="padding:4px 8px">Make</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">SKU 7</td><td style="padding:4px 8px">Model #</td></tr>
+      </table>
+    </div>
+    <div class="card" style="border-left:4px solid #8b5cf6">
+      <h4>🎁 Accessories (AC) — 4개 필터</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+        <tr style="background:#faf5ff"><th style="padding:4px 8px;text-align:left;width:110px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat</td><td style="padding:4px 8px">시트 포지션</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">No.</td><td style="padding:4px 8px">차종 모델 번호</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">컬러 코드</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Tone</td><td style="padding:4px 8px">톤/변형 구분</td></tr>
+      </table>
     </div>
   </div>
 
-  <div class="callout info" style="margin-top:12px">
+  <div class="callout info" style="margin-top:4px">
     <span class="callout-icon">ℹ️</span>
-    <div><b>Show Zero-Sales SKUs:</b> Options 상단의 이 체크박스를 켜면 모든 기간에 판매가 0인 SKU도 테이블에 표시됩니다. 기본값은 OFF(미판매 SKU 숨김)입니다.</div>
+    <div>각 드롭다운의 선택지는 <b>현재 카테고리에 실제로 존재하는 값만</b> 동적으로 표시됩니다. 목록 위의 <span class="btn-label">All</span>을 클릭하면 해당 필터를 초기화합니다.</div>
+  </div>
+  <div class="callout info" style="margin-top:8px">
+    <span class="callout-icon">ℹ️</span>
+    <div><b>Show Zero-Sales SKUs:</b> Options 상단의 이 체크박스를 켜면 모든 기간에 판매가 0인 SKU도 테이블에 표시됩니다. 기본값은 OFF입니다.</div>
   </div>
 
   <h3 class="sub" id="dp-col-freeze" style="margin-top:28px">Freeze Column — 컬럼 고정</h3>
@@ -1464,17 +1522,964 @@
 </section>
 
 </main>
+
+<nav class="sidebar en-only">
+  <div class="sidebar-logo">
+    <h1>📦 Demand Pilot</h1>
+    <p>User Manual v1.0</p>
+  </div>
+  <div class="nav-section">Contents</div>
+  <a class="nav-item" href="#en-overview"><span class="icon">🏠</span> Getting Started</a>
+  <a class="nav-item" href="#en-demand-planning"><span class="icon">📊</span> Demand Planning</a>
+  <a class="nav-sub" href="#en-dp-filters">Filters &amp; Search</a>
+  <a class="nav-sub" href="#en-dp-columns">Columns Panel</a>
+  <a class="nav-sub" href="#en-dp-col-preset">Preset &amp; Groups</a>
+  <a class="nav-sub" href="#en-dp-col-sku-filter">SKU Filters</a>
+  <a class="nav-sub" href="#en-dp-col-freeze">Freeze Column</a>
+  <a class="nav-sub" href="#en-dp-col-colors">Column Colors</a>
+  <a class="nav-sub" href="#en-dp-autofill">Auto-Fill (⟳ ⟳₂ ⟳₃)</a>
+  <a class="nav-item" href="#en-sku-planning"><span class="icon">🔍</span> SKU Planning</a>
+  <a class="nav-sub" href="#en-sp-browser">SKU Browser</a>
+  <a class="nav-sub" href="#en-sp-kpi">KPI Summary</a>
+  <a class="nav-sub" href="#en-sp-analysis">Sales Analysis</a>
+  <a class="nav-sub" href="#en-sp-inventory">Inventory &amp; Inbound</a>
+  <a class="nav-sub" href="#en-sp-recommend">Container Recommendation</a>
+  <a class="nav-item" href="#en-container-planning"><span class="icon">🚢</span> Container Planning</a>
+  <a class="nav-sub" href="#en-cp-create">Create Container</a>
+  <a class="nav-sub" href="#en-cp-status">Status Management</a>
+  <a class="nav-sub" href="#en-cp-complete">Complete &amp; Demand Planning</a>
+  <a class="nav-sub" href="#en-cp-export">Excel Export</a>
+  <a class="nav-item" href="#en-available-stock"><span class="icon">📦</span> Available Stock</a>
+  <a class="nav-item" href="#en-sku-master"><span class="icon">🗂️</span> SKU Master</a>
+  <div class="nav-section" style="margin-top:20px">Appendix</div>
+  <a class="nav-item" href="#en-glossary"><span class="icon">📖</span> Glossary</a>
+</nav>
+
+<main class="main en-only">
+<section class="cover" id="en-top">
+  <div class="cover-inner">
+    <h1>📦 Demand Pilot<br><span>User Manual</span></h1>
+    <p>Operations guide for inventory planning, container management, and purchase quantity optimization for seat covers, car covers, and floor mats.</p>
+    <div class="cover-badges">
+      <span class="badge">📊 Demand Planning</span>
+      <span class="badge">🔍 SKU Planning</span>
+      <span class="badge">🚢 Container Planning</span>
+      <span class="badge">📦 Available Stock</span>
+      <span class="badge">🗂️ SKU Master</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 1. GETTING STARTED ═══ -->
+<section class="page-section" id="en-overview">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">🏠</div>
+    <div>
+      <h2>Getting Started</h2>
+      <p class="subtitle">Overview of Demand Pilot's menu structure and daily workflow.</p>
+    </div>
+  </div>
+  <p>Demand Pilot is an operations tool for managing e-commerce inventory — covering <strong>stock monitoring → purchase planning → container inbound management</strong> in one screen.</p>
+  <h3>Menu Overview</h3>
+  <div class="toc">
+    <a class="toc-item" href="#en-demand-planning">
+      <div class="toc-num" style="background:#dbeafe;color:#1d4ed8">1</div>
+      <div><h3>Demand Planning</h3><p>SKU inventory status and container purchase plans at a glance</p></div>
+    </a>
+    <a class="toc-item" href="#en-sku-planning">
+      <div class="toc-num" style="background:#dcfce7;color:#15803d">2</div>
+      <div><h3>SKU Planning</h3><p>Sales trends and recommended order quantities per SKU</p></div>
+    </a>
+    <a class="toc-item" href="#en-container-planning">
+      <div class="toc-num" style="background:#fef9c3;color:#854d0e">3</div>
+      <div><h3>Container Planning</h3><p>Container registration, packing list, and status management</p></div>
+    </a>
+    <a class="toc-item" href="#en-available-stock">
+      <div class="toc-num" style="background:#ffe4e6;color:#9f1239">4</div>
+      <div><h3>Available Stock</h3><p>Manage surplus inventory and mistake orders</p></div>
+    </a>
+    <a class="toc-item" href="#en-sku-master" style="grid-column:1/-1">
+      <div class="toc-num" style="background:#f3e8ff;color:#6b21a8">5</div>
+      <div><h3>SKU Master</h3><p>Manage CBM, MOQ, and case quantity reference data per SKU</p></div>
+    </a>
+  </div>
+  <h3>Basic Workflow</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>Verify SKU Master</h4><p>CBM (volume), MOQ, and order multiples must be correctly registered for purchase calculations to work. Always check this first when adding a new SKU.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Register Containers in Container Planning</h4><p>Add inbound containers and enter the ETA (estimated arrival date). Manage SKU quantities as a packing list.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>Plan Orders in Demand Planning</h4><p>Review inventory status and container chains, then use auto-fill buttons to calculate optimal order quantities.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div><h4>Allocate Surplus in Available Stock</h4><p>Assign surplus inventory already in the warehouse (Remaining / Mistake Order) to containers to adjust inbound quantities.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div><h4>Analyze Details in SKU Planning</h4><p>Select a SKU to review its sales trends and estimated sell-out date.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 2. DEMAND PLANNING ═══ -->
+<section class="page-section" id="en-demand-planning">
+  <div class="section-header">
+    <div class="section-icon" style="background:#dbeafe;font-size:28px">📊</div>
+    <div>
+      <div class="menu-path">Menu › Demand Planning</div>
+      <h2>Demand Planning</h2>
+      <p class="subtitle">The main screen for integrated management of all SKU inventory status and container purchase plans.</p>
+    </div>
+  </div>
+  <div class="screenshot-box">
+    <img src="screenshots/01-demand-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>Demand Planning Main Screen</p></div><div class=\'screenshot-caption\'>▲ Demand Planning – Main Screen</div>'" alt="Demand Planning Main Screen">
+    <div class="screenshot-caption">▲ Demand Planning – Main Screen (Inventory Status + Container Chain)</div>
+  </div>
+
+  <h3 id="en-dp-filters">① Filters &amp; Search</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Control</th><th>Description</th></tr>
+    <tr><td class="label">Product Dropdown</td><td>Select one of <strong>Seat Cover / Car Cover / Floor Mat / Accessories</strong> to show only that category's SKUs. The container list also filters automatically.</td></tr>
+    <tr><td class="label">Product Type</td><td>Further filter SKUs as Original or Custom.</td></tr>
+    <tr><td class="label">Urgency Filter</td><td>Filter to show only SKUs with <span class="status critical">Critical</span>, <span class="status warn">Warning</span>, or <span class="status complete">BackOrder</span> status.</td></tr>
+    <tr><td class="label">🔍 Search</td><td>Real-time filter by SKU name or container number.</td></tr>
+    <tr><td class="label">Con Qty Filter</td><td>Show only SKUs with an order quantity entered, or only those without one.</td></tr>
+    <tr><td class="label">Date (As of)</td><td>View historical inventory status as of a specific date. Defaults to today.</td></tr>
+    <tr><td class="label">Sync Button</td><td>Reload the latest inventory data from the server.</td></tr>
+    <tr><td class="label">Export Button</td><td>Export the current filtered data as CSV.</td></tr>
+    <tr><td class="label">Import Button</td><td>Bulk upload Transit Stock (in-transit inventory) via Excel.</td></tr>
+  </table>
+  <div class="screenshot-box">
+    <img src="screenshots/01b-demand-filters.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>Filters &amp; Top Controls</p></div>'" alt="Filters area">
+  </div>
+  <h3 class="sub">SKU Part Filters (Per Product)</h3>
+  <p>Depending on the selected product category, a different set of SKU part filters appears in the <strong>SKU Filters</strong> area of the Columns panel. Each dropdown supports multiple selections combined as <strong>AND</strong> conditions.</p>
+
+  <h3 id="en-dp-columns">② Columns Panel</h3>
+  <p>Click the <span class="btn-label">⊞ Columns ▾</span> button in the toolbar to open the panel. The panel has three areas (left: Quick Preset · Options · SKU Filters · Freeze Column; center: Column Visibility; right: Column Colors). All settings are auto-saved to the server and persist across sessions and devices.</p>
+
+  <h3 class="sub" id="en-dp-col-preset">Quick Preset — Fast Column Presets</h3>
+  <p>Apply frequently used column combinations instantly with four buttons. The active preset is shown with a blue border.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Button</th><th>Columns Shown</th><th>Notes</th></tr>
+    <tr><td><span class="btn-label">All</span></td><td>All column groups</td><td>Widest view. Default on first load.</td></tr>
+    <tr><td><span class="btn-label">Core</span></td><td>Basic Info · Inventory · Sales 30D · Total Avg Daily · Inbound/SOD + container columns</td><td>Hides per-warehouse daily sales groups. Focused on key metrics.</td></tr>
+    <tr><td><span class="btn-label">Compact</span></td><td>Essential columns only — Back · Sales Status · Master SKU · West/East/Total Stock · T.Avg · Inbound Qty · Containers List · Next ETA · S.O.D + container columns</td><td>Compact mode ON. Freeze Column resets to S.O.D. Useful on narrow screens.</td></tr>
+    <tr><td><span class="btn-label">Container Columns</span></td><td>Toggle all container sub-columns ON/OFF</td><td>Other columns unchanged. Blue border = all container columns visible.</td></tr>
+  </table>
+
+  <h3 class="sub" style="margin-top:28px">Column Visibility — Group &amp; Individual Column Selection</h3>
+  <p>The center area of the panel lets you control column groups and individual columns. Click a group header to collapse or expand it. The number next to each group (e.g., <code>5/6</code>) shows visible / total columns.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Group</th><th>Included Columns</th><th>Notes</th></tr>
+    <tr style="background:#f0f4ff"><td><strong>Basic Info</strong></td><td># · Container Info. · CBM · Back · Sales Status · Master SKU</td><td>Always visible. Cannot be hidden.</td></tr>
+    <tr><td><strong>Inventory</strong></td><td>Mode · West Stock · East Stock · Transit Stock · Total Stock</td><td>Mode controls calculation method (onhand/available).</td></tr>
+    <tr><td><strong>West FBM Sales</strong></td><td>West 90D · 60D · 30D · 15D · 7D · W Pre 30D</td><td>West (FBM) sales by period.</td></tr>
+    <tr><td><strong>East FBM Sales</strong></td><td>East 90D · 60D · 30D · 15D · 7D · E Pre 30D</td><td>East (FBM) sales by period.</td></tr>
+    <tr><td><strong>West Avg Daily</strong></td><td>W Avg Prior · W Avg Actual · W Avg Current</td><td>West daily average (prior season / actual / currently applied).</td></tr>
+    <tr><td><strong>East Avg Daily</strong></td><td>E Avg Prior · E Avg Actual · E Avg Current</td><td>East daily average sales.</td></tr>
+    <tr><td><strong>FBA Avg</strong></td><td>FBA Actual · FBA Current</td><td>FBA channel daily average sales.</td></tr>
+    <tr><td><strong>Sales 30D</strong></td><td>W FBM 30D · E FBM 30D · FBA 30D · Total 30D</td><td>Last 30-day sales total by channel.</td></tr>
+    <tr><td><strong>Total Avg Daily</strong></td><td>T.Avg Prior · T.Avg Actual · T.Avg Current</td><td>All-channel daily average. Base value for Auto-Fill (⟳₂/⟳₃).</td></tr>
+    <tr><td><strong>Inbound / Container / SOD</strong></td><td>Inbound Qty · Containers List · Next ETA · S.O.D</td><td>Expected inbound total, container list, next ETA, estimated sell-out date.</td></tr>
+    <tr style="background:#f0f7ff"><td><strong>Container Columns</strong><br><span style="font-size:11px;color:#6b7280">(shared sub-columns per container)</span></td><td>Con. Qty · Rem. Qty · Open Orders · Avail Qty · Est. Sales · Back Order · Carry over · Inv. Life · EST. SOD · Plan SOD · CBM</td><td>Controlled via Container Columns button or individual checkboxes. Sub-columns under each container header.</td></tr>
+  </table>
+
+  <div class="card-grid col2" style="margin-top:20px">
+    <div class="card">
+      <h4>🚢 Container Sub-Column Descriptions</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600;width:110px">Con. Qty</td><td style="padding:3px 6px">Order quantity (directly editable)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Rem. Qty</td><td style="padding:3px 6px">Remaining Available Stock quantity</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Open Orders</td><td style="padding:3px 6px">Unfulfilled order quantity</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Avail Qty</td><td style="padding:3px 6px">Projected available stock after arrival</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Est. Sales</td><td style="padding:3px 6px">Estimated sales volume by ETA</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Back Order</td><td style="padding:3px 6px">Projected stock shortage (shown in red)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Carry over</td><td style="padding:3px 6px">Carryover inventory from previous container</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Inv. Life</td><td style="padding:3px 6px">Days of inventory from this container's arrival</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">EST. SOD</td><td style="padding:3px 6px">Estimated sell-out date (based on ETA)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Plan SOD</td><td style="padding:3px 6px">Planned sell-out date</td></tr>
+        <tr><td style="padding:3px 6px;font-weight:600">CBM</td><td style="padding:3px 6px">SKU Con. Qty × CBM/unit</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h4>💡 Tips</h4>
+      <ul style="font-size:13px;line-height:1.9">
+        <li>Disabling a group checkbox hides all columns within that group.</li>
+        <li>After enabling a group, you can selectively hide individual columns.</li>
+        <li><strong>Compact preset</strong> is useful for keyboard-focused workflows — it nearly eliminates horizontal scrolling.</li>
+        <li>Drag column header borders to resize. Use <span class="btn-label">Reset Column Widths</span> to restore defaults.</li>
+        <li>Settings are saved to the server and persist across devices.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sub" id="en-dp-col-sku-filter" style="margin-top:28px">SKU Filters — SKU Part Filters by Product</h3>
+  <p>A different set of SKU part filters appears depending on the selected product category. Each dropdown supports multiple selections combined as <strong>AND</strong> conditions. Use <span class="btn-label">Reset</span> (top-right) to clear all SKU filters at once.</p>
+
+  <div class="card-grid col2" style="margin:16px 0">
+    <div class="card" style="border-left:4px solid #3b82f6">
+      <h4>🪑 Seat Cover (SC) — 4 Filters</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+        <tr style="background:#eff6ff"><th style="padding:4px 8px;text-align:left;width:120px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description</th><th style="padding:4px 8px;text-align:left">Examples</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat Position</td><td style="padding:4px 8px">Seat position (front/rear)</td><td style="padding:4px 8px">F, B, FB</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">Size</td><td style="padding:4px 8px">001, 042, 083</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">Color code</td><td style="padding:4px 8px">BK, GY, BE</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Color type</td><td style="padding:4px 8px">Color type</td><td style="padding:4px 8px">1TO, STI</td></tr>
+      </table>
+    </div>
+    <div class="card" style="border-left:4px solid #10b981">
+      <h4>🚗 Car Cover (CC) — 5 Filters</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+        <tr style="background:#f0fdf4"><th style="padding:4px 8px;text-align:left;width:120px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Type</td><td style="padding:4px 8px">Product type</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Fabric</td><td style="padding:4px 8px">Fabric material</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">Size</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">Color code</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Color Type</td><td style="padding:4px 8px">Color type</td></tr>
+      </table>
+    </div>
+    <div class="card" style="border-left:4px solid #f59e0b">
+      <h4>🧩 Floor Mat (FM) — 7 Filters</h4>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Filters each part of the SKU code by position (SKU 1 – SKU 7).</p>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="background:#fffbeb"><th style="padding:4px 8px;text-align:left;width:60px">Filter</th><th style="padding:4px 8px;text-align:left">Corresponding SKU Part</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 1</td><td style="padding:4px 8px">Prefix</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 2</td><td style="padding:4px 8px">Product Code</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 3</td><td style="padding:4px 8px">Surface</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 4</td><td style="padding:4px 8px">Material</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 5</td><td style="padding:4px 8px">Vehicle Position</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 6</td><td style="padding:4px 8px">Make</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">SKU 7</td><td style="padding:4px 8px">Model #</td></tr>
+      </table>
+    </div>
+    <div class="card" style="border-left:4px solid #8b5cf6">
+      <h4>🎁 Accessories (AC) — 4 Filters</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
+        <tr style="background:#faf5ff"><th style="padding:4px 8px;text-align:left;width:120px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat</td><td style="padding:4px 8px">Seat position</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">No.</td><td style="padding:4px 8px">Vehicle model number</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">Color code</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Tone</td><td style="padding:4px 8px">Tone / variant</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout info" style="margin-top:4px">
+    <span class="callout-icon">ℹ️</span>
+    <div>Each dropdown shows only values <b>that actually exist in the current category</b>. Click <span class="btn-label">All</span> at the top of any dropdown to reset that filter.</div>
+  </div>
+  <div class="callout info" style="margin-top:8px">
+    <span class="callout-icon">ℹ️</span>
+    <div><b>Show Zero-Sales SKUs:</b> Enable this checkbox at the top of Options to also show SKUs with zero sales in all periods. Default is OFF.</div>
+  </div>
+
+  <h3 class="sub" id="en-dp-col-freeze" style="margin-top:28px">Freeze Column — Pin Columns</h3>
+  <p>Pins all columns up to and including the selected column on the left. Frozen columns remain visible when scrolling right.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Item</th><th>Description</th></tr>
+    <tr><td>Dropdown</td><td>Select the freeze endpoint from visible columns. All columns <strong>up to and including</strong> the selected one are pinned.</td></tr>
+    <tr><td>Default</td><td><strong>S.O.D</strong> — pins Basic Info + Inventory + Inbound/SOD columns. Resets automatically when Compact preset is applied.</td></tr>
+    <tr><td><span class="btn-label">Reset</span> button</td><td>Returns to the default (S.O.D) freeze point.</td></tr>
+  </table>
+  <div class="callout tip" style="margin-top:12px">
+    <span class="callout-icon">💡</span>
+    <div>When there are many containers and horizontal scrolling is long, change Freeze Column to <strong>Master SKU</strong> to pin only the SKU name and give more room for container columns.</div>
+  </div>
+
+  <h3 class="sub" id="en-dp-col-colors" style="margin-top:28px">Column Colors — Assign Column Colors</h3>
+  <p>Use the right area of the panel to assign header and cell background colors to specific columns. Useful for highlighting key columns or applying team color conventions.</p>
+  <h4 style="margin-top:16px">A. Column-Level Colors</h4>
+  <table class="feat-table">
+    <tr><th style="width:200px">Control</th><th>Description</th></tr>
+    <tr><td>Column dropdown (<code>#</code>)</td><td>Select the column. Includes base columns, container headers (container:name), and container sub-columns (con:id).</td></tr>
+    <tr><td>Cell color</td><td>Background for <strong>all data cells</strong> in the selected column. Disabled for container headers.</td></tr>
+    <tr><td>Header color</td><td>Background for the <strong>header cell</strong>. Available for all columns.</td></tr>
+    <tr><td><span class="btn-label">Reset Selected</span></td><td>Clears color for the currently selected column only.</td></tr>
+    <tr><td><span class="btn-label">Reset All</span></td><td>Clears all column Cell and Header colors at once.</td></tr>
+    <tr><td><span class="btn-label">Reset Column Widths</span></td><td>Resets all column widths to default (unrelated to colors).</td></tr>
+  </table>
+  <h4 style="margin-top:20px">B. Individual Cell Colors</h4>
+  <p>Click a specific cell in the grid to load its info in the "SELECTED CELL COLOR" section. Then pick a color to change <strong>only that cell's</strong> background.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Control</th><th>Description</th></tr>
+    <tr><td>Color picker</td><td>Set the background color for the clicked cell.</td></tr>
+    <tr><td><code>No cell</code> checkbox</td><td>When checked, removes any color from the selected cell.</td></tr>
+    <tr><td><span class="btn-label">Reset Selected</span></td><td>Clears the individual color from the currently selected cell.</td></tr>
+    <tr><td><span class="btn-label">Reset All Cells</span></td><td>Clears all individual cell colors at once.</td></tr>
+  </table>
+  <div class="callout tip" style="margin-top:12px">
+    <span class="callout-icon">💡</span>
+    <div>Column colors and cell colors are independent. Individual cell colors override column colors for that cell only.</div>
+  </div>
+
+  <h3 id="en-dp-autofill">③ Con. Qty Auto-Fill Buttons</h3>
+  <p>Each container header provides auto-calculation buttons.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/01c-autofill.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⟳</div><p>Auto-Fill Button Area</p></div>'" alt="Auto-Fill buttons">
+  </div>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#475569">
+    <strong>UI Layout:</strong> Container headers display: <code>ETA date</code> → <span class="btn-label">⟳</span> → <span style="border:1px solid #60a5fa;border-radius:4px;padding:1px 6px;font-size:12px;color:#3b82f6;font-weight:700">90</span> (number input) → <span class="btn-label">⟳₂</span> → <span class="btn-label">⟳₃</span>.<br>
+    <strong>The number input (90) is exclusive to ⟳₂</strong> — ⟳ and ⟳₃ do not use this value.
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:120px">Button</th><th>How Target Days Are Determined</th><th>When to Use</th></tr>
+    <tr>
+      <td class="label">⟳</td>
+      <td><strong>Auto-determined (no input required)</strong> — Uses <strong>binary search</strong> to find the optimal Inv. Life that maximizes container CBM (default 80 CBM). Sales tier bonuses (±days) applied automatically.</td>
+      <td>When you want to maximize container utilization for an optimal order mix</td>
+    </tr>
+    <tr>
+      <td class="label"><span style="color:#2563eb">90</span> + ⟳₂</td>
+      <td><strong>Uses the number input as target days</strong> — <code>Order Qty = ROUNDUP((daily avg × target days + BackOrder − remaining stock) ÷ step) × step</code>. Same target applied to all SKUs.</td>
+      <td>When you want the same target days (e.g., 90) applied uniformly to all SKUs</td>
+    </tr>
+    <tr>
+      <td class="label" style="color:#059669">⟳₃</td>
+      <td><strong>Per-tier targets via dialog (no input required)</strong> — Opens a dialog to set different target days per daily sales range. Default: ≥10/day→90d, ≥5/day→80d, ≥3/day→70d, others→60d.</td>
+      <td>When high-velocity SKUs should have longer targets than slow-moving ones</td>
+    </tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Preview before saving:</b> All three buttons apply quantities immediately but do not write to the database. Click <span class="btn-label">💾 Save</span> to finalize. Click <span class="btn-label">↺ Reset</span> to undo.</div>
+  </div>
+
+  <h3 class="sub">Changing the ⟳₂ Target Days</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Click the number input to the left of ⟳₂</h4><p>Default is <strong>90</strong>. Enter your desired number of days (e.g., 60, 120).</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Click ⟳₂</h4><p>Order quantities for all SKUs are recalculated using the entered days.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Click 💾 Save</h4><p>Click Save to write results to the database.</p></div></div>
+  </div>
+
+  <h3 class="sub">Setting Per-Tier Targets with ⟳₃</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Click ⟳₃</h4><p>A dialog opens showing the current tier configuration.</p></div></div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Review and edit tier settings</h4><p>Modify <strong>Min Avg Sales</strong> (minimum daily sales) and <strong>Target Days</strong>. Use <span class="btn-label">+</span> to add tiers and <span class="btn-label">×</span> to remove them.</p>
+        <div style="margin-top:10px">
+          <table class="feat-table" style="font-size:12px">
+            <tr><th>Default Tier</th><th>Min Avg Sales</th><th>Target Days</th></tr>
+            <tr><td>Tier 1</td><td>≥ 10/day</td><td>90 days</td></tr>
+            <tr><td>Tier 2</td><td>≥ 5/day</td><td>80 days</td></tr>
+            <tr><td>Tier 3</td><td>≥ 3/day</td><td>70 days</td></tr>
+            <tr><td>Tier 4 (default)</td><td>≥ 0/day</td><td>60 days</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="step"><div class="step-num">3</div><div><h4>Click Apply</h4><p>Each SKU's quantities are calculated using its matching tier's target days.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Click 💾 Save</h4><p>Click Save to write results to the database.</p></div></div>
+  </div>
+  <div class="callout info">
+    <span class="callout-icon">✅</span>
+    <div><b>⟳₃ tier settings persist for the session.</b> Once configured, the same tiers apply when clicking ⟳₃ on other containers until you leave the page. To use different tiers per container, edit the dialog each time.</div>
+  </div>
+
+  <h3>④ Container Display Rules</h3>
+  <p>Not all containers are shown in the Demand Planning grid. Containers are filtered as follows.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">Container Status</th><th>Shown in Demand Planning</th><th>Notes</th></tr>
+    <tr><td><span class="status final">Final List Sent</span></td><td>✅ Always shown</td><td>Factory submission complete</td></tr>
+    <tr><td><span class="status packing">Packing List Rcvd</span></td><td>✅ Always shown</td><td>Packing list received</td></tr>
+    <tr><td><span class="status draft">Draft</span></td><td>⬜ Shown only when "Include Draft" toggle is ON</td><td>Must be manually enabled via the top filter</td></tr>
+    <tr style="background:#fff7ed"><td><span class="status complete">Complete</span></td><td style="color:#dc2626;font-weight:700">❌ Not shown</td><td>Received containers are excluded from planning</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Missing a container?</b> Check its status in Container Planning. If <span class="status complete">Complete</span>, it has been marked as received. See <a href="#en-cp-complete" style="color:var(--brand)">Container Planning › Complete Status</a> for details.</div>
+  </div>
+
+  <h3>⑤ Gradient (Tier) Settings</h3>
+  <p>High-velocity SKUs automatically receive longer inventory targets via the <strong>Gradient Tier</strong> system. Modify thresholds in the <span class="btn-label">Gradient</span> area of the bottom status bar.</p>
+  <table class="feat-table">
+    <tr><th>Tier</th><th>Daily Sales Threshold (SC basis)</th><th>Bonus Days</th></tr>
+    <tr><td><strong>TOP</strong></td><td>≥ 18/day</td><td>+15 days</td></tr>
+    <tr><td><strong>A</strong></td><td>≥ 8/day</td><td>+5 days</td></tr>
+    <tr><td><strong>B</strong></td><td>≥ 3/day</td><td>±0 days</td></tr>
+    <tr><td><strong>C</strong></td><td>≥ 0.3/day</td><td>−5 days</td></tr>
+    <tr><td><strong>D</strong></td><td>≥ 0.1/day</td><td>−10 days</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Seasonal Multiplier:</b> A seasonal multiplier is automatically applied based on the container ETA month (November ×1.25, December ×1.3). Monthly multipliers can be edited in the <span class="btn-label">Seasonal</span> section of the bottom status bar.</div>
+  </div>
+</section>
+
+<!-- ═══ 3. SKU PLANNING ═══ -->
+<section class="page-section" id="en-sku-planning">
+  <div class="section-header">
+    <div class="section-icon" style="background:#dcfce7;font-size:28px">🔍</div>
+    <div>
+      <div class="menu-path">Menu › SKU Planning</div>
+      <h2>SKU Planning</h2>
+      <p class="subtitle">Detailed analysis of individual SKU sales trends, inventory, inbound containers, and recommended order quantities — all in one screen.</p>
+    </div>
+  </div>
+  <div class="screenshot-box">
+    <img src="screenshots/02-sku-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU Planning Main Screen</p></div>'" alt="SKU Planning">
+    <div class="screenshot-caption">▲ SKU Planning – Left SKU Browser + Right 3-Tab Detail Panel</div>
+  </div>
+
+  <h3>Screen Layout</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📋 Left Panel – SKU Browser (580px)</h4>
+      <ul>
+        <li>SC / CC / FM product tab switching (with count badge)</li>
+        <li>Search: real-time filter by SKU name, container number, or sales status</li>
+        <li>Urgency filter badges (All / Critical / Watch / High / Low / Order Required)</li>
+        <li>SKU list: view and sort by stock, daily sales, SOD, and recommended quantity</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📊 Right Panel – SKU Detail</h4>
+      <ul>
+        <li><strong>SKU Header</strong>: name · product · status · MOQ · CBM · next ETA</li>
+        <li><strong>KPI Strip</strong>: 5 key metric cards</li>
+        <li><strong>Sales Analysis</strong> tab: sales trends by period</li>
+        <li><strong>Inventory &amp; Inbound</strong> tab: stock coverage and inbound containers</li>
+        <li><strong>Container Recommendation</strong> tab: recommended qty + What-If simulation</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Top Global Controls</h3>
+  <table class="feat-table">
+    <tr><th style="width:240px">Control</th><th>Description</th></tr>
+    <tr><td class="label">Product Tabs (SC / CC / FM)</td><td>Select Seat Cover, Car Cover, or Floor Mat. Total SKU count shown next to the tab.</td></tr>
+    <tr><td class="label">SKUs with Sales / All SKUs</td><td>Toggle. <strong>SKUs with Sales</strong>: show only SKUs with recent sales. <strong>All SKUs</strong>: include SKUs with no sales history.</td></tr>
+    <tr><td class="label">Active Containers / Include Draft</td><td>Toggle. <strong>Active Containers</strong>: confirmed containers only. <strong>Include Draft</strong>: include Draft container inbound quantities in calculations.</td></tr>
+    <tr><td class="label">Target Stock Days (1–365)</td><td>Sets the target inventory days for the Container Recommendation tab. Larger values increase the recommended order quantity.</td></tr>
+    <tr><td class="label">🔄 Sync</td><td>Reload the latest demand planning data from the server.</td></tr>
+  </table>
+
+  <h3 id="en-sp-browser">① Left SKU Browser Panel</h3>
+  <h3 class="sub">Search and Filter Badges</h3>
+  <p>Type a SKU name, container number, or partial sales status in the search box to narrow the list in real time. Urgency filter badges let you view only SKUs in a specific state.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">Filter Badge</th><th>Condition</th></tr>
+    <tr><td class="label">All</td><td>All SKUs (no filter)</td></tr>
+    <tr><td class="label"><span class="status critical">Critical</span></td><td>Urgency = Critical (stock nearly depleted)</td></tr>
+    <tr><td class="label"><span class="status warn">Watch</span></td><td>Urgency = Watch (stock needs attention)</td></tr>
+    <tr><td class="label"><span class="status complete">High</span></td><td>Urgency = Healthy (stock is adequate)</td></tr>
+    <tr><td class="label">Low</td><td>SKUs where Back Order value is negative</td></tr>
+    <tr><td class="label">Order Required</td><td>SKUs where Recommended Qty (Rec. Qty) > 0</td></tr>
+  </table>
+  <h3 class="sub">SKU List Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">Column</th><th>Content</th></tr>
+    <tr><td class="label">Master SKU</td><td>Unique SKU identifier. Click to load detail in the right panel. Click the column header to sort alphabetically.</td></tr>
+    <tr><td class="label">Stock</td><td>Current total inventory (West + East). Click to sort.</td></tr>
+    <tr><td class="label">Avg</td><td>Current daily average sales, 2 decimal places. Click to sort.</td></tr>
+    <tr><td class="label">SOD</td><td>Days until sell-out, shown as a badge (e.g., <span class="status critical">D-5</span>). Click to sort.</td></tr>
+    <tr><td class="label">Rec</td><td>Recommended order quantity. Highlighted in purple when greater than 0. Click to sort.</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Virtual Scrolling:</b> The SKU list uses virtual scrolling (36px row height) so even thousands of SKUs render quickly. Narrow scope using the product tab or search if loading is slow.</div>
+  </div>
+
+  <h3 id="en-sp-kpi">② KPI Summary Cards (5)</h3>
+  <p>Select a SKU to see five key metrics displayed as cards above the tabs.</p>
+  <div class="card-grid col3">
+    <div class="card"><h4>📦 Current Stock</h4><p>Total current warehouse inventory. <strong>West / East</strong> warehouse quantities shown separately below.</p></div>
+    <div class="card"><h4>🚢 Inbound</h4><p>Total expected inbound quantity. Shows Draft inclusion and nearest ETA. Displays <em>"No active inbound"</em> when none exists.</p></div>
+    <div class="card"><h4>📈 Projected Stock</h4><p><strong>Projected inventory</strong> = current stock + inbound + back order impact. CBM/unit shown in subtitle.</p></div>
+    <div class="card"><h4>📊 Daily Avg Sales</h4><p>Current daily sales velocity. Subtitle shows total sales for the last 30 days (units).</p></div>
+    <div class="card"><h4>⏱️ Inventory Life</h4><p>Projected days of stock coverage and estimated SOD. When inbound exists, also shows <strong>"current stock only"</strong> days in urgency color.</p></div>
+  </div>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Include Draft toggle effect:</b> Enabling <strong>Include Draft</strong> changes the inbound, projected stock, and inventory life figures to include Draft container quantities.</div>
+  </div>
+
+  <h3 id="en-sp-analysis">③ Sales Analysis Tab</h3>
+  <div class="screenshot-box">
+    <img src="screenshots/02a-sku-sales.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>Sales Analysis Tab</p></div>'" alt="Sales Analysis Tab">
+    <div class="screenshot-caption">▲ Sales Analysis Tab – Period Sales Trend Chart (Default View)</div>
+  </div>
+  <p>Review the selected SKU's sales data by period using charts and summary tables. Two modes: <strong>Default View</strong> and <strong>History View</strong>.</p>
+  <h3 class="sub">Default View – Period Summary</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Sales Trend Chart</td><td>Visualizes 7D/15D/30D/60D/90D sales as bar or line chart. Toggle between <strong>line / bar</strong> using the icon at the top-right of the chart.</td></tr>
+    <tr><td class="label">West Sales Table</td><td>5-row table showing West warehouse sales for 7D / 15D / 30D / 60D / 90D.</td></tr>
+    <tr><td class="label">East Sales Table</td><td>Same structure for East warehouse. Side-by-side with West for regional comparison.</td></tr>
+    <tr><td class="label">3 Average Cards</td><td><strong>Prior Avg</strong> · <strong>Actual Avg</strong> · <strong>Current Avg</strong> (currently applied daily avg, highlighted in blue)</td></tr>
+  </table>
+  <h3 class="sub">History View – Custom Date Range</h3>
+  <p>Enable the History View toggle to show date range input fields.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Date Range Input</td><td>Enter start and end dates manually. Use <span class="btn-label">2024-Today</span> to set from 2024 to today in one click.</td></tr>
+    <tr><td class="label">Aggregation Unit</td><td>Select <strong>Day / Week / Month</strong>. The chart X-axis interval changes accordingly.</td></tr>
+    <tr><td class="label">Range Summary</td><td>Total sales and daily average for the selected period shown on the right.</td></tr>
+  </table>
+
+  <h3 id="en-sp-inventory">④ Inventory &amp; Inbound Tab</h3>
+  <div class="screenshot-box">
+    <img src="screenshots/02b-sku-inventory.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🏭</div><p>Inventory &amp; Inbound Tab</p></div>'" alt="Inventory &amp; Inbound Tab">
+    <div class="screenshot-caption">▲ Inventory &amp; Inbound Tab – Stock Coverage Bar + Inbound Container Cards</div>
+  </div>
+  <p>See how much stock is secured relative to the target days, and which containers are scheduled for inbound.</p>
+  <h3 class="sub">Inventory Summary Cards (4)</h3>
+  <div class="card-grid col2">
+    <div class="card"><h4>🏬 West Stock / East Stock</h4><p>Current inventory by warehouse. When Include Draft is on, a <strong>Draft badge</strong> and the Draft-inclusive total are shown in orange.</p></div>
+    <div class="card"><h4>⚠️ Back Order / SOD</h4><p><strong>Back Order</strong>: current stock shortage (shown in red when negative). <strong>SOD</strong>: estimated sell-out date with D-Day countdown.</p></div>
+  </div>
+  <h3 class="sub">Projected Coverage Progress Bar</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Coverage %</td><td>Ratio of projected inventory to target days. Example: <code>78% of 90-day target</code>. Orange bar below 100%; green bar at or above 100%.</td></tr>
+    <tr><td class="label">Projected / Target Qty</td><td>Shown below the bar as <code>Projected {X} / Target {Y} units</code>.</td></tr>
+    <tr><td class="label">Target Days Reference</td><td>Reflects the <strong>Target Stock Days</strong> value from the top global controls.</td></tr>
+  </table>
+  <h3 class="sub">Inbound Container List</h3>
+  <p>Lists all expected inbound containers that include this SKU as card entries.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Container Name</td><td>Container number. Draft containers show a <span class="status draft">Draft</span> badge with an orange card border.</td></tr>
+    <tr><td class="label">Status</td><td>Current container status (Draft / Final List Sent / Packing List Rcvd / Complete).</td></tr>
+    <tr><td class="label">ETA</td><td>Estimated arrival date. Sorted by nearest date first.</td></tr>
+    <tr><td class="label">Qty</td><td>Inbound quantity assigned to this SKU.</td></tr>
+    <tr><td class="label">CBM</td><td>Volume occupied by this SKU.</td></tr>
+    <tr><td class="label">Card Click</td><td>Navigates directly to that container's Container Planning detail page.</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Viewing Draft Containers:</b> Set the top toggle to <strong>Include Draft</strong> to show unconfirmed Draft containers. This also affects the Projected Coverage bar figures.</div>
+  </div>
+  <h3 class="sub">Right Summary Cards (4)</h3>
+  <div class="card-grid col2">
+    <div class="card"><h4>Current Stock</h4><p>Total current warehouse inventory.</p></div>
+    <div class="card"><h4>Inbound / Inbound (incl. Draft)</h4><p>Total expected inbound. Labeled "(incl. Draft)" when Draft is included.</p></div>
+    <div class="card"><h4>Projected Stock</h4><p>Current stock + inbound + back order impact.</p></div>
+    <div class="card"><h4>Remaining / Error</h4><p>Available Stock quantities: Remaining stock and Mistake Order amounts.</p></div>
+  </div>
+
+  <h3 id="en-sp-recommend">⑤ Container Recommendation Tab</h3>
+  <div class="screenshot-box">
+    <img src="screenshots/02c-sku-recommend.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>Container Recommendation Tab</p></div>'" alt="Container Recommendation Tab">
+    <div class="screenshot-caption">▲ Container Recommendation Tab – Recommended Qty · Simulation · Calculation Detail</div>
+  </div>
+  <p>Calculate the <strong>recommended order quantity</strong> based on target stock days and compare scenarios by entering custom quantities and ETAs.</p>
+  <h3 class="sub">Recommended Container Quantity</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Recommended Qty (large number)</td><td>Recommended inbound quantity with MOQ and order multiples automatically applied. Displayed in large purple text.</td></tr>
+    <tr><td class="label">Order Multiple</td><td>The applied order multiple. Example: step 5 → 5, 10, 15 …</td></tr>
+    <tr><td class="label">Estimated CBM</td><td>CBM volume required to load the recommended quantity (m³).</td></tr>
+  </table>
+  <h3 class="sub">Recommendation Basis (4 lines)</h3>
+  <div class="card-grid col2">
+    <div class="card"><h4>① Target Stock</h4><p><code>Daily avg × target days</code> = the target inventory to secure</p></div>
+    <div class="card"><h4>② Projected Stock</h4><p><code>Current stock + expected inbound + back order impact</code></p></div>
+    <div class="card"><h4>③ Actual Need</h4><p><code>Target stock − projected stock</code>, rounded up (ROUNDUP) to the order multiple</p></div>
+    <div class="card"><h4>④ Velocity Context</h4><p>7D vs. 30D average comparison and rate of change (%). Indicates whether recent sales are accelerating or decelerating.</p></div>
+  </div>
+  <h3 class="sub">What-If Simulation</h3>
+  <table class="feat-table">
+    <tr><th style="width:240px">Input</th><th>Description</th></tr>
+    <tr><td class="label">Proposed Container Qty</td><td>Enter the quantity you intend to order. Adjust in order multiple increments. Initial value is the recommended quantity.</td></tr>
+    <tr><td class="label">Hypothetical ETA</td><td>Set the expected arrival date with a date picker. Initial value is 90 days from today.</td></tr>
+    <tr><td class="label">Reset to Recommended</td><td>Resets inputs to the system's recommended quantity and default ETA.</td></tr>
+  </table>
+  <h3 class="sub">Simulation Results (5 figures)</h3>
+  <div class="card-grid col3">
+    <div class="card"><h4>Demand Before ETA</h4><p>Expected sales volume before arrival (daily avg × remaining days).</p></div>
+    <div class="card"><h4>Back Order Before ETA</h4><p>Back order if stock is depleted before ETA. Highlighted in warning color when greater than 0.</p></div>
+    <div class="card"><h4>Back Order After ETA</h4><p>Remaining back order after arrival. Greater than 0 still means a stock shortage.</p></div>
+    <div class="card"><h4>Required CBM</h4><p>CBM needed to load the entered order quantity.</p></div>
+    <div class="card"><h4>Projected SOD</h4><p>Estimated sell-out date under the simulation conditions.</p></div>
+  </div>
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:13px;color:#14532d">
+    <strong>Comparison Line:</strong> Below the simulation results, three figures appear side by side: <code>Current SOD | Simulation SOD | Remaining after ETA</code> — so you can immediately see the improvement over the current situation.
+  </div>
+  <h3 class="sub">Calculation Detail (4-column grid)</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Target Days</td><td>Target inventory days set in the top controls</td></tr>
+    <tr><td class="label">Daily Avg Sales</td><td>Current daily average sales velocity</td></tr>
+    <tr><td class="label">Target Stock</td><td>= Daily avg × target days</td></tr>
+    <tr><td class="label">Current Stock</td><td>Total current warehouse inventory</td></tr>
+    <tr><td class="label">Inbound / Inbound (incl. Draft)</td><td>Total expected inbound (Draft inclusion labeled)</td></tr>
+    <tr><td class="label">Back Order Impact</td><td>Current back order quantity (negative reduces projected stock)</td></tr>
+    <tr><td class="label">Projected Stock</td><td>= Current stock + inbound + back order impact</td></tr>
+    <tr><td class="label">Required Qty</td><td>= Target stock − projected stock (raw need before rounding)</td></tr>
+  </table>
+  <div class="callout info">
+    <span class="callout-icon">✅</span>
+    <div><b>MOQ &amp; Order Multiple Auto-Applied:</b> If the required quantity is less than MOQ, MOQ is applied automatically. The final recommended quantity is always rounded up (ROUNDUP) to the nearest order multiple. MOQ and order multiples must be set correctly in SKU Master.</div>
+  </div>
+</section>
+
+<!-- ═══ 4. CONTAINER PLANNING ═══ -->
+<section class="page-section" id="en-container-planning">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef9c3;font-size:28px">🚢</div>
+    <div>
+      <div class="menu-path">Menu › Container Planning</div>
+      <h2>Container Planning</h2>
+      <p class="subtitle">Register and manage inbound containers, SKU quantities, and packing list status.</p>
+    </div>
+  </div>
+  <div class="screenshot-box">
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning</p></div>'" alt="Container Planning">
+    <div class="screenshot-caption">▲ Container Planning – Left Container List + Right Detail Panel</div>
+  </div>
+
+  <h3>Container Status Flow</h3>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 24px">
+    <span class="status draft">Draft</span>
+    <span style="color:#9ca3af;font-size:20px">→</span>
+    <span class="status final">Final List Sent</span>
+    <span style="color:#9ca3af;font-size:20px">→</span>
+    <span class="status packing">Packing List Rcvd</span>
+    <span style="color:#9ca3af;font-size:20px">→</span>
+    <span class="status complete">Complete</span>
+  </div>
+
+  <h3 id="en-cp-create">① Creating a Container</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Click + Add Container</h4><p>Click the <span class="btn-label">+ Add Container</span> button in the top-right of the screen.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Enter Basic Information</h4><p>Enter the <strong>container number</strong> (e.g., 182-CA-SEAT), <strong>ETA</strong>, <strong>destination warehouse</strong>, and <strong>CBM capacity</strong> (default 80).</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Add SKUs</h4><p>Enter the Master SKU and register quantities. Bulk upload via Excel is also available (<span class="btn-label">Import Excel</span>).</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Allocate Available Stock (optional)</h4><p>To assign warehouse surplus to this container, use the <span class="btn-label">Available Stock</span> button.</p></div></div>
+    <div class="step"><div class="step-num">5</div><div><h4>Update Status</h4><p>Change to <span class="status final">Final List Sent</span> once you send the order to the factory. Change to <span class="status packing">Packing List Rcvd</span> when you receive the packing list.</p></div></div>
+  </div>
+  <div class="screenshot-box">
+    <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Container Detail Screen</p></div>'" alt="Container Detail">
+    <div class="screenshot-caption">▲ Container Detail – SKU Quantity and CBM List</div>
+  </div>
+
+  <h3 id="en-cp-status">② Status Details</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Status</th><th>Editable Fields</th><th>Shown in Demand Planning</th><th>Notes</th></tr>
+    <tr>
+      <td><span class="status draft">Draft</span></td>
+      <td>All fields editable</td>
+      <td style="text-align:center">✅ <span style="font-size:12px;color:#6b7280">(Include Draft toggle ON)</span></td>
+      <td>Draft stage. Edit freely.</td>
+    </tr>
+    <tr>
+      <td><span class="status final">Final List Sent</span></td>
+      <td>Quantities only</td>
+      <td style="text-align:center">✅ Always shown</td>
+      <td>After factory submission. Cannot add/remove SKUs.</td>
+    </tr>
+    <tr>
+      <td><span class="status packing">Packing List Rcvd</span></td>
+      <td>Read-only</td>
+      <td style="text-align:center">✅ Always shown</td>
+      <td>After packing list received. No changes allowed.</td>
+    </tr>
+    <tr style="background:#fff7ed">
+      <td><span class="status complete">Complete</span></td>
+      <td>Read-only</td>
+      <td style="text-align:center;color:#dc2626;font-weight:700">❌ Not shown</td>
+      <td>Received. <strong>Fully excluded from Demand Planning.</strong> Deletion requires Planner/Admin.</td>
+    </tr>
+  </table>
+
+  <h3 id="en-cp-complete">③ Complete Status and Demand Planning Display Rules</h3>
+  <div class="callout warn" style="margin-bottom:16px">
+    <span class="callout-icon">⚠️</span>
+    <div>
+      <b>Complete containers are not shown in Demand Planning.</b><br>
+      The moment a container is changed to <span class="status complete">Complete</span>, it immediately disappears from the Demand Planning container column list and is excluded from per-SKU Con. Qty calculations.
+    </div>
+  </div>
+  <p>This behavior exists because <strong>inventory from a received container is already reflected in the warehouse's live stock figures (Current Stock)</strong>. Subsequent order planning should be recalculated against the updated live stock numbers.</p>
+  <div class="card-grid col2" style="margin:20px 0">
+    <div class="card" style="border-left:4px solid #dc2626">
+      <h4>🚫 Conditions that Exclude from Demand Planning</h4>
+      <ul>
+        <li>Status = <span class="status complete">Complete</span></li>
+        <li>Container column disappears; Con. Qty excluded from calculations</li>
+        <li>Not reflected in Auto-Fill results (⟳ / ⟳₂ / ⟳₃)</li>
+        <li>Not shown in SKU Planning › Inventory &amp; Inbound container list</li>
+      </ul>
+    </div>
+    <div class="card" style="border-left:4px solid #16a34a">
+      <h4>✅ Conditions that Show in Demand Planning</h4>
+      <ul>
+        <li>Status = <span class="status final">Final List Sent</span></li>
+        <li>Status = <span class="status packing">Packing List Rcvd</span></li>
+        <li>Status = <span class="status draft">Draft</span> <em>(only when Include Draft toggle is ON)</em></li>
+      </ul>
+    </div>
+  </div>
+  <h3 class="sub">Demand Planning Changes When Status Transitions</h3>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 8px">
+    <span class="status draft">Draft</span>
+    <span style="color:#9ca3af">→</span>
+    <span class="status final">Final List Sent</span>
+    <span style="color:#9ca3af">→</span>
+    <span class="status packing">Packing List Rcvd</span>
+    <span style="color:#9ca3af">→</span>
+    <span class="status complete" style="outline:2px solid #dc2626;outline-offset:2px">Complete ❌</span>
+  </div>
+  <p style="font-size:13px;color:#6b7280;margin-top:6px">The moment status changes to Complete, the container is removed from the Demand Planning container list.</p>
+  <table class="feat-table" style="margin-top:16px">
+    <tr><th style="width:260px">Situation</th><th>Recommended Action</th></tr>
+    <tr><td>Container has actually been received</td><td>Change to <span class="status complete">Complete</span> → Excluded from Demand Planning automatically. Verify updated stock in Demand Planning's Current Stock column.</td></tr>
+    <tr><td>Accidentally set to Complete before actual receipt</td><td>Find the container in Container Planning and revert to <span class="status packing">Packing List Rcvd</span> — it will immediately reappear in Demand Planning.</td></tr>
+    <tr><td>Need to review a Complete container's details</td><td>View it directly in Container Planning. Complete containers are not shown in Demand Planning or SKU Planning.</td></tr>
+  </table>
+  <div class="callout info" style="margin-top:20px">
+    <span class="callout-icon">✅</span>
+    <div>
+      <b>Correct Complete process:</b>
+      <ol style="margin-top:8px;padding-left:18px;line-height:2">
+        <li>Confirm physical receipt, then click the container in Container Planning</li>
+        <li>Change status to <span class="status complete">Complete</span></li>
+        <li>After the external inventory DB syncs, click <span class="btn-label">🔄 Sync</span> in Demand Planning</li>
+        <li>Confirm the Current Stock figures have updated, then review the purchase plan</li>
+      </ol>
+    </div>
+  </div>
+  <div class="callout warn" style="margin-top:20px">
+    <span class="callout-icon">⚠️</span>
+    <div><b>CBM Overload Warning:</b> Current CBM usage is shown at the top. Do not exceed 80 CBM.</div>
+  </div>
+
+  <h3 id="en-cp-export">④ Excel Export</h3>
+  <p>Container Planning has two Export functions. Use each based on your purpose.</p>
+  <div class="card-grid col2" style="margin:20px 0">
+    <div class="card" style="border-left:4px solid #1a5cdb">
+      <h4>📊 Multi-Container Consolidated Export</h4>
+      <p>Select multiple containers to compare and organize SKU quantities in one file. Used for Final Order compilation.</p>
+      <p style="margin-top:8px;font-size:12px;color:#6b7280">Button: <span class="btn-label">Excel Export (N)</span> in the top header</p>
+    </div>
+    <div class="card" style="border-left:4px solid #6b7280">
+      <h4>📋 Single Container Packing List Export</h4>
+      <p>Export a single container's SKU list in packing list format.</p>
+      <p style="margin-top:8px;font-size:12px;color:#6b7280">Button: <span class="btn-label">CSV/Excel</span> at the bottom of the container detail panel</p>
+    </div>
+  </div>
+
+  <h3 class="sub">A. Multi-Container Consolidated Export (Excel Export)</h3>
+  <p>Select multiple containers and export them as a single Excel file. Used to compare order quantities across containers or to deliver the Final Order to the factory.</p>
+  <div class="steps" style="margin:16px 0">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div>
+        <h4>Select Containers</h4>
+        <p>Click the <b>checkboxes</b> on the left of the container list. Multiple selections allowed.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">Use the <span class="btn-label">Select visible</span> checkbox to select/deselect all containers matching the current filter at once. Count shown as <b>N selected</b>.</p>
+      </div>
+    </div>
+    <div class="step"><div class="step-num">2</div><div><h4>Click Excel Export</h4><p>Click the <span class="btn-label">Excel Export (N)</span> button (blue border). N is the number of selected containers. Disabled when 0 are selected.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>File Downloads</h4><p>The Excel file downloads automatically.</p></div></div>
+  </div>
+  <h4 style="margin-top:20px">File Name Convention</h4>
+  <div class="callout info" style="font-family:monospace;font-size:13px">
+    {Product} ETA {M.DD.YYYY} ({First Container} - {Last Container} FINAL).xlsx<br>
+    <span style="font-size:12px;font-family:sans-serif;color:#6b7280;margin-top:4px;display:block">Example: <code>Seat Cover ETA 8.15.2026 (SC-001 - SC-003 FINAL).xlsx</code></span>
+  </div>
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th style="width:180px">File Name Element</th><th>How It Is Determined</th></tr>
+    <tr><td>Product</td><td>Single product category → that product name. Mixed categories → "Mixed Product".</td></tr>
+    <tr><td>ETA</td><td>The <b>earliest ETA</b> among selected containers, formatted as M.DD.YYYY.</td></tr>
+    <tr><td>Container Range</td><td>First to last container number after sorting. Shown identically for a single selection.</td></tr>
+  </table>
+  <h4 style="margin-top:24px">Excel File Contents (Sheet: "Final Order")</h4>
+  <table class="feat-table">
+    <tr><th style="width:200px">Column</th><th>Content</th></tr>
+    <tr><td>Product Type</td><td>Shows "Custom" for Custom SKUs. Blank for standard SKUs.</td></tr>
+    <tr><td>Master SKU</td><td>SKU code, sorted alphabetically.</td></tr>
+    <tr><td>[Container numbers]</td><td>One column per selected container with the SKU's quantity. Shows 0 if not included.</td></tr>
+    <tr><td>Remaining Stock</td><td>Sum of Available Stock Remaining quantity, fetched live at export time.</td></tr>
+    <tr><td>Total row</td><td>Sum of quantities for each container column.</td></tr>
+  </table>
+  <div class="callout tip" style="margin-top:16px">
+    <span class="callout-icon">💡</span>
+    <div>Apply the <b>Status / Product filter</b> first, then use "Select visible" to quickly select containers of a specific product category or status.</div>
+  </div>
+
+  <h3 class="sub" style="margin-top:32px">B. Single Container Packing List Export (CSV/Excel)</h3>
+  <p>Export an individual container's SKU list in packing list format. Used to share packing details with the factory or for internal review.</p>
+  <div class="steps" style="margin:16px 0">
+    <div class="step"><div class="step-num">1</div><div><h4>Open Container Detail</h4><p>Click a container in the list to open the right detail panel.</p></div></div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div>
+        <h4>Click CSV/Excel</h4>
+        <p>Click <span class="btn-label">CSV/Excel</span> in the button area at the bottom of the detail panel.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">This button is only shown for <span class="status draft">Draft</span> and <span class="status final">Final List Sent</span> status. Hidden for <span class="status packing">Packing List Rcvd</span> and above.</p>
+      </div>
+    </div>
+  </div>
+  <h4 style="margin-top:16px">File Name Convention</h4>
+  <div class="callout info" style="font-family:monospace;font-size:13px">
+    container-{ContainerNumber}-{TodayDate}.xlsx<br>
+    <span style="font-size:12px;font-family:sans-serif;color:#6b7280;margin-top:4px;display:block">Example: <code>container-SC-001-2026-06-15.xlsx</code></span>
+  </div>
+  <h4 style="margin-top:16px">Excel File Contents (Sheet: "Packing List")</h4>
+  <table class="feat-table">
+    <tr><th style="width:180px">Item</th><th>Content</th></tr>
+    <tr><td>Header Info</td><td>Container number, ETA, Factory, Destination, Notes, Status — output as 6 header rows</td></tr>
+    <tr><td>Master SKU</td><td>SKU code</td></tr>
+    <tr><td>Source</td><td>Quantity origin. If allocated from Available Stock: "Remain {ref} (N)". If entered directly: "Container / Manual".</td></tr>
+    <tr><td>Qty</td><td>SKU quantity in this container</td></tr>
+    <tr><td>CBM / Unit</td><td>CBM per unit for the SKU</td></tr>
+    <tr><td>Total CBM</td><td>Qty × CBM / Unit</td></tr>
+    <tr><td>Total row</td><td>Total quantity and CBM sum</td></tr>
+  </table>
+</section>
+
+<!-- ═══ 5. AVAILABLE STOCK ═══ -->
+<section class="page-section" id="en-available-stock">
+  <div class="section-header">
+    <div class="section-icon" style="background:#ffe4e6;font-size:28px">📦</div>
+    <div>
+      <div class="menu-path">Menu › Available Stock</div>
+      <h2>Available Stock</h2>
+      <p class="subtitle">Register and manage surplus inventory and mistake orders in the warehouse, and allocate them to containers.</p>
+    </div>
+  </div>
+  <div class="screenshot-box">
+    <img src="screenshots/04-available-stock.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>Available Stock Screen</p></div>'" alt="Available Stock">
+    <div class="screenshot-caption">▲ Available Stock – Remaining List / Mistake Order Tabs</div>
+  </div>
+  <h3>Tab Overview</h3>
+  <div class="card-grid col2">
+    <div class="card"><h4>📋 Remaining List</h4><p>Normal finished-goods inventory waiting in the warehouse after production. Managed using TH (Thailand) reference numbers.</p></div>
+    <div class="card"><h4>🔄 Mistake Order List</h4><p>Surplus inventory from order errors or cancellations. Managed the same way as Remaining.</p></div>
+  </div>
+  <h3>Registering Inventory</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Enter Reference No.</h4><p>Enter the TH number (e.g., TH-2024-001).</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Enter Master SKU</h4><p>Entering a SKU automatically retrieves the CBM from SKU Master.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Enter Quantity and Click Register</h4><p>Enter the total quantity and click <span class="btn-label">Register</span>.</p></div></div>
+  </div>
+  <h3>Understanding Quantity Status</h3>
+  <table class="feat-table">
+    <tr><th>Column</th><th>Meaning</th></tr>
+    <tr><td class="label">Total Qty</td><td>Total registered quantity</td></tr>
+    <tr><td class="label">Allocated Qty</td><td>Quantity already allocated to a container (shown in orange)</td></tr>
+    <tr><td class="label">Available Qty</td><td>Unallocated quantity available for use (Total − Allocated)</td></tr>
+  </table>
+  <div class="callout info">
+    <span class="callout-icon">✅</span>
+    <div><b>Bulk Registration:</b> Use <span class="btn-label">📥 Import Excel</span> to register multiple items at once. Download the template first with <span class="btn-label">📄 Template</span>.</div>
+  </div>
+</section>
+
+<!-- ═══ 6. SKU MASTER ═══ -->
+<section class="page-section" id="en-sku-master">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f3e8ff;font-size:28px">🗂️</div>
+    <div>
+      <div class="menu-path">Menu › SKU Master</div>
+      <h2>SKU Master</h2>
+      <p class="subtitle">Manage reference data per SKU: CBM (volume), MOQ (minimum order), order multiples, and case quantity.</p>
+    </div>
+  </div>
+  <div class="screenshot-box">
+    <img src="screenshots/05-sku-master.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU Master Screen</p></div>'" alt="SKU Master">
+    <div class="screenshot-caption">▲ SKU Master – Full SKU List and Edit Screen</div>
+  </div>
+  <h3>Key Column Descriptions</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">Item</th><th>Description</th><th style="width:160px">Example</th></tr>
+    <tr><td class="label">Master SKU</td><td>Unique SKU identifier</td><td><code style="font-size:12px">CA-SC-10-F-10-BK-1TO</code></td></tr>
+    <tr><td class="label">CBM / Unit</td><td>Volume per box (m³). The core value for order calculations.</td><td>0.042500</td></tr>
+    <tr><td class="label">MOQ</td><td>Minimum Order Quantity. Cannot order below this amount.</td><td>10</td></tr>
+    <tr><td class="label">Order Multiple</td><td>Order quantity increment (e.g., 5 → 5, 10, 15, 20…)</td><td>5</td></tr>
+    <tr><td class="label">Case Qty</td><td>Number of products per box</td><td>1</td></tr>
+    <tr><td class="label">Status</td><td><span class="status complete">Active</span> / <span class="status draft">Inactive</span> — Inactive SKUs are excluded from order calculations</td><td></td></tr>
+  </table>
+  <h3>Editing SKU Information</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Find SKU via Search</h4><p>Type part of the SKU name in the search box, or narrow scope with the product type dropdown.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Click Edit</h4><p>Click the <span class="btn-label">Edit</span> button in the SKU row to make CBM, MOQ, multiple, and case quantity fields editable.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Edit Values and Click Done</h4><p>Click <span class="btn-label">Done</span> after editing — changes are saved automatically.</p></div></div>
+  </div>
+  <div class="card-grid col2">
+    <div class="callout tip" style="margin:0">
+      <span class="callout-icon">💡</span>
+      <div><b>Bulk CBM Update:</b> Use <span class="btn-label">Import Excel</span> to update CBM for multiple SKUs at once.</div>
+    </div>
+    <div class="callout info" style="margin:0">
+      <span class="callout-icon">🔄</span>
+      <div><b>Inventory Sync:</b> Click <span class="btn-label">Sync Inventory</span> to fetch the latest data from the external inventory DB.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ APPENDIX: GLOSSARY ═══ -->
+<section class="page-section" id="en-glossary">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f9fafb">📖</div>
+    <div>
+      <h2>Glossary</h2>
+      <p class="subtitle">Common terms used in Demand Pilot.</p>
+    </div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:160px">Term</th><th>Description</th></tr>
+    <tr><td class="label">CBM</td><td>Cubic Meter. Volume per box (m³). The basis for calculating container load capacity.</td></tr>
+    <tr><td class="label">MOQ</td><td>Minimum Order Quantity. The minimum quantity that can be ordered in one purchase.</td></tr>
+    <tr><td class="label">ETA</td><td>Estimated Time of Arrival. The expected arrival date of a container.</td></tr>
+    <tr><td class="label">SOD</td><td>Sell-Out Date. The estimated date when current inventory will be fully depleted.</td></tr>
+    <tr><td class="label">INV Life</td><td>Inventory Life. How many days current inventory will last (Stock ÷ Daily avg sales).</td></tr>
+    <tr><td class="label">Back Order</td><td>Unfulfilled demand resulting from insufficient inventory. A negative stock state.</td></tr>
+    <tr><td class="label">Carryover</td><td>Residual inventory remaining after a container's arrival point.</td></tr>
+    <tr><td class="label">Transit Stock</td><td>Inventory currently in ocean transit (not yet received into the warehouse).</td></tr>
+    <tr><td class="label">Con. Qty</td><td>Container Quantity. The order quantity to be loaded into a container.</td></tr>
+    <tr><td class="label">Gradient Tier</td><td>A bonus-day table for inventory targets segmented by daily sales volume. Five tiers: TOP · A · B · C · D.</td></tr>
+    <tr><td class="label">Remaining List</td><td>Normal finished-goods inventory waiting in the warehouse for inbound after production.</td></tr>
+    <tr><td class="label">Mistake Order</td><td>Surplus inventory resulting from order errors or cancellations.</td></tr>
+  </table>
+  <div class="divider"></div>
+  <p style="text-align:center;color:var(--gray-400);font-size:12px">Demand Pilot User Manual v1.0 · 2026.06 · shipcore.com</p>
+</section>
+</main>
 </div>
 
 <script>
 // 사이드바 활성 항목 하이라이트
-const sections = document.querySelectorAll('[id]');
+const languageButtons = document.querySelectorAll('[data-lang-button]');
+const savedLanguage = localStorage.getItem('manualLanguage') || 'ko';
+
+function applyLanguage(language) {
+  document.body.classList.toggle('lang-en', language === 'en');
+  document.documentElement.lang = language;
+  document.title = 'Demand Pilot - User Manual';
+  localStorage.setItem('manualLanguage', language);
+}
+
+languageButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const language = button.getAttribute('data-lang-button') || 'ko';
+    applyLanguage(language);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+});
+
+applyLanguage(savedLanguage);
+
+function isVisible(element) {
+  return !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
+}
+
+const sections = document.querySelectorAll('main [id]');
 const navItems = document.querySelectorAll('.nav-item');
 const observer = new IntersectionObserver((entries) => {
   entries.forEach(entry => {
-    if (entry.isIntersecting) {
+    if (entry.isIntersecting && isVisible(entry.target)) {
       navItems.forEach(item => item.classList.remove('active'));
-      const active = document.querySelector(`.nav-item[href="#${entry.target.id}"]`);
+      const active = Array.from(navItems).find(item => item.getAttribute('href') === `#${entry.target.id}` && isVisible(item));
       if (active) active.classList.add('active');
     }
   });

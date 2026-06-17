@@ -227,22 +227,44 @@ export type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
 export type ColumnVisibility = Record<string, boolean>;
 export type ColumnColorSettings = Record<string, { cell?: string; header?: string }>;
 export type CellColorSettings = Record<string, string>;
-export type SkuPartFilterKey = "seat" | "no" | "color" | "tone";
+export type SkuPartFilterKey = "formula" | "fabric" | "seat" | "no" | "size" | "color" | "tone" | "type" | "prefix" | "productCode" | "surface" | "material" | "vehiclePosition" | "make" | "model";
 export type SkuParts = Record<SkuPartFilterKey, string>;
 export type SkuPartFilters = Record<SkuPartFilterKey, string[]>;
 
 export const EMPTY_SKU_PART_FILTERS: SkuPartFilters = {
+  formula: [],
+  fabric: [],
   seat: [],
   no: [],
+  size: [],
   color: [],
   tone: [],
+  type: [],
+  prefix: [],
+  productCode: [],
+  surface: [],
+  material: [],
+  vehiclePosition: [],
+  make: [],
+  model: [],
 };
 
 export const EMPTY_SKU_PARTS: SkuParts = {
+  formula: "",
+  fabric: "",
   seat: "",
   no: "",
+  size: "",
   color: "",
   tone: "",
+  type: "",
+  prefix: "",
+  productCode: "",
+  surface: "",
+  material: "",
+  vehiclePosition: "",
+  make: "",
+  model: "",
 };
 
 export const RESIZABLE_COLUMN_LIMITS: Record<ResizableColumnId, { min: number; max: number }> = {
@@ -301,27 +323,62 @@ export function loadSavedColumnColors(): ColumnColorSettings {
   }
 }
 
-export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone">): SkuParts {
+function normalizeSkuNumber(value: string | undefined) {
+  if (!value) return "";
+  return /^\d+$/.test(value) ? String(Number.parseInt(value, 10)) : value;
+}
+
+export function skuFilterKeysForProduct(product: "sc" | "cc" | "fm" | "ac"): SkuPartFilterKey[] {
+  if (product === "cc") return ["formula", "fabric", "size", "color", "type"];
+  if (product === "fm") return ["prefix", "productCode", "surface", "material", "vehiclePosition", "make", "model"];
+  return ["seat", "no", "color", "tone"];
+}
+
+export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone" | "category_code">): SkuParts {
   const parts = String(row.sku ?? "").trim().toUpperCase().split("-");
+  if (row.category_code === "CC" || parts[0] === "CC") {
+    if (/^\d+$/.test(parts[1] ?? "")) {
+      return {
+        ...EMPTY_SKU_PARTS,
+        fabric: normalizeSkuNumber(parts[1]),
+        size: parts[2] ?? "",
+        color: parts[3] ?? "",
+        type: parts[4] ?? "",
+      };
+    }
+    return {
+      ...EMPTY_SKU_PARTS,
+      formula: parts[1] ?? "",
+      fabric: normalizeSkuNumber(parts[2]),
+      size: parts[3] ?? "",
+      color: parts[4] ?? "",
+      type: parts[5] ?? "",
+    };
+  }
   if ((parts[0] === "CA" || parts[0] === "CL") && parts[1] === "SC" && parts.length >= 6) {
     for (let index = parts.length - 4; index >= 2; index -= 1) {
       const [seat, no, color, tone] = parts.slice(index, index + 4);
       if ((seat === "F" || seat === "B") && /^\d+$/.test(no ?? "") && color && tone) {
-        return { seat, no, color, tone };
+        return { ...EMPTY_SKU_PARTS, seat, no: normalizeSkuNumber(no), color, tone };
       }
     }
     return EMPTY_SKU_PARTS;
   }
-  if ((parts[0] === "CA" || parts[0] === "CL") && parts[1] === "FM" && parts.length >= 6) {
+  if ((parts[0] === "CA" || parts[0] === "CL") && parts[1] === "FM" && parts.length >= 4) {
     return {
-      no: parts[2] ?? "",
-      seat: parts[3] ?? "",
-      color: parts[5] ?? "",
-      tone: "",
+      ...EMPTY_SKU_PARTS,
+      prefix: parts[0] ?? "",
+      productCode: parts[1] ?? "",
+      surface: parts[2] ?? "",
+      material: normalizeSkuNumber(parts[3]),
+      vehiclePosition: parts[4] ?? "",
+      make: parts[5] ?? "",
+      model: parts.slice(6).join("-"),
     };
   }
 
   const rowParts: SkuParts = {
+    ...EMPTY_SKU_PARTS,
     seat: String(row.seat ?? "").trim().toUpperCase(),
     no: row.no === null || row.no === undefined || row.no === 0 ? "" : String(row.no).trim().toUpperCase(),
     color: String(row.color ?? "").trim().toUpperCase(),
@@ -333,7 +390,7 @@ export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "col
 }
 
 export function skuMatchesPartFilters(
-  row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone">,
+  row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone" | "category_code">,
   filters: SkuPartFilters,
 ): boolean {
   const parts = skuPartsForRow(row);
