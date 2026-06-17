@@ -816,6 +816,7 @@ function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
     baseline: boolean;
+    status?: string;
     totalColumns: ContainerTotalColumn[];
     onEtaChange: (value: string) => void;
     onAutoFill?: () => void;
@@ -833,8 +834,14 @@ function ContainerGroupHeader(
   },
 ) {
   const [targetDays, setTargetDays] = useState(90);
+  const statusBg =
+    props.status === "packing_received"
+      ? "border-t-[3px] border-blue-400 bg-blue-500/20"
+      : props.status === "shipped"
+        ? "border-t-[3px] border-amber-400 bg-amber-500/20"
+        : "";
   return (
-    <div className="flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px]">
+    <div className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}>
       <div className="flex items-center justify-center gap-1 overflow-hidden">
         <span className="max-w-full truncate font-bold">{props.displayName}</span>
         {props.baseline ? null : (
@@ -1860,6 +1867,7 @@ export function AgDemandPlanningGrid({
           headerGroupComponentParams: {
             eta: container.eta,
             baseline,
+            status: container.status,
             totalColumns: subColumns.map((column) => ({
               id: column.id,
               width: containerColumnWidth(column),

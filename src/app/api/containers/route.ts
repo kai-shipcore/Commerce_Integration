@@ -127,6 +127,21 @@ export async function GET(request: NextRequest) {
                'id', fc_container_items.id::text,
                'sku', fc_container_items.master_sku,
                'qty', fc_container_items.qty,
+               'isCustomSku', (
+                 COALESCE(p_item.is_custom_sku, false)
+                 OR EXISTS (
+                   SELECT 1
+                   FROM shipcore.fc_stats s_item
+                   WHERE s_item.master_sku = fc_container_items.master_sku
+                     AND s_item.sales_status = 'Custom'
+                 )
+                 OR EXISTS (
+                   SELECT 1
+                   FROM shipcore.fc_stats_custom sc_item
+                   WHERE sc_item.master_sku = fc_container_items.master_sku
+                     AND sc_item.sales_status = 'Custom'
+                 )
+               ),
                'cbm', COALESCE(
                  fc_container_items.cbm_unit,
                  CASE WHEN fc_container_items.qty > 0 THEN fc_container_items.total_cbm / fc_container_items.qty ELSE 0 END,
@@ -153,7 +168,7 @@ export async function GET(request: NextRequest) {
              ORDER BY fc_container_items.id
            ) AS items
          FROM shipcore.fc_container_items
-         ${itemCategoryJoin}
+         ${itemCategoryJoin || "LEFT JOIN shipcore.fc_products p_item ON p_item.master_sku = fc_container_items.master_sku"}
          GROUP BY fc_container_items.container_id
        ) item_summary ON item_summary.container_id = c.id
        ${where}
@@ -181,6 +196,7 @@ export async function GET(request: NextRequest) {
               id?: string;
               sku?: string;
               qty?: number;
+              isCustomSku?: boolean;
               cbm?: string | number;
               allocations?: Array<{
                 id: string;
@@ -194,6 +210,7 @@ export async function GET(request: NextRequest) {
               id: item.id ?? "",
               sku: item.sku ?? "",
               qty: Number(item.qty ?? 0),
+              isCustomSku: Boolean(item.isCustomSku),
               cbm: Number(item.cbm ?? 0),
               allocations: (item.allocations ?? []).map((allocation) => ({
                 ...allocation,

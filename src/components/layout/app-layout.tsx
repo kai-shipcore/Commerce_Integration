@@ -12,6 +12,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { BookOpen } from "lucide-react";
 import { MainNav } from "./main-nav";
 import { UserMenu } from "./user-menu";
 import {
@@ -19,7 +20,7 @@ import {
   isAdminLikeRole,
   navigationItems,
 } from "./navigation-config";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, withBasePath } from "@/lib/api-path";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -113,6 +114,16 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
           <MainNav />
           <div className="ml-auto flex items-center space-x-4">
+            <a
+              href={withBasePath("/manual/index.html")}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="사용자 매뉴얼"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary dark:text-slate-200 dark:hover:text-white"
+            >
+              <BookOpen className="h-4 w-4" />
+              <span className="hidden sm:inline">매뉴얼</span>
+            </a>
             <UserMenu />
           </div>
         </div>

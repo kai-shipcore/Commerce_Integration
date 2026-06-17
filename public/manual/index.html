@@ -250,7 +250,11 @@
   <a class="nav-item" href="#overview"><span class="icon">🏠</span> 시작하기</a>
   <a class="nav-item" href="#demand-planning"><span class="icon">📊</span> Demand Planning</a>
   <a class="nav-sub" href="#dp-filters">필터 & 검색</a>
-  <a class="nav-sub" href="#dp-containers">컨테이너 열람</a>
+  <a class="nav-sub" href="#dp-columns">Columns 패널</a>
+  <a class="nav-sub" href="#dp-col-preset">프리셋 & 그룹</a>
+  <a class="nav-sub" href="#dp-col-sku-filter">SKU 필터</a>
+  <a class="nav-sub" href="#dp-col-freeze">컬럼 고정</a>
+  <a class="nav-sub" href="#dp-col-colors">컬럼 색상</a>
   <a class="nav-sub" href="#dp-autofill">자동계산 버튼 (⟳ ⟳₂ ⟳₃)</a>
   <a class="nav-item" href="#sku-planning"><span class="icon">🔍</span> SKU Planning</a>
   <a class="nav-sub" href="#sp-browser">SKU 목록 패널</a>
@@ -262,6 +266,7 @@
   <a class="nav-sub" href="#cp-create">컨테이너 등록</a>
   <a class="nav-sub" href="#cp-status">상태 관리</a>
   <a class="nav-sub" href="#cp-complete">Complete와 Demand Planning</a>
+  <a class="nav-sub" href="#cp-export">엑셀 Export</a>
   <a class="nav-item" href="#available-stock"><span class="icon">📦</span> Available Stock</a>
   <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU Master</a>
   <div class="nav-section" style="margin-top:20px">부록</div>
@@ -296,7 +301,7 @@
     </div>
   </div>
 
-  <p>Demand Pilot은 아마존 기반 시트 커버 · 카 커버 · 플로어 매트 상품의 <strong>재고 현황 파악 → 발주 계획 → 컨테이너 입고 관리</strong>를 하나의 화면에서 처리하는 운영 도구입니다.</p>
+  <p>Demand Pilot은 e-commerce 상품의 <strong>재고 현황 파악 → 발주 계획 → 컨테이너 입고 관리</strong>를 하나의 화면에서 처리하는 운영 도구입니다.</p>
 
   <h3>메뉴 구성</h3>
   <div class="toc">
@@ -388,40 +393,224 @@
   <h3 class="sub">SKU 파트 필터 (Seat Cover 전용)</h3>
   <p>Seat Cover를 선택하면 추가로 <strong>Seat / No. / Color / Tone</strong> 4가지 필터가 나타납니다. 각 드롭다운에서 원하는 값을 복수 선택해 특정 사양의 SKU만 볼 수 있습니다.</p>
 
-  <!-- 컬럼 설정 -->
-  <h3 id="dp-containers">② 테이블 컬럼 구성</h3>
-  <p><span class="btn-label">Columns</span> 버튼을 눌러 표시할 컬럼 그룹을 선택할 수 있습니다.</p>
-  <div class="card-grid col3">
+  <!-- Columns 패널 전체 -->
+  <h3 id="dp-columns">② Columns 패널</h3>
+  <p>상단 툴바의 <span class="btn-label">⊞ Columns ▾</span> 버튼을 클릭하면 패널이 열립니다. 패널은 세 영역(왼쪽: Quick Preset·Options·SKU Filters·Freeze Column, 가운데: Column Visibility, 오른쪽: Column Colors)으로 구성됩니다. 모든 설정은 브라우저 localStorage와 서버에 자동 저장되어 다음 접속 시에도 유지됩니다.</p>
+
+  <h3 class="sub" id="dp-col-preset">Quick Preset — 빠른 컬럼 프리셋</h3>
+  <p>4개의 버튼으로 자주 쓰는 컬럼 조합을 즉시 적용합니다. 현재 활성 프리셋은 파란 테두리로 표시됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:170px">버튼</th><th>표시되는 컬럼 그룹</th><th>비고</th></tr>
+    <tr>
+      <td><span class="btn-label">All</span></td>
+      <td>모든 컬럼 그룹 전체 표시</td>
+      <td>가장 넓은 뷰. 처음 접속 시 기본값.</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Core</span></td>
+      <td>Basic Info · Inventory · Sales 30D · Total Avg Daily · 입고/SOD + 컨테이너 컬럼</td>
+      <td>West/East 일별 판매 그룹 숨김. 핵심 지표 중심.</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Compact</span></td>
+      <td>Core에서 더 줄인 필수 컬럼만 표시<br><span style="font-size:11px;color:#6b7280">Back · Sales Status · Master SKU · West/East/Total Stock · T.Avg 이전/실제/현재 · Inbound Qty · Containers List · Next ETA · S.O.D 품절예상일 + 컨테이너 컬럼</span></td>
+      <td>Compact 모드 ON. Freeze Column을 S.O.D로 자동 초기화. 화면이 좁을 때 유용.</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Container Columns</span></td>
+      <td>컨테이너 서브컬럼 전체 ON/OFF 토글</td>
+      <td>나머지 컬럼은 그대로 유지. 파란 테두리 = 현재 컨테이너 컬럼 전체 표시 중.</td>
+    </tr>
+  </table>
+
+  <h3 class="sub" style="margin-top:28px">Column Visibility — 컬럼 그룹 & 개별 컬럼 선택</h3>
+  <p>패널 가운데 영역에서 컬럼 그룹 단위 체크박스와 그룹 내 개별 컬럼 체크박스를 모두 제어할 수 있습니다. 그룹 헤더를 클릭해 접었다 펼 수 있으며, 그룹 옆의 숫자(예: <code>5/6</code>)는 "표시 중 / 전체" 컬럼 수를 나타냅니다.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">그룹명</th><th>포함 컬럼</th><th>비고</th></tr>
+    <tr style="background:#f0f4ff">
+      <td><strong>Basic Info</strong></td>
+      <td>#(행 번호) · Container Info. · CBM · Back · Sales Status · Master SKU</td>
+      <td>항상 표시. 숨길 수 없음.</td>
+    </tr>
+    <tr>
+      <td><strong>Inventory</strong></td>
+      <td>Mode · West Stock · East Stock · Transit Stock · Total Stock</td>
+      <td>재고 현황. Mode는 재고 계산 방식(onhand/available).</td>
+    </tr>
+    <tr>
+      <td><strong>West FBM Sales</strong></td>
+      <td>West 90D · 60D · 30D · 15D · 7D · W Pre 30D</td>
+      <td>서부(FBM) 기간별 판매 수량.</td>
+    </tr>
+    <tr>
+      <td><strong>East FBM Sales</strong></td>
+      <td>East 90D · 60D · 30D · 15D · 7D · E Pre 30D</td>
+      <td>동부(FBM) 기간별 판매 수량.</td>
+    </tr>
+    <tr>
+      <td><strong>West Avg Daily</strong></td>
+      <td>W Avg 이전 · W Avg 실제 · W Avg 현재</td>
+      <td>서부 일평균 판매 (이전 시즌 / 실측 / 현재 적용값).</td>
+    </tr>
+    <tr>
+      <td><strong>East Avg Daily</strong></td>
+      <td>E Avg 이전 · E Avg 실제 · E Avg 현재</td>
+      <td>동부 일평균 판매.</td>
+    </tr>
+    <tr>
+      <td><strong>FBA Avg</strong></td>
+      <td>FBA 실제 · FBA 현재</td>
+      <td>FBA 채널 일평균 판매.</td>
+    </tr>
+    <tr>
+      <td><strong>Sales 30D</strong></td>
+      <td>W FBM 30D · E FBM 30D · FBA 30D · Total 30D</td>
+      <td>채널별 최근 30일 판매 합산.</td>
+    </tr>
+    <tr>
+      <td><strong>Total Avg Daily</strong></td>
+      <td>T.Avg 이전 · T.Avg 실제 · T.Avg 현재</td>
+      <td>전체 채널 합산 일평균. 자동계산(⟳₂/⟳₃)의 기준값.</td>
+    </tr>
+    <tr>
+      <td><strong>입고 / 컨테이너 / SOD</strong></td>
+      <td>Inbound Qty · Containers List · Next ETA · S.O.D 품절예상일</td>
+      <td>예정 입고 수량 합산, 컨테이너 목록, 다음 ETA, 재고 소진 예상일.</td>
+    </tr>
+    <tr style="background:#f0f7ff">
+      <td><strong>컨테이너 컬럼</strong><br><span style="font-size:11px;color:#6b7280">(컨테이너마다 공통 서브컬럼)</span></td>
+      <td>Con. Qty · Rem. Qty · Open Orders · Avail Qty · Est. Sales · Back Order · Carry over · Inv. Life · EST. SOD · Plan SOD · CBM</td>
+      <td>Container Columns 버튼 또는 개별 체크박스로 제어. 각 컨테이너 열 헤더 아래에 서브컬럼으로 표시.</td>
+    </tr>
+  </table>
+
+  <div class="card-grid col2" style="margin-top:20px">
     <div class="card">
-      <h4>📌 고정 컬럼</h4>
-      <ul>
-        <li>SKU 이름</li>
-        <li>West / East / Total 재고</li>
-        <li>Transit Stock (운송 중)</li>
-        <li>Back 수량, SOD(재고 소진일)</li>
-      </ul>
+      <h4>🚢 컨테이너 서브컬럼 설명</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600;width:110px">Con. Qty</td><td style="padding:3px 6px">발주 수량 (직접 편집 가능)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Rem. Qty</td><td style="padding:3px 6px">Available Stock 잔여 수량</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Open Orders</td><td style="padding:3px 6px">미처리 주문 수량</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Avail Qty</td><td style="padding:3px 6px">도착 후 가용 재고 예측</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Est. Sales</td><td style="padding:3px 6px">ETA까지 예상 판매량</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Back Order</td><td style="padding:3px 6px">예상 재고 부족량 (빨간색)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Carry over</td><td style="padding:3px 6px">이전 컨테이너에서 이월 재고</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Inv. Life</td><td style="padding:3px 6px">해당 컨테이너 도착 기준 재고 유지 일수</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">EST. SOD</td><td style="padding:3px 6px">예상 재고 소진일 (ETA 기준)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:3px 6px;font-weight:600">Plan SOD</td><td style="padding:3px 6px">계획 재고 소진일</td></tr>
+        <tr><td style="padding:3px 6px;font-weight:600">CBM</td><td style="padding:3px 6px">해당 SKU Con. Qty × CBM/unit</td></tr>
+      </table>
     </div>
     <div class="card">
-      <h4>📈 판매 컬럼</h4>
-      <ul>
-        <li>W30D / E30D – 서/동 30일 판매</li>
-        <li>Total30D – 총 30일 판매</li>
-        <li>Total Avg Curr – 현재 일평균 판매</li>
-        <li>Inbound – 입고 예정 수량</li>
+      <h4>💡 활용 팁</h4>
+      <ul style="font-size:13px;line-height:1.9">
+        <li>그룹 체크박스를 끄면 하위 개별 컬럼이 모두 숨겨집니다.</li>
+        <li>그룹을 켠 뒤 개별 컬럼을 선택적으로 끌 수 있습니다.</li>
+        <li><strong>Compact 프리셋</strong>은 키보드 단축 작업 시 유용합니다. 좌우 스크롤이 거의 없어집니다.</li>
+        <li>컬럼 너비는 헤더 경계를 드래그해 조정하며, <span class="btn-label">Reset Column Widths</span>로 기본값으로 복원합니다.</li>
+        <li>설정은 서버에 저장되어 다른 컴퓨터에서 접속해도 유지됩니다.</li>
       </ul>
     </div>
-    <div class="card">
-      <h4>🚢 컨테이너 컬럼</h4>
-      <ul>
-        <li>Con. Qty – 발주 수량 (편집 가능)</li>
-        <li>Avail Qty – 컨테이너 도착 후 가용 재고</li>
-        <li>Est. Sales – 예상 판매량</li>
-        <li>Back Order – 예상 재고 부족량</li>
-        <li>Rem. Qty – 잔여 재고</li>
-        <li>Inv. Life – 재고 유지 일수</li>
-        <li>EST. SOD – 예상 재고 소진일</li>
-      </ul>
+  </div>
+
+  <h3 class="sub" id="dp-col-sku-filter" style="margin-top:28px">SKU Filters — SKU 파트 필터</h3>
+  <p>제품 필터에서 <strong>Seat Cover</strong>를 선택한 경우에만 Options 영역 하단에 SKU 파트 필터 4개가 표시됩니다. 각 드롭다운은 복수 선택이 가능하며, 선택된 값에 해당하는 SKU만 테이블에 표시됩니다.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:120px">필터</th><th>설명</th><th>예시</th></tr>
+    <tr><td><strong>Seat</strong></td><td>시트 포지션 (앞좌석 / 뒷좌석 등)</td><td>F, B, FB</td></tr>
+    <tr><td><strong>No.</strong></td><td>차종 모델 번호</td><td>001, 042, 083</td></tr>
+    <tr><td><strong>Color</strong></td><td>컬러 코드</td><td>BK, GY, BE</td></tr>
+    <tr><td><strong>Tone</strong></td><td>톤/변형 구분</td><td>1, 2, P</td></tr>
+  </table>
+
+  <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
+    <div class="callout info" style="flex:1;min-width:260px">
+      <span class="callout-icon">ℹ️</span>
+      <div>각 드롭다운의 선택지는 <b>현재 카테고리에 존재하는 값만</b> 동적으로 표시됩니다. 목록 위의 <span class="btn-label">All</span>을 클릭하면 해당 필터 선택을 초기화합니다.</div>
     </div>
+    <div class="callout tip" style="flex:1;min-width:260px">
+      <span class="callout-icon">💡</span>
+      <div>여러 필터를 동시에 적용하면 <b>AND 조건</b>으로 동작합니다. Seat=F, Color=BK 선택 시 앞좌석이면서 블랙 컬러인 SKU만 표시됩니다. 오른쪽 상단 <span class="btn-label">Reset</span>으로 모든 SKU 필터를 한 번에 초기화합니다.</div>
+    </div>
+  </div>
+
+  <div class="callout info" style="margin-top:12px">
+    <span class="callout-icon">ℹ️</span>
+    <div><b>Show Zero-Sales SKUs:</b> Options 상단의 이 체크박스를 켜면 모든 기간에 판매가 0인 SKU도 테이블에 표시됩니다. 기본값은 OFF(미판매 SKU 숨김)입니다.</div>
+  </div>
+
+  <h3 class="sub" id="dp-col-freeze" style="margin-top:28px">Freeze Column — 컬럼 고정</h3>
+  <p>선택한 컬럼까지 화면 좌측에 고정(핀)합니다. 테이블을 오른쪽으로 스크롤해도 고정 컬럼은 항상 보입니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">항목</th><th>설명</th></tr>
+    <tr><td>드롭다운</td><td>현재 표시 중인 컬럼 목록에서 고정 끝점을 선택합니다. 선택한 컬럼 <strong>포함 이전</strong>의 모든 컬럼이 좌측에 고정됩니다.</td></tr>
+    <tr><td>기본값</td><td><strong>S.O.D 품절예상일</strong> — Basic Info 전체 + Inventory + 입고/SOD 그룹 컬럼까지 고정. Compact 프리셋 적용 시 자동으로 이 값으로 초기화됩니다.</td></tr>
+    <tr><td><span class="btn-label">Reset</span> 버튼</td><td>기본값(S.O.D 품절예상일)으로 되돌립니다.</td></tr>
+  </table>
+  <div class="callout tip" style="margin-top:12px">
+    <span class="callout-icon">💡</span>
+    <div>컨테이너 수가 많아 가로 스크롤이 길어질 때, Freeze Column을 <strong>Master SKU</strong>로 변경하면 SKU명만 고정하고 더 넓은 컨테이너 영역을 볼 수 있습니다.</div>
+  </div>
+
+  <h3 class="sub" id="dp-col-colors" style="margin-top:28px">Column Colors — 컬럼 색상 지정</h3>
+  <p>패널 오른쪽 영역에서 특정 컬럼의 헤더·셀 배경색과 개별 셀 배경색을 지정할 수 있습니다. 시각적으로 중요한 컬럼을 강조하거나 팀 내 규칙을 색으로 구분할 때 활용합니다.</p>
+
+  <h4 style="margin-top:16px">A. 컬럼 단위 색상 (Column Colors)</h4>
+  <table class="feat-table">
+    <tr><th style="width:180px">컨트롤</th><th>설명</th></tr>
+    <tr>
+      <td>컬럼 선택 드롭다운 (<code>#</code>)</td>
+      <td>색상을 적용할 컬럼을 선택합니다. Base 컬럼 전체 + 각 컨테이너 헤더(container:이름) + 컨테이너 서브컬럼(con:id) 모두 선택 가능합니다.</td>
+    </tr>
+    <tr>
+      <td>Cell 색상</td>
+      <td>선택한 컬럼의 <strong>모든 데이터 셀</strong> 배경색. 컨테이너 헤더(container:) 선택 시 비활성화됩니다.</td>
+    </tr>
+    <tr>
+      <td>Header 색상</td>
+      <td>선택한 컬럼의 <strong>헤더 셀</strong> 배경색. 모든 컬럼에 적용 가능.</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Reset Selected</span></td>
+      <td>현재 드롭다운에서 선택한 컬럼의 색상만 초기화합니다.</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Reset All</span></td>
+      <td>모든 컬럼의 Cell·Header 색상을 한 번에 초기화합니다.</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Reset Column Widths</span></td>
+      <td>색상과 무관하게 <strong>컬럼 너비</strong>를 기본값으로 초기화합니다. (드래그로 조정된 너비 리셋)</td>
+    </tr>
+  </table>
+
+  <h4 style="margin-top:20px">B. 개별 셀 색상 (Selected Cell Color)</h4>
+  <p>그리드에서 특정 셀을 클릭하면 "SELECTED CELL COLOR" 섹션에 해당 셀 정보(행 SKU + 컬럼명)가 표시됩니다. 이 상태에서 색상을 선택하면 <strong>그 셀 하나만</strong> 배경색이 바뀝니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">컨트롤</th><th>설명</th></tr>
+    <tr>
+      <td>색상 피커</td>
+      <td>클릭한 셀의 개별 배경색 지정.</td>
+    </tr>
+    <tr>
+      <td><code>No cell</code> 체크박스</td>
+      <td>체크 시 선택된 셀에 색상을 적용하지 않음(초기화와 동일).</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Reset Selected</span></td>
+      <td>현재 선택된 셀의 개별 색상을 초기화합니다.</td>
+    </tr>
+    <tr>
+      <td><span class="btn-label">Reset All Cells</span></td>
+      <td>모든 개별 셀 색상을 한 번에 초기화합니다.</td>
+    </tr>
+  </table>
+
+  <div class="callout tip" style="margin-top:12px">
+    <span class="callout-icon">💡</span>
+    <div>컬럼 색상과 셀 색상은 서로 독립적입니다. 컬럼 Cell 색상은 해당 컬럼 전체 셀에 적용되며, 개별 셀 색상을 지정하면 그 셀만 덮어씁니다. 컬럼 색상 위에 개별 셀 색상이 더 높은 우선순위를 가집니다.</div>
   </div>
 
   <h3 id="dp-autofill">③ Con. Qty 자동계산 버튼</h3>
@@ -1009,16 +1198,121 @@
     </div>
   </div>
 
-  <div class="tip-row" style="margin-top:20px">
-    <div class="callout tip">
-      <span class="callout-icon">💡</span>
-      <div><b>패킹 리스트 내보내기:</b> 컨테이너 상세 화면에서 <span class="btn-label">Export Excel</span>을 클릭하면 패킹 리스트를 엑셀 파일로 다운로드할 수 있습니다.</div>
+  <div class="callout warn" style="margin-top:20px">
+    <span class="callout-icon">⚠️</span>
+    <div><b>CBM 초과 주의:</b> 화면 상단에 현재 CBM 사용률이 표시됩니다. 80 CBM을 초과하지 않도록 주의하세요.</div>
+  </div>
+
+  <!-- Excel Export 상세 설명 -->
+  <h3 id="cp-export">④ 엑셀(Excel) Export</h3>
+  <p>Container Planning에는 두 가지 Export 기능이 있습니다. 목적에 따라 구분해서 사용합니다.</p>
+
+  <div class="card-grid col2" style="margin:20px 0">
+    <div class="card" style="border-left:4px solid #1a5cdb">
+      <h4>📊 다중 컨테이너 통합 Export</h4>
+      <p>여러 컨테이너를 선택해 SKU별 수량을 한 파일에 비교·정리. Final Order 정리 시 사용.</p>
+      <p style="margin-top:8px;font-size:12px;color:#6b7280">버튼: 상단 헤더 <span class="btn-label">Excel Export (N)</span></p>
     </div>
-    <div class="callout warn">
-      <span class="callout-icon">⚠️</span>
-      <div><b>CBM 초과 주의:</b> 화면 상단에 현재 CBM 사용률이 표시됩니다. 80 CBM을 초과하지 않도록 주의하세요.</div>
+    <div class="card" style="border-left:4px solid #6b7280">
+      <h4>📋 단일 컨테이너 Packing List Export</h4>
+      <p>선택한 컨테이너 한 개의 SKU 목록을 패킹 리스트 형식으로 내보내기.</p>
+      <p style="margin-top:8px;font-size:12px;color:#6b7280">버튼: 컨테이너 상세 하단 <span class="btn-label">CSV/Excel</span></p>
     </div>
   </div>
+
+  <h3 class="sub">A. 다중 컨테이너 통합 Export (Excel Export)</h3>
+  <p>복수의 컨테이너를 동시에 선택해 하나의 엑셀 파일로 내보냅니다. 컨테이너별 발주 수량을 한눈에 비교하거나 공장에 Final Order를 전달할 때 사용합니다.</p>
+
+  <div class="steps" style="margin:16px 0">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div>
+        <h4>컨테이너 선택</h4>
+        <p>컨테이너 목록 좌측의 <b>체크박스</b>를 클릭해 Export할 컨테이너를 선택합니다. 여러 개 동시 선택 가능합니다.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">목록 하단의 <span class="btn-label">Select visible</span> 체크박스를 사용하면 현재 필터 조건에 맞는 컨테이너 전체를 한 번에 선택·해제할 수 있습니다. 선택된 개수는 옆에 <b>N selected</b>로 표시됩니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div>
+        <h4>Excel Export 버튼 클릭</h4>
+        <p>상단 헤더 우측의 <span class="btn-label">Excel Export (N)</span> 버튼(파란색 테두리)을 클릭합니다. N은 현재 선택된 컨테이너 수입니다. 0개 선택 시 버튼이 비활성화됩니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div>
+        <h4>파일 다운로드</h4>
+        <p>엑셀 파일이 자동으로 다운로드됩니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <h4 style="margin-top:20px">파일명 규칙</h4>
+  <div class="callout info" style="font-family:monospace;font-size:13px">
+    {제품명} ETA {M.DD.YYYY} ({첫 컨테이너} - {마지막 컨테이너} FINAL).xlsx<br>
+    <span style="font-size:12px;font-family:sans-serif;color:#6b7280;margin-top:4px;display:block">예시: <code>Seat Cover ETA 8.15.2026 (SC-001 - SC-003 FINAL).xlsx</code></span>
+  </div>
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th style="width:160px">파일명 요소</th><th>결정 방식</th></tr>
+    <tr><td>제품명</td><td>선택된 컨테이너가 단일 제품군(Seat Cover, Car Cover 등)이면 해당 제품명 사용. 복수 제품군이 섞이면 "Mixed Product"로 표시.</td></tr>
+    <tr><td>ETA</td><td>선택된 컨테이너 중 <b>가장 이른 ETA</b> 날짜를 M.DD.YYYY 형식으로 표기.</td></tr>
+    <tr><td>컨테이너 범위</td><td>컨테이너 번호 기준 정렬 후 첫 번째~마지막 번호. 단일 선택 시 동일하게 표시.</td></tr>
+  </table>
+
+  <h4 style="margin-top:24px">엑셀 파일 내용 (시트명: "Final Order")</h4>
+  <table class="feat-table">
+    <tr><th style="width:180px">컬럼</th><th>내용</th></tr>
+    <tr><td>Product Type</td><td>Custom SKU이면 "Custom" 표시. 일반 SKU는 빈 칸.</td></tr>
+    <tr><td>Master SKU</td><td>SKU 코드. 알파벳 순으로 정렬.</td></tr>
+    <tr><td>[컨테이너 번호들]</td><td>선택한 컨테이너마다 열 하나씩 생성. 해당 SKU의 컨테이너별 수량이 입력됨. 없으면 0.</td></tr>
+    <tr><td>Remaining Stock</td><td>Available Stock의 Remaining 재고 합산 수량. Export 시점에 서버에서 실시간 조회.</td></tr>
+    <tr><td>Total 행</td><td>각 컨테이너 열의 합계 수량.</td></tr>
+  </table>
+
+  <div class="callout tip" style="margin-top:16px">
+    <span class="callout-icon">💡</span>
+    <div>컨테이너 목록 상단의 <b>Status / Product 필터</b>를 먼저 적용한 뒤 "Select visible"을 사용하면 특정 제품군 또는 상태의 컨테이너만 빠르게 선택할 수 있습니다.</div>
+  </div>
+
+  <h3 class="sub" style="margin-top:32px">B. 단일 컨테이너 Packing List Export (CSV/Excel)</h3>
+  <p>개별 컨테이너의 SKU 목록을 패킹 리스트 형식으로 내보냅니다. 공장에 패킹 상세를 전달하거나 내부 검토용으로 사용합니다.</p>
+
+  <div class="steps" style="margin:16px 0">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div>
+        <h4>컨테이너 상세 열기</h4>
+        <p>목록에서 컨테이너를 클릭해 우측 상세 패널을 엽니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div>
+        <h4>CSV/Excel 버튼 클릭</h4>
+        <p>상세 패널 하단 버튼 영역의 <span class="btn-label">CSV/Excel</span> 버튼을 클릭합니다.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">이 버튼은 <span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태에서만 표시됩니다. <span class="status packing">Packing List Rcvd</span> 이상(입고 확정 후)에는 버튼이 숨겨집니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <h4 style="margin-top:16px">파일명 규칙</h4>
+  <div class="callout info" style="font-family:monospace;font-size:13px">
+    container-{컨테이너번호}-{오늘날짜}.xlsx<br>
+    <span style="font-size:12px;font-family:sans-serif;color:#6b7280;margin-top:4px;display:block">예시: <code>container-SC-001-2026-06-15.xlsx</code></span>
+  </div>
+
+  <h4 style="margin-top:16px">엑셀 파일 내용 (시트명: "Packing List")</h4>
+  <table class="feat-table">
+    <tr><th style="width:180px">항목</th><th>내용</th></tr>
+    <tr><td>헤더 정보</td><td>Container 번호, ETA, Factory, Destination, Notes, Status — 6개 행으로 출력</td></tr>
+    <tr><td>Master SKU</td><td>SKU 코드</td></tr>
+    <tr><td>Source</td><td>수량 출처. Available Stock에서 배정된 경우 "Remain {참조번호} (N)"으로 표시. 직접 입력이면 "Container / Manual".</td></tr>
+    <tr><td>Qty</td><td>이 컨테이너에서의 SKU 수량</td></tr>
+    <tr><td>CBM / Unit</td><td>SKU 1개당 CBM</td></tr>
+    <tr><td>Total CBM</td><td>Qty × CBM / Unit</td></tr>
+    <tr><td>Total 행</td><td>전체 합계 수량 및 CBM 합계</td></tr>
+  </table>
 </section>
 
 <!-- ═══════════════════════════════════════════════

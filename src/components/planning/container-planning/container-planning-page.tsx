@@ -14,7 +14,7 @@ import {
 import { isPOApproverRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
 
-type ContainerItem = MockContainer["items"][number];
+type ContainerItem = MockContainer["items"][number] & { isCustomSku?: boolean };
 
 type ContainerFormState = {
   number: string;
@@ -107,7 +107,7 @@ type ApiContainer = {
   origin: string | null;
   destWarehouse: string | null;
   note: string | null;
-  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; allocations?: StockAllocation[] }>;
+  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; isCustomSku?: boolean; allocations?: StockAllocation[] }>;
 };
 
 type FactoryOption = {
@@ -215,6 +215,7 @@ function mapApiContainer(container: ApiContainer): MockContainer {
       sku: item.sku,
       qty: Number(item.qty ?? 0),
       cbm: Number(item.cbm ?? 0),
+      isCustomSku: Boolean(item.isCustomSku),
       allocations: (item.allocations ?? []).map((allocation) => ({
         ...allocation,
         qty: Number(allocation.qty ?? 0),
@@ -235,6 +236,27 @@ function todayLabel() {
 
 function safeFilePart(value: string) {
   return value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "_") || "container";
+}
+
+function safeExcelFilename(value: string) {
+  return value.trim().replace(/[\\/:*?"<>|]+/g, "-") || "containers";
+}
+
+function parseContainerSequence(value: string) {
+  const match = value.match(/\d+/);
+  return match ? Number.parseInt(match[0], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+function compareContainersForExport(a: MockContainer, b: MockContainer) {
+  const bySequence = parseContainerSequence(a.number) - parseContainerSequence(b.number);
+  if (bySequence !== 0) return bySequence;
+  return a.number.localeCompare(b.number);
+}
+
+function formatExportDate(dateValue: string) {
+  const [year, month, day] = dateValue.split("-").map((part) => Number.parseInt(part, 10));
+  if (!year || !month || !day) return todayLabel().replace(/-/g, ".");
+  return `${month}.${String(day).padStart(2, "0")}.${year}`;
 }
 
 export function ContainerPlanningPage() {
@@ -269,6 +291,7 @@ export function ContainerPlanningPage() {
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
   const [skuListCollapsed, setSkuListCollapsed] = useState<boolean | null>(null);
   const [summaryCollapsed, setSummaryCollapsed] = useState(true);
+  const [exportContainerIds, setExportContainerIds] = useState<string[]>([]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -314,6 +337,13 @@ export function ContainerPlanningPage() {
     });
   }, [containerListTab, containers, query, statusFilter, productFilter]);
   const selectedContainer = containers.find((container) => container.id === expandedId) ?? null;
+  const selectedExportContainers = useMemo(
+    () => exportContainerIds
+      .map((id) => containers.find((container) => container.id === id))
+      .filter((container): container is MockContainer => Boolean(container))
+      .sort(compareContainersForExport),
+    [containers, exportContainerIds]
+  );
   const warehouseNameByCode = useMemo(
     () => new Map(warehouses.map((warehouse) => [warehouse.warehouseCode, warehouse.warehouseName])),
     [warehouses]
@@ -321,6 +351,27 @@ export function ContainerPlanningPage() {
   const draftCbm = draftItems.reduce((sum, item) => sum + item.qty * item.cbm, 0);
   const draftQty = draftItems.reduce((sum, item) => sum + item.qty, 0);
   const cbmCapacity = Number.parseFloat(form.cbmCapacity) || 80;
+
+  function toggleExportContainer(containerId: string, checked: boolean) {
+    setExportContainerIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(containerId);
+      else next.delete(containerId);
+      return [...next];
+    });
+  }
+
+  function toggleVisibleExportContainers(checked: boolean) {
+    const visibleIds = filteredContainers.map((container) => container.id);
+    setExportContainerIds((current) => {
+      const next = new Set(current);
+      for (const id of visibleIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return [...next];
+    });
+  }
 
   async function fetchContainers() {
     setLoadingContainers(true);
@@ -1258,6 +1309,117 @@ export function ContainerPlanningPage() {
     XLSX.writeFile(workbook, `container-${safeFilePart(container.number)}-${todayLabel()}.xlsx`);
   }
 
+  async function exportSelectedContainers() {
+    if (selectedExportContainers.length === 0) {
+      window.alert("Select at least one container to export.");
+      return;
+    }
+
+    const sortedContainers = [...selectedExportContainers].sort(compareContainersForExport);
+    const productKeys = new Set<ProductKey>();
+    for (const container of sortedContainers) {
+      for (const key of getContainerProducts(container)) productKeys.add(key);
+    }
+    const productLabel = productKeys.size === 1
+      ? productLabels[[...productKeys][0]]
+      : productFilter
+        ? productLabels[productFilter]
+        : "Mixed Product";
+    const etaForFile = sortedContainers
+      .map((container) => container.eta)
+      .filter(Boolean)
+      .sort()[0] ?? todayLabel();
+    const firstContainer = sortedContainers[0];
+    const lastContainer = sortedContainers[sortedContainers.length - 1];
+
+    const remainingBySku = new Map<string, number>();
+    try {
+      const response = await fetch(apiPath("/api/container-available-stock"), { cache: "no-store" });
+      const json = await response.json();
+      if (response.ok && json.success) {
+        for (const row of json.data as AvailableStockRow[]) {
+          if (row.sourceType !== "remaining") continue;
+          remainingBySku.set(row.masterSku, (remainingBySku.get(row.masterSku) ?? 0) + row.availableQty);
+        }
+      }
+    } catch {
+      // Export can continue without remaining-stock data.
+    }
+
+    const skuRows = new Map<string, {
+      sku: string;
+      cbm: number;
+      isCustomSku: boolean;
+      quantities: Map<string, number>;
+    }>();
+    for (const container of sortedContainers) {
+      for (const item of container.items) {
+        const exportItem = item as ContainerItem;
+        const current = skuRows.get(exportItem.sku) ?? {
+          sku: exportItem.sku,
+          cbm: exportItem.cbm,
+          isCustomSku: Boolean(exportItem.isCustomSku),
+          quantities: new Map<string, number>(),
+        };
+        current.cbm = current.cbm || exportItem.cbm;
+        current.isCustomSku = current.isCustomSku || Boolean(exportItem.isCustomSku);
+        current.quantities.set(container.id, (current.quantities.get(container.id) ?? 0) + exportItem.qty);
+        skuRows.set(exportItem.sku, current);
+      }
+    }
+
+    if (skuRows.size === 0) {
+      window.alert("No SKUs found in the selected containers.");
+      return;
+    }
+
+    const orderHeader = [
+      "Product Type",
+      "Master SKU",
+      ...sortedContainers.map((container) => container.number),
+      "Remaining Stock",
+    ];
+    const orderRows = [...skuRows.values()]
+      .sort((a, b) => a.sku.localeCompare(b.sku))
+      .map((row) => {
+        const containerQtys = sortedContainers.map((container) => row.quantities.get(container.id) ?? 0);
+        return [
+          row.isCustomSku ? "Custom" : "",
+          row.sku,
+          ...containerQtys,
+          remainingBySku.get(row.sku) ?? 0,
+        ];
+      });
+    const totalQtyByContainer = sortedContainers.map((container) =>
+      container.items.reduce((sum, item) => sum + item.qty, 0)
+    );
+
+    const rows: Array<Array<string | number | null>> = [
+      orderHeader,
+      ...orderRows,
+      [
+        "Total",
+        null,
+        ...totalQtyByContainer,
+        null,
+      ],
+    ];
+
+    const XLSX = await import("xlsx");
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet["!cols"] = [
+      { wch: 14 },
+      { wch: 28 },
+      ...sortedContainers.map(() => ({ wch: 14 })),
+      { wch: 16 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Final Order");
+    const filename = `${productLabel} ETA ${formatExportDate(etaForFile)} (${firstContainer.number} - ${lastContainer.number} FINAL).xlsx`;
+    XLSX.writeFile(workbook, safeExcelFilename(filename));
+  }
+
   async function importCreateFormItems(file: File) {
     const extension = file.name.split(".").pop()?.toLowerCase();
     let rows: unknown[][] = [];
@@ -1359,6 +1521,14 @@ export function ContainerPlanningPage() {
             className="rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
           >
             + Add Container
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportSelectedContainers()}
+            disabled={selectedExportContainers.length === 0}
+            className="rounded-md border border-[#1a5cdb] bg-white px-3 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#ebf0fd] disabled:cursor-not-allowed disabled:border-[#cccac4] disabled:text-muted-foreground disabled:opacity-60 dark:bg-slate-950"
+          >
+            Excel Export{selectedExportContainers.length > 0 ? ` (${selectedExportContainers.length})` : ""}
           </button>
         </div>
       </header>
@@ -1505,6 +1675,20 @@ export function ContainerPlanningPage() {
                 );
               })}
             </div>
+            <div className="flex items-center justify-between gap-3 border-t border-[#e2dfd8] pt-2 text-[11px] text-muted-foreground dark:border-slate-700">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  disabled={filteredContainers.length === 0}
+                  checked={filteredContainers.length > 0 && filteredContainers.every((container) => exportContainerIds.includes(container.id))}
+                  onChange={(event) => toggleVisibleExportContainers(event.target.checked)}
+                />
+                <span>Select visible</span>
+              </label>
+              <span>
+                {selectedExportContainers.length} selected
+              </span>
+            </div>
           </div>
 
           <div className="h-full overflow-y-auto">
@@ -1519,11 +1703,19 @@ export function ContainerPlanningPage() {
                 const totalQtyForContainer = container.items.reduce((sum, item) => sum + item.qty, 0);
                 const usedCbmForContainer = container.items.reduce((sum, item) => sum + item.qty * item.cbm, 0);
                 const destinationLabel = warehouseNameByCode.get(container.destination) ?? container.destination;
+                const exportSelected = exportContainerIds.includes(container.id);
                 return (
-                  <button
+                  <div
                     key={container.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
+                      setExpandedId(container.id);
+                      setIsFormOpen(false);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
                       setExpandedId(container.id);
                       setIsFormOpen(false);
                     }}
@@ -1531,6 +1723,14 @@ export function ContainerPlanningPage() {
                       selectedContainer?.id === container.id && !isFormOpen ? "border-l-4 border-l-[#1a5cdb] bg-[#ebf0fd] dark:bg-blue-950/40" : ""
                     }`}
                   >
+                    <input
+                      type="checkbox"
+                      checked={exportSelected}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => toggleExportContainer(container.id, event.target.checked)}
+                      className="mt-1"
+                      aria-label={`Select ${container.number} for Excel export`}
+                    />
                     <span
                       className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-black/10"
                       style={{
@@ -1552,7 +1752,7 @@ export function ContainerPlanningPage() {
                         ETA {container.eta} / {container.items.length} SKUs / {formatNumber(totalQtyForContainer)} units / {usedCbmForContainer.toFixed(1)} CBM
                       </span>
                     </span>
-                  </button>
+                  </div>
                 );
               })
             ) : (
