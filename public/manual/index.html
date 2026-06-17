@@ -1108,10 +1108,12 @@
     </div>
   </div>
 
-  <div class="screenshot-box">
-    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning 전체 화면</p></div>'" alt="Container Planning">
-    <div class="screenshot-caption">▲ Container Planning – 좌측 컨테이너 목록 + 우측 상세</div>
+    <div class="screenshot-box">
+    <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 화면 (SKU 목록)</p></div>'" alt="컨테이너 상세">
+    <div class="screenshot-caption">▲ 컨테이너 상세 – SKU별 수량·CBM 목록</div>
   </div>
+
+
 
   <h3>컨테이너 상태 흐름</h3>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 24px">
@@ -1149,8 +1151,8 @@
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 화면 (SKU 목록)</p></div>'" alt="컨테이너 상세">
-    <div class="screenshot-caption">▲ 컨테이너 상세 – SKU별 수량·CBM 목록</div>
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning 전체 화면</p></div>'" alt="Container Planning">
+    <div class="screenshot-caption">▲ Container Planning – 좌측 컨테이너 목록 + 우측 상세</div>
   </div>
 
   <h3 id="cp-status">② 상태별 주의사항</h3>
@@ -1395,7 +1397,7 @@
   <div class="card-grid col2">
     <div class="card">
       <h4>📋 Remaining List</h4>
-      <p>생산 완료 후 창고에 대기 중인 정상 재고입니다. TH(태국) 번호를 기준으로 관리합니다.</p>
+      <p>생산 완료 후 창고에 대기 중인 정상 재고입니다. TH 번호를 기준으로 관리합니다.</p>
     </div>
     <div class="card">
       <h4>🔄 Mistake Order List</h4>
@@ -1485,7 +1487,7 @@
     </div>
     <div class="callout info" style="margin:0">
       <span class="callout-icon">🔄</span>
-      <div><b>재고 동기화:</b> <span class="btn-label">Sync Inventory</span>를 누르면 외부 재고 DB에서 최신 데이터를 가져옵니다.</div>
+      <div><b>재고 동기화:</b> <span class="btn-label">Sync Inventory</span>를 누르면 외부 재고 DB(coverland_inventory)에서 최신 데이터를 가져옵니다.</div>
     </div>
   </div>
 </section>
@@ -1510,7 +1512,7 @@
     <tr><td class="label">INV Life</td><td>Inventory Life. 현재 재고가 몇 일간 유지되는지 나타내는 지표 (재고 ÷ 일평균 판매).</td></tr>
     <tr><td class="label">Back Order</td><td>재고 부족으로 발생한 미처리 수요. 음수 재고 상태.</td></tr>
     <tr><td class="label">Carryover</td><td>컨테이너 도착 이후 남는 잔여 재고.</td></tr>
-    <tr><td class="label">Transit Stock</td><td>현재 해상 운송 중인 재고 (아직 창고에 미입고).</td></tr>
+    <tr><td class="label">Transit Stock</td><td>현재 운송 중인 재고 (아직 창고에 미입고).</td></tr>
     <tr><td class="label">Con. Qty</td><td>Container Quantity. 해당 컨테이너에 담을 발주 수량.</td></tr>
     <tr><td class="label">Gradient Tier</td><td>일판매량 구간별 재고 목표 일수 보너스 테이블. TOP·A·B·C·D 5단계.</td></tr>
     <tr><td class="label">Remaining List</td><td>생산 완료 후 창고에서 입고 대기 중인 정상 재고 목록.</td></tr>
@@ -2132,10 +2134,13 @@
       <p class="subtitle">Register and manage inbound containers, SKU quantities, and packing list status.</p>
     </div>
   </div>
-  <div class="screenshot-box">
-    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning</p></div>'" alt="Container Planning">
-    <div class="screenshot-caption">▲ Container Planning – Left Container List + Right Detail Panel</div>
+
+    <div class="screenshot-box">
+    <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Container Detail Screen</p></div>'" alt="Container Detail">
+    <div class="screenshot-caption">▲ Container Detail – SKU Quantity and CBM List</div>
   </div>
+
+
 
   <h3>Container Status Flow</h3>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 24px">
@@ -2156,9 +2161,10 @@
     <div class="step"><div class="step-num">4</div><div><h4>Allocate Available Stock (optional)</h4><p>To assign warehouse surplus to this container, use the <span class="btn-label">Available Stock</span> button.</p></div></div>
     <div class="step"><div class="step-num">5</div><div><h4>Update Status</h4><p>Change to <span class="status final">Final List Sent</span> once you send the order to the factory. Change to <span class="status packing">Packing List Rcvd</span> when you receive the packing list.</p></div></div>
   </div>
+
   <div class="screenshot-box">
-    <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Container Detail Screen</p></div>'" alt="Container Detail">
-    <div class="screenshot-caption">▲ Container Detail – SKU Quantity and CBM List</div>
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning</p></div>'" alt="Container Planning">
+    <div class="screenshot-caption">▲ Container Planning – Left Container List + Right Detail Panel</div>
   </div>
 
   <h3 id="en-cp-status">② Status Details</h3>
@@ -2353,7 +2359,7 @@
   </div>
   <h3>Tab Overview</h3>
   <div class="card-grid col2">
-    <div class="card"><h4>📋 Remaining List</h4><p>Normal finished-goods inventory waiting in the warehouse after production. Managed using TH (Thailand) reference numbers.</p></div>
+    <div class="card"><h4>📋 Remaining List</h4><p>Normal finished-goods inventory waiting in the warehouse after production. Managed using TH reference numbers.</p></div>
     <div class="card"><h4>🔄 Mistake Order List</h4><p>Surplus inventory from order errors or cancellations. Managed the same way as Remaining.</p></div>
   </div>
   <h3>Registering Inventory</h3>
@@ -2412,7 +2418,7 @@
     </div>
     <div class="callout info" style="margin:0">
       <span class="callout-icon">🔄</span>
-      <div><b>Inventory Sync:</b> Click <span class="btn-label">Sync Inventory</span> to fetch the latest data from the external inventory DB.</div>
+      <div><b>Inventory Sync:</b> Click <span class="btn-label">Sync Inventory</span> to fetch the latest data from the external coverland_inventory DB.</div>
     </div>
   </div>
 </section>
@@ -2435,7 +2441,7 @@
     <tr><td class="label">INV Life</td><td>Inventory Life. How many days current inventory will last (Stock ÷ Daily avg sales).</td></tr>
     <tr><td class="label">Back Order</td><td>Unfulfilled demand resulting from insufficient inventory. A negative stock state.</td></tr>
     <tr><td class="label">Carryover</td><td>Residual inventory remaining after a container's arrival point.</td></tr>
-    <tr><td class="label">Transit Stock</td><td>Inventory currently in ocean transit (not yet received into the warehouse).</td></tr>
+    <tr><td class="label">Transit Stock</td><td>Inventory currently in transit (not yet received into the warehouse).</td></tr>
     <tr><td class="label">Con. Qty</td><td>Container Quantity. The order quantity to be loaded into a container.</td></tr>
     <tr><td class="label">Gradient Tier</td><td>A bonus-day table for inventory targets segmented by daily sales volume. Five tiers: TOP · A · B · C · D.</td></tr>
     <tr><td class="label">Remaining List</td><td>Normal finished-goods inventory waiting in the warehouse for inbound after production.</td></tr>

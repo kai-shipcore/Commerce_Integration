@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(mkdir \"c:\\\\MyProject\\\\Commerce_Integration\\\\src\\\\app\\\\api\\\\warehouses\" 2>&1; mkdir \"c:\\\\MyProject\\\\Commerce_Integration\\\\src\\\\app\\\\api\\\\warehouses\\\\[id]\" 2>&1)",
+      "Bash(Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue)",
+      "Bash(npm run *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(npx tsx *)",
+      "Bash(git log *)",
+      "Bash(xargs grep -l \"fc_factories\")",
+      "Bash(awk '{print $NF}')",
+      "Bash(npx tsc *)"
+    ],
+    "additionalDirectories": [
+      "c:\\MyProject\\Commerce_Integration\\src\\app\\api\\warehouses"
     ]
   }
 }

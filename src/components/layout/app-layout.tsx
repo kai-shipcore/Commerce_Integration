@@ -99,7 +99,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 w-full border-b border-[#c2d0db] bg-[#dde6ee] dark:border-[#4e6473] dark:bg-[#607786]">
-        <div className="container flex h-14 items-center bg-[#dde6ee] dark:bg-[#607786]">
+        <div className="flex h-14 w-full items-center px-4 bg-[#dde6ee] dark:bg-[#607786]">
           <div className="mr-4 flex">
             <Link className="mr-6 flex items-center" href="/">
               <Image
@@ -118,11 +118,11 @@ export function AppLayout({ children }: AppLayoutProps) {
               href={withBasePath("/manual/index.html")}
               target="_blank"
               rel="noopener noreferrer"
-              title="사용자 매뉴얼"
+              title="Help"
               className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary dark:text-slate-200 dark:hover:text-white"
             >
               <BookOpen className="h-4 w-4" />
-              <span className="hidden sm:inline">매뉴얼</span>
+              <span className="hidden sm:inline">Help</span>
             </a>
             <UserMenu />
           </div>
