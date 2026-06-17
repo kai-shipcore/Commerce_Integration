@@ -217,8 +217,6 @@ export async function POST() {
            l.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
-           AND l.master_sku NOT LIKE '%NEW%'
-           AND l.master_sku NOT LIKE '%INV%'
            AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
              (LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
@@ -241,8 +239,6 @@ export async function POST() {
            c.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
-           AND c.master_sku NOT LIKE '%NEW%'
-           AND c.master_sku NOT LIKE '%INV%'
            AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
              (LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')

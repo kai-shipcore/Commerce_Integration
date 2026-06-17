@@ -23,7 +23,7 @@ import {
   createFloorMatColumns,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
-import { Gauge, Check, X, Plus, RefreshCw, Download } from "lucide-react";
+import { Gauge, Check, X, Plus, RefreshCw, Download, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { exportCurrentVelocity, exportAllVelocity } from "@/lib/velocity-export";
 import { apiPath } from "@/lib/api-path";
@@ -598,6 +598,12 @@ export default function VelocityPage() {
       : "utc"
   );
 
+  const handleResetPeriod = () => {
+    setPeriodMode("period");
+    setPeriods(DEFAULT_PERIODS);
+    setCustomRanges(defaultRanges());
+  };
+
   useEffect(() => { localStorage.setItem("velocity_tz", timezone); }, [timezone]);
   useEffect(() => { localStorage.setItem("velocity_period_mode", periodMode); }, [periodMode]);
   useEffect(() => { localStorage.setItem("velocity_periods", JSON.stringify(periods)); }, [periods]);
@@ -774,6 +780,13 @@ export default function VelocityPage() {
                       Custom
                     </button>
                   </div>
+                  <button
+                    onClick={handleResetPeriod}
+                    title="기간 설정 초기화"
+                    className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
                   {periodMode === "period" ? (
                     <PeriodEditor periods={periods} onChange={setPeriods} />
                   ) : (
