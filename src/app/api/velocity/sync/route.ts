@@ -51,9 +51,9 @@ const ORDER_TYPE_CASE = (alias: string) => `
   END`;
 
 const MASTER_SKU_REMAP: Record<string, string> = {
-  "CC-CP-07-N-GR":      "CC-CP-03-M-GR-1TO",
+  "CC-CP-07-N-GR": "CC-CP-03-M-GR-1TO",
   "CC-CSP-03-M-GR-1TO": "CC-CS-03-M-GR-1TO",
-  "C-SJ-GR-7":          "CC-CS-03-J-GR-1TO",
+  "C-SJ-GR-7": "CC-CS-03-J-GR-1TO",
 };
 
 const MASTER_SKU_REMAP_CASE = (skuExpr: string) => {
@@ -119,14 +119,17 @@ async function upsertLink(rows: LinkRow[], syncedAt: Date): Promise<number> {
         batch.map((r) => r.link_qty),
         batch.map(() => syncedAt),
         batch.map((r) => r.is_custom),
-      ]
+      ],
     );
     upserted += batch.length;
   }
   return upserted;
 }
 
-async function upsertCustom(rows: CustomRow[], syncedAt: Date): Promise<number> {
+async function upsertCustom(
+  rows: CustomRow[],
+  syncedAt: Date,
+): Promise<number> {
   let upserted = 0;
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
@@ -151,7 +154,7 @@ async function upsertCustom(rows: CustomRow[], syncedAt: Date): Promise<number> 
         batch.map((r) => r.custom_qty),
         batch.map(() => syncedAt),
         batch.map((r) => r.is_custom),
-      ]
+      ],
     );
     upserted += batch.length;
   }
@@ -164,14 +167,14 @@ export async function GET() {
   try {
     const pool = getPrimaryPool();
     const result = await pool.query<{ last_synced_at: Date | null }>(
-      "SELECT MAX(synced_at) AS last_synced_at FROM shipcore.fc_velocity_link_snapshot"
+      "SELECT MAX(synced_at) AS last_synced_at FROM shipcore.fc_velocity_link_snapshot",
     );
     const lastSyncedAt = result.rows[0]?.last_synced_at ?? null;
     return NextResponse.json({ success: true, lastSyncedAt });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -181,7 +184,7 @@ export async function POST() {
   if (!lookupPool) {
     return NextResponse.json(
       { success: false, error: "Supabase lookup pool not available" },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
@@ -190,13 +193,13 @@ export async function POST() {
   try {
     const lockRes = await client.query<{ acquired: boolean }>(
       `SELECT pg_try_advisory_lock($1::bigint) AS acquired`,
-      [VELOCITY_SYNC_LOCK_KEY]
+      [VELOCITY_SYNC_LOCK_KEY],
     );
 
     if (!lockRes.rows[0].acquired) {
       return NextResponse.json(
         { success: false, error: "Sync already in progress" },
-        { status: 409 }
+        { status: 409 },
       );
     }
     lockAcquired = true;
@@ -216,11 +219,13 @@ export async function POST() {
          WHERE l.master_sku  IS NOT NULL
            AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
-             LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
+             (LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
+              AND l.fulfilled_quantity > 0)
              OR (COALESCE(l.is_preorder::boolean, false) AND LOWER(l.item_status) != 'cancelled')
            )
            AND NOT (l.platform_source::text = 'SHOPIFY_ICARCOVER' AND l.tags IS NOT NULL AND (l.tags ILIKE '%ebay%' OR l.tags ILIKE '%influencer%'))
-         GROUP BY 1, 2, 3, 4, 5, 6, 8`
+           AND NOT (l.tags IS NOT NULL AND l.tags ILIKE '%Test%')
+         GROUP BY 1, 2, 3, 4, 5, 6, 8`,
       ),
       lookupPool.query<CustomRow>(
         `SELECT
@@ -236,11 +241,13 @@ export async function POST() {
          WHERE c.master_sku  IS NOT NULL
            AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
-             LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
+             (LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
+              AND c.fulfilled_quantity > 0)
              OR (COALESCE(c.is_preorder::boolean, false) AND LOWER(c.item_status) != 'cancelled')
            )
-           AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
-         GROUP BY 1, 2, 3, 4, 5, 6, 8`
+           AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND c.tags IS NOT NULL AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
+           AND NOT (c.tags IS NOT NULL AND c.tags ILIKE '%Test%')
+         GROUP BY 1, 2, 3, 4, 5, 6, 8`,
       ),
     ]);
 
@@ -255,13 +262,13 @@ export async function POST() {
         `DELETE FROM shipcore.fc_velocity_link_snapshot
          WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND synced_at < $1`,
-        [syncedAt]
+        [syncedAt],
       ),
       primaryPool().query(
         `DELETE FROM shipcore.fc_velocity_custom_snapshot
          WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND synced_at < $1`,
-        [syncedAt]
+        [syncedAt],
       ),
     ]);
 
@@ -276,11 +283,13 @@ export async function POST() {
     console.error("[velocity/sync] POST error:", getErrorMessage(error));
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
-      { status: 500 }
+      { status: 500 },
     );
   } finally {
     if (lockAcquired) {
-      await client.query(`SELECT pg_advisory_unlock($1::bigint)`, [VELOCITY_SYNC_LOCK_KEY]);
+      await client.query(`SELECT pg_advisory_unlock($1::bigint)`, [
+        VELOCITY_SYNC_LOCK_KEY,
+      ]);
     }
     client.release();
   }
