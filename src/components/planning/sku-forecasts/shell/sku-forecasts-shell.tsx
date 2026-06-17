@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { DemandRow } from "@/types/demand-planning";
+import { InboundHistoryTab } from "../inbound-history/inbound-history-tab";
 import { InventoryInboundTab } from "../inventory-inbound/inventory-inbound-tab";
 import { PurchaseRecommendationTab } from "../purchase-recommendation/purchase-recommendation-tab";
 import { SalesAnalysisTab } from "../sales-analysis/sales-analysis-tab";
@@ -291,6 +292,7 @@ export function SkuForecastsShell() {
                 language={language}
                 sales={<SalesAnalysisTab sku={selectedRow} language={language} />}
                 inventory={<InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
+                history={<InboundHistoryTab sku={selectedRow} language={language} />}
                 purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
               />
             </div>

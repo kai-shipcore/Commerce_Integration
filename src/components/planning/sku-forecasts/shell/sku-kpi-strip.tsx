@@ -28,7 +28,7 @@ export function SkuKpiStrip({
 
   const items = [
     { label: pick(language, "현재 재고", "Current Stock"), value: formatNumber(sku.total_stock), sub: `West ${formatNumber(sku.west_stock)} / East ${formatNumber(sku.east_stock)}` },
-    { label: pick(language, "입고", "Inbound"), value: formatNumber(inbound), sub: inboundSub },
+    { label: pick(language, "입고 예정", "Expected Inbound"), value: formatNumber(inbound), sub: inboundSub },
     { label: pick(language, "예상 재고", "Projected"), value: formatNumber(projected), sub: `CBM/${pick(language, "개", "unit")} ${formatNumber(master.cbmPerUnit, 4)}` },
     { label: pick(language, "일평균 판매", "Daily Average"), value: formatNumber(sku.total_avg_curr, 2), sub: `30D ${formatNumber(sku.total_30d)} ${pick(language, "개", "units")}` },
     {

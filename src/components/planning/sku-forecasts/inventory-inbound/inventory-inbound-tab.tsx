@@ -106,7 +106,7 @@ export function InventoryInboundTab({
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="planning-panel rounded-lg border p-4">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold">{pick(language, "입고 컨테이너", "Inbound Containers")}</h3>
+            <h3 className="text-sm font-semibold">{pick(language, "입고 예정 컨테이너", "Expected Inbound Containers")}</h3>
             <span className="text-xs text-muted-foreground">
               {loading ? pick(language, "불러오는 중...", "Loading...") : pick(language, "준비됨", "Ready")}
             </span>
@@ -158,7 +158,7 @@ export function InventoryInboundTab({
 
         <div className="grid gap-3">
           <SummaryCard label={pick(language, "현재 재고", "Current Stock")} value={sku.total_stock} />
-          <SummaryCard label={includeDraftContainers ? pick(language, "입고 (Draft 포함)", "Inbound incl. Draft") : pick(language, "입고", "Inbound")} value={inboundQty} prefix="+" />
+          <SummaryCard label={includeDraftContainers ? pick(language, "입고 예정 (Draft 포함)", "Expected Inbound incl. Draft") : pick(language, "입고 예정", "Expected Inbound")} value={inboundQty} prefix="+" />
           <SummaryCard label={pick(language, "예상 재고", "Projected Stock")} value={projected} />
           <SummaryCard label={pick(language, "잔여 / 오류", "Remaining / Mistake")} value={`${formatNumber(sku.remaining)} / ${formatNumber(sku.mistake)}`} />
         </div>
