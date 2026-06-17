@@ -154,6 +154,7 @@ export function SkuMasterPage() {
   const [product, setProduct] = useState<ProductKey | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [editingSku, setEditingSku] = useState<string | null>(null);
+  const [editingSnapshot, setEditingSnapshot] = useState<SkuMasterRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -219,6 +220,21 @@ export function SkuMasterPage() {
     patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
+  }
+
+  function startEditing(row: SkuMasterRow) {
+    setEditingSku(row.masterSku);
+    setEditingSnapshot({ ...row });
+  }
+
+  function cancelEditing() {
+    if (editingSnapshot) {
+      setRows((current) =>
+        current.map((sku) => (sku.masterSku === editingSnapshot.masterSku ? editingSnapshot : sku))
+      );
+    }
+    setEditingSku(null);
+    setEditingSnapshot(null);
   }
 
   async function saveRow(row: SkuMasterRow) {
@@ -558,7 +574,7 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[1100px] grid-cols-[180px_290px_120px_140px_90px_110px_90px_100px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[1200px] grid-cols-[180px_290px_120px_180px_90px_110px_90px_140px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">Product</div>
           <div className="px-4 py-3">Master SKU</div>
           <div className="px-4 py-3">Status</div>
@@ -572,7 +588,7 @@ export function SkuMasterPage() {
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[1100px] grid-cols-[180px_290px_120px_140px_90px_110px_90px_100px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            className="grid min-w-[1200px] grid-cols-[180px_290px_120px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
@@ -588,6 +604,7 @@ export function SkuMasterPage() {
               value={sku.cbmPerUnit}
               decimals={6}
               className={`font-mono font-semibold ${productMeta[sku.productKey].cbmClass}`}
+              inputClassName="w-32"
               onChange={(value) => updateRow(sku.masterSku, { cbmPerUnit: value })}
             />
             <EditableNumber
@@ -608,7 +625,16 @@ export function SkuMasterPage() {
               decimals={0}
               onChange={(value) => updateRow(sku.masterSku, { caseQty: value })}
             />
-            <div className="flex min-w-0 flex-nowrap justify-end px-4 py-3">
+            <div className="flex min-w-0 flex-nowrap justify-end gap-2 px-4 py-3">
+              {editingSku === sku.masterSku ? (
+                <button
+                  type="button"
+                  onClick={cancelEditing}
+                  className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
+                >
+                  Cancel
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={async () => {
@@ -616,12 +642,13 @@ export function SkuMasterPage() {
                     try {
                       await saveRow(sku);
                       setEditingSku(null);
+                      setEditingSnapshot(null);
                       setMessage(`Saved ${sku.masterSku}`);
                     } catch (error) {
                       window.alert(error instanceof Error ? error.message : "Failed to save SKU");
                     }
                   } else {
-                    setEditingSku(sku.masterSku);
+                    startEditing(sku);
                   }
                 }}
                 className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
@@ -726,6 +753,7 @@ function EditableNumber({
   decimals,
   suffix,
   className = "",
+  inputClassName = "w-20",
   compact = false,
   onChange,
 }: {
@@ -734,6 +762,7 @@ function EditableNumber({
   decimals: number;
   suffix?: string;
   className?: string;
+  inputClassName?: string;
   compact?: boolean;
   onChange: (value: number) => void;
 }) {
@@ -745,7 +774,7 @@ function EditableNumber({
           step={decimals === 0 ? 1 : 10 ** -decimals}
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
-          className="h-8 w-20 shrink-0 rounded-md border border-[#cccac4] bg-white px-2 text-sm outline-none focus:border-[#1a5cdb]"
+          className={`h-8 ${inputClassName} shrink-0 rounded-md border border-[#cccac4] bg-white px-2 text-sm outline-none focus:border-[#1a5cdb]`}
         />
         {suffix ? <span className="ml-1 whitespace-nowrap text-xs text-muted-foreground">{suffix}</span> : null}
       </div>

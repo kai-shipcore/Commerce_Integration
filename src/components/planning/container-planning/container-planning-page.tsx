@@ -670,14 +670,87 @@ export function ContainerPlanningPage() {
     setFormError(null);
   }
 
-  function removeDraftItem(sku: string) {
+  async function removeDraftItem(sku: string) {
     if (editingContainerId && form.status !== "draft") return;
-    if (draftItems.find((item) => item.sku === sku)?.allocations?.length) {
+    const itemToDelete = draftItems.find((item) => item.sku === sku);
+    if (itemToDelete?.allocations?.length) {
       setFormError("Allocated Remain stock must be removed from the container detail view.");
       return;
     }
     if (editingContainerId && !window.confirm(`Delete ${sku} from this container?`)) return;
+
+    if (editingContainerId && itemToDelete?.id && /^\d+$/.test(itemToDelete.id)) {
+      try {
+        const response = await fetch(apiPath(`/api/planning/containers/items/${encodeURIComponent(itemToDelete.id)}`), {
+          method: "DELETE",
+        });
+        const json = await response.json();
+
+        if (!response.ok || !json.success) {
+          throw new Error(json.error ?? `Failed to delete ${sku}.`);
+        }
+
+        await fetchContainers();
+        setExpandedId(editingContainerId);
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : "Failed to delete SKU.");
+        return;
+      }
+    }
+
     setDraftItems((items) => items.filter((item) => item.sku !== sku));
+    setFormError(null);
+  }
+
+  async function removeDraftItems(skus: string[]) {
+    const skuSet = new Set(skus);
+    if (skuSet.size === 0) return false;
+    if (editingContainerId && form.status !== "draft") return false;
+
+    const allocatedSkus = draftItems
+      .filter((item) => skuSet.has(item.sku) && item.allocations?.length)
+      .map((item) => item.sku);
+
+    if (allocatedSkus.length > 0) {
+      setFormError(`Allocated Remain stock must be removed first: ${allocatedSkus.join(", ")}`);
+      return false;
+    }
+
+    if (editingContainerId) {
+      if (!window.confirm(`Delete ${skuSet.size} selected SKU(s) from this container now?`)) {
+        return false;
+      }
+
+      const selectedItems = draftItems.filter((item) => skuSet.has(item.sku));
+      const savedItems = selectedItems.filter((item) => item.id && /^\d+$/.test(item.id));
+
+      try {
+        for (const item of savedItems) {
+          const response = await fetch(apiPath(`/api/planning/containers/items/${encodeURIComponent(item.id!)}`), {
+            method: "DELETE",
+          });
+          const json = await response.json();
+
+          if (!response.ok || !json.success) {
+            throw new Error(json.error ?? `Failed to delete ${item.sku}.`);
+          }
+        }
+
+        await fetchContainers();
+        setExpandedId(editingContainerId);
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : "Failed to delete selected SKUs.");
+        return false;
+      }
+    } else {
+      if (!window.confirm(`Delete ${skuSet.size} selected SKU(s)?`)) {
+        return false;
+      }
+    }
+
+    setDraftItems((items) => items.filter((item) => !skuSet.has(item.sku)));
+    setFormError(null);
+    return true;
   }
 
   async function saveContainer() {
@@ -779,11 +852,36 @@ export function ContainerPlanningPage() {
     }
   }
 
-  function deleteContainerItem(containerId: string, sku: string) {
+  async function deleteContainerItem(containerId: string, sku: string) {
     const container = containers.find((item) => item.id === containerId);
     if (container?.status !== "draft") return;
+    const itemToDelete = container?.items.find((item) => item.sku === sku);
+    if (itemToDelete?.allocations?.length) {
+      window.alert("Allocated Remain stock must be removed before deleting this SKU.");
+      return;
+    }
 
     if (!window.confirm(`Delete ${sku}?`)) return;
+
+    if (itemToDelete?.id && /^\d+$/.test(itemToDelete.id)) {
+      try {
+        const response = await fetch(apiPath(`/api/planning/containers/items/${encodeURIComponent(itemToDelete.id)}`), {
+          method: "DELETE",
+        });
+        const json = await response.json();
+
+        if (!response.ok || !json.success) {
+          window.alert(json.error ?? `Failed to delete ${sku}.`);
+          return;
+        }
+
+        await fetchContainers();
+        setExpandedId(containerId);
+      } catch {
+        window.alert(`Failed to delete ${sku}.`);
+        return;
+      }
+    }
 
     setContainers((current) =>
       current.map((item) =>
@@ -1793,6 +1891,7 @@ export function ContainerPlanningPage() {
                 onSave={saveContainer}
                 onUpdateForm={updateForm}
                 onRemoveDraftItem={removeDraftItem}
+                onRemoveDraftItems={removeDraftItems}
                 onSkuInputChange={setSkuInput}
                 onSkuInputBlur={fillCreateSkuCbm}
                 onQtyInputChange={setQtyInput}
@@ -1914,6 +2013,7 @@ function ContainerCreateForm({
   onSave,
   onUpdateForm,
   onRemoveDraftItem,
+  onRemoveDraftItems,
   onSkuInputChange,
   onSkuInputBlur,
   onQtyInputChange,
@@ -1942,7 +2042,8 @@ function ContainerCreateForm({
   onClose: () => void;
   onSave: () => void | Promise<void>;
   onUpdateForm: <K extends keyof ContainerFormState>(key: K, value: ContainerFormState[K]) => void;
-  onRemoveDraftItem: (sku: string) => void;
+  onRemoveDraftItem: (sku: string) => void | Promise<void>;
+  onRemoveDraftItems: (skus: string[]) => boolean | Promise<boolean>;
   onSkuInputChange: (value: string) => void;
   onSkuInputBlur: () => void | Promise<void>;
   onQtyInputChange: (value: string) => void;
@@ -1955,6 +2056,8 @@ function ContainerCreateForm({
 }) {
   const importRef = useRef<HTMLInputElement | null>(null);
   const [skuSearch, setSkuSearch] = useState("");
+  const [selectedDraftSkus, setSelectedDraftSkus] = useState<string[]>([]);
+  const [deletingSelectedDraftSkus, setDeletingSelectedDraftSkus] = useState(false);
   const statusLabel = statusOptions.find((opt) => opt.value === form.status)?.shortLabel ?? form.status;
   const canChangeStructure = form.status === "draft";
   const loadRate = cbmCapacity > 0 ? (draftCbm / cbmCapacity) * 100 : 0;
@@ -1963,6 +2066,46 @@ function ContainerCreateForm({
   const visibleDraftItems = normalizedSkuSearch
     ? draftItems.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))
     : draftItems;
+  const activeSelectedDraftSkus = selectedDraftSkus.filter((sku) =>
+    draftItems.some((item) => item.sku === sku)
+  );
+  const visibleDraftSkus = visibleDraftItems.map((item) => item.sku);
+  const allVisibleDraftSkusSelected = visibleDraftSkus.length > 0
+    && visibleDraftSkus.every((sku) => activeSelectedDraftSkus.includes(sku));
+
+  function toggleDraftSku(sku: string, checked: boolean) {
+    setSelectedDraftSkus((current) => {
+      const next = new Set(current);
+      if (checked) next.add(sku);
+      else next.delete(sku);
+      return [...next];
+    });
+  }
+
+  function toggleVisibleDraftSkus(checked: boolean) {
+    setSelectedDraftSkus((current) => {
+      const next = new Set(current);
+      visibleDraftSkus.forEach((sku) => {
+        if (checked) next.add(sku);
+        else next.delete(sku);
+      });
+      return [...next];
+    });
+  }
+
+  async function deleteSelectedDraftItems() {
+    if (activeSelectedDraftSkus.length === 0 || deletingSelectedDraftSkus) return;
+
+    setDeletingSelectedDraftSkus(true);
+    try {
+      const deleted = await onRemoveDraftItems(activeSelectedDraftSkus);
+      if (deleted) {
+        setSelectedDraftSkus((current) => current.filter((sku) => !activeSelectedDraftSkus.includes(sku)));
+      }
+    } finally {
+      setDeletingSelectedDraftSkus(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -2058,6 +2201,14 @@ function ContainerCreateForm({
             <span className="text-xs text-muted-foreground">{draftItems.length}</span>
             {canChangeStructure ? (
               <>
+                <button
+                  type="button"
+                  onClick={() => void deleteSelectedDraftItems()}
+                  disabled={activeSelectedDraftSkus.length === 0 || deletingSelectedDraftSkus}
+                  className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-3 py-1.5 text-xs font-semibold text-[#c42b2b] hover:bg-[#fee2e2] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {deletingSelectedDraftSkus ? "Deleting..." : `Delete Selected (${activeSelectedDraftSkus.length})`}
+                </button>
                 <input
                   ref={importRef}
                   type="file"
@@ -2114,7 +2265,18 @@ function ContainerCreateForm({
           </div>
         ) : null}
         <div className="overflow-hidden rounded-lg border border-[#e2dfd8]">
-          <div className={`grid bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canChangeStructure ? "grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
+          <div className={`grid bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canChangeStructure ? "grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
+            {canChangeStructure ? (
+              <div>
+                <input
+                  type="checkbox"
+                  aria-label="Select visible SKUs"
+                  checked={allVisibleDraftSkusSelected}
+                  disabled={visibleDraftSkus.length === 0}
+                  onChange={(event) => toggleVisibleDraftSkus(event.target.checked)}
+                />
+              </div>
+            ) : null}
             <div>Master SKU</div>
             <div>Qty</div>
             <div>CBM / Unit</div>
@@ -2123,14 +2285,31 @@ function ContainerCreateForm({
           </div>
 
           {visibleDraftItems.map((item) => (
-            <div key={item.sku} className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${canChangeStructure ? "grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
+            <div key={item.sku} className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${canChangeStructure ? "grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
+              {canChangeStructure ? (
+                <div>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${item.sku}`}
+                    checked={activeSelectedDraftSkus.includes(item.sku)}
+                    onChange={(event) => toggleDraftSku(item.sku, event.target.checked)}
+                  />
+                </div>
+              ) : null}
               <span className="font-mono text-xs font-medium">{item.sku}</span>
               <span>{formatNumber(item.qty)}</span>
               <span className="font-mono text-xs">{item.cbm.toFixed(6)}</span>
               <span className="font-mono text-xs">{(item.qty * item.cbm).toFixed(6)}</span>
               {canChangeStructure ? (
                 <div className="flex justify-end">
-                  <button type="button" onClick={() => onRemoveDraftItem(item.sku)} className="text-xs font-semibold text-[#c42b2b] hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleDraftSku(item.sku, false);
+                      void onRemoveDraftItem(item.sku);
+                    }}
+                    className="text-xs font-semibold text-[#c42b2b] hover:underline"
+                  >
                     Delete
                   </button>
                 </div>
@@ -2145,7 +2324,8 @@ function ContainerCreateForm({
 
           {/* Inline add row */}
           {canChangeStructure ? (
-          <div className="grid grid-cols-[2fr_0.8fr_0.9fr_0.9fr_64px] items-end gap-2 border-t border-[#e2dfd8] bg-[#fbfaf8] px-3 py-2">
+          <div className="grid grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px] items-end gap-2 border-t border-[#e2dfd8] bg-[#fbfaf8] px-3 py-2">
+            <div />
             <input
               className="form-input font-mono text-xs"
               value={skuInput}
@@ -2315,7 +2495,7 @@ function ContainerCard({
   onFillInlineEditCbm: (containerId: string, sku: string) => void | Promise<void>;
   onUpdateInlineEditCbm: (containerId: string, sku: string) => void | Promise<void>;
   onCancelInlineEditDraft: (containerId: string, sku: string) => void;
-  onDeleteItem: (containerId: string, sku: string) => void;
+  onDeleteItem: (containerId: string, sku: string) => void | Promise<void>;
   inlineSkuDraft?: InlineSkuDraft;
   onStartAddItem: (containerId: string) => void;
   onUpdateInlineSkuDraft: (containerId: string, patch: Partial<InlineSkuDraft>) => void;
@@ -2787,7 +2967,7 @@ function SkuRow({
   onFillCbm: (containerId: string, sku: string) => void | Promise<void>;
   onUpdateCbm: (containerId: string, sku: string) => void | Promise<void>;
   onCancelDraft: (containerId: string, sku: string) => void;
-  onDelete: (containerId: string, sku: string) => void;
+  onDelete: (containerId: string, sku: string) => void | Promise<void>;
   onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<boolean>;
   selectedAllocationIds: string[];
   onToggleAllocationSelection: (allocationIds: string[], checked: boolean) => void;
@@ -2940,7 +3120,7 @@ function SkuRow({
           {quantityOnly ? null : (
             <button
               type="button"
-              onClick={() => onDelete(containerId, item.sku)}
+              onClick={() => void onDelete(containerId, item.sku)}
               className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#c42b2b] hover:text-[#c42b2b]"
             >
               Delete

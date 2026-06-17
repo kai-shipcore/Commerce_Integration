@@ -627,23 +627,23 @@ export default function IntegrationsPage() {
                       {integration.tokenStatus === "valid" && (
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-950/60">
                           <CheckCircle className="h-3 w-3 mr-1" />
-                          Access Token ìœ íš¨
+                          Access Token 유효
                         </Badge>
                       )}
                       {integration.tokenStatus === "expiring_soon" && (
                         <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
                           <AlertTriangle className="h-3 w-3 mr-1" />
-                          Access Token ê³§ ë§Œë£Œ
+                          Access Token 곧 만료
                         </Badge>
                       )}
                       {integration.tokenStatus === "expired" && (
                         <Badge variant="destructive">
                           <XCircle className="h-3 w-3 mr-1" />
-                          Access Token ë§Œë£Œë¨
+                          Access Token 만료됨
                         </Badge>
                       )}
                       {integration.tokenStatus === "none" && (
-                        <Badge variant="outline">Access Token ì—†ìŒ</Badge>
+                        <Badge variant="outline">Access Token 없음</Badge>
                       )}
                     </div>
                   )}

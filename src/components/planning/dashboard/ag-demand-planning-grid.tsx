@@ -716,6 +716,62 @@ function targetDaysForAverage(avgSales: number, tiers: SalesTargetTier[]): numbe
   return sorted.find((tier) => avgSales >= tier.minSales)?.targetDays ?? 0;
 }
 
+function formatSalesThreshold(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function salesRangeLabel(minSales: number, upperSales: number | null): string {
+  if (minSales <= 0 && upperSales != null) return `${formatSalesThreshold(upperSales)} 미만`;
+  if (upperSales == null) return `${formatSalesThreshold(minSales)} 이상`;
+  return `${formatSalesThreshold(minSales)} 이상 ~ ${formatSalesThreshold(upperSales)} 미만`;
+}
+
+function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
+  const normalized = tiers
+    .map((tier) => ({
+      minSales: Number(tier.minSales),
+      targetDays: Number(tier.targetDays),
+    }))
+    .sort((a, b) => b.minSales - a.minSales);
+
+  if (normalized.length === 0) return "최소 1개 이상의 구간이 필요합니다.";
+
+  for (const tier of normalized) {
+    if (!Number.isFinite(tier.minSales) || tier.minSales < 0) {
+      return "Min Sales는 0 이상의 숫자로 입력해주세요.";
+    }
+
+    if (!Number.isFinite(tier.targetDays) || tier.targetDays < 1 || tier.targetDays > 365) {
+      return "목표일수는 1일부터 365일 사이로 입력해주세요.";
+    }
+  }
+
+  const minSalesValues = new Set(normalized.map((tier) => tier.minSales));
+  if (minSalesValues.size !== normalized.length) {
+    return "같은 Min Sales 값이 중복되어 있습니다. 각 구간의 시작값을 다르게 입력해주세요.";
+  }
+
+  const lowestTier = normalized[normalized.length - 1];
+  if (lowestTier.minSales !== 0) {
+    return "가장 낮은 판매 구간을 계산할 수 있도록 Min Sales 0 구간을 추가해주세요.";
+  }
+
+  for (let index = 1; index < normalized.length; index += 1) {
+    const higherSalesTier = normalized[index - 1];
+    const lowerSalesTier = normalized[index];
+
+    if (lowerSalesTier.targetDays > higherSalesTier.targetDays) {
+      return (
+        `${salesRangeLabel(lowerSalesTier.minSales, higherSalesTier.minSales)} 구간의 목표일수가 ` +
+        `${salesRangeLabel(higherSalesTier.minSales, null)} 구간보다 큽니다. ` +
+        "판매량이 낮은 구간의 목표일수는 위 구간보다 작거나 같아야 합니다."
+      );
+    }
+  }
+
+  return null;
+}
+
 function Backfill3Dialog({
   open,
   containerName,
@@ -735,30 +791,75 @@ function Backfill3Dialog({
   onOpenChange: (open: boolean) => void;
   onApply: () => void;
 }) {
+  const [validationMessage, setValidationMessage] = useState("");
+  const sortedTiers = tiers
+    .map((tier, originalIndex) => ({ ...tier, originalIndex }))
+    .sort((a, b) => b.minSales - a.minSales);
+
+  function handleApply() {
+    const error = validateSalesTargetTiers(tiers);
+    if (error) {
+      setValidationMessage(error);
+      return;
+    }
+
+    setValidationMessage("");
+    onApply();
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) setValidationMessage("");
+    onOpenChange(nextOpen);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent style={{ maxWidth: 560 }}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent style={{ maxWidth: 640 }}>
         <DialogHeader>
-          <DialogTitle>Backfill3 Target Days</DialogTitle>
+          <DialogTitle>자동 발주 목표일수</DialogTitle>
         </DialogHeader>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}>
           <div style={{ fontSize: 12, color: "#7A766F" }}>
-            {containerName ? `${containerName} - ` : ""}Set target days by average daily sales range.
+            {containerName ? `${containerName} - ` : ""}일평균 판매량 구간별 목표 재고일수를 설정합니다.
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
-            <span>Min Avg Sales</span>
-            <span>Target Days</span>
+          <div style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
+            <span>Sales Range</span>
+            <span>Min Sales</span>
+            <span>목표일수</span>
             <span />
           </div>
-          {tiers.map((tier, index) => (
-            <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8 }}>
+          {sortedTiers.map((tier, index) => {
+            const upperSales = index === 0 ? null : sortedTiers[index - 1].minSales;
+            const rangeLabel = salesRangeLabel(tier.minSales, upperSales);
+
+            return (
+            <div key={tier.originalIndex} style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, alignItems: "center" }}>
+              <div
+                style={{
+                  minHeight: 32,
+                  display: "flex",
+                  alignItems: "center",
+                  border: "1px solid #E6E2D9",
+                  borderRadius: 4,
+                  background: "#FAFAF7",
+                  padding: "4px 10px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#2A2825",
+                }}
+              >
+                {rangeLabel}
+              </div>
               <input
                 type="number"
                 min={0}
                 step={0.1}
                 value={tier.minSales}
-                onChange={(event) => onTierChange(index, { minSales: Math.max(0, Number(event.target.value) || 0) })}
+                onChange={(event) => {
+                  setValidationMessage("");
+                  onTierChange(tier.originalIndex, { minSales: Math.max(0, Number(event.target.value) || 0) });
+                }}
                 style={{ height: 32, border: "1px solid #D8D6CE", borderRadius: 4, padding: "4px 8px", fontSize: 13 }}
               />
               <input
@@ -766,12 +867,18 @@ function Backfill3Dialog({
                 min={1}
                 max={365}
                 value={tier.targetDays}
-                onChange={(event) => onTierChange(index, { targetDays: Math.max(1, Number(event.target.value) || 1) })}
+                onChange={(event) => {
+                  setValidationMessage("");
+                  onTierChange(tier.originalIndex, { targetDays: Math.max(1, Number(event.target.value) || 1) });
+                }}
                 style={{ height: 32, border: "1px solid #D8D6CE", borderRadius: 4, padding: "4px 8px", fontSize: 13 }}
               />
               <button
                 type="button"
-                onClick={() => onRemoveTier(index)}
+                onClick={() => {
+                  setValidationMessage("");
+                  onRemoveTier(tier.originalIndex);
+                }}
                 disabled={tiers.length <= 1}
                 title="Remove tier"
                 style={{
@@ -788,22 +895,46 @@ function Backfill3Dialog({
                 ×
               </button>
             </div>
-          ))}
+            );
+          })}
           <div>
-            <Button variant="outline" size="sm" onClick={onAddTier}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setValidationMessage("");
+                onAddTier();
+              }}
+            >
               Add Row
             </Button>
           </div>
+          {validationMessage ? (
+            <div
+              role="alert"
+              style={{
+                border: "1px solid #F0B8B8",
+                borderRadius: 6,
+                background: "#FFF5F5",
+                color: "#A31B1B",
+                padding: "8px 10px",
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              {validationMessage}
+            </div>
+          ) : null}
           <div style={{ fontSize: 12, color: "#7A766F" }}>
-            Higher Min Avg Sales rows are applied first. Use Min 0 for the lowest range.
+            Min Sales 값이 높은 구간부터 적용됩니다. 가장 낮은 구간은 Min Sales 0으로 두면 됩니다.
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={onApply}>
+          <Button onClick={handleApply}>
             Apply
           </Button>
         </DialogFooter>
@@ -825,6 +956,7 @@ function ContainerGroupHeader(
     onAutoFill3?: () => void;
     onSave?: () => void;
     onReset?: () => void;
+    onOpenInContainerPlanning?: () => void;
     autoFilling?: boolean;
     autoFilling2?: boolean;
     autoFilling21?: boolean;
@@ -843,7 +975,17 @@ function ContainerGroupHeader(
   return (
     <div className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}>
       <div className="flex items-center justify-center gap-1 overflow-hidden">
-        <span className="max-w-full truncate font-bold">{props.displayName}</span>
+        <span
+          className="max-w-full truncate font-bold"
+          title="Double-click to open container details"
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            props.onOpenInContainerPlanning?.();
+          }}
+          style={{ cursor: props.onOpenInContainerPlanning ? "pointer" : "default" }}
+        >
+          {props.displayName}
+        </span>
         {props.baseline ? null : (
           <>
             <span>| ETA</span>
@@ -853,7 +995,7 @@ function ContainerGroupHeader(
                 value={props.eta}
                 onChange={(event) => props.onEtaChange(event.target.value)}
                 style={{ colorScheme: "dark" }}
-                className="w-[94px] rounded border border-white/30 bg-transparent px-1 text-[9px] text-white"
+                className="h-[24px] w-[108px] rounded border border-white/30 bg-transparent px-2 text-[11px] font-semibold text-white"
               />
             </label>
             <button
@@ -1061,6 +1203,16 @@ export function AgDemandPlanningGrid({
     });
     return rows.length > 0 ? rows : visibleRows;
   }, [visibleRows]);
+
+  function openContainerPlanning(container: ContainerMeta) {
+    if (!container.container_id) {
+      window.alert("This container does not have a saved container ID yet.");
+      return;
+    }
+
+    const url = `/forecast/planning/container-planning?containerId=${encodeURIComponent(String(container.container_id))}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 
   useEffect(() => {
     const element = gridHostRef.current;
@@ -1893,6 +2045,7 @@ export function AgDemandPlanningGrid({
             onAutoFill3: () => {
               setBackfill3Dialog({ container, containerIndex });
             },
+            onOpenInContainerPlanning: () => openContainerPlanning(container),
             onSave: () => {
               if (!window.confirm(buildContainerSaveSummary(container))) return;
               void saveContainer(container);
