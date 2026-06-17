@@ -18,7 +18,6 @@ type SkuMasterRow = {
   cbmPerUnit: number;
   caseQty: number;
   weightKg: number;
-  isCustomSku: boolean;
 };
 
 type SkuStatus = "active" | "inactive";
@@ -315,7 +314,6 @@ export function SkuMasterPage() {
 
       const headers = [
         "product_type",
-        "sku_type",
         "master_sku",
         "product_name",
         "category",
@@ -332,7 +330,6 @@ export function SkuMasterPage() {
         ...exportRows.map((sku) =>
           [
             productMeta[sku.productKey]?.label ?? sku.productKey,
-            sku.isCustomSku ? "Custom" : "Original",
             sku.masterSku,
             sku.productName,
             sku.category,

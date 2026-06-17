@@ -14,7 +14,7 @@ import {
 import { isPOApproverRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
 
-type ContainerItem = MockContainer["items"][number] & { isCustomSku?: boolean };
+type ContainerItem = MockContainer["items"][number];
 
 type ContainerFormState = {
   number: string;
@@ -107,7 +107,7 @@ type ApiContainer = {
   origin: string | null;
   destWarehouse: string | null;
   note: string | null;
-  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; isCustomSku?: boolean; allocations?: StockAllocation[] }>;
+  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; allocations?: StockAllocation[] }>;
 };
 
 type FactoryOption = {
@@ -215,7 +215,6 @@ function mapApiContainer(container: ApiContainer): MockContainer {
       sku: item.sku,
       qty: Number(item.qty ?? 0),
       cbm: Number(item.cbm ?? 0),
-      isCustomSku: Boolean(item.isCustomSku),
       allocations: (item.allocations ?? []).map((allocation) => ({
         ...allocation,
         qty: Number(allocation.qty ?? 0),
@@ -1349,7 +1348,6 @@ export function ContainerPlanningPage() {
     const skuRows = new Map<string, {
       sku: string;
       cbm: number;
-      isCustomSku: boolean;
       quantities: Map<string, number>;
     }>();
     for (const container of sortedContainers) {
@@ -1358,11 +1356,9 @@ export function ContainerPlanningPage() {
         const current = skuRows.get(exportItem.sku) ?? {
           sku: exportItem.sku,
           cbm: exportItem.cbm,
-          isCustomSku: Boolean(exportItem.isCustomSku),
           quantities: new Map<string, number>(),
         };
         current.cbm = current.cbm || exportItem.cbm;
-        current.isCustomSku = current.isCustomSku || Boolean(exportItem.isCustomSku);
         current.quantities.set(container.id, (current.quantities.get(container.id) ?? 0) + exportItem.qty);
         skuRows.set(exportItem.sku, current);
       }
@@ -1374,7 +1370,6 @@ export function ContainerPlanningPage() {
     }
 
     const orderHeader = [
-      "Product Type",
       "Master SKU",
       ...sortedContainers.map((container) => container.number),
       "Remaining Stock",
@@ -1384,7 +1379,6 @@ export function ContainerPlanningPage() {
       .map((row) => {
         const containerQtys = sortedContainers.map((container) => row.quantities.get(container.id) ?? 0);
         return [
-          row.isCustomSku ? "Custom" : "",
           row.sku,
           ...containerQtys,
           remainingBySku.get(row.sku) ?? 0,
@@ -1408,7 +1402,6 @@ export function ContainerPlanningPage() {
     const XLSX = await import("xlsx");
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
     worksheet["!cols"] = [
-      { wch: 14 },
       { wch: 28 },
       ...sortedContainers.map(() => ({ wch: 14 })),
       { wch: 16 },

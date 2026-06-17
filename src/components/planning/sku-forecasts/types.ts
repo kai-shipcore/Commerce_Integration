@@ -13,7 +13,6 @@ export type SkuMasterMeta = {
   cbmPerUnit: number;
   caseQty: number;
   weightKg: number;
-  isCustomSku: boolean;
 };
 
 export const productLabels: Record<ProductKey, string> = {
@@ -76,7 +75,6 @@ export function defaultMasterMeta(row: DemandRow): SkuMasterMeta {
     cbmPerUnit: row.cbm_per_unit ?? row.cbm ?? 0,
     caseQty: productKey === "cc" ? 3 : 1,
     weightKg: 0,
-    isCustomSku: row.sales_status === "Custom",
   };
 }
 

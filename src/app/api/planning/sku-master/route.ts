@@ -176,8 +176,7 @@ export async function GET(request: NextRequest) {
            order_multiple,
            cbm_per_unit::text AS cbm_per_unit,
            case_qty,
-           weight_kg::text AS weight_kg,
-           COALESCE(is_custom_sku, false) AS is_custom_sku
+           weight_kg::text AS weight_kg
          FROM shipcore.fc_products
          WHERE master_sku = $1 AND status = 'active'
          LIMIT 1`,
@@ -207,7 +206,6 @@ export async function GET(request: NextRequest) {
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
           caseQty: Number(row.case_qty ?? inferred.caseQty),
           weightKg: Number(row.weight_kg ?? inferred.weightKg),
-          isCustomSku: Boolean(row.is_custom_sku),
         },
       });
     }
@@ -235,8 +233,7 @@ export async function GET(request: NextRequest) {
          order_multiple,
          cbm_per_unit::text AS cbm_per_unit,
          case_qty,
-         weight_kg::text AS weight_kg,
-         COALESCE(is_custom_sku, false) AS is_custom_sku
+         weight_kg::text AS weight_kg
        FROM shipcore.fc_products
        WHERE ${whereClause}
        ORDER BY category_code NULLS LAST, master_sku
@@ -260,7 +257,6 @@ export async function GET(request: NextRequest) {
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
           caseQty: Number(row.case_qty ?? inferred.caseQty),
           weightKg: Number(row.weight_kg ?? inferred.weightKg),
-          isCustomSku: Boolean(row.is_custom_sku),
         };
       }),
       pagination: {
@@ -394,7 +390,6 @@ export async function PATCH(request: NextRequest) {
     const caseQty = body.caseQty == null ? null : Math.max(1, Number(body.caseQty));
     const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.000001, Number(body.cbmPerUnit));
     const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
-    const isCustomSku = typeof body.isCustomSku === "boolean" ? body.isCustomSku : null;
     const statusValue = body.status == null ? null : String(body.status).trim().toLowerCase();
 
     if (statusValue !== null && statusValue !== "active" && statusValue !== "inactive") {
@@ -409,12 +404,11 @@ export async function PATCH(request: NextRequest) {
            cbm_per_unit = COALESCE($4, cbm_per_unit),
            case_qty = COALESCE($5, case_qty),
            weight_kg = COALESCE($6, weight_kg),
-           is_custom_sku = COALESCE($7, is_custom_sku),
-           status = COALESCE($8::shipcore.fc_product_status, status),
+           status = COALESCE($7::shipcore.fc_product_status, status),
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,
-      [masterSku, moq, orderMultiple, cbmPerUnit, caseQty, weightKg, isCustomSku, statusValue]
+      [masterSku, moq, orderMultiple, cbmPerUnit, caseQty, weightKg, statusValue]
     );
 
     if (result.rowCount === 0) {
