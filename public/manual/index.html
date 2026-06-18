@@ -1260,7 +1260,42 @@
     </div>
   </div>
 
-  <h3 class="sub">SKU 일괄 삭제</h3>
+  
+  <div class="screenshot-box">
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning 전체 화면</p></div>'" alt="Container Planning">
+    <div class="screenshot-caption">▲ 컨테이너 등록 – + Add Container 클릭 시 나타나는 New Container Registration 입력 화면</div>
+  </div>
+
+  <h3 id="cp-edit">② 컨테이너 수정하기</h3>
+  <p><span class="status draft">Draft</span> 상태의 컨테이너는 기본 정보와 SKU 목록을 자유롭게 수정할 수 있습니다.</p>
+
+  <h3 class="sub">기본 정보 수정</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">컨테이너 번호</td><td>Container Details 섹션에서 직접 클릭해 수정합니다.</td></tr>
+    <tr><td class="label">ETA (도착 예정일)</td><td>날짜 선택기로 변경합니다.</td></tr>
+    <tr><td class="label">목적지 창고</td><td>드롭다운에서 창고를 선택합니다.</td></tr>
+    <tr><td class="label">CBM 용량</td><td>컨테이너 총 용량(기본 80 m³)을 수정합니다.</td></tr>
+    <tr><td class="label">공장 / 메모</td><td>공장명 및 패킹 지시사항 등 메모를 자유롭게 기입합니다.</td></tr>
+  </table>
+
+  <h3 class="sub">SKU 추가</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>Master SKU 입력</h4><p>SKU Order Quantities 섹션 하단의 Master SKU 검색창에 SKU 코드를 입력합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>수량 입력</h4><p>Qty 칸에 발주 수량을 입력합니다. CBM/Unit은 SKU 마스터에서 자동 조회됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>+ Add 클릭</h4><p><span class="btn-label">+ Add</span> 버튼을 클릭하면 SKU 목록에 추가됩니다. 여러 SKU를 한 번에 등록하려면 <span class="btn-label">CSV/Excel Import</span> 버튼으로 엑셀 파일을 업로드합니다.</p></div>
+    </div>
+  </div>
+
+  <h3 class="sub">SKU 삭제 (일괄 삭제)</h3>
   <p><span class="status draft">Draft</span> 상태의 컨테이너에서만 사용 가능합니다. SKU 목록 좌측 체크박스로 항목을 선택한 뒤 <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span> 버튼을 클릭합니다.</p>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
@@ -1276,11 +1311,11 @@
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning 전체 화면</p></div>'" alt="Container Planning">
-    <div class="screenshot-caption">▲ 컨테이너 등록 – + Add Container 클릭 시 나타나는 New Container Registration 입력 화면</div>
+    <img src="screenshots/03b-container-edit.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>✏️</div><p>컨테이너 수정 화면</p></div>'" alt="컨테이너 수정">
+    <div class="screenshot-caption">▲ 컨테이너 수정 – 기본 정보 및 SKU 추가·삭제 화면 (202-CA-SEAT · Draft 상태)</div>
   </div>
 
-  <h3 id="cp-status">② 상태별 주의사항</h3>
+  <h3 id="cp-status">③ 상태별 주의사항</h3>
   <table class="feat-table">
     <tr><th style="width:180px">상태</th><th>편집 가능 항목</th><th>Demand Planning 표시 여부</th><th>비고</th></tr>
     <tr>
@@ -1310,7 +1345,7 @@
   </table>
 
   <!-- Complete 상태 상세 설명 -->
-  <h3 id="cp-complete">③ Complete 상태와 Demand Planning 표시 규칙</h3>
+  <h3 id="cp-complete">④ Complete 상태와 Demand Planning 표시 규칙</h3>
 
   <div class="callout warn" style="margin-bottom:16px">
     <span class="callout-icon">⚠️</span>
@@ -1389,7 +1424,7 @@
   </div>
 
   <!-- Excel Export 상세 설명 -->
-  <h3 id="cp-export">④ 엑셀(Excel) Export</h3>
+  <h3 id="cp-export">⑤ 엑셀(Excel) Export</h3>
   <p>Container Planning에는 두 가지 Export 기능이 있습니다. 목적에 따라 구분해서 사용합니다.</p>
 
   <div class="card-grid col2" style="margin:20px 0">
@@ -2395,8 +2430,42 @@
     <div class="step"><div class="step-num">4</div><div><h4>Allocate Available Stock (optional)</h4><p>To assign warehouse surplus to this container, use the <span class="btn-label">Available Stock</span> button.</p></div></div>
     <div class="step"><div class="step-num">5</div><div><h4>Update Status</h4><p>Change to <span class="status final">Final List Sent</span> once you send the order to the factory. Change to <span class="status packing">Packing List Rcvd</span> when you receive the packing list.</p></div></div>
   </div>
+  
+  <div class="screenshot-box">
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning</p></div>'" alt="Container Planning">
+    <div class="screenshot-caption">▲ Container Registration – New Container Registration form (click + Add Container)</div>
+  </div>
 
-  <h3 class="sub">Bulk Delete SKUs</h3>
+  <h3 id="en-cp-edit">② Editing a Container</h3>
+  <p><span class="status draft">Draft</span> containers can be freely edited — both basic details and the SKU list.</p>
+
+  <h3 class="sub">Editing Basic Information</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Field</th><th>Description</th></tr>
+    <tr><td class="label">Container Number</td><td>Click directly in the Container Details section to edit.</td></tr>
+    <tr><td class="label">ETA (Estimated Arrival)</td><td>Change via the date picker.</td></tr>
+    <tr><td class="label">Destination Warehouse</td><td>Select from the dropdown.</td></tr>
+    <tr><td class="label">CBM Capacity</td><td>Edit the total container capacity (default 80 m³).</td></tr>
+    <tr><td class="label">Factory / Notes</td><td>Enter the factory name and any packing instructions or special notes.</td></tr>
+  </table>
+
+  <h3 class="sub">Adding SKUs</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>Enter Master SKU</h4><p>Type the SKU code in the Master SKU search field at the bottom of the SKU Order Quantities section.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Enter Quantity</h4><p>Fill in the order quantity in the Qty field. CBM/Unit is automatically looked up from the SKU master.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>Click + Add</h4><p>Click <span class="btn-label">+ Add</span> to add the SKU to the list. To register multiple SKUs at once, use <span class="btn-label">CSV/Excel Import</span>.</p></div>
+    </div>
+  </div>
+
+  <h3 class="sub">Deleting SKUs (Bulk Delete)</h3>
   <p>Available in <span class="status draft">Draft</span> containers only. Select SKUs using the row checkboxes and click <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span>.</p>
   <table class="feat-table">
     <tr><th style="width:200px">Item</th><th>Description</th></tr>
@@ -2412,11 +2481,11 @@
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning</p></div>'" alt="Container Planning">
-    <div class="screenshot-caption">▲ Container Registration – New Container Registration form (click + Add Container)</div>
+    <img src="screenshots/03b-container-edit.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>✏️</div><p>Container Edit Screen</p></div>'" alt="Container Edit">
+    <div class="screenshot-caption">▲ Container Edit – Basic info and SKU add/delete panel (202-CA-SEAT · Draft status)</div>
   </div>
 
-  <h3 id="en-cp-status">② Status Details</h3>
+  <h3 id="en-cp-status">③ Status Details</h3>
   <table class="feat-table">
     <tr><th style="width:200px">Status</th><th>Editable Fields</th><th>Shown in Demand Planning</th><th>Notes</th></tr>
     <tr>
@@ -2445,7 +2514,7 @@
     </tr>
   </table>
 
-  <h3 id="en-cp-complete">③ Complete Status and Demand Planning Display Rules</h3>
+  <h3 id="en-cp-complete">④ Complete Status and Demand Planning Display Rules</h3>
   <div class="callout warn" style="margin-bottom:16px">
     <span class="callout-icon">⚠️</span>
     <div>
@@ -2507,7 +2576,7 @@
     <div><b>CBM Overload Warning:</b> Current CBM usage is shown at the top. Do not exceed 80 CBM.</div>
   </div>
 
-  <h3 id="en-cp-export">④ Excel Export</h3>
+  <h3 id="en-cp-export">⑤ Excel Export</h3>
   <p>Container Planning has two Export functions. Use each based on your purpose.</p>
   <div class="card-grid col2" style="margin:20px 0">
     <div class="card" style="border-left:4px solid #1a5cdb">
