@@ -11,6 +11,8 @@ interface PlanningShellProps {
 export function PlanningShell({ children }: PlanningShellProps) {
   const pathname = usePathname();
   const fullBleedPages = new Set([
+    "/planning/dashboard-ag-grid",
+    "/planning/dashboard",
     "/planning/container-planning",
     "/planning/available-stock",
     "/planning/purchase-orders",

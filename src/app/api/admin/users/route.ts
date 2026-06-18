@@ -60,6 +60,11 @@ export async function GET(request: NextRequest) {
           email: true,
           role: true,
           menuVisibility: true,
+          accounts: {
+            select: {
+              provider: true,
+            },
+          },
           createdAt: true,
           updatedAt: true,
         },
@@ -76,8 +81,15 @@ export async function GET(request: NextRequest) {
           user: getDefaultVisibleMenuIds("user"),
         },
         users: users.map((user: typeof users[number]) => ({
-          ...user,
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
           menuVisibility: sanitizeVisibleMenuIds(user.menuVisibility, user.role),
+          authProviders: [...new Set(user.accounts.map((account) => account.provider))],
+          hasGoogleAccount: user.accounts.some((account) => account.provider === "google"),
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
         })),
         pagination: {
           page,

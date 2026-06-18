@@ -7,6 +7,7 @@ import {
   filterToValidMenuIds,
   getDefaultVisibleMenuIds,
   isAdminLikeRole,
+  type NavigationItem,
   navigationItems,
 } from "@/components/layout/navigation-config";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,6 +40,8 @@ interface ManagedUser {
   email: string;
   role: string;
   menuVisibility: string[];
+  authProviders: string[];
+  hasGoogleAccount: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -54,22 +57,42 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
+interface MenuPermissionEntry {
+  item: NavigationItem;
+  configurable: boolean;
+  description?: string;
+}
+
 export default function UserAccessPage() {
   const { data: session, status } = useSession();
   const isElevatedRole = (role: string) => role === "admin" || role === "dev" || role === "planner";
   const configurableMenus = useMemo(
-    () => navigationItems.filter((item) => item.hideable !== false && !item.adminOnly && !item.hidden),
+    () => navigationItems.filter((item) => item.hideable !== false && !item.hidden),
     []
   );
 
   const menuGroups = useMemo(() => {
-    const groupMap = new Map<string, typeof configurableMenus>();
-    for (const item of configurableMenus) {
-      const g = item.group ?? "Other";
-      if (!groupMap.has(g)) groupMap.set(g, []);
-      groupMap.get(g)!.push(item);
-    }
-    return [...groupMap.entries()].map(([group, items]) => ({ group, items }));
+    const byId = new Map(navigationItems.map((item) => [item.id, item]));
+    const configurableIds = new Set(configurableMenus.map((item) => item.id));
+    const makeEntries = (ids: string[]): MenuPermissionEntry[] =>
+      ids.reduce<MenuPermissionEntry[]>((entries, id) => {
+        const item = byId.get(id);
+        if (item) {
+          entries.push({
+            item,
+            configurable: configurableIds.has(id),
+            description: item.hideable === false ? "Controlled by role" : undefined,
+          });
+        }
+        return entries;
+      }, []);
+
+    return [
+      { group: "Commerce", entries: makeEntries(["inventory", "orders", "velocity"]) },
+      { group: "Planning", entries: makeEntries(["demand-planning", "sku-forecasts", "container-planning", "available-stock"]) },
+      { group: "Master Data", entries: makeEntries(["sku-master", "seat-cover-parts", "factories", "warehouse-admin"]) },
+      { group: "Admin", entries: makeEntries(["integrations", "user-access"]) },
+    ].filter((group) => group.entries.length > 0);
   }, [configurableMenus]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -380,7 +403,8 @@ export default function UserAccessPage() {
                       <TableHead>Email</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Role</TableHead>
-                      <TableHead>Joined</TableHead>
+                      <TableHead>Auth</TableHead>
+                      <TableHead className="pr-5 text-right">Joined</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -388,7 +412,7 @@ export default function UserAccessPage() {
                       <TableRow
                         className="hover:bg-transparent"
                       >
-                        <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                        <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                           No users match your search.
                         </TableCell>
                       </TableRow>
@@ -415,7 +439,16 @@ export default function UserAccessPage() {
                               {user.role}
                             </Badge>
                           </TableCell>
-                          <TableCell className="whitespace-nowrap text-muted-foreground">
+                          <TableCell>
+                            {user.hasGoogleAccount ? (
+                              <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+                                Google
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Password</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap pr-5 text-right tabular-nums text-muted-foreground">
                             {formatJoinedDate(user.createdAt)}
                           </TableCell>
                         </TableRow>
@@ -506,6 +539,27 @@ export default function UserAccessPage() {
                       </p>
                     </div>
                     <div>
+                      <p className="font-medium">Auth</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {selectedUser.hasGoogleAccount ? (
+                          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+                            Google
+                          </Badge>
+                        ) : null}
+                        {selectedUser.authProviders.length === 0 ? (
+                          <Badge variant="secondary">Password</Badge>
+                        ) : (
+                          selectedUser.authProviders
+                            .filter((provider) => provider !== "google")
+                            .map((provider) => (
+                              <Badge key={provider} variant="secondary">
+                                {provider}
+                              </Badge>
+                            ))
+                        )}
+                      </div>
+                    </div>
+                    <div>
                       <p className="font-medium">Joined</p>
                       <p className="text-muted-foreground">
                         {formatJoinedDate(selectedUser.createdAt)}
@@ -570,12 +624,14 @@ export default function UserAccessPage() {
                       </div>
                     </div>
 
-                    {menuGroups.map(({ group, items }) => {
-                      const groupIds = items.map((item) => item.id);
+                    {menuGroups.map(({ group, entries }) => {
+                      const configurableEntries = entries.filter((entry) => entry.configurable);
+                      const groupIds = configurableEntries.map((entry) => entry.item.id);
                       const disabled = savingUserId === selectedUser.id;
-                      const allChecked = groupIds.every((id) =>
+                      const allChecked = groupIds.length > 0 && groupIds.every((id) =>
                         selectedUser.menuVisibility.includes(id)
                       );
+                      const allUnchecked = groupIds.every((id) => !selectedUser.menuVisibility.includes(id));
 
                       return (
                         <div key={group} className="space-y-2">
@@ -589,7 +645,7 @@ export default function UserAccessPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 px-2 text-xs"
-                                disabled={disabled || allChecked}
+                                disabled={disabled || allChecked || groupIds.length === 0}
                                 onClick={() => {
                                   const next = [...new Set([...selectedUser.menuVisibility, ...groupIds])];
                                   void updateUserMenus(selectedUser.id, next);
@@ -602,7 +658,7 @@ export default function UserAccessPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 px-2 text-xs"
-                                disabled={disabled || groupIds.every((id) => !selectedUser.menuVisibility.includes(id))}
+                                disabled={disabled || allUnchecked || groupIds.length === 0}
                                 onClick={() => {
                                   const groupIdSet = new Set(groupIds);
                                   const next = selectedUser.menuVisibility.filter((id) => !groupIdSet.has(id));
@@ -615,8 +671,12 @@ export default function UserAccessPage() {
                           </div>
 
                           <div className="grid gap-2">
-                            {items.map((item) => {
-                              const checked = selectedUser.menuVisibility.includes(item.id);
+                            {entries.map(({ item, configurable, description }) => {
+                              const checked = configurable
+                                ? selectedUser.menuVisibility.includes(item.id)
+                                : item.adminOnly
+                                  ? isAdminLikeRole(selectedUser.role)
+                                  : true;
                               return (
                                 <div
                                   key={`${selectedUser.id}-${item.id}`}
@@ -630,11 +690,14 @@ export default function UserAccessPage() {
                                       {item.name}
                                     </Label>
                                     <p className="text-xs text-muted-foreground">{item.href}</p>
+                                    {description ? (
+                                      <p className="text-xs text-muted-foreground">{description}</p>
+                                    ) : null}
                                   </div>
                                   <Checkbox
                                     id={`${selectedUser.id}-${item.id}`}
                                     checked={checked}
-                                    disabled={disabled}
+                                    disabled={disabled || !configurable}
                                     onCheckedChange={(value) => {
                                       const next =
                                         value === true

@@ -29,11 +29,10 @@ let cachedVisibleMenuIds: string[] | null = null;
 const MENU_FETCH_TIMEOUT_MS = 2000;
 
 const navigationGroups = [
-  { name: "Catalog", itemIds: ["products", "inventory", "collections"] },
-  { name: "Operations", itemIds: ["orders", "signals"] },
-  { name: "Forecasting", itemIds: ["analytics", "velocity"] },
-  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "available-stock", "purchase-orders", "sku-master", "seat-cover-parts"] },
-  { name: "Admin", itemIds: ["integrations", "warehouse-admin", "factories", "user-access"] },
+  { name: "Commerce", itemIds: ["inventory", "orders", "velocity"] },
+  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "available-stock"] },
+  { name: "Master Data", itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
+  { name: "Admin", itemIds: ["integrations", "user-access"] },
 ];
 
 function readStoredVisibleMenuIds(role?: string | null): string[] | null {
@@ -74,7 +73,11 @@ function storeVisibleMenuIds(visibleMenuIds: string[]) {
   );
 }
 
-export function MainNav() {
+interface MainNavProps {
+  showDashboard?: boolean;
+}
+
+export function MainNav({ showDashboard = true }: MainNavProps) {
   const pathname = usePathname();
   const fallbackVisibleMenuIds = getDefaultVisibleMenuIds();
   const [visibleMenuIds, setVisibleMenuIds] = useState<string[]>(
@@ -222,12 +225,11 @@ export function MainNav() {
 
   return (
     <nav className="flex items-center space-x-4 lg:space-x-6">
-      {dashboardItem ? renderNavigationLink(dashboardItem) : null}
+      {showDashboard && dashboardItem ? renderNavigationLink(dashboardItem) : null}
       {renderNavigationGroup(groupedNavigation[0])}
       {renderNavigationGroup(groupedNavigation[1])}
       {renderNavigationGroup(groupedNavigation[2])}
       {renderNavigationGroup(groupedNavigation[3])}
-      {renderNavigationGroup(groupedNavigation[4])}
     </nav>
   );
 }
