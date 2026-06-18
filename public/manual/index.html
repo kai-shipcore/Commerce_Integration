@@ -534,7 +534,7 @@
     <tr>
       <td><strong>Total Avg Daily</strong></td>
       <td>T.Avg 이전 · T.Avg 실제 · T.Avg 현재</td>
-      <td>전체 채널 합산 일평균. 자동계산(📅/🧮/📊)의 기준값.</td>
+      <td>전체 채널 합산 일평균. 자동계산(📅/📊)의 기준값.</td>
     </tr>
     <tr>
       <td><strong>입고 / 컨테이너 / SOD</strong></td>
@@ -710,16 +710,16 @@
   </div>
 
   <h3 id="dp-autofill">③ Con. Qty 자동계산 버튼</h3>
-  <p>각 컨테이너 헤더에는 3개의 자동계산 버튼이 있습니다. 모두 <strong>저장 전 미리보기</strong> 방식으로 동작하며, 클릭 후 수량을 확인하고 <span class="btn-label">💾 Save</span>를 눌러야 DB에 저장됩니다.</p>
+  <p>각 컨테이너 헤더에는 2개의 자동계산 버튼이 있습니다. 모두 <strong>저장 전 미리보기</strong> 방식으로 동작하며, 클릭 후 수량을 확인하고 <span class="btn-label">💾 Save</span>를 눌러야 DB에 저장됩니다.</p>
 
   <div class="screenshot-box">
     <img src="screenshots/01c-autofill.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>자동계산 버튼 영역</p></div>'" alt="자동계산 버튼">
-    <div class="screenshot-caption">▲ 컨테이너 헤더 자동계산 버튼 — ETA · 숫자입력 · 📅 · 🧮 · 📊</div>
+    <div class="screenshot-caption">▲ 컨테이너 헤더 자동계산 버튼 — ETA · 숫자입력 · 📅 · 📊</div>
   </div>
 
   <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#475569">
-    <strong>UI 배치:</strong> 컨테이너 헤더에는 <code>ETA 날짜</code> → <span style="border:1px solid #60a5fa;border-radius:4px;padding:1px 6px;font-size:12px;color:#3b82f6;font-weight:700">90</span>(목표 일수 입력) → <span class="btn-label" style="background:#dbeafe">📅</span> → <span class="btn-label" style="background:#e0f2fe">🧮</span> → <span class="btn-label" style="background:#d1fae5">📊</span> 순서로 배치되어 있습니다.<br>
-    <strong>숫자 입력칸(90)은 📅·🧮 버튼 전용</strong>이며, 📊은 이 값을 사용하지 않습니다.
+    <strong>UI 배치:</strong> 컨테이너 헤더에는 <code>ETA 날짜</code> → <span style="border:1px solid #60a5fa;border-radius:4px;padding:1px 6px;font-size:12px;color:#3b82f6;font-weight:700">90</span>(목표 일수 입력) → <span class="btn-label" style="background:#dbeafe">📅</span> → <span class="btn-label" style="background:#d1fae5">📊</span> 순서로 배치되어 있습니다.<br>
+    <strong>숫자 입력칸(90)은 📅 버튼 전용</strong>이며, 📊은 이 값을 사용하지 않습니다.
   </div>
 
   <table class="feat-table">
@@ -731,12 +731,6 @@
       <td>모든 SKU에 동일한 목표 일수를 적용할 때</td>
     </tr>
     <tr>
-      <td class="label" style="color:#0369a1;font-size:18px">🧮</td>
-      <td><strong>Backfill 2-1 계산</strong><br>Google Sheet Backfill 공식 기반의 대안 계산 방식</td>
-      <td>헤더의 숫자 입력칸 값 사용 (기본 90일)</td>
-      <td>기존 Google Sheet 발주 방식과 동일한 결과가 필요할 때</td>
-    </tr>
-    <tr>
       <td class="label" style="color:#059669;font-size:18px">📊</td>
       <td><strong>구간별 목표 계산</strong><br>클릭 시 다이얼로그가 열리며, 일판매량 구간마다 다른 목표 일수를 지정</td>
       <td>다이얼로그에서 구간별 설정 (기본: ≥10개→90일, ≥5개→80일, ≥3개→70일, 나머지→60일)</td>
@@ -746,10 +740,10 @@
 
   <div class="callout tip">
     <span class="callout-icon">💡</span>
-    <div><b>저장 전 미리보기:</b> 세 버튼 모두 클릭 즉시 수량이 반영되지만 DB에는 저장되지 않습니다. 확인 후 <span class="btn-label">💾 Save</span>를 눌러야 최종 저장됩니다. 되돌리려면 <span class="btn-label">↺ Reset</span>을 누르세요.</div>
+    <div><b>저장 전 미리보기:</b> 두 버튼 모두 클릭 즉시 수량이 반영되지만 DB에는 저장되지 않습니다. 확인 후 <span class="btn-label">💾 Save</span>를 눌러야 최종 저장됩니다. 되돌리려면 <span class="btn-label">↺ Reset</span>을 누르세요.</div>
   </div>
 
-  <h3 class="sub">📅 · 🧮 버튼 목표 일수 변경 방법</h3>
+  <h3 class="sub">📅 버튼 목표 일수 변경 방법</h3>
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
@@ -757,7 +751,7 @@
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div><h4>📅 또는 🧮 버튼 클릭</h4><p>입력한 일수를 기준으로 모든 SKU의 발주 수량이 계산됩니다.</p></div>
+      <div><h4>📅 버튼 클릭</h4><p>입력한 일수를 기준으로 모든 SKU의 발주 수량이 계산됩니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
@@ -1363,7 +1357,7 @@
       <ul>
         <li>상태 = <span class="status complete">Complete</span></li>
         <li>컨테이너 열이 사라지고 Con. Qty 계산에서 제외</li>
-        <li>자동계산 버튼(📅 / 🧮 / 📊) 결과에도 미반영</li>
+        <li>자동계산 버튼(📅 / 📊) 결과에도 미반영</li>
         <li>SKU Planning &gt; 재고 및 입고 탭의 입고 컨테이너 목록에도 미표시</li>
       </ul>
     </div>
@@ -2021,14 +2015,14 @@
   </div>
 
   <h3 id="en-dp-autofill">③ Con. Qty Auto-Fill Buttons</h3>
-  <p>Each container header has 3 auto-fill buttons. All operate as <strong>preview before save</strong> — quantities update immediately but are only written to the database after clicking <span class="btn-label">💾 Save</span>.</p>
+  <p>Each container header has 2 auto-fill buttons. All operate as <strong>preview before save</strong> — quantities update immediately but are only written to the database after clicking <span class="btn-label">💾 Save</span>.</p>
   <div class="screenshot-box">
     <img src="screenshots/01c-autofill-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Auto-Fill Button Area</p></div>'" alt="Auto-Fill buttons">
-    <div class="screenshot-caption">▲ Container header auto-fill buttons — ETA · number input · 📅 · 🧮 · 📊</div>
+    <div class="screenshot-caption">▲ Container header auto-fill buttons — ETA · number input · 📅 · 📊</div>
   </div>
   <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#475569">
-    <strong>UI Layout:</strong> Container headers display: <code>ETA date</code> → <span style="border:1px solid #60a5fa;border-radius:4px;padding:1px 6px;font-size:12px;color:#3b82f6;font-weight:700">90</span> (target days input) → <span class="btn-label" style="background:#dbeafe">📅</span> → <span class="btn-label" style="background:#e0f2fe">🧮</span> → <span class="btn-label" style="background:#d1fae5">📊</span>.<br>
-    <strong>The number input (90) is used by 📅 and 🧮</strong> — 📊 does not use this value.
+    <strong>UI Layout:</strong> Container headers display: <code>ETA date</code> → <span style="border:1px solid #60a5fa;border-radius:4px;padding:1px 6px;font-size:12px;color:#3b82f6;font-weight:700">90</span> (target days input) → <span class="btn-label" style="background:#dbeafe">📅</span> → <span class="btn-label" style="background:#d1fae5">📊</span>.<br>
+    <strong>The number input (90) is used by 📅</strong> — 📊 does not use this value.
   </div>
   <table class="feat-table">
     <tr><th style="width:80px">Button</th><th>Function</th><th>Target Days</th><th>When to Use</th></tr>
@@ -2039,12 +2033,6 @@
       <td>When you want the same target days applied uniformly to all SKUs</td>
     </tr>
     <tr>
-      <td class="label" style="color:#0369a1;font-size:18px">🧮</td>
-      <td><strong>Backfill 2-1 Calculation</strong><br>Alternative calculation based on Google Sheet Backfill formula</td>
-      <td>Uses number input value (default 90)</td>
-      <td>When you need results matching the original Google Sheet ordering method</td>
-    </tr>
-    <tr>
       <td class="label" style="color:#059669;font-size:18px">📊</td>
       <td><strong>Sales-Tier Calculation</strong><br>Opens a dialog to assign different target days per daily sales range</td>
       <td>Per-tier dialog settings (default: ≥10/day→90d, ≥5/day→80d, ≥3/day→70d, others→60d)</td>
@@ -2053,13 +2041,13 @@
   </table>
   <div class="callout tip">
     <span class="callout-icon">💡</span>
-    <div><b>Preview before saving:</b> All three buttons apply quantities immediately but do not write to the database. Click <span class="btn-label">💾 Save</span> to finalize. Click <span class="btn-label">↺ Reset</span> to undo.</div>
+    <div><b>Preview before saving:</b> Both buttons apply quantities immediately but do not write to the database. Click <span class="btn-label">💾 Save</span> to finalize. Click <span class="btn-label">↺ Reset</span> to undo.</div>
   </div>
 
-  <h3 class="sub">Changing the 📅 · 🧮 Target Days</h3>
+  <h3 class="sub">Changing the 📅 Target Days</h3>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div><h4>Click the number input in the container header</h4><p>Default is <strong>90</strong>. Enter your desired number of days (e.g., 60, 120).</p></div></div>
-    <div class="step"><div class="step-num">2</div><div><h4>Click 📅 or 🧮</h4><p>Order quantities for all SKUs are recalculated using the entered days.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Click 📅</h4><p>Order quantities for all SKUs are recalculated using the entered days.</p></div></div>
     <div class="step"><div class="step-num">3</div><div><h4>Click 💾 Save</h4><p>Click Save to write results to the database.</p></div></div>
   </div>
 
@@ -2529,7 +2517,7 @@
       <ul>
         <li>Status = <span class="status complete">Complete</span></li>
         <li>Container column disappears; Con. Qty excluded from calculations</li>
-        <li>Not reflected in Auto-Fill results (📅 / 🧮 / 📊)</li>
+        <li>Not reflected in Auto-Fill results (📅 / 📊)</li>
         <li>Not shown in SKU Planning › Inventory &amp; Inbound container list</li>
       </ul>
     </div>
