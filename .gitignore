@@ -54,7 +54,5 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
-capture-columns.js
-capture-header.js
-capture-header2.js
-capture-sku.js
+/tmp/
+.claude/worktrees/
