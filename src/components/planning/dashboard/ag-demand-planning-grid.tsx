@@ -99,6 +99,16 @@ type ContainerTotalColumn = {
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
 type SalesTargetTier = { minSales: number; targetDays: number };
+type CapacityMode = "fit" | "unlimited";
+type TargetOrder = { row: DemandRow; qty: number; cbmUnit: number };
+type TargetOrderPreview = {
+  orders: TargetOrder[];
+  skuCount: number;
+  totalQty: number;
+  totalCbm: number;
+  capacityCbm: number;
+  excessCbm: number;
+};
 
 const DEFAULT_BACKFILL3_TIERS: SalesTargetTier[] = [
   { minSales: 10, targetDays: 90 },
@@ -739,7 +749,7 @@ function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
 
   for (const tier of normalized) {
     if (!Number.isFinite(tier.minSales) || tier.minSales < 0) {
-      return "Min Sales는 0 이상의 숫자로 입력해주세요.";
+      return "최소 판매량은 0 이상의 숫자로 입력해주세요.";
     }
 
     if (!Number.isFinite(tier.targetDays) || tier.targetDays < 1 || tier.targetDays > 365) {
@@ -749,12 +759,12 @@ function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
 
   const minSalesValues = new Set(normalized.map((tier) => tier.minSales));
   if (minSalesValues.size !== normalized.length) {
-    return "같은 Min Sales 값이 중복되어 있습니다. 각 구간의 시작값을 다르게 입력해주세요.";
+    return "같은 최소 판매량이 중복되어 있습니다. 각 구간의 시작값을 다르게 입력해주세요.";
   }
 
   const lowestTier = normalized[normalized.length - 1];
   if (lowestTier.minSales !== 0) {
-    return "가장 낮은 판매 구간을 계산할 수 있도록 Min Sales 0 구간을 추가해주세요.";
+    return "가장 낮은 판매 구간을 계산할 수 있도록 최소 판매량 0 구간을 추가해주세요.";
   }
 
   for (let index = 1; index < normalized.length; index += 1) {
@@ -773,6 +783,104 @@ function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
   return null;
 }
 
+function CapacityModePanel({
+  mode,
+  onChange,
+  preview,
+}: {
+  mode: CapacityMode;
+  onChange: (mode: CapacityMode) => void;
+  preview: TargetOrderPreview;
+}) {
+  const overCapacity = preview.excessCbm > 0.000001;
+
+  return (
+    <div className="space-y-3 rounded-lg border border-[#D8D6CE] bg-[#FAFAF7] p-3">
+      <div className="text-xs font-bold text-[#2A2825]">컨테이너 CBM 적용 방식</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className={`flex cursor-pointer gap-2 rounded-md border p-2.5 text-xs ${mode === "fit" ? "border-blue-500 bg-blue-50" : "border-[#D8D6CE] bg-white"}`}>
+          <input type="radio" name="capacity-mode" checked={mode === "fit"} onChange={() => onChange("fit")} />
+          <span>
+            <strong className="block text-[#1A1917]">컨테이너 CBM 용량에 맞춤</strong>
+            <span className="mt-0.5 block text-[#7A766F]">용량이 부족하면 수량을 줄이거나 해당 SKU를 제외합니다.</span>
+          </span>
+        </label>
+        <label className={`flex cursor-pointer gap-2 rounded-md border p-2.5 text-xs ${mode === "unlimited" ? "border-amber-500 bg-amber-50" : "border-[#D8D6CE] bg-white"}`}>
+          <input type="radio" name="capacity-mode" checked={mode === "unlimited"} onChange={() => onChange("unlimited")} />
+          <span>
+            <strong className="block text-[#1A1917]">전체 필요수량 계산</strong>
+            <span className="mt-0.5 block text-[#7A766F]">CBM 제한 없이 계산된 모든 SKU의 수량을 채웁니다.</span>
+          </span>
+        </label>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <MetricPreview label="계산 SKU" value={preview.skuCount.toLocaleString()} />
+        <MetricPreview label="총 수량" value={preview.totalQty.toLocaleString()} />
+        <MetricPreview label="예상 CBM" value={`${preview.totalCbm.toFixed(2)} / ${preview.capacityCbm.toFixed(2)}`} />
+        <MetricPreview
+          label="초과 CBM"
+          value={overCapacity ? `+${preview.excessCbm.toFixed(2)}` : "0.00"}
+          warning={overCapacity}
+        />
+      </div>
+      {overCapacity ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+          컨테이너 용량을 {preview.excessCbm.toFixed(2)} CBM 초과합니다.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MetricPreview({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
+  return (
+    <div className="rounded-md border border-[#E2DFD8] bg-white px-2.5 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-[#7A766F]">{label}</div>
+      <div className={`mt-1 font-mono text-sm font-bold ${warning ? "text-amber-700" : "text-[#1A1917]"}`}>{value}</div>
+    </div>
+  );
+}
+
+function FixedTargetDialog({
+  open,
+  containerName,
+  targetDays,
+  capacityMode,
+  preview,
+  onCapacityModeChange,
+  onOpenChange,
+  onApply,
+}: {
+  open: boolean;
+  containerName: string;
+  targetDays: number;
+  capacityMode: CapacityMode;
+  preview: TargetOrderPreview;
+  onCapacityModeChange: (mode: CapacityMode) => void;
+  onOpenChange: (open: boolean) => void;
+  onApply: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent style={{ maxWidth: 640 }}>
+        <DialogHeader>
+          <DialogTitle>고정 목표 자동 발주 계산</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="text-xs text-[#7A766F]">
+            {containerName ? `${containerName} - ` : ""}{targetDays}일 고정 목표 재고일수를 기준으로 Con. Qty를 계산합니다.
+          </div>
+          <CapacityModePanel mode={capacityMode} onChange={onCapacityModeChange} preview={preview} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
+          <Button onClick={onApply}>적용</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function Backfill3Dialog({
   open,
   containerName,
@@ -780,6 +888,9 @@ function Backfill3Dialog({
   onTierChange,
   onAddTier,
   onRemoveTier,
+  capacityMode,
+  preview,
+  onCapacityModeChange,
   onOpenChange,
   onApply,
 }: {
@@ -789,6 +900,9 @@ function Backfill3Dialog({
   onTierChange: (index: number, patch: Partial<SalesTargetTier>) => void;
   onAddTier: () => void;
   onRemoveTier: (index: number) => void;
+  capacityMode: CapacityMode;
+  preview: TargetOrderPreview;
+  onCapacityModeChange: (mode: CapacityMode) => void;
   onOpenChange: (open: boolean) => void;
   onApply: () => void;
 }) {
@@ -824,9 +938,10 @@ function Backfill3Dialog({
           <div style={{ fontSize: 12, color: "#7A766F" }}>
             {containerName ? `${containerName} - ` : ""}일평균 판매량 구간별 목표 재고일수를 설정합니다.
           </div>
+          <CapacityModePanel mode={capacityMode} onChange={onCapacityModeChange} preview={preview} />
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
-            <span>Sales Range</span>
-            <span>Min Sales</span>
+            <span>판매량 구간</span>
+            <span>최소 판매량</span>
             <span>목표일수</span>
             <span />
           </div>
@@ -881,7 +996,7 @@ function Backfill3Dialog({
                   onRemoveTier(tier.originalIndex);
                 }}
                 disabled={tiers.length <= 1}
-                title="Remove tier"
+                title="구간 삭제"
                 style={{
                   height: 32,
                   border: "1px solid #D8D6CE",
@@ -907,7 +1022,7 @@ function Backfill3Dialog({
                 onAddTier();
               }}
             >
-              Add Row
+              구간 추가
             </Button>
           </div>
           {validationMessage ? (
@@ -927,16 +1042,16 @@ function Backfill3Dialog({
             </div>
           ) : null}
           <div style={{ fontSize: 12, color: "#7A766F" }}>
-            Min Sales 값이 높은 구간부터 적용됩니다. 가장 낮은 구간은 Min Sales 0으로 두면 됩니다.
+            최소 판매량이 높은 구간부터 적용됩니다. 가장 낮은 구간은 최소 판매량을 0으로 두면 됩니다.
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            Cancel
+            취소
           </Button>
           <Button onClick={handleApply}>
-            Apply
+            적용
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1024,7 +1139,7 @@ function ContainerGroupHeader(
               onClick={props.onAutoFill3}
               disabled={props.autoFilling3}
               title="Con qty 세일즈 구간별 목표 계산"
-              aria-label="Calculate automatic order by sales range"
+              aria-label="판매량 구간별 자동 발주 계산"
               className="inline-flex items-center justify-center rounded px-2.5 py-1.5 bg-emerald-500/30 hover:bg-emerald-500/50 disabled:opacity-40 cursor-pointer"
             >
               {props.autoFilling3 ? "..." : <ChartColumn className="h-4 w-4" aria-hidden="true" />}
@@ -1124,8 +1239,15 @@ export function AgDemandPlanningGrid({
   const [autoFillingContainers2, setAutoFillingContainers2] = useState<Set<string>>(new Set());
 const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>>(new Set());
   const [savingContainers, setSavingContainers] = useState<Set<string>>(new Set());
+  const [fixedTargetDialog, setFixedTargetDialog] = useState<{
+    container: ContainerMeta;
+    containerIndex: number;
+    targetDays: number;
+  } | null>(null);
+  const [fixedTargetCapacityMode, setFixedTargetCapacityMode] = useState<CapacityMode>("fit");
   const [backfill3Dialog, setBackfill3Dialog] = useState<{ container: ContainerMeta; containerIndex: number } | null>(null);
   const [backfill3Tiers, setBackfill3Tiers] = useState<SalesTargetTier[]>(DEFAULT_BACKFILL3_TIERS);
+  const [backfill3CapacityMode, setBackfill3CapacityMode] = useState<CapacityMode>("fit");
 
   const containers = useMemo(
     () => data.containers
@@ -1578,144 +1700,142 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
   }, [containers, chainMap, visibleRows, gradient, gradientSC, seasonalFactors]);
 
+  const calculateTargetOrders = useCallback((
+    container: ContainerMeta,
+    containerIndex: number,
+    resolveTargetDays: (row: DemandRow) => number,
+    capacityMode: CapacityMode,
+  ): TargetOrderPreview => {
+    const prevContainer = containers[containerIndex - 1];
+    const capacityCbm = Number(container.cbm_cap) || 0;
+    if (!prevContainer) {
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm, excessCbm: 0 };
+    }
+
+    const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
+    const gapBeforeDays = Math.round(
+      (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
+    );
+    const rows = rowsInDisplayOrder().filter((row) => {
+      if ((row.category_code ?? "").toLowerCase() !== categoryFilter) return false;
+      if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
+      return true;
+    });
+    const orders: TargetOrder[] = [];
+    let usedCbm = 0;
+
+    for (const row of rows) {
+      const targetDays = resolveTargetDays(row);
+      if (!Number.isFinite(targetDays) || targetDays <= 0) continue;
+
+      const adjDaily = row.total_avg_curr * seasonFactor;
+      const step = Math.max(1, row.order_multiple ?? 1);
+      const moq = Math.max(1, row.moq ?? 1);
+      const prev = chainMap.get(row.sku)?.get(prevContainer.name);
+      const prevCarryover = prev?.carryover ?? 0;
+      const backorder = prev?.backorder ?? 0;
+      const remainingAtArrival = Math.max(0, prevCarryover - adjDaily * gapBeforeDays);
+      const need = adjDaily * targetDays + backorder - remainingAtArrival;
+      if (need <= 0) continue;
+
+      const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+      const remainingCbm = capacityMode === "fit" ? capacityCbm - usedCbm : Number.POSITIVE_INFINITY;
+      if (remainingCbm <= 0) continue;
+
+      let qty = Math.ceil(Math.max(need, moq) / step) * step;
+      if (capacityMode === "fit" && qty * cbmUnit > remainingCbm) {
+        const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
+        if (maxQty < moq) continue;
+        qty = maxQty;
+      }
+      if (qty <= 0) continue;
+
+      usedCbm += qty * cbmUnit;
+      orders.push({ row, qty, cbmUnit });
+    }
+
+    const totalQty = orders.reduce((sum, order) => sum + order.qty, 0);
+    const totalCbm = orders.reduce((sum, order) => sum + order.qty * order.cbmUnit, 0);
+    return {
+      orders,
+      skuCount: orders.length,
+      totalQty,
+      totalCbm,
+      capacityCbm,
+      excessCbm: Math.max(0, totalCbm - capacityCbm),
+    };
+  }, [categoryFilter, chainMap, containers, rowsInDisplayOrder, seasonalFactors]);
+
+  const applyTargetOrders = useCallback((container: ContainerMeta, preview: TargetOrderPreview): void => {
+    setQtyOverrides((current) => {
+      const next = new Map(current);
+      for (const { row, qty, cbmUnit } of preview.orders) {
+        next.set(`${row.sku}::${container.name}`, {
+          inbound_qty: qty,
+          avail_qty: qty,
+          cbm: qty * cbmUnit,
+          cbm_unit: cbmUnit,
+          item_id: row.containers?.[container.name]?.item_id ?? undefined,
+          allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
+        });
+      }
+      return next;
+    });
+    setDirtyContainers((current) => new Set(current).add(container.name));
+  }, []);
+
   const autoFill2 = useCallback((
     container: ContainerMeta,
     containerIndex: number,
     targetDays: number,
+    capacityMode: CapacityMode,
   ): void => {
-    const prevContainer = containers[containerIndex - 1];
-    if (!prevContainer) return;
-
-    const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
-    const gapBeforeDays = Math.round(
-      (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
+    applyTargetOrders(
+      container,
+      calculateTargetOrders(container, containerIndex, () => targetDays, capacityMode),
     );
+  }, [applyTargetOrders, calculateTargetOrders]);
 
-    setQtyOverrides((cur) => {
-      const next = new Map(cur);
-      const sorted = rowsInDisplayOrder().filter((r) => {
-        if ((r.category_code ?? "").toLowerCase() !== categoryFilter) return false;
-        if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
-        return true;
-      });
-
-      let usedCbm = 0;
-      const cbmCap = container.cbm_cap;
-
-      for (const row of sorted) {
-        const adjDaily = row.total_avg_curr * seasonFactor;
-        const step = row.order_multiple ?? 1;
-        const moq = row.moq ?? 1;
-        const prev = chainMap.get(row.sku)?.get(prevContainer.name);
-        const prevCarryover = prev?.carryover ?? 0;
-        const bo = prev?.backorder ?? 0;
-
-        const remainingAtArrival = Math.max(0, prevCarryover - adjDaily * gapBeforeDays);
-
-        const need = adjDaily * targetDays + bo - remainingAtArrival;
-        if (need <= 0) continue;
-
-        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
-        const remainingCbm = cbmCap - usedCbm;
-        if (remainingCbm <= 0) continue;
-
-        let qty = Math.ceil(Math.max(need, moq) / step) * step;
-        if (qty <= 0) continue;
-
-        // Cap qty so total CBM does not exceed container capacity
-        if (cbmUnit > 0 && qty * cbmUnit > remainingCbm) {
-          const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
-          if (maxQty < moq) continue;
-          qty = maxQty;
-        }
-
-        usedCbm += qty * cbmUnit;
-
-        const key = `${row.sku}::${container.name}`;
-        next.set(key, {
-          inbound_qty: qty,
-          avail_qty: qty,
-          cbm: qty * cbmUnit,
-          cbm_unit: cbmUnit,
-          item_id: row.containers?.[container.name]?.item_id ?? undefined,
-          allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
-        });
-      }
-      return next;
-    });
-    setDirtyContainers((s) => new Set(s).add(container.name));
-  }, [containers, chainMap, rowsInDisplayOrder, categoryFilter, seasonalFactors]);
-
-const autoFill3 = useCallback((
+  const autoFill3 = useCallback((
     container: ContainerMeta,
     containerIndex: number,
     tiers: SalesTargetTier[],
+    capacityMode: CapacityMode,
   ): void => {
-    const prevContainer = containers[containerIndex - 1];
-    if (!prevContainer) return;
-
-    const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
-    const gapBeforeDays = Math.round(
-      (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
+    applyTargetOrders(
+      container,
+      calculateTargetOrders(
+        container,
+        containerIndex,
+        (row) => targetDaysForAverage(row.total_avg_curr ?? 0, tiers),
+        capacityMode,
+      ),
     );
+  }, [applyTargetOrders, calculateTargetOrders]);
 
-    setQtyOverrides((cur) => {
-      const next = new Map(cur);
-      const rows = rowsInDisplayOrder().filter((row) => {
-        if ((row.category_code ?? "").toLowerCase() !== categoryFilter) return false;
-        if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
-        return true;
-      });
+  const fixedTargetPreview = useMemo<TargetOrderPreview>(() => {
+    if (!fixedTargetDialog) {
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0 };
+    }
+    return calculateTargetOrders(
+      fixedTargetDialog.container,
+      fixedTargetDialog.containerIndex,
+      () => fixedTargetDialog.targetDays,
+      fixedTargetCapacityMode,
+    );
+  }, [calculateTargetOrders, fixedTargetCapacityMode, fixedTargetDialog]);
 
-      let usedCbm = 0;
-      const cbmCap = container.cbm_cap;
-
-      for (const row of rows) {
-        const targetDays = targetDaysForAverage(row.total_avg_curr ?? 0, tiers);
-        if (targetDays <= 0) continue;
-
-        const adjDaily = row.total_avg_curr * seasonFactor;
-        const step = row.order_multiple ?? 1;
-        const moq = row.moq ?? 1;
-        const prev = chainMap.get(row.sku)?.get(prevContainer.name);
-        const prevCarryover = prev?.carryover ?? 0;
-        const bo = prev?.backorder ?? 0;
-
-        const remainingAtArrival = Math.max(0, prevCarryover - adjDaily * gapBeforeDays);
-
-        const need = adjDaily * targetDays + bo - remainingAtArrival;
-        if (need <= 0) continue;
-
-        const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
-        const remainingCbm = cbmCap - usedCbm;
-        if (remainingCbm <= 0) continue;
-
-        let qty = Math.ceil(Math.max(need, moq) / step) * step;
-        if (qty <= 0) continue;
-
-        // Cap qty so total CBM does not exceed container capacity
-        if (cbmUnit > 0 && qty * cbmUnit > remainingCbm) {
-          const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
-          if (maxQty < moq) continue;
-          qty = maxQty;
-        }
-
-        usedCbm += qty * cbmUnit;
-
-        const key = `${row.sku}::${container.name}`;
-        next.set(key, {
-          inbound_qty: qty,
-          avail_qty: qty,
-          cbm: qty * cbmUnit,
-          cbm_unit: cbmUnit,
-          item_id: row.containers?.[container.name]?.item_id ?? undefined,
-          allocated_remaining_qty: row.containers?.[container.name]?.allocated_remaining_qty ?? null,
-        });
-      }
-      return next;
-    });
-    setDirtyContainers((s) => new Set(s).add(container.name));
-  }, [categoryFilter, chainMap, containers, rowsInDisplayOrder, seasonalFactors]);
+  const backfill3Preview = useMemo<TargetOrderPreview>(() => {
+    if (!backfill3Dialog) {
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0 };
+    }
+    return calculateTargetOrders(
+      backfill3Dialog.container,
+      backfill3Dialog.containerIndex,
+      (row) => targetDaysForAverage(row.total_avg_curr ?? 0, backfill3Tiers),
+      backfill3CapacityMode,
+    );
+  }, [backfill3CapacityMode, backfill3Dialog, backfill3Tiers, calculateTargetOrders]);
 
 
   const buildContainerSaveSummary = useCallback((container: ContainerMeta): string => {
@@ -1937,11 +2057,9 @@ const autoFill3 = useCallback((
               });
             },
             onAutoFill2: (days: number) => {
-              setAutoFillingContainers2((s) => new Set(s).add(container.name));
-              autoFill2(container, containerIndex, days);
-              setAutoFillingContainers2((s) => { const n = new Set(s); n.delete(container.name); return n; });
+              setFixedTargetDialog({ container, containerIndex, targetDays: days });
             },
-onAutoFill3: () => {
+            onAutoFill3: () => {
               setBackfill3Dialog({ container, containerIndex });
             },
             onOpenInContainerPlanning: () => openContainerPlanning(container),
@@ -2287,10 +2405,36 @@ autoFilling3: autoFillingContainers3.has(container.name),
         </>
       )}
     </div>
+    <FixedTargetDialog
+      open={fixedTargetDialog !== null}
+      containerName={fixedTargetDialog?.container.name ?? ""}
+      targetDays={fixedTargetDialog?.targetDays ?? 90}
+      capacityMode={fixedTargetCapacityMode}
+      preview={fixedTargetPreview}
+      onCapacityModeChange={setFixedTargetCapacityMode}
+      onOpenChange={(open) => {
+        if (!open) setFixedTargetDialog(null);
+      }}
+      onApply={() => {
+        if (!fixedTargetDialog) return;
+        const { container, containerIndex, targetDays } = fixedTargetDialog;
+        setAutoFillingContainers2((current) => new Set(current).add(container.name));
+        autoFill2(container, containerIndex, targetDays, fixedTargetCapacityMode);
+        setAutoFillingContainers2((current) => {
+          const next = new Set(current);
+          next.delete(container.name);
+          return next;
+        });
+        setFixedTargetDialog(null);
+      }}
+    />
     <Backfill3Dialog
       open={backfill3Dialog !== null}
       containerName={backfill3Dialog?.container.name ?? ""}
       tiers={backfill3Tiers}
+      capacityMode={backfill3CapacityMode}
+      preview={backfill3Preview}
+      onCapacityModeChange={setBackfill3CapacityMode}
       onTierChange={(index, patch) => {
         setBackfill3Tiers((current) => current.map((tier, i) => i === index ? { ...tier, ...patch } : tier));
       }}
@@ -2307,7 +2451,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
         if (!backfill3Dialog) return;
         const { container, containerIndex } = backfill3Dialog;
         setAutoFillingContainers3((s) => new Set(s).add(container.name));
-        autoFill3(container, containerIndex, backfill3Tiers);
+        autoFill3(container, containerIndex, backfill3Tiers, backfill3CapacityMode);
         setAutoFillingContainers3((s) => { const n = new Set(s); n.delete(container.name); return n; });
         setBackfill3Dialog(null);
       }}

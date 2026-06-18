@@ -321,21 +321,24 @@ export function ContainerPlanningPage() {
   const filteredContainers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return containers.filter((container) => {
+      if (normalizedQuery) {
+        return [
+          container.number,
+          container.destination,
+          container.factory,
+          container.note,
+          container.eta,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      }
+
       if (containerListTab === "active" && container.status === "complete") return false;
       if (containerListTab === "completed" && container.status !== "complete") return false;
       if (statusFilter && container.status !== statusFilter) return false;
       if (productFilter && container.items.length > 0 && !getContainerProducts(container).has(productFilter)) return false;
-      if (!normalizedQuery) return true;
-      return [
-        container.number,
-        container.destination,
-        container.factory,
-        container.note,
-        container.eta,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
+      return true;
     });
   }, [containerListTab, containers, query, statusFilter, productFilter]);
   const selectedContainer = containers.find((container) => container.id === expandedId) ?? null;
@@ -383,7 +386,6 @@ export function ContainerPlanningPage() {
         includeReceived: "true",
         includeDetails: "true",
       });
-      if (productFilter) params.set("product", productFilter);
       const response = await fetch(apiPath(`/api/containers?${params.toString()}`), {
         cache: "no-store",
       });
