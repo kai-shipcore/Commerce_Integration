@@ -217,10 +217,17 @@ export async function POST() {
            l.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
+           AND NOT (l.platform_source::text NOT IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND (l.master_sku LIKE '%NEW%' OR l.master_sku LIKE '%INV%'))
            AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
-             (LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
-              AND l.fulfilled_quantity > 0)
+             (l.fulfilled_quantity > 0
+              AND (
+                (l.platform_source::text = 'AMAZON' AND LOWER(l.item_status) LIKE '%shipped%')
+                OR (l.platform_source::text = 'WALMART' AND LOWER(l.item_status) IN ('delivered', 'shipped'))
+                OR (l.platform_source::text IN ('EBAY', 'EBAY_AUTOARMOR') AND LOWER(l.item_status) = 'fulfilled')
+                OR (l.platform_source::text IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(l.item_status) NOT IN ('cancelled', 'pending'))
+                OR (l.platform_source::text NOT IN ('AMAZON', 'WALMART', 'EBAY', 'EBAY_AUTOARMOR', 'SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged'))
+              ))
              OR (COALESCE(l.is_preorder::boolean, false) AND LOWER(l.item_status) != 'cancelled')
            )
            AND NOT (l.platform_source::text = 'SHOPIFY_ICARCOVER' AND l.tags IS NOT NULL AND (l.tags ILIKE '%ebay%' OR l.tags ILIKE '%influencer%'))
@@ -239,10 +246,17 @@ export async function POST() {
            c.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
+           AND NOT (c.platform_source::text NOT IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND (c.master_sku LIKE '%NEW%' OR c.master_sku LIKE '%INV%'))
            AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
            AND (
-             (LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged', 'partially_refunded', 'refunded')
-              AND c.fulfilled_quantity > 0)
+             (c.fulfilled_quantity > 0
+              AND (
+                (c.platform_source::text = 'AMAZON' AND LOWER(c.item_status) LIKE '%shipped%')
+                OR (c.platform_source::text = 'WALMART' AND LOWER(c.item_status) IN ('delivered', 'shipped'))
+                OR (c.platform_source::text IN ('EBAY', 'EBAY_AUTOARMOR') AND LOWER(c.item_status) = 'fulfilled')
+                OR (c.platform_source::text IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(c.item_status) NOT IN ('cancelled', 'pending'))
+                OR (c.platform_source::text NOT IN ('AMAZON', 'WALMART', 'EBAY', 'EBAY_AUTOARMOR', 'SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged'))
+              ))
              OR (COALESCE(c.is_preorder::boolean, false) AND LOWER(c.item_status) != 'cancelled')
            )
            AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND c.tags IS NOT NULL AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
