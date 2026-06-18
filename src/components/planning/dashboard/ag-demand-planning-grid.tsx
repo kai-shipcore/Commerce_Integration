@@ -2092,7 +2092,7 @@ export function AgDemandPlanningGrid({
                 allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
                 inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
               };
-              const value = { ...raw, ...(qtyOverrides.get(key) ?? {}), ...(chainMap.get(params.data.sku)?.get(container.name) ?? {}) };
+              const value = { ...raw, ...(qtyOverrides.get(key) ?? {}), ...(params.data.pinned ? {} : (chainMap.get(params.data.sku)?.get(container.name) ?? {})) };
               return column.val(value, container, params.data);
             },
             comparator: column.id === "life" || column.id === "inb_qty" || column.id === "avail" || column.id === "est" || column.id === "cbo" || column.id === "carry" || column.id === "remaining"
@@ -2244,6 +2244,10 @@ export function AgDemandPlanningGrid({
           border-left: 2px solid #5A5750 !important;
           border-right: 0 !important;
         }
+        .planning-ag-grid .ag-row-pinned {
+          font-style: italic;
+          border-bottom: 2px solid #93c5fd !important;
+        }
       `}</style>
       <div className="h-full min-h-0" style={{ minWidth: gridMinWidth }}>
         <AgGridProvider modules={modules}>
@@ -2252,12 +2256,13 @@ export function AgDemandPlanningGrid({
             theme={planningTheme}
             loading={loading}
             rowData={visibleRows}
+            pinnedTopRowData={data.pinned_rows}
             columnDefs={columnDefs}
             defaultColDef={{
               autoHeaderHeight: false,
               wrapHeaderText: true,
             }}
-            getRowId={(params) => params.data.sku}
+            getRowId={(params) => params.data.pinned ? `pinned_${params.data.sku}` : params.data.sku}
             rowSelection={{
               mode: "singleRow",
               checkboxes: false,
@@ -2319,8 +2324,9 @@ export function AgDemandPlanningGrid({
               onColumnWidthsChange(next);
               window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next));
             }}
-            getRowStyle={(params) => {
+            getRowStyle={(params): { backgroundColor: string } | undefined => {
               if (!params.data) return undefined;
+              if (params.data.pinned) return { backgroundColor: "#EEF6FF" };
               if (urgStatus(params.data) === "crit") return { backgroundColor: "#FFF5F5" };
               return undefined;
             }}

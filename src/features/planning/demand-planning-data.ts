@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 
-const EMPTY: DemandPlanningData = { containers: [], rows: [], last_sync: null };
+const EMPTY: DemandPlanningData = { containers: [], rows: [], pinned_rows: [], last_sync: null };
 const dashboardMemoryCache = new Map<string, DemandPlanningData>();
 
 export type VelocityMode = "link" | "custom";
@@ -96,9 +96,18 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
           // Part SKU가 fc_stats에 'Original'로 있을 경우 중복 제거
           const partSkuSet = new Set(partRows.map((r) => r.sku));
           const mainRows = json.data.rows.filter((r) => !partSkuSet.has(r.sku));
-          setData({ ...json.data, rows: [...mainRows, ...partRows] });
-          dashboardMemoryCache.set(requestScopeKey, { ...json.data, rows: [...mainRows, ...partRows] });
-          dataScopeRef.current = requestScopeKey;
+          setData((current) => {
+            const d = json.data!;
+            const next: DemandPlanningData = {
+              containers:  d.containers  ?? current.containers,
+              last_sync:   d.last_sync   ?? current.last_sync,
+              rows:        [...mainRows, ...partRows],
+              pinned_rows: d.pinned_rows ?? current.pinned_rows,
+            };
+            dashboardMemoryCache.set(requestScopeKey, next);
+            dataScopeRef.current = requestScopeKey;
+            return next;
+          });
           setContainerDetailsLoaded(false);
         }
         else setError(json.error ?? "Failed to load data");
@@ -150,8 +159,8 @@ export function useDemandPlanningData(mode: VelocityMode = "link", asOfDate?: st
         if (dataScopeRef.current !== requestKey) return;
         const detailBySku = new Map(json.data.rows.map((row) => [row.sku, row.containers]));
         setData((current) => ({
+          ...current,
           containers: json.data?.containers ?? current.containers,
-          last_sync: current.last_sync,
           rows: current.rows.map((row) => ({
             ...row,
             containers: detailBySku.get(row.sku) ?? row.containers,

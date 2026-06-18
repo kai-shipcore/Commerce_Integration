@@ -43,6 +43,7 @@ export interface ContainerRowData {
 }
 
 export interface DemandRow {
+  pinned?: true;
   container_info: string;
   cbm: number;
   seat: string;
@@ -103,5 +104,6 @@ export interface DemandRow {
 export interface DemandPlanningData {
   containers: ContainerMeta[];
   rows: DemandRow[];
+  pinned_rows?: DemandRow[];
   last_sync: string | null;
 }

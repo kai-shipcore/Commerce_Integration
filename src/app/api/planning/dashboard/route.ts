@@ -56,6 +56,9 @@ function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" {
 // 'packing_received' = Packing List Received (UI: packing-list-received)
 const ACTIVE = `('shipped', 'packing_received')`;
 
+// Set to false to skip the fc_pinned_rows query and hide reference rows from the grid.
+const PINNED_ROWS_ENABLED = false;
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -106,8 +109,8 @@ export async function GET(req: Request) {
 
     const primary = getPrimaryPool();
 
-    // â”€â”€ 1-4 run in parallel: containers, stats rows, available stock, last sync â”€â”€
-    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly] = await Promise.all([
+    // ── 1-5 run in parallel: containers, stats rows, available stock, last sync, pinned rows ──
+    const [containersResult, rowsResult, availStockResult, lastSyncResultEarly, pinnedRowsResult] = await Promise.all([
       // 1. Container headers
       primary.query<{ id: number; name: string; eta: string; cbm_cap: number; status: string }>(`
         SELECT
@@ -234,6 +237,33 @@ export async function GET(req: Request) {
       primary.query<{ last_sync: string | null }>(
         `SELECT to_char(MAX(calculated_at) AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD HH24:MI') AS last_sync FROM shipcore.fc_stats`
       ),
+      // 5. Reference rows pinned to the top (skipped when PINNED_ROWS_ENABLED = false)
+      PINNED_ROWS_ENABLED
+        ? primary.query<{
+            master_sku: string; sort_order: number; back: number;
+            west_stock: number; east_stock: number; total_stock: number;
+            west_90d: number; west_60d: number; west_30d: number; west_15d: number; west_7d: number; west_30d_pre: number;
+            east_90d: number; east_60d: number; east_30d: number; east_15d: number; east_7d: number; east_30d_pre: number;
+            fba_30d: number; avg_daily_prev: number; east_avg_prev: number;
+          }>(`
+            SELECT master_sku, sort_order,
+                   COALESCE(back,0)::int        AS back,
+                   COALESCE(west_stock,0)::int  AS west_stock,
+                   COALESCE(east_stock,0)::int  AS east_stock,
+                   COALESCE(total_stock,0)::int AS total_stock,
+                   COALESCE(west_90d,0)::float8  AS west_90d,   COALESCE(west_60d,0)::float8 AS west_60d,
+                   COALESCE(west_30d,0)::float8  AS west_30d,   COALESCE(west_15d,0)::float8 AS west_15d,
+                   COALESCE(west_7d,0)::float8   AS west_7d,    COALESCE(west_30d_pre,0)::float8 AS west_30d_pre,
+                   COALESCE(east_90d,0)::float8  AS east_90d,   COALESCE(east_60d,0)::float8 AS east_60d,
+                   COALESCE(east_30d,0)::float8  AS east_30d,   COALESCE(east_15d,0)::float8 AS east_15d,
+                   COALESCE(east_7d,0)::float8   AS east_7d,    COALESCE(east_30d_pre,0)::float8 AS east_30d_pre,
+                   COALESCE(fba_30d,0)::int      AS fba_30d,
+                   COALESCE(avg_daily_prev,0)::float8 AS avg_daily_prev,
+                   COALESCE(east_avg_prev,0)::float8  AS east_avg_prev
+            FROM shipcore.fc_pinned_rows
+            ORDER BY sort_order
+          `)
+        : Promise.resolve({ rows: [] as never[] }),
     ]);
 
     // â”€â”€ 1b + cross: run in parallel after containersResult is available â”€â”€â”€â”€â”€â”€
@@ -512,7 +542,7 @@ export async function GET(req: Request) {
       const invLife   = inventoryLifeDays(carryover, dailyRate, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
       const asOfMs    = new Date(todayStr).getTime();
       const sod       = (() => {
-        const rate = total_avg_curr;
+        const rate = total_avg_real;
         if (!rate) return null;
         const days = Math.floor((r.total_stock as number) / rate);
         const d = new Date(asOfMs);
@@ -657,7 +687,94 @@ export async function GET(req: Request) {
       };
     });
 
-    const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, last_sync: lastSync } };
+    // Build pinned reference rows from raw stored inputs
+    function wAvg(d90: number, d60: number, d30: number, d15: number, d7: number, pre30: number): number {
+      return (d90/90)*0.10 + (d60/60)*0.15 + (d30/30)*0.30 + (d15/15)*0.20 + (d7/7)*0.15 + (pre30/30)*0.10;
+    }
+    const pinned_rows: DemandRow[] = !PINNED_ROWS_ENABLED ? [] : pinnedRowsResult.rows.map((p) => {
+      const { seat, no, color, tone } = parseSku(p.master_sku);
+      const w90 = p.west_90d, w60 = p.west_60d, w30 = p.west_30d, w15 = p.west_15d, w7 = p.west_7d, wpre = p.west_30d_pre;
+      const e90 = p.east_90d, e60 = p.east_60d, e30 = p.east_30d, e15 = p.east_15d, e7 = p.east_7d, epre = p.east_30d_pre;
+      const avgReal  = wAvg(w90, w60, w30, w15, w7, wpre);
+      const avgPrev  = p.avg_daily_prev;
+      const avgCurr  = currentDailyAverage(avgPrev, avgReal);
+      const eReal    = Math.max(0.01, wAvg(e90, e60, e30, e15, e7, epre));
+      const ePrev    = Math.max(0.01, p.east_avg_prev);
+      const eCurr    = currentDailyAverage(ePrev, eReal);
+      const fbaReal  = Math.max(0.01, p.fba_30d / 30);
+      const fbaCurr  = fbaReal;
+      const wFbm30   = fbmThirtyDayAverage(w90, w60, w30, wpre, w15, w7);
+      const eFbm30   = fbmThirtyDayAverage(e90, e60, e30, epre, e15, e7);
+      const total30  = wFbm30 + eFbm30 + p.fba_30d;
+      const tAvgPrev = avgPrev + ePrev;
+      const tAvgReal = avgReal + eReal + fbaReal;
+      const tAvgCurr = avgCurr + eCurr + fbaCurr;
+      const totalStk  = p.total_stock;
+      const sodDays   = tAvgReal > 0 ? Math.floor(totalStk / tAvgReal) : null;
+      const sodDate   = sodDays !== null ? (() => { const d = new Date(todayStr); d.setDate(d.getDate() + sodDays); return d.toISOString().slice(0, 10); })() : null;
+      const availQtyP = totalStk + p.back;
+      const carryoverP = Math.max(0, availQtyP);
+      const sfP        = seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS);
+      const invLifeP   = inventoryLifeDays(carryoverP, tAvgCurr, sfP);
+      const planSodP   = invLifeP !== null ? addSheetDays(todayStr, invLifeP) : null;
+      return {
+        pinned:           true,
+        sku:              p.master_sku,
+        container_info:   "",
+        cbm:              0,
+        cbm_per_unit:     0,
+        seat, no, color, tone,
+        back:             p.back,
+        sales_status:     "Original",
+        category_code:    inferCategoryCode(p.master_sku),
+        west_stock:       p.west_stock,
+        east_stock:       p.east_stock,
+        west_available_stock: 0,
+        east_available_stock: 0,
+        transit_stock:    0,
+        total_stock:      totalStk,
+        stock_mode:       "onhand",
+        west_90d: w90, west_60d: w60, west_30d: w30, west_15d: w15, west_7d: w7, west_30d_pre: wpre,
+        east_90d: e90, east_60d: e60, east_30d: e30, east_15d: e15, east_7d: e7, east_30d_pre: epre,
+        avg_daily_prev:   avgPrev,
+        avg_daily_real:   avgReal,
+        avg_daily_curr:   avgCurr,
+        east_avg_prev:    ePrev,
+        east_avg_real:    eReal,
+        east_avg_curr:    eCurr,
+        fba_avg_real:     fbaReal,
+        fba_avg_curr:     fbaCurr,
+        west_fbm_30d:     wFbm30,
+        east_fbm_30d:     eFbm30,
+        fba_30d:          p.fba_30d,
+        total_30d:        total30,
+        total_avg_prev:   tAvgPrev,
+        total_avg_real:   tAvgReal,
+        total_avg_curr:   tAvgCurr,
+        total_inbound_qty: null,
+        containers_list:  null,
+        next_eta:         null,
+        remaining:        0,
+        mistake:          0,
+        sod:              sodDate,
+        containers:       {
+          Base: {
+            item_id: null, cbm_unit: null, inbound_qty: null, cbm: 0,
+            open_orders: 0,
+            avail_qty:   availQtyP,
+            est_sales:   0,
+            backorder:   availQtyP < 0 ? Math.abs(availQtyP) : 0,
+            carryover:   carryoverP,
+            eta:         todayStr,
+            inv_life:    invLifeP,
+            est_sod:     sodDate,
+            plan_sod:    planSodP,
+          },
+        },
+      } satisfies DemandRow;
+    });
+
+    const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, pinned_rows, last_sync: lastSync } };
     setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },
