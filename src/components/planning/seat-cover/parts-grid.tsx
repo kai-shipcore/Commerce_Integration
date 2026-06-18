@@ -288,7 +288,7 @@ export function PartsGrid() {
     <div
       style={{
         position: "fixed",
-        top: 56,
+        top: "var(--app-header-height, 56px)",
         left: 0,
         right: 0,
         bottom: 0,

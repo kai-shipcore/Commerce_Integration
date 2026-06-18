@@ -84,6 +84,9 @@ export function UserMenu() {
             <p className="text-xs leading-none text-muted-foreground">
               {user.email}
             </p>
+            <p className="text-xs leading-none text-muted-foreground">
+              Role: {user.role ?? "user"}
+            </p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
