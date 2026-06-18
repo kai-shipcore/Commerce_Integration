@@ -281,6 +281,7 @@
   <a class="nav-sub" href="#dp-col-freeze">컬럼 고정</a>
   <a class="nav-sub" href="#dp-col-colors">컬럼 색상</a>
   <a class="nav-sub" href="#dp-autofill">자동계산 버튼</a>
+  <a class="nav-sub" href="#dp-seasonal">Seasonal Factors</a>
   <a class="nav-item" href="#sku-planning"><span class="icon">🔍</span> SKU Planning</a>
   <a class="nav-sub" href="#sp-browser">SKU 목록 패널</a>
   <a class="nav-sub" href="#sp-kpi">KPI 요약 카드</a>
@@ -824,6 +825,45 @@
   <div class="callout tip">
     <span class="callout-icon">💡</span>
     <div>발주 수량을 검토하다가 컨테이너 상세를 확인하고 싶을 때, 페이지를 직접 이동하지 않고 더블클릭으로 바로 열 수 있어 편리합니다.</div>
+  </div>
+
+  <h3 id="dp-seasonal">⑥ Planning Settings — Seasonal Factors</h3>
+  <p>상단 툴바의 <span class="btn-label">⚙</span> 아이콘(Seasonal factor settings)을 클릭하면 월별 계절 배수를 설정하는 팝오버가 열립니다. 이 배수는 컨테이너 ETA 월의 <strong>예상 판매량과 재고 소진 일수(Inv. Life) 계산</strong>에 자동 적용됩니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/dp-seasonal-factors.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Seasonal Factors 설정 팝오버</p></div>'" alt="Seasonal Factors 설정">
+    <div class="screenshot-caption">▲ Planning Settings — Seasonal Factors 팝오버 (1월~12월 배수 설정)</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:140px">항목</th><th>설명</th></tr>
+    <tr>
+      <td class="label">월별 배수 입력</td>
+      <td>1월~12월 각각의 배수를 직접 입력합니다. <code>1.0</code>이 기준이며, 수치가 높을수록 해당 월의 판매량이 많다고 가정해 더 많은 재고를 계획합니다.</td>
+    </tr>
+    <tr>
+      <td class="label">Restore Defaults</td>
+      <td>모든 월의 배수를 기본값으로 초기화합니다.</td>
+    </tr>
+    <tr>
+      <td class="label">자동 저장</td>
+      <td>값을 변경하면 즉시 브라우저에 저장되고, 1.5초 후 서버에도 동기화됩니다. 다른 기기에서 접속해도 설정이 유지됩니다.</td>
+    </tr>
+  </table>
+
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th>월</th><th>기본 배수</th><th>월</th><th>기본 배수</th></tr>
+    <tr><td>1월 (Jan)</td><td>0.75</td><td>7월 (Jul)</td><td>1.00</td></tr>
+    <tr><td>2월 (Feb)</td><td>0.80</td><td>8월 (Aug)</td><td>1.00</td></tr>
+    <tr><td>3월 (Mar)</td><td>0.90</td><td>9월 (Sep)</td><td>1.00</td></tr>
+    <tr><td>4월 (Apr)</td><td>0.95</td><td>10월 (Oct)</td><td>1.10</td></tr>
+    <tr><td>5월 (May)</td><td>1.00</td><td>11월 (Nov)</td><td>1.25</td></tr>
+    <tr><td>6월 (Jun)</td><td>1.00</td><td>12월 (Dec)</td><td>1.30</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>계산 예시:</b> 일판매 10개/일인 SKU의 컨테이너 ETA가 11월이라면, 계절 배수 1.25가 적용되어 <strong>조정 일판매 = 10 × 1.25 = 12.5개/일</strong>로 계산됩니다. 재고 소진 일수는 이 조정값 기준으로 산출됩니다.</div>
   </div>
 </section>
 
@@ -1624,6 +1664,7 @@
   <a class="nav-sub" href="#en-dp-col-freeze">Freeze Column</a>
   <a class="nav-sub" href="#en-dp-col-colors">Column Colors</a>
   <a class="nav-sub" href="#en-dp-autofill">Auto-Fill Buttons</a>
+  <a class="nav-sub" href="#en-dp-seasonal">Seasonal Factors</a>
   <a class="nav-item" href="#en-sku-planning"><span class="icon">🔍</span> SKU Planning</a>
   <a class="nav-sub" href="#en-sp-browser">SKU Browser</a>
   <a class="nav-sub" href="#en-sp-kpi">KPI Summary</a>
@@ -2036,6 +2077,45 @@
   <div class="callout tip">
     <span class="callout-icon">💡</span>
     <div>While reviewing order quantities in Demand Planning, double-click any container header to instantly open its full detail in Container Planning — no need to navigate manually.</div>
+  </div>
+
+  <h3 id="en-dp-seasonal">⑥ Planning Settings — Seasonal Factors</h3>
+  <p>Click the <span class="btn-label">⚙</span> icon (Seasonal factor settings) in the toolbar to open a popover for setting monthly seasonal multipliers. These multipliers are automatically applied to <strong>estimated sales and Inv. Life calculations</strong> based on the container's ETA month.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/dp-seasonal-factors-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Seasonal Factors Settings Popover</p></div>'" alt="Seasonal Factors Settings">
+    <div class="screenshot-caption">▲ Planning Settings — Seasonal Factors popover (Jan–Dec multipliers)</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:160px">Item</th><th>Description</th></tr>
+    <tr>
+      <td class="label">Monthly multiplier input</td>
+      <td>Enter a multiplier for each month (Jan–Dec). <code>1.0</code> is the baseline. Higher values assume greater demand in that month, resulting in more conservative inventory planning.</td>
+    </tr>
+    <tr>
+      <td class="label">Restore Defaults</td>
+      <td>Resets all monthly multipliers to their default values.</td>
+    </tr>
+    <tr>
+      <td class="label">Auto-save</td>
+      <td>Changes are saved to the browser immediately and synced to the server after 1.5 seconds. Settings persist across devices.</td>
+    </tr>
+  </table>
+
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th>Month</th><th>Default</th><th>Month</th><th>Default</th></tr>
+    <tr><td>January</td><td>0.75</td><td>July</td><td>1.00</td></tr>
+    <tr><td>February</td><td>0.80</td><td>August</td><td>1.00</td></tr>
+    <tr><td>March</td><td>0.90</td><td>September</td><td>1.00</td></tr>
+    <tr><td>April</td><td>0.95</td><td>October</td><td>1.10</td></tr>
+    <tr><td>May</td><td>1.00</td><td>November</td><td>1.25</td></tr>
+    <tr><td>June</td><td>1.00</td><td>December</td><td>1.30</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Example:</b> A SKU with a daily sales rate of 10 units/day and a container ETA in November applies a seasonal factor of 1.25, giving an <strong>adjusted daily rate of 10 × 1.25 = 12.5 units/day</strong>. Inv. Life is calculated using this adjusted rate.</div>
   </div>
 </section>
 
