@@ -263,6 +263,7 @@ export function ContainerPlanningPage() {
   const canDeleteContainers = isPOApproverRole(session?.user?.role);
   const searchParams = useSearchParams();
   const targetContainerId = searchParams.get("containerId");
+  const targetSku = searchParams.get("sku")?.trim().toUpperCase() ?? "";
 
   const [containers, setContainers] = useState<MockContainer[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(targetContainerId);
@@ -288,16 +289,18 @@ export function ContainerPlanningPage() {
   const [containerListTab, setContainerListTab] = useState<ContainerListTab>("active");
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
-  const [skuListCollapsed, setSkuListCollapsed] = useState<boolean | null>(null);
+  const [skuListCollapsed, setSkuListCollapsed] = useState<boolean | null>(() => (targetSku ? false : null));
   const [summaryCollapsed, setSummaryCollapsed] = useState(true);
   const [exportContainerIds, setExportContainerIds] = useState<string[]>([]);
 
   useEffect(() => {
+    if (targetSku) return;
+
     const timeoutId = window.setTimeout(() => {
       setSkuListCollapsed(window.localStorage.getItem(SKU_LIST_COLLAPSED_STORAGE_KEY) === "true");
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, []);
+  }, [targetSku]);
 
   useEffect(() => {
     if (skuListCollapsed === null) return;
@@ -1945,6 +1948,7 @@ export function ContainerPlanningPage() {
                 warehouseNameByCode={warehouseNameByCode}
                 skuListCollapsed={skuListCollapsed ?? false}
                 onToggleSkuList={() => setSkuListCollapsed((current) => !(current ?? false))}
+                initialSkuSearch={targetSku}
                 detailMode
               />
             </div>
@@ -2483,6 +2487,7 @@ function ContainerCard({
   warehouseNameByCode,
   skuListCollapsed = false,
   onToggleSkuList,
+  initialSkuSearch = "",
   detailMode = false,
 }: {
   container: MockContainer;
@@ -2515,6 +2520,7 @@ function ContainerCard({
   warehouseNameByCode?: Map<string, string>;
   skuListCollapsed?: boolean;
   onToggleSkuList?: () => void;
+  initialSkuSearch?: string;
   detailMode?: boolean;
 }) {
   const totalQty = container.items.reduce((sum, item) => sum + item.qty, 0);
@@ -2534,7 +2540,7 @@ function ContainerCard({
   const removableAllocationIds = container.items.flatMap((item) => (item.allocations ?? []).map((allocation) => allocation.id));
   const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
   const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
-  const [skuSearch, setSkuSearch] = useState("");
+  const [skuSearch, setSkuSearch] = useState(initialSkuSearch);
   const normalizedSkuSearch = skuSearch.trim().toLowerCase();
   const visibleItems = normalizedSkuSearch
     ? container.items.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))

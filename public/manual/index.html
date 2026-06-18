@@ -286,6 +286,7 @@
   <a class="nav-sub" href="#sp-kpi">KPI 요약 카드</a>
   <a class="nav-sub" href="#sp-analysis">판매 분석 탭</a>
   <a class="nav-sub" href="#sp-inventory">재고 및 입고 탭</a>
+  <a class="nav-sub" href="#sp-inbound-history">입고 이력 탭</a>
   <a class="nav-sub" href="#sp-recommend">컨테이너 추천 탭</a>
   <a class="nav-item" href="#container-planning"><span class="icon">🚢</span> Container Planning</a>
   <a class="nav-sub" href="#cp-create">컨테이너 등록</a>
@@ -786,6 +787,19 @@
     <span class="callout-icon">⚠️</span>
     <div><b>계절 배수:</b> 컨테이너 ETA 월에 따라 일판매에 계절 배수가 자동 적용됩니다 (11월 ×1.25, 12월 ×1.3). 하단 상태바의 <span class="btn-label">Seasonal</span>에서 월별 배수를 수정할 수 있습니다.</div>
   </div>
+
+  <h3>⑥ 컨테이너 헤더 더블클릭 — Container Planning 바로가기</h3>
+  <p>Demand Planning 그리드의 <strong>컨테이너 헤더(컨테이너 번호 영역)를 더블클릭</strong>하면 해당 컨테이너의 Container Planning 상세 페이지가 <strong>새 탭</strong>으로 열립니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">이동 URL</td><td><code>/forecast/planning/container-planning?containerId={id}</code> — 해당 컨테이너가 자동 선택된 상태로 열립니다.</td></tr>
+    <tr><td class="label">커서 힌트</td><td>헤더에 마우스를 올리면 커서가 <code>pointer</code>로 변경되어 클릭 가능함을 나타냅니다.</td></tr>
+    <tr><td class="label">미저장 컨테이너</td><td>DB에 아직 저장되지 않은 컨테이너는 이동 불가 — "This container does not have a saved container ID yet." 알림이 표시됩니다.</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>발주 수량을 검토하다가 컨테이너 상세를 확인하고 싶을 때, 페이지를 직접 이동하지 않고 더블클릭으로 바로 열 수 있어 편리합니다.</div>
+  </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════
@@ -999,8 +1013,38 @@
     </div>
   </div>
 
+  <!-- 입고 이력 탭 -->
+  <h3 id="sp-inbound-history">⑤ 입고 이력 탭</h3>
+  <div class="screenshot-box">
+    <img src="screenshots/05a-inbound-history.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>입고 이력 탭</p></div>'" alt="입고 이력 탭">
+    <div class="screenshot-caption">▲ 입고 이력 탭 – 요약 카드 4개 + 컨테이너별 이력 목록</div>
+  </div>
+  <p>선택한 SKU의 <strong>과거 입고 이력 전체</strong>를 컨테이너 단위로 조회합니다. 진행 중인 입고뿐 아니라 완료된 이력까지 한눈에 볼 수 있어, 재발주 주기와 수량 패턴을 파악하는 데 활용합니다.</p>
+
+  <h3 class="sub">요약 카드 (4개)</h3>
+  <div class="card-grid col2">
+    <div class="card"><h4>🚢 현재 입고 중</h4><p>현재 해상 운송 중(Shipped) 또는 패킹리스트 수신(Packing Received) 상태의 컨테이너에 포함된 수량 합계.</p></div>
+    <div class="card"><h4>✅ 완료된 입고</h4><p>Complete 상태로 전환된 컨테이너의 누적 입고 수량.</p></div>
+    <div class="card"><h4>📋 잔여 (Remaining)</h4><p>Available Stock에 등록된 잔여 재고 수량.</p></div>
+    <div class="card"><h4>⚠️ 미스테이크 (Mistake)</h4><p>오발주·취소 등으로 발생한 Mistake Order 수량.</p></div>
+  </div>
+
+  <h3 class="sub">이력 목록 컬럼</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">컬럼</th><th>설명</th></tr>
+    <tr><td class="label">Container Number</td><td>컨테이너 번호. 클릭하면 Container Planning의 해당 컨테이너 상세 페이지로 이동합니다.</td></tr>
+    <tr><td class="label">Status</td><td>컨테이너 현재 상태 (Draft / Shipped / Packing / Complete) 뱃지로 표시.</td></tr>
+    <tr><td class="label">ETA</td><td>예상 도착일.</td></tr>
+    <tr><td class="label">Qty</td><td>해당 컨테이너에 배정된 이 SKU의 수량.</td></tr>
+    <tr><td class="label">Done / Changed</td><td>Complete 전환일 또는 마지막 수정일.</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>Container Number 링크를 클릭하면 Container Planning 페이지의 해당 컨테이너로 직접 이동합니다. 이력 조회와 상세 수정을 한 번에 할 수 있습니다.</div>
+  </div>
+
   <!-- 컨테이너 추천 탭 -->
-  <h3 id="sp-recommend">⑤ 컨테이너 추천 탭</h3>
+  <h3 id="sp-recommend">⑥ 컨테이너 추천 탭</h3>
 
   <div class="screenshot-box">
     <img src="screenshots/02c-sku-recommend.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>컨테이너 추천 탭 – 권장 발주 수량 + What-If 시뮬레이션</p></div>'" alt="컨테이너 추천 탭">
@@ -1148,6 +1192,21 @@
       <div class="step-num">5</div>
       <div><h4>상태 변경</h4><p>공장에 발주서를 보냈으면 <span class="status final">Final List Sent</span>으로 변경합니다. 패킹 리스트를 받으면 <span class="status packing">Packing List Rcvd</span>로 변경하세요.</p></div>
     </div>
+  </div>
+
+  <h3 class="sub">SKU 일괄 삭제</h3>
+  <p><span class="status draft">Draft</span> 상태의 컨테이너에서만 사용 가능합니다. SKU 목록 좌측 체크박스로 항목을 선택한 뒤 <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span> 버튼을 클릭합니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">개별 선택</td><td>각 행 왼쪽 체크박스를 클릭해 개별 선택.</td></tr>
+    <tr><td class="label">전체 선택</td><td>헤더 체크박스(Select visible SKUs)로 현재 검색 결과의 전체 SKU를 선택.</td></tr>
+    <tr><td class="label">삭제 조건</td><td>Available Stock이 배정된 SKU는 삭제 불가 — 먼저 배정 해제 후 삭제.</td></tr>
+    <tr><td class="label">확인 다이얼로그</td><td>버튼 클릭 시 "Delete N selected SKU(s)?" 확인창이 표시되며 OK 후 삭제 진행.</td></tr>
+    <tr><td class="label">적용 상태</td><td><span class="status draft">Draft</span> 전용. Final List Sent 이상 상태에서는 버튼이 표시되지 않음.</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>Available Stock(잔여/Mistake)이 배정된 항목은 삭제 전에 <span class="btn-label">+ Add Available Stock</span>에서 배정을 먼저 해제해야 합니다.</div>
   </div>
 
   <div class="screenshot-box">
@@ -1545,6 +1604,7 @@
   <a class="nav-sub" href="#en-sp-kpi">KPI Summary</a>
   <a class="nav-sub" href="#en-sp-analysis">Sales Analysis</a>
   <a class="nav-sub" href="#en-sp-inventory">Inventory &amp; Inbound</a>
+  <a class="nav-sub" href="#en-sp-inbound-history">Inbound History</a>
   <a class="nav-sub" href="#en-sp-recommend">Container Recommendation</a>
   <a class="nav-item" href="#en-container-planning"><span class="icon">🚢</span> Container Planning</a>
   <a class="nav-sub" href="#en-cp-create">Create Container</a>
@@ -1914,6 +1974,19 @@
     <span class="callout-icon">⚠️</span>
     <div><b>Seasonal Multiplier:</b> A seasonal multiplier is automatically applied based on the container ETA month (November ×1.25, December ×1.3). Monthly multipliers can be edited in the <span class="btn-label">Seasonal</span> section of the bottom status bar.</div>
   </div>
+
+  <h3>⑥ Double-Click Container Header — Jump to Container Planning</h3>
+  <p><strong>Double-click the container name area</strong> in any container header column of the Demand Planning grid to open that container's detail page in Container Planning in a <strong>new tab</strong>.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Navigation URL</td><td><code>/forecast/planning/container-planning?containerId={id}</code> — opens with that container already selected.</td></tr>
+    <tr><td class="label">Cursor hint</td><td>The cursor changes to <code>pointer</code> when hovering over the container name to indicate it's clickable.</td></tr>
+    <tr><td class="label">Unsaved containers</td><td>Containers not yet saved to the DB cannot be opened — an alert is shown: "This container does not have a saved container ID yet."</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>While reviewing order quantities in Demand Planning, double-click any container header to instantly open its full detail in Container Planning — no need to navigate manually.</div>
+  </div>
 </section>
 
 <!-- ═══ 3. SKU PLANNING ═══ -->
@@ -1927,7 +2000,7 @@
     </div>
   </div>
   <div class="screenshot-box">
-    <img src="screenshots/02-sku-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU Planning Main Screen</p></div>'" alt="SKU Planning">
+    <img src="screenshots/02-sku-planning-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU Planning Main Screen</p></div>'" alt="SKU Planning">
     <div class="screenshot-caption">▲ SKU Planning – Left SKU Browser + Right 3-Tab Detail Panel</div>
   </div>
 
@@ -2006,7 +2079,7 @@
 
   <h3 id="en-sp-analysis">③ Sales Analysis Tab</h3>
   <div class="screenshot-box">
-    <img src="screenshots/02a-sku-sales.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>Sales Analysis Tab</p></div>'" alt="Sales Analysis Tab">
+    <img src="screenshots/02a-sku-sales-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>Sales Analysis Tab</p></div>'" alt="Sales Analysis Tab">
     <div class="screenshot-caption">▲ Sales Analysis Tab – Period Sales Trend Chart (Default View)</div>
   </div>
   <p>Review the selected SKU's sales data by period using charts and summary tables. Two modes: <strong>Default View</strong> and <strong>History View</strong>.</p>
@@ -2029,7 +2102,7 @@
 
   <h3 id="en-sp-inventory">④ Inventory &amp; Inbound Tab</h3>
   <div class="screenshot-box">
-    <img src="screenshots/02b-sku-inventory.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🏭</div><p>Inventory &amp; Inbound Tab</p></div>'" alt="Inventory &amp; Inbound Tab">
+    <img src="screenshots/02b-sku-inventory-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🏭</div><p>Inventory &amp; Inbound Tab</p></div>'" alt="Inventory &amp; Inbound Tab">
     <div class="screenshot-caption">▲ Inventory &amp; Inbound Tab – Stock Coverage Bar + Inbound Container Cards</div>
   </div>
   <p>See how much stock is secured relative to the target days, and which containers are scheduled for inbound.</p>
@@ -2068,9 +2141,38 @@
     <div class="card"><h4>Remaining / Error</h4><p>Available Stock quantities: Remaining stock and Mistake Order amounts.</p></div>
   </div>
 
-  <h3 id="en-sp-recommend">⑤ Container Recommendation Tab</h3>
+  <h3 id="en-sp-inbound-history">⑤ Inbound History Tab</h3>
   <div class="screenshot-box">
-    <img src="screenshots/02c-sku-recommend.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>Container Recommendation Tab</p></div>'" alt="Container Recommendation Tab">
+    <img src="screenshots/05a-inbound-history-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Inbound History Tab</p></div>'" alt="Inbound History Tab">
+    <div class="screenshot-caption">▲ Inbound History Tab – 4 Summary Cards + Container History List</div>
+  </div>
+  <p>Shows the <strong>complete inbound history</strong> for the selected SKU by container — both active and completed. Use this tab to understand reorder cycles and past quantity patterns.</p>
+
+  <h3 class="sub">Summary Cards (4)</h3>
+  <div class="card-grid col2">
+    <div class="card"><h4>🚢 Current Inbound</h4><p>Total units in containers with status Shipped or Packing Received (currently in transit).</p></div>
+    <div class="card"><h4>✅ Completed History</h4><p>Cumulative inbound units from containers that reached Complete status.</p></div>
+    <div class="card"><h4>📋 Remaining</h4><p>Remaining stock quantity registered in Available Stock.</p></div>
+    <div class="card"><h4>⚠️ Mistake</h4><p>Mistake Order quantity (from order errors or cancellations).</p></div>
+  </div>
+
+  <h3 class="sub">History List Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">Column</th><th>Description</th></tr>
+    <tr><td class="label">Container Number</td><td>Container identifier. Click to navigate directly to that container's detail page in Container Planning.</td></tr>
+    <tr><td class="label">Status</td><td>Current container status shown as a color-coded badge (Draft / Shipped / Packing / Complete).</td></tr>
+    <tr><td class="label">ETA</td><td>Estimated arrival date.</td></tr>
+    <tr><td class="label">Qty</td><td>Units allocated to this SKU in that container.</td></tr>
+    <tr><td class="label">Done / Changed</td><td>Date the container was marked Complete, or the last modification date.</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>Click any Container Number link to jump directly to that container in Container Planning — convenient for reviewing history and making edits in one flow.</div>
+  </div>
+
+  <h3 id="en-sp-recommend">⑥ Container Recommendation Tab</h3>
+  <div class="screenshot-box">
+    <img src="screenshots/02c-sku-recommend-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>Container Recommendation Tab</p></div>'" alt="Container Recommendation Tab">
     <div class="screenshot-caption">▲ Container Recommendation Tab – Recommended Qty · Simulation · Calculation Detail</div>
   </div>
   <p>Calculate the <strong>recommended order quantity</strong> based on target stock days and compare scenarios by entering custom quantities and ETAs.</p>
@@ -2160,6 +2262,21 @@
     <div class="step"><div class="step-num">3</div><div><h4>Add SKUs</h4><p>Enter the Master SKU and register quantities. Bulk upload via Excel is also available (<span class="btn-label">Import Excel</span>).</p></div></div>
     <div class="step"><div class="step-num">4</div><div><h4>Allocate Available Stock (optional)</h4><p>To assign warehouse surplus to this container, use the <span class="btn-label">Available Stock</span> button.</p></div></div>
     <div class="step"><div class="step-num">5</div><div><h4>Update Status</h4><p>Change to <span class="status final">Final List Sent</span> once you send the order to the factory. Change to <span class="status packing">Packing List Rcvd</span> when you receive the packing list.</p></div></div>
+  </div>
+
+  <h3 class="sub">Bulk Delete SKUs</h3>
+  <p>Available in <span class="status draft">Draft</span> containers only. Select SKUs using the row checkboxes and click <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span>.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Individual selection</td><td>Check the checkbox on the left of each row.</td></tr>
+    <tr><td class="label">Select all visible</td><td>Header checkbox (Select visible SKUs) selects all SKUs matching the current search filter.</td></tr>
+    <tr><td class="label">Delete restriction</td><td>SKUs with Available Stock allocated cannot be deleted — remove the allocation first.</td></tr>
+    <tr><td class="label">Confirmation dialog</td><td>"Delete N selected SKU(s)?" — click OK to proceed.</td></tr>
+    <tr><td class="label">Status restriction</td><td><span class="status draft">Draft</span> only. The button is hidden for Final List Sent and above.</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>SKUs with Available Stock (Remaining / Mistake) allocated must have their allocation removed first via <span class="btn-label">+ Add Available Stock</span> before deletion.</div>
   </div>
 
   <div class="screenshot-box">
