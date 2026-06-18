@@ -26,6 +26,16 @@ const ContainerSaveSchema = z.object({
   })).default([]),
 });
 
+const ContainerDetailsSchema = z.object({
+  number: z.string().trim().min(1),
+  eta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  status: ContainerStatusSchema,
+  cbmCapacity: z.number().positive(),
+  factory: z.string().trim().optional(),
+  destination: z.string().trim().optional(),
+  note: z.string().trim().optional(),
+}).strict();
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
@@ -319,6 +329,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body: unknown = await request.json();
+    const detailsOnly = searchParams.get("detailsOnly") === "true";
     const existingStatus = await client.query(
       `SELECT status::text AS status FROM shipcore.fc_containers WHERE id = $1::bigint`,
       [id]
@@ -359,6 +370,43 @@ export async function PATCH(request: NextRequest) {
         { success: false, error: "Stock-in completed containers cannot be modified." },
         { status: 403 }
       );
+    }
+
+    if (detailsOnly) {
+      const details = ContainerDetailsSchema.parse(body);
+      const result = await client.query(
+        `UPDATE shipcore.fc_containers
+         SET container_number = $2,
+             eta_date = $3::date,
+             status = $4::shipcore.fc_container_status,
+             cbm_capacity = $5::numeric,
+             factory_name = $6,
+             dest_warehouse = $7,
+             note = $8,
+             updated_at = NOW()
+         WHERE id = $1::bigint
+         RETURNING id`,
+        [
+          id,
+          details.number,
+          details.eta,
+          toDbStatus(details.status),
+          details.cbmCapacity,
+          details.factory || null,
+          details.destination || null,
+          details.note || null,
+        ]
+      );
+
+      if (result.rowCount === 0) {
+        return NextResponse.json(
+          { success: false, error: "Container not found" },
+          { status: 404 }
+        );
+      }
+
+      await invalidatePlanningDashboardCache();
+      return NextResponse.json({ success: true, data: { id, updated: "details" } });
     }
 
     const etaOnly = z.object({ eta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict().safeParse(body);

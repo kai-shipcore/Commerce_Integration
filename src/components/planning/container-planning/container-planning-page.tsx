@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ChevronDown, ChevronUp, PackageOpen, Ship } from "lucide-react";
@@ -676,11 +676,11 @@ export function ContainerPlanningPage() {
   async function removeDraftItem(sku: string) {
     if (editingContainerId && form.status !== "draft") return;
     const itemToDelete = draftItems.find((item) => item.sku === sku);
-    if (itemToDelete?.allocations?.length) {
-      setFormError("Allocated Remain stock must be removed from the container detail view.");
-      return;
-    }
-    if (editingContainerId && !window.confirm(`Delete ${sku} from this container?`)) return;
+    const allocationCount = itemToDelete?.allocations?.length ?? 0;
+    const deletePrompt = allocationCount > 0
+      ? `${sku} has ${allocationCount} allocated Remain Stock record(s).\n\nDelete the SKU and release its allocated Remain Stock?`
+      : `Delete ${sku} from this container?`;
+    if (editingContainerId && !window.confirm(deletePrompt)) return;
 
     if (editingContainerId && itemToDelete?.id && /^\d+$/.test(itemToDelete.id)) {
       try {
@@ -714,13 +714,11 @@ export function ContainerPlanningPage() {
       .filter((item) => skuSet.has(item.sku) && item.allocations?.length)
       .map((item) => item.sku);
 
-    if (allocatedSkus.length > 0) {
-      setFormError(`Allocated Remain stock must be removed first: ${allocatedSkus.join(", ")}`);
-      return false;
-    }
-
     if (editingContainerId) {
-      if (!window.confirm(`Delete ${skuSet.size} selected SKU(s) from this container now?`)) {
+      const deletePrompt = allocatedSkus.length > 0
+        ? `Delete ${skuSet.size} selected SKU(s) from this container?\n\nAllocated Remain Stock will also be released for: ${allocatedSkus.join(", ")}`
+        : `Delete ${skuSet.size} selected SKU(s) from this container now?`;
+      if (!window.confirm(deletePrompt)) {
         return false;
       }
 
@@ -790,6 +788,10 @@ export function ContainerPlanningPage() {
     };
 
     if (editingContainerId) {
+      if (!window.confirm("Save Container Details and all SKU information? Updating every SKU may take a little longer.")) {
+        return;
+      }
+
       setSavingContainer(true);
       try {
         const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(editingContainerId)}`), {
@@ -855,16 +857,68 @@ export function ContainerPlanningPage() {
     }
   }
 
+  async function saveContainerDetails() {
+    if (!editingContainerId) return;
+
+    const number = form.number.trim();
+    const eta = form.eta.trim();
+    if (!number) {
+      setFormError("Please enter a container number.");
+      return;
+    }
+    if (!eta) {
+      setFormError("Please select an ETA.");
+      return;
+    }
+    if (!window.confirm("Save Container Details only? SKU information will not be updated.")) {
+      return;
+    }
+
+    setSavingContainer(true);
+    setFormError(null);
+    try {
+      const response = await fetch(
+        apiPath(`/api/containers?id=${encodeURIComponent(editingContainerId)}&detailsOnly=true`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            number,
+            eta,
+            status: form.status,
+            cbmCapacity,
+            factory: form.factory.trim(),
+            destination: form.destination,
+            note: form.note.trim(),
+          }),
+        }
+      );
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        setFormError(json.error ?? "Failed to save container details.");
+        return;
+      }
+
+      await fetchContainers();
+      setExpandedId(editingContainerId);
+      closeForm();
+    } catch {
+      setFormError("Failed to save container details.");
+    } finally {
+      setSavingContainer(false);
+    }
+  }
+
   async function deleteContainerItem(containerId: string, sku: string) {
     const container = containers.find((item) => item.id === containerId);
     if (container?.status !== "draft") return;
     const itemToDelete = container?.items.find((item) => item.sku === sku);
-    if (itemToDelete?.allocations?.length) {
-      window.alert("Allocated Remain stock must be removed before deleting this SKU.");
-      return;
-    }
-
-    if (!window.confirm(`Delete ${sku}?`)) return;
+    const allocationCount = itemToDelete?.allocations?.length ?? 0;
+    const deletePrompt = allocationCount > 0
+      ? `${sku} has ${allocationCount} allocated Remain Stock record(s).\n\nDelete the SKU and release its allocated Remain Stock?`
+      : `Delete ${sku}?`;
+    if (!window.confirm(deletePrompt)) return;
 
     if (itemToDelete?.id && /^\d+$/.test(itemToDelete.id)) {
       try {
@@ -1892,6 +1946,7 @@ export function ContainerPlanningPage() {
                 onFactoryBlur={() => void upsertFactoryIfNew(form.factory)}
                 onClose={closeForm}
                 onSave={saveContainer}
+                onSaveDetails={saveContainerDetails}
                 onUpdateForm={updateForm}
                 onRemoveDraftItem={removeDraftItem}
                 onRemoveDraftItems={removeDraftItems}
@@ -2015,6 +2070,7 @@ function ContainerCreateForm({
   onFactoryBlur,
   onClose,
   onSave,
+  onSaveDetails,
   onUpdateForm,
   onRemoveDraftItem,
   onRemoveDraftItems,
@@ -2045,6 +2101,7 @@ function ContainerCreateForm({
   onFactoryBlur: () => void;
   onClose: () => void;
   onSave: () => void | Promise<void>;
+  onSaveDetails: () => void | Promise<void>;
   onUpdateForm: <K extends keyof ContainerFormState>(key: K, value: ContainerFormState[K]) => void;
   onRemoveDraftItem: (sku: string) => void | Promise<void>;
   onRemoveDraftItems: (skus: string[]) => boolean | Promise<boolean>;
@@ -2059,6 +2116,11 @@ function ContainerCreateForm({
   onAddAvailableStock?: () => void;
 }) {
   const importRef = useRef<HTMLInputElement | null>(null);
+  const draftSkuDragRef = useRef<{ active: boolean; checked: boolean; lastSku: string | null }>({
+    active: false,
+    checked: false,
+    lastSku: null,
+  });
   const [skuSearch, setSkuSearch] = useState("");
   const [selectedDraftSkus, setSelectedDraftSkus] = useState<string[]>([]);
   const [deletingSelectedDraftSkus, setDeletingSelectedDraftSkus] = useState(false);
@@ -2095,6 +2157,28 @@ function ContainerCreateForm({
       });
       return [...next];
     });
+  }
+
+  function endDraftSkuDrag() {
+    draftSkuDragRef.current = { active: false, checked: false, lastSku: null };
+  }
+
+  function beginDraftSkuDrag(event: PointerEvent<HTMLDivElement>, sku: string, selected: boolean) {
+    if (!canChangeStructure || event.button !== 0) return;
+
+    event.preventDefault();
+    const checked = !selected;
+    draftSkuDragRef.current = { active: true, checked, lastSku: sku };
+    toggleDraftSku(sku, checked);
+    window.addEventListener("pointerup", endDraftSkuDrag, { once: true });
+  }
+
+  function applyDraftSkuDrag(sku: string) {
+    const drag = draftSkuDragRef.current;
+    if (!drag.active || drag.lastSku === sku) return;
+
+    drag.lastSku = sku;
+    toggleDraftSku(sku, drag.checked);
   }
 
   async function deleteSelectedDraftItems() {
@@ -2195,6 +2279,31 @@ function ContainerCreateForm({
             />
           </Field>
         </div>
+        {isEditing ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4">
+            <p className="text-xs text-muted-foreground">
+              This Save updates Container Details, including Notes. SKU information is not updated.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void onSaveDetails()}
+                disabled={saving}
+                className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </FormCard>
 
       {/* Card 2: SKU Quantities */}
@@ -2282,44 +2391,73 @@ function ContainerCreateForm({
               </div>
             ) : null}
             <div>Master SKU</div>
-            <div>Qty</div>
-            <div>CBM / Unit</div>
-            <div>Total CBM</div>
+            <div className="text-right">Qty</div>
+            <div className="text-right">CBM / Unit</div>
+            <div className="text-right">Total CBM</div>
             {canChangeStructure ? <div className="text-right">Delete</div> : null}
           </div>
 
-          {visibleDraftItems.map((item) => (
-            <div key={item.sku} className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${canChangeStructure ? "grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
-              {canChangeStructure ? (
-                <div>
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${item.sku}`}
-                    checked={activeSelectedDraftSkus.includes(item.sku)}
-                    onChange={(event) => toggleDraftSku(item.sku, event.target.checked)}
-                  />
-                </div>
-              ) : null}
-              <span className="font-mono text-xs font-medium">{item.sku}</span>
-              <span>{formatNumber(item.qty)}</span>
-              <span className="font-mono text-xs">{item.cbm.toFixed(6)}</span>
-              <span className="font-mono text-xs">{(item.qty * item.cbm).toFixed(6)}</span>
-              {canChangeStructure ? (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      toggleDraftSku(item.sku, false);
-                      void onRemoveDraftItem(item.sku);
-                    }}
-                    className="text-xs font-semibold text-[#c42b2b] hover:underline"
-                  >
-                    Delete
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ))}
+          {visibleDraftItems.map((item) => {
+            const selected = activeSelectedDraftSkus.includes(item.sku);
+            const toggleRow = () => {
+              if (!canChangeStructure) return;
+              toggleDraftSku(item.sku, !selected);
+            };
+
+            return (
+              <div
+                key={item.sku}
+                role={canChangeStructure ? "button" : undefined}
+                tabIndex={canChangeStructure ? 0 : undefined}
+                aria-label={canChangeStructure ? `Toggle ${item.sku} for deletion` : undefined}
+                onPointerDown={canChangeStructure ? (event) => beginDraftSkuDrag(event, item.sku, selected) : undefined}
+                onPointerEnter={canChangeStructure ? () => applyDraftSkuDrag(item.sku) : undefined}
+                onKeyDown={canChangeStructure ? (event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  toggleRow();
+                } : undefined}
+                className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${
+                  canChangeStructure
+                    ? "grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px] cursor-pointer hover:bg-[#f8f7f4]"
+                    : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"
+                } ${selected ? "bg-[#ebf0fd]" : ""}`}
+              >
+                {canChangeStructure ? (
+                  <div>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${item.sku}`}
+                      checked={selected}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => toggleDraftSku(item.sku, event.target.checked)}
+                    />
+                  </div>
+                ) : null}
+                <span className="font-mono text-xs font-medium">{item.sku}</span>
+                <span className="text-right tabular-nums">{formatNumber(item.qty)}</span>
+                <span className="text-right font-mono text-xs tabular-nums">{item.cbm.toFixed(6)}</span>
+                <span className="text-right font-mono text-xs tabular-nums">{(item.qty * item.cbm).toFixed(6)}</span>
+                {canChangeStructure ? (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleDraftSku(item.sku, false);
+                        void onRemoveDraftItem(item.sku);
+                      }}
+                      className="text-xs font-semibold text-[#c42b2b] hover:underline"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
           {normalizedSkuSearch && visibleDraftItems.length === 0 ? (
             <div className="border-t border-[#e2dfd8] px-3 py-8 text-center text-sm text-muted-foreground">
               No SKUs match &quot;{skuSearch.trim()}&quot;.

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
+import { Calculator, CalendarDays, ChartColumn } from "lucide-react";
 import {
   AllCommunityModule,
   themeQuartz,
@@ -998,14 +999,6 @@ function ContainerGroupHeader(
                 className="h-[24px] w-[108px] rounded border border-white/30 bg-transparent px-2 text-[11px] font-semibold text-white"
               />
             </label>
-            <button
-              onClick={props.onAutoFill}
-              disabled={props.autoFilling}
-              title="Con qty 자동 계산 (저장 전 미리보기)"
-              className="rounded px-3 py-1.5 text-[15px] bg-white/10 hover:bg-white/20 disabled:opacity-40 cursor-pointer"
-            >
-              {props.autoFilling ? "…" : "⟳"}
-            </button>
             <input
               type="number"
               value={targetDays}
@@ -1024,25 +1017,28 @@ function ContainerGroupHeader(
               onClick={() => props.onAutoFill2?.(targetDays)}
               disabled={props.autoFilling2}
               title={`Con qty 고정 목표 계산 (${targetDays}일 INV Life)`}
-              className="rounded px-3 py-1.5 text-[15px] bg-blue-500/30 hover:bg-blue-500/50 disabled:opacity-40 cursor-pointer"
+              aria-label={`Calculate automatic order for a fixed ${targetDays}-day inventory target`}
+              className="inline-flex items-center justify-center rounded px-2.5 py-1.5 bg-blue-500/30 hover:bg-blue-500/50 disabled:opacity-40 cursor-pointer"
             >
-              {props.autoFilling2 ? "…" : "⟳₂"}
+              {props.autoFilling2 ? "..." : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
             </button>
             <button
               onClick={() => props.onAutoFill21?.(targetDays)}
               disabled={props.autoFilling21}
               title={`Backfill2-1 Google Sheet formula (${targetDays} days)`}
-              className="rounded px-2.5 py-1.5 text-[12px] font-bold bg-sky-500/30 hover:bg-sky-500/50 disabled:opacity-40 cursor-pointer"
+              aria-label={`Calculate automatic order using Backfill 2-1 for ${targetDays} days`}
+              className="inline-flex items-center justify-center rounded px-2.5 py-1.5 bg-sky-500/30 hover:bg-sky-500/50 disabled:opacity-40 cursor-pointer"
             >
-              {props.autoFilling21 ? "..." : "2-1"}
+              {props.autoFilling21 ? "..." : <Calculator className="h-4 w-4" aria-hidden="true" />}
             </button>
             <button
               onClick={props.onAutoFill3}
               disabled={props.autoFilling3}
               title="Con qty 세일즈 구간별 목표 계산"
-              className="rounded px-3 py-1.5 text-[15px] bg-emerald-500/30 hover:bg-emerald-500/50 disabled:opacity-40 cursor-pointer"
+              aria-label="Calculate automatic order by sales range"
+              className="inline-flex items-center justify-center rounded px-2.5 py-1.5 bg-emerald-500/30 hover:bg-emerald-500/50 disabled:opacity-40 cursor-pointer"
             >
-              {props.autoFilling3 ? "…" : "⟳₃"}
+              {props.autoFilling3 ? "..." : <ChartColumn className="h-4 w-4" aria-hidden="true" />}
             </button>
             {props.dirty && (
               <>

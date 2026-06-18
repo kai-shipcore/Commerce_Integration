@@ -8,11 +8,7 @@ import {
   type SeasonalFactorKey,
   type SeasonalFactors,
 } from "@/lib/planning/seasonal-factors";
-import {
-  DEFAULT_GRADIENT,
-  DEFAULT_GRADIENT_SC,
-  type GradientTier,
-} from "@/lib/planning/gradient-config";
+import type { GradientTier } from "@/lib/planning/gradient-config";
 import { urgStatus } from "./columns";
 import type { DemandRow } from "@/types/demand-planning";
 
@@ -27,7 +23,7 @@ interface StatusBarProps {
   onGradientSCChange?: (next: GradientTier[]) => void;
 }
 
-export function StatusBar({ rows, inline = false, seasonalFactors, onSeasonalFactorsChange, gradient, gradientSC, onGradientChange, onGradientSCChange }: StatusBarProps) {
+export function StatusBar({ rows, inline = false, seasonalFactors, onSeasonalFactorsChange }: StatusBarProps) {
   const crit  = rows.filter((r) => urgStatus(r) === "crit").length;
   const warn  = rows.filter((r) => urgStatus(r) === "warn").length;
   const stock = rows.reduce((a, r) => a + (r.total_stock || 0), 0);
@@ -61,10 +57,6 @@ export function StatusBar({ rows, inline = false, seasonalFactors, onSeasonalFac
       <SeasonalFactorSettings
         factors={seasonalFactors}
         onChange={onSeasonalFactorsChange}
-        gradient={gradient ?? DEFAULT_GRADIENT}
-        gradientSC={gradientSC ?? DEFAULT_GRADIENT_SC}
-        onGradientChange={onGradientChange ?? (() => {})}
-        onGradientSCChange={onGradientSCChange ?? (() => {})}
       />
     </div>
   );
@@ -91,17 +83,9 @@ function SbItem({ label, value, color }: { label: string; value: string | number
 function SeasonalFactorSettings({
   factors,
   onChange,
-  gradient,
-  gradientSC,
-  onGradientChange,
-  onGradientSCChange,
 }: {
   factors: SeasonalFactors;
   onChange: (next: SeasonalFactors) => void;
-  gradient: GradientTier[];
-  gradientSC: GradientTier[];
-  onGradientChange: (next: GradientTier[]) => void;
-  onGradientSCChange: (next: GradientTier[]) => void;
 }) {
   function updateFactor(key: SeasonalFactorKey, rawValue: string) {
     const value = Number(rawValue);
@@ -109,18 +93,13 @@ function SeasonalFactorSettings({
     onChange({ ...factors, [key]: value });
   }
 
-  const gradientSections = [
-    { label: "Car Cover", tiers: gradient, defaults: DEFAULT_GRADIENT, onChange: onGradientChange },
-    { label: "Seat Cover", tiers: gradientSC, defaults: DEFAULT_GRADIENT_SC, onChange: onGradientSCChange },
-  ] as const;
-
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
           aria-label="Seasonal factor settings"
-          title="Seasonal factor & gradient settings"
+          title="Seasonal factor settings"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -138,12 +117,12 @@ function SeasonalFactorSettings({
           <Settings size={14} strokeWidth={2} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" style={{ width: "min(960px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
+      <PopoverContent align="end" style={{ width: "min(360px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>Planning Settings</div>
             <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.4, color: "#64748B" }}>
-              Seasonal multipliers and auto-fill gradient tiers.
+              Seasonal multipliers used for planning calculations.
             </div>
           </div>
           <PopoverClose asChild>
@@ -180,9 +159,9 @@ function SeasonalFactorSettings({
           </PopoverClose>
         </div>
 
-        <div style={{ display: "flex", gap: 0 }}>
+        <div>
           {/* Seasonal Factors */}
-          <div style={{ flex: "0 0 auto", padding: "14px 16px", borderRight: "1px solid #E2E8F0" }}>
+          <div style={{ padding: "14px 16px" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>Seasonal Factors</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {SEASONAL_FACTOR_FIELDS.map(({ key, label }) => (
@@ -235,67 +214,6 @@ function SeasonalFactorSettings({
             </div>
           </div>
 
-          {/* Gradient Tiers */}
-          <div style={{ flex: 1, padding: "14px 16px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>Gradient Tiers</div>
-            <div style={{ display: "flex", gap: 20 }}>
-              {gradientSections.map((section) => (
-                <div key={section.label} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{section.label}</div>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: "left", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11 }}>Tier</th>
-                        <th style={{ textAlign: "right", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11, width: 84 }}>Min Sales</th>
-                        <th style={{ textAlign: "right", padding: "4px 6px", color: "#7A766F", fontWeight: 600, fontSize: 11, width: 92 }}>Bonus (days)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {section.tiers.map((tier, i) => (
-                        <tr key={tier.tier} style={{ borderTop: "1px solid #E8E6E0" }}>
-                          <td style={{ padding: "4px 6px", fontWeight: 700, color: "#1A1917", width: 40 }}>{tier.tier}</td>
-                          <td style={{ padding: "4px 6px", textAlign: "right" }}>
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0"
-                              value={tier.min_sales}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                if (!Number.isFinite(val)) return;
-                                section.onChange(section.tiers.map((t, j) => j === i ? { ...t, min_sales: val } : t));
-                              }}
-                              style={{ width: 72, height: 28, textAlign: "right", border: "1px solid #C2BFB5", borderRadius: 4, padding: "2px 6px", fontSize: 12, background: "#FAFAF8", boxSizing: "border-box" }}
-                            />
-                          </td>
-                          <td style={{ padding: "4px 6px", textAlign: "right" }}>
-                            <input
-                              type="number"
-                              step="1"
-                              value={tier.bonus}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value, 10);
-                                if (!Number.isFinite(val)) return;
-                                section.onChange(section.tiers.map((t, j) => j === i ? { ...t, bonus: val } : t));
-                              }}
-                              style={{ width: 72, height: 28, textAlign: "right", border: "1px solid #C2BFB5", borderRadius: 4, padding: "2px 6px", fontSize: 12, background: "#FAFAF8", boxSizing: "border-box" }}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <button
-                    type="button"
-                    onClick={() => section.onChange([...section.defaults])}
-                    style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px solid #C2BFB5", background: "#F5F4EF", cursor: "pointer", color: "#5A5750", alignSelf: "flex-end" }}
-                  >
-                    Reset
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </PopoverContent>
     </Popover>
