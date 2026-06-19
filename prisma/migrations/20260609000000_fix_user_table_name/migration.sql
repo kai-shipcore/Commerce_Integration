@@ -1,0 +1,1 @@
+-- table was already renamed to fc_user directly in the database; no SQL needed

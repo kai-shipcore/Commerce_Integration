@@ -518,22 +518,22 @@ export async function GET(req: Request) {
       const east_15d     = vel ? vel.east_15d     : r.east_15d as number;
       const east_7d      = vel ? vel.east_7d      : r.east_7d  as number;
       const east_30d_pre = vel ? vel.east_30d_pre : r.east_30d_pre as number;
-      const avg_daily_prev = vel ? vel.avg_daily_prev : r.avg_daily_prev as number;
-      const avg_daily_real = vel ? vel.avg_daily_real : r.avg_daily_real as number;
-      const avg_daily_curr = vel ? vel._avg_curr      : r.avg_daily_curr as number;
-      const east_avg_prev  = vel ? vel.east_avg_prev  : Math.max(0.01, r.east_avg_prev  as number);
-      const east_avg_real  = vel ? vel.east_avg_real  : Math.max(0.01, r.east_avg_real  as number);
-      const east_avg_curr  = vel ? vel._east_curr     : currentDailyAverage(east_avg_prev, east_avg_real, categoryCode);
-      const fba_avg_real   = vel ? vel.fba_avg_real   : r.fba_avg_real   as number;
-      const fba_avg_curr   = vel ? vel._fba_curr      : r.fba_avg_curr   as number;
+      const avg_daily_prev = Math.max(0.01, vel ? vel.avg_daily_prev : r.avg_daily_prev as number);
+      const avg_daily_real = Math.max(0.01, vel ? vel.avg_daily_real : r.avg_daily_real as number);
+      const avg_daily_curr = Math.max(0.01, vel ? vel._avg_curr      : r.avg_daily_curr as number);
+      const east_avg_prev  = Math.max(0.01, vel ? vel.east_avg_prev  : r.east_avg_prev  as number);
+      const east_avg_real  = Math.max(0.01, vel ? vel.east_avg_real  : r.east_avg_real  as number);
+      const east_avg_curr  = Math.max(0.01, vel ? vel._east_curr     : currentDailyAverage(east_avg_prev, east_avg_real, categoryCode));
+      const fba_avg_real   = Math.max(0.01, vel ? vel.fba_avg_real   : r.fba_avg_real   as number);
+      const fba_avg_curr   = Math.max(0.01, vel ? vel._fba_curr      : r.fba_avg_curr   as number);
       const fba_30d        = vel ? vel.fba_30d        : r.fba_30d        as number;
       // Derived 30d/avg totals
       const west_fbm_30d = vel ? fbmThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d) : r.west_fbm_30d as number;
       const east_fbm_30d = vel ? fbmThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d) : r.east_fbm_30d as number;
       const total_30d    = vel ? west_fbm_30d + east_fbm_30d + fba_30d : r.total_30d as number;
-      const total_avg_prev = vel ? avg_daily_prev + east_avg_prev + (vel.fba_avg_prev ?? 0) : r.total_avg_prev as number;
-      const total_avg_real = vel ? avg_daily_real + east_avg_real + fba_avg_real : r.total_avg_real as number;
-      const total_avg_curr = vel ? avg_daily_curr + east_avg_curr + fba_avg_curr : r.total_avg_curr as number;
+      const total_avg_prev = Math.max(0.03, vel ? avg_daily_prev + east_avg_prev + (vel.fba_avg_prev ?? 0) : r.total_avg_prev as number);
+      const total_avg_real = Math.max(0.03, vel ? avg_daily_real + east_avg_real + fba_avg_real : r.total_avg_real as number);
+      const total_avg_curr = Math.max(0.03, vel ? avg_daily_curr + east_avg_curr + fba_avg_curr : currentDailyAverage(total_avg_prev, total_avg_real));
 
       // Baseline seed: today's state, no incoming units
       const availQty  = (r.total_stock as number) + (r.back as number);
@@ -695,8 +695,8 @@ export async function GET(req: Request) {
       const { seat, no, color, tone } = parseSku(p.master_sku);
       const w90 = p.west_90d, w60 = p.west_60d, w30 = p.west_30d, w15 = p.west_15d, w7 = p.west_7d, wpre = p.west_30d_pre;
       const e90 = p.east_90d, e60 = p.east_60d, e30 = p.east_30d, e15 = p.east_15d, e7 = p.east_7d, epre = p.east_30d_pre;
-      const avgReal  = wAvg(w90, w60, w30, w15, w7, wpre);
-      const avgPrev  = p.avg_daily_prev;
+      const avgReal  = Math.max(0.01, wAvg(w90, w60, w30, w15, w7, wpre));
+      const avgPrev  = Math.max(0.01, p.avg_daily_prev);
       const avgCurr  = currentDailyAverage(avgPrev, avgReal);
       const eReal    = Math.max(0.01, wAvg(e90, e60, e30, e15, e7, epre));
       const ePrev    = Math.max(0.01, p.east_avg_prev);
@@ -706,9 +706,9 @@ export async function GET(req: Request) {
       const wFbm30   = fbmThirtyDayAverage(w90, w60, w30, wpre, w15, w7);
       const eFbm30   = fbmThirtyDayAverage(e90, e60, e30, epre, e15, e7);
       const total30  = wFbm30 + eFbm30 + p.fba_30d;
-      const tAvgPrev = avgPrev + ePrev;
-      const tAvgReal = avgReal + eReal + fbaReal;
-      const tAvgCurr = avgCurr + eCurr + fbaCurr;
+      const tAvgPrev = Math.max(0.03, avgPrev + ePrev);
+      const tAvgReal = Math.max(0.03, avgReal + eReal + fbaReal);
+      const tAvgCurr = Math.max(0.03, avgCurr + eCurr + fbaCurr);
       const totalStk  = p.total_stock;
       const sodDays   = tAvgReal > 0 ? Math.floor(totalStk / tAvgReal) : null;
       const sodDate   = sodDays !== null ? (() => { const d = new Date(todayStr); d.setDate(d.getDate() + sodDays); return d.toISOString().slice(0, 10); })() : null;
