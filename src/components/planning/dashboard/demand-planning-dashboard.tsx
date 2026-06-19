@@ -1544,10 +1544,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
                   {/* Container Visibility */}
                   {(() => {
-                    const visibleContainers = data.containers.filter(
+                    const allContainers = data.containers.filter(
                       (c) => c.status !== "baseline" && containerMatchesCategory(c, categoryFilter)
                     );
-                    if (!visibleContainers.length) return null;
+                    if (!allContainers.length) return null;
+
+                    const STATUS_GROUPS: { status: string; label: string; color: string; accentColor: string }[] = [
+                      { status: "shipped",          label: "Shipped", color: "#F59E0B", accentColor: "#F59E0B" },
+                      { status: "packing_received", label: "Packing", color: "#3B82F6", accentColor: "#3B82F6" },
+                      { status: "draft",            label: "Draft",   color: "#94A3B8", accentColor: "#64748B" },
+                    ];
+
                     return (
                       <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
@@ -1564,49 +1571,62 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             </button>
                           )}
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
-                          {visibleContainers.map((c) => {
-                            const visible = !hiddenContainers.has(c.name);
-                            const statusLabel =
-                              c.status === "packing_received" ? "Packing" :
-                              c.status === "shipped"          ? "Shipped" :
-                              c.status === "draft"            ? "Draft"   : c.status ?? "";
-                            const statusColor =
-                              c.status === "packing_received" ? "#3B82F6" :
-                              c.status === "shipped"          ? "#F59E0B" :
-                              c.status === "draft"            ? "#94A3B8" : "#94A3B8";
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
+                          {STATUS_GROUPS.map(({ status, label, color, accentColor }) => {
+                            const group = allContainers.filter((c) => c.status === status);
+                            if (!group.length) return null;
+                            const allVisible  = group.every((c) => !hiddenContainers.has(c.name));
+                            const someVisible = group.some((c)  => !hiddenContainers.has(c.name));
+                            const toggleGroup = () => setHiddenContainers((prev) => {
+                              const next = new Set(prev);
+                              if (allVisible) group.forEach((c) => next.add(c.name));
+                              else            group.forEach((c) => next.delete(c.name));
+                              return next;
+                            });
                             return (
-                              <label
-                                key={c.name}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                  padding: "3px 5px",
-                                  borderRadius: 4,
-                                  cursor: "pointer",
-                                  background: visible ? "rgba(59,130,246,.06)" : "transparent",
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={visible}
-                                  onChange={() => setHiddenContainers((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(c.name)) next.delete(c.name); else next.add(c.name);
-                                    return next;
-                                  })}
-                                  style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
-                                />
-                                <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: visible ? "#1E3A5F" : "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {c.name}
-                                </span>
-                                {statusLabel && (
-                                  <span style={{ fontSize: 10, fontWeight: 600, color: statusColor, whiteSpace: "nowrap" }}>
-                                    {statusLabel}
+                              <div key={status}>
+                                {/* Group header */}
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 5px", borderRadius: 4, cursor: "pointer", marginBottom: 2 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={allVisible}
+                                    ref={(el) => { if (el) el.indeterminate = !allVisible && someVisible; }}
+                                    onChange={toggleGroup}
+                                    style={{ width: 14, height: 14, cursor: "pointer", accentColor }}
+                                  />
+                                  <span style={{ fontSize: 11, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    {label} ({group.length})
                                   </span>
-                                )}
-                              </label>
+                                </label>
+                                {/* Individual containers */}
+                                {group.map((c) => {
+                                  const visible = !hiddenContainers.has(c.name);
+                                  return (
+                                    <label
+                                      key={c.name}
+                                      style={{
+                                        display: "flex", alignItems: "center", gap: 6,
+                                        padding: "3px 5px 3px 22px", borderRadius: 4, cursor: "pointer",
+                                        background: visible ? "rgba(59,130,246,.06)" : "transparent",
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={visible}
+                                        onChange={() => setHiddenContainers((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(c.name)) next.delete(c.name); else next.add(c.name);
+                                          return next;
+                                        })}
+                                        style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#3B82F6" }}
+                                      />
+                                      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: visible ? "#1E3A5F" : "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {c.name}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
                             );
                           })}
                         </div>
