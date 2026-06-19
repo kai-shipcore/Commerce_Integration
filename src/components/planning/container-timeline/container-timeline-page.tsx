@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CalendarRange, ChevronDown, ExternalLink, Search, X } from "lucide-react";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import type { DemandPlanningData, DemandRow } from "@/types/demand-planning";
-import { getUrgency, recommendedContainerQty, salesVelocityTrend } from "@/components/planning/sku-forecasts/types";
+import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-forecasts/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ interface ContainerItem {
 }
 
 type SkuImpactLevel = "critical" | "warning" | "ok" | "unknown";
-type SkuImpactSortKey = "sku" | "level" | "stock" | "sales" | "sod" | "trend" | "stockout" | "etaImpact" | "quantity" | "totalInbound" | "postSod" | "cbm";
+type SkuImpactSortKey = "sku" | "level" | "stock" | "sales" | "sod" | "stockout" | "etaImpact" | "quantity" | "totalInbound" | "postSod" | "cbm";
 type SortDirection = "asc" | "desc";
 
 interface SkuImpact {
@@ -30,7 +30,6 @@ interface SkuImpact {
   currentStock: number | null;
   averageDailySales: number | null;
   estimatedSod: string | null;
-  salesTrendPercent: number | null;
   stockoutBeforeEta: boolean | null;
   requiredQty: number | null;
   projectedStockAtEta: number | null;
@@ -160,7 +159,6 @@ function buildSkuImpact(item: ContainerItem, containerName: string, etaDate: str
       currentStock: null,
       averageDailySales: null,
       estimatedSod: null,
-      salesTrendPercent: null,
       stockoutBeforeEta: null,
       requiredQty: null,
       projectedStockAtEta: null,
@@ -178,7 +176,6 @@ function buildSkuImpact(item: ContainerItem, containerName: string, etaDate: str
   const projectedStockAtEta = containerImpact?.carryover ?? null;
   const backorderAtEta = containerImpact?.backorder ?? null;
   const postInboundSod = containerImpact?.est_sod ?? null;
-  const { changePercent: salesTrendPercent } = salesVelocityTrend(row);
   const urgency = getUrgency(row);
   const level: SkuImpactLevel = stockoutBeforeEta || (backorderAtEta ?? 0) > 0
     ? "critical"
@@ -191,7 +188,6 @@ function buildSkuImpact(item: ContainerItem, containerName: string, etaDate: str
     currentStock: row.total_stock,
     averageDailySales: row.total_avg_curr,
     estimatedSod,
-    salesTrendPercent,
     stockoutBeforeEta,
     requiredQty,
     projectedStockAtEta,
@@ -697,7 +693,7 @@ export function ContainerTimelinePage() {
                           )}
                         </div>
                         <div className="text-[10px] text-muted-foreground pl-4">
-                          ETA {displayDate ?? "—"} · {c.itemCount}종 · {c.totalQty.toLocaleString()}pcs
+                          ETA {displayDate ?? "—"} · {c.itemCount} SKUs · {c.totalQty.toLocaleString()} units
                         </div>
                       </div>
 
@@ -848,7 +844,6 @@ function ContainerDetailDrawer({
       stock: [left.currentStock, right.currentStock],
       sales: [left.averageDailySales, right.averageDailySales],
       sod: [left.estimatedSod, right.estimatedSod],
-      trend: [left.salesTrendPercent, right.salesTrendPercent],
       stockout: [left.stockoutBeforeEta === null ? null : Number(left.stockoutBeforeEta), right.stockoutBeforeEta === null ? null : Number(right.stockoutBeforeEta)],
       etaImpact: [
         left.backorderAtEta === null && left.projectedStockAtEta === null ? null : (left.projectedStockAtEta ?? 0) - (left.backorderAtEta ?? 0),
@@ -962,9 +957,9 @@ function ContainerDetailDrawer({
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {/* Meta info */}
-          <div className="px-6 py-4 space-y-3 border-b border-[#e2dfd8]">
+          <div className="shrink-0 px-6 py-4 space-y-3 border-b border-[#e2dfd8]">
             <div className="grid grid-cols-[minmax(150px,0.8fr)_minmax(220px,1.4fr)_minmax(100px,0.7fr)] items-center gap-x-6 text-[12px]">
               <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
                 <span className="font-semibold text-muted-foreground">
@@ -1018,12 +1013,12 @@ function ContainerDetailDrawer({
           </div>
 
           {/* SKU table */}
-          <details
-            open={isSkuListOpen}
-            onToggle={(event) => setIsSkuListOpen(event.currentTarget.open)}
-            className="border-b border-[#e2dfd8]"
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-6 py-4 hover:bg-[#fafaf7] transition-colors [&::-webkit-details-marker]:hidden">
+          <div className="flex min-h-0 flex-1 flex-col border-b border-[#e2dfd8]">
+            <button
+              type="button"
+              onClick={() => setIsSkuListOpen((current) => !current)}
+              className="flex shrink-0 cursor-pointer items-center justify-between gap-3 px-6 py-4 text-left hover:bg-[#fafaf7] transition-colors"
+            >
               <span className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                 <ChevronDown
                   className={`h-3.5 w-3.5 transition-transform ${isSkuListOpen ? "rotate-180" : ""}`}
@@ -1041,25 +1036,25 @@ function ContainerDetailDrawer({
                     Warning {warningCount}
                   </span>
                 )}
-                <span>{c.items.length}종 · {totalQty.toLocaleString()} pcs</span>
+                <span>{c.items.length} SKUs · {totalQty.toLocaleString()} units</span>
               </span>
-            </summary>
+            </button>
 
-            <div className="px-6 pb-4">
+            {isSkuListOpen && (
+            <div className="min-h-0 flex-1 px-6 pb-4">
               {c.items.length === 0 ? (
                 <div className="py-8 text-center text-[12px] text-muted-foreground border border-dashed border-[#d8d6ce] rounded-lg">
                   등록된 SKU가 없습니다
                 </div>
               ) : (
-                <div className="rounded-lg border border-[#e2dfd8] overflow-hidden">
+                <div className="h-full overflow-x-auto overflow-y-scroll rounded-lg border border-[#e2dfd8]">
                   <table className="w-full text-[11px]">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-[#f5f4f0] shadow-[0_1px_0_#e2dfd8]">
                       <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
                         <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("Master SKU", "sku", "left")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("위험도", "level", "center")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 재고", "stock", "right")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("평균 판매/일", "sales", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("판매 추세", "trend", "right")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 SOD", "sod", "center")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("ETA 전 품절", "stockout", "center")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("ETA 재고 / BO", "etaImpact", "right")}</th>
@@ -1076,7 +1071,6 @@ function ContainerDetailDrawer({
                         currentStock,
                         averageDailySales,
                         estimatedSod,
-                        salesTrendPercent,
                         stockoutBeforeEta,
                         projectedStockAtEta,
                         backorderAtEta,
@@ -1117,11 +1111,6 @@ function ContainerDetailDrawer({
                           </td>
                           <td className="px-2 py-2 text-right tabular-nums font-semibold">{currentStock?.toLocaleString() ?? "—"}</td>
                           <td className="px-2 py-2 text-right tabular-nums">{averageDailySales?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}</td>
-                          <td className={`px-2 py-2 text-right tabular-nums font-semibold ${
-                            salesTrendPercent === null ? "text-muted-foreground" : salesTrendPercent > 0 ? "text-red-700" : "text-emerald-700"
-                          }`}>
-                            {salesTrendPercent === null ? "—" : `${salesTrendPercent > 0 ? "+" : ""}${salesTrendPercent.toFixed(0)}%`}
-                          </td>
                           <td className="px-2 py-2 text-center tabular-nums">{estimatedSod ?? "—"}</td>
                           <td className={`px-2 py-2 text-center font-semibold ${stockoutBeforeEta ? "text-red-700" : "text-emerald-700"}`}>
                             {stockoutBeforeEta === null ? "—" : stockoutBeforeEta ? "예" : "아니오"}
@@ -1143,18 +1132,19 @@ function ContainerDetailDrawer({
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-[#e2dfd8] bg-[#f5f4f0]">
-                        <td className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length}종)</td>
+                        <td className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length} SKUs)</td>
                         <td colSpan={8} />
-                        <td className="px-2 py-2 text-right tabular-nums font-bold">입고 {totalQty.toLocaleString()}</td>
+                        <td className="px-2 py-2 text-right tabular-nums font-bold">입고 {totalQty.toLocaleString()} units</td>
                         <td />
-                        <td className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)} m³</td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
               )}
             </div>
-          </details>
+            )}
+          </div>
         </div>
 
       </div>
