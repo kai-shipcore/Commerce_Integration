@@ -4,12 +4,15 @@ import type { ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { pick, type SkuForecastLanguage } from "../language";
 
+export type SkuForecastTab = "sales" | "inventory" | "history" | "purchase";
+
 interface SkuForecastTabsProps {
   sales: ReactNode;
   inventory: ReactNode;
   history: ReactNode;
   purchase: ReactNode;
   language: SkuForecastLanguage;
+  defaultTab?: SkuForecastTab;
 }
 
 const triggerClassName =
@@ -21,9 +24,10 @@ export function SkuForecastTabs({
   history,
   purchase,
   language,
+  defaultTab = "sales",
 }: SkuForecastTabsProps) {
   return (
-    <Tabs defaultValue="sales" className="space-y-4">
+    <Tabs defaultValue={defaultTab} className="space-y-4">
       <TabsList className="planning-panel h-auto rounded-xl border bg-white dark:bg-zinc-900 dark:border-zinc-700 p-1 gap-0.5">
         <TabsTrigger value="sales" className={triggerClassName}>
           {pick(language, "판매 분석", "Sales Analysis")}

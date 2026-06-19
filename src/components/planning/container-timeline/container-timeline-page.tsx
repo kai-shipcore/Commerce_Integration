@@ -1122,7 +1122,7 @@ function ContainerDetailDrawer({
                           ref={i === firstHighlightedIndex ? highlightedSkuRowRef : undefined}
                           onDoubleClick={() => {
                             window.open(
-                              withBasePath(`/planning/sku-forecasts?sku=${encodeURIComponent(item.sku)}`),
+                              withBasePath(`/planning/sku-forecasts?sku=${encodeURIComponent(item.sku)}&tab=inventory&includeDrafts=1&highlightContainerId=${encodeURIComponent(c.id)}&highlightContainer=${encodeURIComponent(c.containerNumber)}`),
                               "_blank",
                               "noopener,noreferrer",
                             );

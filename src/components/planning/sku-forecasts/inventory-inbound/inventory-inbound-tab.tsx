@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
 import { daysUntil, formatNumber } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
@@ -21,13 +21,18 @@ export function InventoryInboundTab({
   language,
   targetInventoryDays,
   includeDraftContainers,
+  highlightedContainerId,
+  highlightedContainerName,
 }: {
   sku: DemandRow;
   language: SkuForecastLanguage;
   targetInventoryDays: number;
   includeDraftContainers: boolean;
+  highlightedContainerId?: string;
+  highlightedContainerName?: string;
 }) {
   const [inboundState, setInboundState] = useState<{ sku: string; includeDrafts: boolean; rows: InboundContainer[] } | null>(null);
+  const highlightedContainerRef = useRef<HTMLAnchorElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +72,15 @@ export function InventoryInboundTab({
   const draftQty = inboundRows
     .filter((container) => container.status === "draft")
     .reduce((sum, container) => sum + container.inbound_qty, 0);
+  const inboundRowsTotal = inboundRows.reduce((sum, container) => sum + container.inbound_qty, 0);
+
+  useEffect(() => {
+    if (loading || !highlightedContainerRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      highlightedContainerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [highlightedContainerId, highlightedContainerName, loading]);
 
   return (
     <div className="space-y-4">
@@ -107,8 +121,10 @@ export function InventoryInboundTab({
         <div className="planning-panel rounded-lg border p-4">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold">{pick(language, "입고 예정 컨테이너", "Expected Inbound Containers")}</h3>
-            <span className="text-xs text-muted-foreground">
-              {loading ? pick(language, "불러오는 중...", "Loading...") : pick(language, "준비됨", "Ready")}
+            <span className="text-xs font-semibold text-foreground">
+              {loading
+                ? pick(language, "불러오는 중...", "Loading...")
+                : pick(language, `총 ${formatNumber(inboundRowsTotal)} units`, `Total ${formatNumber(inboundRowsTotal)} units`)}
             </span>
           </div>
           <div className="mt-4 space-y-2">
@@ -121,18 +137,25 @@ export function InventoryInboundTab({
             ) : (
               inboundRows.map((container) => {
                 const isDraft = container.status === "draft";
+                const isHighlighted =
+                  (highlightedContainerId !== undefined && String(container.id) === highlightedContainerId) ||
+                  (highlightedContainerName !== undefined && container.name.toLowerCase() === highlightedContainerName.toLowerCase());
                 const className = `group grid gap-2 rounded-md border p-3 text-sm text-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1238a0] dark:hover:border-blue-500 dark:hover:bg-blue-950/50 dark:hover:text-blue-100 md:grid-cols-[1fr_90px_100px_90px] ${
-                  isDraft ? "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20" : ""
+                  isHighlighted
+                    ? "border-[#1a5cdb] bg-blue-100 ring-2 ring-[#1a5cdb] ring-offset-1 dark:border-blue-400 dark:bg-blue-950/60 dark:ring-blue-400"
+                    : isDraft ? "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20" : ""
                 }`;
                 return (
                   <Link
                     key={container.name}
+                    ref={isHighlighted ? highlightedContainerRef : undefined}
                     href={`/planning/container-planning?containerId=${encodeURIComponent(String(container.id))}`}
                     className={className}
                   >
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
                         <div className="truncate font-semibold">{container.name}</div>
+                        {isHighlighted ? <span className="shrink-0 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">{pick(language, "이전 화면", "From Timeline")}</span> : null}
                         {isDraft ? <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">Draft</span> : null}
                       </div>
                       <div className="text-xs text-muted-foreground group-hover:text-current">{container.status ?? pick(language, "상태 미상", "status unknown")}</div>

@@ -1004,7 +1004,7 @@ function PurchaseOrderCreateForm({
 
       <div className="flex items-center justify-between border-t border-[#e2dfd8] bg-white px-5 py-3">
         <div className="font-mono text-xs text-muted-foreground">
-          {form.number} Â· {statusLabel}
+          {form.number} · {statusLabel}
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">

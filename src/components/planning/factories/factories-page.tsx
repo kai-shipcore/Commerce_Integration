@@ -445,13 +445,13 @@ function FactoryDetail({
           <div className="mt-1 text-xs text-muted-foreground">
             {isNew
               ? "Enter the details and save"
-              : `${form.factoryCode || "No code"}${form.origin ? ` Â· ${form.origin}` : ""}`}
+              : `${form.factoryCode || "No code"}${form.origin ? ` · ${form.origin}` : ""}`}
           </div>
           {selectedFactory ? (
             <div className="mt-1 text-[10px] text-muted-foreground">
               Created {formatDate(selectedFactory.createdAt)}
               {selectedFactory.updatedAt && selectedFactory.updatedAt !== selectedFactory.createdAt
-                ? ` Â· Updated ${formatDate(selectedFactory.updatedAt)}`
+                ? ` · Updated ${formatDate(selectedFactory.updatedAt)}`
                 : ""}
             </div>
           ) : null}

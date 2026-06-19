@@ -438,7 +438,7 @@ export function SalesLinkReportTable() {
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-muted-foreground">
-          Page {totalRows === 0 ? 0 : page} of {totalPages} Â· {totalRows.toLocaleString()} rows
+          Page {totalRows === 0 ? 0 : page} of {totalPages} · {totalRows.toLocaleString()} rows
         </div>
         <div className="flex items-center gap-2">
           <Button

@@ -629,7 +629,7 @@ export function DemandPlanningGrid({
                     height: 20,
                   }}
                 >
-                  ðŸš¢ ì»¨í…Œì´ë„ˆë³„ ìž¬ê³ Â·SOD
+                  🚢 컨테이너별 재고·SOD
                 </th>
               )}
             </tr>

@@ -1,11 +1,39 @@
 import { SkuForecastsShell } from "@/components/planning/sku-forecasts/shell/sku-forecasts-shell";
+import type { SkuForecastTab } from "@/components/planning/sku-forecasts/shell/sku-forecast-tabs";
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseTab(value: string | undefined): SkuForecastTab {
+  if (value === "inventory" || value === "history" || value === "purchase") return value;
+  return "sales";
+}
 
 export default async function SkuForecastsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sku?: string | string[] }>;
+  searchParams: Promise<{
+    sku?: string | string[];
+    tab?: string | string[];
+    includeDrafts?: string | string[];
+    highlightContainerId?: string | string[];
+    highlightContainer?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
-  const initialSku = Array.isArray(params.sku) ? params.sku[0] : params.sku;
-  return <SkuForecastsShell initialSku={initialSku} />;
+  const initialSku = firstParam(params.sku);
+  const initialTab = parseTab(firstParam(params.tab));
+  const includeDrafts = firstParam(params.includeDrafts);
+  const initialIncludeDraftContainers = includeDrafts === "1" || includeDrafts === "true";
+
+  return (
+    <SkuForecastsShell
+      initialSku={initialSku}
+      initialTab={initialTab}
+      initialIncludeDraftContainers={initialIncludeDraftContainers}
+      initialHighlightedContainerId={firstParam(params.highlightContainerId)}
+      initialHighlightedContainerName={firstParam(params.highlightContainer)}
+    />
+  );
 }

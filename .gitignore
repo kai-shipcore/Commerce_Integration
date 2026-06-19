@@ -35,6 +35,7 @@ dev-server*.log
 *.headers.txt
 .codex-logs/
 .tools/
+/.claude/settings.json
 
 # env files (can opt-in for committing if needed)
 .env*

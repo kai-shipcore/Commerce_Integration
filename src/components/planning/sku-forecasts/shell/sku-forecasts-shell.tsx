@@ -9,7 +9,7 @@ import { InventoryInboundTab } from "../inventory-inbound/inventory-inbound-tab"
 import { PurchaseRecommendationTab } from "../purchase-recommendation/purchase-recommendation-tab";
 import { SalesAnalysisTab } from "../sales-analysis/sales-analysis-tab";
 import { SkuBrowserPanel } from "./sku-browser-panel";
-import { SkuForecastTabs } from "./sku-forecast-tabs";
+import { SkuForecastTabs, type SkuForecastTab } from "./sku-forecast-tabs";
 import { SkuHeader } from "./sku-header";
 import { SkuKpiStrip } from "./sku-kpi-strip";
 import {
@@ -44,14 +44,28 @@ function productKeyForSku(sku: string): ProductKey {
   return "sc";
 }
 
-export function SkuForecastsShell({ initialSku = "" }: { initialSku?: string }) {
+interface SkuForecastsShellProps {
+  initialSku?: string;
+  initialTab?: SkuForecastTab;
+  initialIncludeDraftContainers?: boolean;
+  initialHighlightedContainerId?: string;
+  initialHighlightedContainerName?: string;
+}
+
+export function SkuForecastsShell({
+  initialSku = "",
+  initialTab = "sales",
+  initialIncludeDraftContainers = false,
+  initialHighlightedContainerId,
+  initialHighlightedContainerName,
+}: SkuForecastsShellProps) {
   const normalizedInitialSku = initialSku.trim().toUpperCase();
   const [product, setProduct] = useState<ProductKey>(() => normalizedInitialSku ? productKeyForSku(normalizedInitialSku) : "fm");
   const [search, setSearch] = useState(normalizedInitialSku);
   const [selectedSkuId, setSelectedSkuId] = useState<string>(normalizedInitialSku);
   const [language, setLanguage] = useState<SkuForecastLanguage>("en");
   const [targetInventoryDays, setTargetInventoryDays] = useState(DEFAULT_TARGET_INVENTORY_DAYS);
-  const [includeDraftContainers, setIncludeDraftContainers] = useState(false);
+  const [includeDraftContainers, setIncludeDraftContainers] = useState(initialIncludeDraftContainers);
   const [salesOnly, setSalesOnly] = useState(!normalizedInitialSku);
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
   const [loadedCounts, setLoadedCounts] = useState<Record<ProductKey, number | null>>({ sc: null, cc: null, fm: null });
@@ -298,8 +312,9 @@ export function SkuForecastsShell({ initialSku = "" }: { initialSku?: string }) 
               <SkuKpiStrip sku={selectedRow} master={selectedMaster} language={language} includeDraftContainers={includeDraftContainers} />
               <SkuForecastTabs
                 language={language}
+                defaultTab={initialTab}
                 sales={<SalesAnalysisTab sku={selectedRow} language={language} />}
-                inventory={<InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
+                inventory={<InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} highlightedContainerId={initialHighlightedContainerId} highlightedContainerName={initialHighlightedContainerName} />}
                 history={<InboundHistoryTab sku={selectedRow} language={language} />}
                 purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
               />
