@@ -1551,9 +1551,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     if (!allContainers.length) return null;
 
                     const STATUS_GROUPS: { status: string; label: string; color: string; accentColor: string }[] = [
-                      { status: "shipped",          label: "Shipped", color: "#3B82F6", accentColor: "#3B82F6" },
-                      { status: "packing_received", label: "Final",   color: "#F59E0B", accentColor: "#F59E0B" },
-                      { status: "draft",            label: "Draft",   color: "#94A3B8", accentColor: "#64748B" },
+                      { status: "packing_received", label: "Shipped", color: "#3B82F6", accentColor: "#3B82F6" },
+                      { status: "shipped",          label: "Final",   color: "#F59E0B", accentColor: "#F59E0B" },
+                      { status: "draft",            label: "Draft",   color: "#EF4444", accentColor: "#EF4444" },
                     ];
 
                     return (
@@ -1576,7 +1576,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
                           {[
                             { name: "Base",          label: "Base (on-hand)",    color: "#94A3B8" },
-                            { name: "Shipped Base",  label: "Shipped Base",      color: "#F59E0B" },
+                            { name: "Shipped Base",  label: "Shipped Base",      color: "#3B82F6" },
                           ].map(({ name, label, color }) => {
                             const visible = !hiddenBases.has(name);
                             return (

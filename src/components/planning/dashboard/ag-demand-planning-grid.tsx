@@ -1102,21 +1102,21 @@ function ContainerGroupHeader(
 ) {
   const [targetDays, setTargetDays] = useState(90);
   const statusBg =
-    props.status === "shipped"
+    props.status === "packing_received"
       ? "border-t-[3px] border-blue-400 bg-blue-500/20"
-      : props.status === "packing_received"
+      : props.status === "shipped"
         ? "border-t-[3px] border-amber-400 bg-amber-500/20"
         : props.status === "draft"
-          ? "border-t-[3px] border-slate-400 bg-slate-500/20"
+          ? "border-t-[3px] border-red-400 bg-red-500/20"
           : "";
   const statusLabel =
-    props.status === "shipped"          ? "Shipped" :
-    props.status === "packing_received" ? "Final" :
+    props.status === "packing_received" ? "Shipped" :
+    props.status === "shipped"          ? "Final" :
     props.status === "draft"            ? "Draft" : null;
   const statusColor =
-    props.status === "shipped"          ? "text-blue-300" :
-    props.status === "packing_received" ? "text-amber-300" :
-    props.status === "draft"            ? "text-slate-300" : "";
+    props.status === "packing_received" ? "text-blue-300" :
+    props.status === "shipped"          ? "text-amber-300" :
+    props.status === "draft"            ? "text-red-300" : "";
   return (
     <div className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}>
       <div className="flex items-center justify-center gap-1 overflow-hidden">
