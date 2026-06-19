@@ -1551,8 +1551,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     if (!allContainers.length) return null;
 
                     const STATUS_GROUPS: { status: string; label: string; color: string; accentColor: string }[] = [
-                      { status: "shipped",          label: "Shipped", color: "#F59E0B", accentColor: "#F59E0B" },
-                      { status: "packing_received", label: "Packing", color: "#3B82F6", accentColor: "#3B82F6" },
+                      { status: "shipped",          label: "Shipped", color: "#3B82F6", accentColor: "#3B82F6" },
+                      { status: "packing_received", label: "Final",   color: "#F59E0B", accentColor: "#F59E0B" },
                       { status: "draft",            label: "Draft",   color: "#94A3B8", accentColor: "#64748B" },
                     ];
 
