@@ -1650,6 +1650,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                       <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: visible ? "#1E3A5F" : "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                         {c.name}
                                       </span>
+                                      {c.eta && (
+                                        <span style={{ fontSize: 10, fontWeight: 400, color: "#94A3B8", whiteSpace: "nowrap", fontFamily: "ui-monospace, monospace" }}>
+                                          {c.eta.slice(5)}
+                                        </span>
+                                      )}
                                     </label>
                                   );
                                 })}
