@@ -89,7 +89,7 @@ export default function UserAccessPage() {
 
     return [
       { group: "Commerce", entries: makeEntries(["inventory", "orders", "velocity"]) },
-      { group: "Planning", entries: makeEntries(["demand-planning", "sku-forecasts", "container-planning", "available-stock"]) },
+      { group: "Planning", entries: makeEntries(["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"]) },
       { group: "Master Data", entries: makeEntries(["sku-master", "seat-cover-parts", "factories", "warehouse-admin"]) },
       { group: "Admin", entries: makeEntries(["integrations", "user-access"]) },
     ].filter((group) => group.entries.length > 0);

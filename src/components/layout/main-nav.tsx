@@ -30,7 +30,7 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 
 const navigationGroups = [
   { name: "Commerce", itemIds: ["inventory", "orders", "velocity"] },
-  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "available-stock"] },
+  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"] },
   { name: "Master Data", itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
   { name: "Admin", itemIds: ["integrations", "user-access"] },
 ];
