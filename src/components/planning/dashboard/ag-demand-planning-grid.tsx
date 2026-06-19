@@ -1256,6 +1256,7 @@ export function AgDemandPlanningGrid({
   gradient = [],
   gradientSC = [],
   hiddenContainers = new Set<string>(),
+  hiddenBases = new Set<string>(),
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const gridHostRef = useRef<HTMLDivElement>(null);
@@ -1286,8 +1287,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const [backfill3Tiers, setBackfill3Tiers] = useState<SalesTargetTier[]>(DEFAULT_BACKFILL3_TIERS);
   const [backfill3CapacityMode, setBackfill3CapacityMode] = useState<CapacityMode>("fit");
 
-  const containers = useMemo(
-    () => data.containers
+  const containers = useMemo(() => {
+    const filtered = data.containers
       .map((container) => container.container_id !== undefined && etaOverrides.has(container.container_id)
         ? { ...container, eta: etaOverrides.get(container.container_id)! }
         : container)
@@ -1300,9 +1301,29 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
           return true;
         }
         return container.categories.includes(categoryFilter.toUpperCase());
-      }),
-    [categoryFilter, data.containers, etaOverrides, hiddenContainers],
-  );
+      });
+
+    // Insert virtual "Shipped Base" after the last shipped/packing container
+    if (!hiddenBases.has("Shipped Base")) {
+      let lastActiveIdx = -1;
+      for (let i = filtered.length - 1; i >= 0; i--) {
+        const s = filtered[i].status;
+        if (s === "shipped" || s === "packing_received") { lastActiveIdx = i; break; }
+      }
+      if (lastActiveIdx >= 0) {
+        const lastActive = filtered[lastActiveIdx];
+        filtered.splice(lastActiveIdx + 1, 0, {
+          col: -1,
+          name: "Shipped Base",
+          eta: lastActive.eta,
+          cbm_cap: 0,
+          status: "shipped_base",
+        });
+      }
+    }
+
+    return filtered;
+  }, [categoryFilter, data.containers, etaOverrides, hiddenContainers, hiddenBases]);
 
   const visibleRows = useMemo(() => {
     const query = search.toLowerCase();
@@ -2073,7 +2094,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
 
     if (groupVis.con) {
       for (const [containerIndex, container] of containers.entries()) {
-        const baseline = container.status === "baseline";
+        if (container.status === "baseline" && hiddenBases.has("Base")) continue;
+        const baseline = container.status === "baseline" || container.status === "shipped_base";
         groups.push({
           groupId: `container-${container.name}`,
           headerName: container.name,
@@ -2191,7 +2213,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const key = cellColorKey(params.data?.sku, columnId);
               const selected = selectedCellsRef.current.has(key);
               return {
-                backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
+                backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (container.status === "shipped_base" ? "#FEF3C7" : baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
                 ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
                 textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
                 ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),

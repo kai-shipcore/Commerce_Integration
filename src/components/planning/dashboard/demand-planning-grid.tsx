@@ -70,6 +70,7 @@ export interface DemandPlanningGridProps {
   gradient?: import("@/lib/planning/order-optimizer").GradientTier[];
   gradientSC?: import("@/lib/planning/order-optimizer").GradientTier[];
   hiddenContainers?: Set<string>;
+  hiddenBases?: Set<string>;
 }
 
 const ROW_HEIGHT = 28;

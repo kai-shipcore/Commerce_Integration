@@ -371,6 +371,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [hiddenContainers, setHiddenContainers] = useState<Set<string>>(new Set());
+  const [hiddenBases, setHiddenBases] = useState<Set<string>>(new Set());
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
   const [columnVis, setColumnVis] = useState<ColumnVisibility>(() => getColumnVisibilityForPreset("all"));
   const [compactMode, setCompactMode] = useState(false);
@@ -1571,6 +1572,32 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             </button>
                           )}
                         </div>
+                        {/* Base container toggles */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
+                          {[
+                            { name: "Base",          label: "Base (on-hand)",    color: "#94A3B8" },
+                            { name: "Shipped Base",  label: "Shipped Base",      color: "#F59E0B" },
+                          ].map(({ name, label, color }) => {
+                            const visible = !hiddenBases.has(name);
+                            return (
+                              <label key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 5px", borderRadius: 4, cursor: "pointer", background: visible ? "rgba(59,130,246,.06)" : "transparent" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={visible}
+                                  onChange={() => setHiddenBases((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(name)) next.delete(name); else next.add(name);
+                                    return next;
+                                  })}
+                                  style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
+                                />
+                                <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: visible ? "#1E3A5F" : "#94A3B8" }}>{label}</span>
+                                <span style={{ fontSize: 10, fontWeight: 600, color, whiteSpace: "nowrap" }}>Base</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div style={{ borderTop: "1px solid #E2E8F0", marginBottom: 8 }} />
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
                           {STATUS_GROUPS.map(({ status, label, color, accentColor }) => {
                             const group = allContainers.filter((c) => c.status === status);
@@ -1892,6 +1919,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           }}
           onExportReady={handleAgGridExportReady}
           hiddenContainers={hiddenContainers}
+          hiddenBases={hiddenBases}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}
