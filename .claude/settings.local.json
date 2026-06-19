@@ -16,7 +16,8 @@
       "Bash(DOTENV_CONFIG_PATH=.env npx tsx -e ' *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/api/planning/stats/refresh -X POST)",
       "Bash(curl -s http://localhost:3000/api/planning/stats/refresh -X POST)",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "c:\\MyProject\\Commerce_Integration\\src\\app\\api\\warehouses"
