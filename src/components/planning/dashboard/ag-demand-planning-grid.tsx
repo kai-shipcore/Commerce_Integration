@@ -2093,7 +2093,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     }));
 
     if (groupVis.con) {
-      for (const [containerIndex, container] of containers.entries()) {
+      // Render order: baseline, shipped_base (regardless of chain position), then all others
+      const renderOrder = [
+        ...containers.filter((c) => c.status === "baseline"),
+        ...containers.filter((c) => c.status === "shipped_base"),
+        ...containers.filter((c) => c.status !== "baseline" && c.status !== "shipped_base"),
+      ];
+      for (const [containerIndex, container] of renderOrder.entries()) {
         if (container.status === "baseline" && hiddenBases.has("Base")) continue;
         const baseline = container.status === "baseline" || container.status === "shipped_base";
         groups.push({
