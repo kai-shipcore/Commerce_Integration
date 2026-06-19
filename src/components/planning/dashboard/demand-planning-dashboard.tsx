@@ -1321,6 +1321,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </button>
                     </div>
                   </div>
+                  <div style={{ marginTop: 10, padding: "8px 6px 2px" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Reset Column Widths
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetColumnWidths}
+                      style={{ width: "100%", fontSize: 11, padding: "6px 10px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
+                    >
+                      Reset Widths
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1529,15 +1541,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                   </div>
 
-                  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #E2E8F0" }}>
-                    <button
-                      type="button"
-                      onClick={resetColumnWidths}
-                      style={{ width: "100%", fontSize: 11, padding: "6px 10px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
-                    >
-                      Reset Column Widths
-                    </button>
-                  </div>
                 </div>
               ) : null}
             </PopoverContent>

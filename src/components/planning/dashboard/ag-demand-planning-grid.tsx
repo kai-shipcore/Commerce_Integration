@@ -1106,7 +1106,17 @@ function ContainerGroupHeader(
       ? "border-t-[3px] border-blue-400 bg-blue-500/20"
       : props.status === "shipped"
         ? "border-t-[3px] border-amber-400 bg-amber-500/20"
-        : "";
+        : props.status === "draft"
+          ? "border-t-[3px] border-slate-400 bg-slate-500/20"
+          : "";
+  const statusLabel =
+    props.status === "packing_received" ? "Packing" :
+    props.status === "shipped"          ? "Shipped" :
+    props.status === "draft"            ? "Draft" : null;
+  const statusColor =
+    props.status === "packing_received" ? "text-blue-300" :
+    props.status === "shipped"          ? "text-amber-300" :
+    props.status === "draft"            ? "text-slate-300" : "";
   return (
     <div className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}>
       <div className="flex items-center justify-center gap-1 overflow-hidden">
@@ -1121,6 +1131,11 @@ function ContainerGroupHeader(
         >
           {props.displayName}
         </span>
+        {statusLabel && (
+          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${statusColor}`}>
+            {statusLabel}
+          </span>
+        )}
         {props.baseline ? null : (
           <>
             <span>| ETA</span>
