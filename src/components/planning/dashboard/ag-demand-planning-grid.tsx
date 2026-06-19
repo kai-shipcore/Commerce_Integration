@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { CalendarDays, ChartColumn } from "lucide-react";
+import { CalendarDays, ChartColumn, ExternalLink } from "lucide-react";
 import {
   AllCommunityModule,
   themeQuartz,
@@ -48,7 +48,7 @@ import {
 import type { CellContent } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, withBasePath } from "@/lib/api-path";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -337,10 +337,12 @@ function CopyableCellRenderer({
   copyValue,
   label,
   badge,
+  skuPlanningSku,
 }: ICellRendererParams<DemandRow, CellContent> & {
   copyValue: string;
   label: string;
   badge?: string;
+  skuPlanningSku?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
@@ -392,15 +394,34 @@ function CopyableCellRenderer({
       >
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <span className="text-sm font-semibold text-muted-foreground">{label}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!copyValue}
-            onClick={() => void handleCopy()}
-          >
-            {copied ? "Copied" : "Copy"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {skuPlanningSku && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.open(
+                    withBasePath(`/planning/sku-forecasts?sku=${encodeURIComponent(skuPlanningSku)}`),
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                }}
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                SKU Planning에서 열기
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!copyValue}
+              onClick={() => void handleCopy()}
+            >
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
         </div>
         <div className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-4 pb-4 text-base">
           {copyValue || "-"}
@@ -1997,6 +2018,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
               ? (params.data?.sku ?? "")
               : params.data?.containers_list ?? "",
             label: column.id === "sku" ? "Master SKU" : "Containers List",
+            skuPlanningSku: column.id === "sku" ? (params.data?.sku ?? "") : undefined,
           })
         : column.id === "cbm"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({

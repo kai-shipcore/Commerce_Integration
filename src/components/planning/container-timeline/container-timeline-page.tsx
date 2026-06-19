@@ -1048,10 +1048,23 @@ function ContainerDetailDrawer({
                 </div>
               ) : (
                 <div className="h-full overflow-x-auto overflow-y-scroll rounded-lg border border-[#e2dfd8]">
-                  <table className="w-full text-[11px]">
+                  <table className="w-full table-fixed text-[11px]">
+                    <colgroup>
+                      <col className="w-[18%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[7%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[7%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[7%]" />
+                      <col className="w-[8%]" />
+                    </colgroup>
                     <thead className="sticky top-0 z-10 bg-[#f5f4f0] shadow-[0_1px_0_#e2dfd8]">
                       <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
-                        <th className="px-3 py-2 font-semibold text-muted-foreground w-full">{sortHeader("Master SKU", "sku", "left")}</th>
+                        <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("Master SKU", "sku", "left")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("위험도", "level", "center")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 재고", "stock", "right")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("평균 판매/일", "sales", "right")}</th>
@@ -1099,7 +1112,7 @@ function ContainerDetailDrawer({
                             level === "warning" ? "bg-amber-50/60 hover:bg-amber-50" : "hover:bg-[#fafaf7]"
                           }`}
                         >
-                          <td className={`px-3 py-2 font-mono font-semibold w-full ${isHighlighted ? "text-[#1238a0]" : "text-[#1a1917]"}`}>{item.sku}</td>
+                          <td className={`px-3 py-2 font-mono font-semibold truncate ${isHighlighted ? "text-[#1238a0]" : "text-[#1a1917]"}`}>{item.sku}</td>
                           <td className="px-2 py-2 text-center">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
                               level === "critical" ? "bg-red-100 text-red-700" :
@@ -1133,7 +1146,7 @@ function ContainerDetailDrawer({
                     <tfoot>
                       <tr className="border-t border-[#e2dfd8] bg-[#f5f4f0]">
                         <td className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length} SKUs)</td>
-                        <td colSpan={8} />
+                        <td colSpan={7} />
                         <td className="px-2 py-2 text-right tabular-nums font-bold">입고 {totalQty.toLocaleString()} units</td>
                         <td />
                         <td className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)} m³</td>

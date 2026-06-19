@@ -2217,7 +2217,7 @@ function ContainerCreateForm({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold">{isEditing ? "Edit Container" : "New Container Registration"}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Enter SKU quantities directly for this container.</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Enter quantities for each SKU in this container.</p>
         </div>
         <button
           type="button"
