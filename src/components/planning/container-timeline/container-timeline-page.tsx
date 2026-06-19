@@ -1051,7 +1051,7 @@ function ContainerDetailDrawer({
                   <table className="w-full text-[11px]">
                     <thead className="sticky top-0 z-10 bg-[#f5f4f0] shadow-[0_1px_0_#e2dfd8]">
                       <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
-                        <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("Master SKU", "sku", "left")}</th>
+                        <th className="px-3 py-2 font-semibold text-muted-foreground w-full">{sortHeader("Master SKU", "sku", "left")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("위험도", "level", "center")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 재고", "stock", "right")}</th>
                         <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("평균 판매/일", "sales", "right")}</th>
@@ -1099,7 +1099,7 @@ function ContainerDetailDrawer({
                             level === "warning" ? "bg-amber-50/60 hover:bg-amber-50" : "hover:bg-[#fafaf7]"
                           }`}
                         >
-                          <td className={`px-3 py-2 font-mono font-semibold ${isHighlighted ? "text-[#1238a0]" : "text-[#1a1917]"}`}>{item.sku}</td>
+                          <td className={`px-3 py-2 font-mono font-semibold w-full ${isHighlighted ? "text-[#1238a0]" : "text-[#1a1917]"}`}>{item.sku}</td>
                           <td className="px-2 py-2 text-center">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
                               level === "critical" ? "bg-red-100 text-red-700" :
