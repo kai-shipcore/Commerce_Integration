@@ -107,7 +107,6 @@ interface ItemRow {
   masterSku: string;
   containerName: string;
   qty: number;
-  cbmUnit: number | null;
 }
 
 async function main() {
@@ -186,13 +185,8 @@ async function main() {
 
     for (const cg of containerGroups) {
       const qtyCell = row.getCell(cg.nameColIdx);
-      const cbmCell = row.getCell(cg.nameColIdx - 1); // CBM column is immediately left
-
       const qtyRaw = qtyCell.value;
-      const cbmRaw = cbmCell.value;
-
       const qty = typeof qtyRaw === "number" ? Math.round(qtyRaw) : parseInt(String(qtyRaw ?? ""), 10);
-      const cbmUnit = typeof cbmRaw === "number" ? cbmRaw : parseFloat(String(cbmRaw ?? ""));
 
       if (!qty || qty <= 0 || isNaN(qty)) continue;
 
@@ -200,7 +194,6 @@ async function main() {
         masterSku,
         containerName: cg.name,
         qty,
-        cbmUnit: isNaN(cbmUnit) || cbmUnit <= 0 ? null : cbmUnit,
       });
     }
   }
@@ -210,7 +203,7 @@ async function main() {
   if (dryRun) {
     console.log("\nDry-run preview (first 20 items):");
     for (const item of items.slice(0, 20)) {
-      console.log(`  ${item.masterSku} → ${item.containerName} qty=${item.qty} cbm=${item.cbmUnit ?? "null"}`);
+      console.log(`  ${item.masterSku} → ${item.containerName} qty=${item.qty}`);
     }
     return;
   }
@@ -241,7 +234,7 @@ async function main() {
       console.log(`  Upserted container: ${cg.name} (id=${result.rows[0].id})`);
     }
 
-    // 2. Check which SKUs exist in fc_products; also fetch cbm_per_unit as fallback
+    // 2. Check which SKUs exist in fc_products; fetch cbm_per_unit as the source of truth
     const allSkus = [...new Set(items.map((i) => i.masterSku))];
     const skuResult = await client.query<{ master_sku: string; cbm_per_unit: string | null }>(
       `SELECT master_sku, cbm_per_unit::text FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
@@ -271,7 +264,7 @@ async function main() {
       const containerId = containerIds.get(item.containerName);
       if (!containerId) continue;
 
-      const cbmUnit = item.cbmUnit ?? cbmBySkuMap.get(item.masterSku) ?? null;
+      const cbmUnit = cbmBySkuMap.get(item.masterSku) ?? null;
       await client.query(
         `INSERT INTO shipcore.fc_container_items
            (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
