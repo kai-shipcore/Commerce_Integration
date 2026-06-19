@@ -358,7 +358,7 @@ export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "col
   if ((parts[0] === "CA" || parts[0] === "CL") && parts[1] === "SC" && parts.length >= 6) {
     for (let index = parts.length - 4; index >= 2; index -= 1) {
       const [seat, no, color, tone] = parts.slice(index, index + 4);
-      if ((seat === "F" || seat === "B") && /^\d+$/.test(no ?? "") && color && tone) {
+      if ((seat === "F" || seat === "B" || seat === "R" || seat === "E") && /^\d+$/.test(no ?? "") && color && tone) {
         return { ...EMPTY_SKU_PARTS, seat, no: normalizeSkuNumber(no), color, tone };
       }
     }

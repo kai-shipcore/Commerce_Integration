@@ -32,6 +32,16 @@ export function recommendedContainerQty(row: DemandRow, multiple?: number, targe
   return rawQty === 0 ? 0 : Math.ceil(rawQty / orderMultiple) * orderMultiple;
 }
 
+export function salesVelocityTrend(row: DemandRow): { recentDaily: number; thirtyDayDaily: number; changePercent: number | null } {
+  const recentDaily = (row.west_7d + row.east_7d) / 7;
+  const thirtyDayDaily = (row.west_30d + row.east_30d) / 30;
+  return {
+    recentDaily,
+    thirtyDayDaily,
+    changePercent: thirtyDayDaily > 0 ? ((recentDaily - thirtyDayDaily) / thirtyDayDaily) * 100 : null,
+  };
+}
+
 export function productKeyForRow(row: DemandRow): ProductKey {
   if (row.category_code === "CC") return "cc";
   if (row.category_code === "FM") return "fm";

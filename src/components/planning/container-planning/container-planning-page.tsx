@@ -139,7 +139,7 @@ const productLabels: Record<ProductKey, string> = {
   ac: "Accessories",
 };
 
-const productFilterOrder: ProductKey[] = ["fm", "cc", "sc", "ac"];
+const productFilterOrder: ProductKey[] = ["fm", "cc", "sc"];
 
 const productFilterColors: Record<ProductKey, string> = {
   cc: "#1a4db0",
@@ -332,6 +332,7 @@ export function ContainerPlanningPage() {
           container.factory,
           container.note,
           container.eta,
+          ...container.items.map((item) => item.sku),
         ]
           .join(" ")
           .toLowerCase()
@@ -380,6 +381,18 @@ export function ContainerPlanningPage() {
       }
       return [...next];
     });
+  }
+
+  function matchingSkuSearch(container: MockContainer) {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return "";
+    return container.items.some((item) => item.sku.toLowerCase().includes(normalizedQuery)) ? query.trim() : "";
+  }
+
+  function selectContainer(container: MockContainer) {
+    setExpandedId(container.id);
+    setIsFormOpen(false);
+    if (matchingSkuSearch(container)) setSkuListCollapsed(false);
   }
 
   async function fetchContainers() {
@@ -1667,7 +1680,7 @@ export function ContainerPlanningPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="form-input h-9 w-72 bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-            placeholder="Search container"
+            placeholder="Search container or SKU"
           />
           <button
             type="button"
@@ -1863,15 +1876,11 @@ export function ContainerPlanningPage() {
                     key={container.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => {
-                      setExpandedId(container.id);
-                      setIsFormOpen(false);
-                    }}
+                    onClick={() => selectContainer(container)}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
-                      setExpandedId(container.id);
-                      setIsFormOpen(false);
+                      selectContainer(container);
                     }}
                     className={`flex w-full items-start gap-3 border-b border-[#e2dfd8] px-4 py-3 text-left transition-colors hover:bg-[#f0eee9] dark:border-slate-700 dark:hover:bg-slate-900 ${
                       selectedContainer?.id === container.id && !isFormOpen ? "border-l-4 border-l-[#1a5cdb] bg-[#ebf0fd] dark:bg-blue-950/40" : ""
@@ -2010,6 +2019,7 @@ export function ContainerPlanningPage() {
                 skuListCollapsed={skuListCollapsed ?? false}
                 onToggleSkuList={() => setSkuListCollapsed((current) => !(current ?? false))}
                 initialSkuSearch={targetSku}
+                highlightSkuSearch={matchingSkuSearch(selectedContainer) || targetSku}
                 detailMode
               />
             </div>
@@ -2632,6 +2642,7 @@ function ContainerCard({
   skuListCollapsed = false,
   onToggleSkuList,
   initialSkuSearch = "",
+  highlightSkuSearch = "",
   detailMode = false,
 }: {
   container: MockContainer;
@@ -2665,6 +2676,7 @@ function ContainerCard({
   skuListCollapsed?: boolean;
   onToggleSkuList?: () => void;
   initialSkuSearch?: string;
+  highlightSkuSearch?: string;
   detailMode?: boolean;
 }) {
   const totalQty = container.items.reduce((sum, item) => sum + item.qty, 0);
@@ -2686,12 +2698,25 @@ function ContainerCard({
   const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
   const [skuSearch, setSkuSearch] = useState(initialSkuSearch);
   const normalizedSkuSearch = skuSearch.trim().toLowerCase();
+  const normalizedHighlightSkuSearch = highlightSkuSearch.trim().toLowerCase();
+  const highlightedSkuRowRef = useRef<HTMLDivElement | null>(null);
   const visibleItems = normalizedSkuSearch
     ? container.items.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))
     : container.items;
+  const firstHighlightedSku = normalizedHighlightSkuSearch
+    ? visibleItems.find((item) => item.sku.toLowerCase().includes(normalizedHighlightSkuSearch))?.sku
+    : undefined;
   const activeSelectedAllocationIds = selectedAllocationIds.filter((id) => removableAllocationIds.includes(id));
   const getEditDraft = (sku: string) => inlineEditDrafts[`${container.id}::${sku}`];
   const destinationLabel = warehouseNameByCode?.get(container.destination) ?? container.destination;
+
+  useEffect(() => {
+    if (skuListCollapsed || !normalizedHighlightSkuSearch) return;
+    const frame = window.requestAnimationFrame(() => {
+      highlightedSkuRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [container.id, normalizedHighlightSkuSearch, skuListCollapsed]);
 
   function toggleAllocationSelection(allocationIds: string[], checked: boolean) {
     setSelectedAllocationIds((current) => {
@@ -2874,26 +2899,37 @@ function ContainerCard({
           ) : null}
 
           <div>
-            {visibleItems.map((item) => (
-              <SkuRow
-                key={item.sku}
-                containerId={container.id}
-                item={item}
-                editDraft={getEditDraft(item.sku)}
-                readonly={!canEditQuantity}
-                quantityOnly={isStructureLocked}
-                onStartEdit={onStartEditItem}
-                onUpdateDraft={onUpdateInlineEditDraft}
-                onSaveDraft={onSaveInlineEditDraft}
-                onFillCbm={onFillInlineEditCbm}
-                onUpdateCbm={onUpdateInlineEditCbm}
-                onCancelDraft={onCancelInlineEditDraft}
-                onDelete={onDeleteItem}
-                onRemoveAvailableAllocation={onRemoveAvailableAllocation}
-                selectedAllocationIds={activeSelectedAllocationIds}
-                onToggleAllocationSelection={toggleAllocationSelection}
-              />
-            ))}
+            {visibleItems.map((item) => {
+              const isHighlighted = Boolean(
+                normalizedHighlightSkuSearch && item.sku.toLowerCase().includes(normalizedHighlightSkuSearch),
+              );
+              const isFirstHighlighted = item.sku === firstHighlightedSku;
+              return (
+                <div
+                  key={item.sku}
+                  ref={isFirstHighlighted ? highlightedSkuRowRef : undefined}
+                  className={isHighlighted ? "relative z-[1] bg-blue-100 outline outline-2 -outline-offset-2 outline-[#1a5cdb]" : ""}
+                >
+                  <SkuRow
+                    containerId={container.id}
+                    item={item}
+                    editDraft={getEditDraft(item.sku)}
+                    readonly={!canEditQuantity}
+                    quantityOnly={isStructureLocked}
+                    onStartEdit={onStartEditItem}
+                    onUpdateDraft={onUpdateInlineEditDraft}
+                    onSaveDraft={onSaveInlineEditDraft}
+                    onFillCbm={onFillInlineEditCbm}
+                    onUpdateCbm={onUpdateInlineEditCbm}
+                    onCancelDraft={onCancelInlineEditDraft}
+                    onDelete={onDeleteItem}
+                    onRemoveAvailableAllocation={onRemoveAvailableAllocation}
+                    selectedAllocationIds={activeSelectedAllocationIds}
+                    onToggleAllocationSelection={toggleAllocationSelection}
+                  />
+                </div>
+              );
+            })}
             {visibleItems.length === 0 ? (
               <div className="border-t px-5 py-8 text-center text-sm text-muted-foreground">
                 {normalizedSkuSearch

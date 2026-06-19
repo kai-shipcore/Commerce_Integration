@@ -37,14 +37,22 @@ type SkuMasterResponse = {
   error?: string;
 };
 
-export function SkuForecastsShell() {
-  const [product, setProduct] = useState<ProductKey>("fm");
-  const [search, setSearch] = useState("");
-  const [selectedSkuId, setSelectedSkuId] = useState<string>("");
+function productKeyForSku(sku: string): ProductKey {
+  const normalized = sku.toUpperCase();
+  if (normalized.startsWith("CC-")) return "cc";
+  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "fm";
+  return "sc";
+}
+
+export function SkuForecastsShell({ initialSku = "" }: { initialSku?: string }) {
+  const normalizedInitialSku = initialSku.trim().toUpperCase();
+  const [product, setProduct] = useState<ProductKey>(() => normalizedInitialSku ? productKeyForSku(normalizedInitialSku) : "fm");
+  const [search, setSearch] = useState(normalizedInitialSku);
+  const [selectedSkuId, setSelectedSkuId] = useState<string>(normalizedInitialSku);
   const [language, setLanguage] = useState<SkuForecastLanguage>("en");
   const [targetInventoryDays, setTargetInventoryDays] = useState(DEFAULT_TARGET_INVENTORY_DAYS);
   const [includeDraftContainers, setIncludeDraftContainers] = useState(false);
-  const [salesOnly, setSalesOnly] = useState(true);
+  const [salesOnly, setSalesOnly] = useState(!normalizedInitialSku);
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
   const [loadedCounts, setLoadedCounts] = useState<Record<ProductKey, number | null>>({ sc: null, cc: null, fm: null });
   const masterLoadingRef = useRef<Set<string>>(new Set());

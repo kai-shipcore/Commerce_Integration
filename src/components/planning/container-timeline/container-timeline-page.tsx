@@ -1,20 +1,43 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, X } from "lucide-react";
-import { apiPath } from "@/lib/api-path";
+import { CalendarRange, ChevronDown, ExternalLink, Search, X } from "lucide-react";
+import { apiPath, withBasePath } from "@/lib/api-path";
+import type { DemandPlanningData, DemandRow } from "@/types/demand-planning";
+import { getUrgency, recommendedContainerQty, salesVelocityTrend } from "@/components/planning/sku-forecasts/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received" | "complete";
 type Period = "3M" | "6M" | "all";
+type TimelineProductKey = "sc" | "cc" | "fm";
+type TimelineProductFilter = "all" | TimelineProductKey;
 
 interface ContainerItem {
   id: string;
   sku: string;
   qty: number;
   cbm: number;
+}
+
+type SkuImpactLevel = "critical" | "warning" | "ok" | "unknown";
+type SkuImpactSortKey = "sku" | "level" | "stock" | "sales" | "sod" | "trend" | "stockout" | "etaImpact" | "quantity" | "totalInbound" | "postSod" | "cbm";
+type SortDirection = "asc" | "desc";
+
+interface SkuImpact {
+  item: ContainerItem;
+  currentStock: number | null;
+  averageDailySales: number | null;
+  estimatedSod: string | null;
+  salesTrendPercent: number | null;
+  stockoutBeforeEta: boolean | null;
+  requiredQty: number | null;
+  projectedStockAtEta: number | null;
+  backorderAtEta: number | null;
+  totalInboundQty: number | null;
+  postInboundSod: string | null;
+  level: SkuImpactLevel;
 }
 
 interface Container {
@@ -32,6 +55,30 @@ interface Container {
   totalQty: number;
   totalCbm: number;
   items: ContainerItem[];
+}
+
+interface ContainerApiItem {
+  id?: unknown;
+  sku?: unknown;
+  qty?: unknown;
+  cbm?: unknown;
+}
+
+interface ContainerApiRow {
+  id?: unknown;
+  containerNumber?: unknown;
+  etaDate?: unknown;
+  actualArrivalDate?: unknown;
+  status?: unknown;
+  cbmCapacity?: unknown;
+  factoryName?: unknown;
+  origin?: unknown;
+  destWarehouse?: unknown;
+  note?: unknown;
+  itemCount?: unknown;
+  totalQty?: unknown;
+  totalCbm?: unknown;
+  items?: ContainerApiItem[];
 }
 
 interface MonthSegment {
@@ -83,6 +130,19 @@ const PERIOD_OPTIONS: { value: Period; label: string; days: number | null }[] = 
   { value: "all", label: "전체", days: null },
 ];
 
+const PRODUCT_OPTIONS: { value: TimelineProductFilter; label: string; shortLabel: string }[] = [
+  { value: "all", label: "전체", shortLabel: "ALL" },
+  { value: "sc", label: "Seat Cover", shortLabel: "SC" },
+  { value: "cc", label: "Car Cover", shortLabel: "CC" },
+  { value: "fm", label: "Floor Mat", shortLabel: "FM" },
+];
+
+const PRODUCT_BADGE: Record<TimelineProductKey, string> = {
+  sc: "bg-blue-100 text-blue-700",
+  cc: "bg-violet-100 text-violet-700",
+  fm: "bg-emerald-100 text-emerald-700",
+};
+
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 const MS = 86_400_000;
@@ -93,12 +153,71 @@ const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const fmtMonthYear = (d: Date) => d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+function buildSkuImpact(item: ContainerItem, containerName: string, etaDate: string | null, row?: DemandRow): SkuImpact {
+  if (!row) {
+    return {
+      item,
+      currentStock: null,
+      averageDailySales: null,
+      estimatedSod: null,
+      salesTrendPercent: null,
+      stockoutBeforeEta: null,
+      requiredQty: null,
+      projectedStockAtEta: null,
+      backorderAtEta: null,
+      totalInboundQty: null,
+      postInboundSod: null,
+      level: "unknown",
+    };
+  }
+
+  const estimatedSod = row.sod;
+  const stockoutBeforeEta = etaDate && estimatedSod ? estimatedSod < etaDate : null;
+  const requiredQty = recommendedContainerQty(row);
+  const containerImpact = row.containers[containerName];
+  const projectedStockAtEta = containerImpact?.carryover ?? null;
+  const backorderAtEta = containerImpact?.backorder ?? null;
+  const postInboundSod = containerImpact?.est_sod ?? null;
+  const { changePercent: salesTrendPercent } = salesVelocityTrend(row);
+  const urgency = getUrgency(row);
+  const level: SkuImpactLevel = stockoutBeforeEta || (backorderAtEta ?? 0) > 0
+    ? "critical"
+    : urgency !== "healthy" || requiredQty > 0
+      ? "warning"
+      : "ok";
+
+  return {
+    item,
+    currentStock: row.total_stock,
+    averageDailySales: row.total_avg_curr,
+    estimatedSod,
+    salesTrendPercent,
+    stockoutBeforeEta,
+    requiredQty,
+    projectedStockAtEta,
+    backorderAtEta,
+    totalInboundQty: row.total_inbound_qty,
+    postInboundSod,
+    level,
+  };
+}
 
 function normalizeStatus(raw: string): ContainerStatus {
   if (raw === "shipped") return "final-list-sent";
   if (raw === "packing_received") return "packing-list-received";
   if (raw === "complete") return "complete";
   return "draft";
+}
+
+function productKeyForTimelineSku(sku: string, row?: DemandRow): TimelineProductKey | null {
+  if (row?.category_code === "SC" || row?.category_code === "CC" || row?.category_code === "FM") {
+    return row.category_code.toLowerCase() as TimelineProductKey;
+  }
+  const normalized = sku.toUpperCase();
+  if (normalized.startsWith("CC-")) return "cc";
+  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "fm";
+  if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "sc";
+  return null;
 }
 
 function buildMonths(rangeStart: Date, totalDays: number): MonthSegment[] {
@@ -128,9 +247,12 @@ function buildMonths(rangeStart: Date, totalDays: number): MonthSegment[] {
 
 export function ContainerTimelinePage() {
   const [containers, setContainers] = useState<Container[]>([]);
+  const [planningRowsBySku, setPlanningRowsBySku] = useState<Record<string, DemandRow>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Container | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [productFilter, setProductFilter] = useState<TimelineProductFilter>("all");
 
   // ── Filter state ──
   const [activeStatuses, setActiveStatuses] = useState<Set<ContainerStatus>>(
@@ -139,13 +261,26 @@ export function ContainerTimelinePage() {
   const [period, setPeriod] = useState<Period>("3M");
 
   useEffect(() => {
-    fetch(apiPath("/api/containers?includeDetails=true"))
-      .then((r) => r.json())
-      .then((json) => {
-        if (!json.success) throw new Error(json.error ?? "Failed to load");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cancelled = false;
+
+    Promise.all([
+      fetch(apiPath("/api/containers?includeDetails=true")).then((response) => response.json() as Promise<{
+        success: boolean;
+        data?: ContainerApiRow[];
+        error?: string;
+      }>),
+      fetch(apiPath("/api/planning/dashboard?mode=link&includeDrafts=1&includeContainers=1")).then((response) => response.json() as Promise<{
+        success: boolean;
+        data?: DemandPlanningData;
+        error?: string;
+      }>),
+    ])
+      .then(([containerJson, planningJson]) => {
+        if (cancelled) return;
+        if (!containerJson.success) throw new Error(containerJson.error ?? "Failed to load containers");
+        if (!planningJson.success || !planningJson.data) throw new Error(planningJson.error ?? "Failed to load planning data");
         setContainers(
-          (json.data as any[]).map((row) => ({
+          (containerJson.data ?? []).map((row) => ({
             id: String(row.id ?? ""),
             containerNumber: String(row.containerNumber ?? ""),
             etaDate: row.etaDate ? String(row.etaDate) : null,
@@ -159,8 +294,7 @@ export function ContainerTimelinePage() {
             itemCount: Number(row.itemCount ?? 0),
             totalQty: Number(row.totalQty ?? 0),
             totalCbm: Number(row.totalCbm ?? 0),
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            items: ((row.items ?? []) as any[]).map((item: any) => ({
+            items: (row.items ?? []).map((item) => ({
               id: String(item.id ?? ""),
               sku: String(item.sku ?? ""),
               qty: Number(item.qty ?? 0),
@@ -168,9 +302,18 @@ export function ContainerTimelinePage() {
             })),
           }))
         );
+        setPlanningRowsBySku(Object.fromEntries(planningJson.data.rows.map((row) => [row.sku, row])));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Unknown error"))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const today = useMemo(() => {
@@ -213,11 +356,38 @@ export function ContainerTimelinePage() {
     };
   }, [containers, today, period]);
 
+  const productKeysByContainer = useMemo(() => {
+    const result = new Map<string, TimelineProductKey[]>();
+    for (const container of containers) {
+      const keys = new Set<TimelineProductKey>();
+      for (const item of container.items) {
+        const key = productKeyForTimelineSku(item.sku, planningRowsBySku[item.sku]);
+        if (key) keys.add(key);
+      }
+      result.set(container.id, Array.from(keys));
+    }
+    return result;
+  }, [containers, planningRowsBySku]);
+
+  const productMatchedContainers = useMemo(() => {
+    if (productFilter === "all") return containers;
+    return containers.filter((container) => productKeysByContainer.get(container.id)?.includes(productFilter));
+  }, [containers, productFilter, productKeysByContainer]);
+
+  const searchMatchedContainers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return productMatchedContainers;
+    return productMatchedContainers.filter((container) =>
+      container.containerNumber.toLowerCase().includes(query) ||
+      container.items.some((item) => item.sku.toLowerCase().includes(query))
+    );
+  }, [productMatchedContainers, searchQuery]);
+
   // ── Filtered + grouped containers ────────────────────────────────────────
   const grouped = useMemo(() => {
     return STATUS_ORDER.map((status) => ({
       status,
-      items: containers.filter((c) => {
+      items: searchMatchedContainers.filter((c) => {
         if (!activeStatuses.has(c.status) || c.status !== status) return false;
         // For fixed periods, hide containers whose ETA is outside the range
         // (but keep containers with no ETA — they appear as "날짜 미정")
@@ -228,16 +398,16 @@ export function ContainerTimelinePage() {
         return true;
       }),
     })).filter((g) => g.items.length > 0);
-  }, [containers, activeStatuses, period, rangeStart, rangeEnd]);
+  }, [searchMatchedContainers, activeStatuses, period, rangeStart, rangeEnd]);
 
   // ── Summary counts for filter pills ──────────────────────────────────────
   const countsByStatus = useMemo(() => {
     const counts: Partial<Record<ContainerStatus, number>> = {};
-    for (const c of containers) {
+    for (const c of searchMatchedContainers) {
       counts[c.status] = (counts[c.status] ?? 0) + 1;
     }
     return counts;
-  }, [containers]);
+  }, [searchMatchedContainers]);
 
   function toggleStatus(status: ContainerStatus) {
     setActiveStatuses((prev) => {
@@ -284,17 +454,65 @@ export function ContainerTimelinePage() {
 
   return (
     <>
-      <div className="flex flex-col gap-4">
+      <div className={`flex flex-col gap-4 transition-[margin] duration-200 ${selected ? "2xl:mr-[1120px]" : ""}`}>
         {/* ── Page header ───────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="flex items-start gap-2">
+            <CalendarRange className="mt-1 h-5 w-5 shrink-0" />
+            <div>
             <h1 className="text-lg font-bold text-[#1a1917]">Container Timeline</h1>
             <p className="text-sm text-muted-foreground">입고 예정 컨테이너 · ETA 기준 Gantt 뷰</p>
+            </div>
           </div>
         </div>
 
         {/* ── Filter bar ───────────────────────────────────────────────── */}
         <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative w-[280px] shrink-0">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="컨테이너 이름 또는 SKU 검색"
+              aria-label="컨테이너 이름 또는 SKU 검색"
+              className="h-8 w-full rounded-lg border border-[#d8d6ce] bg-white pl-8 pr-8 text-[12px] outline-none transition-colors placeholder:text-stone-400 focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/10"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="검색어 지우기"
+                className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+
+          <span className="w-px h-4 bg-[#d8d6ce]" />
+
+          <span className="text-[11px] font-semibold text-muted-foreground">상품</span>
+          <div className="flex rounded-lg border border-[#d8d6ce] bg-[#f0eee9] p-0.5">
+            {PRODUCT_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setProductFilter(option.value)}
+                title={option.label}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  productFilter === option.value
+                    ? "bg-white text-[#1a5cdb] shadow-sm ring-1 ring-inset ring-[#d8d6ce]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {option.value === "all" ? option.label : option.shortLabel}
+              </button>
+            ))}
+          </div>
+
+          <span className="w-px h-4 bg-[#d8d6ce]" />
+
           {/* Status pills */}
           <span className="text-[11px] font-semibold text-muted-foreground">상태</span>
           {STATUS_ORDER.map((status) => {
@@ -421,6 +639,7 @@ export function ContainerTimelinePage() {
                 {group.items.map((c) => {
                   const bar = barProps(c);
                   const isSelected = selected?.id === c.id;
+                  const containerProductKeys = productKeysByContainer.get(c.id) ?? [];
                   const isDraft = c.status === "draft";
                   const cbmPct =
                     c.cbmCapacity > 0
@@ -463,6 +682,14 @@ export function ContainerTimelinePage() {
                           >
                             {STATUS_LABEL_FULL[c.status]}
                           </span>
+                          {containerProductKeys.map((key) => (
+                            <span
+                              key={key}
+                              className={`rounded px-1.5 py-px text-[9px] font-bold ${PRODUCT_BADGE[key]}`}
+                            >
+                              {key.toUpperCase()}
+                            </span>
+                          ))}
                           {c.destWarehouse && (
                             <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
                               {c.destWarehouse}
@@ -571,7 +798,15 @@ export function ContainerTimelinePage() {
       </div>
 
       {/* ── Right overlay drawer ──────────────────────────────────────────────── */}
-      {selected && <ContainerDetailDrawer container={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <ContainerDetailDrawer
+          key={selected.id}
+          container={selected}
+          planningRowsBySku={planningRowsBySku}
+          skuSearchQuery={searchQuery}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </>
   );
 }
@@ -580,14 +815,96 @@ export function ContainerTimelinePage() {
 
 function ContainerDetailDrawer({
   container: c,
+  planningRowsBySku,
+  skuSearchQuery,
   onClose,
 }: {
   container: Container;
+  planningRowsBySku: Record<string, DemandRow>;
+  skuSearchQuery: string;
   onClose: () => void;
 }) {
+  const normalizedSkuSearch = skuSearchQuery.trim().toLowerCase();
+  const [isSkuListOpen, setIsSkuListOpen] = useState(true);
+  const highlightedSkuRowRef = useRef<HTMLTableRowElement | null>(null);
+  const [skuSort, setSkuSort] = useState<{ key: SkuImpactSortKey; direction: SortDirection }>({
+    key: "sku",
+    direction: "asc",
+  });
   const totalCbm = c.items.reduce((sum, item) => sum + item.qty * item.cbm, 0);
   const totalQty = c.items.reduce((sum, item) => sum + item.qty, 0);
   const cbmUsedPct = c.cbmCapacity > 0 ? Math.min(100, (totalCbm / c.cbmCapacity) * 100) : 0;
+  const detailProductKeys = Array.from(new Set(
+    c.items
+      .map((item) => productKeyForTimelineSku(item.sku, planningRowsBySku[item.sku]))
+      .filter((key): key is TimelineProductKey => key !== null),
+  ));
+  const skuImpacts = c.items.map((item) => buildSkuImpact(item, c.containerNumber, c.etaDate, planningRowsBySku[item.sku]));
+  const sortedSkuImpacts = [...skuImpacts].sort((left, right) => {
+    const riskRank: Record<SkuImpactLevel, number> = { critical: 0, warning: 1, ok: 2, unknown: 3 };
+    const values: Record<SkuImpactSortKey, [string | number | null, string | number | null]> = {
+      sku: [left.item.sku, right.item.sku],
+      level: [riskRank[left.level], riskRank[right.level]],
+      stock: [left.currentStock, right.currentStock],
+      sales: [left.averageDailySales, right.averageDailySales],
+      sod: [left.estimatedSod, right.estimatedSod],
+      trend: [left.salesTrendPercent, right.salesTrendPercent],
+      stockout: [left.stockoutBeforeEta === null ? null : Number(left.stockoutBeforeEta), right.stockoutBeforeEta === null ? null : Number(right.stockoutBeforeEta)],
+      etaImpact: [
+        left.backorderAtEta === null && left.projectedStockAtEta === null ? null : (left.projectedStockAtEta ?? 0) - (left.backorderAtEta ?? 0),
+        right.backorderAtEta === null && right.projectedStockAtEta === null ? null : (right.projectedStockAtEta ?? 0) - (right.backorderAtEta ?? 0),
+      ],
+      quantity: [left.requiredQty, right.requiredQty],
+      totalInbound: [left.totalInboundQty, right.totalInboundQty],
+      postSod: [left.postInboundSod, right.postInboundSod],
+      cbm: [left.item.qty * left.item.cbm, right.item.qty * right.item.cbm],
+    };
+    const [leftValue, rightValue] = values[skuSort.key];
+    if (leftValue === null) return rightValue === null ? 0 : 1;
+    if (rightValue === null) return -1;
+    const result = typeof leftValue === "number" && typeof rightValue === "number"
+      ? leftValue - rightValue
+      : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+    return skuSort.direction === "asc" ? result : -result;
+  });
+  const criticalCount = skuImpacts.filter((impact) => impact.level === "critical").length;
+  const warningCount = skuImpacts.filter((impact) => impact.level === "warning").length;
+  const firstHighlightedIndex = normalizedSkuSearch
+    ? sortedSkuImpacts.findIndex(({ item }) => item.sku.toLowerCase().includes(normalizedSkuSearch))
+    : -1;
+
+  useEffect(() => {
+    if (!isSkuListOpen || firstHighlightedIndex < 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      highlightedSkuRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [firstHighlightedIndex, isSkuListOpen]);
+
+  function toggleSkuSort(key: SkuImpactSortKey) {
+    setSkuSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
+  function sortHeader(label: string, key: SkuImpactSortKey, align: "left" | "center" | "right") {
+    const active = skuSort.key === key;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSkuSort(key)}
+        className={`flex w-full items-center gap-1 ${
+          align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start"
+        }`}
+      >
+        <span>{label}</span>
+        <span className={active ? "text-[#1a5cdb]" : "text-stone-400"}>
+          {active ? (skuSort.direction === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    );
+  }
 
   const displayDate =
     c.status === "complete" && c.actualArrivalDate ? c.actualArrivalDate : c.etaDate;
@@ -601,7 +918,13 @@ function ContainerDetailDrawer({
       />
 
       {/* Drawer */}
-      <div className="fixed top-0 right-0 h-full w-[460px] z-40 bg-white border-l border-[#e2dfd8] shadow-2xl flex flex-col overflow-hidden">
+      <div
+        className="fixed right-0 w-[min(1120px,calc(100vw-24px))] z-40 bg-white border-l border-[#e2dfd8] shadow-2xl flex flex-col overflow-hidden"
+        style={{
+          top: "var(--app-header-height, 56px)",
+          height: "calc(100% - var(--app-header-height, 56px))",
+        }}
+      >
         {/* Header */}
         <div className="flex items-start justify-between px-6 py-4 border-b border-[#e2dfd8] bg-white shrink-0">
           <div className="min-w-0">
@@ -614,59 +937,61 @@ function ContainerDetailDrawer({
               >
                 {STATUS_LABEL_FULL[c.status]}
               </span>
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {c.status === "complete" && c.actualArrivalDate
-                ? `실제 입고 ${c.actualArrivalDate}`
-                : `ETA ${c.etaDate ?? "—"}`}
+              {detailProductKeys.map((key) => (
+                <span key={key} className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${PRODUCT_BADGE[key]}`}>
+                  {key.toUpperCase()}
+                </span>
+              ))}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-4 shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-[#cccac4] bg-white text-muted-foreground hover:bg-[#f0eee9] hover:text-foreground transition-colors"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <div className="ml-4 flex shrink-0 items-center gap-2">
+            <Link
+              href={`/planning/container-planning?containerId=${c.id}`}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[#1a5cdb]/30 px-3 py-1.5 text-[11px] font-semibold text-[#1a5cdb] transition-colors hover:bg-[#ebf0fd] hover:text-[#1650c4]"
+            >
+              Container Planning에서 열기
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-[#cccac4] bg-white text-muted-foreground transition-colors hover:bg-[#f0eee9] hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto">
           {/* Meta info */}
           <div className="px-6 py-4 space-y-3 border-b border-[#e2dfd8]">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-              {displayDate && (
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
-                    {c.status === "complete" ? "실제 입고" : "ETA"}
-                  </div>
-                  <div className="font-semibold">{displayDate}</div>
-                </div>
-              )}
-              {c.actualArrivalDate && c.status !== "complete" && (
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">실제 입고</div>
-                  <div className="font-semibold text-[#22a666]">{c.actualArrivalDate}</div>
-                </div>
-              )}
-              {c.factoryName && (
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">공장</div>
-                  <div className="font-semibold truncate">{c.factoryName}</div>
-                </div>
-              )}
-              {c.destWarehouse && (
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">창고</div>
-                  <div className="font-semibold truncate">{c.destWarehouse}</div>
-                </div>
-              )}
-              {c.origin && (
-                <div>
-                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Origin</div>
-                  <div className="font-semibold truncate">{c.origin}</div>
-                </div>
-              )}
+            <div className="grid grid-cols-[minmax(150px,0.8fr)_minmax(220px,1.4fr)_minmax(100px,0.7fr)] items-center gap-x-6 text-[12px]">
+              <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                <span className="font-semibold text-muted-foreground">
+                  {c.status === "complete" ? "실제 입고" : "ETA"}:
+                </span>
+                <span className="font-semibold">{displayDate ?? "—"}</span>
+              </div>
+              <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                <span className="font-semibold text-muted-foreground">공장:</span>
+                <span className="truncate font-semibold">{c.factoryName ?? "—"}</span>
+              </div>
+              <div className="flex min-w-0 items-center justify-self-end gap-2 whitespace-nowrap text-right">
+                <span className="font-semibold text-muted-foreground">창고:</span>
+                <span className="truncate font-semibold">{c.destWarehouse ?? "—"}</span>
+              </div>
             </div>
+
+            {(c.actualArrivalDate && c.status !== "complete" || c.origin) && (
+              <div className="flex items-center gap-6 text-[11px]">
+                {c.actualArrivalDate && c.status !== "complete" && (
+                  <span><span className="text-muted-foreground">실제 입고:</span> <strong className="text-[#22a666]">{c.actualArrivalDate}</strong></span>
+                )}
+                {c.origin && (
+                  <span><span className="text-muted-foreground">Origin:</span> <strong>{c.origin}</strong></span>
+                )}
+              </div>
+            )}
 
             {/* CBM bar */}
             <div>
@@ -693,68 +1018,145 @@ function ContainerDetailDrawer({
           </div>
 
           {/* SKU table */}
-          <div className="px-6 py-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+          <details
+            open={isSkuListOpen}
+            onToggle={(event) => setIsSkuListOpen(event.currentTarget.open)}
+            className="border-b border-[#e2dfd8]"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-6 py-4 hover:bg-[#fafaf7] transition-colors [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${isSkuListOpen ? "rotate-180" : ""}`}
+                />
                 SKU 목록
               </span>
-              <span className="text-[11px] text-muted-foreground">
-                {c.items.length}종 · {totalQty.toLocaleString()} pcs
+              <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                {criticalCount > 0 && (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700">
+                    Critical {criticalCount}
+                  </span>
+                )}
+                {warningCount > 0 && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">
+                    Warning {warningCount}
+                  </span>
+                )}
+                <span>{c.items.length}종 · {totalQty.toLocaleString()} pcs</span>
               </span>
-            </div>
+            </summary>
 
-            {c.items.length === 0 ? (
-              <div className="py-8 text-center text-[12px] text-muted-foreground border border-dashed border-[#d8d6ce] rounded-lg">
-                등록된 SKU가 없습니다
-              </div>
-            ) : (
-              <div className="rounded-lg border border-[#e2dfd8] overflow-hidden">
-                <table className="w-full text-[11px]">
-                  <thead>
-                    <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
-                      <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Master SKU</th>
-                      <th className="text-right px-3 py-2 font-semibold text-muted-foreground">Qty</th>
-                      <th className="text-right px-3 py-2 font-semibold text-muted-foreground">CBM/Unit</th>
-                      <th className="text-right px-3 py-2 font-semibold text-muted-foreground">Total CBM</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {c.items.map((item, i) => (
-                      <tr
-                        key={item.id || i}
-                        className="border-b border-[#f0ede8] last:border-b-0 hover:bg-[#fafaf7] transition-colors"
-                      >
-                        <td className="px-3 py-2 font-mono font-semibold text-[#1a1917]">{item.sku}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{item.qty.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{item.cbm.toFixed(4)}</td>
-                        <td className="px-3 py-2 text-right tabular-nums font-medium">{(item.qty * item.cbm).toFixed(2)}</td>
+            <div className="px-6 pb-4">
+              {c.items.length === 0 ? (
+                <div className="py-8 text-center text-[12px] text-muted-foreground border border-dashed border-[#d8d6ce] rounded-lg">
+                  등록된 SKU가 없습니다
+                </div>
+              ) : (
+                <div className="rounded-lg border border-[#e2dfd8] overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
+                        <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("Master SKU", "sku", "left")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("위험도", "level", "center")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 재고", "stock", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("평균 판매/일", "sales", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("판매 추세", "trend", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 SOD", "sod", "center")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("ETA 전 품절", "stockout", "center")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("ETA 재고 / BO", "etaImpact", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("추가 추천", "quantity", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("해당 / 전체 입고", "totalInbound", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("입고 후 SOD", "postSod", "center")}</th>
+                        <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("CBM", "cbm", "right")}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-[#e2dfd8] bg-[#f5f4f0]">
-                      <td className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length}종)</td>
-                      <td className="px-3 py-2 text-right tabular-nums font-bold">{totalQty.toLocaleString()}</td>
-                      <td className="px-3 py-2" />
-                      <td className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </div>
+                    </thead>
+                    <tbody>
+                      {sortedSkuImpacts.map(({
+                        item,
+                        level,
+                        currentStock,
+                        averageDailySales,
+                        estimatedSod,
+                        salesTrendPercent,
+                        stockoutBeforeEta,
+                        projectedStockAtEta,
+                        backorderAtEta,
+                        requiredQty,
+                        totalInboundQty,
+                        postInboundSod,
+                      }, i) => {
+                        const isHighlighted = Boolean(
+                          normalizedSkuSearch && item.sku.toLowerCase().includes(normalizedSkuSearch),
+                        );
+                        return (
+                        <tr
+                          key={item.id || i}
+                          ref={i === firstHighlightedIndex ? highlightedSkuRowRef : undefined}
+                          onDoubleClick={() => {
+                            window.open(
+                              withBasePath(`/planning/sku-forecasts?sku=${encodeURIComponent(item.sku)}`),
+                              "_blank",
+                              "noopener,noreferrer",
+                            );
+                          }}
+                          title="더블클릭하여 SKU Planning에서 열기"
+                          className={`cursor-pointer border-b border-[#f0ede8] last:border-b-0 transition-colors ${
+                            isHighlighted ? "bg-blue-100 outline outline-2 -outline-offset-2 outline-[#1a5cdb] hover:bg-blue-100" :
+                            level === "critical" ? "bg-red-50/70 hover:bg-red-50" :
+                            level === "warning" ? "bg-amber-50/60 hover:bg-amber-50" : "hover:bg-[#fafaf7]"
+                          }`}
+                        >
+                          <td className={`px-3 py-2 font-mono font-semibold ${isHighlighted ? "text-[#1238a0]" : "text-[#1a1917]"}`}>{item.sku}</td>
+                          <td className="px-2 py-2 text-center">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              level === "critical" ? "bg-red-100 text-red-700" :
+                              level === "warning" ? "bg-amber-100 text-amber-700" :
+                              level === "ok" ? "bg-emerald-100 text-emerald-700" : "bg-stone-100 text-stone-500"
+                            }`}>
+                              {level === "critical" ? "Critical" : level === "warning" ? "Warning" : level === "ok" ? "OK" : "—"}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-right tabular-nums font-semibold">{currentStock?.toLocaleString() ?? "—"}</td>
+                          <td className="px-2 py-2 text-right tabular-nums">{averageDailySales?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}</td>
+                          <td className={`px-2 py-2 text-right tabular-nums font-semibold ${
+                            salesTrendPercent === null ? "text-muted-foreground" : salesTrendPercent > 0 ? "text-red-700" : "text-emerald-700"
+                          }`}>
+                            {salesTrendPercent === null ? "—" : `${salesTrendPercent > 0 ? "+" : ""}${salesTrendPercent.toFixed(0)}%`}
+                          </td>
+                          <td className="px-2 py-2 text-center tabular-nums">{estimatedSod ?? "—"}</td>
+                          <td className={`px-2 py-2 text-center font-semibold ${stockoutBeforeEta ? "text-red-700" : "text-emerald-700"}`}>
+                            {stockoutBeforeEta === null ? "—" : stockoutBeforeEta ? "예" : "아니오"}
+                          </td>
+                          <td className={`px-2 py-2 text-right tabular-nums font-semibold ${(backorderAtEta ?? 0) > 0 ? "text-red-700" : ""}`}>
+                            {projectedStockAtEta?.toLocaleString() ?? "—"} / {backorderAtEta?.toLocaleString() ?? "—"}
+                          </td>
+                          <td className={`px-2 py-2 text-right tabular-nums font-semibold ${(requiredQty ?? 0) > 0 ? "text-amber-700" : ""}`}>
+                            {requiredQty?.toLocaleString() ?? "—"}
+                          </td>
+                          <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                            {item.qty.toLocaleString()} / {totalInboundQty?.toLocaleString() ?? "—"}
+                          </td>
+                          <td className="px-2 py-2 text-center tabular-nums">{postInboundSod ?? "—"}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{(item.qty * item.cbm).toFixed(2)}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-[#e2dfd8] bg-[#f5f4f0]">
+                        <td className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length}종)</td>
+                        <td colSpan={8} />
+                        <td className="px-2 py-2 text-right tabular-nums font-bold">입고 {totalQty.toLocaleString()}</td>
+                        <td />
+                        <td className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          </details>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-[#e2dfd8] bg-[#fafaf7] shrink-0">
-          <Link
-            href={`/planning/container-planning?containerId=${c.id}`}
-            className="flex items-center justify-center gap-1.5 w-full text-[12px] font-semibold text-[#1a5cdb] hover:text-[#1650c4] py-2 border border-[#1a5cdb]/30 rounded-lg hover:bg-[#ebf0fd] transition-colors"
-          >
-            Container Planning에서 열기
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
-        </div>
       </div>
     </>
   );

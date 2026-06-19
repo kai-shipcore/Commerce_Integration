@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
-import { formatNumber, recommendedContainerQty, type SkuMasterMeta } from "../types";
+import { formatNumber, recommendedContainerQty, salesVelocityTrend, type SkuMasterMeta } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
 
 export function PurchaseRecommendationTab({
@@ -26,11 +26,7 @@ export function PurchaseRecommendationTab({
   const orderMultiple = Math.max(master.orderMultiple || master.moq || 1, 1);
   const recommendedQty = recommendedContainerQty(sku, orderMultiple, targetInventoryDays);
   const recommendedCbm = recommendedQty * master.cbmPerUnit;
-  const recentDaily = (sku.west_7d + sku.east_7d) / 7;
-  const thirtyDayDaily = (sku.west_30d + sku.east_30d) / 30;
-  const velocityChange = thirtyDayDaily > 0
-    ? ((recentDaily - thirtyDayDaily) / thirtyDayDaily) * 100
-    : null;
+  const { recentDaily, thirtyDayDaily, changePercent: velocityChange } = salesVelocityTrend(sku);
 
   return (
     <div className="space-y-4">
