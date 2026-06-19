@@ -294,6 +294,11 @@
   <a class="nav-sub" href="#cp-status">상태 관리</a>
   <a class="nav-sub" href="#cp-complete">Complete와 Demand Planning</a>
   <a class="nav-sub" href="#cp-export">엑셀 Export</a>
+  <a class="nav-item" href="#container-timeline"><span class="icon">📅</span> Container Timeline</a>
+  <a class="nav-sub" href="#ct-overview">화면 구성</a>
+  <a class="nav-sub" href="#ct-filters">필터 & 기간 설정</a>
+  <a class="nav-sub" href="#ct-gantt">Gantt 바 읽기</a>
+  <a class="nav-sub" href="#ct-detail">상세 드로어</a>
   <a class="nav-item" href="#available-stock"><span class="icon">📦</span> Available Stock</a>
   <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU Master</a>
   <div class="nav-section" style="margin-top:20px">부록</div>
@@ -312,6 +317,7 @@
       <span class="badge">📊 Demand Planning</span>
       <span class="badge">🔍 SKU Planning</span>
       <span class="badge">🚢 Container Planning</span>
+      <span class="badge">📅 Container Timeline</span>
       <span class="badge">📦 Available Stock</span>
       <span class="badge">🗂️ SKU Master</span>
     </div>
@@ -344,12 +350,16 @@
       <div class="toc-num" style="background:#fef9c3;color:#854d0e">3</div>
       <div><h3>Container Planning</h3><p>컨테이너 등록 · 패킹 리스트 · 상태 관리</p></div>
     </a>
+    <a class="toc-item" href="#container-timeline">
+      <div class="toc-num" style="background:#e0f2fe;color:#0369a1">4</div>
+      <div><h3>Container Timeline</h3><p>ETA 기준 Gantt 뷰 · 입고 일정 한눈에 보기</p></div>
+    </a>
     <a class="toc-item" href="#available-stock">
-      <div class="toc-num" style="background:#ffe4e6;color:#9f1239">4</div>
+      <div class="toc-num" style="background:#ffe4e6;color:#9f1239">5</div>
       <div><h3>Available Stock</h3><p>여유 재고 · 미스테이크 오더 목록 관리</p></div>
     </a>
     <a class="toc-item" href="#sku-master" style="grid-column:1/-1">
-      <div class="toc-num" style="background:#f3e8ff;color:#6b21a8">5</div>
+      <div class="toc-num" style="background:#f3e8ff;color:#6b21a8">6</div>
       <div><h3>SKU Master</h3><p>SKU별 CBM · MOQ · 케이스 수량 기준 데이터 관리</p></div>
     </a>
   </div>
@@ -386,7 +396,7 @@
   </div>
   <table class="feat-table">
     <tr><td><strong>Commerce</strong></td><td>Inventory · Orders · Velocity</td></tr>
-    <tr><td><strong>Planning</strong></td><td>Demand Planning · SKU Planning · Container Planning · Available Stock</td></tr>
+    <tr><td><strong>Planning</strong></td><td>Demand Planning · SKU Planning · Container Planning · <strong>Container Timeline</strong> · Available Stock</td></tr>
     <tr><td><strong>Master Data</strong></td><td>SKU Master · Parts · Factories · Warehouse</td></tr>
     <tr><td><strong>Admin</strong></td><td>Marketplace APIs · User Access</td></tr>
   </table>
@@ -1537,6 +1547,107 @@
 <!-- ═══════════════════════════════════════════════
      4. AVAILABLE STOCK
 ═══════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════
+     4. CONTAINER TIMELINE
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="container-timeline">
+  <div class="section-header">
+    <div class="section-icon" style="background:#e0f2fe;font-size:28px">📅</div>
+    <div>
+      <div class="menu-path">메뉴 › Planning › Container Timeline</div>
+      <h2>Container Timeline</h2>
+      <p class="subtitle">입고 예정 컨테이너를 ETA(예상 도착일) 기준으로 Gantt 차트에 시각화합니다. 전체 입고 일정을 한눈에 파악하고, 컨테이너를 클릭해 SKU 상세 정보를 바로 확인할 수 있습니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/03c-container-timeline.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Container Timeline 전체 화면</p></div>'" alt="Container Timeline 메인 화면">
+    <div class="screenshot-caption">▲ Container Timeline – ETA 기준 Gantt 뷰. 상태 필터 · 기간 필터 · 검색으로 표시 범위를 제어합니다.</div>
+  </div>
+
+  <h3 id="ct-overview">① 화면 구성</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🔍 필터 바</h4>
+      <p>화면 상단에 검색창, 상태 필터 pills, 기간 선택 버튼이 위치합니다. 조건을 변경하면 Gantt 표가 즉시 업데이트됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>📊 Gantt 표</h4>
+      <p>좌측에 컨테이너 정보, 우측에 X축(날짜) 기준 입고 일정 바가 표시됩니다. 상태별로 색상이 구분됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>📋 상세 드로어</h4>
+      <p>Gantt 바 또는 행을 클릭하면 우측에 상세 패널이 슬라이드로 열립니다. SKU 목록, CBM 적재율, 메타 정보를 확인할 수 있습니다.</p>
+    </div>
+    <div class="card">
+      <h4>🚢 Container Planning 연결</h4>
+      <p>상세 드로어 하단의 링크를 클릭하면 Container Planning 페이지의 해당 컨테이너로 바로 이동합니다.</p>
+    </div>
+  </div>
+
+  <h3 id="ct-filters">② 필터 & 기간 설정</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">컨트롤</th><th>설명</th></tr>
+    <tr><td class="label">🔍 검색창</td><td>컨테이너 번호, 공장명, 출발지·목적지 창고로 실시간 필터링합니다.</td></tr>
+    <tr><td class="label">상태 필터 pills</td><td>
+      <span class="status draft">Draft</span>&nbsp;
+      <span class="status final">Final</span>&nbsp;
+      <span class="status packing">Packing</span>&nbsp;
+      <span class="status complete">Complete</span>
+      각 상태를 개별로 켜고 끌 수 있습니다. 최소 1개는 항상 활성 상태여야 합니다.
+    </td></tr>
+    <tr><td class="label">기간 버튼 (3M / 6M / 전체)</td><td>
+      <strong>3M</strong> – 오늘부터 3개월 이내 ETA 컨테이너만 표시하고, X축도 3개월로 고정합니다. (기본값)<br>
+      <strong>6M</strong> – 6개월 이내 ETA 컨테이너와 X축 6개월.<br>
+      <strong>전체</strong> – 전체 기간의 ETA를 자동으로 계산해 모든 컨테이너를 표시합니다.
+    </td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Draft 상태를 숨기고 싶다면?</b> 상단 필터 pills에서 <span class="status draft">Draft</span>를 클릭해 비활성화하면 Draft 컨테이너가 Gantt에서 사라집니다. 같은 방식으로 Complete도 숨길 수 있습니다.</div>
+  </div>
+
+  <h3 id="ct-gantt">③ Gantt 바 읽기</h3>
+  <p>Gantt 표는 상태별로 그룹화되어 표시됩니다. 각 행은 컨테이너 하나를 나타냅니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">바(Bar) 색상</td><td>
+      <span class="status draft">Draft</span> 분홍 &nbsp;|&nbsp;
+      <span class="status final">Final List Sent</span> 주황 &nbsp;|&nbsp;
+      <span class="status packing">Packing List Rcvd</span> 파랑 &nbsp;|&nbsp;
+      <span class="status complete">Complete</span> 녹색
+    </td></tr>
+    <tr><td class="label">바의 길이</td><td>해상 운송 기간(약 30일)을 나타냅니다. 출발일부터 ETA까지가 바의 범위입니다.</td></tr>
+    <tr><td class="label">바의 위치</td><td>X축의 날짜 기준으로 ETA 도착일에 오른쪽 끝이 맞춰집니다.</td></tr>
+    <tr><td class="label">좌측 정보 영역</td><td>컨테이너 번호, 공장명, 상태 뱃지, ETA 날짜, SKU 수, CBM 적재율 바가 표시됩니다.</td></tr>
+    <tr><td class="label">클릭</td><td>행 또는 Gantt 바를 클릭하면 우측 상세 드로어가 열립니다.</td></tr>
+  </table>
+
+  <h3 id="ct-detail">④ 상세 드로어 (오른쪽 패널)</h3>
+  <div class="screenshot-box">
+    <img src="screenshots/03d-container-timeline-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 드로어</p></div>'" alt="Container Timeline 상세 드로어">
+    <div class="screenshot-caption">▲ 컨테이너 클릭 시 우측에 슬라이드로 열리는 상세 드로어 — SKU 목록, CBM 적재율, 메타 정보를 표시합니다.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">메타 정보 그리드</td><td>컨테이너 번호, ETA, 공장, 출발지, 목적지 창고, 상태를 한눈에 정리해 표시합니다.</td></tr>
+    <tr><td class="label">CBM 적재율 바</td><td>총 CBM / 컨테이너 용량 비율을 시각적 프로그레스 바로 표시합니다. 과적재 시 색상이 변합니다.</td></tr>
+    <tr><td class="label">SKU 목록 테이블</td><td>이 컨테이너에 포함된 SKU별 수량(Qty)과 CBM을 표시합니다. 테이블 하단에 합계가 표시됩니다.</td></tr>
+    <tr><td class="label">메모(Note)</td><td>컨테이너에 등록된 메모를 확인합니다.</td></tr>
+    <tr><td class="label">Container Planning에서 열기</td><td>드로어 하단 링크를 클릭하면 Container Planning 페이지의 해당 컨테이너로 바로 이동합니다.</td></tr>
+    <tr><td class="label">닫기 (✕ 또는 배경 클릭)</td><td>드로어 오른쪽 상단 ✕ 버튼 또는 드로어 바깥 영역을 클릭하면 닫힙니다.</td></tr>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">✏️</span>
+    <div><b>데이터 수정은 Container Planning에서:</b> Container Timeline은 조회 전용 뷰입니다. 컨테이너 정보 수정이나 SKU 수량 변경이 필요하면 드로어 하단의 <b>"Container Planning에서 열기"</b> 링크를 통해 이동하세요.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     5. AVAILABLE STOCK
+═══════════════════════════════════════════════ -->
 <section class="page-section" id="available-stock">
   <div class="section-header">
     <div class="section-icon" style="background:#ffe4e6;font-size:28px">📦</div>
@@ -1712,6 +1823,11 @@
   <a class="nav-sub" href="#en-cp-status">Status Management</a>
   <a class="nav-sub" href="#en-cp-complete">Complete &amp; Demand Planning</a>
   <a class="nav-sub" href="#en-cp-export">Excel Export</a>
+  <a class="nav-item" href="#en-container-timeline"><span class="icon">📅</span> Container Timeline</a>
+  <a class="nav-sub" href="#en-ct-overview">Screen Layout</a>
+  <a class="nav-sub" href="#en-ct-filters">Filters &amp; Period</a>
+  <a class="nav-sub" href="#en-ct-gantt">Reading Gantt Bars</a>
+  <a class="nav-sub" href="#en-ct-detail">Detail Drawer</a>
   <a class="nav-item" href="#en-available-stock"><span class="icon">📦</span> Available Stock</a>
   <a class="nav-item" href="#en-sku-master"><span class="icon">🗂️</span> SKU Master</a>
   <div class="nav-section" style="margin-top:20px">Appendix</div>
@@ -1727,6 +1843,7 @@
       <span class="badge">📊 Demand Planning</span>
       <span class="badge">🔍 SKU Planning</span>
       <span class="badge">🚢 Container Planning</span>
+      <span class="badge">📅 Container Timeline</span>
       <span class="badge">📦 Available Stock</span>
       <span class="badge">🗂️ SKU Master</span>
     </div>
@@ -1757,12 +1874,16 @@
       <div class="toc-num" style="background:#fef9c3;color:#854d0e">3</div>
       <div><h3>Container Planning</h3><p>Container registration, packing list, and status management</p></div>
     </a>
+    <a class="toc-item" href="#en-container-timeline">
+      <div class="toc-num" style="background:#e0f2fe;color:#0369a1">4</div>
+      <div><h3>Container Timeline</h3><p>ETA-based Gantt view · inbound schedule at a glance</p></div>
+    </a>
     <a class="toc-item" href="#en-available-stock">
-      <div class="toc-num" style="background:#ffe4e6;color:#9f1239">4</div>
+      <div class="toc-num" style="background:#ffe4e6;color:#9f1239">5</div>
       <div><h3>Available Stock</h3><p>Manage surplus inventory and mistake orders</p></div>
     </a>
     <a class="toc-item" href="#en-sku-master" style="grid-column:1/-1">
-      <div class="toc-num" style="background:#f3e8ff;color:#6b21a8">5</div>
+      <div class="toc-num" style="background:#f3e8ff;color:#6b21a8">6</div>
       <div><h3>SKU Master</h3><p>Manage CBM, MOQ, and case quantity reference data per SKU</p></div>
     </a>
   </div>
@@ -1798,7 +1919,7 @@
   </div>
   <table class="feat-table">
     <tr><td><strong>Commerce</strong></td><td>Inventory · Orders · Velocity</td></tr>
-    <tr><td><strong>Planning</strong></td><td>Demand Planning · SKU Planning · Container Planning · Available Stock</td></tr>
+    <tr><td><strong>Planning</strong></td><td>Demand Planning · SKU Planning · Container Planning · <strong>Container Timeline</strong> · Available Stock</td></tr>
     <tr><td><strong>Master Data</strong></td><td>SKU Master · Parts · Factories · Warehouse</td></tr>
     <tr><td><strong>Admin</strong></td><td>Marketplace APIs · User Access</td></tr>
   </table>
@@ -2658,6 +2779,102 @@
     <tr><td>Total CBM</td><td>Qty × CBM / Unit</td></tr>
     <tr><td>Total row</td><td>Total quantity and CBM sum</td></tr>
   </table>
+</section>
+
+<!-- ═══ 4. CONTAINER TIMELINE ═══ -->
+<section class="page-section" id="en-container-timeline">
+  <div class="section-header">
+    <div class="section-icon" style="background:#e0f2fe;font-size:28px">📅</div>
+    <div>
+      <div class="menu-path">Menu › Planning › Container Timeline</div>
+      <h2>Container Timeline</h2>
+      <p class="subtitle">Visualizes inbound containers on a Gantt chart based on ETA (Estimated Time of Arrival). See the full inbound schedule at a glance, and click any container to view SKU details instantly.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/03c-container-timeline-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Container Timeline Screen</p></div>'" alt="Container Timeline Main Screen">
+    <div class="screenshot-caption">▲ Container Timeline – ETA-based Gantt view. Use status filters, period buttons, and search to control what is displayed.</div>
+  </div>
+
+  <h3 id="en-ct-overview">① Screen Layout</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🔍 Filter Bar</h4>
+      <p>Search box, status filter pills, and period buttons sit at the top of the screen. Change any setting and the Gantt table updates immediately.</p>
+    </div>
+    <div class="card">
+      <h4>📊 Gantt Table</h4>
+      <p>Container info on the left; timeline bars aligned to the date X-axis on the right. Bars are color-coded by status.</p>
+    </div>
+    <div class="card">
+      <h4>📋 Detail Drawer</h4>
+      <p>Click any Gantt bar or row to slide open a detail panel on the right. Shows the SKU list, CBM fill rate, and container metadata.</p>
+    </div>
+    <div class="card">
+      <h4>🚢 Container Planning Link</h4>
+      <p>A link at the bottom of the detail drawer jumps directly to that container in Container Planning for editing.</p>
+    </div>
+  </div>
+
+  <h3 id="en-ct-filters">② Filters &amp; Period</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Control</th><th>Description</th></tr>
+    <tr><td class="label">🔍 Search</td><td>Real-time filtering by container number, factory name, or origin/destination warehouse.</td></tr>
+    <tr><td class="label">Status filter pills</td><td>
+      <span class="status draft">Draft</span>&nbsp;
+      <span class="status final">Final</span>&nbsp;
+      <span class="status packing">Packing</span>&nbsp;
+      <span class="status complete">Complete</span>
+      Toggle each status on or off individually. At least one must always remain active.
+    </td></tr>
+    <tr><td class="label">Period buttons (3M / 6M / All)</td><td>
+      <strong>3M</strong> – Show only containers with ETA within the next 3 months; fixes the X-axis to 3 months. (Default)<br>
+      <strong>6M</strong> – 6-month ETA window and X-axis.<br>
+      <strong>All</strong> – Auto-calculates the full date range from data and shows every container.
+    </td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Want to hide Draft containers?</b> Click the <span class="status draft">Draft</span> pill in the filter bar to deactivate it — Draft containers disappear from the Gantt. You can hide Complete the same way.</div>
+  </div>
+
+  <h3 id="en-ct-gantt">③ Reading Gantt Bars</h3>
+  <p>The Gantt table groups containers by status. Each row represents one container.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Bar color</td><td>
+      <span class="status draft">Draft</span> pink &nbsp;|&nbsp;
+      <span class="status final">Final List Sent</span> orange &nbsp;|&nbsp;
+      <span class="status packing">Packing List Rcvd</span> blue &nbsp;|&nbsp;
+      <span class="status complete">Complete</span> green
+    </td></tr>
+    <tr><td class="label">Bar length</td><td>Represents the sea transit period (~30 days). The bar spans from the estimated departure date to the ETA.</td></tr>
+    <tr><td class="label">Bar position</td><td>The right edge of the bar aligns with the ETA date on the X-axis.</td></tr>
+    <tr><td class="label">Left info area</td><td>Shows container number, factory name, status badge, ETA date, SKU count, and a CBM fill-rate progress bar.</td></tr>
+    <tr><td class="label">Click</td><td>Click a row or Gantt bar to open the detail drawer on the right.</td></tr>
+  </table>
+
+  <h3 id="en-ct-detail">④ Detail Drawer (Right Panel)</h3>
+  <div class="screenshot-box">
+    <img src="screenshots/03d-container-timeline-detail-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Container Detail Drawer</p></div>'" alt="Container Timeline Detail Drawer">
+    <div class="screenshot-caption">▲ Detail drawer that slides open on the right when a container is clicked — shows SKU list, CBM fill rate, and metadata.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Metadata grid</td><td>Container number, ETA, factory, origin, destination warehouse, and status — all in one compact grid.</td></tr>
+    <tr><td class="label">CBM fill-rate bar</td><td>Visual progress bar showing total CBM vs. container capacity. Color shifts if over-packed.</td></tr>
+    <tr><td class="label">SKU list table</td><td>Lists every SKU in this container with quantity (Qty) and CBM. Totals appear at the bottom of the table.</td></tr>
+    <tr><td class="label">Note</td><td>Displays any notes attached to the container.</td></tr>
+    <tr><td class="label">Open in Container Planning</td><td>Link at the bottom of the drawer — jumps directly to this container in Container Planning.</td></tr>
+    <tr><td class="label">Close (✕ or backdrop click)</td><td>Click the ✕ button in the top-right corner of the drawer, or click outside the drawer to close it.</td></tr>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">✏️</span>
+    <div><b>Editing goes in Container Planning:</b> Container Timeline is a read-only view. To edit container info or change SKU quantities, use the <b>"Open in Container Planning"</b> link at the bottom of the drawer.</div>
+  </div>
 </section>
 
 <!-- ═══ 5. AVAILABLE STOCK ═══ -->
