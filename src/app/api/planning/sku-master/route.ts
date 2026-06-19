@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 
-type ProductKey = "cc" | "fm" | "sc";
+type ProductKey = "cc" | "fm" | "sc" | "ac";
 
 type ExcelCbmRow = {
   masterSku: string;
@@ -63,9 +63,8 @@ function inferProduct(masterSku: string): {
   weightKg: number;
 } {
   const sku = masterSku.toUpperCase();
-  const parts = sku.split("-");
 
-  if (sku.startsWith("CC-")) {
+  if (sku.startsWith("CC-") || sku === "C-SJ-GR-7") {
     return {
       productKey: "cc",
       category: "Car Cover",
@@ -77,7 +76,19 @@ function inferProduct(masterSku: string): {
     };
   }
 
-  if (sku.startsWith("CA-FM-") || parts.includes("FM")) {
+  if (sku.startsWith("CA-SC-") || sku.startsWith("CL-SC-")) {
+    return {
+      productKey: "sc",
+      category: "Seat Cover",
+      categoryCode: "SC",
+      moq: 5,
+      cbmPerUnit: 0.048,
+      caseQty: 1,
+      weightKg: 0.9,
+    };
+  }
+
+  if (sku.startsWith("CA-FM-")) {
     return {
       productKey: "fm",
       category: "Floor Mat",
@@ -90,13 +101,13 @@ function inferProduct(masterSku: string): {
   }
 
   return {
-    productKey: "sc",
-    category: "Seat Cover",
-    categoryCode: "SC",
-    moq: 5,
-    cbmPerUnit: 0.048,
+    productKey: "ac",
+    category: "Accessories",
+    categoryCode: "AC",
+    moq: 1,
+    cbmPerUnit: 0.05,
     caseQty: 1,
-    weightKg: 0.9,
+    weightKg: 0.5,
   };
 }
 

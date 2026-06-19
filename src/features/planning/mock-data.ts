@@ -1,4 +1,4 @@
-export type ProductKey = "sc" | "cc" | "fm";
+export type ProductKey = "sc" | "cc" | "fm" | "ac";
 export type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received" | "complete";
 export type PurchaseOrderStatus = "draft" | "approved" | "sent";
 
@@ -65,6 +65,7 @@ export const productLabels: Record<ProductKey, string> = {
   sc: "Seat Cover",
   cc: "Car Cover",
   fm: "Floor Mat",
+  ac: "Accessories",
 };
 
 export const mockSkus: MockSku[] = [

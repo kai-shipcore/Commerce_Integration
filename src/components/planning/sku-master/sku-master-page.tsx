@@ -45,6 +45,12 @@ const productMeta: Record<
     badgeClass: "bg-[#e5e9ff] text-[#2855d9] dark:bg-blue-950/70 dark:text-blue-300",
     cbmClass: "text-[#b56a00]",
   },
+  ac: {
+    label: "Accessories",
+    icon: "AC",
+    badgeClass: "bg-[#f0e6ff] text-[#7c3aed] dark:bg-purple-950/70 dark:text-purple-300",
+    cbmClass: "text-[#b56a00]",
+  },
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US");

@@ -129,26 +129,30 @@ const productBadgeClasses: Record<ProductKey, string> = {
   sc: "bg-[#e6f5f0] text-[#0a5e45] dark:bg-emerald-950/60 dark:text-emerald-300",
   cc: "bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/60 dark:text-blue-300",
   fm: "bg-[#fef3e2] text-[#8a5300] dark:bg-amber-950/60 dark:text-amber-300",
+  ac: "bg-[#f0e6ff] text-[#7c3aed] dark:bg-purple-950/60 dark:text-purple-300",
 };
 
 const productLabels: Record<ProductKey, string> = {
   fm: "Floor Mat",
   cc: "Car Cover",
   sc: "Seat Cover",
+  ac: "Accessories",
 };
 
-const productFilterOrder: ProductKey[] = ["fm", "cc", "sc"];
+const productFilterOrder: ProductKey[] = ["fm", "cc", "sc", "ac"];
 
 const productFilterColors: Record<ProductKey, string> = {
   cc: "#1a4db0",
   fm: "#8a5300",
   sc: "#0a5e45",
+  ac: "#7c3aed",
 };
 
 const productFilterIcons: Record<ProductKey, string> = {
   cc: "🚗",
   fm: "🧩",
   sc: "💺",
+  ac: "🎁",
 };
 
 const SKU_LIST_COLLAPSED_STORAGE_KEY = "container-planning-sku-list-collapsed";

@@ -213,7 +213,7 @@ export async function POST() {
            ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("l")}    AS order_type,
            ${MASTER_SKU_REMAP_CASE("l.master_sku")} AS link_master_sku,
-           SUM(l.fulfilled_quantity)::int AS link_qty,
+           SUM(l.quantity)::int AS link_qty,
            l.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
@@ -241,7 +241,7 @@ export async function POST() {
            ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("c")}    AS order_type,
            ${MASTER_SKU_REMAP_CASE("c.master_sku")} AS custom_master_sku,
-           SUM(c.fulfilled_quantity)::int AS custom_qty,
+           SUM(c.quantity)::int AS custom_qty,
            c.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
