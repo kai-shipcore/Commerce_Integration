@@ -1255,6 +1255,7 @@ export function AgDemandPlanningGrid({
   onExportReady,
   gradient = [],
   gradientSC = [],
+  hiddenContainers = new Set<string>(),
 }: DemandPlanningGridProps) {
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const gridHostRef = useRef<HTMLDivElement>(null);
@@ -1292,6 +1293,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         : container)
       .filter((container) => {
         if (container.status === "baseline") return true;
+        if (hiddenContainers.has(container.name)) return false;
         if (!container.categories?.length) {
           if (container.name.endsWith("-FLOOR")) return categoryFilter === "fm";
           if (container.name.endsWith("-SEAT")) return categoryFilter === "sc";
@@ -1299,7 +1301,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         }
         return container.categories.includes(categoryFilter.toUpperCase());
       }),
-    [categoryFilter, data.containers, etaOverrides],
+    [categoryFilter, data.containers, etaOverrides, hiddenContainers],
   );
 
   const visibleRows = useMemo(() => {

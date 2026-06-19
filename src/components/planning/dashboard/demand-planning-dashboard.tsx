@@ -370,6 +370,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [openSkuFilterKey]);
 
   // ── Column visibility state (lifted from grid) ──────────────────────────────
+  const [hiddenContainers, setHiddenContainers] = useState<Set<string>>(new Set());
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
   const [columnVis, setColumnVis] = useState<ColumnVisibility>(() => getColumnVisibilityForPreset("all"));
   const [compactMode, setCompactMode] = useState(false);
@@ -1541,6 +1542,78 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                   </div>
 
+                  {/* Container Visibility */}
+                  {(() => {
+                    const visibleContainers = data.containers.filter(
+                      (c) => c.status !== "baseline" && containerMatchesCategory(c, categoryFilter)
+                    );
+                    if (!visibleContainers.length) return null;
+                    return (
+                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            Container Visibility
+                          </div>
+                          {hiddenContainers.size > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setHiddenContainers(new Set())}
+                              style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
+                            >
+                              Show All
+                            </button>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+                          {visibleContainers.map((c) => {
+                            const visible = !hiddenContainers.has(c.name);
+                            const statusLabel =
+                              c.status === "packing_received" ? "Packing" :
+                              c.status === "shipped"          ? "Shipped" :
+                              c.status === "draft"            ? "Draft"   : c.status ?? "";
+                            const statusColor =
+                              c.status === "packing_received" ? "#3B82F6" :
+                              c.status === "shipped"          ? "#F59E0B" :
+                              c.status === "draft"            ? "#94A3B8" : "#94A3B8";
+                            return (
+                              <label
+                                key={c.name}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  padding: "3px 5px",
+                                  borderRadius: 4,
+                                  cursor: "pointer",
+                                  background: visible ? "rgba(59,130,246,.06)" : "transparent",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={visible}
+                                  onChange={() => setHiddenContainers((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(c.name)) next.delete(c.name); else next.add(c.name);
+                                    return next;
+                                  })}
+                                  style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
+                                />
+                                <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: visible ? "#1E3A5F" : "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {c.name}
+                                </span>
+                                {statusLabel && (
+                                  <span style={{ fontSize: 10, fontWeight: 600, color: statusColor, whiteSpace: "nowrap" }}>
+                                    {statusLabel}
+                                  </span>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                 </div>
               ) : null}
             </PopoverContent>
@@ -1798,6 +1871,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             setSelectedAgCells(cells);
           }}
           onExportReady={handleAgGridExportReady}
+          hiddenContainers={hiddenContainers}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}
