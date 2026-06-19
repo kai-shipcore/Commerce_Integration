@@ -436,7 +436,7 @@
     <tr><td class="label">제품 타입</td><td>Original / Custom으로 SKU를 추가 분류합니다.</td></tr>
     <tr><td class="label">긴급도 필터</td><td><span class="status critical">Critical</span> <span class="status warn">Warning</span> <span class="status complete">BackOrder</span> 상태의 SKU만 추려볼 때 사용합니다.</td></tr>
     <tr><td class="label">🔍 검색창</td><td>SKU 이름 또는 컨테이너 번호로 실시간 필터링합니다.</td></tr>
-    <tr><td class="label">Con Qty 필터</td><td>발주 수량이 입력된 SKU / 비어 있는 SKU만 표시합니다.</td></tr>
+    <tr><td class="label">Con Qty 필터</td><td>발주 수량이 입력된 SKU 또는 비어 있는 SKU만 표시합니다. 필터 해제는 <strong>All</strong>을 선택하세요.</td></tr>
     <tr><td class="label">날짜 (As of)</td><td>특정 날짜 기준 과거 재고 현황을 조회할 때 사용합니다. 기본값은 오늘입니다.</td></tr>
     <tr><td class="label">Sync 버튼</td><td>서버에서 최신 재고 데이터를 다시 불러옵니다.</td></tr>
     <tr><td class="label">Export 버튼</td><td>현재 필터가 적용된 데이터를 CSV로 내보냅니다.</td></tr>
@@ -499,7 +499,7 @@
     <tr>
       <td><strong>Inventory</strong></td>
       <td>Mode · West Stock · East Stock · Transit Stock · Total Stock</td>
-      <td>재고 현황. Mode는 재고 계산 방식(onhand/available).</td>
+      <td>재고 현황. <strong>Mode</strong>: 재고 계산 기준을 전환합니다. <strong>Onhand</strong>: 실물 재고 수량 기준. <strong>Available</strong>: Available Stock에서 배정된 수량이 차감된 가용 재고 기준.</td>
     </tr>
     <tr>
       <td><strong>West FBM Sales</strong></td>
@@ -594,19 +594,19 @@
     <div class="card" style="border-left:4px solid #10b981">
       <h4>🚗 Car Cover (CC) — 5개 필터</h4>
       <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
-        <tr style="background:#f0fdf4"><th style="padding:4px 8px;text-align:left;width:110px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명</th></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Type</td><td style="padding:4px 8px">제품 타입 구분</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Fabric</td><td style="padding:4px 8px">원단 재질</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">사이즈</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">컬러 코드</td></tr>
-        <tr><td style="padding:4px 8px;font-weight:600">Color Type</td><td style="padding:4px 8px">컬러 타입</td></tr>
+        <tr style="background:#f0fdf4"><th style="padding:4px 8px;text-align:left;width:110px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명</th><th style="padding:4px 8px;text-align:left">예시</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Type</td><td style="padding:4px 8px">제품 타입 구분</td><td style="padding:4px 8px">SC, UV, HD</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Fabric</td><td style="padding:4px 8px">원단 재질</td><td style="padding:4px 8px">2L, 3L, 4L</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">사이즈</td><td style="padding:4px 8px">S, M, L, XL</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">컬러 코드</td><td style="padding:4px 8px">BK, SL, GY</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Color Type</td><td style="padding:4px 8px">컬러 타입</td><td style="padding:4px 8px">1TO, STI</td></tr>
       </table>
     </div>
     <div class="card" style="border-left:4px solid #f59e0b">
       <h4>🧩 Floor Mat (FM) — 7개 필터</h4>
       <p style="font-size:12px;color:#6b7280;margin-bottom:8px">SKU 코드의 각 파트를 위치 기준(SKU 1~7)으로 분리해 필터링합니다.</p>
       <table style="width:100%;font-size:12px;border-collapse:collapse">
-        <tr style="background:#fffbeb"><th style="padding:4px 8px;text-align:left;width:60px">필터</th><th style="padding:4px 8px;text-align:left">대응 SKU 파트</th></tr>
+        <tr style="background:#fffbeb"><th style="padding:4px 8px;text-align:left;width:60px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명 (SKU 파트)</th></tr>
         <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 1</td><td style="padding:4px 8px">Prefix</td></tr>
         <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 2</td><td style="padding:4px 8px">Product Code</td></tr>
         <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 3</td><td style="padding:4px 8px">Surface</td></tr>
@@ -619,11 +619,11 @@
     <div class="card" style="border-left:4px solid #8b5cf6">
       <h4>🎁 Accessories (AC) — 4개 필터</h4>
       <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
-        <tr style="background:#faf5ff"><th style="padding:4px 8px;text-align:left;width:110px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명</th></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat</td><td style="padding:4px 8px">시트 포지션</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">No.</td><td style="padding:4px 8px">차종 모델 번호</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">컬러 코드</td></tr>
-        <tr><td style="padding:4px 8px;font-weight:600">Tone</td><td style="padding:4px 8px">톤/변형 구분</td></tr>
+        <tr style="background:#faf5ff"><th style="padding:4px 8px;text-align:left;width:110px">필터 라벨</th><th style="padding:4px 8px;text-align:left">설명</th><th style="padding:4px 8px;text-align:left">예시</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat</td><td style="padding:4px 8px">시트 포지션</td><td style="padding:4px 8px">F, B, FB</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">No.</td><td style="padding:4px 8px">차종 모델 번호</td><td style="padding:4px 8px">001, 042, 083</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">컬러 코드</td><td style="padding:4px 8px">BK, GY, BE</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Tone</td><td style="padding:4px 8px">톤/변형 구분</td><td style="padding:4px 8px">1TO, STI</td></tr>
       </table>
     </div>
   </div>
@@ -726,7 +726,7 @@
     <tr><th style="width:80px">버튼</th><th>기능</th><th>목표 일수 결정</th><th>언제 사용?</th></tr>
     <tr>
       <td class="label" style="color:#2563eb;font-size:18px">📅</td>
-      <td><strong>고정 목표 계산</strong><br><code>발주량 = ROUNDUP((일판매 × 목표일 + BackOrder − 잔여재고) ÷ step) × step</code></td>
+      <td><strong>고정 목표 계산</strong><br><code>발주량 = ROUNDUP((일판매 × 목표일 + BackOrder − 잔여재고) ÷ step) × step</code><br><span style="font-size:11px;color:#6b7280;margin-top:4px;display:inline-block">※ <strong>BackOrder</strong>: 이전 컨테이너에서 이월되는 누적 백오더 수량 · <strong>잔여재고</strong>: 이전 컨테이너 이월 재고 − ETA 전 소진 예상량 = max(0, 이월재고 − 일판매 × gap일수)</span></td>
       <td>헤더의 숫자 입력칸 값 사용 (기본 90일)</td>
       <td>모든 SKU에 동일한 목표 일수를 적용할 때</td>
     </tr>
@@ -740,7 +740,7 @@
 
   <div class="callout tip">
     <span class="callout-icon">💡</span>
-    <div><b>저장 전 미리보기:</b> 두 버튼 모두 클릭 즉시 수량이 반영되지만 DB에는 저장되지 않습니다. 확인 후 <span class="btn-label">💾 Save</span>를 눌러야 최종 저장됩니다. 되돌리려면 <span class="btn-label">↺ Reset</span>을 누르세요.</div>
+    <div><b>저장 전 미리보기:</b> 두 버튼 모두 클릭 즉시 수량이 반영되지만 DB에는 저장되지 않습니다. 확인 후 <span class="btn-label">💾 Save</span>를 눌러야 최종 저장됩니다. 되돌리려면 <span class="btn-label">↺ Reset</span>을 누르세요. Reset은 DB에 저장된 마지막 값으로 되돌립니다.</div>
   </div>
 
   <h3 class="sub">📅 버튼 목표 일수 변경 방법</h3>
@@ -1093,7 +1093,7 @@
   <table class="feat-table">
     <tr><th style="width:160px">컬럼</th><th>설명</th></tr>
     <tr><td class="label">Container Number</td><td>컨테이너 번호. 클릭하면 Container Planning의 해당 컨테이너 상세 페이지로 이동합니다.</td></tr>
-    <tr><td class="label">Status</td><td>컨테이너 현재 상태 (Draft / Shipped / Packing / Complete) 뱃지로 표시.</td></tr>
+    <tr><td class="label">Status</td><td>컨테이너 현재 상태를 색상 뱃지로 표시 (Draft · Final List Sent · Packing List Rcvd · Complete).</td></tr>
     <tr><td class="label">ETA</td><td>예상 도착일.</td></tr>
     <tr><td class="label">Qty</td><td>해당 컨테이너에 배정된 이 SKU의 수량.</td></tr>
     <tr><td class="label">Done / Changed</td><td>Complete 전환일 또는 마지막 수정일.</td></tr>
@@ -1337,6 +1337,11 @@
       <td>입고 완료. <strong>Demand Planning에서 완전 제외.</strong> 삭제는 Planner/Admin만 가능.</td>
     </tr>
   </table>
+
+  <div class="callout warn" style="margin-top:16px">
+    <span class="callout-icon">⚠️</span>
+    <div><b>컨테이너 전체 삭제:</b> 컨테이너를 완전히 삭제하려면 <strong>Planner 또는 Admin</strong> 권한이 필요합니다. 컨테이너 상세 패널 하단에서 삭제 버튼을 찾을 수 있습니다. 삭제된 컨테이너와 하위 SKU 수량은 복구할 수 없으므로 신중하게 사용하세요. 잘못 입력된 컨테이너를 숨기려면 삭제 대신 <span class="status draft">Draft</span> 상태를 유지하는 것을 권장합니다.</div>
+  </div>
 
   <!-- Complete 상태 상세 설명 -->
   <h3 id="cp-complete">④ Complete 상태와 Demand Planning 표시 규칙</h3>
@@ -1668,7 +1673,7 @@
     <tr><td class="label">Carryover</td><td>컨테이너 도착 이후 남는 잔여 재고.</td></tr>
     <tr><td class="label">Transit Stock</td><td>현재 운송 중인 재고 (아직 창고에 미입고).</td></tr>
     <tr><td class="label">Con. Qty</td><td>Container Quantity. 해당 컨테이너에 담을 발주 수량.</td></tr>
-    <tr><td class="label">Gradient Tier</td><td>일판매량 구간별 재고 목표 일수 보너스 테이블. TOP·A·B·C·D 5단계.</td></tr>
+    <tr><td class="label">Gradient Tier</td><td>📊 자동계산 버튼의 구간별 목표 일수 시스템. 각 구간은 최소 일판매량(Min Avg Sales)과 목표 재고 일수(Target Days)로 구성됩니다. 기본 4구간(≥10개→90일, ≥5개→80일, ≥3개→70일, 나머지→60일)이며 다이얼로그에서 자유롭게 변경할 수 있습니다.</td></tr>
     <tr><td class="label">Remaining List</td><td>생산 완료 후 창고에서 입고 대기 중인 정상 재고 목록.</td></tr>
     <tr><td class="label">Mistake Order</td><td>발주 오류·취소 등으로 발생한 잉여 재고 목록.</td></tr>
   </table>
@@ -1839,7 +1844,7 @@
     <tr><td class="label">Product Type</td><td>Further filter SKUs as Original or Custom.</td></tr>
     <tr><td class="label">Urgency Filter</td><td>Filter to show only SKUs with <span class="status critical">Critical</span>, <span class="status warn">Warning</span>, or <span class="status complete">BackOrder</span> status.</td></tr>
     <tr><td class="label">🔍 Search</td><td>Real-time filter by SKU name or container number.</td></tr>
-    <tr><td class="label">Con Qty Filter</td><td>Show only SKUs with an order quantity entered, or only those without one.</td></tr>
+    <tr><td class="label">Con Qty Filter</td><td>Show only SKUs with an order quantity entered, or only those without one. Select <strong>All</strong> to clear the filter.</td></tr>
     <tr><td class="label">Date (As of)</td><td>View historical inventory status as of a specific date. Defaults to today.</td></tr>
     <tr><td class="label">Sync Button</td><td>Reload the latest inventory data from the server.</td></tr>
     <tr><td class="label">Export Button</td><td>Export the current filtered data as CSV.</td></tr>
@@ -1874,14 +1879,14 @@
   <table class="feat-table">
     <tr><th style="width:200px">Group</th><th>Included Columns</th><th>Notes</th></tr>
     <tr style="background:#f0f4ff"><td><strong>Basic Info</strong></td><td># · Container Info. · CBM · Back · Sales Status · Master SKU</td><td>Always visible. Cannot be hidden.</td></tr>
-    <tr><td><strong>Inventory</strong></td><td>Mode · West Stock · East Stock · Transit Stock · Total Stock</td><td>Mode controls calculation method (onhand/available).</td></tr>
+    <tr><td><strong>Inventory</strong></td><td>Mode · West Stock · East Stock · Transit Stock · Total Stock</td><td>Inventory figures. <strong>Mode</strong> switches the calculation basis: <strong>Onhand</strong> = raw warehouse stock count; <strong>Available</strong> = on-hand minus quantities allocated from Available Stock.</td></tr>
     <tr><td><strong>West FBM Sales</strong></td><td>West 90D · 60D · 30D · 15D · 7D · W Pre 30D</td><td>West (FBM) sales by period.</td></tr>
     <tr><td><strong>East FBM Sales</strong></td><td>East 90D · 60D · 30D · 15D · 7D · E Pre 30D</td><td>East (FBM) sales by period.</td></tr>
     <tr><td><strong>West Avg Daily</strong></td><td>W Avg Prior · W Avg Actual · W Avg Current</td><td>West daily average (prior season / actual / currently applied).</td></tr>
     <tr><td><strong>East Avg Daily</strong></td><td>E Avg Prior · E Avg Actual · E Avg Current</td><td>East daily average sales.</td></tr>
     <tr><td><strong>FBA Avg</strong></td><td>FBA Actual · FBA Current</td><td>FBA channel daily average sales.</td></tr>
     <tr><td><strong>Sales 30D</strong></td><td>W FBM 30D · E FBM 30D · FBA 30D · Total 30D</td><td>Last 30-day sales total by channel.</td></tr>
-    <tr><td><strong>Total Avg Daily</strong></td><td>T.Avg Prior · T.Avg Actual · T.Avg Current</td><td>All-channel daily average. Base value for Auto-Fill (📅/🧮/📊).</td></tr>
+    <tr><td><strong>Total Avg Daily</strong></td><td>T.Avg Prior · T.Avg Actual · T.Avg Current</td><td>All-channel daily average. Base value for Auto-Fill (📅/📊).</td></tr>
     <tr><td><strong>Inbound / Container / SOD</strong></td><td>Inbound Qty · Containers List · Next ETA · S.O.D</td><td>Expected inbound total, container list, next ETA, estimated sell-out date.</td></tr>
     <tr style="background:#f0f7ff"><td><strong>Container Columns</strong><br><span style="font-size:11px;color:#6b7280">(shared sub-columns per container)</span></td><td>Con. Qty · Rem. Qty · Open Orders · Avail Qty · Est. Sales · Back Order · Carry over · Inv. Life · EST. SOD · Plan SOD · CBM</td><td>Controlled via Container Columns button or individual checkboxes. Sub-columns under each container header.</td></tr>
   </table>
@@ -1932,19 +1937,19 @@
     <div class="card" style="border-left:4px solid #10b981">
       <h4>🚗 Car Cover (CC) — 5 Filters</h4>
       <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
-        <tr style="background:#f0fdf4"><th style="padding:4px 8px;text-align:left;width:120px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description</th></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Type</td><td style="padding:4px 8px">Product type</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Fabric</td><td style="padding:4px 8px">Fabric material</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">Size</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">Color code</td></tr>
-        <tr><td style="padding:4px 8px;font-weight:600">Color Type</td><td style="padding:4px 8px">Color type</td></tr>
+        <tr style="background:#f0fdf4"><th style="padding:4px 8px;text-align:left;width:120px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description</th><th style="padding:4px 8px;text-align:left">Examples</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Type</td><td style="padding:4px 8px">Product type</td><td style="padding:4px 8px">SC, UV, HD</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Fabric</td><td style="padding:4px 8px">Fabric material</td><td style="padding:4px 8px">2L, 3L, 4L</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Size</td><td style="padding:4px 8px">Size</td><td style="padding:4px 8px">S, M, L, XL</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">Color code</td><td style="padding:4px 8px">BK, SL, GY</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Color Type</td><td style="padding:4px 8px">Color type</td><td style="padding:4px 8px">1TO, STI</td></tr>
       </table>
     </div>
     <div class="card" style="border-left:4px solid #f59e0b">
       <h4>🧩 Floor Mat (FM) — 7 Filters</h4>
       <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Filters each part of the SKU code by position (SKU 1 – SKU 7).</p>
       <table style="width:100%;font-size:12px;border-collapse:collapse">
-        <tr style="background:#fffbeb"><th style="padding:4px 8px;text-align:left;width:60px">Filter</th><th style="padding:4px 8px;text-align:left">Corresponding SKU Part</th></tr>
+        <tr style="background:#fffbeb"><th style="padding:4px 8px;text-align:left;width:60px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description (SKU Part)</th></tr>
         <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 1</td><td style="padding:4px 8px">Prefix</td></tr>
         <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 2</td><td style="padding:4px 8px">Product Code</td></tr>
         <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">SKU 3</td><td style="padding:4px 8px">Surface</td></tr>
@@ -1957,11 +1962,11 @@
     <div class="card" style="border-left:4px solid #8b5cf6">
       <h4>🎁 Accessories (AC) — 4 Filters</h4>
       <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:8px">
-        <tr style="background:#faf5ff"><th style="padding:4px 8px;text-align:left;width:120px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description</th></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat</td><td style="padding:4px 8px">Seat position</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">No.</td><td style="padding:4px 8px">Vehicle model number</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">Color code</td></tr>
-        <tr><td style="padding:4px 8px;font-weight:600">Tone</td><td style="padding:4px 8px">Tone / variant</td></tr>
+        <tr style="background:#faf5ff"><th style="padding:4px 8px;text-align:left;width:120px">Filter Label</th><th style="padding:4px 8px;text-align:left">Description</th><th style="padding:4px 8px;text-align:left">Examples</th></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Seat</td><td style="padding:4px 8px">Seat position</td><td style="padding:4px 8px">F, B, FB</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">No.</td><td style="padding:4px 8px">Vehicle model number</td><td style="padding:4px 8px">001, 042, 083</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:600">Color</td><td style="padding:4px 8px">Color code</td><td style="padding:4px 8px">BK, GY, BE</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:600">Tone</td><td style="padding:4px 8px">Tone / variant</td><td style="padding:4px 8px">1TO, STI</td></tr>
       </table>
     </div>
   </div>
@@ -2028,7 +2033,7 @@
     <tr><th style="width:80px">Button</th><th>Function</th><th>Target Days</th><th>When to Use</th></tr>
     <tr>
       <td class="label" style="color:#2563eb;font-size:18px">📅</td>
-      <td><strong>Fixed Target Calculation</strong><br><code>Order Qty = ROUNDUP((daily avg × target days + BackOrder − remaining stock) ÷ step) × step</code></td>
+      <td><strong>Fixed Target Calculation</strong><br><code>Order Qty = ROUNDUP((daily avg × target days + BackOrder − remaining stock) ÷ step) × step</code><br><span style="font-size:11px;color:#6b7280;margin-top:4px;display:inline-block">※ <strong>BackOrder</strong>: cumulative back-order carried forward from the previous container · <strong>remaining stock</strong>: carryover from the previous container minus estimated sales before this ETA = max(0, carryover − daily avg × gap days)</span></td>
       <td>Uses number input value (default 90)</td>
       <td>When you want the same target days applied uniformly to all SKUs</td>
     </tr>
@@ -2041,7 +2046,7 @@
   </table>
   <div class="callout tip">
     <span class="callout-icon">💡</span>
-    <div><b>Preview before saving:</b> Both buttons apply quantities immediately but do not write to the database. Click <span class="btn-label">💾 Save</span> to finalize. Click <span class="btn-label">↺ Reset</span> to undo.</div>
+    <div><b>Preview before saving:</b> Both buttons apply quantities immediately but do not write to the database. Click <span class="btn-label">💾 Save</span> to finalize. Click <span class="btn-label">↺ Reset</span> to revert to the last saved database values.</div>
   </div>
 
   <h3 class="sub">Changing the 📅 Target Days</h3>
@@ -2190,6 +2195,7 @@
     <tr><td class="label">Active Containers / Include Draft</td><td>Toggle. <strong>Active Containers</strong>: confirmed containers only. <strong>Include Draft</strong>: include Draft container inbound quantities in calculations.</td></tr>
     <tr><td class="label">Target Stock Days (1–365)</td><td>Sets the target inventory days for the Container Recommendation tab. Larger values increase the recommended order quantity.</td></tr>
     <tr><td class="label">🔄 Sync</td><td>Reload the latest demand planning data from the server.</td></tr>
+    <tr><td class="label">Language (KO / EN)</td><td>Switch all screen labels between Korean and English. Saved to localStorage.</td></tr>
   </table>
 
   <h3 id="en-sp-browser">① Left SKU Browser Panel</h3>
@@ -2315,7 +2321,7 @@
   <table class="feat-table">
     <tr><th style="width:180px">Column</th><th>Description</th></tr>
     <tr><td class="label">Container Number</td><td>Container identifier. Click to navigate directly to that container's detail page in Container Planning.</td></tr>
-    <tr><td class="label">Status</td><td>Current container status shown as a color-coded badge (Draft / Shipped / Packing / Complete).</td></tr>
+    <tr><td class="label">Status</td><td>Current container status shown as a color-coded badge (Draft · Final List Sent · Packing List Rcvd · Complete).</td></tr>
     <tr><td class="label">ETA</td><td>Estimated arrival date.</td></tr>
     <tr><td class="label">Qty</td><td>Units allocated to this SKU in that container.</td></tr>
     <tr><td class="label">Done / Changed</td><td>Date the container was marked Complete, or the last modification date.</td></tr>
@@ -2501,6 +2507,11 @@
       <td>Received. <strong>Fully excluded from Demand Planning.</strong> Deletion requires Planner/Admin.</td>
     </tr>
   </table>
+
+  <div class="callout warn" style="margin-top:16px">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Deleting a Container:</b> Deleting an entire container requires <strong>Planner or Admin</strong> role. The delete option is available at the bottom of the container detail panel. Deleted containers and their SKU quantities cannot be recovered. If you just want to hide an incorrectly created container, keeping it as <span class="status draft">Draft</span> is recommended instead of deleting.</div>
+  </div>
 
   <h3 id="en-cp-complete">④ Complete Status and Demand Planning Display Rules</h3>
   <div class="callout warn" style="margin-bottom:16px">
@@ -2749,7 +2760,7 @@
     <tr><td class="label">Carryover</td><td>Residual inventory remaining after a container's arrival point.</td></tr>
     <tr><td class="label">Transit Stock</td><td>Inventory currently in transit (not yet received into the warehouse).</td></tr>
     <tr><td class="label">Con. Qty</td><td>Container Quantity. The order quantity to be loaded into a container.</td></tr>
-    <tr><td class="label">Gradient Tier</td><td>A bonus-day table for inventory targets segmented by daily sales volume. Five tiers: TOP · A · B · C · D.</td></tr>
+    <tr><td class="label">Gradient Tier</td><td>The tiered target-days system used by the 📊 auto-fill button. Each tier pairs a minimum daily sales threshold (Min Avg Sales) with a Target Days value. Default: ≥10/day → 90d, ≥5/day → 80d, ≥3/day → 70d, others → 60d. Fully configurable via the tier dialog.</td></tr>
     <tr><td class="label">Remaining List</td><td>Normal finished-goods inventory waiting in the warehouse for inbound after production.</td></tr>
     <tr><td class="label">Mistake Order</td><td>Surplus inventory resulting from order errors or cancellations.</td></tr>
   </table>
