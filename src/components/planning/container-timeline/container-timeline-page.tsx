@@ -822,6 +822,7 @@ function ContainerDetailDrawer({
 }) {
   const normalizedSkuSearch = skuSearchQuery.trim().toLowerCase();
   const [isSkuListOpen, setIsSkuListOpen] = useState(true);
+  const [localSkuFilter, setLocalSkuFilter] = useState("");
   const highlightedSkuRowRef = useRef<HTMLTableRowElement | null>(null);
   const [skuSort, setSkuSort] = useState<{ key: SkuImpactSortKey; direction: SortDirection }>({
     key: "sku",
@@ -862,6 +863,11 @@ function ContainerDetailDrawer({
       : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
     return skuSort.direction === "asc" ? result : -result;
   });
+  const filteredSkuImpacts = localSkuFilter.trim()
+    ? sortedSkuImpacts.filter(({ item }) =>
+        item.sku.toLowerCase().includes(localSkuFilter.trim().toLowerCase())
+      )
+    : sortedSkuImpacts;
   const criticalCount = skuImpacts.filter((impact) => impact.level === "critical").length;
   const warningCount = skuImpacts.filter((impact) => impact.level === "warning").length;
   const firstHighlightedIndex = normalizedSkuSearch
@@ -1042,6 +1048,15 @@ function ContainerDetailDrawer({
 
             {isSkuListOpen && (
             <div className="min-h-0 flex-1 px-6 pb-4">
+              <div className="pb-3">
+                <input
+                  type="text"
+                  value={localSkuFilter}
+                  onChange={(e) => setLocalSkuFilter(e.target.value)}
+                  placeholder="SKU 검색..."
+                  className="w-full rounded-md border border-[#e2dfd8] bg-[#fafaf7] px-3 py-1.5 text-[12px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
+                />
+              </div>
               {c.items.length === 0 ? (
                 <div className="py-8 text-center text-[12px] text-muted-foreground border border-dashed border-[#d8d6ce] rounded-lg">
                   등록된 SKU가 없습니다
@@ -1078,7 +1093,14 @@ function ContainerDetailDrawer({
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedSkuImpacts.map(({
+                      {filteredSkuImpacts.length === 0 && (
+                        <tr>
+                          <td colSpan={11} className="py-8 text-center text-[12px] text-muted-foreground">
+                            검색 결과가 없습니다
+                          </td>
+                        </tr>
+                      )}
+                      {filteredSkuImpacts.map(({
                         item,
                         level,
                         currentStock,
