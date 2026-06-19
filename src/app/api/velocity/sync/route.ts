@@ -222,11 +222,10 @@ export async function POST() {
            AND (
              (l.fulfilled_quantity > 0
               AND (
-                (l.platform_source::text = 'AMAZON' AND LOWER(l.item_status) LIKE '%shipped%')
-                OR (l.platform_source::text = 'WALMART' AND LOWER(l.item_status) IN ('delivered', 'shipped'))
-                OR (l.platform_source::text IN ('EBAY', 'EBAY_AUTOARMOR') AND LOWER(l.item_status) = 'fulfilled')
+                (l.platform_source::text = 'AMAZON' AND (LOWER(l.item_status) LIKE '%shipped%' OR LOWER(l.item_status) IN ('refunded', 'partially_refunded')))
+                OR (l.platform_source::text = 'WALMART' AND LOWER(l.item_status) IN ('delivered', 'shipped', 'refunded', 'partially_refunded'))
+                OR (l.platform_source::text IN ('EBAY', 'EBAY_AUTOARMOR') AND LOWER(l.item_status) IN ('fulfilled', 'refunded', 'partially_refunded'))
                 OR (l.platform_source::text IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(l.item_status) NOT IN ('cancelled', 'pending'))
-                OR (l.platform_source::text NOT IN ('AMAZON', 'WALMART', 'EBAY', 'EBAY_AUTOARMOR', 'SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(l.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged'))
               ))
              OR (COALESCE(l.is_preorder::boolean, false) AND LOWER(l.item_status) != 'cancelled')
            )
@@ -251,11 +250,10 @@ export async function POST() {
            AND (
              (c.fulfilled_quantity > 0
               AND (
-                (c.platform_source::text = 'AMAZON' AND LOWER(c.item_status) LIKE '%shipped%')
-                OR (c.platform_source::text = 'WALMART' AND LOWER(c.item_status) IN ('delivered', 'shipped'))
-                OR (c.platform_source::text IN ('EBAY', 'EBAY_AUTOARMOR') AND LOWER(c.item_status) = 'fulfilled')
+                (c.platform_source::text = 'AMAZON' AND (LOWER(c.item_status) LIKE '%shipped%' OR LOWER(c.item_status) IN ('refunded', 'partially_refunded')))
+                OR (c.platform_source::text = 'WALMART' AND LOWER(c.item_status) IN ('delivered', 'shipped', 'refunded', 'partially_refunded'))
+                OR (c.platform_source::text IN ('EBAY', 'EBAY_AUTOARMOR') AND LOWER(c.item_status) IN ('fulfilled', 'refunded', 'partially_refunded'))
                 OR (c.platform_source::text IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(c.item_status) NOT IN ('cancelled', 'pending'))
-                OR (c.platform_source::text NOT IN ('AMAZON', 'WALMART', 'EBAY', 'EBAY_AUTOARMOR', 'SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND LOWER(c.item_status) IN ('delivered', 'fulfilled', 'partially_fulfilled', 'shipped', 'shipping', 'acknowledged'))
               ))
              OR (COALESCE(c.is_preorder::boolean, false) AND LOWER(c.item_status) != 'cancelled')
            )
