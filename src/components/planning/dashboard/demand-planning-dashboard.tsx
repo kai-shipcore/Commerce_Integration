@@ -1078,7 +1078,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               className="dashboard-columns-popover"
               style={{
                 width: "min(1100px, calc(100vw - 24px))",
-                maxHeight: "min(760px, calc(100vh - 80px))",
+                maxHeight: "min(920px, calc(100vh - 60px))",
                 padding: 0,
                 overflow: "auto",
                 display: "grid",
@@ -1343,7 +1343,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   Column Visibility
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: "min(560px, calc(100vh - 260px))", overflow: "auto", paddingRight: 4 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: "min(700px, calc(100vh - 200px))", overflow: "auto", paddingRight: 4 }}>
                   {COLUMN_VISIBILITY_GROUP_KEYS.map((group) => {
                     const groupItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
                     const checkedCount = groupItems.filter((item) => columnVis[item.id] !== false).length;
@@ -1598,7 +1598,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           })}
                         </div>
                         <div style={{ borderTop: "1px solid #E2E8F0", marginBottom: 8 }} />
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "min(400px, calc(100vh - 420px))", overflowY: "auto", paddingRight: 2 }}>
                           {STATUS_GROUPS.map(({ status, label, color, accentColor }) => {
                             const group = allContainers.filter((c) => c.status === status);
                             if (!group.length) return null;
