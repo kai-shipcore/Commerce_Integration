@@ -533,7 +533,7 @@ export async function GET(req: Request) {
       const total_30d    = vel ? west_fbm_30d + east_fbm_30d + fba_30d : r.total_30d as number;
       const total_avg_prev = Math.max(0.03, vel ? avg_daily_prev + east_avg_prev + (vel.fba_avg_prev ?? 0) : r.total_avg_prev as number);
       const total_avg_real = Math.max(0.03, vel ? avg_daily_real + east_avg_real + fba_avg_real : r.total_avg_real as number);
-      const total_avg_curr = Math.max(0.03, vel ? avg_daily_curr + east_avg_curr + fba_avg_curr : currentDailyAverage(total_avg_prev, total_avg_real));
+      const total_avg_curr = Math.max(0.03, vel ? avg_daily_curr + east_avg_curr + fba_avg_curr : r.total_avg_curr as number);
 
       // Baseline seed: today's state, no incoming units
       const availQty  = (r.total_stock as number) + (r.back as number);
