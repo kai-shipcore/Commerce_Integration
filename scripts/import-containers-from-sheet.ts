@@ -11,10 +11,9 @@
 //   col+5 = ETA date (header cell value) → fc_containers.eta_date
 //
 // Cell fill color of the container name header → status:
-//   Blue   → shipped
-//   Orange → shipped
-//   Pink / Purple → draft
-//   (uncolored)   → draft
+//   Blue   → packing_received  (Packing List Received / Shipped)
+//   Orange → shipped           (Final List Sent to Factory)
+//   Pink / Purple / uncolored → draft
 //
 // DB writes:
 //   fc_containers      — upsert on container_number (updates eta_date + status)
@@ -48,7 +47,7 @@ function argbToStatus(argb: string | undefined, containerName: string): string {
   const isOrange = r === max && g >= b && r - b > 60;
 
   const detected = isBlue ? "blue" : isOrange ? "orange" : "other";
-  const status = (isBlue || isOrange) ? "shipped" : "draft";
+  const status = isBlue ? "packing_received" : isOrange ? "shipped" : "draft";
   console.log(`  color(${containerName}): #${hex} → ${detected} → ${status}`);
   return status;
 }
