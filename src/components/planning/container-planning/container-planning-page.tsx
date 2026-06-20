@@ -326,17 +326,20 @@ export function ContainerPlanningPage() {
     const normalizedQuery = query.trim().toLowerCase();
     return containers.filter((container) => {
       if (normalizedQuery) {
-        return [
+        const matchesContainerDetails = [
           container.number,
           container.destination,
           container.factory,
           container.note,
           container.eta,
-          ...container.items.map((item) => item.sku),
         ]
           .join(" ")
           .toLowerCase()
           .includes(normalizedQuery);
+        const matchesExactSku = container.items.some(
+          (item) => item.sku.trim().toLowerCase() === normalizedQuery,
+        );
+        return matchesContainerDetails || matchesExactSku;
       }
 
       if (containerListTab === "active" && container.status === "complete") return false;
@@ -383,16 +386,9 @@ export function ContainerPlanningPage() {
     });
   }
 
-  function matchingSkuSearch(container: MockContainer) {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return "";
-    return container.items.some((item) => item.sku.toLowerCase().includes(normalizedQuery)) ? query.trim() : "";
-  }
-
   function selectContainer(container: MockContainer) {
     setExpandedId(container.id);
     setIsFormOpen(false);
-    if (matchingSkuSearch(container)) setSkuListCollapsed(false);
   }
 
   async function fetchContainers() {
@@ -2019,7 +2015,6 @@ export function ContainerPlanningPage() {
                 skuListCollapsed={skuListCollapsed ?? false}
                 onToggleSkuList={() => setSkuListCollapsed((current) => !(current ?? false))}
                 initialSkuSearch={targetSku}
-                highlightSkuSearch={matchingSkuSearch(selectedContainer) || targetSku}
                 detailMode
               />
             </div>
@@ -2642,7 +2637,6 @@ function ContainerCard({
   skuListCollapsed = false,
   onToggleSkuList,
   initialSkuSearch = "",
-  highlightSkuSearch = "",
   detailMode = false,
 }: {
   container: MockContainer;
@@ -2676,7 +2670,6 @@ function ContainerCard({
   skuListCollapsed?: boolean;
   onToggleSkuList?: () => void;
   initialSkuSearch?: string;
-  highlightSkuSearch?: string;
   detailMode?: boolean;
 }) {
   const totalQty = container.items.reduce((sum, item) => sum + item.qty, 0);
@@ -2698,25 +2691,12 @@ function ContainerCard({
   const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
   const [skuSearch, setSkuSearch] = useState(initialSkuSearch);
   const normalizedSkuSearch = skuSearch.trim().toLowerCase();
-  const normalizedHighlightSkuSearch = highlightSkuSearch.trim().toLowerCase();
-  const highlightedSkuRowRef = useRef<HTMLDivElement | null>(null);
   const visibleItems = normalizedSkuSearch
     ? container.items.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))
     : container.items;
-  const firstHighlightedSku = normalizedHighlightSkuSearch
-    ? visibleItems.find((item) => item.sku.toLowerCase().includes(normalizedHighlightSkuSearch))?.sku
-    : undefined;
   const activeSelectedAllocationIds = selectedAllocationIds.filter((id) => removableAllocationIds.includes(id));
   const getEditDraft = (sku: string) => inlineEditDrafts[`${container.id}::${sku}`];
   const destinationLabel = warehouseNameByCode?.get(container.destination) ?? container.destination;
-
-  useEffect(() => {
-    if (skuListCollapsed || !normalizedHighlightSkuSearch) return;
-    const frame = window.requestAnimationFrame(() => {
-      highlightedSkuRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [container.id, normalizedHighlightSkuSearch, skuListCollapsed]);
 
   function toggleAllocationSelection(allocationIds: string[], checked: boolean) {
     setSelectedAllocationIds((current) => {
@@ -2900,16 +2880,8 @@ function ContainerCard({
 
           <div>
             {visibleItems.map((item) => {
-              const isHighlighted = Boolean(
-                normalizedHighlightSkuSearch && item.sku.toLowerCase().includes(normalizedHighlightSkuSearch),
-              );
-              const isFirstHighlighted = item.sku === firstHighlightedSku;
               return (
-                <div
-                  key={item.sku}
-                  ref={isFirstHighlighted ? highlightedSkuRowRef : undefined}
-                  className={isHighlighted ? "relative z-[1] bg-blue-100 outline outline-2 -outline-offset-2 outline-[#1a5cdb]" : ""}
-                >
+                <div key={item.sku}>
                   <SkuRow
                     containerId={container.id}
                     item={item}
