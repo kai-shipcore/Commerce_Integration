@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Suspense } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +26,7 @@ import {
 } from "@/components/orders/order-detail-dialog";
 import { ChevronDown, ChevronUp, ClipboardList, Download, Loader2, ShoppingCart } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type OrderDatePreset = "today" | "yesterday" | "last7" | "last30" | "last90" | "last6m" | "last1y" | "ytd" | "custom";
 
@@ -67,6 +68,7 @@ interface SortingState {
 }
 
 function OrdersPageContent() {
+  const { pick } = useI18n();
   const searchParams = useSearchParams();
 
   const [rows, setRows] = useState<OrderTableRow[]>([]);
@@ -79,7 +81,7 @@ function OrdersPageContent() {
   const [datePreset, setDatePreset] = useState<OrderDatePreset>("today");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
 
-  // Apply URL preset params â€” runs on mount and whenever URL searchParams change.
+  // Apply URL preset params â€" runs on mount and whenever URL searchParams change.
   // Using useEffect (not useState initializer) is the reliable pattern for useSearchParams.
   useEffect(() => {
     const p = searchParams.get("preset") as OrderDatePreset | null;
@@ -157,13 +159,13 @@ function OrdersPageContent() {
           setTotalRows(result.pagination.total);
           setPageCount(result.pagination.totalPages);
         } else {
-          setError(result.error || "Failed to load orders");
+          setError(result.error || pick("주문 불러오기 실패", "Failed to load orders"));
         }
         setHasLoadedOnce(true);
         setLoading(false);
       })
       .catch(() => {
-        setError("Failed to load orders");
+        setError(pick("주문 불러오기 실패", "Failed to load orders"));
         setHasLoadedOnce(true);
         setLoading(false);
       });
@@ -195,13 +197,13 @@ function OrdersPageContent() {
           setSelectedOrder(result.data);
         } else {
           setSelectedOrder(null);
-          setError(result.error || "Failed to load order detail");
+          setError(result.error || pick("주문 상세 불러오기 실패", "Failed to load order detail"));
         }
         setDetailLoading(false);
       })
       .catch(() => {
         setSelectedOrder(null);
-        setError("Failed to load order detail");
+        setError(pick("주문 상세 불러오기 실패", "Failed to load order detail"));
         setDetailLoading(false);
       });
   }, [selectedOrderId, detailOpen]);
@@ -287,7 +289,7 @@ function OrdersPageContent() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to export orders");
+        throw new Error(result.error || pick("주문 내보내기 실패", "Failed to export orders"));
       }
 
       const exportRows = result.data as OrderTableRow[];
@@ -341,7 +343,7 @@ function OrdersPageContent() {
       setError(
         exportError instanceof Error
           ? exportError.message
-          : "Failed to export orders"
+          : pick("주문 내보내기 실패", "Failed to export orders")
       );
     } finally {
       setExporting(false);
@@ -365,27 +367,27 @@ function OrdersPageContent() {
           <div className="flex items-start gap-2">
             <ClipboardList className="mt-1 h-5 w-5" />
             <div>
-              <h1 className="text-lg font-semibold">Orders</h1>
+              <h1 className="text-lg font-semibold">{pick("주문 현황", "Orders")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Channel order feed from external sales orders and line item tables
+                {pick("외부 판매 주문 및 라인 아이템 테이블의 채널 주문 피드", "Channel order feed from external sales orders and line item tables")}
               </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={datePreset} onValueChange={handleDatePresetChange}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Order date" />
+                <SelectValue placeholder={pick("주문 날짜", "Order date")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="yesterday">Yesterday</SelectItem>
-                <SelectItem value="last7">Last 7 days</SelectItem>
-                <SelectItem value="last30">Last 30 days</SelectItem>
-                <SelectItem value="last90">Last 90 days</SelectItem>
-                <SelectItem value="last6m">Last 6 months</SelectItem>
-                <SelectItem value="last1y">Last 1 year</SelectItem>
-                <SelectItem value="ytd">Year to date</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
+                <SelectItem value="today">{pick("오늘", "Today")}</SelectItem>
+                <SelectItem value="yesterday">{pick("어제", "Yesterday")}</SelectItem>
+                <SelectItem value="last7">{pick("최근 7일", "Last 7 days")}</SelectItem>
+                <SelectItem value="last30">{pick("최근 30일", "Last 30 days")}</SelectItem>
+                <SelectItem value="last90">{pick("최근 90일", "Last 90 days")}</SelectItem>
+                <SelectItem value="last6m">{pick("최근 6개월", "Last 6 months")}</SelectItem>
+                <SelectItem value="last1y">{pick("최근 1년", "Last 1 year")}</SelectItem>
+                <SelectItem value="ytd">{pick("올해 누계", "Year to date")}</SelectItem>
+                <SelectItem value="custom">{pick("사용자 지정", "Custom")}</SelectItem>
               </SelectContent>
             </Select>
             {datePreset === "custom" && (
@@ -412,10 +414,10 @@ function OrdersPageContent() {
               }}
             >
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All platforms" />
+                <SelectValue placeholder={pick("전체 플랫폼", "All platforms")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All platforms</SelectItem>
+                <SelectItem value="all">{pick("전체 플랫폼", "All platforms")}</SelectItem>
                 {platformSources.map((platform) => (
                   <SelectItem key={platform} value={platform}>
                     {platform}
@@ -435,10 +437,10 @@ function OrdersPageContent() {
               }}
             >
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All statuses" />
+                <SelectValue placeholder={pick("전체 상태", "All statuses")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="all">{pick("전체 상태", "All statuses")}</SelectItem>
                 {orderStatuses.map((status) => (
                   <SelectItem key={status} value={status}>
                     {status}
@@ -453,10 +455,10 @@ function OrdersPageContent() {
               disabled={totalRows === 0 || exporting}
             >
               <Download className="h-4 w-4" />
-              {exporting ? "Exporting..." : "Export CSV"}
+              {exporting ? pick("내보내는 중...", "Exporting...") : pick("CSV 내보내기", "Export CSV")}
             </Button>
             <Button type="button" variant="outline" onClick={fetchOrders} disabled={loading}>
-              Refresh
+              {pick("새로 고침", "Refresh")}
             </Button>
           </div>
         </header>
@@ -469,27 +471,27 @@ function OrdersPageContent() {
             aria-expanded={!summaryCollapsed}
           >
             <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-              <span className="font-semibold text-[#1a1917] dark:text-slate-50">Summary</span>
+              <span className="font-semibold text-[#1a1917] dark:text-slate-50">{pick("요약", "Summary")}</span>
               <span className="text-muted-foreground">
-                Orders{" "}
+                {pick("주문", "Orders")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {summary?.totalOrders.toLocaleString() ?? "-"}
                 </span>
               </span>
               <span className="text-muted-foreground">
-                Revenue{" "}
+                {pick("매출", "Revenue")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {formatOrdersCurrency(summary?.totalRevenue)}
                 </span>
               </span>
               <span className="text-muted-foreground">
-                Page Units{" "}
+                {pick("페이지 수량", "Page Units")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {formatOrderUnits(rows, summary)}
                 </span>
               </span>
               <span className="text-muted-foreground">
-                Platforms{" "}
+                {pick("플랫폼", "Platforms")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {summary?.totalPlatforms.toLocaleString() ?? "-"}
                 </span>
@@ -504,24 +506,24 @@ function OrdersPageContent() {
           {!summaryCollapsed ? (
             <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
               <OrdersStat
-                label="Total Orders"
+                label={pick("총 주문 수", "Total Orders")}
                 value={summary?.totalOrders.toLocaleString() ?? "-"}
-                sub={platformFilter === "all" ? "All platform sources" : platformFilter}
+                sub={platformFilter === "all" ? pick("전체 플랫폼 소스", "All platform sources") : platformFilter}
               />
               <OrdersStat
-                label="Revenue"
+                label={pick("매출", "Revenue")}
                 value={formatOrdersCurrency(summary?.totalRevenue)}
-                sub="Gross order value in filtered result set"
+                sub={pick("필터된 결과의 총 주문 금액", "Gross order value in filtered result set")}
               />
               <OrdersStat
-                label="Units"
+                label={pick("수량", "Units")}
                 value={formatOrderUnits(rows, summary)}
-                sub="Net quantity on this page"
+                sub={pick("이 페이지의 순 수량", "Net quantity on this page")}
               />
               <OrdersStat
-                label="Platforms"
+                label={pick("플랫폼", "Platforms")}
                 value={summary?.totalPlatforms.toLocaleString() ?? "-"}
-                sub="Distinct platform sources in current filter"
+                sub={pick("현재 필터의 고유 플랫폼 소스", "Distinct platform sources in current filter")}
               />
             </div>
           ) : null}
@@ -532,35 +534,37 @@ function OrdersPageContent() {
             {!loading && !error ? (
               <div className="mb-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
                 <span>
-                  Showing {filteredRows.length.toLocaleString()} of{" "}
-                  {totalRows.toLocaleString()} orders
+                  {pick(
+                    `${filteredRows.length.toLocaleString()} / ${totalRows.toLocaleString()} 주문 표시 중`,
+                    `Showing ${filteredRows.length.toLocaleString()} of ${totalRows.toLocaleString()} orders`
+                  )}
                 </span>
                 <span>
-                  Platform: {platformFilter === "all" ? "All" : platformFilter} | Date:{" "}
+                  {pick("플랫폼", "Platform")}: {platformFilter === "all" ? pick("전체", "All") : platformFilter} | {pick("날짜", "Date")}:{" "}
                   {search.trim()
-                    ? "All dates while searching"
+                    ? pick("검색 중 전체 날짜", "All dates while searching")
                     : datePreset === "custom"
                     ? activeDateRange?.from && activeDateRange?.to
                       ? `${format(activeDateRange.from, "MMM d, yyyy")} - ${format(activeDateRange.to, "MMM d, yyyy")}`
-                      : "Custom range"
-                    : datePreset === "today"    ? "Today"
-                    : datePreset === "yesterday" ? "Yesterday"
-                    : datePreset === "last7"     ? "Last 7 days"
-                    : datePreset === "last30"    ? "Last 30 days"
-                    : datePreset === "last90"    ? "Last 90 days"
-                    : datePreset === "last6m"    ? "Last 6 months"
-                    : datePreset === "last1y"    ? "Last 1 year"
-                    : datePreset === "ytd"       ? "Year to date"
-                    : "Last 30 days"}
+                      : pick("사용자 지정 범위", "Custom range")
+                    : datePreset === "today"    ? pick("오늘", "Today")
+                    : datePreset === "yesterday" ? pick("어제", "Yesterday")
+                    : datePreset === "last7"     ? pick("최근 7일", "Last 7 days")
+                    : datePreset === "last30"    ? pick("최근 30일", "Last 30 days")
+                    : datePreset === "last90"    ? pick("최근 90일", "Last 90 days")
+                    : datePreset === "last6m"    ? pick("최근 6개월", "Last 6 months")
+                    : datePreset === "last1y"    ? pick("최근 1년", "Last 1 year")
+                    : datePreset === "ytd"       ? pick("올해 누계", "Year to date")
+                    : pick("최근 30일", "Last 30 days")}
                 </span>
               </div>
             ) : null}
             {!hasLoadedOnce && loading ? (
               <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                <p className="font-medium">Loading orders...</p>
+                <p className="font-medium">{pick("주문 불러오는 중...", "Loading orders...")}</p>
                 <p className="text-sm text-muted-foreground">
-                  Fetching the latest order data from the external sales feed.
+                  {pick("외부 판매 피드에서 최신 주문 데이터를 가져오는 중입니다.", "Fetching the latest order data from the external sales feed.")}
                 </p>
               </div>
             ) : error ? (
@@ -568,7 +572,7 @@ function OrdersPageContent() {
                 <ShoppingCart className="h-10 w-10 text-muted-foreground" />
                 <p className="font-medium">{error}</p>
                 <p className="text-sm text-muted-foreground">
-                  Check the lookup database connection and the sales order source tables.
+                  {pick("조회 데이터베이스 연결 및 판매 주문 소스 테이블을 확인하세요.", "Check the lookup database connection and the sales order source tables.")}
                 </p>
               </div>
             ) : (
@@ -579,7 +583,7 @@ function OrdersPageContent() {
                   totalRows={totalRows}
                   pageCount={pageCount}
                   pagination={pagination}
-                  searchPlaceholder="Search order ID, order number, buyer, master SKU, or web SKU..."
+                  searchPlaceholder={pick("주문 ID, 주문 번호, 구매자, 마스터 SKU 또는 웹 SKU로 검색...", "Search order ID, order number, buyer, master SKU, or web SKU...")}
                   onPaginationChange={handlePaginationChange}
                   onSortingChange={handleSortingChange}
                   onSearchChange={handleSearchChange}

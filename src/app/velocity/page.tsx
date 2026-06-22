@@ -94,6 +94,7 @@ interface PeriodEditorProps {
 }
 
 function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
+  const { pick } = useI18n();
   const [adding, setAdding] = useState(false);
   const [pending, setPending] = useState("");
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -128,7 +129,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-xs text-muted-foreground font-medium shrink-0">Periods:</span>
+      <span className="text-xs text-muted-foreground font-medium shrink-0">{pick("기간:", "Periods:")}</span>
 
       {periods.map((p, i) => (
         <span
@@ -207,7 +208,7 @@ function PeriodEditor({ periods, onChange }: PeriodEditorProps) {
           className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-foreground hover:text-foreground dark:border-slate-700 dark:hover:border-slate-300 dark:hover:text-slate-50"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add
+          {pick("추가", "Add")}
         </button>
       ) : null}
     </div>
@@ -312,6 +313,7 @@ interface CustomRangeEditorProps {
 }
 
 function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
+  const { pick } = useI18n();
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editFrom, setEditFrom] = useState("");
   const [editTo, setEditTo] = useState("");
@@ -342,7 +344,7 @@ function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-xs text-muted-foreground font-medium shrink-0">Periods:</span>
+      <span className="text-xs text-muted-foreground font-medium shrink-0">{pick("기간:", "Periods:")}</span>
       {ranges.map((r, i) => (
         <span key={i} className="flex items-center gap-1 rounded-full border border-border bg-muted px-3 py-1.5 text-sm text-foreground dark:border-slate-700 dark:bg-slate-800">
           {editingIdx === i ? (
@@ -397,7 +399,7 @@ function CustomRangeEditor({ ranges, onChange }: CustomRangeEditorProps) {
       ) : ranges.length < 5 ? (
         <button onClick={() => setAdding(true)}
           className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
-          <Plus className="h-3.5 w-3.5" />Add
+          <Plus className="h-3.5 w-3.5" />{pick("추가", "Add")}
         </button>
       ) : null}
     </div>
@@ -416,6 +418,7 @@ interface PaneProps {
 }
 
 function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, exportSlot }: PaneProps) {
+  const { pick } = useI18n();
   const [allRows, setAllRows] = useState<VelocityRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -530,7 +533,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
           className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
         >
           <Download className="h-3.5 w-3.5" />
-          Export
+          {pick("내보내기", "Export")}
         </button>
         <button
           onClick={handleExportAll}
@@ -538,7 +541,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
           className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
         >
           <Download className="h-3.5 w-3.5" />
-          {exportingAll ? "Exporting..." : "Export All"}
+          {exportingAll ? pick("내보내는 중...", "Exporting...") : pick("전체 내보내기", "Export All")}
         </button>
     </div>
   );
@@ -558,7 +561,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
           setPagination((p) => ({ ...p, page: 1 }));
         }}
         onSearchChange={(q) => { setSearch(q); setPagination((p) => ({ ...p, page: 1 })); }}
-        searchPlaceholder="Search Master SKU..."
+        searchPlaceholder={pick("마스터 SKU 검색...", "Search Master SKU...")}
         isLoading={loading}
       />
     </div>
@@ -661,9 +664,9 @@ export default function VelocityPage() {
           <div className="flex items-start gap-2">
             <Gauge className="mt-1 h-5 w-5" />
             <div>
-              <h1 className="text-lg font-semibold">Velocity</h1>
+              <h1 className="text-lg font-semibold">{pick("판매 속도", "Velocity")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Compare sales velocity by product, channel, mode, and period.
+                {pick("제품, 채널, 모드, 기간별 판매 속도를 비교합니다.", "Compare sales velocity by product, channel, mode, and period.")}
               </p>
             </div>
           </div>
@@ -671,7 +674,7 @@ export default function VelocityPage() {
             <div ref={setExportSlot} className="flex items-center gap-2" />
             {formattedSyncTime && (
               <span className="text-xs text-muted-foreground">
-                Last synced: {formattedSyncTime}
+                {pick("마지막 동기화:", "Last synced:")} {formattedSyncTime}
               </span>
             )}
             <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
@@ -697,19 +700,19 @@ export default function VelocityPage() {
                   className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800"
                 >
                   <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-                  {syncing ? "Syncing..." : "Sync"}
+                  {syncing ? pick("동기화 중...", "Syncing...") : pick("동기화", "Sync")}
                 </button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Sync Velocity Data</AlertDialogTitle>
+                  <AlertDialogTitle>{pick("속도 데이터 동기화", "Sync Velocity Data")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Sync the latest velocity data from Supabase. Continue?
+                    {pick("Supabase에서 최신 속도 데이터를 동기화합니다. 계속하시겠습니까?", "Sync the latest velocity data from Supabase. Continue?")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleSync}>Sync</AlertDialogAction>
+                  <AlertDialogCancel>{pick("취소", "Cancel")}</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleSync}>{pick("동기화", "Sync")}</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -719,7 +722,7 @@ export default function VelocityPage() {
         <div className="border-b border-[#e2dfd8] bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
-                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Item</span>
+                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">{pick("아이템", "Item")}</span>
                 <div className="flex flex-wrap items-center gap-2">
                   {ITEMS.map((item) => (
                     <ToggleBtn
@@ -734,7 +737,7 @@ export default function VelocityPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Channel</span>
+                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">{pick("채널", "Channels")}</span>
                 <div className="flex flex-wrap items-center gap-2">
                   <ToggleBtn
                     active={selectedChannels.length === CHANNELS.length}
@@ -742,7 +745,7 @@ export default function VelocityPage() {
                       setSelectedChannels(selectedChannels.length === CHANNELS.length ? [] : [...CHANNELS])
                     }
                   >
-                    All
+                    {pick("전체", "All")}
                   </ToggleBtn>
                   {CHANNELS.map((ch) => (
                     <ToggleBtn
@@ -757,11 +760,11 @@ export default function VelocityPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Mode</span>
+                <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">{pick("모드", "Mode")}</span>
                 <div className="flex items-center gap-2">
-                  <ToggleBtn active={mode === "sales"} onClick={() => setMode("sales")}>Sales</ToggleBtn>
-                  <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>TTM</ToggleBtn>
-                  <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre Order</ToggleBtn>
+                  <ToggleBtn active={mode === "sales"} onClick={() => setMode("sales")}>{pick("판매", "Sales")}</ToggleBtn>
+                  <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>{pick("TTM", "TTM")}</ToggleBtn>
+                  <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>{pick("사전주문", "Pre-Order")}</ToggleBtn>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
                   <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
@@ -771,7 +774,7 @@ export default function VelocityPage() {
                         periodMode === "period" ? "bg-background shadow-sm text-foreground dark:bg-slate-950 dark:text-slate-50" : "text-muted-foreground hover:text-foreground dark:text-slate-300 dark:hover:text-slate-50"
                       )}
                     >
-                      Period
+                      {pick("기간 선택", "Period")}
                     </button>
                     <button
                       onClick={() => setPeriodMode("custom")}
@@ -779,7 +782,7 @@ export default function VelocityPage() {
                         periodMode === "custom" ? "bg-background shadow-sm text-foreground dark:bg-slate-950 dark:text-slate-50" : "text-muted-foreground hover:text-foreground dark:text-slate-300 dark:hover:text-slate-50"
                       )}
                     >
-                      Custom
+                      {pick("직접 입력", "Custom")}
                     </button>
                   </div>
                   <button
@@ -802,11 +805,11 @@ export default function VelocityPage() {
         <div className="min-h-0 flex-1 overflow-auto bg-white p-5 dark:bg-slate-950">
           {selectedItem === "" ? (
             <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
-              Select an item
+              {pick("아이템을 선택하세요", "Select an item")}
             </div>
           ) : selectedChannels.length === 0 ? (
             <div className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">
-              Select at least one channel
+              {pick("최소 하나의 채널을 선택하세요", "Select at least one channel")}
             </div>
           ) : (
             <VelocityPane

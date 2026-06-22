@@ -17,6 +17,7 @@ import {
 } from "@/components/inventory/inventory-table-columns";
 import { Boxes, ChevronDown, ChevronUp, Download, Loader2, Warehouse } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface InventoryRow {
   masterSku: string;
@@ -49,6 +50,7 @@ interface SortingState {
 }
 
 export default function InventoryPage() {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [filteredRows, setFilteredRows] = useState<InventoryTableRow[]>([]);
   const [summary, setSummary] = useState<InventorySummary | null>(null);
@@ -93,7 +95,7 @@ export default function InventoryPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        setError(result.error || "Failed to load inventory");
+        setError(result.error || pick("재고 불러오기 실패", "Failed to load inventory"));
         return;
       }
 
@@ -104,7 +106,7 @@ export default function InventoryPage() {
       setFilteredRows(result.data);
       setWarehouseOptions(result.warehouses || []);
     } catch {
-      setError("Failed to load inventory");
+      setError(pick("재고 불러오기 실패", "Failed to load inventory"));
     } finally {
       setHasLoadedOnce(true);
       setLoading(false);
@@ -145,7 +147,7 @@ export default function InventoryPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to export inventory");
+        throw new Error(result.error || pick("재고 내보내기 실패", "Failed to export inventory"));
       }
 
       const exportRows = result.data as InventoryTableRow[];
@@ -194,7 +196,7 @@ export default function InventoryPage() {
       setError(
         exportError instanceof Error
           ? exportError.message
-          : "Failed to export inventory"
+          : pick("재고 내보내기 실패", "Failed to export inventory")
       );
     } finally {
       setExporting(false);
@@ -241,9 +243,9 @@ export default function InventoryPage() {
           <div className="flex items-start gap-2">
             <Warehouse className="mt-1 h-5 w-5" />
             <div>
-              <h1 className="text-lg font-semibold">Inventory</h1>
+              <h1 className="text-lg font-semibold">{pick("재고 현황", "Inventory")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Live inventory snapshot from the external coverland inventory feed
+                {pick("외부 커버랜드 재고 피드의 실시간 스냅샷", "Live inventory snapshot from the external coverland inventory feed")}
               </p>
             </div>
           </div>
@@ -260,7 +262,7 @@ export default function InventoryPage() {
                 );
               }}
             >
-              Grouped by Product
+              {pick("제품별 그룹", "Grouped by Product")}
             </Button>
             <Select
               value={warehouseFilter}
@@ -273,10 +275,10 @@ export default function InventoryPage() {
               }}
             >
               <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="All warehouses" />
+                <SelectValue placeholder={pick("전체 창고", "All warehouses")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All warehouses</SelectItem>
+                <SelectItem value="all">{pick("전체 창고", "All warehouses")}</SelectItem>
                 {warehouseOptions.map((warehouse) => (
                   <SelectItem key={warehouse} value={warehouse}>
                     {warehouse}
@@ -290,7 +292,7 @@ export default function InventoryPage() {
               disabled={totalRows === 0 || exporting}
             >
               <Download className="h-4 w-4" />
-              {exporting ? "Exporting..." : "Export CSV"}
+              {exporting ? pick("내보내는 중...", "Exporting...") : pick("CSV 내보내기", "Export CSV")}
             </Button>
           </div>
         </header>
@@ -303,33 +305,33 @@ export default function InventoryPage() {
             aria-expanded={!summaryCollapsed}
           >
             <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-              <span className="font-semibold text-[#1a1917] dark:text-slate-50">Summary</span>
+              <span className="font-semibold text-[#1a1917] dark:text-slate-50">{pick("요약", "Summary")}</span>
               <span className="text-muted-foreground">
-                Products{" "}
+                {pick("제품", "Products")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {summary?.totalProducts.toLocaleString() ?? "-"}
                 </span>
               </span>
               <span className="text-muted-foreground">
-                Rows{" "}
+                {pick("행", "Rows")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {summary?.totalRows.toLocaleString() ?? "-"}
                 </span>
               </span>
               <span className="text-muted-foreground">
-                On Hand{" "}
+                {pick("보유 재고", "On Hand")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {summary?.onHand.toLocaleString() ?? "-"}
                 </span>
               </span>
               <span className="text-muted-foreground">
-                Available{" "}
+                {pick("가용 재고", "Available")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {summary?.available.toLocaleString() ?? "-"}
                 </span>
               </span>
               <span className="text-muted-foreground">
-                Warehouses{" "}
+                {pick("창고", "Warehouses")}{" "}
                 <span className="font-mono font-semibold text-foreground">
                   {summary?.totalWarehouses.toLocaleString() ?? "-"}
                 </span>
@@ -344,26 +346,26 @@ export default function InventoryPage() {
           {!summaryCollapsed ? (
             <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
               <InventoryStat
-                label="Total Products"
+                label={pick("총 제품 수", "Total Products")}
                 value={summary?.totalProducts.toLocaleString() ?? "-"}
                 sub={groupBy === "product"
-                  ? `${summary?.totalRows.toLocaleString() ?? "-"} source warehouse rows`
-                  : `${summary?.totalRows.toLocaleString() ?? "-"} warehouse rows`}
+                  ? pick(`${summary?.totalRows.toLocaleString() ?? "-"} 소스 창고 행`, `${summary?.totalRows.toLocaleString() ?? "-"} source warehouse rows`)
+                  : pick(`${summary?.totalRows.toLocaleString() ?? "-"} 창고 행`, `${summary?.totalRows.toLocaleString() ?? "-"} warehouse rows`)}
               />
               <InventoryStat
-                label="On Hand"
+                label={pick("보유 재고", "On Hand")}
                 value={summary?.onHand.toLocaleString() ?? "-"}
-                sub="Across all warehouses"
+                sub={pick("전체 창고 합산", "Across all warehouses")}
               />
               <InventoryStat
-                label="Available"
+                label={pick("가용 재고", "Available")}
                 value={summary?.available.toLocaleString() ?? "-"}
-                sub="Sellable inventory from source feed"
+                sub={pick("소스 피드의 판매 가능 재고", "Sellable inventory from source feed")}
               />
               <InventoryStat
-                label="Warehouses"
+                label={pick("창고", "Warehouses")}
                 value={summary?.totalWarehouses.toLocaleString() ?? "-"}
-                sub="Distinct warehouse values in source feed"
+                sub={pick("소스 피드의 고유 창고 값", "Distinct warehouse values in source feed")}
               />
             </div>
           ) : null}
@@ -373,28 +375,30 @@ export default function InventoryPage() {
           <div className="min-h-0 flex-1 overflow-auto p-5">
             {groupBy === "product" && (
               <p className="mb-4 text-sm text-muted-foreground">
-                Grouped by product rolls all warehouse rows into one master SKU total.
+                {pick("제품별 그룹화는 모든 창고 행을 하나의 마스터 SKU 합계로 합산합니다.", "Grouped by product rolls all warehouse rows into one master SKU total.")}
               </p>
             )}
             {!loading && !error ? (
               <div className="mb-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
                 <span>
-                  Showing {filteredRows.length.toLocaleString()} of{" "}
-                  {totalRows.toLocaleString()} {groupBy === "product" ? "products" : "warehouse rows"}
+                  {pick(
+                    `${filteredRows.length.toLocaleString()} / ${totalRows.toLocaleString()} ${groupBy === "product" ? "제품" : "창고 행"} 표시 중`,
+                    `Showing ${filteredRows.length.toLocaleString()} of ${totalRows.toLocaleString()} ${groupBy === "product" ? "products" : "warehouse rows"}`
+                  )}
                 </span>
                 <span>
                   {groupBy === "product"
-                    ? "Grouped by product"
-                    : `Warehouse filter: ${warehouseFilter === "all" ? "All" : warehouseFilter}`}
+                    ? pick("제품별 그룹화", "Grouped by product")
+                    : pick(`창고 필터: ${warehouseFilter === "all" ? "전체" : warehouseFilter}`, `Warehouse filter: ${warehouseFilter === "all" ? "All" : warehouseFilter}`)}
                 </span>
               </div>
             ) : null}
             {!hasLoadedOnce && loading ? (
               <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
                 <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                <p className="font-medium">Loading inventory...</p>
+                <p className="font-medium">{pick("재고 불러오는 중...", "Loading inventory...")}</p>
                 <p className="text-sm text-muted-foreground">
-                  Fetching the latest inventory snapshot from the external feed.
+                  {pick("외부 피드에서 최신 재고 스냅샷을 가져오는 중입니다.", "Fetching the latest inventory snapshot from the external feed.")}
                 </p>
               </div>
             ) : error ? (
@@ -402,8 +406,7 @@ export default function InventoryPage() {
                 <Boxes className="h-10 w-10 text-muted-foreground" />
                 <p className="font-medium">{error}</p>
                 <p className="text-sm text-muted-foreground">
-                  Check the lookup database connection and the `coverland_inventory`
-                  source table.
+                  {pick("조회 데이터베이스 연결 및 `coverland_inventory` 소스 테이블을 확인하세요.", "Check the lookup database connection and the `coverland_inventory` source table.")}
                 </p>
               </div>
             ) : (
@@ -413,7 +416,7 @@ export default function InventoryPage() {
                 totalRows={totalRows}
                 pageCount={pageCount}
                 pagination={pagination}
-                searchPlaceholder="Search inventory by master SKU or warehouse..."
+                searchPlaceholder={pick("마스터 SKU 또는 창고로 재고 검색...", "Search inventory by master SKU or warehouse...")}
                 onPaginationChange={handlePaginationChange}
                 onSortingChange={handleSortingChange}
                 onSearchChange={handleSearchChange}
