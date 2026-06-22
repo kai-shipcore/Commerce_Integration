@@ -2219,7 +2219,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const key = cellColorKey(params.data?.sku, columnId);
               const selected = selectedCellsRef.current.has(key);
               return {
-                backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (container.status === "shipped_base" ? "#FEF3C7" : baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
+                backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
                 ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
                 textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
                 ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),

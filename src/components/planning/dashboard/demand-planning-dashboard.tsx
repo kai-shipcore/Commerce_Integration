@@ -71,6 +71,14 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
 };
 
 const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
+const CONTAINER_VISIBILITY_STORAGE_KEY = "planning-dashboard-container-visibility";
+const SETTINGS_SECTION_TITLE_STYLE = {
+  color: "#1D4ED8",
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.06em",
+};
 
 type ColumnSettings = {
   groupVis: Record<ColumnGroupKey, boolean>;
@@ -301,6 +309,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
   const [search, setSearch] = useState("");
   const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(EMPTY_SKU_PART_FILTERS);
+  const [isSkuFiltersOpen, setIsSkuFiltersOpen] = useState(true);
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumn, setSelectedColorColumn] = useState(BASE_COLORABLE_COLUMNS[0]?.id ?? "");
@@ -372,6 +381,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [hiddenContainers, setHiddenContainers] = useState<Set<string>>(new Set());
   const [hiddenBases, setHiddenBases] = useState<Set<string>>(new Set());
+  const [openContainerStatusGroups, setOpenContainerStatusGroups] = useState<Record<string, boolean>>({
+    packing_received: true,
+    shipped: true,
+    draft: true,
+  });
   const [groupVis, setGroupVis] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_GROUP_VIS);
   const [columnVis, setColumnVis] = useState<ColumnVisibility>(() => getColumnVisibilityForPreset("all"));
   const [compactMode, setCompactMode] = useState(false);
@@ -383,6 +397,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN);
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
+  const [isColorSettingsOpen, setIsColorSettingsOpen] = useState(true);
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
   const [selectedAgCells, setSelectedAgCells] = useState<{ rowId: string; columnId: string; label: string }[]>([]);
   const [seasonalFactors, setSeasonalFactors] = useState<SeasonalFactors>(DEFAULT_SEASONAL_FACTORS);
@@ -497,6 +512,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setCellColors(cellC as CellColorSettings);
         }
 
+        // Container visibility
+        const containerVisibility = d[CONTAINER_VISIBILITY_STORAGE_KEY];
+        if (containerVisibility && typeof containerVisibility === "object" && !Array.isArray(containerVisibility)) {
+          const saved = containerVisibility as Record<string, unknown>;
+          if (Array.isArray(saved.hiddenContainers)) {
+            setHiddenContainers(new Set(saved.hiddenContainers.filter((name): name is string => typeof name === "string")));
+          }
+          if (Array.isArray(saved.hiddenBases)) {
+            setHiddenBases(new Set(saved.hiddenBases.filter((name): name is string => typeof name === "string")));
+          }
+        }
+
         // Seasonal factors
         const sf = d[SEASONAL_FACTORS_STORAGE_KEY];
         if (sf && typeof sf === "object" && !Array.isArray(sf)) {
@@ -544,11 +571,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
       [CELL_COLORS_STORAGE_KEY]: cellColors,
+      [CONTAINER_VISIBILITY_STORAGE_KEY]: {
+        hiddenContainers: Array.from(hiddenContainers).sort(),
+        hiddenBases: Array.from(hiddenBases).sort(),
+      },
       [SEASONAL_FACTORS_STORAGE_KEY]: seasonalFactors,
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, seasonalFactors, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, hiddenContainers, hiddenBases, seasonalFactors, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -1105,9 +1136,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   </button>
                 </PopoverClose>
               </div>
+              <div style={{ gridColumn: 1, gridRow: "2 / 5", minWidth: 0 }}>
               {/* Quick Presets */}
-              <div style={{ gridColumn: 1, gridRow: 2, padding: "8px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              <div style={{ padding: "8px 14px", borderBottom: "1px solid #E2E8F0" }}>
+                <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                   Quick Preset
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -1158,8 +1190,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
               {/* Options — placed before Column Visibility in DOM so stacked layout keeps it below Quick Preset */}
               {/* Options */}
-              <div style={{ gridColumn: 1, gridRow: 3, padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                   Options
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -1169,9 +1201,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   </label>
                   <div ref={skuFiltersRef} style={{ marginTop: 8, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      <button
+                        type="button"
+                        aria-expanded={isSkuFiltersOpen}
+                        onClick={() => {
+                          setIsSkuFiltersOpen((open) => !open);
+                          setOpenSkuFilterKey(null);
+                        }}
+                        style={{ ...SETTINGS_SECTION_TITLE_STYLE, flex: 1, padding: 0, border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+                      >
                         SKU Filters
-                      </span>
+                      </button>
                       <button
                         type="button"
                         disabled={!hasSkuPartFilters}
@@ -1188,7 +1228,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       >
                         Reset
                       </button>
+                      <button
+                        type="button"
+                        aria-label={isSkuFiltersOpen ? "Collapse SKU filters" : "Expand SKU filters"}
+                        aria-expanded={isSkuFiltersOpen}
+                        onClick={() => {
+                          setIsSkuFiltersOpen((open) => !open);
+                          setOpenSkuFilterKey(null);
+                        }}
+                        style={{ width: 18, height: 18, flexShrink: 0, padding: 0, border: "none", background: "transparent", color: "#64748B", cursor: "pointer", fontSize: 10, lineHeight: "18px" }}
+                      >
+                        {isSkuFiltersOpen ? "▼" : "▶"}
+                      </button>
                     </div>
+                    {isSkuFiltersOpen ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                       {activeSkuFilterKeys.map((key) => {
                         const selectedValues = activeSkuPartFilters[key];
@@ -1297,9 +1350,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         );
                       })}
                     </div>
+                    ) : null}
                   </div>
                   <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                       Freeze Column
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -1324,7 +1378,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                   </div>
                   <div style={{ marginTop: 10, padding: "8px 6px 2px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                       Reset Column Widths
                     </div>
                     <button
@@ -1332,15 +1386,157 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       onClick={resetColumnWidths}
                       style={{ width: "100%", fontSize: 11, padding: "6px 10px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
                     >
-                      Reset Widths
-                    </button>
+                     Reset Widths
+                   </button>
+                 </div>
+                  <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
+                  <button
+                    type="button"
+                    aria-expanded={isColorSettingsOpen}
+                    onClick={() => setIsColorSettingsOpen((open) => !open)}
+                    style={{
+                      ...SETTINGS_SECTION_TITLE_STYLE,
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "2px 0 7px",
+                      border: "none",
+                      borderBottom: isColorSettingsOpen ? "1px solid #E2E8F0" : "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>Column Colors</span>
+                    <span aria-hidden="true" style={{ fontSize: 10, lineHeight: 1 }}>
+                      {isColorSettingsOpen ? "▼" : "▶"}
+                    </span>
+                  </button>
+                  {isColorSettingsOpen ? (
+                    <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 9 }}>
+                    <select
+                      value={selectedColorColumn}
+                      onChange={(event) => setSelectedColorColumn(event.target.value)}
+                      style={{ width: "100%", fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
+                    >
+                      {colorableColumns.map((column) => (
+                        <option key={column.id} value={column.id}>
+                          {column.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      {(["cell", "header"] as const).map((target) => {
+                        const current = columnColors[selectedColorColumn]?.[target] ?? (target === "cell" ? "#FFFFFF" : "#2A2825");
+                        return (
+                          <label key={target} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                            {target === "cell" ? "Cell" : "Header"}
+                            <input
+                              type="color"
+                              disabled={target === "cell" && selectedColorColumnIsContainerHeader}
+                              value={current}
+                              onChange={(event) => handleColumnColorChange(selectedColorColumn, target, event.target.value)}
+                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: target === "cell" && selectedColorColumnIsContainerHeader ? "default" : "pointer", opacity: target === "cell" && selectedColorColumnIsContainerHeader ? 0.45 : 1 }}
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={resetSelectedColumnColor}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
+                      >
+                        Reset Selected
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetColumnColors}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
+                      >
+                        Reset All
+                      </button>
+                    </div>
                   </div>
-                </div>
+
+                  {/* Selected Cell Color */}
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
+                    <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
+                      Selected Cell Color
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      <div
+                        title={selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell?.label}
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          borderRadius: 5,
+                          border: "1px solid #CBD5E1",
+                          background: selectedAgCell ? "#F8FAFC" : "#F1F5F9",
+                          color: selectedAgCell ? "#1E293B" : "#94A3B8",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          padding: "5px 8px",
+                        }}
+                      >
+                        {selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: 3,
+                              border: "1px solid #CBD5E1",
+                              background: selectedCellColorInfo.label === "Mixed"
+                                ? "linear-gradient(135deg, #F87171 0 33%, #FACC15 33% 66%, #60A5FA 66% 100%)"
+                                : selectedCellColorInfo.color,
+                            }}
+                          />
+                          {selectedCellColorInfo.label}
+                        </span>
+                        <input
+                          type="color"
+                          disabled={!selectedAgCell}
+                          value={selectedAgCell ? selectedCellColorInfo.color : "#FFFFFF"}
+                          onChange={(event) => handleSelectedCellColorChange(event.target.value)}
+                          style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: selectedAgCell ? "pointer" : "default" }}
+                        />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <button
+                          type="button"
+                          disabled={!selectedAgCell}
+                          onClick={resetSelectedCellColor}
+                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
+                        >
+                          Reset Selected
+                        </button>
+                        <button
+                          type="button"
+                          onClick={resetCellColors}
+                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
+                        >
+                          Reset All Cells
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                    </>
+                  ) : null}
+                  </div>
+               </div>
+              </div>
               </div>
 
               {/* Columns */}
               <div style={{ gridColumn: 2, gridRow: "2 / 4", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                   Column Visibility
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: "min(700px, calc(100vh - 200px))", overflow: "auto", paddingRight: 4 }}>
@@ -1423,127 +1619,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 </div>
               </div>
 
-              {/* Column Colors + Selected Cell Color */}
-              {gridMode === "ag-grid" ? (
-                <div style={{ gridColumn: 3, gridRow: "2 / 4", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Column Colors
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    <select
-                      value={selectedColorColumn}
-                      onChange={(event) => setSelectedColorColumn(event.target.value)}
-                      style={{ width: "100%", fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
-                    >
-                      {colorableColumns.map((column) => (
-                        <option key={column.id} value={column.id}>
-                          {column.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      {(["cell", "header"] as const).map((target) => {
-                        const current = columnColors[selectedColorColumn]?.[target] ?? (target === "cell" ? "#FFFFFF" : "#2A2825");
-                        return (
-                          <label key={target} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                            {target === "cell" ? "Cell" : "Header"}
-                            <input
-                              type="color"
-                              disabled={target === "cell" && selectedColorColumnIsContainerHeader}
-                              value={current}
-                              onChange={(event) => handleColumnColorChange(selectedColorColumn, target, event.target.value)}
-                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: target === "cell" && selectedColorColumnIsContainerHeader ? "default" : "pointer", opacity: target === "cell" && selectedColorColumnIsContainerHeader ? 0.45 : 1 }}
-                            />
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      <button
-                        type="button"
-                        onClick={resetSelectedColumnColor}
-                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
-                      >
-                        Reset Selected
-                      </button>
-                      <button
-                        type="button"
-                        onClick={resetColumnColors}
-                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
-                      >
-                        Reset All
-                      </button>
-                    </div>
-                  </div>
+              {/* Column Colors + Selected Cell Color / Container Visibility */}
+             {gridMode === "ag-grid" ? (
+               <div style={{ display: "contents" }}>
 
-                  {/* Selected Cell Color — merged into same column 3 container */}
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Selected Cell Color
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      <div
-                        title={selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell?.label}
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          borderRadius: 5,
-                          border: "1px solid #CBD5E1",
-                          background: selectedAgCell ? "#F8FAFC" : "#F1F5F9",
-                          color: selectedAgCell ? "#1E293B" : "#94A3B8",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          padding: "5px 8px",
-                        }}
-                      >
-                        {selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              width: 14,
-                              height: 14,
-                              borderRadius: 3,
-                              border: "1px solid #CBD5E1",
-                              background: selectedCellColorInfo.label === "Mixed"
-                                ? "linear-gradient(135deg, #F87171 0 33%, #FACC15 33% 66%, #60A5FA 66% 100%)"
-                                : selectedCellColorInfo.color,
-                            }}
-                          />
-                          {selectedCellColorInfo.label}
-                        </span>
-                        <input
-                          type="color"
-                          disabled={!selectedAgCell}
-                          value={selectedAgCell ? selectedCellColorInfo.color : "#FFFFFF"}
-                          onChange={(event) => handleSelectedCellColorChange(event.target.value)}
-                          style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: selectedAgCell ? "pointer" : "default" }}
-                        />
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                        <button
-                          type="button"
-                          disabled={!selectedAgCell}
-                          onClick={resetSelectedCellColor}
-                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
-                        >
-                          Reset Selected
-                        </button>
-                        <button
-                          type="button"
-                          onClick={resetCellColors}
-                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
-                        >
-                          Reset All Cells
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Container Visibility */}
+                 {/* Container Visibility */}
                   {(() => {
                     const allContainers = data.containers.filter(
                       (c) => c.status !== "baseline" && containerMatchesCategory(c, categoryFilter)
@@ -1557,9 +1637,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     ];
 
                     return (
-                      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
+                      <div style={{ gridColumn: 3, gridRow: "2 / 5", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          <div style={SETTINGS_SECTION_TITLE_STYLE}>
                             Container Visibility
                           </div>
                           {hiddenContainers.size > 0 && (
@@ -1598,12 +1678,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           })}
                         </div>
                         <div style={{ borderTop: "1px solid #E2E8F0", marginBottom: 8 }} />
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "min(400px, calc(100vh - 420px))", overflowY: "auto", paddingRight: 2 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "min(700px, calc(100vh - 200px))", overflowY: "auto", paddingRight: 2 }}>
                           {STATUS_GROUPS.map(({ status, label, color, accentColor }) => {
                             const group = allContainers.filter((c) => c.status === status);
                             if (!group.length) return null;
                             const allVisible  = group.every((c) => !hiddenContainers.has(c.name));
                             const someVisible = group.some((c)  => !hiddenContainers.has(c.name));
+                            const isOpen = openContainerStatusGroups[status] !== false;
                             const toggleGroup = () => setHiddenContainers((prev) => {
                               const next = new Set(prev);
                               if (allVisible) group.forEach((c) => next.add(c.name));
@@ -1613,27 +1694,41 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             return (
                               <div key={status}>
                                 {/* Group header */}
-                                <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 5px", borderRadius: 4, cursor: "pointer", marginBottom: 2 }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={allVisible}
-                                    ref={(el) => { if (el) el.indeterminate = !allVisible && someVisible; }}
-                                    onChange={toggleGroup}
-                                    style={{ width: 14, height: 14, cursor: "pointer", accentColor }}
-                                  />
-                                  <span style={{ fontSize: 11, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                                    {label} ({group.length})
-                                  </span>
-                                </label>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 5px", borderRadius: 4, marginBottom: 2 }}>
+                                  <button
+                                    type="button"
+                                    aria-label={isOpen ? `Collapse ${label}` : `Expand ${label}`}
+                                    aria-expanded={isOpen}
+                                    onClick={() => setOpenContainerStatusGroups((previous) => ({
+                                      ...previous,
+                                      [status]: !isOpen,
+                                    }))}
+                                    style={{ width: 18, height: 18, border: "none", background: "transparent", cursor: "pointer", color: "#64748B", fontSize: 10, padding: 0, lineHeight: "18px", flexShrink: 0 }}
+                                  >
+                                    {isOpen ? "▼" : "▶"}
+                                  </button>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", minWidth: 0 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={allVisible}
+                                      ref={(el) => { if (el) el.indeterminate = !allVisible && someVisible; }}
+                                      onChange={toggleGroup}
+                                      style={{ width: 14, height: 14, cursor: "pointer", accentColor }}
+                                    />
+                                    <span style={{ fontSize: 11, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                      {label} ({group.length})
+                                    </span>
+                                  </label>
+                                </div>
                                 {/* Individual containers */}
-                                {group.map((c) => {
+                                {isOpen ? group.map((c) => {
                                   const visible = !hiddenContainers.has(c.name);
                                   return (
                                     <label
                                       key={c.name}
                                       style={{
                                         display: "flex", alignItems: "center", gap: 6,
-                                        padding: "3px 5px 3px 22px", borderRadius: 4, cursor: "pointer",
+                                        padding: "3px 5px 3px 29px", borderRadius: 4, cursor: "pointer",
                                         background: visible ? "rgba(59,130,246,.06)" : "transparent",
                                       }}
                                     >
@@ -1657,7 +1752,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                       )}
                                     </label>
                                   );
-                                })}
+                                }) : null}
                               </div>
                             );
                           })}
