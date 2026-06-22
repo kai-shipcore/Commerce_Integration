@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { CalendarRange, ChevronDown, ExternalLink, Search, X } from "lucide-react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import type { DemandPlanningData, DemandRow } from "@/types/demand-planning";
 import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-forecasts/types";
@@ -242,6 +243,7 @@ function buildMonths(rangeStart: Date, totalDays: number): MonthSegment[] {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ContainerTimelinePage() {
+  const { pick } = useI18n();
   const [containers, setContainers] = useState<Container[]>([]);
   const [planningRowsBySku, setPlanningRowsBySku] = useState<Record<string, DemandRow>>({});
   const [loading, setLoading] = useState(true);
@@ -434,7 +436,7 @@ export function ContainerTimelinePage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-        Loading...
+        {pick("로딩 중...", "Loading...")}
       </div>
     );
   }
@@ -456,8 +458,8 @@ export function ContainerTimelinePage() {
           <div className="flex items-start gap-2">
             <CalendarRange className="mt-1 h-5 w-5 shrink-0" />
             <div>
-            <h1 className="text-lg font-bold text-[#1a1917]">Container Timeline</h1>
-            <p className="text-sm text-muted-foreground">입고 예정 컨테이너 · ETA 기준 Gantt 뷰</p>
+            <h1 className="text-lg font-bold text-[#1a1917]">{pick("컨테이너 일정", "Container Timeline")}</h1>
+            <p className="text-sm text-muted-foreground">{pick("입고 예정 컨테이너 · ETA 기준 Gantt 뷰", "Inbound containers · Gantt view by ETA")}</p>
             </div>
           </div>
         </div>
@@ -470,15 +472,15 @@ export function ContainerTimelinePage() {
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="컨테이너 이름 또는 SKU 검색"
-              aria-label="컨테이너 이름 또는 SKU 검색"
+              placeholder={pick("컨테이너 이름 또는 SKU 검색", "Search container or SKU")}
+              aria-label={pick("컨테이너 이름 또는 SKU 검색", "Search container or SKU")}
               className="h-8 w-full rounded-lg border border-[#d8d6ce] bg-white pl-8 pr-8 text-[12px] outline-none transition-colors placeholder:text-stone-400 focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/10"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
-                aria-label="검색어 지우기"
+                aria-label={pick("검색어 지우기", "Clear search")}
                 className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-stone-400 hover:bg-stone-100 hover:text-stone-700"
               >
                 <X className="h-3 w-3" />
@@ -488,7 +490,7 @@ export function ContainerTimelinePage() {
 
           <span className="w-px h-4 bg-[#d8d6ce]" />
 
-          <span className="text-[11px] font-semibold text-muted-foreground">상품</span>
+          <span className="text-[11px] font-semibold text-muted-foreground">{pick("상품", "Product")}</span>
           <div className="flex rounded-lg border border-[#d8d6ce] bg-[#f0eee9] p-0.5">
             {PRODUCT_OPTIONS.map((option) => (
               <button
@@ -502,7 +504,7 @@ export function ContainerTimelinePage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {option.value === "all" ? option.label : option.shortLabel}
+                {option.value === "all" ? pick("전체", "All") : option.shortLabel}
               </button>
             ))}
           </div>
@@ -510,7 +512,7 @@ export function ContainerTimelinePage() {
           <span className="w-px h-4 bg-[#d8d6ce]" />
 
           {/* Status pills */}
-          <span className="text-[11px] font-semibold text-muted-foreground">상태</span>
+          <span className="text-[11px] font-semibold text-muted-foreground">{pick("상태", "Status")}</span>
           {STATUS_ORDER.map((status) => {
             const active = activeStatuses.has(status);
             const count = countsByStatus[status] ?? 0;
@@ -545,7 +547,7 @@ export function ContainerTimelinePage() {
           <span className="w-px h-4 bg-[#d8d6ce]" />
 
           {/* Period toggle */}
-          <span className="text-[11px] font-semibold text-muted-foreground">기간</span>
+          <span className="text-[11px] font-semibold text-muted-foreground">{pick("기간", "Period")}</span>
           <div className="flex bg-[#f0eee9] border border-[#d8d6ce] rounded-lg p-0.5 gap-0.5">
             {PERIOD_OPTIONS.map((opt) => (
               <button
@@ -557,14 +559,14 @@ export function ContainerTimelinePage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {opt.label}
+                {opt.value === "3M" ? pick("3개월", "3M") : opt.value === "6M" ? pick("6개월", "6M") : pick("전체", "All")}
               </button>
             ))}
           </div>
 
           {/* Result count */}
           <span className="ml-auto text-[11px] text-muted-foreground">
-            {totalVisible}개 표시 중
+            {pick(`${totalVisible}개 표시 중`, `${totalVisible} shown`)}
           </span>
         </div>
 
@@ -576,7 +578,7 @@ export function ContainerTimelinePage() {
               <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-wide">
                 Container
               </span>
-              <span className="text-[10px] text-stone-300">ETA 기준 ↑</span>
+              <span className="text-[10px] text-stone-300">{pick("ETA 기준 ↑", "By ETA ↑")}</span>
             </div>
             <div className="flex-1 relative overflow-hidden">
               <div className="flex">
@@ -606,9 +608,9 @@ export function ContainerTimelinePage() {
           {/* Body */}
           {grouped.length === 0 ? (
             <div className="py-20 text-center text-muted-foreground text-sm">
-              <div>표시할 컨테이너가 없습니다</div>
+              <div>{pick("표시할 컨테이너가 없습니다", "No containers to display")}</div>
               <div className="text-[11px] mt-1 text-stone-300">
-                필터를 변경하거나 기간을 늘려보세요
+                {pick("필터를 변경하거나 기간을 늘려보세요", "Try changing the filters or extending the period")}
               </div>
             </div>
           ) : (
@@ -758,7 +760,7 @@ export function ContainerTimelinePage() {
                           </div>
                         ) : (
                           <div className="absolute inset-y-3 left-3 flex items-center">
-                            <span className="text-[11px] text-stone-300 italic">날짜 미정</span>
+                            <span className="text-[11px] text-stone-300 italic">{pick("날짜 미정", "No date set")}</span>
                           </div>
                         )}
                       </div>
@@ -779,16 +781,16 @@ export function ContainerTimelinePage() {
                 style={{ background: STATUS_COLOR[s as ContainerStatus], opacity: s === "draft" ? 0.8 : 1 }}
               />
               {STATUS_LABEL_FULL[s as ContainerStatus]}
-              {s === "draft" && " (점선)"}
+              {s === "draft" && pick(" (점선)", " (dashed)")}
             </div>
           ))}
           <span className="w-px h-3.5 bg-[#d8d6ce]" />
           <div className="flex items-center gap-1.5">
             <div className="w-px h-4 bg-red-400 opacity-60" />
-            오늘
+            {pick("오늘", "Today")}
           </div>
           <span className="ml-auto text-[10px] text-stone-300">
-            ※ 바 너비 = 30일 Transit 기간 (발주일 컬럼 추가 시 실제 기간으로 전환 가능)
+            {pick("※ 바 너비 = 30일 Transit 기간 (발주일 컬럼 추가 시 실제 기간으로 전환 가능)", "※ Bar width = 30-day transit period (can switch to actual period when order date column is added)")}
           </span>
         </div>
       </div>
@@ -820,6 +822,7 @@ function ContainerDetailDrawer({
   skuSearchQuery: string;
   onClose: () => void;
 }) {
+  const { pick } = useI18n();
   const normalizedSkuSearch = skuSearchQuery.trim().toLowerCase();
   const [isSkuListOpen, setIsSkuListOpen] = useState(true);
   const [localSkuFilter, setLocalSkuFilter] = useState("");
@@ -950,7 +953,7 @@ function ContainerDetailDrawer({
               href={`/planning/container-planning?containerId=${c.id}`}
               className="flex items-center justify-center gap-1.5 rounded-lg border border-[#1a5cdb]/30 px-3 py-1.5 text-[11px] font-semibold text-[#1a5cdb] transition-colors hover:bg-[#ebf0fd] hover:text-[#1650c4]"
             >
-              Container Planning에서 열기
+              {pick("Container Planning에서 열기", "Open in Container Planning")}
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
             <button
@@ -969,16 +972,16 @@ function ContainerDetailDrawer({
             <div className="grid grid-cols-[minmax(150px,0.8fr)_minmax(220px,1.4fr)_minmax(100px,0.7fr)] items-center gap-x-6 text-[12px]">
               <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
                 <span className="font-semibold text-muted-foreground">
-                  {c.status === "complete" ? "실제 입고" : "ETA"}:
+                  {c.status === "complete" ? pick("실제 입고", "Actual Arrival") : "ETA"}:
                 </span>
                 <span className="font-semibold">{displayDate ?? "—"}</span>
               </div>
               <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-                <span className="font-semibold text-muted-foreground">공장:</span>
+                <span className="font-semibold text-muted-foreground">{pick("공장", "Factory")}:</span>
                 <span className="truncate font-semibold">{c.factoryName ?? "—"}</span>
               </div>
               <div className="flex min-w-0 items-center justify-self-end gap-2 whitespace-nowrap text-right">
-                <span className="font-semibold text-muted-foreground">창고:</span>
+                <span className="font-semibold text-muted-foreground">{pick("창고", "Warehouse")}:</span>
                 <span className="truncate font-semibold">{c.destWarehouse ?? "—"}</span>
               </div>
             </div>
@@ -986,7 +989,7 @@ function ContainerDetailDrawer({
             {(c.actualArrivalDate && c.status !== "complete" || c.origin) && (
               <div className="flex items-center gap-6 text-[11px]">
                 {c.actualArrivalDate && c.status !== "complete" && (
-                  <span><span className="text-muted-foreground">실제 입고:</span> <strong className="text-[#22a666]">{c.actualArrivalDate}</strong></span>
+                  <span><span className="text-muted-foreground">{pick("실제 입고", "Actual Arrival")}:</span> <strong className="text-[#22a666]">{c.actualArrivalDate}</strong></span>
                 )}
                 {c.origin && (
                   <span><span className="text-muted-foreground">Origin:</span> <strong>{c.origin}</strong></span>
@@ -997,7 +1000,7 @@ function ContainerDetailDrawer({
             {/* CBM bar */}
             <div>
               <div className="flex items-center justify-between text-[11px] mb-1.5">
-                <span className="text-muted-foreground">CBM 적재율</span>
+                <span className="text-muted-foreground">{pick("CBM 적재율", "CBM Load Rate")}</span>
                 <span className="font-semibold">
                   {totalCbm.toFixed(1)} / {c.cbmCapacity} m³
                   <span className="ml-1.5 text-muted-foreground">({Math.round(cbmUsedPct)}%)</span>
@@ -1029,7 +1032,7 @@ function ContainerDetailDrawer({
                 <ChevronDown
                   className={`h-3.5 w-3.5 transition-transform ${isSkuListOpen ? "rotate-180" : ""}`}
                 />
-                SKU 목록
+                {pick("SKU 목록", "SKU List")}
               </span>
               <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 {criticalCount > 0 && (
@@ -1053,13 +1056,13 @@ function ContainerDetailDrawer({
                   type="text"
                   value={localSkuFilter}
                   onChange={(e) => setLocalSkuFilter(e.target.value)}
-                  placeholder="SKU 검색..."
+                  placeholder={pick("SKU 검색...", "Search SKU...")}
                   className="w-full rounded-md border border-[#e2dfd8] bg-[#fafaf7] px-3 py-1.5 text-[12px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
                 />
               </div>
               {c.items.length === 0 ? (
                 <div className="py-8 text-center text-[12px] text-muted-foreground border border-dashed border-[#d8d6ce] rounded-lg">
-                  등록된 SKU가 없습니다
+                  {pick("등록된 SKU가 없습니다", "No SKUs registered")}
                 </div>
               ) : (
                 <div className="h-full overflow-x-auto overflow-y-scroll rounded-lg border border-[#e2dfd8]">
@@ -1080,15 +1083,15 @@ function ContainerDetailDrawer({
                     <thead className="sticky top-0 z-10 bg-[#f5f4f0] shadow-[0_1px_0_#e2dfd8]">
                       <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
                         <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("Master SKU", "sku", "left")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("위험도", "level", "center")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 재고", "stock", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("평균 판매/일", "sales", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("현재 SOD", "sod", "center")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("ETA 전 품절", "stockout", "center")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("ETA 재고 / BO", "etaImpact", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("추가 추천", "quantity", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("해당 / 전체 입고", "totalInbound", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader("입고 후 SOD", "postSod", "center")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("위험도", "Risk"), "level", "center")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("현재 재고", "Current Stock"), "stock", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("평균 판매/일", "Avg Sales/Day"), "sales", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("현재 SOD", "Current SOD"), "sod", "center")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("ETA 전 품절", "Stockout Before ETA"), "stockout", "center")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("ETA 재고 / BO", "ETA Stock / BO"), "etaImpact", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("추가 추천", "Rec. Add"), "quantity", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("해당 / 전체 입고", "This / Total Inbound"), "totalInbound", "right")}</th>
+                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("입고 후 SOD", "Post-Inbound SOD"), "postSod", "center")}</th>
                         <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("CBM", "cbm", "right")}</th>
                       </tr>
                     </thead>
@@ -1096,7 +1099,7 @@ function ContainerDetailDrawer({
                       {filteredSkuImpacts.length === 0 && (
                         <tr>
                           <td colSpan={11} className="py-8 text-center text-[12px] text-muted-foreground">
-                            검색 결과가 없습니다
+                            {pick("검색 결과가 없습니다", "No results found")}
                           </td>
                         </tr>
                       )}
@@ -1127,7 +1130,7 @@ function ContainerDetailDrawer({
                               "noopener,noreferrer",
                             );
                           }}
-                          title="더블클릭하여 SKU Planning에서 열기"
+                          title={pick("더블클릭하여 SKU Planning에서 열기", "Double-click to open in SKU Planning")}
                           className={`cursor-pointer border-b border-[#f0ede8] last:border-b-0 transition-colors ${
                             isHighlighted ? "bg-blue-100 outline outline-2 -outline-offset-2 outline-[#1a5cdb] hover:bg-blue-100" :
                             level === "critical" ? "bg-red-50/70 hover:bg-red-50" :
@@ -1148,7 +1151,7 @@ function ContainerDetailDrawer({
                           <td className="px-2 py-2 text-right tabular-nums">{averageDailySales?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}</td>
                           <td className="px-2 py-2 text-center tabular-nums">{estimatedSod ?? "—"}</td>
                           <td className={`px-2 py-2 text-center font-semibold ${stockoutBeforeEta ? "text-red-700" : "text-emerald-700"}`}>
-                            {stockoutBeforeEta === null ? "—" : stockoutBeforeEta ? "예" : "아니오"}
+                            {stockoutBeforeEta === null ? "—" : stockoutBeforeEta ? pick("예", "Yes") : pick("아니오", "No")}
                           </td>
                           <td className={`px-2 py-2 text-right tabular-nums font-semibold ${(backorderAtEta ?? 0) > 0 ? "text-red-700" : ""}`}>
                             {projectedStockAtEta?.toLocaleString() ?? "—"} / {backorderAtEta?.toLocaleString() ?? "—"}
@@ -1169,7 +1172,7 @@ function ContainerDetailDrawer({
                       <tr className="border-t border-[#e2dfd8] bg-[#f5f4f0]">
                         <td className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length} SKUs)</td>
                         <td colSpan={7} />
-                        <td className="px-2 py-2 text-right tabular-nums font-bold">입고 {totalQty.toLocaleString()} units</td>
+                        <td className="px-2 py-2 text-right tabular-nums font-bold">{pick("입고", "Inbound")} {totalQty.toLocaleString()} units</td>
                         <td />
                         <td className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)} m³</td>
                       </tr>

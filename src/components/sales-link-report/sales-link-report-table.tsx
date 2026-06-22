@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * Code Guide:
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type SortBy = "masterSku" | "qty90d" | "qty60d" | "qty30d" | "qty15d" | "qty7d";
 type SortOrder = "asc" | "desc";
@@ -124,6 +125,7 @@ function HeaderButton({
 }
 
 export function SalesLinkReportTable() {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<SalesLinkRow[]>([]);
   const [totals, setTotals] = useState<(SalesLinkRow & { skuCount: number }) | null>(null);
   const [meta, setMeta] = useState<SalesLinkResponse["meta"] | null>(null);
@@ -404,7 +406,7 @@ export function SalesLinkReportTable() {
                       <span className="text-sm text-muted-foreground">
                         {hasRequestedData
                           ? "No sales rows found."
-                          : "Load Data ë²„íŠ¼ì„ ëˆŒëŸ¬ Sales ë°ì´í„°ë¥¼ ê°€ì ¸ì˜¤ì„¸ìš”."}
+                          : pick("Load Data 버튼을 눌러 Sales 데이터를 가져오세요.", "Click Load Data to fetch sales data.")}
                       </span>
                     </TableCell>
                   </TableRow>

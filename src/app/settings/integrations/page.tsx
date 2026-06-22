@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { MarketplaceIcon } from "@/components/marketplaces/marketplace-icon";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type TokenStatus = "valid" | "expiring_soon" | "expired" | "none";
 
@@ -123,6 +124,7 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function IntegrationsPage() {
+  const { pick } = useI18n();
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const [reauthBanner, setReauthBanner] = useState<{
@@ -448,7 +450,7 @@ export default function IntegrationsPage() {
             <DialogTrigger asChild>
               <Button className="bg-[#1a5cdb] hover:bg-[#1650c4]">
                 <Plus className="mr-2 h-4 w-4" />
-                Add Market Place
+                {pick("마켓플레이스 추가", "Add Market Place")}
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -464,6 +466,7 @@ export default function IntegrationsPage() {
                   setFormData,
                   formError,
                   mode: "add",
+                  pick,
                 })}
                 <DialogFooter>
                   <Button
@@ -471,13 +474,13 @@ export default function IntegrationsPage() {
                     variant="outline"
                     onClick={() => setAddDialogOpen(false)}
                   >
-                    Cancel
+                    {pick("취소", "Cancel")}
                   </Button>
                   <Button type="submit" disabled={submitting}>
                     {submitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    Connect Market Place
+                    {pick("마켓플레이스 연결", "Connect Market Place")}
                   </Button>
                 </DialogFooter>
               </form>
@@ -507,6 +510,7 @@ export default function IntegrationsPage() {
                   setFormData: setEditFormData,
                   formError: editFormError,
                   mode: "edit",
+                  pick,
                 })}
                 <DialogFooter>
                   <Button
@@ -514,13 +518,13 @@ export default function IntegrationsPage() {
                     variant="outline"
                     onClick={() => setEditDialogOpen(false)}
                   >
-                    Cancel
+                    {pick("취소", "Cancel")}
                   </Button>
                   <Button type="submit" disabled={updating}>
                     {updating && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    Save Changes
+                    {pick("변경사항 저장", "Save Changes")}
                   </Button>
                 </DialogFooter>
               </form>
@@ -552,7 +556,7 @@ export default function IntegrationsPage() {
               </p>
               <Button onClick={() => setAddDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Market Place
+                {pick("마켓플레이스 추가", "Add Market Place")}
               </Button>
             </div>
           </div>
@@ -627,23 +631,23 @@ export default function IntegrationsPage() {
                       {integration.tokenStatus === "valid" && (
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-950/60">
                           <CheckCircle className="h-3 w-3 mr-1" />
-                          Access Token 유효
+                          {pick("Access Token 유효", "Token valid")}
                         </Badge>
                       )}
                       {integration.tokenStatus === "expiring_soon" && (
                         <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
                           <AlertTriangle className="h-3 w-3 mr-1" />
-                          Access Token 곧 만료
+                          {pick("곧 만료", "Expiring soon")}
                         </Badge>
                       )}
                       {integration.tokenStatus === "expired" && (
                         <Badge variant="destructive">
                           <XCircle className="h-3 w-3 mr-1" />
-                          Access Token 만료됨
+                          {pick("만료됨", "Expired")}
                         </Badge>
                       )}
                       {integration.tokenStatus === "none" && (
-                        <Badge variant="outline">Access Token 없음</Badge>
+                        <Badge variant="outline">{pick("없음", "None")}</Badge>
                       )}
                     </div>
                   )}
@@ -665,7 +669,7 @@ export default function IntegrationsPage() {
                       ) : (
                         <Pencil className="mr-2 h-4 w-4" />
                       )}
-                      Edit
+                      {pick("편집", "Edit")}
                     </Button>
                     {integration.platform === "ebay" && isAdmin && (
                       <Button
@@ -713,7 +717,7 @@ export default function IntegrationsPage() {
                       ) : (
                         <RefreshCw className="mr-2 h-4 w-4" />
                       )}
-                      Sync New
+                      {pick("신규 동기화", "Sync New")}
                     </Button>
                     <Button
                       variant="outline"
@@ -735,7 +739,7 @@ export default function IntegrationsPage() {
                       ) : (
                         <RefreshCw className="mr-2 h-4 w-4" />
                       )}
-                      Full Sync (All History)
+                      {pick("전체 동기화", "Full Sync")}
                     </Button>
                     <Dialog
                       open={deleteDialogOpen === integration.id}
@@ -758,16 +762,14 @@ export default function IntegrationsPage() {
                           }
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Remove
+                          {pick("삭제", "Remove")}
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Remove Integration</DialogTitle>
+                          <DialogTitle>{pick("연동 삭제", "Remove Integration")}</DialogTitle>
                           <DialogDescription>
-                            Are you sure you want to remove this integration?
-                            This will stop syncing sales data from this store.
-                            Existing sales records will not be deleted.
+                            {pick("이 연동을 삭제하시겠습니까? 해당 스토어의 판매 데이터 동기화가 중단됩니다. 기존 판매 기록은 삭제되지 않습니다.", "Are you sure you want to remove this integration? This will stop syncing sales data from this store. Existing sales records will not be deleted.")}
                           </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
@@ -775,13 +777,13 @@ export default function IntegrationsPage() {
                             variant="outline"
                             onClick={() => setDeleteDialogOpen(null)}
                           >
-                            Cancel
+                            {pick("취소", "Cancel")}
                           </Button>
                           <Button
                             variant="destructive"
                             onClick={() => handleDelete(integration.id)}
                           >
-                            Remove Integration
+                            {pick("연동 삭제", "Remove Integration")}
                           </Button>
                         </DialogFooter>
                       </DialogContent>
@@ -878,11 +880,13 @@ function renderIntegrationForm({
   setFormData,
   formError,
   mode,
+  pick,
 }: {
   formData: IntegrationFormState;
   setFormData: React.Dispatch<React.SetStateAction<IntegrationFormState>>;
   formError: string | null;
   mode: "add" | "edit";
+  pick: (ko: string, en: string) => string;
 }) {
   const isEdit = mode === "edit";
 
@@ -896,7 +900,7 @@ function renderIntegrationForm({
       )}
       {!isEdit && (
         <div className="grid gap-2">
-          <Label htmlFor="platform">Platform</Label>
+          <Label htmlFor="platform">{pick("플랫폼", "Platform")}</Label>
           <Select
             value={formData.platform}
             onValueChange={(value: IntegrationPlatform) =>

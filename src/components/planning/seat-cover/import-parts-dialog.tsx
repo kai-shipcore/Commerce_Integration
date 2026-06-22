@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const TEMPLATE_HEADERS = [
   "Request Received Date",
@@ -60,7 +61,10 @@ interface ValidationError {
   message: string;
 }
 
-function validateRows(rows: Record<string, string>[]): ValidationError[] {
+function validateRows(
+  rows: Record<string, string>[],
+  pick: (ko: string, en: string) => string,
+): ValidationError[] {
   const errors: ValidationError[] = [];
   const seen = new Map<string, number>();
 
@@ -94,7 +98,10 @@ function validateRows(rows: Record<string, string>[]): ValidationError[] {
         errors.push({
           rowNum,
           field: "Duplicate",
-          message: `Row ${seen.get(key)}와 Request Received Date · Order Number · Part Number 조합이 중복됩니다`,
+          message: pick(
+            `Row ${seen.get(key)}의 Request Received Date · Order Number · Part Number 조합이 중복됩니다.`,
+            `Row ${seen.get(key)} has a duplicate Request Received Date · Order Number · Part Number combination.`,
+          ),
         });
       } else {
         seen.set(key, rowNum);
@@ -131,6 +138,7 @@ interface ImportPartsDialogProps {
 }
 
 export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportPartsDialogProps) {
+  const { pick } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([]);
@@ -170,7 +178,7 @@ export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportParts
         const wb = XLSX.read(data, { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = parseRows(ws);
-        const errors = validateRows(rows);
+        const errors = validateRows(rows, pick);
         setParsedRows(rows);
         setValidationErrors(errors);
       } catch {

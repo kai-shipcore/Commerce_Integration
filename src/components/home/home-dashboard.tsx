@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import Link from "next/link";
 import { subDays, subMonths, subYears, format } from "date-fns";
 import { toast } from "sonner";
@@ -79,6 +80,7 @@ export function HomeDashboard({
   links: QuickLink[];
   allowedHrefs: string[];
 }) {
+  const { pick } = useI18n();
   // Planning KPIs
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
@@ -176,7 +178,7 @@ export function HomeDashboard({
       : href.split("?")[0];
     const canOpen = allowedHrefs.includes(pathname);
     if (!canOpen) {
-      toast.error("이 페이지에 접근 권한이 없습니다. 관리자에게 권한을 요청하세요.");
+      toast.error(pick("이 페이지에 접근 권한이 없습니다. 관리자에게 권한을 요청하세요.", "You do not have permission to access this page. Please contact your administrator."));
     }
     return canOpen;
   }, [allowedHrefs]);
@@ -203,7 +205,7 @@ export function HomeDashboard({
         <div className="flex items-start gap-2">
           <LayoutDashboard className="mt-1.5 h-5 w-5" />
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Command Center</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{pick("커맨드 센터", "Command Center")}</h1>
             {syncLabel && <p className="mt-0.5 text-xs text-muted-foreground">{syncLabel}</p>}
           </div>
         </div>
@@ -214,7 +216,7 @@ export function HomeDashboard({
           className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-medium text-[#1A1917] disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
+          {pick("새로고침", "Refresh")}
         </button>
       </div>
 
@@ -251,17 +253,17 @@ export function HomeDashboard({
             <Link href={`${dashLink}&status=crit`}
               onClick={(event) => guardLinkClick(event, `${dashLink}&status=crit`)}
               className="rounded-xl border bg-white p-4 transition-colors hover:bg-red-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-red-950/30">
-              <p className="text-xs font-medium text-muted-foreground">Critical</p>
+              <p className="text-xs font-medium text-muted-foreground">{pick("위험", "Critical")}</p>
               <p className="mt-1 text-3xl font-bold text-red-600 dark:text-red-400">{(cat?.critical ?? 0).toLocaleString()}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">SOD &lt; 30 days</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{pick("SOD < 30일", "SOD < 30 days")}</p>
             </Link>
 
             <Link href={`${dashLink}&status=warn`}
               onClick={(event) => guardLinkClick(event, `${dashLink}&status=warn`)}
               className="rounded-xl border bg-white p-4 transition-colors hover:bg-amber-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-amber-950/30">
-              <p className="text-xs font-medium text-muted-foreground">Warning</p>
+              <p className="text-xs font-medium text-muted-foreground">{pick("경고", "Warning")}</p>
               <p className="mt-1 text-3xl font-bold text-amber-600 dark:text-amber-400">{(cat?.warning ?? 0).toLocaleString()}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">SOD 30&ndash;60 days</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{pick("SOD 30–60일", "SOD 30–60 days")}</p>
             </Link>
 
             <Link href={`${dashLink}&status=bo`}
@@ -269,10 +271,10 @@ export function HomeDashboard({
               className="rounded-xl border bg-white p-4 transition-colors hover:bg-orange-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-orange-950/30">
               <div className="flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3 text-orange-500" />
-                <p className="text-xs font-medium text-muted-foreground">Backorder</p>
+                <p className="text-xs font-medium text-muted-foreground">{pick("품절 주문", "Backorder")}</p>
               </div>
               <p className="mt-1 text-3xl font-bold text-orange-600 dark:text-orange-400">{(cat?.backorder ?? 0).toLocaleString()}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Units</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{pick("수량", "Units")}</p>
             </Link>
           </>
         )}
@@ -285,7 +287,7 @@ export function HomeDashboard({
         <div className="rounded-xl border bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
           {/* Chart toolbar */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Sales Trend</h2>
+            <h2 className="text-sm font-semibold">{pick("판매 추세", "Sales Trend")}</h2>
             <div className="flex flex-wrap items-center gap-2">
               {/* Period */}
               <select
@@ -314,7 +316,7 @@ export function HomeDashboard({
                     }`}
                   >
                     <Icon className="h-3.5 w-3.5" />
-                    {m === "revenue" ? "Revenue" : "Orders"}
+                    {m === "revenue" ? pick("매출", "Revenue") : pick("주문", "Orders")}
                   </button>
                   );
                 })}
@@ -339,7 +341,7 @@ export function HomeDashboard({
             </div>
           ) : chartData.length === 0 ? (
             <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              No sales data for this period
+              {pick("해당 기간의 판매 데이터가 없습니다", "No sales data for this period")}
             </div>
           ) : (
             <div className="h-48 w-full">
@@ -388,13 +390,13 @@ export function HomeDashboard({
           )}
         </div>
 
-        {/* Sales summary â€” matches selected period, links to Orders page */}
+        {/* Sales summary â€" matches selected period, links to Orders page */}
         <Link
           href={ordersHref}
           onClick={(event) => guardLinkClick(event, ordersHref)}
           className="rounded-xl border bg-white p-4 transition-colors hover:bg-[#f0eee9] dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700/60 block"
         >
-          <h2 className="mb-3 text-sm font-semibold">Sales &ndash; {periodLabel}</h2>
+          <h2 className="mb-3 text-sm font-semibold">{pick("판매", "Sales")} &ndash; {periodLabel}</h2>
 
           {chartLoading ? (
             <div className="space-y-3">
@@ -405,11 +407,11 @@ export function HomeDashboard({
           ) : (
             <div className="space-y-3">
               <div>
-                <p className="text-xs text-muted-foreground">Orders</p>
+                <p className="text-xs text-muted-foreground">{pick("주문", "Orders")}</p>
                 <p className="text-2xl font-bold">{(salesSummary?.totalUnits ?? 0).toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Revenue</p>
+                <p className="text-xs text-muted-foreground">{pick("매출", "Revenue")}</p>
                 <p className="text-lg font-semibold">
                   ${(salesSummary?.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </p>
@@ -422,7 +424,7 @@ export function HomeDashboard({
                   <span className={`text-sm font-medium ${salesSummary.growthPct >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                     {salesSummary.growthPct > 0 ? "+" : ""}{salesSummary.growthPct}%
                   </span>
-                  <span className="text-xs text-muted-foreground">vs prev period</span>
+                  <span className="text-xs text-muted-foreground">{pick("이전 기간 대비", "vs prev period")}</span>
                 </div>
               )}
             </div>
@@ -434,7 +436,7 @@ export function HomeDashboard({
       {links.length > 0 && (
         <div>
           <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Quick Links
+            {pick("빠른 링크", "Quick Links")}
           </h2>
           <QuickLinks links={links} onNavigate={canOpenHref} />
         </div>
@@ -453,6 +455,7 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: { paylo
       <p className="mb-1 font-medium">{d.dateLabel}</p>
       <p><span className="text-muted-foreground">Revenue: </span><span className="font-medium">${d.revenue.toLocaleString()}</span></p>
       <p><span className="text-muted-foreground">Orders: </span><span className="font-medium">{d.quantity.toLocaleString()}</span></p>
+
     </div>
   );
 }

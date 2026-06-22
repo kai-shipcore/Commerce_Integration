@@ -14,6 +14,7 @@ import { PartDialog } from "./add-part-dialog";
 import { DeleteDialog } from "@/components/ui/delete-dialog";
 import { ImportPartsDialog } from "./import-parts-dialog";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const modules = [AllCommunityModule];
 
@@ -130,6 +131,7 @@ const FILTER_BUTTONS: { key: FilterKey; label: string }[] = [
 ];
 
 export function PartsGrid() {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<PartOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -203,7 +205,7 @@ export function PartsGrid() {
         minWidth: 110,
       },
       {
-        headerName: "해당SKU",
+        headerName: pick("해당 SKU", "Related SKU"),
         field: "correspondingSku",
         flex: 2,
         minWidth: 110,
@@ -369,7 +371,7 @@ export function PartsGrid() {
                 </button>
               }
               title="Delete Part"
-              description={`Order #${selectedRow?.orderNumber ?? ""} 행을 삭제합니다. 되돌릴 수 없습니다.`}
+              description={`Order #${selectedRow?.orderNumber ?? ""} ` + pick("행을 삭제합니다. 되돌릴 수 없습니다.", "row will be permanently deleted.")}
               onConfirm={async () => {
                 await fetch(apiPath(`/api/planning/seat-cover/parts/${selectedRow!.id}`), {
                   method: "DELETE",

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import type { PartOrderRow } from "./parts-grid";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const SHIPPING_STATUSES = ["Not Ready", "Ready", "Shipped", "Canceled"] as const;
 
@@ -214,6 +215,7 @@ interface PartDialogProps {
 
 export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDialogProps) {
   const isEdit = !!editData;
+  const { pick } = useI18n();
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -495,7 +497,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                         flexShrink: 0,
                       }}
                     >
-                      {lookupLoading ? "조회 중…" : "조회"}
+                      {lookupLoading ? pick("조회 중…", "Searching…") : pick("조회", "Search")}
                     </button>
                   </div>
                 </div>
@@ -516,14 +518,14 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                           width: 14, height: 14, borderRadius: "50%",
                           border: "2px solid #D8D6CE", borderTopColor: "#2A2825",
                         }} />
-                        <span style={{ fontSize: 12, color: "#7A766F" }}>조회 중…</span>
+                        <span style={{ fontSize: 12, color: "#7A766F" }}>{pick("조회 중…", "Searching…")}</span>
                       </div>
                     )}
 
                     {!lookupLoading && orderItems.length > 0 && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: "#7A766F", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                          SKU / 상품 선택
+                          {pick("SKU / 상품 선택", "Select SKU / Product")}
                         </span>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
                           {orderItems.filter((item) => item.sku.includes("SC")).map((item) => {
@@ -565,7 +567,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                     {selectedOrderSku && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: "#7A766F", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                          해당SKU 선택
+                          {pick("해당 SKU 선택", "Select Related SKU")}
                         </span>
                         {sizeOptions.length > 0 ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -599,7 +601,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                             })}
                           </div>
                         ) : (
-                          <span style={{ fontSize: 12, color: "#A8A49E" }}>해당 SKU의 component 없음</span>
+                          <span style={{ fontSize: 12, color: "#A8A49E" }}>{pick("해당 SKU의 component 없음", "No components for this SKU")}</span>
                         )}
                       </div>
                     )}
@@ -608,15 +610,15 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: "#7A766F", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                            Part 선택
+                            {pick("Part 선택", "Select Part")}
                           </span>
                           {partLookupLoading && (
-                            <span style={{ fontSize: 11, color: "#7A766F" }}>조회 중…</span>
+                            <span style={{ fontSize: 11, color: "#7A766F" }}>{pick("조회 중…", "Searching…")}</span>
                           )}
                         </div>
                         <input
                           type="text"
-                          placeholder="검색…"
+                          placeholder={pick("검색…", "Search…")}
                           value={partSearch}
                           onChange={(e) => setPartSearch(e.target.value)}
                           style={{
@@ -695,8 +697,8 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
               <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 16px", alignContent: "start" }}>
                 {field("Request Received Date", "requestReceivedAt", "date", true)}
                 <div />
-                {field("Part Number", "partNumber", "text", true, partNotFound ? "해당 되는 Part Number 없음" : undefined)}
-                {field("해당SKU", "correspondingSku")}
+                {field("Part Number", "partNumber", "text", true, partNotFound ? pick("해당 되는 Part Number 없음", "No matching Part Number") : undefined)}
+                {field(pick("해당 SKU", "Related SKU"), "correspondingSku")}
                 {field("QTY", "qty", "number")}
                 {field("Order Request", "orderRequest")}
                 {field("PART SKU", "partSku")}
@@ -711,18 +713,18 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                       fontSize: 13,
                     }}>
                       {inventoryLoading ? (
-                        <span style={{ color: "#A8A49E" }}>조회 중…</span>
+                        <span style={{ color: "#A8A49E" }}>{pick("조회 중…", "Searching…")}</span>
                       ) : !inventoryQueried ? (
                         <span style={{ color: "#A8A49E" }}>—</span>
                       ) : inventoryWarehouses === null ? (
-                        <span style={{ color: "#c0392b", fontWeight: 600 }}>찾을 수 없음</span>
+                        <span style={{ color: "#c0392b", fontWeight: 600 }}>{pick("찾을 수 없음", "Not found")}</span>
                       ) : (
                         (() => {
                           const nonZero = inventoryWarehouses.filter((w) => w.available > 0);
-                          if (nonZero.length === 0) return <span style={{ color: "#c0392b", fontWeight: 600 }}>0개</span>;
+                          if (nonZero.length === 0) return <span style={{ color: "#c0392b", fontWeight: 600 }}>0{pick("개", "")}</span>;
                           return nonZero.map((w) => (
                             <span key={w.warehouse} style={{ color: "#166534", fontWeight: 600 }}>
-                              {w.warehouse}: {w.available}개
+                              {w.warehouse}: {w.available}{pick("개", "")}
                             </span>
                           ));
                         })()
@@ -768,7 +770,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                         cursor: formData.partSku && !inventoryLoading ? "pointer" : "not-allowed",
                       }}
                     >
-                      재고 확인
+                      {pick("재고 확인", "Check Stock")}
                     </button>
                   </div>
                 </div>
@@ -800,7 +802,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
               {field("Request Received Date", "requestReceivedAt", "date", true)}
               {field("Order Number", "orderNumber", "text", true)}
               {field("Part Number", "partNumber", "text", true)}
-              {field("해당SKU", "correspondingSku")}
+              {field(pick("해당 SKU", "Related SKU"), "correspondingSku")}
               {field("QTY", "qty", "number")}
               {field("Order Request", "orderRequest")}
               {field("PART SKU", "partSku")}

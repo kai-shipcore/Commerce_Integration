@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { ChevronDown, ChevronUp, PackageOpen, Ship } from "lucide-react";
 import {
   containerStatusLabels,
@@ -263,6 +264,7 @@ function formatExportDate(dateValue: string) {
 }
 
 export function ContainerPlanningPage() {
+  const { pick } = useI18n();
   const { data: session } = useSession();
   const canDeleteContainers = isPOApproverRole(session?.user?.role);
   const searchParams = useSearchParams();
@@ -481,7 +483,7 @@ export function ContainerPlanningPage() {
       const json = await response.json();
       if (json.success) await fetchFactories();
     } catch {
-      // silently ignore â€” factory field still holds the typed value
+      // silently ignore â€" factory field still holds the typed value
     }
   }
 
@@ -1665,9 +1667,9 @@ export function ContainerPlanningPage() {
         <div className="flex items-start gap-2">
           <Ship className="mt-1 h-5 w-5" />
           <div>
-            <h1 className="text-lg font-semibold">Container Planning</h1>
+            <h1 className="text-lg font-semibold">{pick("컨테이너 계획", "Container Planning")}</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              Register inbound containers, assign SKU quantities, and monitor packing-list status.
+              {pick("입고 컨테이너를 등록하고 SKU 수량을 배정하며 패킹리스트 상태를 관리합니다.", "Register inbound containers, assign SKU quantities, and monitor packing-list status.")}
             </p>
           </div>
         </div>
@@ -1676,14 +1678,14 @@ export function ContainerPlanningPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="form-input h-9 w-72 bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-            placeholder="Search container or SKU"
+            placeholder={pick("컨테이너 또는 SKU 검색", "Search container or SKU")}
           />
           <button
             type="button"
             onClick={openForm}
             className="rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
           >
-            + Add Container
+            {pick("+ 컨테이너 추가", "+ Add Container")}
           </button>
           <button
             type="button"
@@ -1691,7 +1693,7 @@ export function ContainerPlanningPage() {
             disabled={selectedExportContainers.length === 0}
             className="rounded-md border border-[#1a5cdb] bg-white px-3 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#ebf0fd] disabled:cursor-not-allowed disabled:border-[#cccac4] disabled:text-muted-foreground disabled:opacity-60 dark:bg-slate-950"
           >
-            Excel Export{selectedExportContainers.length > 0 ? ` (${selectedExportContainers.length})` : ""}
+            {pick("Excel 내보내기", "Excel Export")}{selectedExportContainers.length > 0 ? ` (${selectedExportContainers.length})` : ""}
           </button>
         </div>
       </header>
@@ -1704,18 +1706,18 @@ export function ContainerPlanningPage() {
           aria-expanded={!summaryCollapsed}
         >
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            <span className="font-semibold text-[#1a1917] dark:text-slate-50">Summary</span>
+            <span className="font-semibold text-[#1a1917] dark:text-slate-50">{pick("요약", "Summary")}</span>
             <span className="text-muted-foreground">
-              Total <span className="font-mono font-semibold text-foreground">{containers.length}</span>
+              {pick("전체", "Total")} <span className="font-mono font-semibold text-foreground">{containers.length}</span>
             </span>
             <span className="text-muted-foreground">
-              Active <span className="font-mono font-semibold text-foreground">{activeContainers}</span>
+              {pick("진행 중", "Active")} <span className="font-mono font-semibold text-foreground">{activeContainers}</span>
             </span>
             <span className="text-muted-foreground">
-              Completed <span className="font-mono font-semibold text-foreground">{completedContainers}</span>
+              {pick("완료", "Completed")} <span className="font-mono font-semibold text-foreground">{completedContainers}</span>
             </span>
             <span className="text-muted-foreground">
-              Units <span className="font-mono font-semibold text-foreground">{formatNumber(totalUnits)}</span>
+              {pick("수량", "Units")} <span className="font-mono font-semibold text-foreground">{formatNumber(totalUnits)}</span>
             </span>
             <span className="text-muted-foreground">
               CBM <span className="font-mono font-semibold text-foreground">{totalCbm.toFixed(2)}</span>
@@ -1729,10 +1731,10 @@ export function ContainerPlanningPage() {
         </button>
         {!summaryCollapsed ? (
           <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
-            <ContainerStat label="Total Containers" value={containers.length} sub="Registered plans" />
-            <ContainerStat label="Inbound Units" value={formatNumber(totalUnits)} sub="Across all SKUs" />
-            <ContainerStat label="Total CBM" value={totalCbm.toFixed(2)} sub="Current usage" />
-            <ContainerStat label="Active Containers" value={activeContainers} sub="Draft / in progress" />
+            <ContainerStat label={pick("전체 컨테이너", "Total Containers")} value={containers.length} sub={pick("등록된 계획", "Registered plans")} />
+            <ContainerStat label={pick("입고 수량", "Inbound Units")} value={formatNumber(totalUnits)} sub={pick("전체 SKU 합계", "Across all SKUs")} />
+            <ContainerStat label={pick("전체 CBM", "Total CBM")} value={totalCbm.toFixed(2)} sub={pick("현재 사용량", "Current usage")} />
+            <ContainerStat label={pick("진행 중 컨테이너", "Active Containers")} value={activeContainers} sub={pick("Draft / 진행 중", "Draft / in progress")} />
           </div>
         ) : null}
       </div>
@@ -1742,8 +1744,8 @@ export function ContainerPlanningPage() {
           <div className="flex flex-col gap-2 border-b border-[#e2dfd8] px-4 py-3 dark:border-slate-700">
             <div className="grid grid-cols-2 rounded-md border border-[#d8d6ce] bg-[#f5f4f0] p-1 dark:border-slate-700 dark:bg-slate-900">
               {([
-                { id: "active", label: "Active", count: activeContainers },
-                { id: "completed", label: "Completed", count: completedContainers },
+                { id: "active", label: pick("진행 중", "Active"), count: activeContainers },
+                { id: "completed", label: pick("완료", "Completed"), count: completedContainers },
               ] as Array<{ id: ContainerListTab; label: string; count: number }>).map((tab) => {
                 const isActive = containerListTab === tab.id;
                 return (
@@ -1781,7 +1783,7 @@ export function ContainerPlanningPage() {
                 {filteredContainers.length}
                 {(statusFilter || productFilter) ? (
                   <span className="ml-1 text-[11px] font-normal text-[#1a5cdb] dark:text-blue-300">
-                    (filtered)
+                    {pick("(필터 적용)", "(filtered)")}
                   </span>
                 ) : null}
               </span>
@@ -1846,17 +1848,17 @@ export function ContainerPlanningPage() {
                   checked={filteredContainers.length > 0 && filteredContainers.every((container) => exportContainerIds.includes(container.id))}
                   onChange={(event) => toggleVisibleExportContainers(event.target.checked)}
                 />
-                <span>Select visible</span>
+                <span>{pick("표시된 항목 선택", "Select visible")}</span>
               </label>
               <span>
-                {selectedExportContainers.length} selected
+                {pick(`${selectedExportContainers.length}개 선택됨`, `${selectedExportContainers.length} selected`)}
               </span>
             </div>
           </div>
 
           <div className="h-full overflow-y-auto">
             {loadingContainers ? (
-              <div className="p-5 text-center text-xs text-muted-foreground">Loading containers from database...</div>
+              <div className="p-5 text-center text-xs text-muted-foreground">{pick("데이터베이스에서 컨테이너 불러오는 중...", "Loading containers from database...")}</div>
             ) : containersError ? (
               <div className="m-4 rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-700">
                 {containersError}
@@ -1923,12 +1925,12 @@ export function ContainerPlanningPage() {
                 >
                   <span className="text-3xl">+</span>
                   <span className="text-sm font-semibold">
-                    {containerListTab === "active" ? "No active containers found" : "No completed containers found"}
+                    {containerListTab === "active" ? pick("진행 중 컨테이너가 없습니다", "No active containers found") : pick("완료된 컨테이너가 없습니다", "No completed containers found")}
                   </span>
                   <span className="text-xs">
                     {containerListTab === "active"
-                      ? "Click + Add Container, or adjust the filters"
-                      : "Completed containers will appear here after stock-in is complete"}
+                      ? pick("+ 컨테이너 추가를 클릭하거나 필터를 조정하세요", "Click + Add Container, or adjust the filters")
+                      : pick("입고 완료 후 완료된 컨테이너가 여기에 표시됩니다", "Completed containers will appear here after stock-in is complete")}
                   </span>
                 </button>
               </div>
@@ -1978,8 +1980,8 @@ export function ContainerPlanningPage() {
             </div>
           ) : loadingContainers ? (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-              <div className="text-sm font-medium">Loading container details...</div>
-              <div className="text-xs">Reading fc_containers and fc_container_items</div>
+              <div className="text-sm font-medium">{pick("컨테이너 상세 정보 불러오는 중...", "Loading container details...")}</div>
+              <div className="text-xs">{pick("fc_containers 및 fc_container_items 읽는 중", "Reading fc_containers and fc_container_items")}</div>
             </div>
           ) : selectedContainer ? (
             <div className="h-full overflow-y-auto px-7 py-6">
@@ -2021,14 +2023,14 @@ export function ContainerPlanningPage() {
           ) : (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
               <PackageOpen className="h-12 w-12 opacity-40" aria-hidden="true" />
-              <div className="text-sm font-medium">Select a container or add a new one</div>
-              <div className="text-xs">Click a container in the left list to view SKU details</div>
+              <div className="text-sm font-medium">{pick("컨테이너를 선택하거나 새로 추가하세요", "Select a container or add a new one")}</div>
+              <div className="text-xs">{pick("왼쪽 목록에서 컨테이너를 클릭하면 SKU 상세 정보를 볼 수 있습니다", "Click a container in the left list to view SKU details")}</div>
               <button
                 type="button"
                 onClick={openForm}
                 className="mt-2 rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
               >
-                + Add Container
+                {pick("+ 컨테이너 추가", "+ Add Container")}
               </button>
             </div>
           )}
@@ -2126,6 +2128,7 @@ function ContainerCreateForm({
   onDownloadTemplate: () => void;
   onAddAvailableStock?: () => void;
 }) {
+  const { pick } = useI18n();
   const importRef = useRef<HTMLInputElement | null>(null);
   const draftSkuDragRef = useRef<{ active: boolean; checked: boolean; lastSku: string | null }>({
     active: false,
@@ -2211,8 +2214,8 @@ function ContainerCreateForm({
       {/* Title row */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold">{isEditing ? "Edit Container" : "New Container Registration"}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Enter quantities for each SKU in this container.</p>
+          <h2 className="text-base font-semibold">{isEditing ? pick("컨테이너 수정", "Edit Container") : pick("신규 컨테이너 등록", "New Container Registration")}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{pick("이 컨테이너의 각 SKU 수량을 입력하세요.", "Enter quantities for each SKU in this container.")}</p>
         </div>
         <button
           type="button"
@@ -2226,7 +2229,7 @@ function ContainerCreateForm({
 
       {/* Card 1: Container Details */}
       <FormCard
-        title="Container Details"
+        title={pick("컨테이너 정보", "Container Details")}
         right={
           <span className="rounded-full bg-[#f0eee9] px-2 py-1 text-[11px] font-semibold text-muted-foreground">
             {statusLabel}
@@ -2234,23 +2237,23 @@ function ContainerCreateForm({
         }
       >
         <div className="grid gap-3 md:grid-cols-3">
-          <Field label="Container No.">
+          <Field label={pick("컨테이너 번호", "Container No.")}>
             <input className="form-input bg-white" value={form.number} onChange={(event) => onUpdateForm("number", event.target.value)} placeholder="#165" />
           </Field>
-          <Field label="ETA Date">
+          <Field label={pick("ETA 날짜", "ETA Date")}>
             <input className="form-input bg-white" type="date" value={form.eta} onChange={(event) => onUpdateForm("eta", event.target.value)} />
           </Field>
-          <Field label="Status">
+          <Field label={pick("상태", "Status")}>
             <select className="form-input bg-white" value={form.status} onChange={(event) => onUpdateForm("status", event.target.value as ContainerStatus)}>
               {statusOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
           </Field>
-          <Field label="CBM Capacity">
+          <Field label={pick("CBM 용량", "CBM Capacity")}>
             <input className="form-input bg-white" type="number" step="0.1" value={form.cbmCapacity} onChange={(event) => onUpdateForm("cbmCapacity", event.target.value)} placeholder="80" />
           </Field>
-          <Field label="Factory">
+          <Field label={pick("공장", "Factory")}>
             <input
               className="form-input bg-white"
               value={form.factory}
@@ -2266,10 +2269,10 @@ function ContainerCreateForm({
               ))}
             </datalist>
           </Field>
-          <Field label="Destination Warehouse">
+          <Field label={pick("목적지 창고", "Destination Warehouse")}>
             <select className="form-input bg-white" value={form.destination} onChange={(event) => onUpdateForm("destination", event.target.value)}>
               {loadingWarehouses ? (
-                <option value="">Loading warehouses...</option>
+                <option value="">{pick("창고 불러오는 중...", "Loading warehouses...")}</option>
               ) : warehouses.length > 0 ? (
                 warehouses.map((warehouse) => (
                   <option key={warehouse.id} value={warehouse.warehouseCode}>
@@ -2277,23 +2280,23 @@ function ContainerCreateForm({
                   </option>
                 ))
               ) : (
-                <option value="">No active warehouses</option>
+                <option value="">{pick("활성 창고 없음", "No active warehouses")}</option>
               )}
             </select>
           </Field>
-          <Field label="Notes" className="md:col-span-3">
+          <Field label={pick("메모", "Notes")} className="md:col-span-3">
             <textarea
               className="form-input min-h-[88px] resize-y bg-white"
               value={form.note}
               onChange={(event) => onUpdateForm("note", event.target.value)}
-              placeholder="Factory instructions, packing notes, special handling..."
+              placeholder={pick("공장 지시사항, 패킹 메모, 특별 취급...", "Factory instructions, packing notes, special handling...")}
             />
           </Field>
         </div>
         {isEditing ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4">
             <p className="text-xs text-muted-foreground">
-              This Save updates Container Details, including Notes. SKU information is not updated.
+              {pick("이 저장은 메모를 포함한 컨테이너 정보를 업데이트합니다. SKU 정보는 업데이트되지 않습니다.", "This Save updates Container Details, including Notes. SKU information is not updated.")}
             </p>
             <div className="flex gap-2">
               <button
@@ -2302,7 +2305,7 @@ function ContainerCreateForm({
                 disabled={saving}
                 className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Cancel
+                {pick("취소", "Cancel")}
               </button>
               <button
                 type="button"
@@ -2310,7 +2313,7 @@ function ContainerCreateForm({
                 disabled={saving}
                 className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? "Saving..." : "Save"}
+                {saving ? pick("저장 중...", "Saving...") : pick("저장", "Save")}
               </button>
             </div>
           </div>
@@ -2319,7 +2322,7 @@ function ContainerCreateForm({
 
       {/* Card 2: SKU Quantities */}
       <FormCard
-        title="SKU Order Quantities"
+        title={pick("SKU 주문 수량", "SKU Order Quantities")}
         right={
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">{draftItems.length}</span>
@@ -2331,7 +2334,7 @@ function ContainerCreateForm({
                   disabled={activeSelectedDraftSkus.length === 0 || deletingSelectedDraftSkus}
                   className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-3 py-1.5 text-xs font-semibold text-[#c42b2b] hover:bg-[#fee2e2] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {deletingSelectedDraftSkus ? "Deleting..." : `Delete Selected (${activeSelectedDraftSkus.length})`}
+                  {deletingSelectedDraftSkus ? pick("삭제 중...", "Deleting...") : pick(`선택 삭제 (${activeSelectedDraftSkus.length})`, `Delete Selected (${activeSelectedDraftSkus.length})`)}
                 </button>
                 <input
                   ref={importRef}
@@ -2349,14 +2352,14 @@ function ContainerCreateForm({
                   onClick={() => importRef.current?.click()}
                   className="rounded-md border border-[#9ed8c8] bg-[#e6f5f0] px-3 py-1.5 text-xs font-semibold text-[#0a5e45] hover:bg-[#d4ede6]"
                 >
-                  CSV/Excel Import
+                  {pick("CSV/Excel 가져오기", "CSV/Excel Import")}
                 </button>
                 <button
                   type="button"
                   onClick={onDownloadTemplate}
                   className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs text-muted-foreground hover:bg-[#f0eee9]"
                 >
-                  Download Template
+                  {pick("템플릿 다운로드", "Download Template")}
                 </button>
               </>
             ) : null}
@@ -2366,13 +2369,13 @@ function ContainerCreateForm({
         {isEditing ? (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-muted-foreground">
-              Showing {visibleDraftItems.length} of {draftItems.length} SKUs
+              {pick(`${visibleDraftItems.length} / ${draftItems.length} SKU 표시 중`, `Showing ${visibleDraftItems.length} of ${draftItems.length} SKUs`)}
             </div>
             <div className="flex items-center gap-2">
               <input
                 aria-label="Search SKU in edit container"
                 className="form-input w-64 bg-white font-mono text-xs"
-                placeholder="Search SKU..."
+                placeholder={pick("SKU 검색...", "Search SKU...")}
                 value={skuSearch}
                 onChange={(event) => setSkuSearch(event.target.value)}
               />
@@ -2382,7 +2385,7 @@ function ContainerCreateForm({
                   onClick={() => setSkuSearch("")}
                   className="rounded-md border border-[#cccac4] bg-white px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-[#f0eee9]"
                 >
-                  Clear
+                  {pick("지우기", "Clear")}
                 </button>
               ) : null}
             </div>
@@ -2402,10 +2405,10 @@ function ContainerCreateForm({
               </div>
             ) : null}
             <div>Master SKU</div>
-            <div className="text-right">Qty</div>
+            <div className="text-right">{pick("수량", "Qty")}</div>
             <div className="text-right">CBM / Unit</div>
-            <div className="text-right">Total CBM</div>
-            {canChangeStructure ? <div className="text-right">Delete</div> : null}
+            <div className="text-right">{pick("총 CBM", "Total CBM")}</div>
+            {canChangeStructure ? <div className="text-right">{pick("삭제", "Delete")}</div> : null}
           </div>
 
           {visibleDraftItems.map((item) => {
@@ -2462,7 +2465,7 @@ function ContainerCreateForm({
                       }}
                       className="text-xs font-semibold text-[#c42b2b] hover:underline"
                     >
-                      Delete
+                      {pick("삭제", "Delete")}
                     </button>
                   </div>
                 ) : null}
@@ -2471,7 +2474,7 @@ function ContainerCreateForm({
           })}
           {normalizedSkuSearch && visibleDraftItems.length === 0 ? (
             <div className="border-t border-[#e2dfd8] px-3 py-8 text-center text-sm text-muted-foreground">
-              No SKUs match &quot;{skuSearch.trim()}&quot;.
+              {pick(`"${skuSearch.trim()}"에 해당하는 SKU가 없습니다.`, `No SKUs match "${skuSearch.trim()}".`)}
             </div>
           ) : null}
 
@@ -2520,7 +2523,7 @@ function ContainerCreateForm({
                 onClick={() => void onAddSkuToDraft()}
                 className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
               >
-                + Add
+                {pick("+ 추가", "+ Add")}
               </button>
             ) : null}
             {canChangeStructure && onAddAvailableStock ? (
@@ -2529,14 +2532,14 @@ function ContainerCreateForm({
                 onClick={onAddAvailableStock}
                 className="rounded-lg border border-[#9ed8c8] bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45] hover:bg-[#d9f0e8]"
               >
-                + Add Available Stock
+                {pick("+ 가용 재고 추가", "+ Add Available Stock")}
               </button>
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-            <span>Total SKUs: <strong className="text-foreground">{draftItems.length}</strong></span>
-            <span>Total Qty: <strong className="text-foreground">{formatNumber(draftQty)}</strong></span>
-            <span>Total CBM: <strong className="text-foreground">{draftCbm.toFixed(2)} m3</strong></span>
+            <span>{pick("총 SKU:", "Total SKUs:")} <strong className="text-foreground">{draftItems.length}</strong></span>
+            <span>{pick("총 수량:", "Total Qty:")} <strong className="text-foreground">{formatNumber(draftQty)}</strong></span>
+            <span>{pick("총 CBM:", "Total CBM:")} <strong className="text-foreground">{draftCbm.toFixed(2)} m3</strong></span>
           </div>
         </div>
 
@@ -2546,21 +2549,21 @@ function ContainerCreateForm({
       </FormCard>
 
       {/* Card 3: CBM Simulation */}
-      <FormCard title="CBM Simulation">
+      <FormCard title={pick("CBM 시뮬레이션", "CBM Simulation")}>
         <div className="grid gap-3 md:grid-cols-3">
-          <MetricBox label="Total CBM" value={`${draftCbm.toFixed(1)} m3`} />
-          <MetricBox label="Load Rate" value={`${loadRate.toFixed(0)}%`} />
-          <MetricBox label="Containers Needed" value={String(containersNeeded)} />
+          <MetricBox label={pick("총 CBM", "Total CBM")} value={`${draftCbm.toFixed(1)} m3`} />
+          <MetricBox label={pick("적재율", "Load Rate")} value={`${loadRate.toFixed(0)}%`} />
+          <MetricBox label={pick("필요 컨테이너 수", "Containers Needed")} value={String(containersNeeded)} />
         </div>
         <div className="mt-3 text-xs text-muted-foreground">
-          Based on {cbmCapacity} m3 per container / recommended load rate 80-95%
+          {pick(`컨테이너당 ${cbmCapacity} m3 기준 / 권장 적재율 80-95%`, `Based on ${cbmCapacity} m3 per container / recommended load rate 80-95%`)}
         </div>
       </FormCard>
 
       {/* Footer */}
       <div className="flex gap-2 pb-2">
         <button type="button" onClick={onClose} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">
-          Cancel
+          {pick("취소", "Cancel")}
         </button>
         <button
           type="button"
@@ -2568,7 +2571,7 @@ function ContainerCreateForm({
           disabled={saving}
           className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? pick("저장 중...", "Saving...") : pick("저장", "Save")}
         </button>
       </div>
     </div>
@@ -2672,6 +2675,7 @@ function ContainerCard({
   initialSkuSearch?: string;
   detailMode?: boolean;
 }) {
+  const { pick } = useI18n();
   const totalQty = container.items.reduce((sum, item) => sum + item.qty, 0);
   const usedCbm = container.items.reduce((sum, item) => sum + item.qty * item.cbm, 0);
   const cbmUsage = container.cbmCapacity
@@ -2726,8 +2730,8 @@ function ContainerCard({
         <div className="fixed inset-0 z-50 flex cursor-wait items-center justify-center bg-black/20">
           <div className="rounded-lg border border-[#e2dfd8] bg-white px-5 py-4 text-center shadow-xl">
             <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-[#1a5cdb] border-t-transparent" />
-            <div className="text-sm font-semibold">Deleting selected items...</div>
-            <div className="mt-1 text-xs text-muted-foreground">Please wait until the operation is complete.</div>
+            <div className="text-sm font-semibold">{pick("선택 항목 삭제 중...", "Deleting selected items...")}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{pick("작업이 완료될 때까지 잠시 기다려 주세요.", "Please wait until the operation is complete.")}</div>
           </div>
         </div>
       ) : null}
@@ -2749,10 +2753,10 @@ function ContainerCard({
         <div className="min-w-[60px] font-mono text-sm font-semibold">{container.number}</div>
 
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 md:grid-cols-4">
-          <ContainerMeta label="Factory">{container.factory || "Unassigned"}</ContainerMeta>
-          <ContainerMeta label="Destination">{destinationLabel}</ContainerMeta>
+          <ContainerMeta label={pick("공장", "Factory")}>{container.factory || pick("미배정", "Unassigned")}</ContainerMeta>
+          <ContainerMeta label={pick("목적지", "Destination")}>{destinationLabel}</ContainerMeta>
           <ContainerMeta label="SKU">
-            {container.items.length} kinds / {formatNumber(totalQty)} units
+            {container.items.length} {pick("종류", "kinds")} / {formatNumber(totalQty)} units
           </ContainerMeta>
           <ContainerMeta label="CBM">
             {usedCbm.toFixed(1)} / {container.cbmCapacity} m3
@@ -2783,21 +2787,21 @@ function ContainerCard({
         <div className="border-t">
           {isStructureLocked ? (
             <div className="flex items-center gap-2 border-b border-[#fde68a] bg-[#fffbeb] px-5 py-2 text-xs text-[#92400e]">
-              <span>Final List Sent: SKU add/delete is locked. Qty can still be edited before packing list receipt.</span>
+              <span>{pick("Final List 발송: SKU 추가/삭제가 잠겼습니다. 패킹리스트 수령 전까지 수량은 수정 가능합니다.", "Final List Sent: SKU add/delete is locked. Qty can still be edited before packing list receipt.")}</span>
             </div>
           ) : null}
           {isFullyLocked ? (
             <div className="flex items-center gap-2 border-b border-[#bfdbfe] bg-[#eff6ff] px-5 py-2 text-xs text-[#1d4ed8]">
               <span>
                 {isStockInCompleted
-                  ? "Stock-in completed: edits and attachment actions are locked."
-                  : "Packing List Received: all SKU edits are locked because physical quantities are confirmed."}
+                  ? pick("입고 완료: 수정 및 첨부 작업이 잠겼습니다.", "Stock-in completed: edits and attachment actions are locked.")
+                  : pick("패킹리스트 수령: 실물 수량이 확정되어 모든 SKU 수정이 잠겼습니다.", "Packing List Received: all SKU edits are locked because physical quantities are confirmed.")}
               </span>
             </div>
           ) : null}
           {container.note ? (
             <div className="border-b border-[#e2dfd8] bg-[#fffdf8] px-5 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">Notes</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{pick("메모", "Notes")}</div>
               <div className="mt-1 whitespace-pre-wrap text-sm text-foreground">{container.note}</div>
             </div>
           ) : null}
@@ -2810,9 +2814,9 @@ function ContainerCard({
                 onClick={onToggleSkuList}
                 className="flex-1 text-left"
               >
-                <div className="text-sm font-semibold">SKU List</div>
+                <div className="text-sm font-semibold">{pick("SKU 목록", "SKU List")}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  Showing {visibleItems.length} of {container.items.length} SKUs
+                  {pick(`${visibleItems.length} / ${container.items.length} SKU 표시 중`, `Showing ${visibleItems.length} of ${container.items.length} SKUs`)}
                 </div>
               </button>
               <div className="flex items-center gap-2">
@@ -2820,7 +2824,7 @@ function ContainerCard({
                   <input
                     aria-label="Search SKU"
                     className="form-input w-64 bg-white font-mono text-xs"
-                    placeholder="Search SKU..."
+                    placeholder={pick("SKU 검색...", "Search SKU...")}
                     value={skuSearch}
                     onChange={(event) => setSkuSearch(event.target.value)}
                   />
@@ -2831,7 +2835,7 @@ function ContainerCard({
                     onClick={() => setSkuSearch("")}
                     className="rounded-md border border-[#cccac4] bg-white px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-[#f0eee9]"
                   >
-                    Clear
+                    {pick("지우기", "Clear")}
                   </button>
                 ) : null}
                 <button
@@ -2849,10 +2853,10 @@ function ContainerCard({
           {skuListCollapsed ? null : <>
           <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]"}`}>
             <div>Master SKU</div>
-            <div>Qty</div>
+            <div>{pick("수량", "Qty")}</div>
             <div>CBM / Unit</div>
-            <div>Total CBM</div>
-            {canEditQuantity ? <div className="text-right">Actions</div> : null}
+            <div>{pick("총 CBM", "Total CBM")}</div>
+            {canEditQuantity ? <div className="text-right">{pick("작업", "Actions")}</div> : null}
           </div>
           {canChangeStructure && removableAllocationIds.length > 0 ? (
             <div className="flex items-center justify-between border-t bg-[#fbfaf8] px-5 py-2">
@@ -2863,7 +2867,7 @@ function ContainerCard({
                   disabled={deletingSelectedAllocations}
                   onChange={(event) => setSelectedAllocationIds(event.target.checked ? removableAllocationIds : [])}
                 />
-                Select all Remain items
+                {pick("전체 Remain 항목 선택", "Select all Remain items")}
               </label>
               <button
                 type="button"
@@ -2872,8 +2876,8 @@ function ContainerCard({
                 className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-3 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {deletingSelectedAllocations
-                  ? "Deleting..."
-                  : `Delete Selected (${activeSelectedAllocationIds.length})`}
+                  ? pick("삭제 중...", "Deleting...")
+                  : pick(`선택 삭제 (${activeSelectedAllocationIds.length})`, `Delete Selected (${activeSelectedAllocationIds.length})`)}
               </button>
             </div>
           ) : null}
@@ -2905,8 +2909,8 @@ function ContainerCard({
             {visibleItems.length === 0 ? (
               <div className="border-t px-5 py-8 text-center text-sm text-muted-foreground">
                 {normalizedSkuSearch
-                  ? <>No SKUs match &quot;{skuSearch.trim()}&quot;.</>
-                  : "No SKUs have been added yet."}
+                  ? <>{pick(`"${skuSearch.trim()}"에 해당하는 SKU가 없습니다.`, `No SKUs match "${skuSearch.trim()}"`)}</>
+                  : pick("아직 추가된 SKU가 없습니다.", "No SKUs have been added yet.")}
               </div>
             ) : null}
             {inlineSkuDraft && canChangeStructure ? (
@@ -2964,14 +2968,14 @@ function ContainerCard({
                     onClick={() => void onSaveInlineSkuDraft(container.id)}
                     className="rounded-md border border-[#1a5cdb] px-2.5 py-1 text-xs font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
                   >
-                    Save
+                    {pick("저장", "Save")}
                   </button>
                   <button
                     type="button"
                     onClick={() => onCancelInlineSkuDraft(container.id)}
                     className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:bg-[#f0eee9]"
                   >
-                    Cancel
+                    {pick("취소", "Cancel")}
                   </button>
                 </div>
               </div>
@@ -2986,7 +2990,7 @@ function ContainerCard({
               disabled={!canEditContainer}
               className="rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff] disabled:cursor-not-allowed disabled:border-[#d8d6ce] disabled:bg-[#f0eee9] disabled:text-muted-foreground disabled:opacity-60"
             >
-              Edit
+              {pick("수정", "Edit")}
             </button>
             {canChangeStructure ? (
               <button
@@ -2995,7 +2999,7 @@ function ContainerCard({
                 disabled={Boolean(inlineSkuDraft)}
                 className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                + Add SKU
+                {pick("+ SKU 추가", "+ Add SKU")}
               </button>
             ) : null}
             {canChangeStructure ? (
@@ -3004,7 +3008,7 @@ function ContainerCard({
                 onClick={() => onAddAvailableStock(container.id)}
                 className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
               >
-                + Add Available Stock
+                {pick("+ 가용 재고 추가", "+ Add Available Stock")}
               </button>
             ) : null}
             {canExportItems ? (
@@ -3018,7 +3022,7 @@ function ContainerCard({
             ) : null}
             {canChangeStructure ? (
               <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
-                <span>Import</span>
+                <span>{pick("가져오기", "Import")}</span>
                 <input
                   type="file"
                   accept=".csv,.xlsx,.xls"
@@ -3037,7 +3041,7 @@ function ContainerCard({
                 onClick={() => onChangeStatus(container.id)}
                 className="rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
               >
-                Change Status
+                {pick("상태 변경", "Change Status")}
               </button>
               {canDeleteThisContainer ? (
                 <button
@@ -3049,7 +3053,7 @@ function ContainerCard({
                   }}
                   className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
                 >
-                  Delete
+                  {pick("삭제", "Delete")}
                 </button>
               ) : null}
             </div>
@@ -3058,7 +3062,7 @@ function ContainerCard({
           <div className="flex flex-col gap-3 border-t bg-[#f0eee9] px-5 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
             <div className="flex gap-5">
               <span>
-                Total Qty: <strong className="text-foreground">{formatNumber(totalQty)} units</strong>
+                {pick("총 수량:", "Total Qty:")} <strong className="text-foreground">{formatNumber(totalQty)} units</strong>
               </span>
               <span>
                 CBM: <strong className="text-foreground">{usedCbm.toFixed(2)} m3</strong>
@@ -3071,7 +3075,7 @@ function ContainerCard({
 
           <div className="px-5 pb-4 pt-3">
             <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>CBM usage</span>
+              <span>{pick("CBM 사용량", "CBM usage")}</span>
               <span>
                 {cbmUsage.toFixed(0)}% ({usedCbm.toFixed(2)} / {container.cbmCapacity} m3)
               </span>
@@ -3130,6 +3134,7 @@ function SkuRow({
   selectedAllocationIds: string[];
   onToggleAllocationSelection: (allocationIds: string[], checked: boolean) => void;
 }) {
+  const { pick } = useI18n();
   const allocations = item.allocations ?? [];
   const hasAllocatedStock = allocations.length > 0;
   const allocatedRemainQty = allocations.reduce((sum, allocation) => sum + allocation.qty, 0);
@@ -3192,14 +3197,14 @@ function SkuRow({
             onClick={() => void onSaveDraft(containerId, item.sku)}
             className="rounded-md border border-[#1a5cdb] px-2.5 py-1 text-xs font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
           >
-            Save
+            {pick("저장", "Save")}
           </button>
           <button
             type="button"
             onClick={() => onCancelDraft(containerId, item.sku)}
             className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:bg-[#f0eee9]"
           >
-            Cancel
+            {pick("취소", "Cancel")}
           </button>
         </div>
       </div>
@@ -3259,10 +3264,10 @@ function SkuRow({
                 event.stopPropagation();
                 void onRemoveAvailableAllocation(allocation.id, containerId);
               }}
-              title={`Delete Remain ${allocation.referenceNo}`}
+              title={pick(`Remain ${allocation.referenceNo} 삭제`, `Delete Remain ${allocation.referenceNo}`)}
               className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-2.5 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
             >
-              Delete
+              {pick("삭제", "Delete")}
             </button>
           ))}
         </div>
@@ -3273,7 +3278,7 @@ function SkuRow({
             onClick={() => onStartEdit(containerId, item)}
             className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#1a5cdb] hover:text-[#1a5cdb]"
           >
-            {quantityOnly ? "Qty" : "Edit"}
+            {quantityOnly ? pick("수량", "Qty") : pick("수정", "Edit")}
           </button>
           {quantityOnly ? null : (
             <button
@@ -3281,7 +3286,7 @@ function SkuRow({
               onClick={() => void onDelete(containerId, item.sku)}
               className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#c42b2b] hover:text-[#c42b2b]"
             >
-              Delete
+              {pick("삭제", "Delete")}
             </button>
           )}
         </div>
@@ -3315,6 +3320,7 @@ function AvailableStockModal({
   onAdd: (allocations: Array<{ stockId: string; qty: number }>) => Promise<boolean>;
   onClose: () => void;
 }) {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<AvailableStockRow[]>([]);
   const [sourceType, setSourceType] = useState<StockSourceType>("remaining");
   const [query, setQuery] = useState("");
@@ -3475,8 +3481,8 @@ function AvailableStockModal({
         <div className="fixed inset-0 z-[60] flex cursor-wait items-center justify-center bg-black/25">
           <div className="rounded-lg border border-[#e2dfd8] bg-white px-5 py-4 text-center shadow-xl">
             <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-[#1a5cdb] border-t-transparent" />
-            <div className="text-sm font-semibold">Adding selected stock...</div>
-            <div className="mt-1 text-xs text-muted-foreground">Please wait until the allocation is complete.</div>
+            <div className="text-sm font-semibold">{pick("선택한 재고 추가 중...", "Adding selected stock...")}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{pick("할당이 완료될 때까지 잠시 기다려 주세요.", "Please wait until the allocation is complete.")}</div>
           </div>
         </div>
       ) : null}
@@ -3486,9 +3492,9 @@ function AvailableStockModal({
       >
         <div className="flex items-center justify-between border-b border-[#e2dfd8] px-6 py-3">
           <div>
-            <h2 className="text-base font-semibold">Add Available Stock to Container</h2>
+            <h2 className="text-base font-semibold">{pick("컨테이너에 가용 재고 추가", "Add Available Stock to Container")}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Allocate already-produced items from Remaining or Mistake Order stock.
+              {pick("Remaining 또는 Mistake Order 재고에서 이미 생산된 항목을 할당합니다.", "Allocate already-produced items from Remaining or Mistake Order stock.")}
             </p>
           </div>
           <button type="button" disabled={submitting} onClick={onClose} className="text-xl text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40">X</button>
@@ -3507,14 +3513,14 @@ function AvailableStockModal({
                   : "border-[#e2dfd8] bg-[#f0eee9] text-muted-foreground"
               }`}
             >
-              {type === "remaining" ? "Remaining List" : "Mistake Order List"}
+              {type === "remaining" ? pick("Remaining 목록", "Remaining List") : pick("Mistake Order 목록", "Mistake Order List")}
             </button>
           ))}
         </div>
 
         <div className="border-b border-[#e2dfd8] bg-[#f8f7f4] px-4 py-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-            Register {sourceType === "remaining" ? "Remaining" : "Mistake Order"} Stock
+            {pick(`${sourceType === "remaining" ? "Remaining" : "Mistake Order"} 재고 등록`, `Register ${sourceType === "remaining" ? "Remaining" : "Mistake Order"} Stock`)}
           </div>
           <div className="grid gap-2 md:grid-cols-[130px_1fr_90px_100px_1fr_auto]">
             <input className="form-input bg-white text-xs" disabled={submitting} placeholder="Reference No." value={form.referenceNo} onChange={(e) => setForm((value) => ({ ...value, referenceNo: e.target.value }))} />
@@ -3523,13 +3529,13 @@ function AvailableStockModal({
             <input className="form-input bg-white text-xs" disabled={submitting} type="number" step="0.000001" placeholder="CBM" value={form.cbm} onChange={(e) => setForm((value) => ({ ...value, cbm: e.target.value }))} />
             <input className="form-input bg-white text-xs" disabled={submitting} placeholder="Note (optional)" value={form.note} onChange={(e) => setForm((value) => ({ ...value, note: e.target.value }))} />
             <button type="button" disabled={creating || submitting} onClick={() => void registerStock()} className="rounded-md border border-[#1a5cdb] bg-white px-3 text-xs font-semibold text-[#1a5cdb] disabled:opacity-50">
-              {creating ? "Saving..." : "Register"}
+              {creating ? pick("저장 중...", "Saving...") : pick("등록", "Register")}
             </button>
           </div>
         </div>
 
         <div className="flex items-center justify-between gap-3 px-6 py-2">
-          <input className="form-input w-72 bg-white text-xs" disabled={submitting} placeholder="Search SKU / reference..." value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input className="form-input w-72 bg-white text-xs" disabled={submitting} placeholder={pick("SKU / 참조번호 검색...", "Search SKU / reference...")} value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
               <span>Qty</span>
@@ -3550,7 +3556,7 @@ function AvailableStockModal({
               disabled={submitting || !visibleRows.some((row) => Boolean(selectedQty[row.id]))}
               className="rounded-md border border-[#1a5cdb] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a5cdb] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Apply Qty
+              {pick("수량 적용", "Apply Qty")}
             </button>
             <button
               type="button"
@@ -3558,7 +3564,7 @@ function AvailableStockModal({
               disabled={submitting || selectableVisibleRows.length === 0 || allVisibleSelected}
               className="rounded-md border border-[#1a5cdb] bg-white px-3 py-1.5 text-xs font-semibold text-[#1a5cdb] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Select All
+              {pick("전체 선택", "Select All")}
             </button>
             <button
               type="button"
@@ -3566,7 +3572,7 @@ function AvailableStockModal({
               disabled={submitting || !visibleRows.some((row) => Boolean(selectedQty[row.id]))}
               className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Clear Selection
+              {pick("선택 해제", "Clear Selection")}
             </button>
           </div>
         </div>
@@ -3583,17 +3589,17 @@ function AvailableStockModal({
                 else clearVisibleSelection();
               }}
             />
-            <span>Reference</span>
+            <span>{pick("참조번호", "Reference")}</span>
             <span>Master SKU</span>
-            <span>Available</span>
-            <span>Load Qty</span>
+            <span>{pick("가용", "Available")}</span>
+            <span>{pick("적재 수량", "Load Qty")}</span>
             <span>CBM</span>
-            <span>Total CBM</span>
+            <span>{pick("총 CBM", "Total CBM")}</span>
           </div>
           {loading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">Loading available stock...</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">{pick("가용 재고 불러오는 중...", "Loading available stock...")}</div>
           ) : visibleRows.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">No available stock registered for this list.</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">{pick("이 목록에 등록된 가용 재고가 없습니다.", "No available stock registered for this list.")}</div>
           ) : (
             visibleRows.map((row) => {
               const qty = Number.parseInt(selectedQty[row.id] ?? "", 10) || 0;
@@ -3644,12 +3650,12 @@ function AvailableStockModal({
         {message ? <div className="border-t border-[#e2dfd8] px-6 py-2 text-xs text-[#8a5300]">{message}</div> : null}
         <div className="flex items-center justify-between border-t border-[#e2dfd8] px-6 py-3">
           <span className="text-sm text-muted-foreground">
-            Selected: <strong className="text-foreground">{selectedUnits} units / {selectedCbm.toFixed(2)} CBM</strong>
+            {pick("선택됨:", "Selected:")} <strong className="text-foreground">{selectedUnits} units / {selectedCbm.toFixed(2)} CBM</strong>
           </span>
           <div className="flex gap-2">
-            <button type="button" disabled={submitting} onClick={onClose} className="rounded-md border border-[#cccac4] px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
+            <button type="button" disabled={submitting} onClick={onClose} className="rounded-md border border-[#cccac4] px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40">{pick("취소", "Cancel")}</button>
             <button type="button" disabled={submitting} onClick={() => void addSelected()} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-              {submitting ? "Adding..." : "Add Selected to Container"}
+              {submitting ? pick("추가 중...", "Adding...") : pick("선택 항목 컨테이너에 추가", "Add Selected to Container")}
             </button>
           </div>
         </div>
@@ -3667,6 +3673,7 @@ function StatusChangeModal({
   onConfirm: (newStatus: ContainerStatus) => void;
   onClose: () => void;
 }) {
+  const { pick } = useI18n();
   const [selected, setSelected] = useState<ContainerStatus>(currentStatus);
 
   return (
@@ -3678,7 +3685,7 @@ function StatusChangeModal({
         className="w-full max-w-sm rounded-2xl border border-[#e2dfd8] bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-base font-semibold">Change Status</h2>
+        <h2 className="mb-4 text-base font-semibold">{pick("상태 변경", "Change Status")}</h2>
         <div className="space-y-3">
           {statusOptions.map((option) => (
             <label
@@ -3714,14 +3721,14 @@ function StatusChangeModal({
             onClick={onClose}
             className="rounded-lg border border-[#cccac4] px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]"
           >
-            Cancel
+            {pick("취소", "Cancel")}
           </button>
           <button
             type="button"
             onClick={() => onConfirm(selected)}
             className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
           >
-            Confirm
+            {pick("확인", "Confirm")}
           </button>
         </div>
       </div>

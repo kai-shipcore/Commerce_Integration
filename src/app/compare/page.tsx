@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
@@ -21,6 +21,7 @@ import { Download, GitCompareArrows, RefreshCw, CalendarIcon, AlertCircle } from
 import type { CompareStatus } from "@/app/api/compare/route";
 import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type DatePreset = "last7" | "last30" | "last60" | "last90" | "custom";
 
@@ -81,6 +82,7 @@ function SummaryCard({ label, count, total, color, active, onClick }: SummaryCar
 }
 
 export default function ComparePage() {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<CompareRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [platforms, setPlatforms] = useState<string[]>([]);
@@ -254,7 +256,7 @@ export default function ComparePage() {
             <div>
               <h1 className="text-xl font-semibold">Source Compare</h1>
               <p className="text-sm text-muted-foreground">
-                Orders (Supabase raw tables) vs Velocity (vw_sales_order_items_link) â€” per master SKU
+                Orders (Supabase raw tables) vs Velocity (vw_sales_order_items_link) â€" per master SKU
               </p>
             </div>
           </div>
@@ -285,7 +287,7 @@ export default function ComparePage() {
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {customRange?.from ? (
                       customRange.to ? (
-                        `${format(customRange.from, "MMM d, yyyy")} â€“ ${format(customRange.to, "MMM d, yyyy")}`
+                        `${format(customRange.from, "MMM d, yyyy")} â€" ${format(customRange.to, "MMM d, yyyy")}`
                       ) : (
                         format(customRange.from, "MMM d, yyyy")
                       )
@@ -379,8 +381,7 @@ export default function ComparePage() {
         {!hasDateRange && (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
             <GitCompareArrows className="h-8 w-8 text-muted-foreground mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">ë‚ ì§œ ë²”ìœ„ë¥¼ ì„ íƒí•´ ë¹„êµë¥¼ ì‹œìž‘í•˜ì„¸ìš”</p>
-            <p className="text-xs text-muted-foreground mt-1">Choose a date preset or set a custom range above</p>
+            <p className="text-sm font-medium text-muted-foreground">{pick("날짜 범위를 선택해 비교를 시작하세요", "Choose a date preset or set a custom range above")}</p>
           </div>
         )}
 
@@ -455,10 +456,10 @@ export default function ComparePage() {
         {/* Discrepancy legend */}
         {hasDateRange && (
           <div className="rounded-md border border-border bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Diff = Orders âˆ’ Velocity.</span>
+            <span className="font-medium text-foreground">Diff = Orders âˆ' Velocity.</span>
             {" "}Positive means Orders counted more units than Velocity.
             {" "}Orders uses <code className="font-mono">SUM(net_quantity)</code> from <code className="font-mono">sales_order_items</code>.
-            {" "}Velocity uses <code className="font-mono">COUNT(1)</code> per row in <code className="font-mono">vw_sales_order_items_link</code> â€” a line item with qty=3 counts as 1 in Velocity but 3 in Orders.
+            {" "}Velocity uses <code className="font-mono">COUNT(1)</code> per row in <code className="font-mono">vw_sales_order_items_link</code> â€" a line item with qty=3 counts as 1 in Velocity but 3 in Orders.
             {" "}Velocity always filters to <code className="font-mono">CA-SC*</code> SKUs and <code className="font-mono">FULFILLED/Shipped</code> status.
             {" "}Date boundaries may differ by up to 8 hours due to timezone handling (Velocity uses LA timezone; Orders uses UTC).
           </div>

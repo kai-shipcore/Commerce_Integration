@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import { isAdminLikeRole, isPOApproverRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type PurchaseOrderStatus = "draft" | "pending" | "approved" | "sent";
 type PurchaseOrderStatusFilter = "draft" | "pending" | "sent";
@@ -116,6 +117,7 @@ const statusClasses: Record<PurchaseOrderStatus, string> = {
 };
 
 export function PurchaseOrdersPage() {
+  const { pick } = useI18n();
   const { data: session } = useSession();
   const [orders, setOrders] = useState<PurchaseOrderRecord[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -338,7 +340,7 @@ export function PurchaseOrdersPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? "Failed to save purchase order.");
+        window.alert(json.error ?? pick("상태 변경에 실패했습니다.", "Failed to update status."));
         return;
       }
 
@@ -360,7 +362,7 @@ export function PurchaseOrdersPage() {
     });
     const json = await response.json();
     if (!response.ok || !json.success) {
-      window.alert(json.error ?? "ìƒíƒœ ë³€ê²½ì— ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤.");
+      window.alert(json.error ?? pick("상태 변경에 실패했습니다.", "Failed to update status."));
       return;
     }
     await fetchOrders();
@@ -382,7 +384,7 @@ export function PurchaseOrdersPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? "Failed to delete purchase order.");
+        window.alert(json.error ?? pick("상태 변경에 실패했습니다.", "Failed to update status."));
         return;
       }
 
@@ -561,9 +563,9 @@ export function PurchaseOrdersPage() {
     <section className="purchase-orders-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4">
         <div>
-          <h1 className="text-lg font-semibold">Purchase Orders</h1>
+          <h1 className="text-lg font-semibold">{pick("구매 주문", "Purchase Orders")}</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            Review factory purchase orders, SKU quantities, CBM totals, and order status.
+            {pick("공장 구매 주문, SKU 수량, CBM 합계 및 주문 상태를 확인합니다.", "Review factory purchase orders, SKU quantities, CBM totals, and order status.")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -571,30 +573,30 @@ export function PurchaseOrdersPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="form-input h-9 w-72 bg-white"
-            placeholder="Search PO / SKU / factory..."
+            placeholder={pick("PO / SKU / 공장 검색...", "Search PO / SKU / factory...")}
           />
           <button
             type="button"
             onClick={() => void startCreate()}
             className="rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
           >
-            + Add PO
+            {pick("+ PO 추가", "+ Add PO")}
           </button>
         </div>
       </header>
 
       <div className="grid grid-cols-2 border-b border-[#e2dfd8] bg-[#f0eee9] md:grid-cols-4">
-        <PoStat label="Total POs" value={stats.total} sub="Registered orders" />
-        <PoStat label="Total Units" value={formatNumber(stats.totalUnits)} sub="Across all SKUs" />
-        <PoStat label="Total CBM" value={stats.totalCbm.toFixed(2)} sub="Planned volume" />
-        <PoStat label="Sent Orders" value={stats.sent} sub="Sent to factory" />
+        <PoStat label={pick("전체 PO", "Total POs")} value={stats.total} sub={pick("등록된 주문", "Registered orders")} />
+        <PoStat label={pick("총 수량", "Total Units")} value={formatNumber(stats.totalUnits)} sub={pick("전체 SKU 합계", "Across all SKUs")} />
+        <PoStat label={pick("총 CBM", "Total CBM")} value={stats.totalCbm.toFixed(2)} sub={pick("계획 물량", "Planned volume")} />
+        <PoStat label={pick("발송 주문", "Sent Orders")} value={stats.sent} sub={pick("공장 발송 완료", "Sent to factory")} />
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 bg-white lg:grid-cols-[420px_1fr]">
         <aside className="border-r border-[#e2dfd8] bg-white">
           <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
             <span className="text-sm font-semibold text-muted-foreground">
-              {filteredOrders.length} purchase orders
+              {filteredOrders.length} {pick("구매 주문", "purchase orders")}
               {statusFilter ? (
                 <span className="ml-1 text-[11px] font-normal text-[#1a5cdb]">
                   (filtered)
@@ -604,19 +606,19 @@ export function PurchaseOrdersPage() {
             <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
               <StatusLegend
                 color="#d4537e"
-                label="Draft"
+                label={pick("초안", "Draft")}
                 active={statusFilter === "draft"}
                 onClick={() => setStatusFilter(statusFilter === "draft" ? null : "draft")}
               />
               <StatusLegend
                 color="#ef9f27"
-                label="Pending"
+                label={pick("검토 중", "Pending")}
                 active={statusFilter === "pending"}
                 onClick={() => setStatusFilter(statusFilter === "pending" ? null : "pending")}
               />
               <StatusLegend
                 color="#378add"
-                label="Sent"
+                label={pick("발송됨", "Sent")}
                 active={statusFilter === "sent"}
                 onClick={() => setStatusFilter(statusFilter === "sent" ? null : "sent")}
               />
@@ -626,7 +628,7 @@ export function PurchaseOrdersPage() {
           <div className="h-full overflow-y-auto">
             {loadingOrders ? (
               <div className="p-5 text-center text-xs text-muted-foreground">
-                Loading purchase orders from database...
+                {pick("데이터베이스에서 구매 주문을 불러오는 중...", "Loading purchase orders from database...")}
               </div>
             ) : ordersError ? (
               <div className="m-4 rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-700">
@@ -685,8 +687,8 @@ export function PurchaseOrdersPage() {
                   className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                 >
                   <span className="text-3xl">+</span>
-                  <span className="text-sm font-semibold">No purchase orders found in Database</span>
-                  <span className="text-xs">Click + Add PO to create a new purchase order</span>
+                  <span className="text-sm font-semibold">{pick("데이터베이스에 구매 주문이 없습니다", "No purchase orders found in Database")}</span>
+                  <span className="text-xs">{pick("+ PO 추가를 클릭하여 새 구매 주문을 만드세요", "Click + Add PO to create a new purchase order")}</span>
                 </button>
               </div>
             )}
@@ -719,7 +721,7 @@ export function PurchaseOrdersPage() {
             />
           ) : loadingOrders ? (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
-              <div className="text-sm font-medium">Loading purchase order details...</div>
+              <div className="text-sm font-medium">{pick("구매 주문 상세 정보를 불러오는 중...", "Loading purchase order details...")}</div>
               <div className="text-xs">Reading fc_purchase_orders and fc_purchase_order_items</div>
             </div>
           ) : selectedOrder ? (
@@ -737,14 +739,14 @@ export function PurchaseOrdersPage() {
           ) : (
             <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
               <div className="text-5xl opacity-50">â–¦</div>
-              <div className="text-sm font-medium">Select a purchase order or add a new one</div>
-              <div className="text-xs">Click a PO in the left list to view SKU details</div>
+              <div className="text-sm font-medium">{pick("구매 주문을 선택하거나 새로 추가하세요", "Select a purchase order or add a new one")}</div>
+              <div className="text-xs">{pick("왼쪽 목록에서 PO를 클릭하여 SKU 상세 정보를 확인하세요", "Click a PO in the left list to view SKU details")}</div>
               <button
                 type="button"
                 onClick={() => void startCreate()}
                 className="mt-2 rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
               >
-                + Add PO
+                {pick("+ PO 추가", "+ Add PO")}
               </button>
             </div>
           )}
@@ -834,22 +836,23 @@ function PurchaseOrderCreateForm({
   onRemoveItem: (index: number) => void;
   onCancel: () => void;
 }) {
+  const { pick } = useI18n();
   const cbmUsage = Math.min((totals.totalCbm / 67.5) * 100, 100);
   const neededContainers = totals.totalCbm > 0 ? Math.ceil(totals.totalCbm / 67.5) : 0;
-  const title = mode === "edit" ? "Edit Purchase Order" : "Purchase Order Details";
-  const statusLabel = mode === "edit" ? form.status : "Draft";
+  const title = mode === "edit" ? pick("구매 주문 편집", "Edit Purchase Order") : pick("구매 주문 상세", "Purchase Order Details");
+  const statusLabel = mode === "edit" ? form.status : pick("초안", "Draft");
 
   return (
     <div className="flex h-full min-h-[720px] flex-col bg-[#f5f4f0]">
       <div className="border-b border-[#e2dfd8] bg-white px-6 py-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <StepPill active>Drafting</StepPill>
-          <span>â†’</span>
-          <StepPill>Under Review</StepPill>
-          <span>â†’</span>
-          <StepPill>Approved</StepPill>
-          <span>â†’</span>
-          <StepPill>Sent to Factory</StepPill>
+          <StepPill active>{pick("초안 작성", "Drafting")}</StepPill>
+          <span>→</span>
+          <StepPill>{pick("검토 중", "Under Review")}</StepPill>
+          <span>→</span>
+          <StepPill>{pick("승인됨", "Approved")}</StepPill>
+          <span>→</span>
+          <StepPill>{pick("공장 발송", "Sent to Factory")}</StepPill>
         </div>
       </div>
 
@@ -859,23 +862,23 @@ function PurchaseOrderCreateForm({
           right={<span className="rounded-full bg-[#f0eee9] px-2 py-1 text-[11px] font-semibold text-muted-foreground">{statusLabel}</span>}
         >
           <div className="grid gap-3 md:grid-cols-3">
-            <FormField label="PO Number">
+            <FormField label={pick("PO 번호", "PO Number")}>
               <div className="rounded-md px-0 py-2 font-mono text-sm text-[#1a5cdb]">{form.number}</div>
             </FormField>
-            <FormField label="Order Date">
+            <FormField label={pick("주문일", "Order Date")}>
               <input className="form-input bg-white" type="date" value={form.date} onChange={(event) => onChange("date", event.target.value)} />
             </FormField>
-            <FormField label="ETA Date">
+            <FormField label={pick("ETA 날짜", "ETA Date")}>
               <input className="form-input bg-white" type="date" value={form.eta} onChange={(event) => onChange("eta", event.target.value)} />
             </FormField>
-            <FormField label="Factory">
+            <FormField label={pick("공장", "Factory")}>
               <input
                 className="form-input bg-white"
                 list="po-factory-list"
                 value={form.factory}
                 onChange={(event) => onChange("factory", event.target.value)}
                 onBlur={() => void onEnsureFactory(form.factory)}
-                placeholder={loadingFactories ? "Loading factories..." : "Factory name"}
+                placeholder={loadingFactories ? pick("공장 불러오는 중...", "Loading factories...") : pick("공장명", "Factory name")}
               />
               <datalist id="po-factory-list">
                 {factories.map((factory) => (
@@ -883,13 +886,13 @@ function PurchaseOrderCreateForm({
                 ))}
               </datalist>
               {savingFactory ? (
-                <span className="text-[11px] text-muted-foreground">Saving new factory...</span>
+                <span className="text-[11px] text-muted-foreground">{pick("새 공장 저장 중...", "Saving new factory...")}</span>
               ) : null}
             </FormField>
-            <FormField label="Destination Warehouse">
+            <FormField label={pick("목적지 창고", "Destination Warehouse")}>
               <select className="form-input bg-white" value={form.destination} onChange={(event) => onChange("destination", event.target.value)}>
                 {loadingWarehouses ? (
-                  <option value="">Loading warehouses...</option>
+                  <option value="">{pick("창고 불러오는 중...", "Loading warehouses...")}</option>
                 ) : warehouses.length > 0 ? (
                   warehouses.map((warehouse) => (
                     <option key={warehouse.id} value={warehouse.warehouseCode}>
@@ -897,20 +900,20 @@ function PurchaseOrderCreateForm({
                     </option>
                   ))
                 ) : (
-                  <option value="">No active warehouses</option>
+                  <option value="">{pick("활성 창고 없음", "No active warehouses")}</option>
                 )}
               </select>
             </FormField>
-            <FormField label="Manager">
+            <FormField label={pick("담당자", "Manager")}>
               <input className="form-input bg-white" value={form.manager} onChange={(event) => onChange("manager", event.target.value)} />
             </FormField>
             <div className="md:col-span-3">
-              <FormField label="Memo">
+              <FormField label={pick("메모", "Memo")}>
                 <textarea
                   className="form-input min-h-14 bg-white"
                   value={form.note}
                   onChange={(event) => onChange("note", event.target.value)}
-                  placeholder="Notes..."
+                  placeholder={pick("메모...", "Notes...")}
                 />
               </FormField>
             </div>
@@ -918,31 +921,31 @@ function PurchaseOrderCreateForm({
         </FormCard>
 
         <FormCard
-          title="SKU Order Quantities"
+          title={pick("SKU 주문 수량", "SKU Order Quantities")}
           right={
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted-foreground">{totals.validCount}</span>
               <button type="button" className="rounded-md border border-[#8fb8ff] bg-[#ebf0fd] px-3 py-1.5 text-xs font-semibold text-[#1a5cdb]">
-                Auto-fill Shortage SKUs
+                {pick("부족 SKU 자동 채우기", "Auto-fill Shortage SKUs")}
               </button>
               <button type="button" className="rounded-md border border-[#9ed8c8] bg-[#e6f5f0] px-3 py-1.5 text-xs font-semibold text-[#0a5e45]">
-                CSV/Excel Import
+                {pick("CSV/Excel 가져오기", "CSV/Excel Import")}
               </button>
               <button type="button" className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 text-xs text-muted-foreground">
-                Download Template
+                {pick("템플릿 다운로드", "Download Template")}
               </button>
             </div>
           }
         >
           <div className="overflow-hidden rounded-lg border border-[#e2dfd8]">
             <div className="grid grid-cols-[2fr_0.8fr_0.8fr_0.8fr_0.9fr_0.8fr_64px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-              <div>Master SKU</div>
+              <div>{pick("마스터 SKU", "Master SKU")}</div>
               <div>MOQ</div>
-              <div>Order Qty</div>
-              <div>Daily Avg</div>
-              <div>Current Stock</div>
+              <div>{pick("주문 수량", "Order Qty")}</div>
+              <div>{pick("일평균", "Daily Avg")}</div>
+              <div>{pick("현재 재고", "Current Stock")}</div>
               <div>CBM</div>
-              <div className="text-right">Delete</div>
+              <div className="text-right">{pick("삭제", "Delete")}</div>
             </div>
             {draftItems.map((item, index) => (
               <div key={index} className="grid grid-cols-[2fr_0.8fr_0.8fr_0.8fr_0.9fr_0.8fr_64px] items-center gap-2 border-t bg-white px-3 py-2 text-sm">
@@ -972,7 +975,7 @@ function PurchaseOrderCreateForm({
                   placeholder="0.048852"
                 />
                 <button type="button" onClick={() => onRemoveItem(index)} className="text-right text-xs font-semibold text-[#c42b2b]">
-                  Delete
+                  {pick("삭제", "Delete")}
                 </button>
               </div>
             ))}
@@ -980,24 +983,24 @@ function PurchaseOrderCreateForm({
 
           <div className="mt-3 flex items-center justify-between gap-3">
             <button type="button" onClick={onAddItem} className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]">
-              + Add
+              {pick("+ 추가", "+ Add")}
             </button>
             <div className="flex flex-wrap gap-6 text-sm">
-              <span>Total SKUs: <strong>{totals.validCount}</strong></span>
-              <span>Total Qty: <strong>{formatNumber(totals.totalQty)}</strong></span>
-              <span>Total CBM: <strong>{totals.totalCbm.toFixed(2)} m3</strong></span>
+              <span>{pick("총 SKU", "Total SKUs")}: <strong>{totals.validCount}</strong></span>
+              <span>{pick("총 수량", "Total Qty")}: <strong>{formatNumber(totals.totalQty)}</strong></span>
+              <span>{pick("총 CBM", "Total CBM")}: <strong>{totals.totalCbm.toFixed(2)} m3</strong></span>
             </div>
           </div>
         </FormCard>
 
-        <FormCard title="CBM Simulation">
+        <FormCard title={pick("CBM 시뮬레이션", "CBM Simulation")}>
           <div className="grid gap-3 md:grid-cols-3">
-            <MetricBox label="Total CBM" value={`${totals.totalCbm.toFixed(1)} m3`} />
-            <MetricBox label="Load Rate" value={`${cbmUsage.toFixed(0)}%`} />
-            <MetricBox label="Containers Needed" value={`${neededContainers}`} />
+            <MetricBox label={pick("총 CBM", "Total CBM")} value={`${totals.totalCbm.toFixed(1)} m3`} />
+            <MetricBox label={pick("적재율", "Load Rate")} value={`${cbmUsage.toFixed(0)}%`} />
+            <MetricBox label={pick("필요 컨테이너", "Containers Needed")} value={`${neededContainers}`} />
           </div>
           <div className="mt-3 text-xs text-muted-foreground">
-            Based on 67.5 m3 per container / recommended load rate 80-95%
+            {pick("컨테이너당 67.5 m3 기준 / 권장 적재율 80-95%", "Based on 67.5 m3 per container / recommended load rate 80-95%")}
           </div>
         </FormCard>
       </div>
@@ -1008,7 +1011,7 @@ function PurchaseOrderCreateForm({
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onCancel} className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]">
-            Cancel
+            {pick("취소", "Cancel")}
           </button>
           <button
             type="button"
@@ -1016,7 +1019,7 @@ function PurchaseOrderCreateForm({
             onClick={() => void onSave()}
             className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium hover:bg-[#f0eee9] disabled:opacity-50"
           >
-            {savingPo ? "Saving..." : mode === "edit" ? "Save Changes" : "Save"}
+            {savingPo ? pick("저장 중...", "Saving...") : mode === "edit" ? pick("변경사항 저장", "Save Changes") : pick("저장", "Save")}
           </button>
           <button
             type="button"
@@ -1024,7 +1027,7 @@ function PurchaseOrderCreateForm({
             onClick={() => void onRequestReview()}
             className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
           >
-            {mode === "edit" ? "Save & Request Review" : "Request Review"}
+            {mode === "edit" ? pick("저장 및 검토 요청", "Save & Request Review") : pick("검토 요청", "Request Review")}
           </button>
         </div>
       </div>
@@ -1091,6 +1094,7 @@ function PurchaseOrderDetail({
   onDelete: () => void;
   onWorkflowAction: (action: "request_review" | "approve" | "reject" | "send_to_factory") => void;
 }) {
+  const { pick } = useI18n();
   const totalQty = orderQty(order);
   const totalCbm = orderCbm(order);
   const cbmUsage = Math.min((totalCbm / 67.5) * 100, 100);
@@ -1103,10 +1107,10 @@ function PurchaseOrderDetail({
           <div className="min-w-[120px] font-mono text-sm font-semibold">{order.number}</div>
 
           <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 md:grid-cols-4">
-            <PoMeta label="Factory">{order.factory}</PoMeta>
-            <PoMeta label="Destination">{destinationLabel}</PoMeta>
+            <PoMeta label={pick("공장", "Factory")}>{order.factory}</PoMeta>
+            <PoMeta label={pick("목적지", "Destination")}>{destinationLabel}</PoMeta>
             <PoMeta label="SKU">
-              {order.items.length} kinds / {formatNumber(totalQty)} units
+              {order.items.length} {pick("종류", "kinds")} / {formatNumber(totalQty)} {pick("개", "units")}
             </PoMeta>
             <PoMeta label="CBM">{totalCbm.toFixed(1)} / 67.5 m3</PoMeta>
           </div>
@@ -1125,7 +1129,7 @@ function PurchaseOrderDetail({
               onClick={onEdit}
               className="rounded-md border border-[#8fb8ff] bg-white px-3 py-2 text-xs font-semibold text-[#1a5cdb] hover:bg-[#ebf0fd]"
             >
-              Edit SKU
+              {pick("SKU 편집", "Edit SKU")}
             </button>
           ) : null}
 
@@ -1136,25 +1140,25 @@ function PurchaseOrderDetail({
               onClick={onDelete}
               className="rounded-md border border-[#f0b4b4] bg-white px-3 py-2 text-xs font-semibold text-[#c42b2b] hover:bg-[#fff1f1] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? pick("삭제 중...", "Deleting...") : pick("삭제", "Delete")}
             </button>
           ) : null}
         </div>
 
         <div className="border-t">
           <div className="grid grid-cols-[2.2fr_0.7fr_0.8fr_0.9fr_0.9fr] bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-            <div>Master SKU</div>
+            <div>{pick("마스터 SKU", "Master SKU")}</div>
             <div>MOQ</div>
-            <div>Qty</div>
-            <div>CBM / Unit</div>
-            <div>Total CBM</div>
+            <div>{pick("수량", "Qty")}</div>
+            <div>{pick("CBM / 단위", "CBM / Unit")}</div>
+            <div>{pick("총 CBM", "Total CBM")}</div>
           </div>
 
           {order.items.map((item) => (
             <div key={item.sku} className="grid grid-cols-[2.2fr_0.7fr_0.8fr_0.9fr_0.9fr] items-center border-t px-5 py-3 text-sm hover:bg-[#f8f7f4]">
               <div className="truncate font-mono text-xs font-medium">{item.sku}</div>
               <div>{formatNumber(item.moq)}</div>
-              <div className="font-semibold">{formatNumber(item.qty)} units</div>
+              <div className="font-semibold">{formatNumber(item.qty)} {pick("개", "units")}</div>
               <div className="text-xs text-muted-foreground">{item.cbm.toFixed(6)} m3</div>
               <div className="font-semibold">{(item.qty * item.cbm).toFixed(6)} m3</div>
             </div>
@@ -1163,20 +1167,20 @@ function PurchaseOrderDetail({
           <div className="flex flex-col gap-3 border-t bg-[#f0eee9] px-5 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
             <div className="flex gap-5">
               <span>
-                Total Qty: <strong className="text-foreground">{formatNumber(totalQty)} units</strong>
+                {pick("총 수량", "Total Qty")}: <strong className="text-foreground">{formatNumber(totalQty)} {pick("개", "units")}</strong>
               </span>
               <span>
                 CBM: <strong className="text-foreground">{totalCbm.toFixed(2)} m3</strong>
               </span>
             </div>
             <div className="text-xs">
-              Manager {order.manager} / Order Date {order.date}
+              {pick("담당자", "Manager")} {order.manager} / {pick("주문일", "Order Date")} {order.date}
             </div>
           </div>
 
           <div className="px-5 pb-4 pt-3">
             <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>CBM simulation</span>
+              <span>{pick("CBM 시뮬레이션", "CBM simulation")}</span>
               <span>
                 {cbmUsage.toFixed(0)}% ({totalCbm.toFixed(2)} / 67.5 m3)
               </span>
@@ -1185,7 +1189,7 @@ function PurchaseOrderDetail({
               <div className="h-full rounded bg-[#1a5cdb]" style={{ width: `${cbmUsage}%` }} />
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
-              Recommended loading range: 80-95%
+              {pick("권장 적재율: 80-95%", "Recommended loading range: 80-95%")}
             </div>
           </div>
 
@@ -1213,7 +1217,7 @@ function PoMeta({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-// â”€â”€â”€ Workflow stepper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Workflow stepper â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const WORKFLOW_STEPS: Array<{ status: PurchaseOrderStatus; label: string }> = [
   { status: "draft",    label: "Drafting"    },
@@ -1227,6 +1231,13 @@ const STEP_INDEX: Record<PurchaseOrderStatus, number> = {
 };
 
 function PoWorkflowStepper({ status }: { status: PurchaseOrderStatus }) {
+  const { pick } = useI18n();
+  const stepLabels: Record<PurchaseOrderStatus, string> = {
+    draft: pick("초안", "Drafting"),
+    pending: pick("검토 중", "In Review"),
+    approved: pick("승인됨", "Approved"),
+    sent: pick("발송됨", "Sent"),
+  };
   const current = STEP_INDEX[status] ?? 0;
 
   return (
@@ -1246,10 +1257,10 @@ function PoWorkflowStepper({ status }: { status: PurchaseOrderStatus }) {
                   : "bg-[#f0eee9] text-muted-foreground dark:bg-slate-800 dark:text-slate-400"
               }`}
             >
-              {step.label}
+              {stepLabels[step.status]}
             </span>
             {idx < WORKFLOW_STEPS.length - 1 ? (
-              <span className={`text-[10px] ${isFuture ? "text-[#cccac4]" : "text-[#0a5e45]"}`}>â†’</span>
+              <span className={`text-[10px] ${isFuture ? "text-[#cccac4]" : "text-[#0a5e45]"}`}>â†'</span>
             ) : null}
           </div>
         );
@@ -1267,6 +1278,8 @@ function PoWorkflowActions({
   isAdmin: boolean;
   onAction: (action: "request_review" | "approve" | "reject" | "send_to_factory") => void;
 }) {
+  const { pick } = useI18n();
+
   if (status === "draft") {
     return (
       <div className="flex items-center gap-2">
@@ -1275,7 +1288,7 @@ function PoWorkflowActions({
           onClick={() => onAction("request_review")}
           className="rounded-lg border border-[#8fb8ff] bg-white px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#ebf0fd]"
         >
-          Request Review
+          {pick("검토 요청", "Request Review")}
         </button>
         {isAdmin && (
           <button
@@ -1283,11 +1296,11 @@ function PoWorkflowActions({
             onClick={() => onAction("approve")}
             className="rounded-lg bg-[#0a7c5c] px-4 py-2 text-sm font-medium text-white hover:bg-[#085e46]"
           >
-            Approve
+            {pick("승인", "Approve")}
           </button>
         )}
         <span className="text-xs text-muted-foreground">
-          {isAdmin ? "Approve directly or submit for review." : "Submit to manager for approval."}
+          {isAdmin ? pick("바로 승인하거나 검토를 위해 제출하세요.", "Approve directly or submit for review.") : pick("담당자에게 승인 요청을 제출하세요.", "Submit to manager for approval.")}
         </span>
       </div>
     );
@@ -1303,19 +1316,19 @@ function PoWorkflowActions({
               onClick={() => onAction("approve")}
               className="rounded-lg bg-[#0a7c5c] px-4 py-2 text-sm font-medium text-white hover:bg-[#085e46]"
             >
-              Approve
+              {pick("승인", "Approve")}
             </button>
             <button
               type="button"
               onClick={() => onAction("reject")}
               className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
             >
-              Reject
+              {pick("반려", "Reject")}
             </button>
           </>
         ) : (
           <span className="rounded-lg bg-[#fef3e2] px-4 py-2 text-sm font-medium text-[#8a5300]">
-            Pending Manager Approval
+            {pick("담당자 승인 대기 중", "Pending Manager Approval")}
           </span>
         )}
       </div>
@@ -1332,19 +1345,19 @@ function PoWorkflowActions({
               onClick={() => onAction("send_to_factory")}
               className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
             >
-              Send to Factory
+              {pick("공장 발송", "Send to Factory")}
             </button>
             <button
               type="button"
               onClick={() => onAction("reject")}
               className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
             >
-              Reject
+              {pick("반려", "Reject")}
             </button>
           </>
         ) : (
           <span className="rounded-lg bg-[#e6f5f0] px-4 py-2 text-sm font-medium text-[#0a5e45]">
-            Approved â€” pending factory dispatch by manager
+            {pick("승인됨 — 담당자의 공장 발송 대기 중", "Approved — pending factory dispatch by manager")}
           </span>
         )}
       </div>
@@ -1355,7 +1368,7 @@ function PoWorkflowActions({
     return (
       <div className="flex items-center gap-2">
         <span className="rounded-lg bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a4db0] dark:bg-blue-950/70 dark:text-blue-300">
-          Sent to Factory
+          {pick("공장 발송됨", "Sent to Factory")}
         </span>
       </div>
     );

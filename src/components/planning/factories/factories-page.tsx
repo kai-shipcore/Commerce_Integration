@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Building2 } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type FactoryRecord = {
   id: string;
@@ -59,6 +60,7 @@ function formatDate(iso: string | null): string {
 }
 
 export function FactoriesPage() {
+  const { pick } = useI18n();
   const [factories, setFactories] = useState<FactoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -157,7 +159,7 @@ export function FactoriesPage() {
 
   async function saveFactory() {
     const name = form.factoryName.trim();
-    if (!name) { setErrorMsg("Factory name is required."); return; }
+    if (!name) { setErrorMsg(pick("공장명은 필수입니다.", "Factory name is required.")); return; }
 
     setSaving(true);
     setErrorMsg("");
@@ -191,7 +193,7 @@ export function FactoriesPage() {
       }
 
       setEditMode(false);
-      setSavedMessage("✓ Saved");
+      setSavedMessage(pick("✓ 저장됨", "✓ Saved"));
       window.setTimeout(() => setSavedMessage(""), 2500);
       await fetchFactories();
     } finally {
@@ -226,9 +228,9 @@ export function FactoriesPage() {
           <div className="flex items-start gap-2">
             <Building2 className="mt-1 h-5 w-5" />
             <div>
-              <h1 className="text-lg font-semibold">Factory Management</h1>
+              <h1 className="text-lg font-semibold">{pick("공장 관리", "Factories")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Manage factory master records used across planning workflows
+                {pick("구매 주문 워크플로에 사용되는 공장 정보를 관리합니다", "Manage factory master records used across planning workflows")}
               </p>
             </div>
           </div>
@@ -237,23 +239,23 @@ export function FactoriesPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="form-input h-9 w-64 bg-white"
-              placeholder="Search name, code, or origin..."
+              placeholder={pick("이름, 코드, 원산지 검색...", "Search name, code, or origin...")}
             />
             <button
               type="button"
               onClick={startNew}
               className="rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
             >
-              + Add Factory
+              {pick("+ 공장 추가", "+ Add Factory")}
             </button>
           </div>
         </header>
 
         {/* Stats bar */}
         <div className="grid grid-cols-3 border-b border-[#e2dfd8] bg-[#f0eee9]">
-          <FactoryStat label="Total Factories" value={stats.total} sub="Registered factories" />
-          <FactoryStat label="Active" value={stats.active} sub="Currently in use" />
-          <FactoryStat label="Inactive" value={stats.inactive} sub="Deactivated" />
+          <FactoryStat label={pick("전체 공장", "Total Factories")} value={stats.total} sub={pick("등록된 공장", "Registered factories")} />
+          <FactoryStat label={pick("활성", "Active")} value={stats.active} sub={pick("현재 사용 중", "Currently in use")} />
+          <FactoryStat label={pick("비활성", "Inactive")} value={stats.inactive} sub={pick("비활성화됨", "Deactivated")} />
         </div>
 
         {/* Body: list + detail */}
@@ -263,7 +265,7 @@ export function FactoriesPage() {
           <aside className="border-r border-[#e2dfd8] bg-white">
             <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
               <span className="text-sm font-semibold text-muted-foreground">
-                {loading ? "..." : `${filteredFactories.length} Factories`}
+                {loading ? "..." : `${filteredFactories.length} ${pick("공장", "Factories")}`}
               </span>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                 <input
@@ -271,13 +273,13 @@ export function FactoriesPage() {
                   checked={showInactive}
                   onChange={(e) => setShowInactive(e.target.checked)}
                 />
-                Include inactive
+                {pick("비활성 포함", "Include inactive")}
               </label>
             </div>
 
             <div className="h-full overflow-y-auto">
               {loading ? (
-                <div className="p-5 text-center text-xs text-muted-foreground">Loading...</div>
+                <div className="p-5 text-center text-xs text-muted-foreground">{pick("로딩 중...", "Loading...")}</div>
               ) : filteredFactories.length > 0 ? (
                 filteredFactories.map((f) => (
                   <button
@@ -313,7 +315,7 @@ export function FactoriesPage() {
                           : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground dark:bg-slate-800 dark:text-slate-400"
                       }
                     >
-                      {f.isActive ? "Active" : "Inactive"}
+                      {f.isActive ? pick("활성", "Active") : pick("비활성", "Inactive")}
                     </span>
                   </button>
                 ))
@@ -325,8 +327,8 @@ export function FactoriesPage() {
                     className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                   >
                     <span className="text-3xl">🏭</span>
-                    <span className="text-sm font-semibold">Add your first factory</span>
-                    <span className="text-xs">Click the + Add Factory button</span>
+                    <span className="text-sm font-semibold">{pick("첫 번째 공장을 추가하세요", "Add your first factory")}</span>
+                    <span className="text-xs">{pick("+ 공장 추가 버튼을 클릭하세요", "Click the + Add Factory button")}</span>
                   </button>
                 </div>
               )}
@@ -353,14 +355,14 @@ export function FactoriesPage() {
             ) : (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
                 <div className="text-5xl opacity-50">🏭</div>
-                <div className="text-sm font-medium">Select a factory or add a new one</div>
-                <div className="text-xs">Click a factory in the left list to view details</div>
+                <div className="text-sm font-medium">{pick("공장을 선택하거나 새로 추가하세요", "Select a factory or add a new one")}</div>
+                <div className="text-xs">{pick("왼쪽 목록에서 공장을 클릭하여 상세 정보를 확인하세요", "Click a factory in the left list to view details")}</div>
                 <button
                   type="button"
                   onClick={startNew}
                   className="mt-2 rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
                 >
-                  + Add Factory
+                  {pick("+ 공장 추가", "+ Add Factory")}
                 </button>
               </div>
             )}
@@ -429,6 +431,7 @@ function FactoryDetail({
   onSave: () => void;
   onChange: <K extends keyof FactoryForm>(key: K, value: FactoryForm[K]) => void;
 }) {
+  const { pick } = useI18n();
   const readonly = !editMode;
   const fieldClass = readonly ? "form-input bg-[#f0eee9]" : "form-input bg-white";
 
@@ -444,14 +447,14 @@ function FactoryDetail({
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {isNew
-              ? "Enter the details and save"
-              : `${form.factoryCode || "No code"}${form.origin ? ` · ${form.origin}` : ""}`}
+              ? pick("세부 정보를 입력하고 저장하세요", "Enter the details and save")
+              : `${form.factoryCode || pick("코드 없음", "No code")}${form.origin ? ` · ${form.origin}` : ""}`}
           </div>
           {selectedFactory ? (
             <div className="mt-1 text-[10px] text-muted-foreground">
-              Created {formatDate(selectedFactory.createdAt)}
+              {pick("생성일", "Created")} {formatDate(selectedFactory.createdAt)}
               {selectedFactory.updatedAt && selectedFactory.updatedAt !== selectedFactory.createdAt
-                ? ` · Updated ${formatDate(selectedFactory.updatedAt)}`
+                ? ` · ${pick("수정일", "Updated")} ${formatDate(selectedFactory.updatedAt)}`
                 : ""}
             </div>
           ) : null}
@@ -464,49 +467,49 @@ function FactoryDetail({
               disabled={saving}
               className="rounded-md bg-[#1a5cdb] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
             >
-              {editMode ? "Editing" : "Edit"}
+              {editMode ? pick("편집 중", "Editing") : pick("편집", "Edit")}
             </button>
           </div>
         ) : null}
       </div>
 
       {/* Basic Information */}
-      <FactorySection title="Basic Information">
+      <FactorySection title={pick("기본 정보", "Basic Information")}>
         <div className="grid gap-3 md:grid-cols-2">
-          <FactoryField label="Factory Name (factory_name) *">
+          <FactoryField label={pick("공장명 (factory_name) *", "Factory Name (factory_name) *")}>
             <input
               className={fieldClass}
               readOnly={readonly}
               value={form.factoryName}
               onChange={(e) => onChange("factoryName", e.target.value)}
-              placeholder="e.g. Guangzhou Textiles Co."
+              placeholder={pick("예) 광저우 텍스타일", "e.g. Guangzhou Textiles Co.")}
             />
           </FactoryField>
-          <FactoryField label="Origin (origin)">
+          <FactoryField label={pick("원산지 (origin)", "Origin (origin)")}>
             <input
               className={fieldClass}
               readOnly={readonly}
               value={form.origin}
               onChange={(e) => onChange("origin", e.target.value)}
-              placeholder="e.g. China"
+              placeholder={pick("예) 중국", "e.g. China")}
             />
           </FactoryField>
         </div>
       </FactorySection>
 
       {/* Contact Information */}
-      <FactorySection title="Contact Information">
+      <FactorySection title={pick("연락처 정보", "Contact Information")}>
         <div className="grid gap-3 md:grid-cols-2">
-          <FactoryField label="Contact Name (contact_name)">
+          <FactoryField label={pick("담당자명 (contact_name)", "Contact Name (contact_name)")}>
             <input
               className={fieldClass}
               readOnly={readonly}
               value={form.contactName}
               onChange={(e) => onChange("contactName", e.target.value)}
-              placeholder="e.g. Li Wei"
+              placeholder={pick("예) 이 웨이", "e.g. Li Wei")}
             />
           </FactoryField>
-          <FactoryField label="Phone (phone)">
+          <FactoryField label={pick("전화 (phone)", "Phone (phone)")}>
             <input
               className={fieldClass}
               readOnly={readonly}
@@ -515,7 +518,7 @@ function FactoryDetail({
               placeholder="e.g. +86 20 1234 5678"
             />
           </FactoryField>
-          <FactoryField label="Email (email)">
+          <FactoryField label={pick("이메일 (email)", "Email (email)")}>
             <input
               type={readonly ? "text" : "email"}
               className={fieldClass}
@@ -529,13 +532,13 @@ function FactoryDetail({
       </FactorySection>
 
       {/* Operating Settings */}
-      <FactorySection title="Operating Settings">
+      <FactorySection title={pick("운영 설정", "Operating Settings")}>
         <div className="rounded-lg border border-[#e2dfd8] bg-[#f0eee9] p-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-sm font-medium">Active (is_active)</div>
+              <div className="text-sm font-medium">{pick("활성 (is_active)", "Active (is_active)")}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">
-                When inactive, this factory is hidden from purchase order options
+                {pick("비활성 시 구매 주문 옵션에서 숨겨집니다", "When inactive, this factory is hidden from purchase order options")}
               </div>
             </div>
             <button
@@ -570,7 +573,7 @@ function FactoryDetail({
               disabled={saving}
               className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
             >
-              {saving ? "Saving..." : "Save"}
+              {saving ? pick("저장 중...", "Saving...") : pick("저장", "Save")}
             </button>
             <button
               type="button"
@@ -578,7 +581,7 @@ function FactoryDetail({
               disabled={saving}
               className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm hover:bg-[#f0eee9] disabled:opacity-50"
             >
-              Cancel
+              {pick("취소", "Cancel")}
             </button>
           </>
         ) : null}

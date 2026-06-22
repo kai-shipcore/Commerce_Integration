@@ -1,6 +1,7 @@
 "use client";
 
 import { RotateCcw, Settings } from "lucide-react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_SEASONAL_FACTORS,
@@ -24,6 +25,7 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ rows, inline = false, seasonalFactors, onSeasonalFactorsChange }: StatusBarProps) {
+  const { pick } = useI18n();
   const crit  = rows.filter((r) => urgStatus(r) === "crit").length;
   const warn  = rows.filter((r) => urgStatus(r) === "warn").length;
   const stock = rows.reduce((a, r) => a + (r.total_stock || 0), 0);
@@ -48,12 +50,12 @@ export function StatusBar({ rows, inline = false, seasonalFactors, onSeasonalFac
       }}
     >
       <SbItem label="SKU"     value={rows.length.toLocaleString()} color="#1D4ED8" />
-      <SbItem label="🔴긴급"  value={crit}                     color="#DC2626" />
-      <SbItem label="⚠주의"   value={warn}                     color="#B45309" />
-      <SbItem label="Stock"   value={stock.toLocaleString()}   color="#1D4ED8" />
-      <SbItem label="BackOrd" value={bo.toLocaleString()}      color="#DC2626" />
-      <SbItem label="30D"     value={s30.toLocaleString()}     color="#047857" />
-      <SbItem label="Inbound" value={inb.toLocaleString()}     color="#1D4ED8" />
+      <SbItem label={pick("🔴긴급", "🔴Critical")}  value={crit}                     color="#DC2626" />
+      <SbItem label={pick("⚠주의", "⚠Warning")}    value={warn}                     color="#B45309" />
+      <SbItem label="Stock"                          value={stock.toLocaleString()}   color="#1D4ED8" />
+      <SbItem label={pick("백오더", "BackOrd")}      value={bo.toLocaleString()}      color="#DC2626" />
+      <SbItem label="30D"                            value={s30.toLocaleString()}     color="#047857" />
+      <SbItem label={pick("입고", "Inbound")}        value={inb.toLocaleString()}     color="#1D4ED8" />
       <SeasonalFactorSettings
         factors={seasonalFactors}
         onChange={onSeasonalFactorsChange}
@@ -87,6 +89,7 @@ function SeasonalFactorSettings({
   factors: SeasonalFactors;
   onChange: (next: SeasonalFactors) => void;
 }) {
+  const { pick } = useI18n();
   function updateFactor(key: SeasonalFactorKey, rawValue: string) {
     const value = Number(rawValue);
     if (!Number.isFinite(value) || value < 0) return;
@@ -120,9 +123,9 @@ function SeasonalFactorSettings({
       <PopoverContent align="end" style={{ width: "min(360px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>Planning Settings</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>{pick("계획 설정", "Planning Settings")}</div>
             <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.4, color: "#64748B" }}>
-              Seasonal multipliers used for planning calculations.
+              {pick("계획 계산에 사용되는 시즌 지수입니다.", "Seasonal multipliers used for planning calculations.")}
             </div>
           </div>
           <PopoverClose asChild>
@@ -162,7 +165,7 @@ function SeasonalFactorSettings({
         <div>
           {/* Seasonal Factors */}
           <div style={{ padding: "14px 16px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>Seasonal Factors</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>{pick("시즌 지수", "Seasonal Factors")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {SEASONAL_FACTOR_FIELDS.map(({ key, label }) => (
                 <label key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -209,7 +212,7 @@ function SeasonalFactorSettings({
                 }}
               >
                 <RotateCcw size={13} />
-                Restore Defaults
+                {pick("기본값 복원", "Restore Defaults")}
               </button>
             </div>
           </div>

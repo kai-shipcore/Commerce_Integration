@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useCallback,
@@ -37,6 +37,7 @@ import type {
   UrgencyStatus,
 } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
@@ -263,6 +264,7 @@ export function DemandPlanningGrid({
   onColumnWidthsChange,
   seasonalFactors,
 }: DemandPlanningGridProps) {
+  const { pick } = useI18n();
   const { rows: ROWS } = data;
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const CONS = useMemo(
@@ -392,7 +394,7 @@ export function DemandPlanningGrid({
           return sortDirection === "asc" ? result : -result;
         })
       : filteredRows;
-    // "Part" í–‰ì€ í•­ìƒ í•˜ë‹¨
+    // "Part" 행은 항상 하단
     const normal = sorted.filter((r) => r.sales_status !== "Part");
     const parts  = sorted.filter((r) => r.sales_status === "Part");
     return [...normal, ...parts];
@@ -820,7 +822,7 @@ export function DemandPlanningGrid({
                   ))}
                   {sortColumnId === col.id ? (
                     <span style={{ marginLeft: 3, color: "#67E8F9" }}>
-                      {sortDirection === "asc" ? "â–²" : "â–¼"}
+                      {sortDirection === "asc" ? "▲" : "▼"}
                     </span>
                   ) : null}
                   {resizableColumnId ? (
@@ -913,7 +915,7 @@ export function DemandPlanningGrid({
                   colSpan={visCols.length + containerColumnCount}
                   style={{ padding: 20, textAlign: "center", color: "#9A9790" }}
                 >
-                  ì¡°ê±´ì— ë§žëŠ” SKU ì—†ìŒ
+                  {pick("조건에 맞는 SKU 없음", "No matching SKU")}
                 </td>
               </tr>
             ) : (

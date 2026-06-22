@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { createPortal } from "react-dom";
 import { AppLayout } from "@/components/layout/app-layout";
 import { DataTable } from "@/components/ui/data-table/data-table";
@@ -567,6 +568,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
 // Main Page
 
 export default function VelocityPage() {
+  const { pick } = useI18n();
   const [selectedItem, setSelectedItem] = useState<string>("Car Cover");
   const [selectedChannels, setSelectedChannels] = useState<string[]>([...CHANNELS]);
   const [mode, setMode] = useState<"sales" | "ttm" | "preorder">("sales");
@@ -782,7 +784,7 @@ export default function VelocityPage() {
                   </div>
                   <button
                     onClick={handleResetPeriod}
-                    title="기간 설정 초기화"
+                    title={pick("기간 설정 초기화", "Reset period")}
                     className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />

@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
   filterToValidMenuIds,
@@ -64,6 +65,7 @@ interface MenuPermissionEntry {
 }
 
 export default function UserAccessPage() {
+  const { pick } = useI18n();
   const { data: session, status } = useSession();
   const isElevatedRole = (role: string) => role === "admin" || role === "dev" || role === "planner";
   const configurableMenus = useMemo(
@@ -81,7 +83,7 @@ export default function UserAccessPage() {
           entries.push({
             item,
             configurable: configurableIds.has(id),
-            description: item.hideable === false ? "Controlled by role" : undefined,
+            description: item.hideable === false ? pick("권한으로 제어됨", "Controlled by role") : undefined,
           });
         }
         return entries;
@@ -93,7 +95,7 @@ export default function UserAccessPage() {
       { group: "Master Data", entries: makeEntries(["sku-master", "seat-cover-parts", "factories", "warehouse-admin"]) },
       { group: "Admin", entries: makeEntries(["integrations", "user-access"]) },
     ].filter((group) => group.entries.length > 0);
-  }, [configurableMenus]);
+  }, [configurableMenus, pick]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
@@ -304,9 +306,9 @@ export default function UserAccessPage() {
           <div className="flex items-start gap-2">
             <ShieldCheck className="mt-1 h-5 w-5" />
             <div>
-              <h1 className="text-lg font-semibold">User Access</h1>
+              <h1 className="text-lg font-semibold">{pick("사용자 권한", "User Access")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Review users in the list, then open one user to manage role and menu access.
+                {pick("목록에서 사용자를 선택하여 역할 및 메뉴 접근 권한을 관리하세요.", "Review users in the list, then open one user to manage role and menu access.")}
               </p>
             </div>
           </div>
@@ -323,7 +325,7 @@ export default function UserAccessPage() {
           <div className="flex min-h-[560px] flex-col border-b border-[#e2dfd8] bg-white dark:border-slate-700 dark:bg-slate-950 xl:min-h-0 xl:border-b-0 xl:border-r xl:border-[#e2dfd8] xl:dark:border-slate-700">
             <div className="space-y-4 border-b border-[#e2dfd8] px-5 py-4 dark:border-slate-700">
               <div className="flex items-center justify-between gap-4">
-                <h2 className="text-sm font-semibold">User List</h2>
+                <h2 className="text-sm font-semibold">{pick("사용자 목록", "User List")}</h2>
                 <span className="text-xs text-muted-foreground">
                   Page {pagination.total === 0 ? 0 : pagination.page} / {pagination.total === 0 ? 0 : pagination.totalPages}
                 </span>
@@ -334,7 +336,7 @@ export default function UserAccessPage() {
                   <Input
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search by email or name"
+                    placeholder={pick("이메일 또는 이름 검색", "Search by email or name")}
                     className="pl-9"
                   />
                 </div>
@@ -346,7 +348,7 @@ export default function UserAccessPage() {
                   }}
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground dark:border-slate-700 dark:bg-slate-950"
                 >
-                  <option value="">All Roles</option>
+                  <option value="">{pick("전체 역할", "All Roles")}</option>
                   <option value="user">user</option>
                   <option value="admin">admin</option>
                   <option value="dev">dev</option>
@@ -355,7 +357,7 @@ export default function UserAccessPage() {
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4 text-sm text-muted-foreground dark:border-slate-700">
                 <div className="flex items-center gap-2">
-                  <span>Rows</span>
+                  <span>{pick("행", "Rows")}</span>
                   <select
                     value={pagination.limit}
                     onChange={(event) => setPagination((current) => ({
@@ -381,7 +383,7 @@ export default function UserAccessPage() {
                     disabled={pagination.page <= 1 || loading}
                     onClick={() => setPagination((current) => ({ ...current, page: current.page - 1 }))}
                   >
-                    Previous
+                    {pick("이전", "Previous")}
                   </Button>
                   <Button
                     type="button"
@@ -390,7 +392,7 @@ export default function UserAccessPage() {
                     disabled={pagination.page >= pagination.totalPages || pagination.total === 0 || loading}
                     onClick={() => setPagination((current) => ({ ...current, page: current.page + 1 }))}
                   >
-                    Next
+                    {pick("다음", "Next")}
                   </Button>
                 </div>
               </div>
@@ -400,11 +402,11 @@ export default function UserAccessPage() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-[#f8f7f4] dark:bg-slate-900">
                     <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Auth</TableHead>
-                      <TableHead className="pr-5 text-right">Joined</TableHead>
+                      <TableHead>{pick("이메일", "Email")}</TableHead>
+                      <TableHead>{pick("이름", "Name")}</TableHead>
+                      <TableHead>{pick("역할", "Role")}</TableHead>
+                      <TableHead>{pick("인증", "Auth")}</TableHead>
+                      <TableHead className="pr-5 text-right">{pick("가입일", "Joined")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -413,7 +415,7 @@ export default function UserAccessPage() {
                         className="hover:bg-transparent"
                       >
                         <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                          No users match your search.
+                          {pick("검색 결과가 없습니다.", "No users match your search.")}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -428,7 +430,7 @@ export default function UserAccessPage() {
                             {user.email}
                           </TableCell>
                           <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                            {user.name ?? "â€”"}
+                            {user.name ?? "—"}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -515,7 +517,7 @@ export default function UserAccessPage() {
                   {savingUserId === selectedUser.id && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Saving changes
+                      {pick("저장 중...", "Saving changes")}
                     </div>
                   )}
 
@@ -578,9 +580,9 @@ export default function UserAccessPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between gap-2">
                       <div>
-                        <h2 className="text-sm font-medium">Menu Permissions</h2>
+                        <h2 className="text-sm font-medium">{pick("메뉴 권한", "Menu Permissions")}</h2>
                         <p className="text-xs text-muted-foreground">
-                          Choose which menus this user can access.
+                          {pick("이 사용자가 접근할 수 있는 메뉴를 선택하세요.", "Choose which menus this user can access.")}
                         </p>
                       </div>
                       <div className="flex shrink-0 gap-1">
@@ -596,7 +598,7 @@ export default function UserAccessPage() {
                             )
                           }
                         >
-                          Select All
+                          {pick("전체 선택", "Select All")}
                         </Button>
                         <Button
                           type="button"
@@ -605,7 +607,7 @@ export default function UserAccessPage() {
                           disabled={savingUserId === selectedUser.id}
                           onClick={() => void updateUserMenus(selectedUser.id, [])}
                         >
-                          Deselect All
+                          {pick("전체 해제", "Deselect All")}
                         </Button>
                         <Button
                           type="button"
@@ -619,7 +621,7 @@ export default function UserAccessPage() {
                             )
                           }
                         >
-                          Reset Default
+                          {pick("기본값 초기화", "Reset Default")}
                         </Button>
                       </div>
                     </div>
