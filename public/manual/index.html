@@ -273,34 +273,34 @@
   </div>
   <div class="nav-section">목차</div>
   <a class="nav-item" href="#overview"><span class="icon">🏠</span> 시작하기</a>
-  <a class="nav-item" href="#demand-planning"><span class="icon">📊</span> Demand Planning</a>
+  <a class="nav-item" href="#demand-planning"><span class="icon">📊</span> 수요 계획</a>
   <a class="nav-sub" href="#dp-filters">필터 & 검색</a>
-  <a class="nav-sub" href="#dp-columns">Columns 패널</a>
+  <a class="nav-sub" href="#dp-columns">컬럼 설정</a>
   <a class="nav-sub" href="#dp-col-preset">프리셋 & 그룹</a>
   <a class="nav-sub" href="#dp-col-sku-filter">SKU 필터</a>
   <a class="nav-sub" href="#dp-col-freeze">컬럼 고정</a>
   <a class="nav-sub" href="#dp-col-colors">컬럼 색상</a>
   <a class="nav-sub" href="#dp-autofill">자동계산 버튼</a>
-  <a class="nav-sub" href="#dp-seasonal">Seasonal Factors</a>
-  <a class="nav-item" href="#sku-planning"><span class="icon">🔍</span> SKU Planning</a>
+  <a class="nav-sub" href="#dp-seasonal">시즌 지수</a>
+  <a class="nav-item" href="#sku-planning"><span class="icon">🔍</span> SKU 계획</a>
   <a class="nav-sub" href="#sp-browser">SKU 목록 패널</a>
   <a class="nav-sub" href="#sp-kpi">KPI 요약 카드</a>
   <a class="nav-sub" href="#sp-analysis">판매 분석 탭</a>
   <a class="nav-sub" href="#sp-inventory">재고 및 입고 탭</a>
   <a class="nav-sub" href="#sp-inbound-history">입고 이력 탭</a>
   <a class="nav-sub" href="#sp-recommend">컨테이너 추천 탭</a>
-  <a class="nav-item" href="#container-planning"><span class="icon">🚢</span> Container Planning</a>
+  <a class="nav-item" href="#container-planning"><span class="icon">🚢</span> 컨테이너 계획</a>
   <a class="nav-sub" href="#cp-create">컨테이너 등록</a>
   <a class="nav-sub" href="#cp-status">상태 관리</a>
-  <a class="nav-sub" href="#cp-complete">Complete와 Demand Planning</a>
+  <a class="nav-sub" href="#cp-complete">입고 완료와 수요 계획</a>
   <a class="nav-sub" href="#cp-export">엑셀 Export</a>
-  <a class="nav-item" href="#container-timeline"><span class="icon">📅</span> Container Timeline</a>
+  <a class="nav-item" href="#container-timeline"><span class="icon">📅</span> 컨테이너 일정</a>
   <a class="nav-sub" href="#ct-overview">화면 구성</a>
   <a class="nav-sub" href="#ct-filters">필터 & 기간 설정</a>
   <a class="nav-sub" href="#ct-gantt">Gantt 바 읽기</a>
   <a class="nav-sub" href="#ct-detail">상세 드로어</a>
-  <a class="nav-item" href="#available-stock"><span class="icon">📦</span> Available Stock</a>
-  <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU Master</a>
+  <a class="nav-item" href="#available-stock"><span class="icon">📦</span> 가용 재고</a>
+  <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU 마스터</a>
   <div class="nav-section" style="margin-top:20px">부록</div>
   <a class="nav-item" href="#glossary"><span class="icon">📖</span> 용어 설명</a>
 </nav>
@@ -314,12 +314,12 @@
     <h1>📦 Demand Pilot<br><span>사용자 매뉴얼</span></h1>
     <p>시트 커버 · 카 커버 · 플로어 매트 상품의 재고 계획, 컨테이너 관리, 발주 최적화를 위한 운영 가이드입니다.</p>
     <div class="cover-badges">
-      <span class="badge">📊 Demand Planning</span>
-      <span class="badge">🔍 SKU Planning</span>
-      <span class="badge">🚢 Container Planning</span>
-      <span class="badge">📅 Container Timeline</span>
-      <span class="badge">📦 Available Stock</span>
-      <span class="badge">🗂️ SKU Master</span>
+      <span class="badge">📊 수요 계획</span>
+      <span class="badge">🔍 SKU 계획</span>
+      <span class="badge">🚢 컨테이너 계획</span>
+      <span class="badge">📅 컨테이너 일정</span>
+      <span class="badge">📦 가용 재고</span>
+      <span class="badge">🗂️ SKU 마스터</span>
     </div>
   </div>
 </section>
@@ -340,27 +340,27 @@
   <div class="toc">
     <a class="toc-item" href="#demand-planning">
       <div class="toc-num" style="background:#dbeafe;color:#1d4ed8">1</div>
-      <div><h3>Demand Planning</h3><p>SKU별 재고 현황과 컨테이너 발주 계획을 한눈에</p></div>
+      <div><h3>수요 계획</h3><p>SKU별 재고 현황과 컨테이너 발주 계획을 한눈에</p></div>
     </a>
     <a class="toc-item" href="#sku-planning">
       <div class="toc-num" style="background:#dcfce7;color:#15803d">2</div>
-      <div><h3>SKU Planning</h3><p>개별 SKU의 판매 추이와 발주 권장량 분석</p></div>
+      <div><h3>SKU 계획</h3><p>개별 SKU의 판매 추이와 발주 권장량 분석</p></div>
     </a>
     <a class="toc-item" href="#container-planning">
       <div class="toc-num" style="background:#fef9c3;color:#854d0e">3</div>
-      <div><h3>Container Planning</h3><p>컨테이너 등록 · 패킹 리스트 · 상태 관리</p></div>
+      <div><h3>컨테이너 계획</h3><p>컨테이너 등록 · 패킹 리스트 · 상태 관리</p></div>
     </a>
     <a class="toc-item" href="#container-timeline">
       <div class="toc-num" style="background:#e0f2fe;color:#0369a1">4</div>
-      <div><h3>Container Timeline</h3><p>ETA 기준 Gantt 뷰 · 입고 일정 한눈에 보기</p></div>
+      <div><h3>컨테이너 일정</h3><p>ETA 기준 간트 보기 · 입고 일정 한눈에 보기</p></div>
     </a>
     <a class="toc-item" href="#available-stock">
       <div class="toc-num" style="background:#ffe4e6;color:#9f1239">5</div>
-      <div><h3>Available Stock</h3><p>여유 재고 · 미스테이크 오더 목록 관리</p></div>
+      <div><h3>가용 재고</h3><p>잔여 재고 · 오류 목록 관리</p></div>
     </a>
     <a class="toc-item" href="#sku-master">
       <div class="toc-num" style="background:#f3e8ff;color:#6b21a8">6</div>
-      <div><h3>SKU Master</h3><p>SKU별 CBM · MOQ · 케이스 수량 기준 데이터 관리</p></div>
+      <div><h3>SKU 마스터</h3><p>SKU별 CBM · MOQ · 케이스 수량 기준 데이터 관리</p></div>
     </a>
   </div>
 
@@ -368,23 +368,23 @@
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
-      <div><h4>SKU Master 확인</h4><p>CBM(부피)·MOQ·발주 배수가 정확히 등록되어 있어야 발주 계산이 올바르게 동작합니다. 신규 SKU 추가 시 가장 먼저 확인하세요.</p></div>
+      <div><h4>SKU 마스터 확인</h4><p>CBM(부피)·MOQ·발주 배수가 정확히 등록되어 있어야 발주 계산이 올바르게 동작합니다. 신규 SKU 추가 시 가장 먼저 확인하세요.</p></div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div><h4>Container Planning에서 컨테이너 등록</h4><p>입고 예정 컨테이너를 등록하고 ETA(도착 예정일)를 입력합니다. SKU별 수량을 패킹 리스트로 관리합니다.</p></div>
+      <div><h4>컨테이너 계획에서 컨테이너 등록</h4><p>입고 예정 컨테이너를 등록하고 ETA(도착 예정일)를 입력합니다. SKU별 수량을 패킹 리스트로 관리합니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div><h4>Demand Planning으로 발주 계획</h4><p>재고 현황과 컨테이너 체인을 확인하며 자동 계산 버튼으로 최적 발주 수량을 산출합니다.</p></div>
+      <div><h4>수요 계획으로 발주 계획</h4><p>재고 현황과 컨테이너 체인을 확인하며 자동 계산 버튼으로 최적 발주 수량을 산출합니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">4</div>
-      <div><h4>Available Stock에서 여유 재고 배정</h4><p>창고에 이미 있는 여유 재고(Remaining / Mistake Order)를 컨테이너에 배정해 입고량을 조정합니다.</p></div>
+      <div><h4>가용 재고에서 여유 재고 배정</h4><p>창고에 이미 있는 잔여 재고 또는 오류 재고를 컨테이너에 배정해 입고량을 조정합니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">5</div>
-      <div><h4>SKU Planning으로 세부 분석</h4><p>판매 트렌드가 궁금한 SKU를 선택해 판매 추이와 재고 소진일을 확인합니다.</p></div>
+      <div><h4>SKU 계획으로 세부 분석</h4><p>판매 추이가 궁금한 SKU를 선택해 판매 추이와 재고 소진일을 확인합니다.</p></div>
     </div>
   </div>
 
@@ -392,13 +392,13 @@
   <p>상단 헤더에는 4개의 메뉴 그룹이 있습니다. 그룹 버튼을 클릭하면 해당 그룹의 하위 메뉴가 드롭다운으로 표시됩니다.</p>
   <div class="screenshot-box">
     <img src="screenshots/header-nav.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔗</div><p>상단 내비게이션 바</p></div>'" alt="상단 내비게이션">
-    <div class="screenshot-caption">▲ 상단 내비게이션 — Commerce · Planning · Master Data · Admin 4개 그룹</div>
+    <div class="screenshot-caption">▲ 상단 내비게이션 — 커머스 · 계획 · 기준 정보 · 관리 4개 그룹</div>
   </div>
   <table class="feat-table">
-    <tr><td><strong>Commerce</strong></td><td>Inventory · Orders · Velocity</td></tr>
-    <tr><td><strong>Planning</strong></td><td>Demand Planning · SKU Planning · Container Planning · Container Timeline · Available Stock</td></tr>
-    <tr><td><strong>Master Data</strong></td><td>SKU Master · Parts · Factories · Warehouse</td></tr>
-    <tr><td><strong>Admin</strong></td><td>Marketplace APIs · User Access</td></tr>
+    <tr><td><strong>커머스</strong></td><td>재고 · 주문 · 판매 속도</td></tr>
+    <tr><td><strong>계획</strong></td><td>수요 계획 · SKU 계획 · 컨테이너 계획 · 컨테이너 일정 · 가용 재고</td></tr>
+    <tr><td><strong>기준 정보</strong></td><td>SKU 마스터 · 부품 · 공장 · 창고</td></tr>
+    <tr><td><strong>관리</strong></td><td>마켓플레이스 API · 사용자 권한</td></tr>
   </table>
 
   <h3>내비게이션 접기 &amp; 플로팅 런처</h3>
@@ -427,15 +427,15 @@
   <div class="section-header">
     <div class="section-icon" style="background:#dbeafe;font-size:28px">📊</div>
     <div>
-      <div class="menu-path">메뉴 › Demand Planning</div>
-      <h2>Demand Planning</h2>
+      <div class="menu-path">메뉴 › 수요 계획</div>
+      <h2>수요 계획</h2>
       <p class="subtitle">전체 SKU의 재고 현황과 컨테이너 발주 계획을 통합 관리하는 메인 화면입니다.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/01-demand-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>Demand Planning 전체 화면</p></div><div class=\'screenshot-caption\'>▲ Demand Planning – 메인 화면 (재고 현황 + 컨테이너 체인)</div>'" alt="Demand Planning 메인 화면">
-    <div class="screenshot-caption">▲ Demand Planning – 메인 화면 (재고 현황 + 컨테이너 체인)</div>
+    <img src="screenshots/01-demand-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>수요 계획 전체 화면</p></div><div class=\'screenshot-caption\'>▲ 수요 계획 — 메인 화면 (재고 현황 + 컨테이너 체인)</div>'" alt="수요 계획 메인 화면">
+    <div class="screenshot-caption">▲ 수요 계획 — 메인 화면 (재고 현황 + 컨테이너 체인)</div>
   </div>
 
   <!-- 상단 필터 -->
@@ -457,100 +457,100 @@
     <img src="screenshots/01b-demand-filters.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>필터 & 상단 컨트롤 영역</p></div>'" alt="필터 영역">
   </div>
 
-  <!-- Columns 패널 전체 -->
-  <h3 id="dp-columns">② Columns 패널</h3>
-  <p>상단 툴바의 <span class="btn-label">⊞ Columns ▾</span> 버튼을 클릭하면 패널이 열립니다. 패널은 세 영역(왼쪽: Quick Preset·Options·SKU Filters·Freeze Column·Column Colors, 가운데: Column Visibility, 오른쪽: Container Visibility)으로 구성됩니다. 모든 설정은 서버에 자동 저장되어 다른 기기에서 접속해도 유지됩니다.</p>
+  <!-- 컬럼 설정 패널 전체 -->
+  <h3 id="dp-columns">② 컬럼 설정</h3>
+  <p>상단 툴바의 <span class="btn-label">⊞ 컬럼 ▾</span> 버튼을 클릭하면 패널이 열립니다. 패널은 세 영역(왼쪽: 빠른 설정·옵션·SKU 필터·컬럼 고정·컬럼 너비 초기화·컬럼 색상, 가운데: 컬럼 표시, 오른쪽: 컨테이너 표시)으로 구성됩니다. 모든 설정은 서버에 자동 저장되어 다른 기기에서 접속해도 유지됩니다.</p>
 
   <div class="screenshot-box">
-    <img src="screenshots/dp-columns-panel.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⊞</div><p>Columns 패널 전체 화면</p></div>'" alt="Columns 패널">
-    <div class="screenshot-caption">▲ Columns 패널 — 왼쪽(프리셋·Options·SKU 필터·Freeze·색상), 가운데(컬럼 표시), 오른쪽(Container Visibility)</div>
+    <img src="screenshots/dp-columns-panel.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⊞</div><p>컬럼 설정 전체 화면</p></div>'" alt="컬럼 설정">
+    <div class="screenshot-caption">▲ 컬럼 설정 — 왼쪽(빠른 설정·옵션·SKU 필터·컬럼 고정·색상), 가운데(컬럼 표시), 오른쪽(컨테이너 표시)</div>
   </div>
 
-  <h3 class="sub" id="dp-col-preset">Quick Preset — 빠른 컬럼 프리셋</h3>
+  <h3 class="sub" id="dp-col-preset">빠른 설정 — 자주 쓰는 컬럼 조합</h3>
   <p>4개의 버튼으로 자주 쓰는 컬럼 조합을 즉시 적용합니다. 현재 활성 프리셋은 파란 테두리로 표시됩니다.</p>
   <table class="feat-table">
     <tr><th style="width:170px">버튼</th><th>표시되는 컬럼 그룹</th><th>비고</th></tr>
     <tr>
-      <td><span class="btn-label">All</span></td>
+      <td><span class="btn-label">전체</span></td>
       <td>모든 컬럼 그룹 전체 표시</td>
       <td>가장 넓은 뷰. 처음 접속 시 기본값.</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Core</span></td>
-      <td>Basic Info · Inventory · Sales 30D · Total Avg Daily · 입고/SOD + 컨테이너 컬럼</td>
+      <td><span class="btn-label">핵심</span></td>
+      <td>기본 정보 · 재고 · 30일 판매 · 전체 일평균 · 입고/SOD + 컨테이너 컬럼</td>
       <td>West/East 일별 판매 그룹 숨김. 핵심 지표 중심.</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Compact</span></td>
-      <td>Core에서 더 줄인 필수 컬럼만 표시<br><span style="font-size:11px;color:#6b7280">Back · Sales Status · Master SKU · West/East/Total Stock · T.Avg 이전/실제/현재 · Inbound Qty · Containers List · Next ETA · S.O.D 품절예상일 + 컨테이너 컬럼</span></td>
-      <td>Compact 모드 ON. Freeze Column을 S.O.D로 자동 초기화. 화면이 좁을 때 유용.</td>
+      <td><span class="btn-label">간단히</span></td>
+      <td>핵심에서 더 줄인 필수 컬럼만 표시<br><span style="font-size:11px;color:#6b7280">백오더 · 판매 상태 · 마스터 SKU · 서부/동부/전체 재고 · 전체 평균 이전/실제/현재 · 입고 수량 · 컨테이너 목록 · 다음 ETA · S.O.D 품절예상일 + 컨테이너 컬럼</span></td>
+      <td>간단히 모드 활성화. 컬럼 고정을 S.O.D로 자동 초기화. 화면이 좁을 때 유용.</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Container Columns</span></td>
-      <td>컨테이너 서브컬럼 전체 ON/OFF 토글</td>
+      <td><span class="btn-label">컨테이너 컬럼</span></td>
+      <td>컨테이너 하위 컬럼 전체 표시/숨김</td>
       <td>나머지 컬럼은 그대로 유지. 파란 테두리 = 현재 컨테이너 컬럼 전체 표시 중.</td>
     </tr>
   </table>
 
-  <h3 class="sub" style="margin-top:28px">Column Visibility — 컬럼 그룹 & 개별 컬럼 선택</h3>
+  <h3 class="sub" style="margin-top:28px">컬럼 표시 — 컬럼 그룹 및 개별 컬럼 선택</h3>
   <p>패널 가운데 영역에서 컬럼 그룹 단위 체크박스와 그룹 내 개별 컬럼 체크박스를 모두 제어할 수 있습니다. 그룹 헤더를 클릭해 접었다 펼 수 있으며, 그룹 옆의 숫자(예: <code>5/6</code>)는 "표시 중 / 전체" 컬럼 수를 나타냅니다.</p>
 
   <table class="feat-table">
     <tr><th style="width:200px">그룹명</th><th>포함 컬럼</th><th>비고</th></tr>
     <tr style="background:#f0f4ff">
-      <td><strong>Basic Info</strong></td>
-      <td>#(행 번호) · Container Info. · CBM · Back · Sales Status · Master SKU</td>
+      <td><strong>기본 정보</strong></td>
+      <td>#(행 번호) · 컨테이너 정보 · CBM · 백오더 · 판매 상태 · 마스터 SKU</td>
       <td>항상 표시. 숨길 수 없음.</td>
     </tr>
     <tr>
-      <td><strong>Inventory</strong></td>
-      <td>Mode · West Stock · East Stock · Transit Stock · Total Stock</td>
-      <td>재고 현황. <strong>Mode</strong>: 재고 계산 기준을 전환합니다. <strong>Onhand</strong>: 실물 재고 수량 기준. <strong>Available</strong>: Available Stock에서 배정된 수량이 차감된 가용 재고 기준.</td>
+      <td><strong>재고</strong></td>
+      <td>모드 · 서부 재고 · 동부 재고 · 운송 중 재고 · 전체 재고</td>
+      <td>재고 현황. <strong>모드</strong>: 재고 계산 기준을 전환합니다. <strong>현재고</strong>: 실물 재고 수량 기준. <strong>가용 재고</strong>: 가용 재고 관리에서 배정된 수량을 차감한 기준.</td>
     </tr>
     <tr>
-      <td><strong>West FBM Sales</strong></td>
+      <td><strong>서부 FBM 판매</strong></td>
       <td>West 90D · 60D · 30D · 15D · 7D · W Pre 30D</td>
       <td>서부(FBM) 기간별 판매 수량.</td>
     </tr>
     <tr>
-      <td><strong>East FBM Sales</strong></td>
+      <td><strong>동부 FBM 판매</strong></td>
       <td>East 90D · 60D · 30D · 15D · 7D · E Pre 30D</td>
       <td>동부(FBM) 기간별 판매 수량.</td>
     </tr>
     <tr>
-      <td><strong>West Avg Daily</strong></td>
+      <td><strong>서부 일평균</strong></td>
       <td>W Avg 이전 · W Avg 실제 · W Avg 현재</td>
       <td>서부 일평균 판매 (이전 시즌 / 실측 / 현재 적용값).</td>
     </tr>
     <tr>
-      <td><strong>East Avg Daily</strong></td>
+      <td><strong>동부 일평균</strong></td>
       <td>E Avg 이전 · E Avg 실제 · E Avg 현재</td>
       <td>동부 일평균 판매.</td>
     </tr>
     <tr>
-      <td><strong>FBA Avg</strong></td>
+      <td><strong>FBA 평균</strong></td>
       <td>FBA 실제 · FBA 현재</td>
       <td>FBA 채널 일평균 판매.</td>
     </tr>
     <tr>
-      <td><strong>Sales 30D</strong></td>
+      <td><strong>30일 판매</strong></td>
       <td>W FBM 30D · E FBM 30D · FBA 30D · Total 30D</td>
       <td>채널별 최근 30일 판매 합산.</td>
     </tr>
     <tr>
-      <td><strong>Total Avg Daily</strong></td>
+      <td><strong>전체 일평균</strong></td>
       <td>T.Avg 이전 · T.Avg 실제 · T.Avg 현재</td>
       <td>전체 채널 합산 일평균. 자동계산(📅/📊)의 기준값.</td>
     </tr>
     <tr>
       <td><strong>입고 / 컨테이너 / SOD</strong></td>
-      <td>Inbound Qty · Containers List · Next ETA · S.O.D 품절예상일</td>
+      <td>입고 수량 · 컨테이너 목록 · 다음 ETA · S.O.D 품절예상일</td>
       <td>예정 입고 수량 합산, 컨테이너 목록, 다음 ETA, 재고 소진 예상일.</td>
     </tr>
     <tr style="background:#f0f7ff">
       <td><strong>컨테이너 컬럼</strong><br><span style="font-size:11px;color:#6b7280">(컨테이너마다 공통 서브컬럼)</span></td>
       <td>Con. Qty · Rem. Qty · Open Orders · Avail Qty · Est. Sales · Back Order · Carry over · Inv. Life · EST. SOD · Plan SOD · CBM</td>
-      <td>Container Columns 버튼 또는 개별 체크박스로 제어. 각 컨테이너 열 헤더 아래에 서브컬럼으로 표시.</td>
+      <td>컨테이너 컬럼 버튼 또는 개별 체크박스로 제어. 각 컨테이너 열 헤더 아래에 하위 컬럼으로 표시.</td>
     </tr>
   </table>
 
@@ -576,28 +576,28 @@
       <ul style="font-size:13px;line-height:1.9">
         <li>그룹 체크박스를 끄면 하위 개별 컬럼이 모두 숨겨집니다.</li>
         <li>그룹을 켠 뒤 개별 컬럼을 선택적으로 끌 수 있습니다.</li>
-        <li><strong>Compact 프리셋</strong>은 키보드 단축 작업 시 유용합니다. 좌우 스크롤이 거의 없어집니다.</li>
-        <li>컬럼 너비는 헤더 경계를 드래그해 조정하며, <span class="btn-label">Reset Column Widths</span>로 기본값으로 복원합니다.</li>
+        <li><strong>간단히 설정</strong>은 화면이 좁을 때 유용합니다. 좌우 스크롤이 크게 줄어듭니다.</li>
+        <li>컬럼 너비는 헤더 경계를 드래그해 조정하며, <span class="btn-label">컬럼 너비 초기화</span>로 기본값으로 복원합니다.</li>
         <li>설정은 서버에 저장되어 다른 컴퓨터에서 접속해도 유지됩니다.</li>
       </ul>
     </div>
   </div>
 
-  <h3 class="sub" id="dp-container-vis" style="margin-top:28px">Container Visibility — 컨테이너 표시 제어</h3>
-  <p>Columns 패널 오른쪽 영역에서 그리드에 표시할 컨테이너를 개별·그룹 단위로 켜고 끌 수 있습니다. 숨긴 컨테이너는 열 자체가 사라져 수요 계획 뷰가 간결해집니다. 설정은 서버에 자동 저장됩니다.</p>
+  <h3 class="sub" id="dp-container-vis" style="margin-top:28px">컨테이너 표시 — 표시 항목 제어</h3>
+  <p>컬럼 설정 오른쪽 영역에서 그리드에 표시할 컨테이너를 개별·그룹 단위로 켜고 끌 수 있습니다. 숨긴 컨테이너는 열 자체가 사라져 수요 계획 화면이 간결해집니다. 설정은 서버에 자동 저장됩니다.</p>
 
   <div class="screenshot-box">
-    <img src="screenshots/dp-container-visibility.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>컬럼 설정 패널</p></div>'" alt="Container Visibility가 포함된 컬럼 설정 패널">
-    <div class="screenshot-caption">▲ 컬럼 설정 패널 — 오른쪽 Container Visibility에서 Base 컨테이너, 상태 그룹, 개별 컨테이너 및 ETA를 설정할 수 있습니다.</div>
+    <img src="screenshots/dp-container-visibility.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>컬럼 설정 패널</p></div>'" alt="컨테이너 표시가 포함된 컬럼 설정 패널">
+    <div class="screenshot-caption">▲ 컬럼 설정 패널 — 오른쪽 컨테이너 표시에서 기준 컬럼, 상태 그룹, 개별 컨테이너 및 ETA를 설정할 수 있습니다.</div>
   </div>
 
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr style="background:#f0f4ff">
-      <td><strong>Base Containers</strong><br><span style="font-size:11px;color:#6b7280">섹션 상단</span></td>
+      <td><strong>기준 컨테이너</strong><br><span style="font-size:11px;color:#6b7280">섹션 상단</span></td>
       <td>
-        <strong>Base (on-hand)</strong> — 현재 보유 재고 기준 컬럼. 체크 해제 시 Base 열이 숨겨집니다.<br>
-        <strong>Shipped Base</strong> — 마지막 Shipped/Packing 컨테이너의 잠금된 carryover·Inv.Life·SOD를 보여주는 가상 컬럼(amber 배경). 체크 해제 시 해당 컬럼이 완전히 사라집니다.
+        <strong>기준 (현재고)</strong> — 현재 보유 재고 기준 컬럼. 체크 해제 시 기준 열이 숨겨집니다.<br>
+        <strong>출고 기준</strong> — 마지막 출고/패킹 컨테이너의 잠금된 이월 재고·재고 유지일·SOD를 보여주는 가상 컬럼(회색 배경). 체크 해제 시 해당 컬럼이 완전히 사라집니다.
       </td>
     </tr>
     <tr>
@@ -613,7 +613,7 @@
       <td>컨테이너마다 독립적으로 표시·숨김 처리합니다. 체크박스 오른쪽에 ETA 날짜(MM-DD 형식)가 회색으로 표시됩니다.</td>
     </tr>
     <tr>
-      <td><strong>Show All 버튼</strong></td>
+      <td><strong>모두 표시 버튼</strong></td>
       <td>하나 이상의 컨테이너를 숨기면 섹션 상단에 나타납니다. 클릭하면 모든 컨테이너를 즉시 다시 표시합니다.</td>
     </tr>
   </table>
@@ -632,14 +632,14 @@
       <ul style="font-size:13px;line-height:1.9">
         <li>Draft 컨테이너를 숨기면 확정된 입고 계획만 집중해서 볼 수 있습니다.</li>
         <li>특정 컨테이너만 숨겨서 해당 컨테이너 제외 시나리오를 빠르게 확인할 수 있습니다.</li>
-        <li>Shipped Base를 숨기면 출하 기준 가상 컬럼이 사라져 그리드가 단순해집니다.</li>
-        <li>숨긴 컨테이너가 있으면 상단에 <span class="btn-label">Show All</span> 버튼이 나타나 한 번에 복원할 수 있습니다.</li>
+        <li>출고 기준을 숨기면 출하 기준 가상 컬럼이 사라져 그리드가 단순해집니다.</li>
+        <li>숨긴 컨테이너가 있으면 상단에 <span class="btn-label">모두 표시</span> 버튼이 나타나 한 번에 복원할 수 있습니다.</li>
       </ul>
     </div>
   </div>
 
-  <h3 class="sub" id="dp-col-sku-filter" style="margin-top:28px">SKU Filters — 상품별 SKU 파트 필터</h3>
-  <p>선택한 제품 카테고리에 따라 Options 영역 하단에 다른 SKU 파트 필터 세트가 표시됩니다. 각 드롭다운은 복수 선택이 가능하며 <strong>AND 조건</strong>으로 조합됩니다. 오른쪽 상단 <span class="btn-label">Reset</span>으로 모든 SKU 필터를 한 번에 초기화합니다.</p>
+  <h3 class="sub" id="dp-col-sku-filter" style="margin-top:28px">SKU 필터 — 상품별 SKU 파트 필터</h3>
+  <p>선택한 제품 카테고리에 따라 옵션 영역 하단에 다른 SKU 파트 필터 세트가 표시됩니다. 각 드롭다운은 복수 선택이 가능하며 <strong>AND 조건</strong>으로 조합됩니다. 오른쪽 상단 <span class="btn-label">초기화</span>로 모든 SKU 필터를 한 번에 초기화합니다.</p>
 
   <div class="card-grid col2" style="margin:16px 0">
     <div class="card" style="border-left:4px solid #3b82f6">
@@ -695,10 +695,10 @@
   </div>
   <div class="callout info" style="margin-top:8px">
     <span class="callout-icon">ℹ️</span>
-    <div><b>Show Zero-Sales SKUs:</b> Options 상단의 이 체크박스를 켜면 모든 기간에 판매가 0인 SKU도 테이블에 표시됩니다. 기본값은 OFF입니다.</div>
+    <div><b>판매 0인 SKU 표시:</b> 옵션 상단의 이 체크박스를 켜면 모든 기간에 판매가 0인 SKU도 테이블에 표시됩니다. 기본값은 꺼짐입니다.</div>
   </div>
 
-  <h3 class="sub" id="dp-col-freeze" style="margin-top:28px">Freeze Column — 컬럼 고정</h3>
+  <h3 class="sub" id="dp-col-freeze" style="margin-top:28px">컬럼 고정</h3>
   <p>선택한 컬럼까지 화면 좌측에 고정(핀)합니다. 테이블을 오른쪽으로 스크롤해도 고정 컬럼은 항상 보입니다.</p>
   <table class="feat-table">
     <tr><th style="width:180px">항목</th><th>설명</th></tr>
@@ -708,13 +708,13 @@
   </table>
   <div class="callout tip" style="margin-top:12px">
     <span class="callout-icon">💡</span>
-    <div>컨테이너 수가 많아 가로 스크롤이 길어질 때, Freeze Column을 <strong>Master SKU</strong>로 변경하면 SKU명만 고정하고 더 넓은 컨테이너 영역을 볼 수 있습니다.</div>
+    <div>컨테이너 수가 많아 가로 스크롤이 길어질 때, 컬럼 고정을 <strong>마스터 SKU</strong>로 변경하면 SKU명만 고정하고 더 넓은 컨테이너 영역을 볼 수 있습니다.</div>
   </div>
 
-  <h3 class="sub" id="dp-col-colors" style="margin-top:28px">Column Colors — 컬럼 색상 지정</h3>
+  <h3 class="sub" id="dp-col-colors" style="margin-top:28px">컬럼 색상 지정</h3>
   <p>패널 오른쪽 영역에서 특정 컬럼의 헤더·셀 배경색과 개별 셀 배경색을 지정할 수 있습니다. 시각적으로 중요한 컬럼을 강조하거나 팀 내 규칙을 색으로 구분할 때 활용합니다.</p>
 
-  <h4 style="margin-top:16px">A. 컬럼 단위 색상 (Column Colors)</h4>
+  <h4 style="margin-top:16px">A. 컬럼 단위 색상</h4>
   <table class="feat-table">
     <tr><th style="width:180px">컨트롤</th><th>설명</th></tr>
     <tr>
@@ -730,20 +730,20 @@
       <td>선택한 컬럼의 <strong>헤더 셀</strong> 배경색. 모든 컬럼에 적용 가능.</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Reset Selected</span></td>
+      <td><span class="btn-label">선택 초기화</span></td>
       <td>현재 드롭다운에서 선택한 컬럼의 색상만 초기화합니다.</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Reset All</span></td>
+      <td><span class="btn-label">전체 초기화</span></td>
       <td>모든 컬럼의 Cell·Header 색상을 한 번에 초기화합니다.</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Reset Column Widths</span></td>
+      <td><span class="btn-label">컬럼 너비 초기화</span></td>
       <td>색상과 무관하게 <strong>컬럼 너비</strong>를 기본값으로 초기화합니다. (드래그로 조정된 너비 리셋)</td>
     </tr>
   </table>
 
-  <h4 style="margin-top:20px">B. 개별 셀 색상 (Selected Cell Color)</h4>
+  <h4 style="margin-top:20px">B. 선택 셀 색상</h4>
   <p>그리드에서 특정 셀을 클릭하면 "SELECTED CELL COLOR" 섹션에 해당 셀 정보(행 SKU + 컬럼명)가 표시됩니다. 이 상태에서 색상을 선택하면 <strong>그 셀 하나만</strong> 배경색이 바뀝니다.</p>
   <table class="feat-table">
     <tr><th style="width:180px">컨트롤</th><th>설명</th></tr>
@@ -756,11 +756,11 @@
       <td>체크 시 선택된 셀에 색상을 적용하지 않음(초기화와 동일).</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Reset Selected</span></td>
+      <td><span class="btn-label">선택 초기화</span></td>
       <td>현재 선택된 셀의 개별 색상을 초기화합니다.</td>
     </tr>
     <tr>
-      <td><span class="btn-label">Reset All Cells</span></td>
+      <td><span class="btn-label">모든 셀 초기화</span></td>
       <td>모든 개별 셀 색상을 한 번에 초기화합니다.</td>
     </tr>
   </table>
@@ -856,9 +856,9 @@
   </div>
 
   <h3>④ 컨테이너 표시 조건</h3>
-  <p>Demand Planning의 컨테이너 열은 <strong>모든 상태의 컨테이너가 표시되지 않습니다.</strong> 아래 규칙에 따라 필터링됩니다.</p>
+  <p>수요 계획의 컨테이너 열에는 <strong>모든 상태의 컨테이너가 표시되지 않습니다.</strong> 아래 규칙에 따라 필터링됩니다.</p>
   <table class="feat-table">
-    <tr><th style="width:200px">컨테이너 상태</th><th>Demand Planning 표시</th><th>비고</th></tr>
+    <tr><th style="width:200px">컨테이너 상태</th><th>수요 계획 표시</th><th>비고</th></tr>
     <tr><td><span class="status final">Final List Sent</span></td><td>✅ 항상 표시</td><td>공장 발송 완료 상태</td></tr>
     <tr><td><span class="status packing">Packing List Rcvd</span></td><td>✅ 항상 표시</td><td>패킹 리스트 수령 상태</td></tr>
     <tr><td><span class="status draft">Draft</span></td><td>⬜ Draft 포함 토글 ON 시만 표시</td><td>상단 필터에서 수동 활성화 필요</td></tr>
@@ -866,11 +866,11 @@
   </table>
   <div class="callout tip">
     <span class="callout-icon">💡</span>
-    <div><b>Complete 컨테이너가 목록에 없다면?</b> Container Planning 페이지에서 해당 컨테이너의 상태를 확인하세요. 상태가 <span class="status complete">Complete</span>이면 입고 완료 처리된 것이며, Demand Planning과 SKU Planning 재고 및 입고 탭 모두에서 표시되지 않습니다. 자세한 내용은 <a href="#cp-complete" style="color:var(--brand)">Container Planning &gt; Complete 상태 설명</a>을 참고하세요.</div>
+    <div><b>입고 완료 컨테이너가 목록에 없다면?</b> 컨테이너 계획 페이지에서 해당 컨테이너의 상태를 확인하세요. 상태가 <span class="status complete">Complete</span>이면 입고 완료 처리된 것이며, 수요 계획과 SKU 계획의 재고 및 입고 탭 모두에서 표시되지 않습니다. 자세한 내용은 <a href="#cp-complete" style="color:var(--brand)">컨테이너 계획 &gt; 입고 완료 상태 설명</a>을 참고하세요.</div>
   </div>
 
-  <h3>⑤ 컨테이너 헤더 더블클릭 — Container Planning 바로가기</h3>
-  <p>Demand Planning 그리드의 <strong>컨테이너 헤더(컨테이너 번호 영역)를 더블클릭</strong>하면 해당 컨테이너의 Container Planning 상세 페이지가 <strong>새 탭</strong>으로 열립니다.</p>
+  <h3>⑤ 컨테이너 헤더 더블클릭 — 컨테이너 계획 바로가기</h3>
+  <p>수요 계획 그리드의 <strong>컨테이너 헤더(컨테이너 번호 영역)를 더블클릭</strong>하면 해당 컨테이너의 컨테이너 계획 상세 페이지가 <strong>새 탭</strong>으로 열립니다.</p>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr><td class="label">이동 URL</td><td><code>/forecast/planning/container-planning?containerId={id}</code> — 해당 컨테이너가 자동 선택된 상태로 열립니다.</td></tr>
@@ -882,12 +882,12 @@
     <div>발주 수량을 검토하다가 컨테이너 상세를 확인하고 싶을 때, 페이지를 직접 이동하지 않고 더블클릭으로 바로 열 수 있어 편리합니다.</div>
   </div>
 
-  <h3 id="dp-seasonal">⑥ Planning Settings — Seasonal Factors</h3>
+  <h3 id="dp-seasonal">⑥ 시즌지수 설정 — 시즌 지수</h3>
   <p>상단 툴바의 <span class="btn-label">⚙</span> 아이콘(Seasonal factor settings)을 클릭하면 월별 계절 배수를 설정하는 팝오버가 열립니다. 이 배수는 컨테이너 ETA 월의 <strong>예상 판매량과 재고 소진 일수(Inv. Life) 계산</strong>에 자동 적용됩니다.</p>
 
   <div class="screenshot-box">
-    <img src="screenshots/dp-seasonal-factors.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Seasonal Factors 설정 팝오버</p></div>'" alt="Seasonal Factors 설정">
-    <div class="screenshot-caption">▲ Demand Planning 전체 화면에서 Planning Settings 버튼을 클릭해 연 Seasonal Factors 설정</div>
+    <img src="screenshots/dp-seasonal-factors.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>시즌 지수 설정 팝오버</p></div>'" alt="시즌 지수 설정">
+    <div class="screenshot-caption">▲ 수요 계획 전체 화면에서 시즌지수 설정 버튼을 클릭해 연 시즌 지수 설정</div>
   </div>
 
   <table class="feat-table">
@@ -929,15 +929,15 @@
   <div class="section-header">
     <div class="section-icon" style="background:#dcfce7;font-size:28px">🔍</div>
     <div>
-      <div class="menu-path">메뉴 › SKU Planning</div>
-      <h2>SKU Planning</h2>
+      <div class="menu-path">메뉴 › SKU 계획</div>
+      <h2>SKU 계획</h2>
       <p class="subtitle">개별 SKU의 판매 추이, 재고·입고 현황, 발주 권장량을 한 화면에서 상세 분석합니다.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/02-sku-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU Planning 전체 화면</p></div>'" alt="SKU Planning">
-    <div class="screenshot-caption">▲ SKU Planning – 좌측 SKU 브라우저 + 우측 4탭 상세 분석</div>
+    <img src="screenshots/02-sku-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU 계획 전체 화면</p></div>'" alt="SKU 계획">
+    <div class="screenshot-caption">▲ SKU 계획 — 좌측 SKU 브라우저 + 우측 4개 탭 상세 분석</div>
   </div>
 
   <!-- 화면 구성 개요 -->
@@ -946,7 +946,7 @@
     <div class="card">
       <h4>📋 좌측 패널 – SKU 브라우저 (580px)</h4>
       <ul>
-        <li>SC / CC / FM 제품 탭 전환 (건수 뱃지 표시)</li>
+        <li>시트 커버 / 카 커버 / 플로어 매트 제품 탭 전환 (건수 뱃지 표시)</li>
         <li>검색창: SKU명·컨테이너 번호·판매 상태 실시간 필터</li>
         <li>긴급도별 필터 뱃지 (All / Critical / Watch / High / Low / Order Required)</li>
         <li>SKU 목록: 재고·일판매량·SOD·권장수량 열람 및 정렬</li>
@@ -956,7 +956,7 @@
       <h4>📊 우측 패널 – SKU 상세 분석</h4>
       <ul>
         <li><strong>SKU 헤더</strong>: 이름·제품명·상태·MOQ·CBM·다음 ETA</li>
-        <li><strong>KPI Strip</strong>: 5개 핵심 지표 카드</li>
+        <li><strong>KPI 요약</strong>: 5개 핵심 지표 카드</li>
         <li><strong>판매 분석</strong> 탭: 기간별 판매 추이 차트</li>
         <li><strong>재고 및 입고</strong> 탭: 재고 커버리지·입고 컨테이너 목록</li>
         <li><strong>입고 이력</strong> 탭: 과거 입고 이력 전체 조회 (컨테이너 단위)</li>
@@ -969,7 +969,7 @@
   <h3>상단 전역 컨트롤</h3>
   <table class="feat-table">
     <tr><th style="width:200px">컨트롤 (화면 레이블)</th><th>설명</th></tr>
-    <tr><td class="label">제품 탭 (SC / CC / FM)</td><td>Seat Cover · Car Cover · Floor Mat 중 하나를 선택합니다. 탭 우측에 해당 제품의 총 SKU 수가 표시됩니다.</td></tr>
+    <tr><td class="label">제품 탭 (SC / CC / FM)</td><td>시트 커버 · 카 커버 · 플로어 매트 중 하나를 선택합니다. 탭 우측에 해당 제품의 총 SKU 수가 표시됩니다.</td></tr>
     <tr><td class="label">Sales 있는 SKU / 전체 SKU</td><td>토글. <strong>Sales 있는 SKU</strong>: 최근 판매 실적이 있는 SKU만 표시. <strong>전체 SKU</strong>: 판매 이력 없는 SKU까지 모두 표시.</td></tr>
     <tr><td class="label">Active 컨테이너 / Draft 포함</td><td>토글. <strong>Active 컨테이너</strong>: 확정된 컨테이너 기준 재고 계산. <strong>Draft 포함</strong>: 초안(Draft) 컨테이너 입고량까지 포함하여 계산.</td></tr>
     <tr><td class="label">목표 재고일 (1–365)</td><td>컨테이너 추천 탭의 목표 재고 일수를 설정합니다. 이 값이 커질수록 권장 발주 수량이 늘어납니다. KPI의 재고 유지일 기준이 됩니다.</td></tr>
@@ -1013,7 +1013,7 @@
   <div class="card-grid col3">
     <div class="card">
       <h4>📦 현재 재고</h4>
-      <p>현재 창고 총 재고. 하단에 <strong>West / East</strong> 창고별 분리 수량이 표시됩니다.</p>
+      <p>현재 창고 총 재고. 하단에 <strong>서부 / 동부</strong> 창고별 분리 수량이 표시됩니다.</p>
     </div>
     <div class="card">
       <h4>🚢 입고</h4>
@@ -1043,10 +1043,10 @@
 
   <div class="screenshot-box">
     <img src="screenshots/02a-sku-sales.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>판매 분석 탭 – 기간별 판매 추이 차트</p></div>'" alt="판매 분석 탭">
-    <div class="screenshot-caption">▲ 판매 분석 탭 – 기간별 판매 추이 차트 (Default View)</div>
+    <div class="screenshot-caption">▲ 판매 분석 탭 — 기간별 판매 추이 차트 (기본 보기)</div>
   </div>
 
-  <p>선택한 SKU의 기간별 판매 데이터를 차트와 수치 표로 확인합니다. <strong>Default View</strong>와 <strong>History View</strong> 두 가지 모드가 있습니다.</p>
+  <p>선택한 SKU의 기간별 판매 데이터를 차트와 수치 표로 확인합니다. <strong>기본 보기</strong>와 <strong>히스토리 보기</strong> 두 가지 모드가 있습니다.</p>
 
   <h3 class="sub">기본 보기 – 기간별 요약</h3>
   <table class="feat-table">
@@ -1267,15 +1267,15 @@
   <div class="section-header">
     <div class="section-icon" style="background:#fef9c3;font-size:28px">🚢</div>
     <div>
-      <div class="menu-path">메뉴 › Container Planning</div>
-      <h2>Container Planning</h2>
+      <div class="menu-path">메뉴 › 컨테이너 계획</div>
+      <h2>컨테이너 계획</h2>
       <p class="subtitle">입고 예정 컨테이너를 등록하고, SKU별 수량을 관리하며, 패킹 리스트 상태를 추적합니다.</p>
     </div>
   </div>
 
     <div class="screenshot-box">
     <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 화면 (SKU 목록)</p></div>'" alt="컨테이너 상세">
-    <div class="screenshot-caption">▲ Container Planning – Draft 필터 선택 · 202-CA-SEAT 컨테이너 선택 상태</div>
+    <div class="screenshot-caption">▲ 컨테이너 계획 — Draft 필터 및 컨테이너 선택 상태</div>
   </div>
 
 
@@ -1295,7 +1295,7 @@
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
-      <div><h4>+ Add Container 클릭</h4><p>화면 우측 상단의 <span class="btn-label">+ Add Container</span> 버튼을 클릭합니다.</p></div>
+      <div><h4>+ 컨테이너 추가 클릭</h4><p>화면 우측 상단의 <span class="btn-label">+ 컨테이너 추가</span> 버튼을 클릭합니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
@@ -1303,11 +1303,11 @@
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div><h4>SKU 추가</h4><p>Master SKU를 입력하고 수량을 등록합니다. 엑셀 파일로 일괄 업로드도 가능합니다 (<span class="btn-label">Import Excel</span>).</p></div>
+      <div><h4>SKU 추가</h4><p>마스터 SKU를 입력하고 수량을 등록합니다. 엑셀 파일로 일괄 업로드도 가능합니다 (<span class="btn-label">CSV/Excel 가져오기</span>).</p></div>
     </div>
     <div class="step">
       <div class="step-num">4</div>
-      <div><h4>Available Stock 배정 (선택)</h4><p>창고에 대기 중인 여유 재고를 이 컨테이너에 배정하려면 <span class="btn-label">Available Stock</span> 버튼을 사용합니다.</p></div>
+      <div><h4>가용 재고 배정 (선택)</h4><p>창고에 대기 중인 여유 재고를 이 컨테이너에 배정하려면 <span class="btn-label">+ 가용 재고 추가</span> 버튼을 사용합니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">5</div>
@@ -1317,7 +1317,7 @@
 
   
   <div class="screenshot-box">
-    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning 전체 화면</p></div>'" alt="Container Planning">
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>컨테이너 계획 전체 화면</p></div>'" alt="컨테이너 계획">
     <div class="screenshot-caption">▲ 컨테이너 등록 – + 컨테이너 추가 클릭 시 나타나는 신규 컨테이너 등록 입력 화면</div>
   </div>
 
@@ -1327,7 +1327,7 @@
   <h3 class="sub">기본 정보 수정</h3>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
-    <tr><td class="label">컨테이너 번호</td><td>Container Details 섹션에서 직접 클릭해 수정합니다.</td></tr>
+    <tr><td class="label">컨테이너 번호</td><td>컨테이너 정보 섹션에서 직접 클릭해 수정합니다.</td></tr>
     <tr><td class="label">ETA (도착 예정일)</td><td>날짜 선택기로 변경합니다.</td></tr>
     <tr><td class="label">목적지 창고</td><td>드롭다운에서 창고를 선택합니다.</td></tr>
     <tr><td class="label">CBM 용량</td><td>컨테이너 총 용량(기본 80 m³)을 수정합니다.</td></tr>
@@ -1346,7 +1346,7 @@
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
-      <div><h4>Master SKU 입력</h4><p>SKU Order Quantities 섹션 하단의 Master SKU 검색창에 SKU 코드를 입력합니다.</p></div>
+      <div><h4>마스터 SKU 입력</h4><p>SKU 주문 수량 섹션 하단의 마스터 SKU 검색창에 SKU 코드를 입력합니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
@@ -1364,13 +1364,13 @@
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr><td class="label">개별 선택</td><td>각 행 왼쪽 체크박스를 클릭해 개별 선택.</td></tr>
     <tr><td class="label">전체 선택</td><td>헤더 체크박스(Select visible SKUs)로 현재 검색 결과의 전체 SKU를 선택.</td></tr>
-    <tr><td class="label">삭제 조건</td><td>Available Stock이 배정된 SKU는 삭제 불가 — 먼저 배정 해제 후 삭제.</td></tr>
+    <tr><td class="label">삭제 조건</td><td>가용 재고가 배정된 SKU는 삭제 불가 — 먼저 배정 해제 후 삭제.</td></tr>
     <tr><td class="label">확인 다이얼로그</td><td>버튼 클릭 시 "Delete N selected SKU(s)?" 확인창이 표시되며 OK 후 삭제 진행.</td></tr>
     <tr><td class="label">적용 상태</td><td><span class="status draft">Draft</span> 전용. Final List Sent 이상 상태에서는 버튼이 표시되지 않음.</td></tr>
   </table>
   <div class="callout warn">
     <span class="callout-icon">⚠️</span>
-    <div>Available Stock(잔여/Mistake)이 배정된 항목은 삭제 전에 <span class="btn-label">+ Add Available Stock</span>에서 배정을 먼저 해제해야 합니다.</div>
+    <div>가용 재고(잔여/오류)가 배정된 항목은 삭제 전에 <span class="btn-label">+ 가용 재고 추가</span>에서 배정을 먼저 해제해야 합니다.</div>
   </div>
 
   <div class="screenshot-box">
@@ -1613,8 +1613,8 @@
   <div class="section-header">
     <div class="section-icon" style="background:#e0f2fe;font-size:28px">📅</div>
     <div>
-      <div class="menu-path">메뉴 › Planning › Container Timeline</div>
-      <h2>Container Timeline</h2>
+      <div class="menu-path">메뉴 › 계획 › 컨테이너 일정</div>
+      <h2>컨테이너 일정</h2>
       <p class="subtitle">입고 예정 컨테이너를 ETA(예상 도착일) 기준으로 Gantt 차트에 시각화합니다. 전체 입고 일정을 한눈에 파악하고, 컨테이너를 클릭해 SKU 상세 정보를 바로 확인할 수 있습니다.</p>
     </div>
   </div>
@@ -1639,8 +1639,8 @@
       <p>Gantt 바 또는 행을 클릭하면 우측에 상세 패널이 슬라이드로 열립니다. SKU 목록, CBM 적재율, 메타 정보를 확인할 수 있습니다.</p>
     </div>
     <div class="card">
-      <h4>🚢 Container Planning 연결</h4>
-      <p>상세 드로어 상단의 링크를 클릭하면 Container Planning 페이지의 해당 컨테이너로 바로 이동합니다.</p>
+      <h4>🚢 컨테이너 계획 연결</h4>
+      <p>상세 드로어 상단의 링크를 클릭하면 컨테이너 계획 페이지의 해당 컨테이너로 바로 이동합니다.</p>
     </div>
   </div>
 
@@ -1694,13 +1694,13 @@
     <tr><td class="label">CBM 적재율 바</td><td>총 CBM / 컨테이너 용량 비율을 시각적 프로그레스 바로 표시합니다. 과적재 시 색상이 변합니다.</td></tr>
     <tr><td class="label">SKU 목록 테이블</td><td>이 컨테이너에 포함된 SKU별 수량(Qty)과 CBM을 표시합니다. 테이블 하단에 합계가 표시됩니다.</td></tr>
     <tr><td class="label">메모(Note)</td><td>컨테이너에 등록된 메모를 확인합니다.</td></tr>
-    <tr><td class="label">Container Planning에서 열기</td><td>드로어 상단 링크를 클릭하면 Container Planning 페이지의 해당 컨테이너로 바로 이동합니다.</td></tr>
+    <tr><td class="label">컨테이너 계획에서 열기</td><td>드로어 상단 링크를 클릭하면 컨테이너 계획 페이지의 해당 컨테이너로 바로 이동합니다.</td></tr>
     <tr><td class="label">닫기 (✕ 또는 배경 클릭)</td><td>드로어 오른쪽 상단 ✕ 버튼 또는 드로어 바깥 영역을 클릭하면 닫힙니다.</td></tr>
   </table>
 
   <div class="callout info">
     <span class="callout-icon">✏️</span>
-    <div><b>데이터 수정은 Container Planning에서:</b> Container Timeline은 조회 전용 뷰입니다. 컨테이너 정보 수정이나 SKU 수량 변경이 필요하면 드로어 상단의 <b>"Container Planning에서 열기"</b> 링크를 통해 이동하세요.</div>
+    <div><b>데이터 수정은 컨테이너 계획에서:</b> 컨테이너 일정은 조회 전용 화면입니다. 컨테이너 정보 수정이나 SKU 수량 변경이 필요하면 드로어 상단의 <b>"컨테이너 계획에서 열기"</b> 링크를 통해 이동하세요.</div>
   </div>
 </section>
 
@@ -1711,26 +1711,26 @@
   <div class="section-header">
     <div class="section-icon" style="background:#ffe4e6;font-size:28px">📦</div>
     <div>
-      <div class="menu-path">메뉴 › Available Stock</div>
-      <h2>Available Stock</h2>
+      <div class="menu-path">메뉴 › 가용 재고</div>
+      <h2>가용 재고 관리</h2>
       <p class="subtitle">창고에 대기 중인 여유 재고와 미스테이크 오더를 등록·관리하고 컨테이너에 배정합니다.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/04-available-stock.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>Available Stock 화면</p></div>'" alt="Available Stock">
-    <div class="screenshot-caption">▲ Available Stock – Remaining List / Mistake Order 탭</div>
+    <img src="screenshots/04-available-stock.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>가용 재고 관리 화면</p></div>'" alt="가용 재고 관리">
+    <div class="screenshot-caption">▲ 가용 재고 관리 — 잔여 재고 목록 / 오류 목록 탭</div>
   </div>
 
   <h3>탭 구성</h3>
   <div class="card-grid col2">
     <div class="card">
-      <h4>📋 Remaining List</h4>
+      <h4>📋 잔여 재고 목록</h4>
       <p>생산 완료 후 창고에 대기 중인 정상 재고입니다. TH 번호를 기준으로 관리합니다.</p>
     </div>
     <div class="card">
-      <h4>🔄 Mistake Order List</h4>
-      <p>발주 오류·취소 등으로 발생한 여유 재고입니다. Remaining과 동일한 방식으로 관리합니다.</p>
+      <h4>🔄 오류 목록</h4>
+      <p>발주 오류·취소 등으로 발생한 여유 재고입니다. 잔여 재고와 동일한 방식으로 관리합니다.</p>
     </div>
   </div>
 
@@ -1738,29 +1738,29 @@
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
-      <div><h4>Reference No. 입력</h4><p>TH 번호(예: TH-2024-001)를 입력합니다.</p></div>
+      <div><h4>참조번호 입력</h4><p>TH 번호(예: TH-2024-001)를 입력합니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div><h4>Master SKU 입력</h4><p>SKU를 입력하면 SKU Master에서 CBM을 자동으로 가져옵니다.</p></div>
+      <div><h4>마스터 SKU 입력</h4><p>SKU를 입력하면 SKU 마스터에서 CBM을 자동으로 가져옵니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div><h4>수량 입력 후 Register</h4><p>총 수량을 입력하고 <span class="btn-label">Register</span>를 클릭합니다.</p></div>
+      <div><h4>수량 입력 후 등록</h4><p>총 수량을 입력하고 <span class="btn-label">등록</span>을 클릭합니다.</p></div>
     </div>
   </div>
 
   <h3>수량 상태 이해하기</h3>
   <table class="feat-table">
     <tr><th>컬럼</th><th>의미</th></tr>
-    <tr><td class="label">Total Qty</td><td>등록된 전체 수량</td></tr>
-    <tr><td class="label">Allocated Qty</td><td>컨테이너에 이미 배정된 수량 (주황색으로 표시)</td></tr>
-    <tr><td class="label">Available Qty</td><td>아직 배정되지 않은 사용 가능 수량 (Total − Allocated)</td></tr>
+    <tr><td class="label">총 수량</td><td>등록된 전체 수량</td></tr>
+    <tr><td class="label">배정 수량</td><td>컨테이너에 이미 배정된 수량 (주황색으로 표시)</td></tr>
+    <tr><td class="label">가용 수량</td><td>아직 배정되지 않은 사용 가능 수량 (총 수량 − 배정 수량)</td></tr>
   </table>
 
   <div class="callout info">
     <span class="callout-icon">✅</span>
-    <div><b>일괄 등록:</b> <span class="btn-label">📥 Import Excel</span> 버튼을 사용하면 엑셀로 한 번에 여러 항목을 등록할 수 있습니다. <span class="btn-label">📄 Template</span>으로 양식을 먼저 다운로드하세요.</div>
+    <div><b>일괄 등록:</b> <span class="btn-label">📥 엑셀 가져오기</span> 버튼을 사용하면 엑셀로 한 번에 여러 항목을 등록할 수 있습니다. <span class="btn-label">📄 템플릿 다운로드</span>로 양식을 먼저 다운로드하세요.</div>
   </div>
 </section>
 
@@ -1771,15 +1771,15 @@
   <div class="section-header">
     <div class="section-icon" style="background:#f3e8ff;font-size:28px">🗂️</div>
     <div>
-      <div class="menu-path">메뉴 › SKU Master</div>
-      <h2>SKU Master</h2>
+      <div class="menu-path">메뉴 › SKU 마스터</div>
+      <h2>SKU 마스터 관리</h2>
       <p class="subtitle">SKU별 CBM(부피)·MOQ(최소 발주)·발주 배수·케이스 수량 등 기준 데이터를 관리합니다.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/05-sku-master.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU Master 화면</p></div>'" alt="SKU Master">
-    <div class="screenshot-caption">▲ SKU Master – 전체 SKU 목록 및 편집 화면</div>
+    <img src="screenshots/05-sku-master.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU 마스터 화면</p></div>'" alt="SKU 마스터">
+    <div class="screenshot-caption">▲ SKU 마스터 관리 — 전체 SKU 목록 및 편집 화면</div>
   </div>
 
   <h3>주요 컬럼 설명</h3>
@@ -1801,22 +1801,22 @@
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div><h4>Edit 버튼 클릭</h4><p>수정할 SKU 행의 <span class="btn-label">Edit</span> 버튼을 클릭하면 CBM·MOQ·배수·케이스 수량 필드가 편집 가능해집니다.</p></div>
+      <div><h4>편집 버튼 클릭</h4><p>수정할 SKU 행의 <span class="btn-label">편집</span> 버튼을 클릭하면 CBM·MOQ·배수·케이스 수량 필드가 편집 가능해집니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div><h4>값 수정 후 Done 클릭</h4><p>수정 완료 후 <span class="btn-label">Done</span>을 클릭하면 자동으로 저장됩니다.</p></div>
+      <div><h4>값 수정 후 완료 클릭</h4><p>수정 완료 후 <span class="btn-label">완료</span>를 클릭하면 자동으로 저장됩니다.</p></div>
     </div>
   </div>
 
   <div class="card-grid col2">
     <div class="callout tip" style="margin:0">
       <span class="callout-icon">💡</span>
-      <div><b>일괄 CBM 업데이트:</b> <span class="btn-label">Import Excel</span>로 여러 SKU의 CBM을 한번에 업데이트할 수 있습니다.</div>
+    <div><b>일괄 CBM 업데이트:</b> <span class="btn-label">엑셀 가져오기</span>로 여러 SKU의 CBM을 한 번에 업데이트할 수 있습니다.</div>
     </div>
     <div class="callout info" style="margin:0">
       <span class="callout-icon">🔄</span>
-      <div><b>재고 동기화:</b> <span class="btn-label">Sync Inventory</span>를 누르면 외부 재고 DB(coverland_inventory)에서 최신 데이터를 가져옵니다.</div>
+    <div><b>재고 동기화:</b> <span class="btn-label">재고 동기화</span>를 누르면 외부 재고 DB(coverland_inventory)에서 최신 데이터를 가져옵니다.</div>
     </div>
   </div>
 </section>
@@ -2031,7 +2031,7 @@
     <tr><td class="label">Import Button</td><td>Bulk upload Transit Stock (in-transit inventory) via Excel.</td></tr>
   </table>
   <div class="screenshot-box">
-    <img src="screenshots/01b-demand-filters.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>Filters &amp; Top Controls</p></div>'" alt="Filters area">
+    <img src="screenshots/01b-demand-filters-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>Filters &amp; Top Controls</p></div>'" alt="Filters area">
   </div>
 
 
@@ -3009,7 +3009,7 @@
     </div>
   </div>
   <div class="screenshot-box">
-    <img src="screenshots/04-available-stock.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>Available Stock Screen</p></div>'" alt="Available Stock">
+    <img src="screenshots/04-available-stock-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>Available Stock Screen</p></div>'" alt="Available Stock">
     <div class="screenshot-caption">▲ Available Stock – Remaining List / Mistake Order Tabs</div>
   </div>
   <h3>Tab Overview</h3>
@@ -3047,7 +3047,7 @@
     </div>
   </div>
   <div class="screenshot-box">
-    <img src="screenshots/05-sku-master.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU Master Screen</p></div>'" alt="SKU Master">
+    <img src="screenshots/05-sku-master-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU Master Screen</p></div>'" alt="SKU Master">
     <div class="screenshot-caption">▲ SKU Master – Full SKU List and Edit Screen</div>
   </div>
   <h3>Key Column Descriptions</h3>
