@@ -328,6 +328,10 @@ export function ContainerPlanningPage() {
     const normalizedQuery = query.trim().toLowerCase();
     return containers.filter((container) => {
       if (normalizedQuery) {
+        if (/^\d+$/.test(normalizedQuery)) {
+          return container.number.toLowerCase().includes(normalizedQuery);
+        }
+
         const matchesContainerDetails = [
           container.number,
           container.destination,

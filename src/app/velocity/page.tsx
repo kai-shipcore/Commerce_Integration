@@ -762,9 +762,9 @@ export default function VelocityPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">{pick("모드", "Mode")}</span>
                 <div className="flex items-center gap-2">
-                  <ToggleBtn active={mode === "sales"} onClick={() => setMode("sales")}>{pick("판매", "Sales")}</ToggleBtn>
+                  <ToggleBtn active={mode === "sales"} onClick={() => setMode("sales")}>Sales</ToggleBtn>
                   <ToggleBtn active={mode === "ttm"} onClick={() => setMode("ttm")}>{pick("TTM", "TTM")}</ToggleBtn>
-                  <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>{pick("사전주문", "Pre-Order")}</ToggleBtn>
+                  <ToggleBtn active={mode === "preorder"} onClick={() => setMode("preorder")}>Pre-Order</ToggleBtn>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
                   <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
