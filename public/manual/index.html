@@ -3111,7 +3111,10 @@
 <script>
 // 사이드바 활성 항목 하이라이트
 const languageButtons = document.querySelectorAll('[data-lang-button]');
-const savedLanguage = localStorage.getItem('manualLanguage') || 'ko';
+const requestedLanguage = new URLSearchParams(window.location.search).get('lang');
+const savedLanguage = requestedLanguage === 'ko' || requestedLanguage === 'en'
+  ? requestedLanguage
+  : localStorage.getItem('manualLanguage') || 'ko';
 
 function applyLanguage(language) {
   document.body.classList.toggle('lang-en', language === 'en');

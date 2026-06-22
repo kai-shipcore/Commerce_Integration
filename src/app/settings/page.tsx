@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Moon, Sun } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export default function SettingsPage() {
+  const { locale, pick } = useI18n();
   const { status, update } = useSession();
   const { resolvedTheme, setTheme } = useTheme();
 
@@ -163,6 +165,17 @@ export default function SettingsPage() {
                   </div>
                   <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                     {profile.role}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div>
+                    <p className="text-sm font-medium">{pick("언어", "Language")}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {pick("현재 사이트에 적용된 언어입니다.", "The language currently applied to the site.")}
+                    </p>
+                  </div>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {locale === "ko" ? "한국어 (KO)" : "English (EN)"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-4">

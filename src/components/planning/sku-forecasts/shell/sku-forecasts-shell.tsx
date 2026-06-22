@@ -21,10 +21,10 @@ import {
   type ProductKey,
   type SkuMasterMeta,
 } from "../types";
-import { pick, productLabel, type SkuForecastLanguage } from "../language";
+import { pick, productLabel } from "../language";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
-const LANGUAGE_STORAGE_KEY = "sku-forecasts-language";
 const TARGET_INVENTORY_DAYS_STORAGE_KEY = "sku-forecasts-target-inventory-days";
 const INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY = "sku-forecasts-include-draft-containers";
 const SALES_ONLY_STORAGE_KEY = "sku-forecasts-sales-only";
@@ -59,11 +59,11 @@ export function SkuForecastsShell({
   initialHighlightedContainerId,
   initialHighlightedContainerName,
 }: SkuForecastsShellProps) {
+  const { locale: language } = useI18n();
   const normalizedInitialSku = initialSku.trim().toUpperCase();
   const [product, setProduct] = useState<ProductKey>(() => normalizedInitialSku ? productKeyForSku(normalizedInitialSku) : "fm");
   const [search, setSearch] = useState(normalizedInitialSku);
   const [selectedSkuId, setSelectedSkuId] = useState<string>(normalizedInitialSku);
-  const [language, setLanguage] = useState<SkuForecastLanguage>("en");
   const [targetInventoryDays, setTargetInventoryDays] = useState(DEFAULT_TARGET_INVENTORY_DAYS);
   const [includeDraftContainers, setIncludeDraftContainers] = useState(initialIncludeDraftContainers);
   const [salesOnly, setSalesOnly] = useState(!normalizedInitialSku);
@@ -72,10 +72,6 @@ export function SkuForecastsShell({
   const masterLoadingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    if (stored === "ko" || stored === "en") {
-      queueMicrotask(() => setLanguage(stored));
-    }
     const storedTargetDays = normalizeTargetInventoryDays(window.localStorage.getItem(TARGET_INVENTORY_DAYS_STORAGE_KEY));
     if (storedTargetDays !== null) {
       queueMicrotask(() => setTargetInventoryDays(storedTargetDays));
@@ -87,11 +83,6 @@ export function SkuForecastsShell({
       queueMicrotask(() => setSalesOnly(false));
     }
   }, []);
-
-  function changeLanguage(nextLanguage: SkuForecastLanguage) {
-    setLanguage(nextLanguage);
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
-  }
 
   function changeTargetInventoryDays(nextValue: string) {
     const nextDays = normalizeTargetInventoryDays(nextValue) ?? DEFAULT_TARGET_INVENTORY_DAYS;
@@ -254,22 +245,6 @@ export function SkuForecastsShell({
               className="h-7 w-14 rounded border bg-background px-2 text-right font-mono text-xs outline-none focus:border-[#1a5cdb] dark:border-zinc-600"
             />
           </label>
-          <div className="flex h-9 overflow-hidden rounded-md border bg-white dark:border-zinc-600 dark:bg-zinc-800">
-            {(["ko", "en"] as SkuForecastLanguage[]).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => changeLanguage(option)}
-                className={`px-3 text-xs font-semibold ${
-                  language === option
-                    ? "bg-[#1A1917] text-white dark:bg-white dark:text-[#1A1917]"
-                    : "text-muted-foreground hover:bg-[#f0eee9] dark:hover:bg-zinc-700"
-                }`}
-              >
-                {option === "ko" ? "한" : "EN"}
-              </button>
-            ))}
-          </div>
           <button
             type="button"
             onClick={reload}

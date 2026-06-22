@@ -19,8 +19,10 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { User, LogOut } from "lucide-react";
 import { apiPath, authPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export function UserMenu() {
+  const { t } = useI18n();
   const { data: session, status } = useSession();
   const user = session?.user;
 
@@ -85,7 +87,7 @@ export function UserMenu() {
               {user.email}
             </p>
             <p className="text-xs leading-none text-muted-foreground">
-              Role: {user.role ?? "user"}
+              {t("common.role")}: {user.role ?? "user"}
             </p>
           </div>
         </DropdownMenuLabel>
@@ -93,13 +95,13 @@ export function UserMenu() {
         <DropdownMenuItem asChild>
           <Link href="/settings#profile">
             <User className="mr-2 h-4 w-4" />
-            <span>Profile</span>
+            <span>{t("common.profile")}</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />
-          <span>Sign out</span>
+          <span>{t("common.signOut")}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -50,6 +50,7 @@ import {
 } from "@/lib/planning/gradient-config";
 import type { CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const AgDemandPlanningGrid = dynamic(
   () => import("./ag-demand-planning-grid").then((module) => module.AgDemandPlanningGrid),
@@ -282,6 +283,7 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
 }
 
 export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "native" | "ag-grid" }) {
+  const { pick } = useI18n();
   const router = useRouter();
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
   const [todayStr, setTodayStr] = useState("");
@@ -1091,14 +1093,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   flexShrink: 0,
                 }}
               >
-                ⊞ Columns
+                ⊞ {pick("컬럼", "Columns")}
                 {compactMode ? (
                   <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 8, background: "#E5EEFF", color: "#1A4FC0" }}>
-                    Compact
+                    {pick("간단히", "Compact")}
                   </span>
                 ) : hiddenColumnCount > 0 ? (
                   <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 8, background: "#FFEDED", color: "#C42020" }}>
-                    {hiddenColumnCount} hidden
+                    {hiddenColumnCount} {pick("숨김", "hidden")}
                   </span>
                 ) : null}
                 {" ▾"}
@@ -1119,7 +1121,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             >
               {/* Header with close button */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderBottom: "1px solid #E2E8F0", gridColumn: "1 / -1", position: "sticky", top: 0, zIndex: 1, background: "#fff" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>Columns</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{pick("컬럼 설정", "Columns")}</span>
                 <PopoverClose asChild>
                   <button
                     type="button"
@@ -1140,13 +1142,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               {/* Quick Presets */}
               <div style={{ padding: "8px 14px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                  Quick Preset
+                  {pick("빠른 설정", "Quick Preset")}
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {([
-                    { label: "All", action: handleAllOn, active: allPresetActive },
-                    { label: "Core", action: handleCoreOnly, active: corePresetActive },
-                    { label: "Compact", action: handleCompact, active: compactPresetActive },
+                    { label: pick("전체", "All"), action: handleAllOn, active: allPresetActive },
+                    { label: pick("핵심", "Core"), action: handleCoreOnly, active: corePresetActive },
+                    { label: pick("간단히", "Compact"), action: handleCompact, active: compactPresetActive },
                   ] as { label: string; action: () => void; active: boolean }[]).map(({ label, action, active }) => (
                     <button
                       key={label}
@@ -1184,7 +1186,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     textAlign: "left",
                   }}
                 >
-                  Container Columns
+                  {pick("컨테이너 컬럼", "Container Columns")}
                 </button>
               </div>
 
@@ -1192,12 +1194,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               {/* Options */}
               <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                  Options
+                  {pick("옵션", "Options")}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent" }}>
                     <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
-                    <span style={{ fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>Show Zero-Sales SKUs</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>{pick("판매 0인 SKU 표시", "Show Zero-Sales SKUs")}</span>
                   </label>
                   <div ref={skuFiltersRef} style={{ marginTop: 8, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
@@ -1210,7 +1212,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         }}
                         style={{ ...SETTINGS_SECTION_TITLE_STYLE, flex: 1, padding: 0, border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
                       >
-                        SKU Filters
+                        {pick("SKU 필터", "SKU Filters")}
                       </button>
                       <button
                         type="button"
@@ -1226,7 +1228,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           color: hasSkuPartFilters ? "#475569" : "#A8B0BA",
                         }}
                       >
-                        Reset
+                        {pick("초기화", "Reset")}
                       </button>
                       <button
                         type="button"
@@ -1354,7 +1356,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   </div>
                   <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
                     <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                      Freeze Column
+                      {pick("컬럼 고정", "Freeze Column")}
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <select
@@ -1373,20 +1375,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         onClick={() => setFreezeUntil(DEFAULT_FREEZE)}
                         style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B", whiteSpace: "nowrap" }}
                       >
-                        Reset
+                        {pick("초기화", "Reset")}
                       </button>
                     </div>
                   </div>
                   <div style={{ marginTop: 10, padding: "8px 6px 2px" }}>
                     <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                      Reset Column Widths
+                      {pick("컬럼 너비 초기화", "Reset Column Widths")}
                     </div>
                     <button
                       type="button"
                       onClick={resetColumnWidths}
                       style={{ width: "100%", fontSize: 11, padding: "6px 10px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
                     >
-                     Reset Widths
+                      {pick("너비 초기화", "Reset Widths")}
                    </button>
                  </div>
                   <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
@@ -1407,7 +1409,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       cursor: "pointer",
                     }}
                   >
-                    <span>Column Colors</span>
+                    <span>{pick("컬럼 색상", "Column Colors")}</span>
                     <span aria-hidden="true" style={{ fontSize: 10, lineHeight: 1 }}>
                       {isColorSettingsOpen ? "▼" : "▶"}
                     </span>
@@ -1431,7 +1433,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         const current = columnColors[selectedColorColumn]?.[target] ?? (target === "cell" ? "#FFFFFF" : "#2A2825");
                         return (
                           <label key={target} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                            {target === "cell" ? "Cell" : "Header"}
+                            {target === "cell" ? pick("셀", "Cell") : pick("헤더", "Header")}
                             <input
                               type="color"
                               disabled={target === "cell" && selectedColorColumnIsContainerHeader}
@@ -1449,14 +1451,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         onClick={resetSelectedColumnColor}
                         style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
                       >
-                        Reset Selected
+                        {pick("선택 초기화", "Reset Selected")}
                       </button>
                       <button
                         type="button"
                         onClick={resetColumnColors}
                         style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
                       >
-                        Reset All
+                        {pick("전체 초기화", "Reset All")}
                       </button>
                     </div>
                   </div>
@@ -1464,7 +1466,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   {/* Selected Cell Color */}
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #E2E8F0" }}>
                     <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                      Selected Cell Color
+                      {pick("선택 셀 색상", "Selected Cell Color")}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                       <div
@@ -1482,7 +1484,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           padding: "5px 8px",
                         }}
                       >
-                        {selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell ? selectedAgCell.label : "Click a grid cell first"}
+                        {selectedAgCells.length > 1 ? pick(`${selectedAgCells.length}개 셀 선택됨`, `${selectedAgCells.length} cells selected`) : selectedAgCell ? selectedAgCell.label : pick("먼저 그리드 셀을 선택하세요", "Click a grid cell first")}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
                         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
@@ -1515,14 +1517,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           onClick={resetSelectedCellColor}
                           style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
                         >
-                          Reset Selected
+                          {pick("선택 초기화", "Reset Selected")}
                         </button>
                         <button
                           type="button"
                           onClick={resetCellColors}
                           style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
                         >
-                          Reset All Cells
+                          {pick("모든 셀 초기화", "Reset All Cells")}
                         </button>
                       </div>
                     </div>
@@ -1537,7 +1539,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               {/* Columns */}
               <div style={{ gridColumn: 2, gridRow: "2 / 4", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                  Column Visibility
+                  {pick("컬럼 표시", "Column Visibility")}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: "min(700px, calc(100vh - 200px))", overflow: "auto", paddingRight: 4 }}>
                   {COLUMN_VISIBILITY_GROUP_KEYS.map((group) => {
@@ -1631,16 +1633,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     if (!allContainers.length) return null;
 
                     const STATUS_GROUPS: { status: string; label: string; color: string; accentColor: string }[] = [
-                      { status: "packing_received", label: "Shipped", color: "#3B82F6", accentColor: "#3B82F6" },
-                      { status: "shipped",          label: "Final",   color: "#F59E0B", accentColor: "#F59E0B" },
-                      { status: "draft",            label: "Draft",   color: "#EF4444", accentColor: "#EF4444" },
+                      { status: "packing_received", label: pick("출고", "Shipped"), color: "#3B82F6", accentColor: "#3B82F6" },
+                      { status: "shipped",          label: pick("확정", "Final"),   color: "#F59E0B", accentColor: "#F59E0B" },
+                      { status: "draft",            label: pick("초안", "Draft"),   color: "#EF4444", accentColor: "#EF4444" },
                     ];
 
                     return (
                       <div style={{ gridColumn: 3, gridRow: "2 / 5", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                           <div style={SETTINGS_SECTION_TITLE_STYLE}>
-                            Container Visibility
+                            {pick("컨테이너 표시", "Container Visibility")}
                           </div>
                           {hiddenContainers.size > 0 && (
                             <button
@@ -1648,15 +1650,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                               onClick={() => setHiddenContainers(new Set())}
                               style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
                             >
-                              Show All
+                              {pick("모두 표시", "Show All")}
                             </button>
                           )}
                         </div>
                         {/* Base container toggles */}
                         <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
                           {[
-                            { name: "Base",          label: "Base (on-hand)",    color: "#94A3B8" },
-                            { name: "Shipped Base",  label: "Shipped Base",      color: "#3B82F6" },
+                            { name: "Base",          label: pick("기준 (현재고)", "Base (on-hand)"), color: "#94A3B8" },
+                            { name: "Shipped Base",  label: pick("출고 기준", "Shipped Base"), color: "#3B82F6" },
                           ].map(({ name, label, color }) => {
                             const visible = !hiddenBases.has(name);
                             return (

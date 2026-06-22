@@ -24,16 +24,41 @@ import {
   sanitizeVisibleMenuIds,
 } from "./navigation-config";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
+import type { MessageKey } from "@/lib/i18n/messages";
 
 let cachedVisibleMenuIds: string[] | null = null;
 const MENU_FETCH_TIMEOUT_MS = 2000;
 
 const navigationGroups = [
-  { name: "Commerce", itemIds: ["inventory", "orders", "velocity"] },
-  { name: "Planning", itemIds: ["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"] },
-  { name: "Master Data", itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
-  { name: "Admin", itemIds: ["integrations", "user-access"] },
+  { name: "Commerce", labelKey: "nav.commerce" as const, itemIds: ["inventory", "orders", "velocity"] },
+  { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"] },
+  { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
+  { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "user-access"] },
 ];
+
+const navigationLabelKeys: Record<string, MessageKey> = {
+  dashboard: "nav.commandCenter",
+  products: "nav.products",
+  inventory: "nav.inventory",
+  orders: "nav.orders",
+  signals: "nav.demandSignals",
+  collections: "nav.collections",
+  analytics: "nav.analytics",
+  velocity: "nav.velocity",
+  "demand-planning": "nav.demandPlanning",
+  "sku-forecasts": "nav.skuPlanning",
+  "container-planning": "nav.containerPlanning",
+  "container-timeline": "nav.containerTimeline",
+  "available-stock": "nav.availableStock",
+  "purchase-orders": "nav.purchaseOrders",
+  "sku-master": "nav.skuMaster",
+  "seat-cover-parts": "nav.parts",
+  factories: "nav.factories",
+  integrations: "nav.marketplaceApis",
+  "warehouse-admin": "nav.warehouse",
+  "user-access": "nav.userAccess",
+};
 
 function readStoredVisibleMenuIds(role?: string | null): string[] | null {
   if (typeof window === "undefined") {
@@ -78,6 +103,7 @@ interface MainNavProps {
 }
 
 export function MainNav({ showDashboard = true }: MainNavProps) {
+  const { t } = useI18n();
   const pathname = usePathname();
   const fallbackVisibleMenuIds = getDefaultVisibleMenuIds();
   const [visibleMenuIds, setVisibleMenuIds] = useState<string[]>(
@@ -186,7 +212,7 @@ export function MainNav({ showDashboard = true }: MainNavProps) {
         className={navItemClassName(isActive)}
       >
         <Icon className="h-4 w-4" />
-        {item.name}
+        {navigationLabelKeys[item.id] ? t(navigationLabelKeys[item.id]) : item.name}
       </Link>
     );
   };
@@ -202,7 +228,7 @@ export function MainNav({ showDashboard = true }: MainNavProps) {
       <DropdownMenu key={group.name}>
         <DropdownMenuTrigger asChild>
           <button type="button" className={navItemClassName(isGroupActive)}>
-            {group.name}
+            {t(group.labelKey)}
             <ChevronDown className="h-4 w-4" />
           </button>
         </DropdownMenuTrigger>
@@ -213,7 +239,7 @@ export function MainNav({ showDashboard = true }: MainNavProps) {
               <DropdownMenuItem key={item.id} asChild>
                 <Link href={item.href}>
                   <Icon className="h-4 w-4" />
-                  {item.name}
+                  {navigationLabelKeys[item.id] ? t(navigationLabelKeys[item.id]) : item.name}
                 </Link>
               </DropdownMenuItem>
             );

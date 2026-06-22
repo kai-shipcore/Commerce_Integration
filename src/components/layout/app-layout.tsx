@@ -18,12 +18,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MainNav } from "./main-nav";
 import { UserMenu } from "./user-menu";
+import { LanguageToggle } from "./language-toggle";
 import {
   getDefaultLandingPath,
   isAdminLikeRole,
   navigationItems,
 } from "./navigation-config";
 import { apiPath, authPath, withBasePath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -103,6 +105,7 @@ function storeLauncherPosition(position: LauncherPosition) {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const { locale, t } = useI18n();
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
@@ -156,7 +159,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         }
 
         setAccessState("denied");
-        toast.error("ì´ íŽ˜ì´ì§€ì— ì ‘ê·¼ ê¶Œí•œì´ ì—†ìŠµë‹ˆë‹¤. ê´€ë¦¬ìžì—ê²Œ ê¶Œí•œì„ ìš”ì²­í•˜ì„¸ìš”.");
+        toast.error(t("common.accessDenied"));
         router.replace(getDefaultLandingPath(visibleMenuIds, role));
       } catch {
         if (!cancelled) {
@@ -170,7 +173,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [matchedItem, router]);
+  }, [matchedItem, router, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,37 +384,39 @@ export function AppLayout({ children }: AppLayoutProps) {
             type="button"
             variant="ghost"
             size="icon-sm"
-            title="Hide top navigation"
-            aria-label="Hide top navigation"
+            title={t("common.hideNavigation")}
+            aria-label={t("common.hideNavigation")}
             className="text-muted-foreground hover:text-primary dark:text-slate-200 dark:hover:text-white"
             onClick={() => updateTopNavCollapsed(true)}
           >
             <ChevronsUp className="h-4 w-4" />
           </Button>
           <a
-            href={withBasePath("/manual/index.html")}
+            href={withBasePath(`/manual/index.html?lang=${locale}`)}
             target="_blank"
             rel="noopener noreferrer"
-            title="Help"
+            title={t("common.help")}
             className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary dark:text-slate-200 dark:hover:text-white"
           >
             <BookOpen className="h-4 w-4" />
-            <span className="hidden sm:inline">Help</span>
+            <span className="hidden sm:inline">{t("common.help")}</span>
           </a>
+          <LanguageToggle />
           <UserMenu />
         </div>
       ) : (
         <div className="ml-auto flex items-center gap-1 pl-4">
           <a
-            href={withBasePath("/manual/index.html")}
+            href={withBasePath(`/manual/index.html?lang=${locale}`)}
             target="_blank"
             rel="noopener noreferrer"
-            title="Help"
+            title={t("common.help")}
             className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary dark:text-slate-200 dark:hover:text-white"
           >
             <BookOpen className="h-4 w-4" />
-            Help
+            {t("common.help")}
           </a>
+          <LanguageToggle />
           {session?.user ? (
             <>
               <Link
@@ -419,7 +424,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-primary dark:text-slate-200 dark:hover:text-white"
               >
                 <User className="h-4 w-4" />
-                Profile
+                {t("common.profile")}
               </Link>
               <button
                 type="button"
@@ -427,7 +432,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 onClick={() => void handleSignOut()}
               >
                 <LogOut className="h-4 w-4" />
-                Sign out
+                {t("common.signOut")}
               </button>
             </>
           ) : null}
@@ -464,8 +469,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         >
           <button
             type="button"
-            aria-label="Move collapsed navigation launcher"
-            title="Drag to move"
+            aria-label={t("common.moveLauncher")}
+            title={t("common.dragToMove")}
             className="flex h-7 w-5 cursor-grab items-center justify-center rounded text-slate-500 hover:bg-slate-100 active:cursor-grabbing dark:text-slate-300 dark:hover:bg-slate-800"
             onPointerDown={startLauncherDrag}
           >
@@ -485,8 +490,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           </Link>
           <button
             type="button"
-            aria-label="Restore top navigation"
-            title="Restore top navigation"
+            aria-label={t("common.restoreNavigation")}
+            title={t("common.restoreNavigation")}
             className="flex h-8 w-8 items-center justify-center rounded text-slate-600 hover:bg-slate-100 hover:text-sky-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white"
             onClick={() => updateTopNavCollapsed(false)}
           >
@@ -520,7 +525,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           children
         ) : (
           <div className="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">
-            {accessState === "denied" ? "Redirecting..." : "Checking access..."}
+            {accessState === "denied" ? t("common.redirecting") : t("common.checkingAccess")}
           </div>
         )}
       </main>

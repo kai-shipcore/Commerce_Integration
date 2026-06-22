@@ -11,12 +11,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Loader2, TrendingUp } from "lucide-react";
 import { apiPath, stripBasePath, withBasePath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface SignInContentProps {
   googleEnabled: boolean;
 }
 
 function SignInCardContent({ googleEnabled }: SignInContentProps) {
+  const { pick } = useI18n();
   const searchParams = useSearchParams();
   const rawCallbackUrl = searchParams.get("callbackUrl") || "/";
   const callbackPath = toLocalCallbackPath(rawCallbackUrl);
@@ -85,23 +87,23 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
             <TrendingUp className="h-8 w-8 text-primary" />
           </div>
         </div>
-        <CardTitle className="text-2xl">Welcome Back</CardTitle>
+        <CardTitle className="text-2xl">{pick("다시 오신 것을 환영합니다", "Welcome Back")}</CardTitle>
         <CardDescription>
-          Sign in to your Demand Pilot account
+          {pick("Demand Pilot 계정에 로그인하세요", "Sign in to your Demand Pilot account")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error && (
           <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm text-center">
-            {error === "OAuthSignin" && "Error starting OAuth sign in."}
-            {error === "OAuthCallback" && "Error completing OAuth sign in."}
-            {error === "OAuthCreateAccount" && "Error creating OAuth account."}
-            {error === "EmailCreateAccount" && "Error creating account."}
-            {error === "Callback" && "Error during callback."}
-            {error === "OAuthAccountNotLinked" && "Email already linked to another account."}
-            {error === "CredentialsSignin" && "Invalid email or password."}
-            {error === "SessionRequired" && "Please sign in to continue."}
-            {!["OAuthSignin", "OAuthCallback", "OAuthCreateAccount", "EmailCreateAccount", "Callback", "OAuthAccountNotLinked", "CredentialsSignin", "SessionRequired"].includes(error) && "An error occurred during sign in."}
+            {error === "OAuthSignin" && pick("OAuth 로그인을 시작할 수 없습니다.", "Error starting OAuth sign in.")}
+            {error === "OAuthCallback" && pick("OAuth 로그인을 완료할 수 없습니다.", "Error completing OAuth sign in.")}
+            {error === "OAuthCreateAccount" && pick("OAuth 계정을 만들 수 없습니다.", "Error creating OAuth account.")}
+            {error === "EmailCreateAccount" && pick("계정을 만들 수 없습니다.", "Error creating account.")}
+            {error === "Callback" && pick("로그인 처리 중 오류가 발생했습니다.", "Error during callback.")}
+            {error === "OAuthAccountNotLinked" && pick("이미 다른 계정에 연결된 이메일입니다.", "Email already linked to another account.")}
+            {error === "CredentialsSignin" && pick("이메일 또는 비밀번호가 올바르지 않습니다.", "Invalid email or password.")}
+            {error === "SessionRequired" && pick("계속하려면 로그인하세요.", "Please sign in to continue.")}
+            {!["OAuthSignin", "OAuthCallback", "OAuthCreateAccount", "EmailCreateAccount", "Callback", "OAuthAccountNotLinked", "CredentialsSignin", "SessionRequired"].includes(error) && pick("로그인 중 오류가 발생했습니다.", "An error occurred during sign in.")}
           </div>
         )}
 
@@ -135,7 +137,7 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
                   />
                 </svg>
               )}
-              Continue with Google
+              {pick("Google로 계속", "Continue with Google")}
             </Button>
 
             <div className="relative">
@@ -144,7 +146,7 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
               </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-background px-2 text-muted-foreground">
-                  Or continue with
+                  {pick("또는 이메일로 계속", "Or continue with")}
                 </span>
               </div>
             </div>
@@ -153,7 +155,7 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
 
         <form onSubmit={handleCredentialsSignIn} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{pick("이메일", "Email")}</Label>
             <Input
               id="email"
               type="email"
@@ -164,7 +166,7 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{pick("비밀번호", "Password")}</Label>
             <Input
               id="password"
               type="password"
@@ -175,19 +177,19 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
           </div>
           <div className="text-right text-sm">
             <Link href="/auth/forgot-password" className="text-primary hover:underline">
-              Forgot password?
+              {pick("비밀번호를 잊으셨나요?", "Forgot password?")}
             </Link>
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Sign In
+            {pick("로그인", "Sign In")}
           </Button>
         </form>
 
         <p className="text-sm text-center text-muted-foreground">
-          Don&apos;t have an account?{" "}
+          {pick("계정이 없으신가요?", "Don't have an account?")}{" "}
           <Link href="/auth/signup" className="text-primary hover:underline">
-            Create one
+            {pick("계정 만들기", "Create one")}
           </Link>
         </p>
       </CardContent>
