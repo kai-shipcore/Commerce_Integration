@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes } from "lucide-react";
 import * as XLSX from "xlsx";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type StockSourceType = "remaining" | "mistake";
 type StockSortColumn = "referenceNo" | "plNo" | "masterSku" | "totalQty" | "allocatedQty" | "availableQty" | "cbm" | "totalCbm" | "note";
@@ -144,6 +145,7 @@ function readAvailableStockWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
 }
 
 export function AvailableStockPage() {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<AvailableStockRow[]>([]);
   const [sourceType, setSourceType] = useState<StockSourceType>("remaining");
   const [query, setQuery] = useState("");
@@ -408,16 +410,16 @@ export function AvailableStockPage() {
         <div className="flex items-start gap-2">
           <Boxes className="mt-1 h-5 w-5" />
           <div>
-            <h1 className="text-lg font-semibold">Available Stock Management</h1>
+            <h1 className="text-lg font-semibold">{pick("가용 재고 관리", "Available Stock Management")}</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              Manage produced stock held in Remaining and Mistake Order lists before container allocation.
+              {pick("컨테이너 배정 전 잔여 재고 및 오주문 재고를 관리합니다.", "Manage produced stock held in Remaining and Mistake Order lists before container allocation.")}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             className="form-input h-9 w-64 bg-white text-sm"
-            placeholder="Search SKU / reference..."
+            placeholder={pick("SKU / 참조번호 검색...", "Search SKU / reference...")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -432,10 +434,10 @@ export function AvailableStockPage() {
             }}
           />
           <button type="button" onClick={downloadTemplate} className="h-9 rounded-md border border-[#cccac4] bg-white px-3 text-xs font-medium hover:bg-[#f0eee9]">
-            Download Template
+            {pick("템플릿 다운로드", "Download Template")}
           </button>
           <button type="button" disabled={importing || saving} onClick={() => importInputRef.current?.click()} className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4] disabled:opacity-50">
-            {importing ? "Importing..." : "Excel Import"}
+            {importing ? pick("가져오는 중...", "Importing...") : pick("엑셀 가져오기", "Excel Import")}
           </button>
         </div>
       </header>
@@ -452,31 +454,31 @@ export function AvailableStockPage() {
                 : "border-[#e2dfd8] bg-[#f0eee9] text-muted-foreground"
             }`}
           >
-            {type === "remaining" ? "Remaining List" : "Mistake Order List"}
+            {type === "remaining" ? pick("잔여 재고 목록", "Remaining List") : pick("오주문 목록", "Mistake Order List")}
           </button>
         ))}
       </div>
 
       <div className="grid grid-cols-4 border-b border-[#e2dfd8] bg-[#f8f7f4]">
-        <StockStat label="Master SKUs" value={tabTotals.masterSkuCount} />
-        <StockStat label="Total Units" value={tabTotals.totalQty} />
-        <StockStat label="Available Units" value={tabTotals.availableQty} />
-        <StockStat label="Allocated Units" value={tabTotals.allocatedQty} />
+        <StockStat label={pick("마스터 SKU", "Master SKUs")} value={tabTotals.masterSkuCount} />
+        <StockStat label={pick("총 수량", "Total Units")} value={tabTotals.totalQty} />
+        <StockStat label={pick("가용 수량", "Available Units")} value={tabTotals.availableQty} />
+        <StockStat label={pick("배정 수량", "Allocated Units")} value={tabTotals.allocatedQty} />
       </div>
 
       <div className="border-b border-[#e2dfd8] bg-[#f8f7f4] px-5 py-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-          Register {sourceType === "remaining" ? "Remaining" : "Mistake Order"} Stock
+          {sourceType === "remaining" ? pick("잔여 재고 등록", "Register Remaining Stock") : pick("오주문 재고 등록", "Register Mistake Order Stock")}
         </div>
         <div className="grid gap-2 md:grid-cols-[125px_125px_1fr_90px_100px_1fr_auto]">
-          <StockInput placeholder="Reference No." value={createForm.referenceNo} onChange={(value) => setCreateForm((form) => ({ ...form, referenceNo: value }))} />
-          <StockInput placeholder="PI Number" value={createForm.plNo} onChange={(value) => setCreateForm((form) => ({ ...form, plNo: value }))} />
-          <StockInput mono placeholder="Master SKU" value={createForm.masterSku} onChange={(value) => setCreateForm((form) => ({ ...form, masterSku: value }))} onBlur={() => void validateCreateSku()} />
-          <StockInput type="number" placeholder="Qty" value={createForm.totalQty} onChange={(value) => setCreateForm((form) => ({ ...form, totalQty: value }))} />
+          <StockInput placeholder={pick("참조번호", "Reference No.")} value={createForm.referenceNo} onChange={(value) => setCreateForm((form) => ({ ...form, referenceNo: value }))} />
+          <StockInput placeholder={pick("PI 번호", "PI Number")} value={createForm.plNo} onChange={(value) => setCreateForm((form) => ({ ...form, plNo: value }))} />
+          <StockInput mono placeholder={pick("마스터 SKU", "Master SKU")} value={createForm.masterSku} onChange={(value) => setCreateForm((form) => ({ ...form, masterSku: value }))} onBlur={() => void validateCreateSku()} />
+          <StockInput type="number" placeholder={pick("수량", "Qty")} value={createForm.totalQty} onChange={(value) => setCreateForm((form) => ({ ...form, totalQty: value }))} />
           <StockInput type="number" placeholder="CBM" value={createForm.cbm} onChange={(value) => setCreateForm((form) => ({ ...form, cbm: value }))} />
-          <StockInput placeholder="Note (optional)" value={createForm.note} onChange={(value) => setCreateForm((form) => ({ ...form, note: value }))} />
+          <StockInput placeholder={pick("메모 (선택)", "Note (optional)")} value={createForm.note} onChange={(value) => setCreateForm((form) => ({ ...form, note: value }))} />
           <button type="button" disabled={saving} onClick={() => void createStock()} className="rounded-md border border-[#1a5cdb] bg-white px-4 text-xs font-semibold text-[#1a5cdb] disabled:opacity-50">
-            Register
+            {pick("등록", "Register")}
           </button>
         </div>
       </div>
@@ -485,22 +487,22 @@ export function AvailableStockPage() {
 
       <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
         <div className="grid grid-cols-[48px_120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground">
-          <span>No.</span>
-          <StockSortHeader label="Reference" column="referenceNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <StockSortHeader label="PI Number" column="plNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <StockSortHeader label="Master SKU" column="masterSku" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <StockSortHeader label="Total Qty" column="totalQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <StockSortHeader label="Allocated" column="allocatedQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <StockSortHeader label="Available" column="availableQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <span>{pick("번호", "No.")}</span>
+          <StockSortHeader label={pick("참조번호", "Reference")} column="referenceNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label={pick("PI 번호", "PI Number")} column="plNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label={pick("마스터 SKU", "Master SKU")} column="masterSku" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label={pick("총 수량", "Total Qty")} column="totalQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label={pick("배정", "Allocated")} column="allocatedQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label={pick("가용", "Available")} column="availableQty" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <StockSortHeader label="CBM" column="cbm" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <StockSortHeader label="Total CBM" column="totalCbm" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <StockSortHeader label="Note" column="note" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
-          <span>Actions</span>
+          <StockSortHeader label={pick("총 CBM", "Total CBM")} column="totalCbm" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <StockSortHeader label={pick("메모", "Note")} column="note" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
+          <span>{pick("작업", "Actions")}</span>
         </div>
         {loading ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">Loading available stock...</div>
+          <div className="p-10 text-center text-sm text-muted-foreground">{pick("가용 재고를 불러오는 중...", "Loading available stock...")}</div>
         ) : sortedRows.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">No available stock registered for this list.</div>
+          <div className="p-10 text-center text-sm text-muted-foreground">{pick("이 목록에 등록된 가용 재고가 없습니다.", "No available stock registered for this list.")}</div>
         ) : (
           sortedRows.map((row, index) => {
             const allocated = allocatedQty(row);
@@ -520,13 +522,13 @@ export function AvailableStockPage() {
                 <div className="flex gap-2">
                   {editing ? (
                     <>
-                      <button type="button" disabled={saving} onClick={() => void updateStock(row)} className="text-xs font-semibold text-[#1a5cdb]">Save</button>
-                      <button type="button" onClick={() => setEditingId(null)} className="text-xs font-semibold text-muted-foreground">Cancel</button>
+                      <button type="button" disabled={saving} onClick={() => void updateStock(row)} className="text-xs font-semibold text-[#1a5cdb]">{pick("저장", "Save")}</button>
+                      <button type="button" onClick={() => setEditingId(null)} className="text-xs font-semibold text-muted-foreground">{pick("취소", "Cancel")}</button>
                     </>
                   ) : (
                     <>
-                      <button type="button" onClick={() => beginEdit(row)} className="text-xs font-semibold text-[#1a5cdb]">Edit</button>
-                      <button type="button" disabled={saving} onClick={() => void deleteStock(row)} className="text-xs font-semibold text-[#c42b2b]">Delete</button>
+                      <button type="button" onClick={() => beginEdit(row)} className="text-xs font-semibold text-[#1a5cdb]">{pick("편집", "Edit")}</button>
+                      <button type="button" disabled={saving} onClick={() => void deleteStock(row)} className="text-xs font-semibold text-[#c42b2b]">{pick("삭제", "Delete")}</button>
                     </>
                   )}
                 </div>
@@ -561,13 +563,14 @@ function StockSortHeader({
   direction: SortDirection;
   onSort: (column: StockSortColumn) => void;
 }) {
+  const { pick } = useI18n();
   const active = activeColumn === column;
   return (
     <button
       type="button"
       onClick={() => onSort(column)}
       className={`flex items-center gap-1 text-left uppercase hover:text-foreground ${active ? "text-[#1a5cdb]" : ""}`}
-      aria-label={`Sort by ${label} ${active && direction === "asc" ? "descending" : "ascending"}`}
+      aria-label={pick(`${label} 기준 ${active && direction === "asc" ? "내림차순" : "오름차순"} 정렬`, `Sort by ${label} ${active && direction === "asc" ? "descending" : "ascending"}`)}
     >
       <span>{label}</span>
       {active ? <span aria-hidden="true">{direction === "asc" ? "\u25B2" : "\u25BC"}</span> : null}

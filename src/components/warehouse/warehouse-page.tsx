@@ -5,6 +5,7 @@ import { PackageOpen, Warehouse } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type WarehouseType = "own" | "fba" | "3pl" | "transit";
 
@@ -102,6 +103,7 @@ function formatNumber(value: number) {
 }
 
 export function WarehousePage() {
+  const { pick } = useI18n();
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -316,9 +318,9 @@ export function WarehousePage() {
           <div className="flex items-start gap-2">
             <Warehouse className="mt-1 h-5 w-5" />
             <div>
-              <h1 className="text-lg font-semibold">Warehouse Management</h1>
+              <h1 className="text-lg font-semibold">{pick("창고 관리", "Warehouse Management")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Manage warehouse master records and SKU-level inventory status (DB: fc_warehouses)
+                {pick("창고 마스터 및 SKU 재고 현황 관리 (DB: fc_warehouses)", "Manage warehouse master records and SKU-level inventory status (DB: fc_warehouses)")}
               </p>
             </div>
           </div>
@@ -327,41 +329,41 @@ export function WarehousePage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="form-input h-9 w-64 bg-white"
-              placeholder="Search warehouse code/name..."
+              placeholder={pick("창고코드/이름 검색...", "Search warehouse code/name...")}
             />
             <select
               value={typeFilter}
               onChange={(event) => setTypeFilter(event.target.value as WarehouseType | "")}
               className="form-input h-9 w-36 bg-white text-xs"
             >
-              <option value="">All Types</option>
-              <option value="own">Owned Warehouse</option>
+              <option value="">{pick("전체 유형", "All Types")}</option>
+              <option value="own">{pick("자사 창고", "Owned Warehouse")}</option>
               <option value="fba">Amazon FBA</option>
               <option value="3pl">3PL</option>
-              <option value="transit">In Transit</option>
+              <option value="transit">{pick("운송 중", "In Transit")}</option>
             </select>
             <button
               type="button"
               onClick={startNewWarehouse}
               className="rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
             >
-              + Add Warehouse
+              {pick("+ 창고 추가", "Add Warehouse")}
             </button>
           </div>
         </header>
 
         <div className="grid grid-cols-2 border-b border-[#e2dfd8] bg-[#f0eee9] md:grid-cols-4">
-          <WarehouseStat label="Total Warehouses" value={stats.total} sub="Registered warehouses" />
-          <WarehouseStat label="Active Warehouses" value={stats.active} sub="Currently in use" />
-          <WarehouseStat label="Owned / 3PL" value={stats.own3pl} sub="own + 3pl" />
-          <WarehouseStat label="FBA Warehouses" value={stats.fba} sub="Amazon FBA" />
+          <WarehouseStat label={pick("전체 창고", "Total Warehouses")} value={stats.total} sub={pick("등록된 창고", "Registered warehouses")} />
+          <WarehouseStat label={pick("활성 창고", "Active Warehouses")} value={stats.active} sub={pick("현재 사용 중", "Currently in use")} />
+          <WarehouseStat label={pick("자사 / 3PL", "Owned / 3PL")} value={stats.own3pl} sub="own + 3pl" />
+          <WarehouseStat label={pick("FBA 창고", "FBA Warehouses")} value={stats.fba} sub="Amazon FBA" />
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 bg-white lg:grid-cols-[380px_1fr]">
           <aside className="border-r border-[#e2dfd8] bg-white">
             <div className="flex items-center justify-between border-b border-[#e2dfd8] px-4 py-3">
               <span className="text-sm font-semibold text-muted-foreground">
-                {loading ? "..." : `${filteredWarehouses.length} Warehouses`}
+                {loading ? "..." : `${filteredWarehouses.length} ${pick("개 창고", "Warehouses")}`}
               </span>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                 <input
@@ -369,13 +371,13 @@ export function WarehousePage() {
                   checked={showInactive}
                   onChange={(event) => setShowInactive(event.target.checked)}
                 />
-                Include inactive
+                {pick("비활성 포함", "Include inactive")}
               </label>
             </div>
 
             <div className="h-full overflow-y-auto">
               {loading ? (
-                <div className="p-5 text-center text-xs text-muted-foreground">Loading...</div>
+                <div className="p-5 text-center text-xs text-muted-foreground">{pick("불러오는 중...", "Loading...")}</div>
               ) : filteredWarehouses.length > 0 ? (
                 filteredWarehouses.map((w) => (
                   <button
@@ -401,7 +403,7 @@ export function WarehousePage() {
                       </span>
                     </span>
                     <span className={w.isActive ? "rounded-md bg-[#e6f5f0] px-2 py-0.5 text-[10px] font-semibold text-[#0a5e45] dark:bg-emerald-950/70 dark:text-emerald-300" : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-[10px] font-semibold text-muted-foreground dark:bg-slate-800 dark:text-slate-400"}>
-                      {w.isActive ? "Active" : "Inactive"}
+                      {w.isActive ? pick("활성", "Active") : pick("비활성", "Inactive")}
                     </span>
                   </button>
                 ))
@@ -413,8 +415,8 @@ export function WarehousePage() {
                     className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] p-10 text-center text-muted-foreground transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] hover:text-[#1a4db0]"
                   >
                     <span className="text-3xl">🏭</span>
-                    <span className="text-sm font-semibold">Add your first warehouse</span>
-                    <span className="text-xs">Click the + Add Warehouse button</span>
+                    <span className="text-sm font-semibold">{pick("첫 창고를 추가하세요", "Add your first warehouse")}</span>
+                    <span className="text-xs">{pick("+ 창고 추가 버튼을 클릭하세요", "Click the + Add Warehouse button")}</span>
                   </button>
                 </div>
               )}
@@ -441,14 +443,14 @@ export function WarehousePage() {
             ) : (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-3 text-muted-foreground">
                 <div className="text-5xl opacity-50">🏭</div>
-                <div className="text-sm font-medium">Select a warehouse or add a new one</div>
-                <div className="text-xs">Click a warehouse in the left list to view details</div>
+                <div className="text-sm font-medium">{pick("창고를 선택하거나 새로 추가하세요", "Select a warehouse or add a new one")}</div>
+                <div className="text-xs">{pick("왼쪽 목록에서 창고를 클릭하면 상세 정보를 볼 수 있습니다", "Click a warehouse in the left list to view details")}</div>
                 <button
                   type="button"
                   onClick={startNewWarehouse}
                   className="mt-2 rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
                 >
-                  + Add Warehouse
+                  {pick("+ 창고 추가", "Add Warehouse")}
                 </button>
               </div>
             )}
@@ -508,6 +510,7 @@ function WarehouseDetail({
   onSave: () => void;
   onChange: <K extends keyof WarehouseForm>(key: K, value: WarehouseForm[K]) => void;
 }) {
+  const { pick } = useI18n();
   const detailType = warehouseTypes[form.warehouseType];
   const readonly = !editMode;
   const editableFieldClass = readonly ? "form-input bg-[#f0eee9]" : "form-input bg-white";
@@ -517,11 +520,11 @@ function WarehouseDetail({
       <div className="mb-5 flex items-start justify-between gap-4 border-b border-[#e2dfd8] pb-4">
         <div>
           <div className="font-mono text-base font-semibold">
-            {isNew ? "🏭 New Warehouse" : `${detailType?.icon ?? "🏭"} ${form.warehouseCode}`}{" "}
+            {isNew ? `🏭 ${pick("새 창고", "New Warehouse")}` : `${detailType?.icon ?? "🏭"} ${form.warehouseCode}`}{" "}
             {!isNew ? <WarehouseTypeBadge type={form.warehouseType} /> : null}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            {isNew ? "Enter the details and save" : `${form.warehouseName}${form.city ? ` · ${form.city}, ${form.stateRegion}` : ""}`}
+            {isNew ? pick("정보를 입력하고 저장하세요", "Enter the details and save") : `${form.warehouseName}${form.city ? ` · ${form.city}, ${form.stateRegion}` : ""}`}
           </div>
         </div>
         <div className="flex gap-2">
@@ -533,7 +536,7 @@ function WarehouseDetail({
                 disabled={saving}
                 className="rounded-md bg-[#1a5cdb] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
               >
-                {editMode ? "Editing" : "Edit"}
+                {editMode ? pick("편집 중", "Editing") : pick("편집", "Edit")}
               </button>
               <button
                 type="button"
@@ -541,30 +544,30 @@ function WarehouseDetail({
                 disabled={saving}
                 className="rounded-md bg-[#c42b2b] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#9b2020] disabled:opacity-50"
               >
-                Delete
+                {pick("삭제", "Delete")}
               </button>
             </>
           ) : null}
         </div>
       </div>
 
-      <WarehouseSection title="Basic Information">
+      <WarehouseSection title={pick("기본 정보", "Basic Information")}>
         <div className="grid gap-3 md:grid-cols-2">
-          <WarehouseField label="Warehouse Code (warehouse_code)">
+          <WarehouseField label={pick("창고 코드 (warehouse_code)", "Warehouse Code (warehouse_code)")}>
             <input className={`${editableFieldClass} font-mono uppercase`} readOnly={readonly} value={form.warehouseCode} onChange={(e) => onChange("warehouseCode", e.target.value.toUpperCase())} placeholder="WEST" />
           </WarehouseField>
-          <WarehouseField label="Warehouse Name (warehouse_name)">
+          <WarehouseField label={pick("창고명 (warehouse_name)", "Warehouse Name (warehouse_name)")}>
             <input className={editableFieldClass} readOnly={readonly} value={form.warehouseName} onChange={(e) => onChange("warehouseName", e.target.value)} placeholder="West Coast Warehouse (California)" />
           </WarehouseField>
-          <WarehouseField label="Warehouse Type (warehouse_type)">
+          <WarehouseField label={pick("창고 유형 (warehouse_type)", "Warehouse Type (warehouse_type)")}>
             <select className={editableFieldClass} disabled={readonly} value={form.warehouseType} onChange={(e) => onChange("warehouseType", e.target.value as WarehouseType)}>
-              <option value="own">own — Owned Warehouse</option>
+              <option value="own">own — {pick("자사 창고", "Owned Warehouse")}</option>
               <option value="fba">fba — Amazon FBA</option>
-              <option value="3pl">3pl — External 3PL warehouse</option>
-              <option value="transit">transit — In-transit virtual warehouse</option>
+              <option value="3pl">3pl — {pick("외부 3PL 창고", "External 3PL warehouse")}</option>
+              <option value="transit">transit — {pick("운송 중 가상 창고", "In-transit virtual warehouse")}</option>
             </select>
           </WarehouseField>
-          <WarehouseField label="Timezone (timezone)">
+          <WarehouseField label={pick("시간대 (timezone)", "Timezone (timezone)")}>
             <select className={editableFieldClass} disabled={readonly} value={form.timezone} onChange={(e) => onChange("timezone", e.target.value)}>
               <option value="America/Los_Angeles">America/Los_Angeles (PT — California)</option>
               <option value="America/New_York">America/New_York (ET — New Jersey/New York)</option>
@@ -578,26 +581,26 @@ function WarehouseDetail({
         </div>
       </WarehouseSection>
 
-      <WarehouseSection title="Location Information">
+      <WarehouseSection title={pick("위치 정보", "Location Information")}>
         <div className="grid gap-3 md:grid-cols-3">
-          <WarehouseField label="Country (country)">
+          <WarehouseField label={pick("국가 (country)", "Country (country)")}>
             <input className={editableFieldClass} readOnly={readonly} value={form.country} onChange={(e) => onChange("country", e.target.value)} placeholder="United States" />
           </WarehouseField>
-          <WarehouseField label="State / Region (state_region)">
+          <WarehouseField label={pick("주 / 지역 (state_region)", "State / Region (state_region)")}>
             <input className={editableFieldClass} readOnly={readonly} value={form.stateRegion} onChange={(e) => onChange("stateRegion", e.target.value)} placeholder="California" />
           </WarehouseField>
-          <WarehouseField label="City (city)">
+          <WarehouseField label={pick("도시 (city)", "City (city)")}>
             <input className={editableFieldClass} readOnly={readonly} value={form.city} onChange={(e) => onChange("city", e.target.value)} placeholder="Los Angeles" />
           </WarehouseField>
         </div>
       </WarehouseSection>
 
-      <WarehouseSection title="Operating Settings">
+      <WarehouseSection title={pick("운영 설정", "Operating Settings")}>
         <div className="rounded-lg border border-[#e2dfd8] bg-[#f0eee9] p-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-sm font-medium">Active Warehouses (is_active)</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">When inactive, this warehouse is hidden from PO and container destination options</div>
+              <div className="text-sm font-medium">{pick("활성 창고 (is_active)", "Active Warehouses (is_active)")}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">{pick("비활성화 시 PO 및 컨테이너 목적지 옵션에서 숨겨집니다", "When inactive, this warehouse is hidden from PO and container destination options")}</div>
             </div>
             <button
               type="button"
@@ -620,10 +623,10 @@ function WarehouseDetail({
       </WarehouseSection>
 
       {!isNew ? (
-        <WarehouseSection title="Inbound Containers for This Warehouse" right={`${inboundContainers.length} records`}>
+        <WarehouseSection title={pick("이 창고의 입고 컨테이너", "Inbound Containers for This Warehouse")} right={`${inboundContainers.length} ${pick("건", "records")}`}>
           {containersLoading ? (
             <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-xs text-muted-foreground">
-              Loading containers...
+              {pick("컨테이너 불러오는 중...", "Loading containers...")}
             </div>
           ) : inboundContainers.length > 0 ? (
             <div className="space-y-2">
@@ -637,9 +640,9 @@ function WarehouseDetail({
                     <PackageOpen className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <div className="flex-1">
-                    <div className="font-mono text-xs font-semibold">Container {container.containerNumber}</div>
+                    <div className="font-mono text-xs font-semibold">{pick("컨테이너", "Container")} {container.containerNumber}</div>
                     <div className="text-xs text-muted-foreground">
-                      ETA: {container.etaDate ?? "-"} · {container.itemCount} SKUs · {formatNumber(container.totalQty)} units · {container.totalCbm.toFixed(2)} CBM
+                      ETA: {container.etaDate ?? "-"} · {container.itemCount} SKUs · {formatNumber(container.totalQty)} {pick("개", "units")} · {container.totalCbm.toFixed(2)} CBM
                     </div>
                   </div>
                   <span className="rounded-lg bg-[#ebf0fd] px-2 py-0.5 text-[10px] font-semibold text-[#1a4db0]">
@@ -649,7 +652,7 @@ function WarehouseDetail({
               ))}
             </div>
           ) : (
-            <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-xs text-muted-foreground">No inbound containers</div>
+            <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-xs text-muted-foreground">{pick("입고 컨테이너 없음", "No inbound containers")}</div>
           )}
         </WarehouseSection>
       ) : null}
@@ -663,7 +666,7 @@ function WarehouseDetail({
               disabled={saving}
               className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
             >
-              {saving ? "Saving..." : "Save"}
+              {saving ? pick("저장 중...", "Saving...") : pick("저장", "Save")}
             </button>
             <button
               type="button"
@@ -671,11 +674,11 @@ function WarehouseDetail({
               disabled={saving}
               className="rounded-md border border-[#cccac4] bg-white px-4 py-2 text-sm hover:bg-[#f0eee9] disabled:opacity-50"
             >
-              Cancel
+              {pick("취소", "Cancel")}
             </button>
           </>
         ) : null}
-        <span className="ml-auto text-xs text-muted-foreground">{savedMessage}</span>
+        <span className="ml-auto text-xs text-muted-foreground">{savedMessage ? pick("✓ 저장됨", "✓ Saved") : ""}</span>
       </div>
     </div>
   );

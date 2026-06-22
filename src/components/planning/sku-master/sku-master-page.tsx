@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 import { ChevronDown, ChevronUp, Database, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
@@ -155,6 +156,7 @@ function extractExcelCbmRows(workbook: XLSX.WorkBook): ExcelCbmImportRow[] {
 }
 
 export function SkuMasterPage() {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState<ProductKey | "all">("all");
@@ -390,9 +392,9 @@ export function SkuMasterPage() {
         <div className="flex items-start gap-2">
           <Database className="mt-1 h-5 w-5" />
           <div>
-            <h1 className="text-lg font-semibold">SKU Master Management</h1>
+            <h1 className="text-lg font-semibold">{pick("SKU 마스터 관리", "SKU Master Management")}</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              Manage CBM and MOQ. Click Edit to update values inline.
+              {pick("CBM 및 MOQ를 관리합니다. 편집을 클릭하여 값을 수정하세요.", "Manage CBM and MOQ. Click Edit to update values inline.")}
             </p>
           </div>
         </div>
@@ -403,7 +405,7 @@ export function SkuMasterPage() {
               setQuery(event.target.value);
               setPage(1);
             }}
-            placeholder="Search SKU..."
+            placeholder={pick("SKU 검색...", "Search SKU...")}
             className="form-input h-9 w-52 bg-white"
           />
           {query ? (
@@ -416,7 +418,7 @@ export function SkuMasterPage() {
               className="inline-flex h-9 items-center gap-2 rounded-md px-2 text-xs font-semibold text-foreground hover:bg-[#f0eee9]"
               aria-label="Reset SKU search"
             >
-              <span>Reset</span>
+              <span>{pick("초기화", "Reset")}</span>
               <span className="text-sm font-normal" aria-hidden="true">X</span>
             </button>
           ) : null}
@@ -428,7 +430,7 @@ export function SkuMasterPage() {
             }}
             className="form-input h-9 w-36 bg-white text-xs"
           >
-            <option value="all">All</option>
+            <option value="all">{pick("전체", "All")}</option>
             {(Object.keys(productMeta) as ProductKey[]).map((key) => (
               <option key={key} value={key}>
                 {productMeta[key].label}
@@ -443,9 +445,9 @@ export function SkuMasterPage() {
             }}
             className="form-input h-9 w-32 bg-white text-xs"
           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="all">All Status</option>
+            <option value="active">{pick("활성", "Active")}</option>
+            <option value="inactive">{pick("비활성", "Inactive")}</option>
+            <option value="all">{pick("전체 상태", "All Status")}</option>
           </select>
           <button
             type="button"
@@ -453,7 +455,7 @@ export function SkuMasterPage() {
             disabled={downloading}
             className="h-9 rounded-md border border-[#cccac4] bg-white px-3 text-xs font-medium hover:bg-[#f0eee9]"
           >
-            {downloading ? "Downloading..." : "Download CSV"}
+            {downloading ? pick("다운로드 중...", "Downloading...") : pick("CSV 다운로드", "Download CSV")}
           </button>
           <input
             ref={importInputRef}
@@ -471,7 +473,7 @@ export function SkuMasterPage() {
             disabled={importing}
             className="h-9 rounded-md border border-[#cccac4] bg-white px-3 text-xs font-medium hover:bg-[#f0eee9] disabled:opacity-50"
           >
-            {importing ? "Importing..." : "Excel Import"}
+            {importing ? pick("가져오는 중...", "Importing...") : pick("엑셀 가져오기", "Excel Import")}
           </button>
           <button
             type="button"
@@ -479,7 +481,7 @@ export function SkuMasterPage() {
             disabled={syncing || importing}
             className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4]"
           >
-            {syncing ? "Syncing..." : "Sync Inventory"}
+            {syncing ? pick("동기화 중...", "Syncing...") : pick("재고 동기화", "Sync Inventory")}
           </button>
         </div>
       </header>
@@ -492,21 +494,21 @@ export function SkuMasterPage() {
           aria-expanded={!summaryCollapsed}
         >
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            <span className="font-semibold text-[#1a1917] dark:text-slate-50">Summary</span>
+            <span className="font-semibold text-[#1a1917] dark:text-slate-50">{pick("요약", "Summary")}</span>
             <span className="text-muted-foreground">
-              Total <span className="font-mono font-semibold text-foreground">{numberFormatter.format(pagination.total)}</span>
+              {pick("전체", "Total")} <span className="font-mono font-semibold text-foreground">{numberFormatter.format(pagination.total)}</span>
             </span>
             <span className="text-muted-foreground">
-              Page <span className="font-mono font-semibold text-foreground">{numberFormatter.format(visibleSkus.length)}</span>
+              {pick("이 페이지", "Page")} <span className="font-mono font-semibold text-foreground">{numberFormatter.format(visibleSkus.length)}</span>
             </span>
             <span className="text-muted-foreground">
-              Missing CBM <span className="font-mono font-semibold text-foreground">{stats.missingCbm}</span>
+              {pick("CBM 누락", "Missing CBM")} <span className="font-mono font-semibold text-foreground">{stats.missingCbm}</span>
             </span>
             <span className="text-muted-foreground">
-              Avg CBM <span className="font-mono font-semibold text-foreground">{stats.averageCbm.toFixed(6)}</span>
+              {pick("평균 CBM", "Avg CBM")} <span className="font-mono font-semibold text-foreground">{stats.averageCbm.toFixed(6)}</span>
             </span>
             <span className="text-muted-foreground">
-              Types <span className="font-mono font-semibold text-foreground">{stats.productTypes}</span>
+              {pick("유형", "Types")} <span className="font-mono font-semibold text-foreground">{stats.productTypes}</span>
             </span>
           </span>
           {summaryCollapsed ? (
@@ -518,33 +520,33 @@ export function SkuMasterPage() {
         {!summaryCollapsed ? (
           <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
             <SkuStat
-              label="Total SKUs"
+              label={pick("전체 SKU", "Total SKUs")}
               value={numberFormatter.format(pagination.total)}
-              sub={loading ? "Loading..." : `${numberFormatter.format(visibleSkus.length)} on this page`}
+              sub={loading ? pick("불러오는 중...", "Loading...") : `${numberFormatter.format(visibleSkus.length)} ${pick("개 표시 중", "on this page")}`}
             />
             <SkuStat
-              label="Missing CBM"
+              label={pick("CBM 누락", "Missing CBM")}
               value={stats.missingCbm.toString()}
-              sub={stats.missingCbm ? "Needs review" : "All entered"}
+              sub={stats.missingCbm ? pick("검토 필요", "Needs review") : pick("모두 입력됨", "All entered")}
             />
-            <SkuStat label="Average CBM" value={stats.averageCbm.toFixed(6)} sub="m3 / unit" />
-            <SkuStat label="Product Types" value={stats.productTypes.toString()} sub="types" />
+            <SkuStat label={pick("평균 CBM", "Average CBM")} value={stats.averageCbm.toFixed(6)} sub="m3 / unit" />
+            <SkuStat label={pick("제품 유형", "Product Types")} value={stats.productTypes.toString()} sub={pick("유형", "types")} />
           </div>
         ) : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] bg-white px-5 py-2 text-xs text-muted-foreground">
         <div>
-          Showing{" "}
+          {pick("표시 중", "Showing")}{" "}
           <span className="font-semibold text-foreground">
             {pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1}
             {" - "}
             {Math.min(pagination.page * pagination.limit, pagination.total)}
           </span>{" "}
-          of <span className="font-semibold text-foreground">{pagination.total}</span>
+          {pick("/ 전체", "of")} <span className="font-semibold text-foreground">{pagination.total}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span>Rows</span>
+          <span>{pick("행", "Rows")}</span>
           <select
             value={limit}
             onChange={(event) => {
@@ -563,10 +565,10 @@ export function SkuMasterPage() {
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 font-medium text-foreground hover:bg-[#f0eee9] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Prev
+            {pick("이전", "Prev")}
           </button>
           <span className="min-w-20 text-center">
-            Page <span className="font-semibold text-foreground">{pagination.page}</span> / {pagination.totalPages}
+            {pick("페이지", "Page")} <span className="font-semibold text-foreground">{pagination.page}</span> / {pagination.totalPages}
           </span>
           <button
             type="button"
@@ -574,21 +576,21 @@ export function SkuMasterPage() {
             onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
             className="rounded-md border border-[#cccac4] bg-white px-3 py-1.5 font-medium text-foreground hover:bg-[#f0eee9] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Next
+            {pick("다음", "Next")}
           </button>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
         <div className="grid min-w-[1200px] grid-cols-[180px_290px_120px_180px_90px_110px_90px_140px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-          <div className="px-4 py-3">Product</div>
-          <div className="px-4 py-3">Master SKU</div>
-          <div className="px-4 py-3">Status</div>
-          <div className="px-4 py-3">CBM / Unit</div>
-          <div className="px-4 py-3">MOQ</div>
-          <div className="px-4 py-3">Order Mult</div>
-          <div className="px-4 py-3">Case Qty</div>
-          <div className="px-4 py-3 text-right">Actions</div>
+          <div className="px-4 py-3">{pick("제품", "Product")}</div>
+          <div className="px-4 py-3">{pick("마스터 SKU", "Master SKU")}</div>
+          <div className="px-4 py-3">{pick("상태", "Status")}</div>
+          <div className="px-4 py-3">{pick("CBM / 단위", "CBM / Unit")}</div>
+          <div className="px-4 py-3">{pick("최소 주문량", "MOQ")}</div>
+          <div className="px-4 py-3">{pick("주문 배수", "Order Mult")}</div>
+          <div className="px-4 py-3">{pick("케이스 수량", "Case Qty")}</div>
+          <div className="px-4 py-3 text-right">{pick("작업", "Actions")}</div>
         </div>
 
         {visibleSkus.map((sku) => (
@@ -638,7 +640,7 @@ export function SkuMasterPage() {
                   onClick={cancelEditing}
                   className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
                 >
-                  Cancel
+                  {pick("취소", "Cancel")}
                 </button>
               ) : null}
               <button
@@ -659,7 +661,7 @@ export function SkuMasterPage() {
                 }}
                 className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
               >
-                {editingSku === sku.masterSku ? "Done" : "Edit"}
+                {editingSku === sku.masterSku ? pick("완료", "Done") : pick("편집", "Edit")}
               </button>
             </div>
           </div>
@@ -668,9 +670,9 @@ export function SkuMasterPage() {
         {visibleSkus.length === 0 ? (
           <div className="flex min-h-[360px] flex-col items-center justify-center gap-2 text-muted-foreground">
             <Search className="h-10 w-10 opacity-40" aria-hidden="true" />
-            <div className="text-sm font-medium">{loading ? "Loading SKU master..." : "No matching SKUs"}</div>
+            <div className="text-sm font-medium">{loading ? pick("SKU 마스터 불러오는 중...", "Loading SKU master...") : pick("일치하는 SKU 없음", "No matching SKUs")}</div>
             <div className="text-xs">
-              {loading ? "Reading fc_products" : "Click Sync Inventory or change the SKU search term."}
+              {loading ? pick("fc_products 읽는 중", "Reading fc_products") : pick("재고 동기화를 클릭하거나 SKU 검색어를 변경하세요.", "Click Sync Inventory or change the SKU search term.")}
             </div>
           </div>
         ) : null}
@@ -707,6 +709,7 @@ function ProductBadge({ product }: { product: ProductKey }) {
 }
 
 function StatusBadge({ status }: { status: SkuStatus }) {
+  const { pick } = useI18n();
   const active = status === "active";
   return (
     <span
@@ -717,7 +720,7 @@ function StatusBadge({ status }: { status: SkuStatus }) {
           : "bg-[#eee9df] text-[#7a7061] dark:bg-stone-900/70 dark:text-stone-300")
       }
     >
-      {active ? "Active" : "Inactive"}
+      {active ? pick("활성", "Active") : pick("비활성", "Inactive")}
     </span>
   );
 }
@@ -731,6 +734,7 @@ function EditableStatus({
   value: SkuStatus;
   onChange: (value: SkuStatus) => void;
 }) {
+  const { pick } = useI18n();
   if (active) {
     return (
       <div className="px-4 py-3">
@@ -739,8 +743,8 @@ function EditableStatus({
           onChange={(event) => onChange(event.target.value as SkuStatus)}
           className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
         >
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="active">{pick("활성", "Active")}</option>
+          <option value="inactive">{pick("비활성", "Inactive")}</option>
         </select>
       </div>
     );

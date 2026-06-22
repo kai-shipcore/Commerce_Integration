@@ -123,9 +123,9 @@ function SeasonalFactorSettings({
       <PopoverContent align="end" style={{ width: "min(360px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>{pick("계획 설정", "Planning Settings")}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>{pick("시즌지수 설정", "Planning Settings")}</div>
             <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.4, color: "#64748B" }}>
-              {pick("계획 계산에 사용되는 시즌 지수입니다.", "Seasonal multipliers used for planning calculations.")}
+              {pick("수요예측 계산에 사용되는 시즌 지수입니다.", "Seasonal multipliers used for planning calculations.")}
             </div>
           </div>
           <PopoverClose asChild>

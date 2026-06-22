@@ -292,7 +292,7 @@ export default function UserAccessPage() {
         <Alert variant="destructive">
           <ShieldAlert className="h-4 w-4" />
           <AlertDescription>
-            Only administrators can view and update user menu access.
+            {pick("관리자만 사용자 메뉴 접근 권한을 조회하고 수정할 수 있습니다.", "Only administrators can view and update user menu access.")}
           </AlertDescription>
         </Alert>
       </AppLayout>
@@ -312,7 +312,7 @@ export default function UserAccessPage() {
               </p>
             </div>
           </div>
-          <Badge variant="secondary">{pagination.total.toLocaleString()} users</Badge>
+          <Badge variant="secondary">{pagination.total.toLocaleString()} {pick("명", "users")}</Badge>
         </header>
 
         {error && (
@@ -327,7 +327,7 @@ export default function UserAccessPage() {
               <div className="flex items-center justify-between gap-4">
                 <h2 className="text-sm font-semibold">{pick("사용자 목록", "User List")}</h2>
                 <span className="text-xs text-muted-foreground">
-                  Page {pagination.total === 0 ? 0 : pagination.page} / {pagination.total === 0 ? 0 : pagination.totalPages}
+                  {pick("페이지", "Page")} {pagination.total === 0 ? 0 : pagination.page} / {pagination.total === 0 ? 0 : pagination.totalPages}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -373,7 +373,7 @@ export default function UserAccessPage() {
                   </select>
                 </div>
                 <span>
-                  Page {pagination.total === 0 ? 0 : pagination.page} of {pagination.total === 0 ? 0 : pagination.totalPages}
+                  {pick("페이지", "Page")} {pagination.total === 0 ? 0 : pagination.page} {pick("/", "of")} {pagination.total === 0 ? 0 : pagination.totalPages}
                 </span>
                 <div className="flex gap-2">
                   <Button
@@ -447,7 +447,7 @@ export default function UserAccessPage() {
                                 Google
                               </Badge>
                             ) : (
-                              <span className="text-xs text-muted-foreground">Password</span>
+                              <span className="text-xs text-muted-foreground">{pick("비밀번호", "Password")}</span>
                             )}
                           </TableCell>
                           <TableCell className="whitespace-nowrap pr-5 text-right tabular-nums text-muted-foreground">
@@ -466,12 +466,12 @@ export default function UserAccessPage() {
             <div className="flex flex-col gap-3 border-b border-[#e2dfd8] px-5 py-4 dark:border-slate-700 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <h2 className="text-sm font-semibold">
-                  {selectedUser ? selectedUser.name?.trim() || selectedUser.email : "User Details"}
+                  {selectedUser ? selectedUser.name?.trim() || selectedUser.email : pick("사용자 상세", "User Details")}
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   {selectedUser
                     ? selectedUser.email
-                    : "Select a user from the list to view and update access."}
+                    : pick("목록에서 사용자를 선택하여 접근 권한을 조회하고 수정하세요.", "Select a user from the list to view and update access.")}
                 </p>
               </div>
               {selectedUser && (
@@ -487,7 +487,7 @@ export default function UserAccessPage() {
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select role" />
+                        <SelectValue placeholder={pick("역할 선택", "Select role")} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="user">user</SelectItem>
@@ -510,7 +510,7 @@ export default function UserAccessPage() {
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               {!selectedUser ? (
                 <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground dark:border-slate-700">
-                  Select a user from the list to manage detailed permissions.
+                  {pick("목록에서 사용자를 선택하여 상세 권한을 관리하세요.", "Select a user from the list to manage detailed permissions.")}
                 </div>
               ) : (
                 <>
@@ -523,25 +523,25 @@ export default function UserAccessPage() {
 
                   <div className="grid gap-3 rounded-lg border p-4 text-sm dark:border-slate-700 sm:grid-cols-2">
                     <div>
-                      <p className="font-medium">User ID</p>
+                      <p className="font-medium">{pick("사용자 ID", "User ID")}</p>
                       <p className="break-all text-muted-foreground">{selectedUser.id}</p>
                     </div>
                     <div>
-                      <p className="font-medium">Role</p>
+                      <p className="font-medium">{pick("역할", "Role")}</p>
                       <p className="text-muted-foreground">{selectedUser.role}</p>
                     </div>
                     <div>
-                      <p className="font-medium">Email</p>
+                      <p className="font-medium">{pick("이메일", "Email")}</p>
                       <p className="break-all text-muted-foreground">{selectedUser.email}</p>
                     </div>
                     <div>
-                      <p className="font-medium">Name</p>
+                      <p className="font-medium">{pick("이름", "Name")}</p>
                       <p className="text-muted-foreground">
                         {selectedUser.name?.trim() || "-"}
                       </p>
                     </div>
                     <div>
-                      <p className="font-medium">Auth</p>
+                      <p className="font-medium">{pick("인증", "Auth")}</p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {selectedUser.hasGoogleAccount ? (
                           <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
@@ -549,7 +549,7 @@ export default function UserAccessPage() {
                           </Badge>
                         ) : null}
                         {selectedUser.authProviders.length === 0 ? (
-                          <Badge variant="secondary">Password</Badge>
+                          <Badge variant="secondary">{pick("비밀번호", "Password")}</Badge>
                         ) : (
                           selectedUser.authProviders
                             .filter((provider) => provider !== "google")

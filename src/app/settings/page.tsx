@@ -108,9 +108,9 @@ export default function SettingsPage() {
     <AppLayout>
       <div className="flex flex-col gap-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{pick("설정", "Settings")}</h1>
           <p className="text-muted-foreground">
-            Manage your profile, theme, and personal navigation preferences.
+            {pick("프로필, 테마, 개인 메뉴 설정을 관리합니다.", "Manage your profile, theme, and personal navigation preferences.")}
           </p>
         </div>
 
@@ -128,12 +128,12 @@ export default function SettingsPage() {
           <>
             <Card id="profile">
               <CardHeader>
-                <CardTitle>Profile</CardTitle>
+                <CardTitle>{pick("프로필", "Profile")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="settings-name">Name</Label>
+                    <Label htmlFor="settings-name">{pick("이름", "Name")}</Label>
                     <Input
                       id="settings-name"
                       value={profile.name}
@@ -144,7 +144,7 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="settings-email">Email</Label>
+                    <Label htmlFor="settings-email">{pick("이메일", "Email")}</Label>
                     <Input
                       id="settings-email"
                       type="email"
@@ -158,9 +158,9 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium">Role</p>
+                    <p className="text-sm font-medium">{pick("역할", "Role")}</p>
                     <p className="text-sm text-muted-foreground">
-                      Your access level is managed separately.
+                      {pick("접근 권한은 별도로 관리됩니다.", "Your access level is managed separately.")}
                     </p>
                   </div>
                   <span className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
@@ -180,9 +180,9 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
-                    <p className="text-sm font-medium">Joined</p>
+                    <p className="text-sm font-medium">{pick("가입일", "Joined")}</p>
                     <p className="text-sm text-muted-foreground">
-                      First account registration date.
+                      {pick("최초 계정 등록일입니다.", "First account registration date.")}
                     </p>
                   </div>
                   <span className="text-sm font-medium text-muted-foreground">
@@ -191,7 +191,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex justify-end">
                   <Button type="button" onClick={() => void saveProfile()} disabled={savingProfile}>
-                    {savingProfile ? "Saving..." : "Save Profile"}
+                    {savingProfile ? pick("저장 중...", "Saving...") : pick("프로필 저장", "Save Profile")}
                   </Button>
                 </div>
               </CardContent>
@@ -199,7 +199,7 @@ export default function SettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Appearance</CardTitle>
+                <CardTitle>{pick("화면 설정", "Appearance")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center rounded-full border bg-background p-1 shadow-xs w-fit">
@@ -211,7 +211,7 @@ export default function SettingsPage() {
                     onClick={() => setTheme("light")}
                   >
                     <Sun className="size-4" />
-                    Light
+                    {pick("라이트", "Light")}
                   </Button>
                   <Button
                     type="button"
@@ -221,7 +221,7 @@ export default function SettingsPage() {
                     onClick={() => setTheme("dark")}
                   >
                     <Moon className="size-4" />
-                    Dark
+                    {pick("다크", "Dark")}
                   </Button>
                 </div>
               </CardContent>

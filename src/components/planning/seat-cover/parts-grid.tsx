@@ -123,15 +123,17 @@ function exportToExcel(rows: PartOrderRow[], tabKey: string) {
 
 type FilterKey = "ready-not-ready" | "shipped" | "canceled" | "deleted";
 
-const FILTER_BUTTONS: { key: FilterKey; label: string }[] = [
-  { key: "ready-not-ready", label: "Ready / Not Ready" },
-  { key: "shipped", label: "Shipped" },
-  { key: "canceled", label: "Canceled" },
-  { key: "deleted", label: "Deleted" },
-];
 
 export function PartsGrid() {
   const { pick } = useI18n();
+
+  const FILTER_BUTTONS: { key: FilterKey; label: string }[] = useMemo(() => [
+    { key: "ready-not-ready", label: pick("준비 / 미준비", "Ready / Not Ready") },
+    { key: "shipped", label: pick("발송", "Shipped") },
+    { key: "canceled", label: pick("취소", "Canceled") },
+    { key: "deleted", label: pick("삭제됨", "Deleted") },
+  ], [pick]);
+
   const [rows, setRows] = useState<PartOrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -185,7 +187,7 @@ export function PartsGrid() {
   const colDefs = useMemo<ColDef<PartOrderRow>[]>(
     () => [
       {
-        headerName: "Request Received Date",
+        headerName: pick("접수일", "Request Received Date"),
         field: "requestReceivedAt",
         flex: 2,
         minWidth: 140,
@@ -193,13 +195,13 @@ export function PartsGrid() {
         valueFormatter: (p) => fmtDate(p.value),
       },
       {
-        headerName: "Order Number",
+        headerName: pick("주문번호", "Order Number"),
         field: "orderNumber",
         flex: 2,
         minWidth: 110,
       },
       {
-        headerName: "Part Number",
+        headerName: pick("파트 번호", "Part Number"),
         field: "partNumber",
         flex: 2,
         minWidth: 110,
@@ -211,7 +213,7 @@ export function PartsGrid() {
         minWidth: 110,
       },
       {
-        headerName: "QTY",
+        headerName: pick("수량", "QTY"),
         field: "qty",
         flex: 1,
         minWidth: 60,
@@ -219,7 +221,7 @@ export function PartsGrid() {
         filterParams: numFilterParams,
       },
       {
-        headerName: "Order Request",
+        headerName: pick("주문 요청", "Order Request"),
         field: "orderRequest",
         flex: 2,
         minWidth: 110,
@@ -239,39 +241,39 @@ export function PartsGrid() {
         minWidth: 120,
       },
       {
-        headerName: "Note",
+        headerName: pick("메모", "Note"),
         field: "note",
         flex: 3,
         minWidth: 140,
       },
       {
-        headerName: "Order Status",
+        headerName: pick("주문 상태", "Order Status"),
         field: "orderStatus",
         flex: 2,
         minWidth: 110,
       },
       {
-        headerName: "Shiphero Order",
+        headerName: pick("Shiphero 주문", "Shiphero Order"),
         field: "shipheroOrder",
         flex: 2,
         minWidth: 110,
       },
       {
-        headerName: "Shipping Status",
+        headerName: pick("배송 상태", "Shipping Status"),
         field: "shippingStatus",
         flex: 2,
         minWidth: 110,
         cellRenderer: ShippingStatusCell,
       },
       {
-        headerName: "Last Updated Date",
+        headerName: pick("최종 수정일", "Last Updated Date"),
         field: "updatedAt",
         flex: 2,
         minWidth: 140,
         valueFormatter: (p) => fmtDate(p.value),
       },
     ],
-    []
+    [pick]
   );
 
   const defaultColDef = useMemo<ColDef>(
@@ -314,9 +316,9 @@ export function PartsGrid() {
           gap: 8,
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1917" }}>Parts</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#1A1917" }}>{pick("부품 주문", "Parts")}</span>
         {loading && (
-          <span style={{ fontSize: 13, color: "#7A766F" }}>Loading…</span>
+          <span style={{ fontSize: 13, color: "#7A766F" }}>{pick("로딩 중...", "Loading…")}</span>
         )}
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           <button
@@ -332,7 +334,7 @@ export function PartsGrid() {
               cursor: "pointer",
             }}
           >
-            Export
+            {pick("내보내기", "Export")}
           </button>
           {activeFilter === "ready-not-ready" && (
             <button
@@ -348,7 +350,7 @@ export function PartsGrid() {
                 cursor: "pointer",
               }}
             >
-              Import
+              {pick("가져오기", "Import")}
             </button>
           )}
           {activeFilter !== "deleted" && (
@@ -367,10 +369,10 @@ export function PartsGrid() {
                     cursor: selectedRow ? "pointer" : "not-allowed",
                   }}
                 >
-                  Delete
+                  {pick("삭제", "Delete")}
                 </button>
               }
-              title="Delete Part"
+              title={pick("부품 삭제", "Delete Part")}
               description={`Order #${selectedRow?.orderNumber ?? ""} ` + pick("행을 삭제합니다. 되돌릴 수 없습니다.", "row will be permanently deleted.")}
               onConfirm={async () => {
                 await fetch(apiPath(`/api/planning/seat-cover/parts/${selectedRow!.id}`), {
@@ -401,7 +403,7 @@ export function PartsGrid() {
                 cursor: selectedRow ? "pointer" : "not-allowed",
               }}
             >
-              Edit
+              {pick("수정", "Edit")}
             </button>
           )}
           {activeFilter === "ready-not-ready" && (
@@ -421,7 +423,7 @@ export function PartsGrid() {
                 cursor: "pointer",
               }}
             >
-              + Add Row
+              {pick("+ 행 추가", "+ Add Row")}
             </button>
           )}
         </div>

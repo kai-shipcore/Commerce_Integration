@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import Link from "next/link";
 import { subDays, subMonths, subYears, format } from "date-fns";
@@ -31,20 +31,6 @@ type ChartType = "area" | "line" | "bar";
 
 // â"€â"€ Constants â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-const CATEGORY_TABS: { key: CategoryKey; label: string }[] = [
-  { key: "fm", label: "Floor Mat" },
-  { key: "cc", label: "Car Cover" },
-  { key: "sc", label: "Seat Cover" },
-];
-
-const PERIOD_OPTIONS: { value: Period; label: string }[] = [
-  { value: "7d",  label: "Last 7 Days" },
-  { value: "30d", label: "Last 30 Days" },
-  { value: "90d", label: "Last 90 Days" },
-  { value: "6m",  label: "Last 6 Months" },
-  { value: "1y",  label: "Last Year" },
-  { value: "ytd", label: "Year to Date" },
-];
 
 // â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -81,6 +67,22 @@ export function HomeDashboard({
   allowedHrefs: string[];
 }) {
   const { pick } = useI18n();
+
+  const CATEGORY_TABS = useMemo(() => [
+    { key: "fm" as CategoryKey, label: pick("플로어 매트", "Floor Mat") },
+    { key: "cc" as CategoryKey, label: pick("카 커버", "Car Cover") },
+    { key: "sc" as CategoryKey, label: pick("시트 커버", "Seat Cover") },
+  ], [pick]);
+
+  const PERIOD_OPTIONS = useMemo(() => [
+    { value: "7d" as Period,  label: pick("최근 7일", "Last 7 Days") },
+    { value: "30d" as Period, label: pick("최근 30일", "Last 30 Days") },
+    { value: "90d" as Period, label: pick("최근 90일", "Last 90 Days") },
+    { value: "6m" as Period,  label: pick("최근 6개월", "Last 6 Months") },
+    { value: "1y" as Period,  label: pick("최근 1년", "Last Year") },
+    { value: "ytd" as Period, label: pick("올해 누계", "Year to Date") },
+  ], [pick]);
+
   // Planning KPIs
   const [stats, setStats] = useState<HomeStats | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
@@ -167,7 +169,7 @@ export function HomeDashboard({
 
   // â"€â"€ Derived â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const syncLabel = stats?.lastSync
-    ? `Synced ${new Date(stats.lastSync).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
+    ? `${pick("동기화", "Synced")} ${new Date(stats.lastSync).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`
     : null;
 
   const cat      = stats?.byCategory?.[activeCat];
@@ -327,9 +329,9 @@ export function HomeDashboard({
                 className="h-8 rounded-lg border border-[#C2BFB5] bg-white px-2.5 text-xs font-semibold text-[#1A1917] outline-none focus:border-[#1a5cdb] dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
                 aria-label="Chart type"
               >
-                <option value="area">Area</option>
-                <option value="line">Line</option>
-                <option value="bar">Bar</option>
+                <option value="area">{pick("영역", "Area")}</option>
+                <option value="line">{pick("선", "Line")}</option>
+                <option value="bar">{pick("막대", "Bar")}</option>
               </select>
             </div>
           </div>
@@ -448,14 +450,14 @@ export function HomeDashboard({
 // â"€â"€ Tooltip â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: { payload: TrendPoint & { dateLabel: string } }[] }) {
+  const { pick } = useI18n();
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
     <div className="rounded-lg border border-border bg-popover p-2.5 shadow-lg text-xs">
       <p className="mb-1 font-medium">{d.dateLabel}</p>
-      <p><span className="text-muted-foreground">Revenue: </span><span className="font-medium">${d.revenue.toLocaleString()}</span></p>
-      <p><span className="text-muted-foreground">Orders: </span><span className="font-medium">{d.quantity.toLocaleString()}</span></p>
-
+      <p><span className="text-muted-foreground">{pick("매출", "Revenue")}: </span><span className="font-medium">${d.revenue.toLocaleString()}</span></p>
+      <p><span className="text-muted-foreground">{pick("주문", "Orders")}: </span><span className="font-medium">{d.quantity.toLocaleString()}</span></p>
     </div>
   );
 }
