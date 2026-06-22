@@ -463,11 +463,11 @@
 
   <!-- Columns 패널 전체 -->
   <h3 id="dp-columns">② Columns 패널</h3>
-  <p>상단 툴바의 <span class="btn-label">⊞ Columns ▾</span> 버튼을 클릭하면 패널이 열립니다. 패널은 세 영역(왼쪽: Quick Preset·Options·SKU Filters·Freeze Column, 가운데: Column Visibility, 오른쪽: Column Colors)으로 구성됩니다. 모든 설정은 브라우저 localStorage와 서버에 자동 저장되어 다음 접속 시에도 유지됩니다.</p>
+  <p>상단 툴바의 <span class="btn-label">⊞ Columns ▾</span> 버튼을 클릭하면 패널이 열립니다. 패널은 세 영역(왼쪽: Quick Preset·Options·SKU Filters·Freeze Column·Column Colors, 가운데: Column Visibility, 오른쪽: Container Visibility)으로 구성됩니다. 모든 설정은 서버에 자동 저장되어 다른 기기에서 접속해도 유지됩니다.</p>
 
   <div class="screenshot-box">
     <img src="screenshots/dp-columns-panel.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⊞</div><p>Columns 패널 전체 화면</p></div>'" alt="Columns 패널">
-    <div class="screenshot-caption">▲ Columns 패널 — 왼쪽(프리셋·SKU 필터·고정), 가운데(컬럼 표시), 오른쪽(색상)</div>
+    <div class="screenshot-caption">▲ Columns 패널 — 왼쪽(프리셋·Options·SKU 필터·Freeze·색상), 가운데(컬럼 표시), 오른쪽(Container Visibility)</div>
   </div>
 
   <h3 class="sub" id="dp-col-preset">Quick Preset — 빠른 컬럼 프리셋</h3>
@@ -583,6 +583,61 @@
         <li><strong>Compact 프리셋</strong>은 키보드 단축 작업 시 유용합니다. 좌우 스크롤이 거의 없어집니다.</li>
         <li>컬럼 너비는 헤더 경계를 드래그해 조정하며, <span class="btn-label">Reset Column Widths</span>로 기본값으로 복원합니다.</li>
         <li>설정은 서버에 저장되어 다른 컴퓨터에서 접속해도 유지됩니다.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="sub" id="dp-container-vis" style="margin-top:28px">Container Visibility — 컨테이너 표시 제어</h3>
+  <p>Columns 패널 오른쪽 영역에서 그리드에 표시할 컨테이너를 개별·그룹 단위로 켜고 끌 수 있습니다. 숨긴 컨테이너는 열 자체가 사라져 수요 계획 뷰가 간결해집니다. 설정은 서버에 자동 저장됩니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/dp-container-visibility.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>Container Visibility 패널</p></div>'" alt="Container Visibility">
+    <div class="screenshot-caption">▲ Container Visibility — Base 컨테이너 토글, 상태 그룹 헤더, 개별 컨테이너 체크박스, ETA(MM-DD)</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr style="background:#f0f4ff">
+      <td><strong>Base Containers</strong><br><span style="font-size:11px;color:#6b7280">섹션 상단</span></td>
+      <td>
+        <strong>Base (on-hand)</strong> — 현재 보유 재고 기준 컬럼. 체크 해제 시 Base 열이 숨겨집니다.<br>
+        <strong>Shipped Base</strong> — 마지막 Shipped/Packing 컨테이너의 잠금된 carryover·Inv.Life·SOD를 보여주는 가상 컬럼(amber 배경). 체크 해제 시 해당 컬럼이 완전히 사라집니다.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>그룹 헤더 체크박스</strong></td>
+      <td>상태(Shipped · Final · Draft)별로 묶인 그룹의 모든 컨테이너를 한 번에 ON/OFF합니다. 일부만 체크된 경우 indeterminate(중간) 상태로 표시됩니다.</td>
+    </tr>
+    <tr>
+      <td><strong>▼ / ▶ 화살표</strong></td>
+      <td>그룹을 접거나 펼쳐서 목록을 정리합니다. 컨테이너 수가 많을 때 유용합니다.</td>
+    </tr>
+    <tr>
+      <td><strong>개별 컨테이너 체크박스</strong></td>
+      <td>컨테이너마다 독립적으로 표시·숨김 처리합니다. 체크박스 오른쪽에 ETA 날짜(MM-DD 형식)가 회색으로 표시됩니다.</td>
+    </tr>
+    <tr>
+      <td><strong>Show All 버튼</strong></td>
+      <td>하나 이상의 컨테이너를 숨기면 섹션 상단에 나타납니다. 클릭하면 모든 컨테이너를 즉시 다시 표시합니다.</td>
+    </tr>
+  </table>
+
+  <div class="card-grid col2" style="margin-top:16px">
+    <div class="card">
+      <h4>🎨 컨테이너 상태 색상</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px">
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#3B82F6;width:80px">SHIPPED</td><td style="padding:4px 8px">항만 수령 완료 컨테이너 (파란색)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#F59E0B">FINAL</td><td style="padding:4px 8px">선적 완료·운송 중 컨테이너 (amber)</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:700;color:#EF4444">DRAFT</td><td style="padding:4px 8px">초안(예정) 컨테이너 (빨간색)</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h4>💡 활용 팁</h4>
+      <ul style="font-size:13px;line-height:1.9">
+        <li>Draft 컨테이너를 숨기면 확정된 입고 계획만 집중해서 볼 수 있습니다.</li>
+        <li>특정 컨테이너만 숨겨서 해당 컨테이너 제외 시나리오를 빠르게 확인할 수 있습니다.</li>
+        <li>Shipped Base를 숨기면 출하 기준 가상 컬럼이 사라져 그리드가 단순해집니다.</li>
+        <li>숨긴 컨테이너가 있으면 상단에 <span class="btn-label">Show All</span> 버튼이 나타나 한 번에 복원할 수 있습니다.</li>
       </ul>
     </div>
   </div>
@@ -1986,11 +2041,11 @@
   <p>Depending on the selected product category, a different set of SKU part filters appears in the <strong>SKU Filters</strong> area of the Columns panel. Each dropdown supports multiple selections combined as <strong>AND</strong> conditions.</p>
 
   <h3 id="en-dp-columns">② Columns Panel</h3>
-  <p>Click the <span class="btn-label">⊞ Columns ▾</span> button in the toolbar to open the panel. The panel has three areas (left: Quick Preset · Options · SKU Filters · Freeze Column; center: Column Visibility; right: Column Colors). All settings are auto-saved to the server and persist across sessions and devices.</p>
+  <p>Click the <span class="btn-label">⊞ Columns ▾</span> button in the toolbar to open the panel. The panel has three areas (left: Quick Preset · Options · SKU Filters · Freeze Column · Column Colors; center: Column Visibility; right: Container Visibility). All settings are auto-saved to the server and persist across sessions and devices.</p>
 
   <div class="screenshot-box">
     <img src="screenshots/dp-columns-panel-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⊞</div><p>Columns Panel</p></div>'" alt="Columns Panel">
-    <div class="screenshot-caption">▲ Columns Panel — Left (Presets · SKU Filters · Freeze), Center (Visibility), Right (Colors)</div>
+    <div class="screenshot-caption">▲ Columns Panel — Left (Presets · Options · SKU Filters · Freeze · Colors), Center (Column Visibility), Right (Container Visibility)</div>
   </div>
 
   <h3 class="sub" id="en-dp-col-preset">Quick Preset — Fast Column Presets</h3>
@@ -2146,6 +2201,61 @@
   <div class="callout tip" style="margin-top:12px">
     <span class="callout-icon">💡</span>
     <div>Column colors and cell colors are independent. Individual cell colors override column colors for that cell only.</div>
+  </div>
+
+  <h3 class="sub" id="en-dp-container-vis" style="margin-top:28px">Container Visibility — Show/Hide Containers</h3>
+  <p>The right area of the Columns panel lets you show or hide individual containers in the grid. Hidden containers are removed from the view entirely, making the demand planning grid easier to read. All settings are auto-saved to the server.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/dp-container-visibility-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📦</div><p>Container Visibility Panel</p></div>'" alt="Container Visibility">
+    <div class="screenshot-caption">▲ Container Visibility — Base container toggles, status group headers, per-container checkboxes, ETA (MM-DD)</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr style="background:#f0f4ff">
+      <td><strong>Base Containers</strong><br><span style="font-size:11px;color:#6b7280">Top of section</span></td>
+      <td>
+        <strong>Base (on-hand)</strong> — The on-hand inventory baseline column. Uncheck to hide the Base column.<br>
+        <strong>Shipped Base</strong> — A virtual column (amber background) showing the locked-in carryover · Inv.Life · SOD from the last Shipped/Packing container. Uncheck to remove it entirely.
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Group header checkbox</strong></td>
+      <td>Toggles all containers within a status group (Shipped · Final · Draft) on or off at once. Shows an indeterminate state when only some containers in the group are visible.</td>
+    </tr>
+    <tr>
+      <td><strong>▼ / ▶ arrow</strong></td>
+      <td>Collapses or expands a group's container list to keep the panel tidy when there are many containers.</td>
+    </tr>
+    <tr>
+      <td><strong>Individual container checkbox</strong></td>
+      <td>Shows or hides each container independently. The ETA date (MM-DD format) is shown in grey on the right of each row.</td>
+    </tr>
+    <tr>
+      <td><strong>Show All button</strong></td>
+      <td>Appears at the top of the section whenever any container is hidden. Click it to instantly restore all containers.</td>
+    </tr>
+  </table>
+
+  <div class="card-grid col2" style="margin-top:16px">
+    <div class="card">
+      <h4>🎨 Container Status Colors</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px">
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#3B82F6;width:80px">SHIPPED</td><td style="padding:4px 8px">Received at port (blue)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#F59E0B">FINAL</td><td style="padding:4px 8px">Shipped &amp; in transit (amber)</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:700;color:#EF4444">DRAFT</td><td style="padding:4px 8px">Planned / not yet shipped (red)</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h4>💡 Tips</h4>
+      <ul style="font-size:13px;line-height:1.9">
+        <li>Hide Draft containers to focus only on confirmed inbound shipments.</li>
+        <li>Hide a specific container to quickly see the plan without it.</li>
+        <li>Hiding Shipped Base removes the virtual locked-baseline column and simplifies the grid.</li>
+        <li>The <span class="btn-label">Show All</span> button appears whenever any container is hidden — click it to restore all at once.</li>
+      </ul>
+    </div>
   </div>
 
   <h3 id="en-dp-autofill">③ Con. Qty Auto-Fill Buttons</h3>
