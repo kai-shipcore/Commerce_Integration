@@ -442,7 +442,7 @@ function FactoryDetail({
         <div>
           <div className="text-base font-semibold">
             {isNew
-              ? "🏭 New Factory"
+              ? `🏭 ${pick("새 공장", "New Factory")}`
               : `🏭 ${form.factoryName}`}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
@@ -536,7 +536,7 @@ function FactoryDetail({
         <div className="rounded-lg border border-[#e2dfd8] bg-[#f0eee9] p-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-sm font-medium">{pick("활성 (is_active)", "Active (is_active)")}</div>
+              <div className="text-sm font-medium">{pick("활성", "Active")}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {pick("비활성 시 구매 주문 옵션에서 숨겨집니다", "When inactive, this factory is hidden from purchase order options")}
               </div>

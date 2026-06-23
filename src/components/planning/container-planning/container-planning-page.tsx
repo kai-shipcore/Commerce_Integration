@@ -20,6 +20,9 @@ type ContainerItem = MockContainer["items"][number];
 type ContainerFormState = {
   number: string;
   eta: string;
+  estLoading: string;
+  etdNgb: string;
+  etaLaxLgb: string;
   status: ContainerStatus;
   cbmCapacity: string;
   factory: string;
@@ -30,6 +33,9 @@ type ContainerFormState = {
 const defaultFormState: ContainerFormState = {
   number: "",
   eta: "",
+  estLoading: "",
+  etdNgb: "",
+  etaLaxLgb: "",
   status: "draft",
   cbmCapacity: "80",
   factory: "",
@@ -102,6 +108,9 @@ type ApiContainer = {
   id: string;
   containerNumber: string;
   etaDate: string | null;
+  estLoadingDate: string | null;
+  etdNgbDate: string | null;
+  etaLaxLgbDate: string | null;
   status: string;
   cbmCapacity: number;
   factoryName: string | null;
@@ -209,6 +218,9 @@ function mapApiContainer(container: ApiContainer): MockContainer {
     number: container.containerNumber,
     poNumbers: [],
     eta: container.etaDate ?? "",
+    estLoadingDate: container.estLoadingDate ?? undefined,
+    etdNgbDate: container.etdNgbDate ?? undefined,
+    etaLaxLgbDate: container.etaLaxLgbDate ?? undefined,
     status: normalizeContainerStatus(container.status),
     cbmCapacity: container.cbmCapacity || 80,
     factory: container.factoryName ?? "",
@@ -548,6 +560,9 @@ export function ContainerPlanningPage() {
     setForm({
       number: container.number,
       eta: container.eta,
+      estLoading: container.estLoadingDate ?? "",
+      etdNgb: container.etdNgbDate ?? "",
+      etaLaxLgb: container.etaLaxLgbDate ?? "",
       status: container.status,
       cbmCapacity: String(container.cbmCapacity || 80),
       factory: container.factory,
@@ -800,6 +815,9 @@ export function ContainerPlanningPage() {
       number,
       poNumbers: [],
       eta,
+      estLoadingDate: form.estLoading || undefined,
+      etdNgbDate: form.etdNgb || undefined,
+      etaLaxLgbDate: form.etaLaxLgb || undefined,
       status: form.status,
       cbmCapacity,
       factory: form.factory.trim() || "Unassigned Factory",
@@ -821,6 +839,9 @@ export function ContainerPlanningPage() {
           body: JSON.stringify({
             number: newContainer.number,
             eta: newContainer.eta,
+            estLoading: newContainer.estLoadingDate ?? "",
+            etdNgb: newContainer.etdNgbDate ?? "",
+            etaLaxLgb: newContainer.etaLaxLgbDate ?? "",
             status: newContainer.status,
             cbmCapacity: newContainer.cbmCapacity,
             factory: newContainer.factory,
@@ -853,6 +874,9 @@ export function ContainerPlanningPage() {
         body: JSON.stringify({
           number: newContainer.number,
           eta: newContainer.eta,
+          estLoading: newContainer.estLoadingDate ?? "",
+          etdNgb: newContainer.etdNgbDate ?? "",
+          etaLaxLgb: newContainer.etaLaxLgbDate ?? "",
           status: newContainer.status,
           cbmCapacity: newContainer.cbmCapacity,
           factory: newContainer.factory,
@@ -906,6 +930,9 @@ export function ContainerPlanningPage() {
           body: JSON.stringify({
             number,
             eta,
+            estLoading: form.estLoading,
+            etdNgb: form.etdNgb,
+            etaLaxLgb: form.etaLaxLgb,
             status: form.status,
             cbmCapacity,
             factory: form.factory.trim(),
@@ -1238,6 +1265,9 @@ export function ContainerPlanningPage() {
       body: JSON.stringify({
         number: container.number,
         eta: container.eta,
+        estLoading: container.estLoadingDate ?? "",
+        etdNgb: container.etdNgbDate ?? "",
+        etaLaxLgb: container.etaLaxLgbDate ?? "",
         status: container.status,
         cbmCapacity: container.cbmCapacity,
         factory: container.factory,
@@ -1914,7 +1944,7 @@ export function ContainerPlanningPage() {
                         {destinationLabel}
                       </span>
                       <span className="mt-1 block text-[10px] text-muted-foreground">
-                        ETA {container.eta} / {container.items.length} SKUs / {formatNumber(totalQtyForContainer)} units / {usedCbmForContainer.toFixed(1)} CBM
+                        Whse {container.eta || "—"} / {container.items.length} SKUs / {formatNumber(totalQtyForContainer)} units / {usedCbmForContainer.toFixed(1)} CBM
                       </span>
                     </span>
                   </div>
@@ -2244,9 +2274,6 @@ function ContainerCreateForm({
           <Field label={pick("컨테이너 번호", "Container No.")}>
             <input className="form-input bg-white" value={form.number} onChange={(event) => onUpdateForm("number", event.target.value)} placeholder="#165" />
           </Field>
-          <Field label={pick("ETA 날짜", "ETA Date")}>
-            <input className="form-input bg-white" type="date" value={form.eta} onChange={(event) => onUpdateForm("eta", event.target.value)} />
-          </Field>
           <Field label={pick("상태", "Status")}>
             <select className="form-input bg-white" value={form.status} onChange={(event) => onUpdateForm("status", event.target.value as ContainerStatus)}>
               {statusOptions.map((option) => (
@@ -2288,7 +2315,27 @@ function ContainerCreateForm({
               )}
             </select>
           </Field>
-          <Field label={pick("메모", "Notes")} className="md:col-span-3">
+          <div />
+        </div>
+
+        {/* Date section */}
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          <Field label={pick("예상 선적일", "Est. Loading")}>
+            <input className="form-input bg-white" type="date" value={form.estLoading} onChange={(event) => onUpdateForm("estLoading", event.target.value)} />
+          </Field>
+          <Field label="ETD NGB">
+            <input className="form-input bg-white" type="date" value={form.etdNgb} onChange={(event) => onUpdateForm("etdNgb", event.target.value)} />
+          </Field>
+          <Field label="ETA LAX/LGB">
+            <input className="form-input bg-white" type="date" value={form.etaLaxLgb} onChange={(event) => onUpdateForm("etaLaxLgb", event.target.value)} />
+          </Field>
+          <Field label={pick("창고 입고일 (ETA)", "Warehouse (ETA)")}>
+            <input className="form-input bg-white" type="date" value={form.eta} onChange={(event) => onUpdateForm("eta", event.target.value)} />
+          </Field>
+        </div>
+
+        <div className="mt-3">
+          <Field label={pick("메모", "Notes")}>
             <textarea
               className="form-input min-h-[88px] resize-y bg-white"
               value={form.note}
@@ -2768,7 +2815,7 @@ function ContainerCard({
         </div>
 
         <div className="hidden font-mono text-sm font-semibold text-[#1a5cdb] lg:block">
-          ETA {container.eta}
+          Whse {container.eta || "—"}
         </div>
 
         <span className={`hidden rounded-full px-3 py-1 text-xs font-semibold xl:inline-flex ${statusPillClasses[container.status]}`}>
@@ -2803,6 +2850,26 @@ function ContainerCard({
               </span>
             </div>
           ) : null}
+          <div className="border-b border-[#e2dfd8] bg-[#fafaf7] px-5 py-3">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 md:grid-cols-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{pick("예상 선적일", "Est. Loading")}</div>
+                <div className="mt-0.5 font-mono text-xs font-semibold text-foreground">{container.estLoadingDate || "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">ETD NGB</div>
+                <div className="mt-0.5 font-mono text-xs font-semibold text-foreground">{container.etdNgbDate || "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">ETA LAX/LGB</div>
+                <div className="mt-0.5 font-mono text-xs font-semibold text-foreground">{container.etaLaxLgbDate || "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{pick("창고 입고일", "Warehouse")}</div>
+                <div className="mt-0.5 font-mono text-xs font-semibold text-[#1a5cdb]">{container.eta || "—"}</div>
+              </div>
+            </div>
+          </div>
           {container.note ? (
             <div className="border-b border-[#e2dfd8] bg-[#fffdf8] px-5 py-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{pick("메모", "Notes")}</div>
@@ -3073,7 +3140,7 @@ function ContainerCard({
               </span>
             </div>
             <div className="text-xs">
-              {container.factory} · ETA {container.eta}
+              {container.factory} · Warehouse {container.eta || "—"}
             </div>
           </div>
 

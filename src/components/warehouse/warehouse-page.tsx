@@ -320,7 +320,7 @@ export function WarehousePage() {
             <div>
               <h1 className="text-lg font-semibold">{pick("창고 관리", "Warehouse Management")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                {pick("창고 마스터 및 SKU 재고 현황 관리 (DB: fc_warehouses)", "Manage warehouse master records and SKU-level inventory status (DB: fc_warehouses)")}
+                {pick("창고 마스터 및 SKU 재고 현황 관리", "Manage warehouse master records and SKU-level inventory status")}
               </p>
             </div>
           </div>
@@ -599,7 +599,7 @@ function WarehouseDetail({
         <div className="rounded-lg border border-[#e2dfd8] bg-[#f0eee9] p-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="text-sm font-medium">{pick("활성 창고 (is_active)", "Active Warehouses (is_active)")}</div>
+              <div className="text-sm font-medium">{pick("활성 창고", "Active Warehouses")}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">{pick("비활성화 시 PO 및 컨테이너 목적지 옵션에서 숨겨집니다", "When inactive, this warehouse is hidden from PO and container destination options")}</div>
             </div>
             <button

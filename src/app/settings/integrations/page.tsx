@@ -124,7 +124,7 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function IntegrationsPage() {
-  const { pick } = useI18n();
+  const { locale, pick } = useI18n();
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const [reauthBanner, setReauthBanner] = useState<{
@@ -180,18 +180,23 @@ export default function IntegrationsPage() {
     if (reauth === "success") {
       setReauthBanner({
         type: "success",
-        message:
+        message: pick(
+          "eBay 재인증에 성공했습니다. 새 리프레시 토큰이 저장되었습니다.",
           "eBay re-authentication successful. Your new refresh token has been saved.",
+        ),
       });
       window.history.replaceState(null, "", window.location.pathname);
     } else if (ebayError) {
       setReauthBanner({
         type: "error",
-        message: `eBay re-authentication failed: ${ebayError}`,
+        message: pick(
+          `eBay 재인증에 실패했습니다: ${ebayError}`,
+          `eBay re-authentication failed: ${ebayError}`,
+        ),
       });
       window.history.replaceState(null, "", window.location.pathname);
     }
-  }, [searchParams]);
+  }, [pick, searchParams]);
 
   const handleAddIntegration = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -351,7 +356,9 @@ export default function IntegrationsPage() {
         [integrationId]: {
           tone,
           message:
-            data.data?.message || data.error || "Connection check failed.",
+            status === "connected"
+              ? pick("연결에 성공했습니다.", data.data?.message || "Connection successful.")
+              : data.data?.message || data.error || pick("연결 확인에 실패했습니다.", "Connection check failed."),
         },
       }));
 
@@ -363,7 +370,7 @@ export default function IntegrationsPage() {
         ...current,
         [integrationId]: {
           tone: "error",
-          message: getErrorMessage(error) || "Connection check failed.",
+          message: getErrorMessage(error) || pick("연결 확인에 실패했습니다.", "Connection check failed."),
         },
       }));
     } finally {
@@ -379,8 +386,8 @@ export default function IntegrationsPage() {
     platform === "shopify" || platform === "ebay" || platform === "walmart" || platform === "amazon";
   const isAdmin = isAdminLikeRole(session?.user?.role);
 
-  const addDialogMeta = getDialogMeta(formData.platform, "add");
-  const editDialogMeta = getDialogMeta(editFormData.platform, "edit");
+  const addDialogMeta = getDialogMeta(formData.platform, "add", pick);
+  const editDialogMeta = getDialogMeta(editFormData.platform, "edit", pick);
   const activeCount = integrations.filter((integration) => integration.isActive).length;
   const syncedCount = integrations.filter((integration) => integration.lastSyncStatus === "success").length;
   const failedCount = integrations.filter((integration) => integration.lastSyncStatus === "failed").length;
@@ -388,23 +395,23 @@ export default function IntegrationsPage() {
 
   const getStatusBadge = (integration: Integration) => {
     if (!integration.isActive) {
-      return <Badge variant="secondary">Inactive</Badge>;
+      return <Badge variant="secondary">{pick("비활성", "Inactive")}</Badge>;
     }
     if (!integration.lastSyncStatus) {
-      return <Badge variant="outline">Never Synced</Badge>;
+      return <Badge variant="outline">{pick("동기화 전", "Never Synced")}</Badge>;
     }
     if (integration.lastSyncStatus === "success") {
       return (
         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-950/60">
           <CheckCircle className="h-3 w-3 mr-1" />
-          Synced
+          {pick("동기화됨", "Synced")}
         </Badge>
       );
     }
     return (
       <Badge variant="destructive">
         <XCircle className="h-3 w-3 mr-1" />
-        Failed
+        {pick("실패", "Failed")}
       </Badge>
     );
   };
@@ -429,7 +436,7 @@ export default function IntegrationsPage() {
                 onClick={() => setReauthBanner(null)}
                 className="ml-4 text-sm underline"
               >
-                Dismiss
+                {pick("닫기", "Dismiss")}
               </button>
             </AlertDescription>
           </Alert>
@@ -440,9 +447,14 @@ export default function IntegrationsPage() {
           <div className="flex items-start gap-2">
             <Plug className="mt-1 h-5 w-5" />
             <div>
-              <h1 className="text-lg font-semibold">Marketplace APIs</h1>
+              <h1 className="text-lg font-semibold">
+                {pick("마켓플레이스 API", "Marketplace APIs")}
+              </h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                Connect e-Commerce platform accounts to sync sales data
+                {pick(
+                  "판매 데이터 동기화를 위해 이커머스 플랫폼 계정을 연결합니다",
+                  "Connect e-Commerce platform accounts to sync sales data",
+                )}
               </p>
             </div>
           </div>
@@ -450,7 +462,7 @@ export default function IntegrationsPage() {
             <DialogTrigger asChild>
               <Button className="bg-[#1a5cdb] hover:bg-[#1650c4]">
                 <Plus className="mr-2 h-4 w-4" />
-                {pick("마켓플레이스 추가", "Add Market Place")}
+                {pick("마켓플레이스 추가", "Add Marketplace")}
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -480,7 +492,7 @@ export default function IntegrationsPage() {
                     {submitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    {pick("마켓플레이스 연결", "Connect Market Place")}
+                    {pick("마켓플레이스 연결", "Connect Marketplace")}
                   </Button>
                 </DialogFooter>
               </form>
@@ -533,10 +545,10 @@ export default function IntegrationsPage() {
         </header>
 
         <div className="grid grid-cols-2 border-b border-[#e2dfd8] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4">
-          <IntegrationStat label="Total APIs" value={integrations.length.toLocaleString()} sub="Marketplace connections" />
-          <IntegrationStat label="Active" value={activeCount.toLocaleString()} sub="Enabled sync sources" />
-          <IntegrationStat label="Synced" value={syncedCount.toLocaleString()} sub={`${failedCount.toLocaleString()} failed`} />
-          <IntegrationStat label="Orders Synced" value={totalOrdersSynced.toLocaleString()} sub="All integrations" />
+          <IntegrationStat label={pick("전체 API", "Total APIs")} value={integrations.length.toLocaleString()} sub={pick("마켓플레이스 연결", "Marketplace connections")} />
+          <IntegrationStat label={pick("활성", "Active")} value={activeCount.toLocaleString()} sub={pick("활성화된 동기화 소스", "Enabled sync sources")} />
+          <IntegrationStat label={pick("동기화 완료", "Synced")} value={syncedCount.toLocaleString()} sub={pick(`${failedCount.toLocaleString()}개 실패`, `${failedCount.toLocaleString()} failed`)} />
+          <IntegrationStat label={pick("동기화된 주문", "Orders Synced")} value={totalOrdersSynced.toLocaleString()} sub={pick("전체 연동", "All integrations")} />
         </div>
 
         <main className="min-h-0 flex-1 overflow-y-auto bg-white p-5 dark:bg-slate-950">
@@ -549,14 +561,18 @@ export default function IntegrationsPage() {
           <div className="rounded-xl border-2 border-dashed border-[#cccac4] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900">
             <div className="flex flex-col items-center justify-center px-6 py-12">
               <ShoppingBag className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No integrations yet</h3>
+              <h3 className="text-lg font-medium mb-2">
+                {pick("아직 등록된 연동이 없습니다", "No integrations yet")}
+              </h3>
               <p className="text-muted-foreground text-center mb-4">
-                Connect Shopify, Amazon, eBay, or Walmart marketplace
-                credentials to manage future sales syncs.
+                {pick(
+                  "Shopify, Amazon, eBay 또는 Walmart 계정 정보를 연결하여 판매 데이터 동기화를 관리하세요.",
+                  "Connect Shopify, Amazon, eBay, or Walmart marketplace credentials to manage future sales syncs.",
+                )}
               </p>
               <Button onClick={() => setAddDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                {pick("마켓플레이스 추가", "Add Market Place")}
+                {pick("마켓플레이스 추가", "Add Marketplace")}
               </Button>
             </div>
           </div>
@@ -579,7 +595,9 @@ export default function IntegrationsPage() {
                   <div className="flex items-center gap-2">
                     {getStatusBadge(integration)}
                     {!isAdmin && (
-                      <Badge variant="outline">Admin only for edits</Badge>
+                      <Badge variant="outline">
+                        {pick("관리자만 수정 가능", "Admin only for edits")}
+                      </Badge>
                     )}
                   </div>
                 </CardHeader>
@@ -587,7 +605,7 @@ export default function IntegrationsPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
                       <p className="text-sm text-muted-foreground">
-                        Orders Synced
+                        {pick("동기화된 주문", "Orders Synced")}
                       </p>
                       <p className="text-lg font-medium">
                         {integration.totalOrdersSynced}
@@ -595,24 +613,28 @@ export default function IntegrationsPage() {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">
-                        Sales Records
+                        {pick("판매 레코드", "Sales Records")}
                       </p>
                       <p className="text-lg font-medium">
                         {integration.totalRecordsSynced}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Last Sync</p>
+                      <p className="text-sm text-muted-foreground">
+                        {pick("최근 동기화", "Last Sync")}
+                      </p>
                       <p className="text-sm font-medium">
                         {integration.lastSyncAt
-                          ? new Date(integration.lastSyncAt).toLocaleString()
-                          : "Never"}
+                          ? new Date(integration.lastSyncAt).toLocaleString(locale)
+                          : pick("없음", "Never")}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Created</p>
+                      <p className="text-sm text-muted-foreground">
+                        {pick("생성일", "Created")}
+                      </p>
                       <p className="text-sm font-medium">
-                        {new Date(integration.createdAt).toLocaleDateString()}
+                        {new Date(integration.createdAt).toLocaleDateString(locale)}
                       </p>
                     </div>
                   </div>
@@ -631,7 +653,7 @@ export default function IntegrationsPage() {
                       {integration.tokenStatus === "valid" && (
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-950/60">
                           <CheckCircle className="h-3 w-3 mr-1" />
-                          {pick("Access Token 유효", "Token valid")}
+                          {pick("액세스 토큰 유효", "Token valid")}
                         </Badge>
                       )}
                       {integration.tokenStatus === "expiring_soon" && (
@@ -660,7 +682,10 @@ export default function IntegrationsPage() {
                       disabled={!isAdmin || loadingEditId === integration.id}
                       title={
                         !isAdmin
-                          ? "You need admin access to edit marketplace integrations."
+                          ? pick(
+                              "마켓플레이스 연동을 수정하려면 관리자 권한이 필요합니다.",
+                              "You need admin access to edit marketplace integrations.",
+                            )
                           : undefined
                       }
                     >
@@ -669,7 +694,7 @@ export default function IntegrationsPage() {
                       ) : (
                         <Pencil className="mr-2 h-4 w-4" />
                       )}
-                      {pick("편집", "Edit")}
+                      {pick("수정", "Edit")}
                     </Button>
                     {integration.platform === "ebay" && isAdmin && (
                       <Button
@@ -678,10 +703,13 @@ export default function IntegrationsPage() {
                         onClick={() => {
                           window.location.href = apiPath(`/api/integrations/${integration.id}/ebay-auth`);
                         }}
-                        title="Get a new refresh token via eBay OAuth"
+                        title={pick(
+                          "eBay OAuth를 통해 새 리프레시 토큰을 발급합니다",
+                          "Get a new refresh token via eBay OAuth",
+                        )}
                       >
                         <RefreshCw className="mr-2 h-4 w-4" />
-                        Re-authenticate
+                        {pick("재인증", "Re-authenticate")}
                       </Button>
                     )}
                     <Button
@@ -695,7 +723,7 @@ export default function IntegrationsPage() {
                       ) : (
                         <CheckCircle className="mr-2 h-4 w-4" />
                       )}
-                      Check Connection
+                      {pick("연결 확인", "Check Connection")}
                     </Button>
                     <Button
                       variant="outline"
@@ -708,7 +736,10 @@ export default function IntegrationsPage() {
                       }
                       title={
                         !isAdmin
-                          ? "You need admin or dev access to sync marketplace integrations."
+                          ? pick(
+                              "마켓플레이스 연동을 동기화하려면 관리자 또는 개발자 권한이 필요합니다.",
+                              "You need admin or dev access to sync marketplace integrations.",
+                            )
                           : undefined
                       }
                     >
@@ -730,7 +761,10 @@ export default function IntegrationsPage() {
                       }
                       title={
                         !isAdmin
-                          ? "You need admin or dev access to sync marketplace integrations."
+                          ? pick(
+                              "마켓플레이스 연동을 동기화하려면 관리자 또는 개발자 권한이 필요합니다.",
+                              "You need admin or dev access to sync marketplace integrations.",
+                            )
                           : undefined
                       }
                     >
@@ -757,7 +791,10 @@ export default function IntegrationsPage() {
                           disabled={!isAdmin}
                           title={
                             !isAdmin
-                              ? "You need admin access to remove marketplace integrations."
+                              ? pick(
+                                  "마켓플레이스 연동을 삭제하려면 관리자 권한이 필요합니다.",
+                                  "You need admin access to remove marketplace integrations.",
+                                )
                               : undefined
                           }
                         >
@@ -791,14 +828,18 @@ export default function IntegrationsPage() {
                   </div>
                   {!supportsSync(integration.platform) && (
                     <p className="mt-3 text-sm text-muted-foreground">
-                      Stored successfully. Automatic sync is not yet available
-                      for this platform.
+                      {pick(
+                        "연동 정보가 저장되었습니다. 이 플랫폼의 자동 동기화는 아직 지원되지 않습니다.",
+                        "Stored successfully. Automatic sync is not yet available for this platform.",
+                      )}
                     </p>
                   )}
                   {!isAdmin && (
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Edit, Sync, and Remove are visible for clarity, but only
-                      admin or dev users can use them.
+                      {pick(
+                        "수정, 동기화 및 삭제 기능은 관리자 또는 개발자 권한이 있는 사용자만 사용할 수 있습니다.",
+                        "Edit, Sync, and Remove are visible for clarity, but only admin or dev users can use them.",
+                      )}
                     </p>
                   )}
                   {connectionResults[integration.id] && (
@@ -837,28 +878,42 @@ export default function IntegrationsPage() {
         {/* Info Card */}
         <Card className="mt-5 rounded-lg border-[#e2dfd8] shadow-none dark:border-slate-700 dark:bg-slate-900">
           <CardHeader>
-            <CardTitle className="text-base">How Sync Works</CardTitle>
+            <CardTitle className="text-base">
+              {pick("동기화 작동 방식", "How Sync Works")}
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              <strong>Automatic Sync:</strong> Sales data is automatically
-              synced every hour via background jobs.
+              <strong>{pick("자동 동기화:", "Automatic Sync:")}</strong>{" "}
+              {pick(
+                "백그라운드 작업을 통해 판매 데이터를 매시간 자동으로 동기화합니다.",
+                "Sales data is automatically synced every hour via background jobs.",
+              )}
             </p>
             <p>
-              <strong>Incremental Updates:</strong> Only new orders since the
-              last sync are fetched to minimize API calls.
+              <strong>{pick("증분 업데이트:", "Incremental Updates:")}</strong>{" "}
+              {pick(
+                "API 호출을 최소화하기 위해 최근 동기화 이후의 신규 주문만 가져옵니다.",
+                "Only new orders since the last sync are fetched to minimize API calls.",
+              )}
             </p>
             <p>
-              <strong>SKU Matching:</strong> Orders are matched to existing SKUs
-              by SKU code. New SKUs are auto-created if not found.
+              <strong>{pick("SKU 매칭:", "SKU Matching:")}</strong>{" "}
+              {pick(
+                "SKU 코드를 기준으로 주문을 기존 SKU와 연결하며, 일치하는 SKU가 없으면 자동으로 생성합니다.",
+                "Orders are matched to existing SKUs by SKU code. New SKUs are auto-created if not found.",
+              )}
             </p>
             <p>
-              <strong>Current Platform Support:</strong> Shopify and Walmart
-              sync are implemented. Amazon and eBay credentials can be stored
-              and will be supported in a future update.
+              <strong>{pick("현재 지원 플랫폼:", "Current Platform Support:")}</strong>{" "}
+              {pick(
+                "Shopify와 Walmart 동기화를 지원합니다. Amazon과 eBay는 계정 정보를 저장할 수 있으며 향후 업데이트에서 동기화를 지원할 예정입니다.",
+                "Shopify and Walmart sync are implemented. Amazon and eBay credentials can be stored and will be supported in a future update.",
+              )}
             </p>
           </CardContent>
         </Card>
+
         </main>
       </section>
     </AppLayout>
@@ -908,7 +963,7 @@ function renderIntegrationForm({
             }
           >
             <SelectTrigger id="platform">
-              <SelectValue placeholder="Select platform" />
+              <SelectValue placeholder={pick("플랫폼 선택", "Select platform")} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="shopify">Shopify</SelectItem>
@@ -920,10 +975,12 @@ function renderIntegrationForm({
         </div>
       )}
       <div className="grid gap-2">
-        <Label htmlFor={`${mode}-name`}>Integration Name</Label>
+        <Label htmlFor={`${mode}-name`}>
+          {pick("연동 이름", "Integration Name")}
+        </Label>
         <Input
           id={`${mode}-name`}
-          placeholder={getIntegrationNamePlaceholder(formData.platform)}
+          placeholder={getIntegrationNamePlaceholder(formData.platform, pick)}
           value={formData.name}
           onChange={(e) =>
             setFormData((current) => ({ ...current, name: e.target.value }))
@@ -934,7 +991,9 @@ function renderIntegrationForm({
       {formData.platform === "shopify" && (
         <>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-shopDomain`}>Shop Domain</Label>
+            <Label htmlFor={`${mode}-shopDomain`}>
+              {pick("쇼핑몰 도메인", "Shop Domain")}
+            </Label>
             <Input
               id={`${mode}-shopDomain`}
               placeholder="mystore.myshopify.com"
@@ -948,19 +1007,25 @@ function renderIntegrationForm({
               required
             />
             <p className="text-xs text-muted-foreground">
-              Your Shopify store URL (e.g., mystore.myshopify.com)
+              {pick(
+                "Shopify 스토어 URL (예: mystore.myshopify.com)",
+                "Your Shopify store URL (e.g., mystore.myshopify.com)",
+              )}
             </p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor={`${mode}-accessToken`}>
-              Admin API Access Token
+              {pick("관리자 API 액세스 토큰", "Admin API Access Token")}
             </Label>
             <Input
               id={`${mode}-accessToken`}
               type="password"
               placeholder={
                 isEdit
-                  ? "Leave blank to keep the current access token"
+                  ? pick(
+                      "현재 액세스 토큰을 유지하려면 비워 두세요",
+                      "Leave blank to keep the current access token",
+                    )
                   : "shpat_xxxxxxxxxxxxx"
               }
               value={formData.accessToken}
@@ -973,8 +1038,10 @@ function renderIntegrationForm({
               required={!isEdit}
             />
             <p className="text-xs text-muted-foreground">
-              Create a custom app in Shopify Admin {">"} Settings {">"} Apps{" "}
-              {">"} Develop apps
+              {pick(
+                "Shopify 관리자 > 설정 > 앱 > 앱 개발에서 사용자 지정 앱을 생성하세요",
+                "Create a custom app in Shopify Admin > Settings > Apps > Develop apps",
+              )}
             </p>
           </div>
         </>
@@ -982,7 +1049,7 @@ function renderIntegrationForm({
       {formData.platform === "amazon" && (
         <>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-sellerId`}>Seller ID</Label>
+            <Label htmlFor={`${mode}-sellerId`}>{pick("판매자 ID", "Seller ID")}</Label>
             <Input
               id={`${mode}-sellerId`}
               value={formData.sellerId}
@@ -996,7 +1063,7 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-marketplaceId`}>Marketplace ID</Label>
+            <Label htmlFor={`${mode}-marketplaceId`}>{pick("마켓플레이스 ID", "Marketplace ID")}</Label>
             <Input
               id={`${mode}-marketplaceId`}
               placeholder="ATVPDKIKX0DER"
@@ -1011,7 +1078,9 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-lwaClientId`}>LWA Client ID</Label>
+            <Label htmlFor={`${mode}-lwaClientId`}>
+              {pick("LWA 클라이언트 ID", "LWA Client ID")}
+            </Label>
             <Input
               id={`${mode}-lwaClientId`}
               value={formData.lwaClientId}
@@ -1025,11 +1094,11 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-lwaClientSecret`}>LWA Client Secret</Label>
+            <Label htmlFor={`${mode}-lwaClientSecret`}>{pick("LWA 클라이언트 시크릿", "LWA Client Secret")}</Label>
             <Input
               id={`${mode}-lwaClientSecret`}
               type="password"
-              placeholder={isEdit ? "Leave blank to keep the current secret" : undefined}
+              placeholder={isEdit ? pick("현재 시크릿을 유지하려면 비워 두세요", "Leave blank to keep the current secret") : undefined}
               value={formData.lwaClientSecret}
               onChange={(e) =>
                 setFormData((current) => ({
@@ -1041,11 +1110,11 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-lwaRefreshToken`}>LWA Refresh Token</Label>
+            <Label htmlFor={`${mode}-lwaRefreshToken`}>{pick("LWA 리프레시 토큰", "LWA Refresh Token")}</Label>
             <Input
               id={`${mode}-lwaRefreshToken`}
               type="password"
-              placeholder={isEdit ? "Leave blank to keep the current token" : undefined}
+              placeholder={isEdit ? pick("현재 토큰을 유지하려면 비워 두세요", "Leave blank to keep the current token") : undefined}
               value={formData.lwaRefreshToken}
               onChange={(e) =>
                 setFormData((current) => ({
@@ -1061,7 +1130,9 @@ function renderIntegrationForm({
       {formData.platform === "ebay" && (
         <>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-clientId`}>Client ID</Label>
+            <Label htmlFor={`${mode}-clientId`}>
+              {pick("클라이언트 ID", "Client ID")}
+            </Label>
             <Input
               id={`${mode}-clientId`}
               value={formData.clientId}
@@ -1075,12 +1146,19 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-clientSecret`}>Client Secret</Label>
+            <Label htmlFor={`${mode}-clientSecret`}>
+              {pick("클라이언트 시크릿", "Client Secret")}
+            </Label>
             <Input
               id={`${mode}-clientSecret`}
               type="password"
               placeholder={
-                isEdit ? "Leave blank to keep the current secret" : undefined
+                isEdit
+                  ? pick(
+                      "현재 시크릿을 유지하려면 비워 두세요",
+                      "Leave blank to keep the current secret",
+                    )
+                  : undefined
               }
               value={formData.clientSecret}
               onChange={(e) =>
@@ -1093,10 +1171,15 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-ruName`}>RuName</Label>
+            <Label htmlFor={`${mode}-ruName`}>
+              {pick("리디렉션 URL 이름(RuName)", "RuName")}
+            </Label>
             <Input
               id={`${mode}-ruName`}
-              placeholder="e.g. YourApp__YourApp-AppName-PRD-abcdef"
+              placeholder={pick(
+                "예: YourApp__YourApp-AppName-PRD-abcdef",
+                "e.g. YourApp__YourApp-AppName-PRD-abcdef",
+              )}
               value={formData.ruName}
               onChange={(e) =>
                 setFormData((current) => ({
@@ -1107,7 +1190,7 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-environment`}>Environment</Label>
+            <Label htmlFor={`${mode}-environment`}>{pick("환경", "Environment")}</Label>
             <Select
               value={formData.environment}
               onValueChange={(value: "sandbox" | "production") =>
@@ -1115,11 +1198,11 @@ function renderIntegrationForm({
               }
             >
               <SelectTrigger id={`${mode}-environment`}>
-                <SelectValue placeholder="Select environment" />
+                <SelectValue placeholder={pick("환경 선택", "Select environment")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="production">production</SelectItem>
-                <SelectItem value="sandbox">sandbox</SelectItem>
+                <SelectItem value="production">{pick("운영", "Production")}</SelectItem>
+                <SelectItem value="sandbox">{pick("샌드박스", "Sandbox")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1128,7 +1211,9 @@ function renderIntegrationForm({
       {formData.platform === "walmart" && (
         <>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-clientId`}>Client ID</Label>
+            <Label htmlFor={`${mode}-clientId`}>
+              {pick("클라이언트 ID", "Client ID")}
+            </Label>
             <Input
               id={`${mode}-clientId`}
               value={formData.clientId}
@@ -1142,12 +1227,19 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-clientSecret`}>Client Secret</Label>
+            <Label htmlFor={`${mode}-clientSecret`}>
+              {pick("클라이언트 시크릿", "Client Secret")}
+            </Label>
             <Input
               id={`${mode}-clientSecret`}
               type="password"
               placeholder={
-                isEdit ? "Leave blank to keep the current secret" : undefined
+                isEdit
+                  ? pick(
+                      "현재 시크릿을 유지하려면 비워 두세요",
+                      "Leave blank to keep the current secret",
+                    )
+                  : undefined
               }
               value={formData.clientSecret}
               onChange={(e) =>
@@ -1160,7 +1252,7 @@ function renderIntegrationForm({
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor={`${mode}-environment`}>Environment</Label>
+            <Label htmlFor={`${mode}-environment`}>{pick("환경", "Environment")}</Label>
             <Select
               value={formData.environment}
               onValueChange={(value: "sandbox" | "production") =>
@@ -1168,11 +1260,11 @@ function renderIntegrationForm({
               }
             >
               <SelectTrigger id={`${mode}-environment`}>
-                <SelectValue placeholder="Select environment" />
+                <SelectValue placeholder={pick("환경 선택", "Select environment")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="production">production</SelectItem>
-                <SelectItem value="sandbox">sandbox</SelectItem>
+                <SelectItem value="production">{pick("운영", "Production")}</SelectItem>
+                <SelectItem value="sandbox">{pick("샌드박스", "Sandbox")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1181,8 +1273,10 @@ function renderIntegrationForm({
       {formData.platform !== "shopify" && (
         <Alert>
           <AlertDescription>
-            Connection info can be stored now. Automatic sync is still
-            implemented only for Shopify.
+            {pick(
+              "연결 정보를 저장할 수 있습니다. 자동 동기화 지원 범위는 플랫폼별로 다를 수 있습니다.",
+              "Connection information can be stored now. Automatic sync availability varies by platform.",
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -1190,62 +1284,96 @@ function renderIntegrationForm({
   );
 }
 
-function getDialogMeta(platform: IntegrationPlatform, mode: "add" | "edit") {
-  const action = mode === "add" ? "Connect" : "Edit";
+function getDialogMeta(
+  platform: IntegrationPlatform,
+  mode: "add" | "edit",
+  pick: (ko: string, en: string) => string,
+) {
+  const platformName =
+    platform === "shopify"
+      ? "Shopify"
+      : platform === "amazon"
+        ? "Amazon"
+        : platform === "walmart"
+          ? "Walmart"
+          : "eBay";
+  const title = pick(
+    `${platformName} 마켓플레이스 ${mode === "add" ? "연결" : "수정"}`,
+    `${mode === "add" ? "Connect" : "Edit"} ${platformName} Marketplace`,
+  );
 
   if (platform === "shopify") {
     return {
-      title: `${action} Shopify Market Place`,
-      description:
+      title,
+      description: pick(
+        mode === "add"
+          ? "판매 데이터를 자동으로 동기화하려면 Shopify 스토어 정보를 입력하세요."
+          : "Shopify 마켓플레이스 정보를 수정하세요. 기존 토큰을 유지하려면 토큰 입력란을 비워 두세요.",
         mode === "add"
           ? "Enter your Shopify store details to sync sales data automatically."
           : "Update your Shopify marketplace details. Leave the token blank to keep the current one.",
+      ),
     };
   }
 
   if (platform === "amazon") {
     return {
-      title: `${action} Amazon Market Place`,
-      description:
+      title,
+      description: pick(
+        mode === "add"
+          ? "Amazon 마켓플레이스 연결에 사용할 계정 정보를 입력하세요."
+          : "저장된 Amazon 마켓플레이스 계정 정보를 수정하세요. 기존 시크릿을 유지하려면 입력란을 비워 두세요.",
         mode === "add"
           ? "Store Amazon marketplace credentials so this marketplace can be connected next."
           : "Update the stored Amazon marketplace credentials. Leave the secret blank to keep the current one.",
+      ),
     };
   }
 
   if (platform === "walmart") {
     return {
-      title: `${action} Walmart Market Place`,
-      description:
+      title,
+      description: pick(
+        mode === "add"
+          ? "연결 확인을 위해 Walmart 마켓플레이스 API 계정 정보를 입력하세요."
+          : "Walmart 마켓플레이스 계정 정보를 수정하세요. 기존 시크릿을 유지하려면 입력란을 비워 두세요.",
         mode === "add"
           ? "Enter your Walmart Marketplace API credentials to enable connection checks."
           : "Update your Walmart Marketplace credentials. Leave the secret blank to keep the current value.",
+      ),
     };
   }
 
   return {
-    title: `${action} eBay Market Place`,
-    description:
+    title,
+    description: pick(
+      mode === "add"
+        ? "eBay 마켓플레이스 연결에 사용할 계정 정보를 입력하세요."
+        : "저장된 eBay 마켓플레이스 계정 정보를 수정하세요. 기존 값을 유지하려면 시크릿 입력란을 비워 두세요.",
       mode === "add"
         ? "Store eBay marketplace credentials so this marketplace can be connected next."
         : "Update the stored eBay marketplace credentials. Leave secret fields blank to keep the current values.",
+    ),
   };
 }
 
-function getIntegrationNamePlaceholder(platform: IntegrationPlatform) {
+function getIntegrationNamePlaceholder(
+  platform: IntegrationPlatform,
+  pick: (ko: string, en: string) => string,
+) {
   if (platform === "shopify") {
-    return "My Shopify Store";
+    return pick("내 Shopify 스토어", "My Shopify Store");
   }
 
   if (platform === "amazon") {
-    return "My Amazon Marketplace";
+    return pick("내 Amazon 마켓플레이스", "My Amazon Marketplace");
   }
 
   if (platform === "walmart") {
-    return "My Walmart Marketplace";
+    return pick("내 Walmart 마켓플레이스", "My Walmart Marketplace");
   }
 
-  return "My eBay Shop";
+  return pick("내 eBay 스토어", "My eBay Shop");
 }
 
 function buildFormStateFromIntegration(

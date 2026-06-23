@@ -18,6 +18,9 @@ const ContainerSaveSchema = z.object({
   origin: z.string().trim().optional(),
   destination: z.string().trim().optional(),
   note: z.string().trim().optional(),
+  estLoading: z.string().trim().optional(),
+  etdNgb: z.string().trim().optional(),
+  etaLaxLgb: z.string().trim().optional(),
   items: z.array(z.object({
     sku: z.string().trim().min(1),
     qty: z.number().int().positive(),
@@ -34,6 +37,9 @@ const ContainerDetailsSchema = z.object({
   factory: z.string().trim().optional(),
   destination: z.string().trim().optional(),
   note: z.string().trim().optional(),
+  estLoading: z.string().trim().optional(),
+  etdNgb: z.string().trim().optional(),
+  etaLaxLgb: z.string().trim().optional(),
 }).strict();
 
 function getErrorMessage(error: unknown): string {
@@ -61,6 +67,7 @@ export async function GET(request: NextRequest) {
     const city = searchParams.get("city")?.trim() ?? "";
     const includeReceived = searchParams.get("includeReceived") === "true";
     const includeDetails = searchParams.get("includeDetails") === "true";
+    const timelineView = searchParams.get("view") === "timeline";
     const product = searchParams.get("product")?.trim().toLowerCase() ?? "";
     const categoryCode = product === "fm" ? "FM" : product === "cc" ? "CC" : product === "sc" ? "SC" : null;
 
@@ -121,6 +128,9 @@ export async function GET(request: NextRequest) {
          c.origin,
          c.dest_warehouse,
          c.note,
+         c.est_loading_date,
+         c.etd_ngb_date,
+         c.eta_lax_lgb_date,
          COALESCE(item_summary.item_count, 0)::int AS item_count,
          COALESCE(item_summary.total_qty, 0)::int AS total_qty,
          COALESCE(item_summary.total_cbm, 0)::text AS total_cbm,
@@ -142,7 +152,7 @@ export async function GET(request: NextRequest) {
                  CASE WHEN fc_container_items.qty > 0 THEN fc_container_items.total_cbm / fc_container_items.qty ELSE 0 END,
                  0
                ),
-               'allocations', COALESCE((
+               ${timelineView ? `'categoryCode', p_item.category_code` : `'allocations', COALESCE((
                  SELECT json_agg(
                    json_build_object(
                      'id', allocation.id::text,
@@ -158,7 +168,7 @@ export async function GET(request: NextRequest) {
                  JOIN shipcore.fc_available_stock stock ON stock.id = allocation.source_stock_id
                  WHERE allocation.container_id = fc_container_items.container_id
                    AND stock.master_sku = fc_container_items.master_sku
-               ), '[]'::json)
+               ), '[]'::json)`}
              )
              ORDER BY fc_container_items.id
            ) AS items
@@ -176,6 +186,9 @@ export async function GET(request: NextRequest) {
       containerNumber: row.container_number as string,
       etaDate: serializeDate(row.eta_date),
       actualArrivalDate: serializeDate(row.actual_arrival_date),
+      estLoadingDate: serializeDate(row.est_loading_date),
+      etdNgbDate: serializeDate(row.etd_ngb_date),
+      etaLaxLgbDate: serializeDate(row.eta_lax_lgb_date),
       status: row.status as string,
       cbmCapacity: Number(row.cbm_capacity ?? 0),
       factoryName: row.factory_name as string | null,
@@ -192,6 +205,7 @@ export async function GET(request: NextRequest) {
               sku?: string;
               qty?: number;
               cbm?: string | number;
+              categoryCode?: string | null;
               allocations?: Array<{
                 id: string;
                 stockId: string;
@@ -205,11 +219,16 @@ export async function GET(request: NextRequest) {
               sku: item.sku ?? "",
               qty: Number(item.qty ?? 0),
               cbm: Number(item.cbm ?? 0),
-              allocations: (item.allocations ?? []).map((allocation) => ({
-                ...allocation,
-                qty: Number(allocation.qty ?? 0),
-                cbm: Number(allocation.cbm ?? 0),
-              })),
+              ...(timelineView ? { categoryCode: item.categoryCode ?? null } : {}),
+              ...(!timelineView
+                ? {
+                    allocations: (item.allocations ?? []).map((allocation) => ({
+                      ...allocation,
+                      qty: Number(allocation.qty ?? 0),
+                      cbm: Number(allocation.cbm ?? 0),
+                    })),
+                  }
+                : {}),
             })),
           }
         : {}),
@@ -252,8 +271,8 @@ export async function POST(request: NextRequest) {
 
     const containerResult = await client.query<{ id: string }>(
       `INSERT INTO shipcore.fc_containers
-         (container_number, eta_date, status, cbm_capacity, factory_name, origin, dest_warehouse, note, created_at, updated_at)
-       VALUES ($1, $2::date, $3::shipcore.fc_container_status, $4::numeric, $5, $6, $7, $8, NOW(), NOW())
+         (container_number, eta_date, status, cbm_capacity, factory_name, origin, dest_warehouse, note, est_loading_date, etd_ngb_date, eta_lax_lgb_date, created_at, updated_at)
+       VALUES ($1, $2::date, $3::shipcore.fc_container_status, $4::numeric, $5, $6, $7, $8, $9::date, $10::date, $11::date, NOW(), NOW())
        RETURNING id::text`,
       [
         validated.number.trim(),
@@ -264,6 +283,9 @@ export async function POST(request: NextRequest) {
         validated.origin?.trim() || null,
         validated.destination?.trim() || null,
         validated.note?.trim() || null,
+        validated.estLoading?.trim() || null,
+        validated.etdNgb?.trim() || null,
+        validated.etaLaxLgb?.trim() || null,
       ]
     );
     const containerId = containerResult.rows[0].id;
@@ -383,6 +405,9 @@ export async function PATCH(request: NextRequest) {
              factory_name = $6,
              dest_warehouse = $7,
              note = $8,
+             est_loading_date = $9::date,
+             etd_ngb_date = $10::date,
+             eta_lax_lgb_date = $11::date,
              updated_at = NOW()
          WHERE id = $1::bigint
          RETURNING id`,
@@ -395,6 +420,9 @@ export async function PATCH(request: NextRequest) {
           details.factory || null,
           details.destination || null,
           details.note || null,
+          details.estLoading?.trim() || null,
+          details.etdNgb?.trim() || null,
+          details.etaLaxLgb?.trim() || null,
         ]
       );
 
@@ -475,6 +503,9 @@ export async function PATCH(request: NextRequest) {
            origin = $7,
            dest_warehouse = $8,
            note = $9,
+           est_loading_date = $10::date,
+           etd_ngb_date = $11::date,
+           eta_lax_lgb_date = $12::date,
            updated_at = NOW()
        WHERE id = $1::bigint`,
       [
@@ -487,6 +518,9 @@ export async function PATCH(request: NextRequest) {
         validated.origin?.trim() || null,
         validated.destination?.trim() || null,
         validated.note?.trim() || null,
+        validated.estLoading?.trim() || null,
+        validated.etdNgb?.trim() || null,
+        validated.etaLaxLgb?.trim() || null,
       ]
     );
 

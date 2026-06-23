@@ -20,6 +20,7 @@ interface ContainerItem {
   sku: string;
   qty: number;
   cbm: number;
+  categoryCode: string | null;
 }
 
 type SkuImpactLevel = "critical" | "warning" | "ok" | "unknown";
@@ -62,6 +63,7 @@ interface ContainerApiItem {
   sku?: unknown;
   qty?: unknown;
   cbm?: unknown;
+  categoryCode?: unknown;
 }
 
 interface ContainerApiRow {
@@ -85,6 +87,61 @@ interface MonthSegment {
   label: string;
   widthPct: number;
   isCurrent: boolean;
+}
+
+const TIMELINE_CACHE_KEY = "container-timeline:data:v1";
+const TIMELINE_CACHE_TTL_MS = 60_000;
+let timelineMemoryCache: { containers: Container[]; cachedAt: number } | null = null;
+const planningRowsCache = new Map<string, Record<string, DemandRow>>();
+const planningRowsRequests = new Map<string, Promise<Record<string, DemandRow>>>();
+
+function mapTimelineContainers(rows: ContainerApiRow[]): Container[] {
+  return rows.map((row) => ({
+    id: String(row.id ?? ""),
+    containerNumber: String(row.containerNumber ?? ""),
+    etaDate: row.etaDate ? String(row.etaDate) : null,
+    actualArrivalDate: row.actualArrivalDate ? String(row.actualArrivalDate) : null,
+    status: normalizeStatus(String(row.status ?? "")),
+    cbmCapacity: Number(row.cbmCapacity ?? 0),
+    factoryName: row.factoryName ? String(row.factoryName) : null,
+    origin: row.origin ? String(row.origin) : null,
+    destWarehouse: row.destWarehouse ? String(row.destWarehouse) : null,
+    note: row.note ? String(row.note) : null,
+    itemCount: Number(row.itemCount ?? 0),
+    totalQty: Number(row.totalQty ?? 0),
+    totalCbm: Number(row.totalCbm ?? 0),
+    items: (row.items ?? []).map((item) => ({
+      id: String(item.id ?? ""),
+      sku: String(item.sku ?? ""),
+      qty: Number(item.qty ?? 0),
+      cbm: Number(item.cbm ?? 0),
+      categoryCode: item.categoryCode ? String(item.categoryCode).toUpperCase() : null,
+    })),
+  }));
+}
+
+function getCachedTimelineContainers(): Container[] | null {
+  if (timelineMemoryCache) return timelineMemoryCache.containers;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(TIMELINE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { containers?: Container[]; cachedAt?: number };
+    if (!Array.isArray(parsed.containers) || typeof parsed.cachedAt !== "number") return null;
+    timelineMemoryCache = { containers: parsed.containers, cachedAt: parsed.cachedAt };
+    return parsed.containers;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedTimelineContainers(containers: Container[]) {
+  timelineMemoryCache = { containers, cachedAt: Date.now() };
+  try {
+    window.sessionStorage.setItem(TIMELINE_CACHE_KEY, JSON.stringify(timelineMemoryCache));
+  } catch {
+    // Memory cache still provides fast client-side revisits.
+  }
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -206,11 +263,14 @@ function normalizeStatus(raw: string): ContainerStatus {
   return "draft";
 }
 
-function productKeyForTimelineSku(sku: string, row?: DemandRow): TimelineProductKey | null {
+function productKeyForTimelineSku(item: ContainerItem, row?: DemandRow): TimelineProductKey | null {
+  if (item.categoryCode === "SC" || item.categoryCode === "CC" || item.categoryCode === "FM") {
+    return item.categoryCode.toLowerCase() as TimelineProductKey;
+  }
   if (row?.category_code === "SC" || row?.category_code === "CC" || row?.category_code === "FM") {
     return row.category_code.toLowerCase() as TimelineProductKey;
   }
-  const normalized = sku.toUpperCase();
+  const normalized = item.sku.toUpperCase();
   if (normalized.startsWith("CC-")) return "cc";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "fm";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "sc";
@@ -244,9 +304,10 @@ function buildMonths(rangeStart: Date, totalDays: number): MonthSegment[] {
 
 export function ContainerTimelinePage() {
   const { pick } = useI18n();
-  const [containers, setContainers] = useState<Container[]>([]);
+  const [containers, setContainers] = useState<Container[]>(() => timelineMemoryCache?.containers ?? []);
   const [planningRowsBySku, setPlanningRowsBySku] = useState<Record<string, DemandRow>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !timelineMemoryCache);
+  const [planningLoading, setPlanningLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Container | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -260,47 +321,37 @@ export function ContainerTimelinePage() {
 
   useEffect(() => {
     let cancelled = false;
+    const cachedContainers = getCachedTimelineContainers();
+    if (cachedContainers) {
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setContainers(cachedContainers);
+          setLoading(false);
+        }
+      });
+    }
 
-    Promise.all([
-      fetch(apiPath("/api/containers?includeDetails=true")).then((response) => response.json() as Promise<{
+    const cacheIsFresh = timelineMemoryCache
+      ? Date.now() - timelineMemoryCache.cachedAt < TIMELINE_CACHE_TTL_MS
+      : false;
+    if (cacheIsFresh) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    fetch(apiPath("/api/containers?includeDetails=true&view=timeline"), { cache: "no-store" })
+      .then((response) => response.json() as Promise<{
         success: boolean;
         data?: ContainerApiRow[];
         error?: string;
-      }>),
-      fetch(apiPath("/api/planning/dashboard?mode=link&includeDrafts=1&includeContainers=1")).then((response) => response.json() as Promise<{
-        success: boolean;
-        data?: DemandPlanningData;
-        error?: string;
-      }>),
-    ])
-      .then(([containerJson, planningJson]) => {
+      }>)
+      .then((containerJson) => {
         if (cancelled) return;
         if (!containerJson.success) throw new Error(containerJson.error ?? "Failed to load containers");
-        if (!planningJson.success || !planningJson.data) throw new Error(planningJson.error ?? "Failed to load planning data");
-        setContainers(
-          (containerJson.data ?? []).map((row) => ({
-            id: String(row.id ?? ""),
-            containerNumber: String(row.containerNumber ?? ""),
-            etaDate: row.etaDate ? String(row.etaDate) : null,
-            actualArrivalDate: row.actualArrivalDate ? String(row.actualArrivalDate) : null,
-            status: normalizeStatus(String(row.status ?? "")),
-            cbmCapacity: Number(row.cbmCapacity ?? 0),
-            factoryName: row.factoryName ? String(row.factoryName) : null,
-            origin: row.origin ? String(row.origin) : null,
-            destWarehouse: row.destWarehouse ? String(row.destWarehouse) : null,
-            note: row.note ? String(row.note) : null,
-            itemCount: Number(row.itemCount ?? 0),
-            totalQty: Number(row.totalQty ?? 0),
-            totalCbm: Number(row.totalCbm ?? 0),
-            items: (row.items ?? []).map((item) => ({
-              id: String(item.id ?? ""),
-              sku: String(item.sku ?? ""),
-              qty: Number(item.qty ?? 0),
-              cbm: Number(item.cbm ?? 0),
-            })),
-          }))
-        );
-        setPlanningRowsBySku(Object.fromEntries(planningJson.data.rows.map((row) => [row.sku, row])));
+        const nextContainers = mapTimelineContainers(containerJson.data ?? []);
+        setContainers(nextContainers);
+        setCachedTimelineContainers(nextContainers);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error");
@@ -313,6 +364,77 @@ export function ContainerTimelinePage() {
       cancelled = true;
     };
   }, []);
+
+  const selectedPlanningScope = useMemo(() => {
+    if (!selected) return null;
+    const categories = new Set(
+      selected.items
+        .map((item) => item.categoryCode)
+        .filter((category): category is string => category === "SC" || category === "CC" || category === "FM"),
+    );
+    return categories.size === 1 ? Array.from(categories)[0] : "all";
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selectedPlanningScope) return;
+    let cancelled = false;
+    const cachedRows = planningRowsCache.get(selectedPlanningScope);
+    if (cachedRows) {
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setPlanningRowsBySku(cachedRows);
+          setPlanningLoading(false);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setPlanningRowsBySku({});
+        setPlanningLoading(true);
+      }
+    });
+    const productParam = selectedPlanningScope === "all" ? "" : `&product=${selectedPlanningScope}`;
+    let request = planningRowsRequests.get(selectedPlanningScope);
+    if (!request) {
+      request = fetch(
+        apiPath(`/api/planning/dashboard?mode=link&includeDrafts=1&includeContainers=1${productParam}`),
+      )
+        .then((response) => response.json() as Promise<{
+          success: boolean;
+          data?: DemandPlanningData;
+          error?: string;
+        }>)
+        .then((planningJson) => {
+          if (!planningJson.success || !planningJson.data) {
+            throw new Error(planningJson.error ?? "Failed to load planning data");
+          }
+          const rows = Object.fromEntries(planningJson.data.rows.map((row) => [row.sku, row]));
+          planningRowsCache.set(selectedPlanningScope, rows);
+          return rows;
+        })
+        .finally(() => planningRowsRequests.delete(selectedPlanningScope));
+      planningRowsRequests.set(selectedPlanningScope, request);
+    }
+
+    request
+      .then((rows) => {
+        if (!cancelled) setPlanningRowsBySku(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setPlanningRowsBySku({});
+      })
+      .finally(() => {
+        if (!cancelled) setPlanningLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlanningScope]);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -359,7 +481,7 @@ export function ContainerTimelinePage() {
     for (const container of containers) {
       const keys = new Set<TimelineProductKey>();
       for (const item of container.items) {
-        const key = productKeyForTimelineSku(item.sku, planningRowsBySku[item.sku]);
+        const key = productKeyForTimelineSku(item, planningRowsBySku[item.sku]);
         if (key) keys.add(key);
       }
       result.set(container.id, Array.from(keys));
@@ -435,8 +557,28 @@ export function ContainerTimelinePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
-        {pick("로딩 중...", "Loading...")}
+      <div className="flex flex-col gap-4" aria-busy="true" aria-label={pick("컨테이너 일정 로딩 중", "Loading container timeline")}>
+        <div className="flex items-start gap-2">
+          <CalendarRange className="mt-1 h-5 w-5 shrink-0" />
+          <div>
+            <h1 className="text-lg font-bold text-[#1a1917]">{pick("컨테이너 일정", "Container Timeline")}</h1>
+            <p className="text-sm text-muted-foreground">{pick("입고 예정 컨테이너 · ETA 기준 Gantt 뷰", "Inbound containers · Gantt view by ETA")}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="h-8 w-[280px] animate-pulse rounded-lg bg-stone-200" />
+          <div className="h-8 w-64 animate-pulse rounded-lg bg-stone-200" />
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-stone-200" />
+        </div>
+        <div className="overflow-hidden rounded-xl border border-[#e2dfd8] bg-white">
+          <div className="h-10 animate-pulse border-b border-[#e2dfd8] bg-stone-100" />
+          {[0, 1, 2, 3].map((row) => (
+            <div key={row} className="flex h-16 items-center gap-4 border-b border-[#eee] px-4 last:border-0">
+              <div className="h-4 w-32 animate-pulse rounded bg-stone-200" />
+              <div className="h-5 flex-1 animate-pulse rounded-full bg-blue-100" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -801,6 +943,7 @@ export function ContainerTimelinePage() {
           key={selected.id}
           container={selected}
           planningRowsBySku={planningRowsBySku}
+          planningLoading={planningLoading}
           skuSearchQuery={searchQuery}
           onClose={() => setSelected(null)}
         />
@@ -814,11 +957,13 @@ export function ContainerTimelinePage() {
 function ContainerDetailDrawer({
   container: c,
   planningRowsBySku,
+  planningLoading,
   skuSearchQuery,
   onClose,
 }: {
   container: Container;
   planningRowsBySku: Record<string, DemandRow>;
+  planningLoading: boolean;
   skuSearchQuery: string;
   onClose: () => void;
 }) {
@@ -836,7 +981,7 @@ function ContainerDetailDrawer({
   const cbmUsedPct = c.cbmCapacity > 0 ? Math.min(100, (totalCbm / c.cbmCapacity) * 100) : 0;
   const detailProductKeys = Array.from(new Set(
     c.items
-      .map((item) => productKeyForTimelineSku(item.sku, planningRowsBySku[item.sku]))
+      .map((item) => productKeyForTimelineSku(item, planningRowsBySku[item.sku]))
       .filter((key): key is TimelineProductKey => key !== null),
   ));
   const skuImpacts = c.items.map((item) => buildSkuImpact(item, c.containerNumber, c.etaDate, planningRowsBySku[item.sku]));
@@ -964,6 +1109,12 @@ function ContainerDetailDrawer({
             </button>
           </div>
         </div>
+
+        {planningLoading && (
+          <div className="h-1 shrink-0 overflow-hidden bg-blue-100">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-[#1a5cdb]" />
+          </div>
+        )}
 
         {/* Scrollable body */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

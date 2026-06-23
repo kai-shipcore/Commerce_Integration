@@ -27,6 +27,9 @@ export interface MockContainer {
   number: string;
   poNumbers: string[];
   eta: string;
+  estLoadingDate?: string;
+  etdNgbDate?: string;
+  etaLaxLgbDate?: string;
   status: ContainerStatus;
   cbmCapacity: number;
   factory: string;
