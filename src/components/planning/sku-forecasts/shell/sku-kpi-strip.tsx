@@ -1,5 +1,5 @@
 import type { DemandRow } from "@/types/demand-planning";
-import { daysUntil, formatNumber, type SkuMasterMeta } from "../types";
+import { formatNumber, type SkuMasterMeta } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
 
 export function SkuKpiStrip({
@@ -15,11 +15,11 @@ export function SkuKpiStrip({
 }) {
   const inbound = sku.total_inbound_qty ?? 0;
   const projected = sku.total_stock + inbound + Math.min(sku.back, 0);
+  const stockOnlyDays = sku.total_avg_curr > 0 ? sku.total_stock / sku.total_avg_curr : null;
   const projectedDays = sku.total_avg_curr > 0 ? projected / sku.total_avg_curr : null;
   const projectedSod = projectedDays === null ? null : addDays(new Date(), Math.ceil(projectedDays));
   // sku.sod is current-stock-only and now uses the same total_avg_curr shown in Daily Average.
   const currentOnlySod = sku.sod ?? null;
-  const currentOnlyDays = currentOnlySod ? daysUntil(currentOnlySod) : null;
   const inboundSub = includeDraftContainers
     ? pick(language, "Draft 포함", "Draft included")
     : sku.next_eta
@@ -41,8 +41,8 @@ export function SkuKpiStrip({
   ];
 
   const invLifeLabel = pick(language, "재고 유지일", "Inv. Life");
-  const showCurrentOnly = inbound > 0 && currentOnlyDays !== null && currentOnlySod !== null;
-  const currentOnlyUrgent = currentOnlyDays !== null && currentOnlyDays < 60;
+  const showCurrentOnly = inbound > 0 && stockOnlyDays !== null && currentOnlySod !== null;
+  const currentOnlyUrgent = stockOnlyDays !== null && stockOnlyDays < 60;
 
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -57,14 +57,14 @@ export function SkuKpiStrip({
             <div className="mt-1 flex-1 text-xs text-muted-foreground">{item.sub}</div>
             {isInvLife && showCurrentOnly ? (
               <div className={`mt-2 border-t pt-1.5 text-xs font-medium ${
-                (currentOnlyDays ?? 999) < 30
+                (stockOnlyDays ?? 999) < 30
                   ? "text-red-600 dark:text-red-400"
                   : currentOnlyUrgent
                     ? "text-amber-600 dark:text-amber-400"
                     : "text-muted-foreground"
               }`}>
                 {currentOnlyUrgent ? "⚠ " : ""}
-                {pick(language, "현재 재고만", "Stock only")}: {formatNumber(currentOnlyDays!, 1)}d ({currentOnlySod})
+                {pick(language, "현재 재고만", "Stock only")}: {formatNumber(stockOnlyDays!, 1)}d ({currentOnlySod})
               </div>
             ) : isInvLife ? (
               <div className="mt-2 border-t pt-1.5 text-xs text-transparent select-none">-</div>

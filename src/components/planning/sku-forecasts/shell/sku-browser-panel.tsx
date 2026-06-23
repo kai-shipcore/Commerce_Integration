@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
-import { daysUntil, formatNumber, getUrgency, productLabels, recommendedContainerQty, type ProductKey } from "../types";
+import { formatNumber, getUrgency, productLabels, recommendedContainerQty, stockOnlyDays, type ProductKey } from "../types";
 import { pick, productLabel, type SkuForecastLanguage } from "../language";
 
 type SortKey = "sku" | "stock" | "avg" | "sod" | "order";
@@ -165,8 +165,8 @@ export function SkuBrowserPanel({
       } else if (sortKey === "avg") {
         result = left.total_avg_curr - right.total_avg_curr;
       } else if (sortKey === "sod") {
-        const leftDays = daysUntil(left.sod);
-        const rightDays = daysUntil(right.sod);
+        const leftDays = stockOnlyDays(left);
+        const rightDays = stockOnlyDays(right);
         result = (leftDays ?? Number.POSITIVE_INFINITY) - (rightDays ?? Number.POSITIVE_INFINITY);
       } else {
         result = recommendedContainerQty(left, undefined, targetInventoryDays) - recommendedContainerQty(right, undefined, targetInventoryDays);
@@ -314,7 +314,7 @@ export function SkuBrowserPanel({
             {virtualRows.map((row) => {
               const selected = selectedSkuId === row.sku;
               const urgency = getUrgency(row);
-              const days = daysUntil(row.sod);
+              const days = stockOnlyDays(row);
               const recommendedQty = recommendedContainerQty(row, undefined, targetInventoryDays);
               return (
                 <button
@@ -334,7 +334,7 @@ export function SkuBrowserPanel({
                     {formatNumber(row.total_avg_curr, 2)}
                   </div>
                   <span className={`justify-self-end whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${urgencyStyles[urgency]}`}>
-                    {days === null ? "-" : `${days}d`}
+                    {days === null ? "-" : `${formatNumber(days, 1)}d`}
                   </span>
                   <div className={`whitespace-nowrap text-right font-mono text-xs font-semibold ${recommendedQty > 0 ? "text-violet-700 dark:text-violet-300" : "text-muted-foreground"}`}>
                     {recommendedQty > 0 ? `+${formatNumber(recommendedQty)}` : "-"}

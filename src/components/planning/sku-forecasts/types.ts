@@ -99,16 +99,23 @@ export function formatNumber(value: number | null | undefined, digits = 0): stri
 export function daysUntil(dateValue: string | null | undefined): number | null {
   if (!dateValue) return null;
   const today = new Date();
-  const date = new Date(dateValue);
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const date = year && month && day
+    ? new Date(year, month - 1, day)
+    : new Date(dateValue);
   if (Number.isNaN(date.getTime())) return null;
   today.setHours(0, 0, 0, 0);
   date.setHours(0, 0, 0, 0);
   return Math.round((date.getTime() - today.getTime()) / 86400000);
 }
 
+export function stockOnlyDays(row: DemandRow): number | null {
+  return row.total_avg_curr > 0 ? row.total_stock / row.total_avg_curr : null;
+}
+
 export function getUrgency(row: DemandRow): "critical" | "watch" | "healthy" {
   if ((row.back ?? 0) < 0) return "critical";
-  const days = daysUntil(row.sod);
+  const days = stockOnlyDays(row);
   if (days !== null && days <= 30) return "critical";
   if (days !== null && days <= 60) return "watch";
   return "healthy";
