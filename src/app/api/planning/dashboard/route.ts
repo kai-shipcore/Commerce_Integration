@@ -542,7 +542,7 @@ export async function GET(req: Request) {
       const invLife   = inventoryLifeDays(carryover, dailyRate, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
       const asOfMs    = new Date(todayStr).getTime();
       const sod       = (() => {
-        const rate = total_avg_real;
+        const rate = total_avg_curr;
         if (!rate) return null;
         const days = Math.floor((r.total_stock as number) / rate);
         const d = new Date(asOfMs);
@@ -710,7 +710,7 @@ export async function GET(req: Request) {
       const tAvgReal = Math.max(0.03, avgReal + eReal + fbaReal);
       const tAvgCurr = Math.max(0.03, avgCurr + eCurr + fbaCurr);
       const totalStk  = p.total_stock;
-      const sodDays   = tAvgReal > 0 ? Math.floor(totalStk / tAvgReal) : null;
+      const sodDays   = tAvgCurr > 0 ? Math.floor(totalStk / tAvgCurr) : null;
       const sodDate   = sodDays !== null ? (() => { const d = new Date(todayStr); d.setDate(d.getDate() + sodDays); return d.toISOString().slice(0, 10); })() : null;
       const availQtyP = totalStk + p.back;
       const carryoverP = Math.max(0, availQtyP);

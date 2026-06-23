@@ -17,7 +17,7 @@ export function SkuKpiStrip({
   const projected = sku.total_stock + inbound + Math.min(sku.back, 0);
   const projectedDays = sku.total_avg_curr > 0 ? projected / sku.total_avg_curr : null;
   const projectedSod = projectedDays === null ? null : addDays(new Date(), Math.ceil(projectedDays));
-  // sku.sod is already current-stock-only (no inbound) — reuse it to avoid discrepancy
+  // sku.sod is current-stock-only and now uses the same total_avg_curr shown in Daily Average.
   const currentOnlySod = sku.sod ?? null;
   const currentOnlyDays = currentOnlySod ? daysUntil(currentOnlySod) : null;
   const inboundSub = includeDraftContainers
