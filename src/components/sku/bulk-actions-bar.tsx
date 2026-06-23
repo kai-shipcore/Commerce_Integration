@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Trash2, Download, Loader2, AlertTriangle } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface SKUData {
   id: string;
@@ -36,6 +37,7 @@ export function BulkActionsBar({
   onDelete,
   onExport,
 }: BulkActionsBarProps) {
+  const { pick } = useI18n();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,14 +56,14 @@ export function BulkActionsBar({
       const data = await res.json();
 
       if (!data.success) {
-        setError(data.error || "Failed to delete SKUs");
+        setError(data.error || pick("SKU 삭제에 실패했습니다.", "Failed to delete SKUs"));
         return;
       }
 
       setDeleteDialogOpen(false);
       onDelete();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(err instanceof Error ? err.message : pick("오류가 발생했습니다.", "An error occurred"));
     } finally {
       setLoading(false);
     }

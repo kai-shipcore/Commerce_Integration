@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Database, CheckCircle2, XCircle } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface BackfillStats {
   skus: {
@@ -31,6 +32,7 @@ interface BackfillResult {
 }
 
 export function MasterSkuBackfillBanner() {
+  const { pick } = useI18n();
   const [stats, setStats] = useState<BackfillStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -71,10 +73,10 @@ export function MasterSkuBackfillBanner() {
         // Auto-hide after 5 seconds
         setTimeout(() => setComplete(false), 5000);
       } else {
-        setError(data.error || "Backfill failed");
+        setError(data.error || pick("Master SKU 백필에 실패했습니다.", "Backfill failed"));
       }
     } catch (err: any) {
-      setError(err.message || "Backfill failed");
+      setError(err.message || pick("Master SKU 백필에 실패했습니다.", "Backfill failed"));
     } finally {
       setRunning(false);
     }

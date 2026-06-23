@@ -67,6 +67,13 @@ export function HomeDashboard({
   allowedHrefs: string[];
 }) {
   const { pick } = useI18n();
+  const localizedQuickLinks = useMemo(
+    () => links.map((link) => ({
+      ...link,
+      label: link.labelKo && link.labelEn ? pick(link.labelKo, link.labelEn) : link.label,
+    })),
+    [links, pick]
+  );
 
   const CATEGORY_TABS = useMemo(() => [
     { key: "fm" as CategoryKey, label: pick("플로어 매트", "Floor Mat") },
@@ -440,7 +447,7 @@ export function HomeDashboard({
           <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {pick("빠른 링크", "Quick Links")}
           </h2>
-          <QuickLinks links={links} onNavigate={canOpenHref} />
+          <QuickLinks links={localizedQuickLinks} onNavigate={canOpenHref} />
         </div>
       )}
     </div>

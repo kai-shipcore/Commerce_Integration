@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { ShoppingCart } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface SalesFormData {
   skuId: string;
@@ -51,6 +52,7 @@ interface SalesFormDialogProps {
 }
 
 export function SalesFormDialog({ onSuccess, trigger }: SalesFormDialogProps) {
+  const { pick } = useI18n();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [skus, setSKUs] = useState<SKU[]>([]);
@@ -114,10 +116,10 @@ export function SalesFormDialog({ onSuccess, trigger }: SalesFormDialogProps) {
         });
         onSuccess?.();
       } else {
-        alert(`Error: ${result.error}`);
+        alert(pick(`오류: ${result.error}`, `Error: ${result.error}`));
       }
-    } catch (error) {
-      alert("Failed to create sales record");
+    } catch {
+      alert(pick("판매 기록 생성에 실패했습니다.", "Failed to create sales record"));
     } finally {
       setLoading(false);
     }

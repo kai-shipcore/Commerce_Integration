@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Moon, Sun } from "lucide-react";
+import { Loader2, Moon, Sun, Eye, EyeOff } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
@@ -26,7 +26,14 @@ export default function SettingsPage() {
     email: "",
     role: "",
     createdAt: "",
+    hasPassword: false,
   });
+
+  const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
+  const [showPasswords, setShowPasswords] = useState({ current: false, next: false, confirm: false });
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -45,7 +52,7 @@ export default function SettingsPage() {
         const profileResult = await profileResponse.json();
 
         if (!profileResponse.ok || !profileResult.success) {
-          throw new Error(profileResult.error || "Failed to load profile");
+          throw new Error(profileResult.error || pick("프로필을 불러오지 못했습니다.", "Failed to load profile"));
         }
 
         setProfile({
@@ -53,6 +60,7 @@ export default function SettingsPage() {
           email: profileResult.data?.email || "",
           role: profileResult.data?.role || "user",
           createdAt: profileResult.data?.createdAt || "",
+          hasPassword: !!profileResult.data?.hasPassword,
         });
         setError(null);
       } catch (fetchError: unknown) {
@@ -63,7 +71,7 @@ export default function SettingsPage() {
     };
 
     void loadSettings();
-  }, [status]);
+  }, [pick, status]);
 
   const saveProfile = async () => {
     setSavingProfile(true);
@@ -81,7 +89,7 @@ export default function SettingsPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to save profile");
+        throw new Error(result.error || pick("프로필 저장에 실패했습니다.", "Failed to save profile"));
       }
 
       setProfile((current) => ({
@@ -101,6 +109,38 @@ export default function SettingsPage() {
       setError(getErrorMessage(saveError));
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const changePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(false);
+
+    if (passwords.next !== passwords.confirm) {
+      setPasswordError(pick("새 비밀번호가 일치하지 않습니다.", "New passwords do not match"));
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const response = await fetch(apiPath("/api/settings/password"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: passwords.current, newPassword: passwords.next }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || pick("비밀번호 변경에 실패했습니다.", "Failed to change password"));
+      }
+
+      setPasswordSuccess(true);
+      setPasswords({ current: "", next: "", confirm: "" });
+    } catch (err: unknown) {
+      setPasswordError(getErrorMessage(err));
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -226,6 +266,108 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {profile.hasPassword && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{pick("비밀번호 변경", "Change Password")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {passwordSuccess && (
+                    <Alert className="mb-4 border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+                      <AlertDescription>
+                        {pick("비밀번호가 성공적으로 변경되었습니다.", "Password changed successfully.")}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {passwordError && (
+                    <Alert variant="destructive" className="mb-4">
+                      <AlertDescription>{passwordError}</AlertDescription>
+                    </Alert>
+                  )}
+                  <form onSubmit={(e) => void changePassword(e)} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="current-password">{pick("현재 비밀번호", "Current Password")}</Label>
+                      <div className="relative">
+                        <Input
+                          id="current-password"
+                          type={showPasswords.current ? "text" : "password"}
+                          value={passwords.current}
+                          disabled={savingPassword}
+                          onChange={(e) => setPasswords((p) => ({ ...p, current: e.target.value }))}
+                          required
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswords((s) => ({ ...s, current: !s.current }))}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showPasswords.current ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-password">{pick("새 비밀번호", "New Password")}</Label>
+                      <div className="relative">
+                        <Input
+                          id="new-password"
+                          type={showPasswords.next ? "text" : "password"}
+                          value={passwords.next}
+                          disabled={savingPassword}
+                          onChange={(e) => setPasswords((p) => ({ ...p, next: e.target.value }))}
+                          required
+                          minLength={8}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswords((s) => ({ ...s, next: !s.next }))}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showPasswords.next ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{pick("최소 8자 이상", "Minimum 8 characters")}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm-password">{pick("새 비밀번호 확인", "Confirm New Password")}</Label>
+                      <div className="relative">
+                        <Input
+                          id="confirm-password"
+                          type={showPasswords.confirm ? "text" : "password"}
+                          value={passwords.confirm}
+                          disabled={savingPassword}
+                          onChange={(e) => setPasswords((p) => ({ ...p, confirm: e.target.value }))}
+                          required
+                          minLength={8}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswords((s) => ({ ...s, confirm: !s.confirm }))}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          tabIndex={-1}
+                        >
+                          {showPasswords.confirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button type="submit" disabled={savingPassword}>
+                        {savingPassword ? (
+                          <><Loader2 className="mr-2 size-4 animate-spin" />{pick("변경 중...", "Saving...")}</>
+                        ) : (
+                          pick("비밀번호 변경", "Change Password")
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
       </div>

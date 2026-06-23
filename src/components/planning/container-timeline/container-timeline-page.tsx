@@ -348,13 +348,13 @@ export function ContainerTimelinePage() {
       }>)
       .then((containerJson) => {
         if (cancelled) return;
-        if (!containerJson.success) throw new Error(containerJson.error ?? "Failed to load containers");
+        if (!containerJson.success) throw new Error(containerJson.error ?? pick("컨테이너를 불러오지 못했습니다.", "Failed to load containers"));
         const nextContainers = mapTimelineContainers(containerJson.data ?? []);
         setContainers(nextContainers);
         setCachedTimelineContainers(nextContainers);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error");
+        if (!cancelled) setError(e instanceof Error ? e.message : pick("알 수 없는 오류가 발생했습니다.", "Unknown error"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -410,7 +410,7 @@ export function ContainerTimelinePage() {
         }>)
         .then((planningJson) => {
           if (!planningJson.success || !planningJson.data) {
-            throw new Error(planningJson.error ?? "Failed to load planning data");
+            throw new Error(planningJson.error ?? pick("계획 데이터를 불러오지 못했습니다.", "Failed to load planning data"));
           }
           const rows = Object.fromEntries(planningJson.data.rows.map((row) => [row.sku, row]));
           planningRowsCache.set(selectedPlanningScope, rows);

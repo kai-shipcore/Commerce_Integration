@@ -720,8 +720,8 @@ export function ContainerPlanningPage() {
     const itemToDelete = draftItems.find((item) => item.sku === sku);
     const allocationCount = itemToDelete?.allocations?.length ?? 0;
     const deletePrompt = allocationCount > 0
-      ? `${sku} has ${allocationCount} allocated Remain Stock record(s).\n\nDelete the SKU and release its allocated Remain Stock?`
-      : `Delete ${sku} from this container?`;
+      ? pick(`${sku}에 배정된 Remain Stock ${allocationCount}건이 있습니다.\n\nSKU를 삭제하고 배정된 Remain Stock을 해제하시겠습니까?`, `${sku} has ${allocationCount} allocated Remain Stock record(s).\n\nDelete the SKU and release its allocated Remain Stock?`)
+      : pick(`이 컨테이너에서 ${sku}를 삭제하시겠습니까?`, `Delete ${sku} from this container?`);
     if (editingContainerId && !window.confirm(deletePrompt)) return;
 
     if (editingContainerId && itemToDelete?.id && /^\d+$/.test(itemToDelete.id)) {
@@ -732,13 +732,13 @@ export function ContainerPlanningPage() {
         const json = await response.json();
 
         if (!response.ok || !json.success) {
-          throw new Error(json.error ?? `Failed to delete ${sku}.`);
+          throw new Error(json.error ?? pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`));
         }
 
         await fetchContainers();
         setExpandedId(editingContainerId);
       } catch (error) {
-        setFormError(error instanceof Error ? error.message : "Failed to delete SKU.");
+        setFormError(error instanceof Error ? error.message : pick("SKU 삭제에 실패했습니다.", "Failed to delete SKU."));
         return;
       }
     }
@@ -758,8 +758,8 @@ export function ContainerPlanningPage() {
 
     if (editingContainerId) {
       const deletePrompt = allocatedSkus.length > 0
-        ? `Delete ${skuSet.size} selected SKU(s) from this container?\n\nAllocated Remain Stock will also be released for: ${allocatedSkus.join(", ")}`
-        : `Delete ${skuSet.size} selected SKU(s) from this container now?`;
+        ? pick(`선택한 SKU ${skuSet.size}개를 이 컨테이너에서 삭제하시겠습니까?\n\n다음 SKU의 배정된 Remain Stock도 해제됩니다: ${allocatedSkus.join(", ")}`, `Delete ${skuSet.size} selected SKU(s) from this container?\n\nAllocated Remain Stock will also be released for: ${allocatedSkus.join(", ")}`)
+        : pick(`선택한 SKU ${skuSet.size}개를 이 컨테이너에서 삭제하시겠습니까?`, `Delete ${skuSet.size} selected SKU(s) from this container now?`);
       if (!window.confirm(deletePrompt)) {
         return false;
       }
@@ -775,18 +775,18 @@ export function ContainerPlanningPage() {
           const json = await response.json();
 
           if (!response.ok || !json.success) {
-            throw new Error(json.error ?? `Failed to delete ${item.sku}.`);
+            throw new Error(json.error ?? pick(`${item.sku} 삭제에 실패했습니다.`, `Failed to delete ${item.sku}.`));
           }
         }
 
         await fetchContainers();
         setExpandedId(editingContainerId);
       } catch (error) {
-        setFormError(error instanceof Error ? error.message : "Failed to delete selected SKUs.");
+        setFormError(error instanceof Error ? error.message : pick("선택한 SKU 삭제에 실패했습니다.", "Failed to delete selected SKUs."));
         return false;
       }
     } else {
-      if (!window.confirm(`Delete ${skuSet.size} selected SKU(s)?`)) {
+      if (!window.confirm(pick(`선택한 SKU ${skuSet.size}개를 삭제하시겠습니까?`, `Delete ${skuSet.size} selected SKU(s)?`))) {
         return false;
       }
     }
@@ -801,18 +801,18 @@ export function ContainerPlanningPage() {
     const eta = form.eta.trim();
 
     if (!number) {
-      setFormError("Please enter a container number.");
+      setFormError(pick("컨테이너 번호를 입력하세요.", "Please enter a container number."));
       return;
     }
 
     if (!eta) {
-      setFormError("Please select an ETA.");
+      setFormError(pick("ETA를 선택하세요.", "Please select an ETA."));
       return;
     }
 
     const missingSkus = await validateContainerSkus(draftItems);
     if (missingSkus.length > 0) {
-      setFormError(`Cannot save container. SKU not found in SKU Master: ${missingSkus.join(", ")}`);
+      setFormError(pick(`컨테이너를 저장할 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${missingSkus.join(", ")}`, `Cannot save container. SKU not found in SKU Master: ${missingSkus.join(", ")}`));
       return;
     }
 
@@ -833,7 +833,7 @@ export function ContainerPlanningPage() {
     };
 
     if (editingContainerId) {
-      if (!window.confirm("Save Container Details and all SKU information? Updating every SKU may take a little longer.")) {
+      if (!window.confirm(pick("컨테이너 상세 정보와 모든 SKU 정보를 저장하시겠습니까? 모든 SKU를 업데이트하므로 시간이 조금 더 걸릴 수 있습니다.", "Save Container Details and all SKU information? Updating every SKU may take a little longer."))) {
         return;
       }
 
@@ -859,7 +859,7 @@ export function ContainerPlanningPage() {
         const json = await response.json();
 
         if (!response.ok || !json.success) {
-          setFormError(json.error ?? "Failed to save container.");
+          setFormError(json.error ?? pick("컨테이너 저장에 실패했습니다.", "Failed to save container."));
           return;
         }
 
@@ -894,7 +894,7 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        setFormError(json.error ?? "Failed to create container.");
+        setFormError(json.error ?? pick("컨테이너 생성에 실패했습니다.", "Failed to create container."));
         return;
       }
 
@@ -902,7 +902,7 @@ export function ContainerPlanningPage() {
       setExpandedId(String(json.data.id));
       closeForm();
     } catch {
-      setFormError("Failed to create container.");
+      setFormError(pick("컨테이너 생성에 실패했습니다.", "Failed to create container."));
     } finally {
       setSavingContainer(false);
     }
@@ -914,14 +914,14 @@ export function ContainerPlanningPage() {
     const number = form.number.trim();
     const eta = form.eta.trim();
     if (!number) {
-      setFormError("Please enter a container number.");
+      setFormError(pick("컨테이너 번호를 입력하세요.", "Please enter a container number."));
       return;
     }
     if (!eta) {
-      setFormError("Please select an ETA.");
+      setFormError(pick("ETA를 선택하세요.", "Please select an ETA."));
       return;
     }
-    if (!window.confirm("Save Container Details only? SKU information will not be updated.")) {
+    if (!window.confirm(pick("컨테이너 상세 정보만 저장하시겠습니까? SKU 정보는 업데이트되지 않습니다.", "Save Container Details only? SKU information will not be updated."))) {
       return;
     }
 
@@ -950,7 +950,7 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        setFormError(json.error ?? "Failed to save container details.");
+        setFormError(json.error ?? pick("컨테이너 상세 정보 저장에 실패했습니다.", "Failed to save container details."));
         return;
       }
 
@@ -958,7 +958,7 @@ export function ContainerPlanningPage() {
       setExpandedId(editingContainerId);
       closeForm();
     } catch {
-      setFormError("Failed to save container details.");
+      setFormError(pick("컨테이너 상세 정보 저장에 실패했습니다.", "Failed to save container details."));
     } finally {
       setSavingContainer(false);
     }
@@ -970,8 +970,8 @@ export function ContainerPlanningPage() {
     const itemToDelete = container?.items.find((item) => item.sku === sku);
     const allocationCount = itemToDelete?.allocations?.length ?? 0;
     const deletePrompt = allocationCount > 0
-      ? `${sku} has ${allocationCount} allocated Remain Stock record(s).\n\nDelete the SKU and release its allocated Remain Stock?`
-      : `Delete ${sku}?`;
+      ? pick(`${sku}에 배정된 Remain Stock ${allocationCount}건이 있습니다.\n\nSKU를 삭제하고 배정된 Remain Stock을 해제하시겠습니까?`, `${sku} has ${allocationCount} allocated Remain Stock record(s).\n\nDelete the SKU and release its allocated Remain Stock?`)
+      : pick(`${sku}를 삭제하시겠습니까?`, `Delete ${sku}?`);
     if (!window.confirm(deletePrompt)) return;
 
     if (itemToDelete?.id && /^\d+$/.test(itemToDelete.id)) {
@@ -982,14 +982,14 @@ export function ContainerPlanningPage() {
         const json = await response.json();
 
         if (!response.ok || !json.success) {
-          window.alert(json.error ?? `Failed to delete ${sku}.`);
+          window.alert(json.error ?? pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`));
           return;
         }
 
         await fetchContainers();
         setExpandedId(containerId);
       } catch {
-        window.alert(`Failed to delete ${sku}.`);
+        window.alert(pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`));
         return;
       }
     }
@@ -1025,14 +1025,14 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? "Failed to update container status.");
+        window.alert(json.error ?? pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
         return;
       }
 
       await fetchContainers();
       setExpandedId(containerId);
     } catch {
-      window.alert("Failed to update container status.");
+      window.alert(pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
     }
   }
 
@@ -1048,7 +1048,7 @@ export function ContainerPlanningPage() {
       });
       const json = await response.json();
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? "Failed to allocate available stock.");
+        window.alert(json.error ?? pick("사용 가능 재고 배정에 실패했습니다.", "Failed to allocate available stock."));
         return false;
       }
 
@@ -1057,7 +1057,7 @@ export function ContainerPlanningPage() {
       setAvailableStockContainerId(null);
       return true;
     } catch {
-      window.alert("Failed to allocate available stock.");
+      window.alert(pick("사용 가능 재고 배정에 실패했습니다.", "Failed to allocate available stock."));
       return false;
     }
   }
@@ -1065,8 +1065,8 @@ export function ContainerPlanningPage() {
   async function removeAvailableStockAllocations(allocationIds: string[], containerId: string) {
     if (allocationIds.length === 0) return false;
     const prompt = allocationIds.length === 1
-      ? "Remove this allocated available stock from the container?"
-      : `Remove ${allocationIds.length} selected available stock items from the container?`;
+      ? pick("이 컨테이너에서 배정된 사용 가능 재고를 제거하시겠습니까?", "Remove this allocated available stock from the container?")
+      : pick(`이 컨테이너에서 선택한 사용 가능 재고 ${allocationIds.length}개를 제거하시겠습니까?`, `Remove ${allocationIds.length} selected available stock items from the container?`);
     if (!window.confirm(prompt)) return false;
     try {
       const response = await fetch(
@@ -1075,14 +1075,14 @@ export function ContainerPlanningPage() {
       );
       const json = await response.json();
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? "Failed to remove allocated stock.");
+        window.alert(json.error ?? pick("배정 재고 제거에 실패했습니다.", "Failed to remove allocated stock."));
         return false;
       }
       await fetchContainers();
       setExpandedId(containerId);
       return true;
     } catch {
-      window.alert("Failed to remove allocated stock.");
+      window.alert(pick("배정 재고 제거에 실패했습니다.", "Failed to remove allocated stock."));
       return false;
     }
   }
@@ -1094,7 +1094,7 @@ export function ContainerPlanningPage() {
   async function deleteContainer(containerId: string) {
     const container = containers.find((item) => item.id === containerId);
     if (container?.status === "complete" && !canDeleteContainers) {
-      window.alert("Only Planner or Admin can delete Stock-in completed containers.");
+      window.alert(pick("입고 완료된 컨테이너는 Planner 또는 Admin만 삭제할 수 있습니다.", "Only Planner or Admin can delete Stock-in completed containers."));
       return;
     }
 
@@ -1105,14 +1105,14 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? "Failed to delete container.");
+        window.alert(json.error ?? pick("컨테이너 삭제에 실패했습니다.", "Failed to delete container."));
         return;
       }
 
       await fetchContainers();
       if (expandedId === containerId) setExpandedId(null);
     } catch {
-      window.alert("Failed to delete container.");
+      window.alert(pick("컨테이너 삭제에 실패했습니다.", "Failed to delete container."));
     }
   }
 
@@ -1167,7 +1167,7 @@ export function ContainerPlanningPage() {
     const qty = Number.parseInt(draft.qty, 10);
 
     if (!nextSku) {
-      window.alert("Please enter a Master SKU.");
+      window.alert(pick("Master SKU를 입력하세요.", "Please enter a Master SKU."));
       return;
     }
 
@@ -1175,7 +1175,7 @@ export function ContainerPlanningPage() {
       ? { masterSku: originalItem.sku, cbmPerUnit: originalItem.cbm }
       : await lookupSkuMaster(nextSku);
     if (!found) {
-      window.alert(`SKU not found in SKU Master: ${nextSku}`);
+      window.alert(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${nextSku}`, `SKU not found in SKU Master: ${nextSku}`));
       return;
     }
 
@@ -1184,12 +1184,12 @@ export function ContainerPlanningPage() {
       : draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
-      window.alert("Quantity must be at least 1.");
+      window.alert(pick("수량은 1 이상이어야 합니다.", "Quantity must be at least 1."));
       return;
     }
 
     if (!Number.isFinite(cbm) || cbm <= 0) {
-      window.alert("CBM must be greater than 0.");
+      window.alert(pick("CBM은 0보다 커야 합니다.", "CBM must be greater than 0."));
       return;
     }
 
@@ -1202,7 +1202,7 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? "Failed to update quantity.");
+        window.alert(json.error ?? pick("수량 수정에 실패했습니다.", "Failed to update quantity."));
         return;
       }
 
@@ -1287,7 +1287,7 @@ export function ContainerPlanningPage() {
     const json = await response.json();
 
     if (!response.ok || !json.success) {
-      window.alert(json.error ?? "Failed to save container.");
+      window.alert(json.error ?? pick("컨테이너 저장에 실패했습니다.", "Failed to save container."));
       return false;
     }
 
@@ -1320,7 +1320,7 @@ export function ContainerPlanningPage() {
 
     const found = await lookupSkuMaster(sku);
     if (!found) {
-      window.alert(`SKU not found in SKU Master: ${sku}`);
+      window.alert(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${sku}`, `SKU not found in SKU Master: ${sku}`));
       updateInlineSkuDraft(containerId, { sku, cbm: "" });
       return;
     }
@@ -1349,7 +1349,7 @@ export function ContainerPlanningPage() {
 
     const found = await lookupSkuMaster(sku);
     if (!found) {
-      window.alert(`SKU not found in SKU Master: ${sku}`);
+      window.alert(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${sku}`, `SKU not found in SKU Master: ${sku}`));
       updateInlineEditDraft(containerId, originalSku, { sku, cbm: "" });
       return;
     }
@@ -1387,25 +1387,25 @@ export function ContainerPlanningPage() {
     const qty = Number.parseInt(draft.qty, 10);
 
     if (!sku) {
-      window.alert("Please enter a Master SKU.");
+      window.alert(pick("Master SKU를 입력하세요.", "Please enter a Master SKU."));
       return;
     }
 
     const found = await lookupSkuMaster(sku);
     if (!found) {
-      window.alert(`SKU not found in SKU Master: ${sku}`);
+      window.alert(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${sku}`, `SKU not found in SKU Master: ${sku}`));
       return;
     }
 
     const cbm = draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
 
     if (!Number.isFinite(qty) || qty <= 0) {
-      window.alert("Quantity must be at least 1.");
+      window.alert(pick("수량은 1 이상이어야 합니다.", "Quantity must be at least 1."));
       return;
     }
 
     if (!Number.isFinite(cbm) || cbm <= 0) {
-      window.alert("CBM must be greater than 0.");
+      window.alert(pick("CBM은 0보다 커야 합니다.", "CBM must be greater than 0."));
       return;
     }
 
@@ -1472,18 +1472,18 @@ export function ContainerPlanningPage() {
       .map((item) => item.sku);
 
     if (missingSkus.length > 0) {
-      window.alert(`Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`);
+      window.alert(pick(`가져올 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, `Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`));
       return;
     }
 
     if (validImportedItems.length === 0) {
-      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order.");
+      window.alert(pick("가져올 SKU가 없습니다. 첫 행은 헤더로 두고 SKU / Qty / CBM / Memo 순서로 작성하세요.", "No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order."));
       return;
     }
 
     const updatedContainer = getMergedContainer(container, validImportedItems);
     if (!(await persistContainer(updatedContainer))) return;
-    window.alert(`Imported ${validImportedItems.length} SKU(s).`);
+    window.alert(pick(`SKU ${validImportedItems.length}개를 가져왔습니다.`, `Imported ${validImportedItems.length} SKU(s).`));
   }
 
   async function exportContainerItems(containerId: string) {
@@ -1529,7 +1529,7 @@ export function ContainerPlanningPage() {
 
   async function exportSelectedContainers() {
     if (selectedExportContainers.length === 0) {
-      window.alert("Select at least one container to export.");
+      window.alert(pick("내보낼 컨테이너를 하나 이상 선택하세요.", "Select at least one container to export."));
       return;
     }
 
@@ -1584,7 +1584,7 @@ export function ContainerPlanningPage() {
     }
 
     if (skuRows.size === 0) {
-      window.alert("No SKUs found in the selected containers.");
+      window.alert(pick("선택한 컨테이너에서 SKU를 찾을 수 없습니다.", "No SKUs found in the selected containers."));
       return;
     }
 
@@ -1677,11 +1677,11 @@ export function ContainerPlanningPage() {
       .map((item) => item.sku);
 
     if (missingSkus.length > 0) {
-      window.alert(`Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`);
+      window.alert(pick(`가져올 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, `Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`));
       return;
     }
     if (validImportedItems.length === 0) {
-      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order.");
+      window.alert(pick("가져올 SKU가 없습니다. 첫 행은 헤더로 두고 SKU / Qty / CBM / Memo 순서로 작성하세요.", "No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order."));
       return;
     }
 
@@ -2027,7 +2027,7 @@ export function ContainerPlanningPage() {
                 onAddAvailableStock={
                   editingContainerId
                     ? () => setAvailableStockContainerId(editingContainerId)
-                    : () => window.alert("Please save the container first before adding available stock.")
+                    : () => window.alert(pick("사용 가능 재고를 추가하기 전에 컨테이너를 먼저 저장하세요.", "Please save the container first before adding available stock."))
                 }
               />
             </div>
@@ -3158,7 +3158,7 @@ function ContainerCard({
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Delete container '${container.number}'?`)) {
+                    if (window.confirm(pick(`컨테이너 '${container.number}'을(를) 삭제하시겠습니까?`, `Delete container '${container.number}'?`))) {
                       onDeleteContainer(container.id);
                     }
                   }}
@@ -3469,10 +3469,10 @@ function AvailableStockModal({
         { cache: "no-store" }
       );
       const json = await response.json();
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load available stock.");
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("사용 가능 재고를 불러오지 못했습니다.", "Failed to load available stock."));
       setRows(json.data as AvailableStockRow[]);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to load available stock.");
+      setMessage(error instanceof Error ? error.message : pick("사용 가능 재고를 불러오지 못했습니다.", "Failed to load available stock."));
     } finally {
       setLoading(false);
     }
@@ -3549,7 +3549,7 @@ function AvailableStockModal({
     const totalQty = Number.parseInt(form.totalQty, 10);
     const cbm = Number.parseFloat(form.cbm);
     if (!form.referenceNo.trim() || !form.masterSku.trim() || !Number.isFinite(totalQty) || !Number.isFinite(cbm)) {
-      setMessage("Reference, Master SKU, quantity, and CBM are required.");
+      setMessage(pick("Reference, Master SKU, 수량, CBM은 필수입니다.", "Reference, Master SKU, quantity, and CBM are required."));
       return;
     }
     setCreating(true);
@@ -3568,12 +3568,12 @@ function AvailableStockModal({
         }),
       });
       const json = await response.json();
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to register stock.");
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("재고 등록에 실패했습니다.", "Failed to register stock."));
       setForm({ referenceNo: "", masterSku: "", totalQty: "", cbm: "", note: "" });
-      setMessage("Available stock registered.");
+      setMessage(pick("사용 가능 재고가 등록되었습니다.", "Available stock registered."));
       await loadRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to register stock.");
+      setMessage(error instanceof Error ? error.message : pick("재고 등록에 실패했습니다.", "Failed to register stock."));
     } finally {
       setCreating(false);
     }
@@ -3582,12 +3582,12 @@ function AvailableStockModal({
   async function addSelected() {
     if (submitting) return;
     if (selected.length === 0) {
-      setMessage("Enter a load quantity for at least one SKU.");
+      setMessage(pick("하나 이상의 SKU에 적재 수량을 입력하세요.", "Enter a load quantity for at least one SKU."));
       return;
     }
     const invalid = selected.find((entry) => entry.qty > entry.row.availableQty);
     if (invalid) {
-      setMessage(`Quantity exceeds availability for ${invalid.row.masterSku}.`);
+      setMessage(pick(`${invalid.row.masterSku}의 수량이 가용 수량을 초과했습니다.`, `Quantity exceeds availability for ${invalid.row.masterSku}.`));
       return;
     }
     setSubmitting(true);

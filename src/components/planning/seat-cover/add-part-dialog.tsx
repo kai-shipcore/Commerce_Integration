@@ -331,7 +331,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
     setError(null);
 
     if (!formData.requestReceivedAt || !formData.orderNumber || !formData.partNumber) {
-      setError("Request Received Date, Order Number, Part Number are required.");
+      setError(pick("Request Received Date, Order Number, Part Number는 필수입니다.", "Request Received Date, Order Number, Part Number are required."));
       return;
     }
 
@@ -353,13 +353,13 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       });
       const json = await res.json();
       if (!json.success) {
-        setError(json.error ?? "Failed to save.");
+        setError(json.error ?? pick("저장에 실패했습니다.", "Failed to save."));
         return;
       }
       onOpenChange(false);
       onSuccess();
     } catch {
-      setError("Network error.");
+      setError(pick("네트워크 오류가 발생했습니다.", "Network error."));
     } finally {
       setLoading(false);
     }
@@ -374,20 +374,20 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
     setCreateOrderSuccess(null);
 
     if (!formData.requestReceivedAt || !formData.orderNumber || !formData.partNumber) {
-      setCreateOrderError("Request Received Date, Order Number, Part Number are required.");
+      setCreateOrderError(pick("Request Received Date, Order Number, Part Number는 필수입니다.", "Request Received Date, Order Number, Part Number are required."));
       return;
     }
     if (!formData.partSku) {
-      setCreateOrderError("Part SKU is required to create a ShipHero order.");
+      setCreateOrderError(pick("ShipHero 주문을 생성하려면 Part SKU가 필요합니다.", "Part SKU is required to create a ShipHero order."));
       return;
     }
     if (!formData.shipheroOrder) {
-      setCreateOrderError("Shiphero Order number is required.");
+      setCreateOrderError(pick("Shiphero Order 번호가 필요합니다.", "Shiphero Order number is required."));
       return;
     }
     const qtyNum = parseInt(formData.orderRequest, 10);
     if (!qtyNum || qtyNum < 1) {
-      setCreateOrderError("Order Request quantity must be a positive integer.");
+      setCreateOrderError(pick("Order Request 수량은 1 이상의 정수여야 합니다.", "Order Request quantity must be a positive integer."));
       return;
     }
 
@@ -409,21 +409,21 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       });
       const saveJson = await saveRes.json();
       if (!saveJson.success) {
-        setCreateOrderError(saveJson.error ?? "Failed to save part record.");
+        setCreateOrderError(saveJson.error ?? pick("파트 기록 저장에 실패했습니다.", "Failed to save part record."));
         return;
       }
 
       if (saveJson.shipHeroError) {
-        setCreateOrderError(`Part saved, but ShipHero order failed: ${saveJson.shipHeroError}`);
+        setCreateOrderError(pick(`파트는 저장되었지만 ShipHero 주문 생성에 실패했습니다: ${saveJson.shipHeroError}`, `Part saved, but ShipHero order failed: ${saveJson.shipHeroError}`));
         onSuccess();
         return;
       }
 
-      setCreateOrderSuccess(`ShipHero order ${saveJson.shipHeroOrderNumber} created successfully.`);
+      setCreateOrderSuccess(pick(`ShipHero 주문 ${saveJson.shipHeroOrderNumber}이(가) 생성되었습니다.`, `ShipHero order ${saveJson.shipHeroOrderNumber} created successfully.`));
       onSuccess();
       setTimeout(() => onOpenChange(false), 1500);
     } catch {
-      setCreateOrderError("Network error while creating order.");
+      setCreateOrderError(pick("주문 생성 중 네트워크 오류가 발생했습니다.", "Network error while creating order."));
     } finally {
       setCreateOrderLoading(false);
     }

@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 export interface QuickLink {
   href: string;
   label: string;
+  labelKo?: string;
+  labelEn?: string;
 }
 
 export function QuickLinks({

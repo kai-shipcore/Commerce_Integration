@@ -304,25 +304,25 @@ export function PurchaseOrdersPage() {
     const payload = buildSavePayload(nextStatus);
 
     if (!payload.number) {
-      window.alert("Please enter a PO number.");
+      window.alert(pick("PO 번호를 입력하세요.", "Please enter a PO number."));
       return;
     }
     if (!payload.date || !payload.eta) {
-      window.alert("Please enter order date and ETA date.");
+      window.alert(pick("주문일과 ETA 날짜를 입력하세요.", "Please enter order date and ETA date."));
       return;
     }
     if (!payload.factory) {
-      window.alert("Please enter a factory.");
+      window.alert(pick("공장을 입력하세요.", "Please enter a factory."));
       return;
     }
     if (payload.items.length === 0) {
-      window.alert("Please add at least one SKU with quantity.");
+      window.alert(pick("수량이 입력된 SKU를 하나 이상 추가하세요.", "Please add at least one SKU with quantity."));
       return;
     }
 
     const missingSkus = await validateDraftSkus(payload.items.map((item) => item.sku));
     if (missingSkus.length > 0) {
-      window.alert(`Cannot save PO. SKU not found in SKU Master: ${missingSkus.join(", ")}`);
+      window.alert(pick(`PO를 저장할 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${missingSkus.join(", ")}`, `Cannot save PO. SKU not found in SKU Master: ${missingSkus.join(", ")}`));
       return;
     }
 
@@ -372,7 +372,7 @@ export function PurchaseOrdersPage() {
     if (!canDeletePurchaseOrders || deletingPoId) return;
 
     const confirmed = window.confirm(
-      `Delete purchase order ${order.number}? This will also remove its PO item rows and container links.`
+      pick(`구매 주문 ${order.number}을(를) 삭제하시겠습니까? PO 아이템 행과 컨테이너 연결도 함께 제거됩니다.`, `Delete purchase order ${order.number}? This will also remove its PO item rows and container links.`)
     );
     if (!confirmed) return;
 
@@ -393,7 +393,7 @@ export function PurchaseOrdersPage() {
       setSelectedId(nextOrders[0]?.id ?? "");
       setIsCreating(false);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to delete purchase order.");
+      window.alert(error instanceof Error ? error.message : pick("구매 주문 삭제에 실패했습니다.", "Failed to delete purchase order."));
     } finally {
       setDeletingPoId(null);
     }
@@ -507,7 +507,7 @@ export function PurchaseOrdersPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(`SKU not found in SKU Master: ${sku}`);
+        window.alert(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${sku}`, `SKU not found in SKU Master: ${sku}`));
         updateDraftItem(index, { sku, moq: "", cbm: "" });
         return;
       }
@@ -519,7 +519,7 @@ export function PurchaseOrdersPage() {
         cbm: data.cbmPerUnit ? data.cbmPerUnit.toFixed(6) : "",
       });
     } catch {
-      window.alert(`Failed to look up SKU: ${sku}`);
+      window.alert(pick(`SKU 조회에 실패했습니다: ${sku}`, `Failed to look up SKU: ${sku}`));
     }
   }
 
@@ -542,10 +542,10 @@ export function PurchaseOrdersPage() {
       });
       const json = await response.json();
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? `Failed to update SKU master info for ${sku}`);
+        window.alert(json.error ?? pick(`${sku}의 SKU 마스터 정보 수정에 실패했습니다.`, `Failed to update SKU master info for ${sku}`));
       }
     } catch {
-      window.alert(`Failed to update SKU master info for ${sku}`);
+      window.alert(pick(`${sku}의 SKU 마스터 정보 수정에 실패했습니다.`, `Failed to update SKU master info for ${sku}`));
     }
   }
 

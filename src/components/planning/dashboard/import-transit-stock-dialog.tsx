@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type TransitStockImportRow = {
   masterSku: string;
@@ -79,6 +80,7 @@ interface ImportTransitStockDialogProps {
 }
 
 export function ImportTransitStockDialog({ open, onOpenChange, onSuccess }: ImportTransitStockDialogProps) {
+  const { pick } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsedRows, setParsedRows] = useState<TransitStockImportRow[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -111,10 +113,10 @@ export function ImportTransitStockDialog({ open, onOpenChange, onSuccess }: Impo
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const rows = extractTransitStockRows(workbook);
       setParsedRows(rows);
-      if (rows.length === 0) setError("No valid SKU / Transit Stock rows found. Please use the template.");
+      if (rows.length === 0) setError(pick("유효한 SKU / Transit Stock 행을 찾지 못했습니다. 템플릿을 사용하세요.", "No valid SKU / Transit Stock rows found. Please use the template."));
     } catch {
       setParsedRows([]);
-      setError("Failed to parse file. Please use the template.");
+      setError(pick("파일을 파싱하지 못했습니다. 템플릿을 사용하세요.", "Failed to parse file. Please use the template."));
     }
   }
 
@@ -137,7 +139,7 @@ export function ImportTransitStockDialog({ open, onOpenChange, onSuccess }: Impo
         inserted?: number;
       };
       if (!json.success) {
-        setError(json.error ?? "Import failed.");
+        setError(json.error ?? pick("가져오기에 실패했습니다.", "Import failed."));
         return;
       }
       setResult({
@@ -147,7 +149,7 @@ export function ImportTransitStockDialog({ open, onOpenChange, onSuccess }: Impo
       });
       onSuccess();
     } catch {
-      setError("Network error.");
+      setError(pick("네트워크 오류가 발생했습니다.", "Network error."));
     } finally {
       setLoading(false);
     }

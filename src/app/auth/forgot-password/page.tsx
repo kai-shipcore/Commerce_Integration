@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LanguageToggle } from "@/components/layout/language-toggle";
 import { Loader2, Mail } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export default function ForgotPasswordPage() {
+  const { pick } = useI18n();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,17 +37,17 @@ export default function ForgotPasswordPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to generate reset link");
+        throw new Error(result.error || pick("비밀번호 재설정 링크 생성에 실패했습니다.", "Failed to generate reset link"));
       }
 
-      setMessage(result.message || "Password reset link generated");
+      setMessage(result.message || pick("비밀번호 재설정 링크가 생성되었습니다.", "Password reset link generated"));
       setResetUrl(result.resetUrl || null);
       setEmailDelivered(Boolean(result.emailDelivered));
     } catch (requestError: unknown) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Failed to generate reset link"
+          : pick("비밀번호 재설정 링크 생성에 실패했습니다.", "Failed to generate reset link")
       );
     } finally {
       setLoading(false);
@@ -52,22 +55,26 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="absolute right-4 top-4">
+        <LanguageToggle />
+      </div>
+
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary/10 rounded-full">
+          <div className="mb-4 flex justify-center">
+            <div className="rounded-full bg-primary/10 p-3">
               <Mail className="h-8 w-8 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl">Reset Password</CardTitle>
+          <CardTitle className="text-2xl">{pick("비밀번호 재설정", "Reset Password")}</CardTitle>
           <CardDescription>
-            Enter your email to create a password reset link.
+            {pick("이메일을 입력하면 비밀번호 재설정 링크를 생성합니다.", "Enter your email to create a password reset link.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error ? (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm text-center">
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-center text-sm text-destructive">
               {error}
             </div>
           ) : null}
@@ -75,17 +82,14 @@ export default function ForgotPasswordPage() {
             <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
               <p>{message}</p>
               {emailDelivered ? (
-                <p>An email has been sent to the address if the account exists.</p>
+                <p>{pick("계정이 존재하면 해당 이메일 주소로 메일이 발송되었습니다.", "An email has been sent to the address if the account exists.")}</p>
               ) : null}
               {resetUrl ? (
                 <div className="space-y-2">
                   <p className="font-medium">
-                    SMTP is not configured, so use this reset link directly:
+                    {pick("SMTP가 설정되지 않아 아래 재설정 링크를 직접 사용하세요:", "SMTP is not configured, so use this reset link directly:")}
                   </p>
-                  <a
-                    href={resetUrl}
-                    className="break-all text-emerald-800 underline"
-                  >
+                  <a href={resetUrl} className="break-all text-emerald-800 underline">
                     {resetUrl}
                   </a>
                 </div>
@@ -95,7 +99,7 @@ export default function ForgotPasswordPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{pick("이메일", "Email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -107,13 +111,13 @@ export default function ForgotPasswordPage() {
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Generate reset link
+              {pick("재설정 링크 생성", "Generate reset link")}
             </Button>
           </form>
 
-          <p className="text-sm text-center text-muted-foreground">
+          <p className="text-center text-sm text-muted-foreground">
             <Link href="/auth/signin" className="text-primary hover:underline">
-              Back to sign in
+              {pick("로그인으로 돌아가기", "Back to sign in")}
             </Link>
           </p>
         </CardContent>

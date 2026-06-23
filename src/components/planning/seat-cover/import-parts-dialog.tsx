@@ -182,7 +182,7 @@ export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportParts
         setParsedRows(rows);
         setValidationErrors(errors);
       } catch {
-        setError("Failed to parse file. Please use the template.");
+        setError(pick("파일을 파싱하지 못했습니다. 템플릿을 사용하세요.", "Failed to parse file. Please use the template."));
       }
     };
     reader.readAsArrayBuffer(file);
@@ -215,13 +215,13 @@ export function ImportPartsDialog({ open, onOpenChange, onSuccess }: ImportParts
       });
       const json = await res.json();
       if (!json.success) {
-        setError(json.error ?? "Import failed.");
+        setError(json.error ?? pick("가져오기에 실패했습니다.", "Import failed."));
         return;
       }
       setResult({ upserted: json.upserted });
       onSuccess();
     } catch {
-      setError("Network error.");
+      setError(pick("네트워크 오류가 발생했습니다.", "Network error."));
     } finally {
       setLoading(false);
     }

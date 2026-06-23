@@ -126,13 +126,13 @@ export default function UserAccessPage() {
       }
 
       if (status !== "authenticated") {
-        setError("Sign in required");
+        setError(pick("로그인이 필요합니다.", "Sign in required"));
         setLoading(false);
         return;
       }
 
       if (!isAdminLikeRole(session?.user?.role)) {
-        setError("Admin access required");
+        setError(pick("관리자 권한이 필요합니다.", "Admin access required"));
         setLoading(false);
         return;
       }
@@ -150,7 +150,7 @@ export default function UserAccessPage() {
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-          throw new Error(result.error || "Failed to load users");
+          throw new Error(result.error || pick("사용자 목록을 불러오지 못했습니다.", "Failed to load users"));
         }
 
         const nextUsers = result.data?.users ?? [];
@@ -171,7 +171,7 @@ export default function UserAccessPage() {
     };
 
     void loadUsers();
-  }, [debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, session?.user?.role, status]);
+  }, [debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, pick, session?.user?.role, status]);
 
   const selectedUser =
     users.find((user) => user.id === selectedUserId) ||
@@ -213,7 +213,7 @@ export default function UserAccessPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to update user access");
+        throw new Error(result.error || pick("사용자 메뉴 권한 수정에 실패했습니다.", "Failed to update user access"));
       }
 
       setUsers((current) =>
@@ -254,7 +254,7 @@ export default function UserAccessPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to update user role");
+        throw new Error(result.error || pick("사용자 역할 수정에 실패했습니다.", "Failed to update user role"));
       }
 
       setUsers((current) =>

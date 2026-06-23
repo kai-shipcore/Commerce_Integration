@@ -165,10 +165,10 @@ export function AvailableStockPage() {
     try {
       const response = await fetch(apiPath("/api/container-available-stock"), { cache: "no-store" });
       const json = await response.json();
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load available stock.");
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("사용 가능 재고를 불러오지 못했습니다.", "Failed to load available stock."));
       setRows(json.data as AvailableStockRow[]);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to load available stock.");
+      setMessage(error instanceof Error ? error.message : pick("사용 가능 재고를 불러오지 못했습니다.", "Failed to load available stock."));
     } finally {
       setLoading(false);
     }
@@ -240,7 +240,7 @@ export function AvailableStockPage() {
     const found = await lookupSkuMaster(sku);
     if (!found) {
       setCreateForm((form) => ({ ...form, masterSku: sku }));
-      setMessage(`SKU not found in SKU Master: ${sku}`);
+      setMessage(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${sku}`, `SKU not found in SKU Master: ${sku}`));
       return;
     }
     setCreateForm((form) => ({
@@ -257,7 +257,7 @@ export function AvailableStockPage() {
     const found = await lookupSkuMaster(sku);
     if (!found) {
       setEditForm((form) => ({ ...form, masterSku: sku }));
-      setMessage(`SKU not found in SKU Master: ${sku}`);
+      setMessage(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${sku}`, `SKU not found in SKU Master: ${sku}`));
       return;
     }
     setEditForm((form) => ({
@@ -271,12 +271,12 @@ export function AvailableStockPage() {
   async function createStock() {
     const parsed = parseForm(createForm);
     if (!parsed) {
-      setMessage("Reference, Master SKU, positive quantity, and CBM are required.");
+      setMessage(pick("Reference, Master SKU, 1 이상의 수량, CBM은 필수입니다.", "Reference, Master SKU, positive quantity, and CBM are required."));
       return;
     }
     const found = await lookupSkuMaster(parsed.masterSku);
     if (!found) {
-      setMessage(`SKU not found in SKU Master: ${parsed.masterSku}`);
+      setMessage(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${parsed.masterSku}`, `SKU not found in SKU Master: ${parsed.masterSku}`));
       return;
     }
     setSaving(true);
@@ -288,12 +288,12 @@ export function AvailableStockPage() {
         body: JSON.stringify({ sourceType, ...parsed }),
       });
       const json = await response.json();
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to register stock.");
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("재고 등록에 실패했습니다.", "Failed to register stock."));
       setCreateForm(emptyForm);
-      setMessage("Available stock registered.");
+      setMessage(pick("사용 가능 재고가 등록되었습니다.", "Available stock registered."));
       await loadRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to register stock.");
+      setMessage(error instanceof Error ? error.message : pick("재고 등록에 실패했습니다.", "Failed to register stock."));
     } finally {
       setSaving(false);
     }
@@ -315,12 +315,12 @@ export function AvailableStockPage() {
   async function updateStock(row: AvailableStockRow) {
     const parsed = parseForm(editForm);
     if (!parsed) {
-      setMessage("Reference, Master SKU, positive quantity, and CBM are required.");
+      setMessage(pick("Reference, Master SKU, 1 이상의 수량, CBM은 필수입니다.", "Reference, Master SKU, positive quantity, and CBM are required."));
       return;
     }
     const found = await lookupSkuMaster(parsed.masterSku);
     if (!found) {
-      setMessage(`SKU not found in SKU Master: ${parsed.masterSku}`);
+      setMessage(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${parsed.masterSku}`, `SKU not found in SKU Master: ${parsed.masterSku}`));
       return;
     }
     setSaving(true);
@@ -332,19 +332,19 @@ export function AvailableStockPage() {
         body: JSON.stringify({ id: row.id, sourceType: row.sourceType, ...parsed }),
       });
       const json = await response.json();
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to update stock.");
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("재고 수정에 실패했습니다.", "Failed to update stock."));
       setEditingId(null);
-      setMessage("Available stock updated.");
+      setMessage(pick("사용 가능 재고가 수정되었습니다.", "Available stock updated."));
       await loadRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to update stock.");
+      setMessage(error instanceof Error ? error.message : pick("재고 수정에 실패했습니다.", "Failed to update stock."));
     } finally {
       setSaving(false);
     }
   }
 
   async function deleteStock(row: AvailableStockRow) {
-    if (!window.confirm(`Delete ${row.referenceNo} / ${row.masterSku}?`)) return;
+    if (!window.confirm(pick(`${row.referenceNo} / ${row.masterSku} 재고를 삭제하시겠습니까?`, `Delete ${row.referenceNo} / ${row.masterSku}?`))) return;
     setSaving(true);
     setMessage("");
     try {
@@ -352,12 +352,12 @@ export function AvailableStockPage() {
         method: "DELETE",
       });
       const json = await response.json();
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to delete stock.");
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("재고 삭제에 실패했습니다.", "Failed to delete stock."));
       if (editingId === row.id) setEditingId(null);
-      setMessage("Available stock deleted.");
+      setMessage(pick("사용 가능 재고가 삭제되었습니다.", "Available stock deleted."));
       await loadRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to delete stock.");
+      setMessage(error instanceof Error ? error.message : pick("재고 삭제에 실패했습니다.", "Failed to delete stock."));
     } finally {
       setSaving(false);
     }
@@ -370,7 +370,7 @@ export function AvailableStockPage() {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const importRows = readAvailableStockWorkbook(workbook);
       if (importRows.length === 0) {
-        throw new Error("No valid Remaining or Mistake Order stock rows were found in the Excel file.");
+        throw new Error(pick("엑셀 파일에서 유효한 Remaining 또는 Mistake Order 재고 행을 찾지 못했습니다.", "No valid Remaining or Mistake Order stock rows were found in the Excel file."));
       }
       const response = await fetch(apiPath("/api/container-available-stock"), {
         method: "POST",
@@ -378,11 +378,11 @@ export function AvailableStockPage() {
         body: JSON.stringify({ action: "import", rows: importRows }),
       });
       const json = await response.json();
-      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to import Excel.");
-      setMessage(`Imported ${json.data.inserted} rows. Skipped ${json.data.skipped} existing rows.`);
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("엑셀 가져오기에 실패했습니다.", "Failed to import Excel."));
+      setMessage(pick(`${json.data.inserted}개 행을 가져왔습니다. 기존 행 ${json.data.skipped}개는 건너뛰었습니다.`, `Imported ${json.data.inserted} rows. Skipped ${json.data.skipped} existing rows.`));
       await loadRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to import Excel.");
+      setMessage(error instanceof Error ? error.message : pick("엑셀 가져오기에 실패했습니다.", "Failed to import Excel."));
     } finally {
       setImporting(false);
       if (importInputRef.current) importInputRef.current.value = "";

@@ -190,12 +190,12 @@ export function SkuMasterPage() {
       params.set("limit", String(limit));
       const res = await fetch(apiPath(`/api/planning/sku-master?${params.toString()}`), { cache: "no-store" });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error ?? "Failed to load SKU master");
+      if (!json.success) throw new Error(json.error ?? pick("SKU 마스터를 불러오지 못했습니다.", "Failed to load SKU master"));
       setRows(json.data);
       setPagination(json.pagination ?? { page, limit, total: json.data.length, totalPages: 1 });
     } catch (error) {
       setRows([]);
-      setMessage(error instanceof Error ? error.message : "Failed to load SKU master");
+      setMessage(error instanceof Error ? error.message : pick("SKU 마스터를 불러오지 못했습니다.", "Failed to load SKU master"));
     } finally {
       setLoading(false);
     }
@@ -260,7 +260,7 @@ export function SkuMasterPage() {
       }),
     });
     const json = await res.json();
-    if (!json.success) throw new Error(json.error ?? "Failed to save SKU");
+    if (!json.success) throw new Error(json.error ?? pick("SKU 저장에 실패했습니다.", "Failed to save SKU"));
   }
 
   async function syncFromInventory() {
@@ -269,11 +269,11 @@ export function SkuMasterPage() {
     try {
       const res = await fetch(apiPath("/api/planning/sku-master"), { method: "POST" });
       const json = await res.json();
-      if (!json.success) throw new Error(json.error ?? "Failed to sync SKU master");
-      setMessage(`Synced ${json.upserted ?? 0} SKUs from coverland_inventory`);
+      if (!json.success) throw new Error(json.error ?? pick("SKU 마스터 동기화에 실패했습니다.", "Failed to sync SKU master"));
+      setMessage(pick(`coverland_inventory에서 SKU ${json.upserted ?? 0}개를 동기화했습니다.`, `Synced ${json.upserted ?? 0} SKUs from coverland_inventory`));
       await fetchRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to sync SKU master");
+      setMessage(error instanceof Error ? error.message : pick("SKU 마스터 동기화에 실패했습니다.", "Failed to sync SKU master"));
     } finally {
       setSyncing(false);
     }
@@ -289,7 +289,7 @@ export function SkuMasterPage() {
       const importRows = extractExcelCbmRows(workbook);
 
       if (importRows.length === 0) {
-        throw new Error("No valid Master SKU / CBM rows found in the Excel file");
+        throw new Error(pick("엑셀 파일에서 유효한 Master SKU / CBM 행을 찾지 못했습니다.", "No valid Master SKU / CBM rows found in the Excel file"));
       }
 
       const res = await fetch(apiPath("/api/planning/sku-master"), {
@@ -299,15 +299,19 @@ export function SkuMasterPage() {
       });
       const json = await res.json();
 
-      if (!json.success) throw new Error(json.error ?? "Failed to import Excel");
+      if (!json.success) throw new Error(json.error ?? pick("엑셀 가져오기에 실패했습니다.", "Failed to import Excel"));
 
       setMessage(
-        `Imported ${numberFormatter.format(json.imported ?? importRows.length)} CBM rows ` +
-        `(${numberFormatter.format(json.updated ?? 0)} updated, ${numberFormatter.format(json.inserted ?? 0)} inserted)`
+        pick(
+          `CBM 행 ${numberFormatter.format(json.imported ?? importRows.length)}개를 가져왔습니다 ` +
+          `(${numberFormatter.format(json.updated ?? 0)}개 수정, ${numberFormatter.format(json.inserted ?? 0)}개 추가)`,
+          `Imported ${numberFormatter.format(json.imported ?? importRows.length)} CBM rows ` +
+          `(${numberFormatter.format(json.updated ?? 0)} updated, ${numberFormatter.format(json.inserted ?? 0)} inserted)`
+        )
       );
       await fetchRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to import Excel");
+      setMessage(error instanceof Error ? error.message : pick("엑셀 가져오기에 실패했습니다.", "Failed to import Excel"));
     } finally {
       setImporting(false);
       if (importInputRef.current) importInputRef.current.value = "";
@@ -332,7 +336,7 @@ export function SkuMasterPage() {
 
         const res = await fetch(apiPath(`/api/planning/sku-master?${params.toString()}`), { cache: "no-store" });
         const json = await res.json();
-        if (!json.success) throw new Error(json.error ?? "Failed to export SKU master");
+        if (!json.success) throw new Error(json.error ?? pick("SKU 마스터 내보내기에 실패했습니다.", "Failed to export SKU master"));
         exportRows.push(...json.data);
       }
 
@@ -378,9 +382,9 @@ export function SkuMasterPage() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      setMessage(`Downloaded ${numberFormatter.format(exportRows.length)} SKUs as CSV`);
+      setMessage(pick(`SKU ${numberFormatter.format(exportRows.length)}개를 CSV로 다운로드했습니다.`, `Downloaded ${numberFormatter.format(exportRows.length)} SKUs as CSV`));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to download CSV");
+      setMessage(error instanceof Error ? error.message : pick("CSV 다운로드에 실패했습니다.", "Failed to download CSV"));
     } finally {
       setDownloading(false);
     }
@@ -651,9 +655,9 @@ export function SkuMasterPage() {
                       await saveRow(sku);
                       setEditingSku(null);
                       setEditingSnapshot(null);
-                      setMessage(`Saved ${sku.masterSku}`);
+                      setMessage(pick(`${sku.masterSku} 저장됨`, `Saved ${sku.masterSku}`));
                     } catch (error) {
-                      window.alert(error instanceof Error ? error.message : "Failed to save SKU");
+                      window.alert(error instanceof Error ? error.message : pick("SKU 저장에 실패했습니다.", "Failed to save SKU"));
                     }
                   } else {
                     startEditing(sku);

@@ -179,7 +179,7 @@ export function FactoriesPage() {
           body: JSON.stringify(payload),
         });
         const json = await res.json();
-        if (!json.success) { setErrorMsg(json.error ?? "Failed to create factory"); return; }
+        if (!json.success) { setErrorMsg(json.error ?? pick("공장 생성에 실패했습니다.", "Failed to create factory.")); return; }
         setSelectedId((json.data as FactoryRecord).id);
         setIsNew(false);
       } else if (selectedId) {
@@ -189,7 +189,7 @@ export function FactoriesPage() {
           body: JSON.stringify(payload),
         });
         const json = await res.json();
-        if (!json.success) { setErrorMsg(json.error ?? "Failed to update factory"); return; }
+        if (!json.success) { setErrorMsg(json.error ?? pick("공장 수정에 실패했습니다.", "Failed to update factory.")); return; }
       }
 
       setEditMode(false);
@@ -212,7 +212,7 @@ export function FactoriesPage() {
         body: JSON.stringify({ isActive: next }),
       });
       const json = await res.json();
-      if (!json.success) { window.alert(json.error ?? "Failed to update status"); return; }
+      if (!json.success) { window.alert(json.error ?? pick("상태 변경에 실패했습니다.", "Failed to update status.")); return; }
       await fetchFactories();
       setForm((prev) => ({ ...prev, isActive: next }));
     } finally {

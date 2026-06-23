@@ -17,10 +17,10 @@ import {
 } from "@/components/layout/navigation-config";
 
 const quickLinks = [
-  { href: "/planning/sku-forecasts", label: "SKU Planning" },
-  { href: "/planning/container-planning", label: "Container Planning" },
-  { href: "/inventory", label: "Open Inventory" },
-  { href: "/velocity", label: "Open Velocity" },
+  { href: "/planning/sku-forecasts", label: "SKU Planning", labelKo: "SKU 계획", labelEn: "SKU Planning" },
+  { href: "/planning/container-planning", label: "Container Planning", labelKo: "컨테이너 계획", labelEn: "Container Planning" },
+  { href: "/inventory", label: "Open Inventory", labelKo: "재고 현황 열기", labelEn: "Open Inventory" },
+  { href: "/velocity", label: "Open Velocity", labelKo: "판매 속도 열기", labelEn: "Open Velocity" },
 ];
 
 export default async function HomePage() {

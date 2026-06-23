@@ -49,6 +49,7 @@ import type { CellContent } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -344,6 +345,7 @@ function CopyableCellRenderer({
   badge?: string;
   skuPlanningSku?: string;
 }) {
+  const { pick } = useI18n();
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
 
@@ -409,7 +411,7 @@ function CopyableCellRenderer({
                 }}
               >
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                SKU Planning에서 열기
+                {pick("SKU Planning에서 열기", "Open in SKU Planning")}
               </Button>
             )}
             <Button
@@ -1258,6 +1260,7 @@ export function AgDemandPlanningGrid({
   hiddenContainers = new Set<string>(),
   hiddenBases = new Set<string>(),
 }: DemandPlanningGridProps) {
+  const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const gridHostRef = useRef<HTMLDivElement>(null);
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
@@ -1371,7 +1374,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
 
   function openContainerPlanning(container: ContainerMeta) {
     if (!container.container_id) {
-      window.alert("This container does not have a saved container ID yet.");
+      window.alert(pick("이 컨테이너는 아직 저장된 컨테이너 ID가 없습니다.", "This container does not have a saved container ID yet."));
       return;
     }
 

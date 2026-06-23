@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Plus, X } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface CollectionFormData {
   name: string;
@@ -59,6 +60,7 @@ export function CollectionFormDialog({
   trigger,
   editData,
 }: CollectionFormDialogProps) {
+  const { pick } = useI18n();
   const isEditMode = !!editData;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -120,10 +122,13 @@ export function CollectionFormDialog({
         }
         onSuccess?.();
       } else {
-        alert(`Error: ${result.error}`);
+        alert(pick(`오류: ${result.error}`, `Error: ${result.error}`));
       }
-    } catch (error) {
-      alert(`Failed to ${isEditMode ? "update" : "create"} collection`);
+    } catch {
+      alert(isEditMode
+        ? pick("컬렉션 수정에 실패했습니다.", "Failed to update collection")
+        : pick("컬렉션 생성에 실패했습니다.", "Failed to create collection")
+      );
     } finally {
       setLoading(false);
     }

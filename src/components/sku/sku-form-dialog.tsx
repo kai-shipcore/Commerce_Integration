@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface SKUFormData {
   skuCode: string;
@@ -39,6 +40,7 @@ interface SKUFormDialogProps {
 }
 
 export function SKUFormDialog({ onSuccess, trigger, editData }: SKUFormDialogProps) {
+  const { pick } = useI18n();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const isEditMode = !!editData;
@@ -87,10 +89,13 @@ export function SKUFormDialog({ onSuccess, trigger, editData }: SKUFormDialogPro
         }
         onSuccess?.();
       } else {
-        alert(`Error: ${result.error}`);
+        alert(pick(`오류: ${result.error}`, `Error: ${result.error}`));
       }
     } catch {
-      alert(`Failed to ${isEditMode ? "update" : "create"} SKU`);
+      alert(isEditMode
+        ? pick("SKU 수정에 실패했습니다.", "Failed to update SKU")
+        : pick("SKU 생성에 실패했습니다.", "Failed to create SKU")
+      );
     } finally {
       setLoading(false);
     }

@@ -36,12 +36,15 @@ export async function GET() {
         image: true,
         role: true,
         createdAt: true,
+        passwordHash: true,
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: user,
+      data: user
+        ? { ...user, hasPassword: !!user.passwordHash, passwordHash: undefined }
+        : null,
     });
   } catch (error: unknown) {
     return NextResponse.json(

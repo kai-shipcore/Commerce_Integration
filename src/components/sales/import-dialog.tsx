@@ -35,6 +35,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface ImportResult {
   row: number;
@@ -70,6 +71,7 @@ interface SalesImportDialogProps {
 }
 
 export function SalesImportDialog({ onImportComplete }: SalesImportDialogProps) {
+  const { pick } = useI18n();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"upload" | "preview" | "importing" | "results">("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -100,7 +102,7 @@ export function SalesImportDialog({ onImportComplete }: SalesImportDialogProps) 
   const parseCSV = (text: string): ParsedRow[] => {
     const lines = text.split("\n").filter((line) => line.trim());
     if (lines.length < 2) {
-      throw new Error("CSV must have a header row and at least one data row");
+      throw new Error(pick("CSV에는 헤더 행과 최소 1개의 데이터 행이 필요합니다.", "CSV must have a header row and at least one data row"));
     }
 
     // Parse header
@@ -110,7 +112,7 @@ export function SalesImportDialog({ onImportComplete }: SalesImportDialogProps) 
     const requiredCols = ["sku_code", "sale_date", "quantity", "unit_price"];
     const missingCols = requiredCols.filter((col) => !header.includes(col));
     if (missingCols.length > 0) {
-      throw new Error(`Missing required columns: ${missingCols.join(", ")}`);
+      throw new Error(pick(`필수 컬럼이 누락되었습니다: ${missingCols.join(", ")}`, `Missing required columns: ${missingCols.join(", ")}`));
     }
 
     // Parse data rows

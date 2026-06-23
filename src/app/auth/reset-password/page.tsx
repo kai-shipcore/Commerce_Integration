@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LanguageToggle } from "@/components/layout/language-toggle";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 function ResetPasswordContent() {
+  const { pick } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
@@ -36,10 +39,10 @@ function ResetPasswordContent() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to reset password");
+        throw new Error(result.error || pick("비밀번호 재설정에 실패했습니다.", "Failed to reset password"));
       }
 
-      setSuccess(result.message || "Password updated successfully");
+      setSuccess(result.message || pick("비밀번호가 변경되었습니다.", "Password updated successfully"));
       setPassword("");
       setConfirmPassword("");
       setTimeout(() => {
@@ -49,7 +52,7 @@ function ResetPasswordContent() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Failed to reset password"
+          : pick("비밀번호 재설정에 실패했습니다.", "Failed to reset password")
       );
     } finally {
       setLoading(false);
@@ -60,14 +63,14 @@ function ResetPasswordContent() {
     return (
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Invalid Reset Link</CardTitle>
+          <CardTitle className="text-2xl">{pick("유효하지 않은 재설정 링크", "Invalid Reset Link")}</CardTitle>
           <CardDescription>
-            The reset token is missing. Generate a new password reset link.
+            {pick("재설정 토큰이 없습니다. 새 비밀번호 재설정 링크를 생성하세요.", "The reset token is missing. Generate a new password reset link.")}
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           <Link href="/auth/forgot-password" className="text-primary hover:underline">
-            Request a new reset link
+            {pick("새 재설정 링크 요청", "Request a new reset link")}
           </Link>
         </CardContent>
       </Card>
@@ -77,31 +80,31 @@ function ResetPasswordContent() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <div className="flex justify-center mb-4">
-          <div className="p-3 bg-primary/10 rounded-full">
+        <div className="mb-4 flex justify-center">
+          <div className="rounded-full bg-primary/10 p-3">
             <LockKeyhole className="h-8 w-8 text-primary" />
           </div>
         </div>
-        <CardTitle className="text-2xl">Set New Password</CardTitle>
+        <CardTitle className="text-2xl">{pick("새 비밀번호 설정", "Set New Password")}</CardTitle>
         <CardDescription>
-          Choose a new password for your account.
+          {pick("계정에 사용할 새 비밀번호를 입력하세요.", "Choose a new password for your account.")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? (
-          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm text-center">
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-center text-sm text-destructive">
             {error}
           </div>
         ) : null}
         {success ? (
-          <div className="p-3 rounded-md border border-emerald-200 bg-emerald-50 text-sm text-center text-emerald-700">
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-center text-sm text-emerald-700">
             {success}
           </div>
         ) : null}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="password">New password</Label>
+            <Label htmlFor="password">{pick("새 비밀번호", "New password")}</Label>
             <Input
               id="password"
               type="password"
@@ -112,7 +115,7 @@ function ResetPasswordContent() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm password</Label>
+            <Label htmlFor="confirmPassword">{pick("비밀번호 확인", "Confirm password")}</Label>
             <Input
               id="confirmPassword"
               type="password"
@@ -124,13 +127,13 @@ function ResetPasswordContent() {
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Update password
+            {pick("비밀번호 변경", "Update password")}
           </Button>
         </form>
 
-        <p className="text-sm text-center text-muted-foreground">
+        <p className="text-center text-sm text-muted-foreground">
           <Link href="/auth/signin" className="text-primary hover:underline">
-            Back to sign in
+            {pick("로그인으로 돌아가기", "Back to sign in")}
           </Link>
         </p>
       </CardContent>
@@ -150,7 +153,11 @@ function LoadingFallback() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="absolute right-4 top-4">
+        <LanguageToggle />
+      </div>
+
       <Suspense fallback={<LoadingFallback />}>
         <ResetPasswordContent />
       </Suspense>

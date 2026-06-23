@@ -6,10 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LanguageToggle } from "@/components/layout/language-toggle";
 import { TrendingUp, Loader2 } from "lucide-react";
 import { apiPath, authPath, withBasePath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export default function SignUpPage() {
+  const { pick } = useI18n();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +25,7 @@ export default function SignUpPage() {
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(pick("비밀번호가 일치하지 않습니다.", "Passwords do not match"));
       return;
     }
 
@@ -38,7 +41,7 @@ export default function SignUpPage() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        setError(result.error || "Failed to create account");
+        setError(result.error || pick("계정 생성에 실패했습니다.", "Failed to create account"));
         setLoading(false);
         return;
       }
@@ -73,7 +76,7 @@ export default function SignUpPage() {
       window.location.assign(withBasePath("/"));
     } catch (requestError: unknown) {
       setError(
-        requestError instanceof Error ? requestError.message : "Failed to create account"
+        requestError instanceof Error ? requestError.message : pick("계정 생성에 실패했습니다.", "Failed to create account")
       );
     } finally {
       setLoading(false);
@@ -81,40 +84,44 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="absolute right-4 top-4">
+        <LanguageToggle />
+      </div>
+
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary/10 rounded-full">
+          <div className="mb-4 flex justify-center">
+            <div className="rounded-full bg-primary/10 p-3">
               <TrendingUp className="h-8 w-8 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl">Create Account</CardTitle>
+          <CardTitle className="text-2xl">{pick("계정 만들기", "Create Account")}</CardTitle>
           <CardDescription>
-            Register a new Demand Pilot account
+            {pick("새 Demand Pilot 계정을 등록하세요", "Register a new Demand Pilot account")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm text-center">
+          {error ? (
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-center text-sm text-destructive">
               {error}
             </div>
-          )}
+          ) : null}
 
           <form onSubmit={handleSignUp} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{pick("이름", "Name")}</Label>
               <Input
                 id="name"
                 type="text"
-                placeholder="Your name"
+                placeholder={pick("이름을 입력하세요", "Your name")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{pick("이메일", "Email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -125,7 +132,7 @@ export default function SignUpPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{pick("비밀번호", "Password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -136,7 +143,7 @@ export default function SignUpPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Label htmlFor="confirmPassword">{pick("비밀번호 확인", "Confirm Password")}</Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -148,14 +155,14 @@ export default function SignUpPage() {
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Create Account
+              {pick("계정 만들기", "Create Account")}
             </Button>
           </form>
 
-          <p className="text-sm text-center text-muted-foreground">
-            Already have an account?{" "}
+          <p className="text-center text-sm text-muted-foreground">
+            {pick("이미 계정이 있으신가요?", "Already have an account?")}{" "}
             <Link href="/auth/signin" className="text-primary hover:underline">
-              Sign in
+              {pick("로그인", "Sign in")}
             </Link>
           </p>
         </CardContent>

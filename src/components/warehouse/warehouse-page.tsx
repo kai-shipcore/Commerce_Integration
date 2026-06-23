@@ -238,8 +238,8 @@ export function WarehousePage() {
     const code = form.warehouseCode.trim().toUpperCase();
     const name = form.warehouseName.trim();
 
-    if (!code) { window.alert("Enter a warehouse code."); return; }
-    if (!name) { window.alert("Enter a warehouse name."); return; }
+    if (!code) { window.alert(pick("창고 코드를 입력하세요.", "Enter a warehouse code.")); return; }
+    if (!name) { window.alert(pick("창고명을 입력하세요.", "Enter a warehouse name.")); return; }
 
     setSaving(true);
     try {
@@ -252,7 +252,7 @@ export function WarehousePage() {
           body: JSON.stringify(payload),
         });
         const json = await res.json();
-        if (!json.success) { window.alert(json.error ?? "Failed to create warehouse"); return; }
+        if (!json.success) { window.alert(json.error ?? pick("창고 생성에 실패했습니다.", "Failed to create warehouse.")); return; }
         setSelectedId(json.data.id);
         setIsNew(false);
       } else if (selectedId) {
@@ -262,11 +262,11 @@ export function WarehousePage() {
           body: JSON.stringify(payload),
         });
         const json = await res.json();
-        if (!json.success) { window.alert(json.error ?? "Failed to update warehouse"); return; }
+        if (!json.success) { window.alert(json.error ?? pick("창고 수정에 실패했습니다.", "Failed to update warehouse.")); return; }
       }
 
       setEditMode(false);
-      setSavedMessage("✓ Saved");
+      setSavedMessage(pick("✓ 저장됨", "✓ Saved"));
       window.setTimeout(() => setSavedMessage(""), 2500);
       await fetchWarehouses();
     } finally {
@@ -285,7 +285,7 @@ export function WarehousePage() {
         body: JSON.stringify({ isActive: nextActive }),
       });
       const json = await res.json();
-      if (!json.success) { window.alert(json.error ?? "Failed to update status"); return; }
+      if (!json.success) { window.alert(json.error ?? pick("상태 변경에 실패했습니다.", "Failed to update status.")); return; }
       await fetchWarehouses();
       setForm((current) => ({ ...current, isActive: nextActive }));
     } finally {
@@ -295,12 +295,12 @@ export function WarehousePage() {
 
   async function deleteWarehouse() {
     if (!selectedWarehouse) return;
-    if (!window.confirm(`Delete warehouse "${selectedWarehouse.warehouseCode}"?`)) return;
+    if (!window.confirm(pick(`창고 "${selectedWarehouse.warehouseCode}"을(를) 삭제하시겠습니까?`, `Delete warehouse "${selectedWarehouse.warehouseCode}"?`))) return;
     setSaving(true);
     try {
       const res = await fetch(apiPath(`/api/warehouses/${selectedWarehouse.id}`), { method: "DELETE" });
       const json = await res.json();
-      if (!json.success) { window.alert(json.error ?? "Failed to delete warehouse"); return; }
+      if (!json.success) { window.alert(json.error ?? pick("창고 삭제에 실패했습니다.", "Failed to delete warehouse.")); return; }
       setSelectedId(null);
       setEditMode(false);
       setIsNew(false);
