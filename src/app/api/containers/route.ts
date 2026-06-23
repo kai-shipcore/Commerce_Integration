@@ -25,6 +25,7 @@ const ContainerSaveSchema = z.object({
     sku: z.string().trim().min(1),
     qty: z.number().int().positive(),
     cbm: z.number().positive(),
+    skuMemo: z.string().optional(),
     allocations: z.array(z.unknown()).optional(),
   })).default([]),
 });
@@ -152,6 +153,7 @@ export async function GET(request: NextRequest) {
                  CASE WHEN fc_container_items.qty > 0 THEN fc_container_items.total_cbm / fc_container_items.qty ELSE 0 END,
                  0
                ),
+               'sku_memo', fc_container_items.sku_memo,
                ${timelineView ? `'categoryCode', p_item.category_code` : `'allocations', COALESCE((
                  SELECT json_agg(
                    json_build_object(
@@ -205,6 +207,7 @@ export async function GET(request: NextRequest) {
               sku?: string;
               qty?: number;
               cbm?: string | number;
+              sku_memo?: string | null;
               categoryCode?: string | null;
               allocations?: Array<{
                 id: string;
@@ -219,6 +222,7 @@ export async function GET(request: NextRequest) {
               sku: item.sku ?? "",
               qty: Number(item.qty ?? 0),
               cbm: Number(item.cbm ?? 0),
+              skuMemo: item.sku_memo ?? null,
               ...(timelineView ? { categoryCode: item.categoryCode ?? null } : {}),
               ...(!timelineView
                 ? {
@@ -293,9 +297,9 @@ export async function POST(request: NextRequest) {
     for (const item of validated.items) {
       await client.query(
         `INSERT INTO shipcore.fc_container_items
-           (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-         VALUES ($1::bigint, $2, $3::int, $4::numeric(14,6), NOW(), NOW())`,
-        [containerId, item.sku.trim().toUpperCase(), item.qty, item.cbm]
+           (container_id, master_sku, qty, cbm_unit, sku_memo, created_at, updated_at)
+         VALUES ($1::bigint, $2, $3::int, $4::numeric(14,6), $5, NOW(), NOW())`,
+        [containerId, item.sku.trim().toUpperCase(), item.qty, item.cbm, item.skuMemo || null]
       );
     }
 
@@ -530,9 +534,9 @@ export async function PATCH(request: NextRequest) {
       for (const item of validated.items) {
         await client.query(
           `INSERT INTO shipcore.fc_container_items
-             (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-           VALUES ($1::bigint, $2, $3::int, $4::numeric(14,6), NOW(), NOW())`,
-          [id, item.sku.trim().toUpperCase(), item.qty, item.cbm]
+             (container_id, master_sku, qty, cbm_unit, sku_memo, created_at, updated_at)
+           VALUES ($1::bigint, $2, $3::int, $4::numeric(14,6), $5, NOW(), NOW())`,
+          [id, item.sku.trim().toUpperCase(), item.qty, item.cbm, item.skuMemo || null]
         );
       }
     }

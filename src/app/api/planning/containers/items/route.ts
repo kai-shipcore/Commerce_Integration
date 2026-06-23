@@ -14,6 +14,7 @@ const BodySchema = z.object({
   master_sku: z.string().min(1),
   qty: z.number().int().min(0),
   cbm_unit: z.number().min(0).default(0),
+  sku_memo: z.string().optional(),
 });
 
 function errorMessage(e: unknown): string {
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { container_id, master_sku, qty, cbm_unit: rawCbmUnit } = parsed.data;
+  const { container_id, master_sku, qty, cbm_unit: rawCbmUnit, sku_memo } = parsed.data;
   const normalizedSku = master_sku.toUpperCase();
   const client = await getPrimaryPool().connect();
 
@@ -54,16 +55,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await client.query<{ id: number; cbm_unit: string; total_cbm: string }>(
+    const result = await client.query<{ id: number; cbm_unit: string; total_cbm: string; sku_memo: string | null }>(
       `INSERT INTO shipcore.fc_container_items
-         (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-       VALUES ($1, $2, $3::int, $4::numeric(14,6), NOW(), NOW())
+         (container_id, master_sku, qty, cbm_unit, sku_memo, created_at, updated_at)
+       VALUES ($1, $2, $3::int, $4::numeric(14,6), $5, NOW(), NOW())
        ON CONFLICT (container_id, master_sku) DO UPDATE
          SET qty = EXCLUDED.qty,
              cbm_unit = EXCLUDED.cbm_unit,
+             sku_memo = EXCLUDED.sku_memo,
              updated_at = NOW()
-       RETURNING id, cbm_unit::float8, total_cbm::float8`,
-      [container_id, normalizedSku, qty, cbmUnit],
+       RETURNING id, cbm_unit::float8, total_cbm::float8, sku_memo`,
+      [container_id, normalizedSku, qty, cbmUnit, sku_memo ?? null],
     );
 
     const allocatedQty = await syncRemainingAllocationForContainerItem(client, {
@@ -83,6 +85,7 @@ export async function POST(req: NextRequest) {
       allocated_qty: allocatedQty,
       cbm_unit: parseFloat(row.cbm_unit),
       total_cbm: parseFloat(row.total_cbm),
+      sku_memo: row.sku_memo,
     });
   } catch (error) {
     await client.query("ROLLBACK");

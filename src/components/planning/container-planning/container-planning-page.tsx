@@ -68,12 +68,14 @@ type InlineSkuDraft = {
   sku: string;
   qty: string;
   cbm: string;
+  skuMemo: string;
 };
 
 type InlineEditDraft = {
   sku: string;
   qty: string;
   cbm: string;
+  skuMemo: string;
 };
 
 type SkuMasterLookup = {
@@ -117,7 +119,7 @@ type ApiContainer = {
   origin: string | null;
   destWarehouse: string | null;
   note: string | null;
-  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; allocations?: StockAllocation[] }>;
+  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; skuMemo?: string | null; allocations?: StockAllocation[] }>;
 };
 
 type FactoryOption = {
@@ -232,6 +234,7 @@ function mapApiContainer(container: ApiContainer): MockContainer {
       sku: item.sku,
       qty: Number(item.qty ?? 0),
       cbm: Number(item.cbm ?? 0),
+      skuMemo: item.skuMemo ?? undefined,
       allocations: (item.allocations ?? []).map((allocation) => ({
         ...allocation,
         qty: Number(allocation.qty ?? 0),
@@ -300,6 +303,7 @@ export function ContainerPlanningPage() {
   const [skuInput, setSkuInput] = useState("");
   const [qtyInput, setQtyInput] = useState("");
   const [cbmInput, setCbmInput] = useState("");
+  const [memoInput, setMemoInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ContainerStatus | null>(null);
@@ -657,8 +661,8 @@ export function ContainerPlanningPage() {
   }
 
   async function addSkuToDraft() {
-    if (editingContainerId && form.status !== "draft") {
-      setFormError("SKU add/delete is available only while the container is Draft.");
+    if (editingContainerId && form.status !== "draft" && form.status !== "final-list-sent") {
+      setFormError("SKU add/delete is available only while the container is Draft or Final List.");
       return;
     }
 
@@ -694,23 +698,25 @@ export function ContainerPlanningPage() {
       return;
     }
 
+    const memo = memoInput.trim();
     setDraftItems((items) => {
       const existing = items.find((item) => item.sku === found.masterSku);
       if (existing) {
         return items.map((item) =>
-          item.sku === found.masterSku ? { ...item, qty: item.qty + qty, cbm } : item
+          item.sku === found.masterSku ? { ...item, qty: item.qty + qty, cbm, skuMemo: memo || item.skuMemo } : item
         );
       }
-      return [...items, { sku: found.masterSku, qty, cbm }];
+      return [...items, { sku: found.masterSku, qty, cbm, skuMemo: memo || undefined }];
     });
     setSkuInput("");
     setQtyInput("");
     setCbmInput("");
+    setMemoInput("");
     setFormError(null);
   }
 
   async function removeDraftItem(sku: string) {
-    if (editingContainerId && form.status !== "draft") return;
+    if (editingContainerId && form.status !== "draft" && form.status !== "final-list-sent") return;
     const itemToDelete = draftItems.find((item) => item.sku === sku);
     const allocationCount = itemToDelete?.allocations?.length ?? 0;
     const deletePrompt = allocationCount > 0
@@ -744,7 +750,7 @@ export function ContainerPlanningPage() {
   async function removeDraftItems(skus: string[]) {
     const skuSet = new Set(skus);
     if (skuSet.size === 0) return false;
-    if (editingContainerId && form.status !== "draft") return false;
+    if (editingContainerId && form.status !== "draft" && form.status !== "final-list-sent") return false;
 
     const allocatedSkus = draftItems
       .filter((item) => skuSet.has(item.sku) && item.allocations?.length)
@@ -960,7 +966,7 @@ export function ContainerPlanningPage() {
 
   async function deleteContainerItem(containerId: string, sku: string) {
     const container = containers.find((item) => item.id === containerId);
-    if (container?.status !== "draft") return;
+    if (container?.status !== "draft" && container?.status !== "final-list-sent") return;
     const itemToDelete = container?.items.find((item) => item.sku === sku);
     const allocationCount = itemToDelete?.allocations?.length ?? 0;
     const deletePrompt = allocationCount > 0
@@ -1124,6 +1130,7 @@ export function ContainerPlanningPage() {
         sku: item.sku,
         qty: String(item.qty),
         cbm: String(item.cbm),
+        skuMemo: item.skuMemo ?? "",
       },
     }));
   }
@@ -1132,7 +1139,7 @@ export function ContainerPlanningPage() {
     const key = editDraftKey(containerId, sku);
     setInlineEditDrafts((current) => ({
       ...current,
-      [key]: { sku, qty: "", cbm: "", ...current[key], ...patch },
+      [key]: { sku, qty: "", cbm: "", skuMemo: "", ...current[key], ...patch },
     }));
   }
 
@@ -1152,7 +1159,7 @@ export function ContainerPlanningPage() {
 
     const container = containers.find((item) => item.id === containerId);
     const originalItem = container?.items.find((item) => item.sku === originalSku);
-    const isQuantityOnly = container?.status === "final-list-sent";
+    const isQuantityOnly = false;
     const isLocked = container?.status === "packing-list-received";
     if (isLocked) return;
 
@@ -1190,7 +1197,7 @@ export function ContainerPlanningPage() {
       const response = await fetch(apiPath(`/api/planning/containers/items/${encodeURIComponent(originalItem.id)}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qty }),
+        body: JSON.stringify({ qty, sku_memo: draft.skuMemo ?? null }),
       });
       const json = await response.json();
 
@@ -1227,7 +1234,7 @@ export function ContainerPlanningPage() {
       ? {
           ...container,
           items: container.items.map((item) =>
-            item.sku === originalSku ? { sku: found.masterSku, qty, cbm } : item
+            item.sku === originalSku ? { ...item, sku: found.masterSku, qty, cbm, skuMemo: draft.skuMemo || undefined } : item
           ),
         }
       : null;
@@ -1245,6 +1252,7 @@ export function ContainerPlanningPage() {
           ...mergedItems[existingIndex],
           qty: mergedItems[existingIndex].qty + nextItem.qty,
           cbm: nextItem.cbm,
+          skuMemo: nextItem.skuMemo ?? mergedItems[existingIndex].skuMemo,
         };
       } else {
         mergedItems.push(nextItem);
@@ -1290,18 +1298,18 @@ export function ContainerPlanningPage() {
 
   function startInlineSkuAdd(containerId: string) {
     const container = containers.find((item) => item.id === containerId);
-    if (container?.status !== "draft") return;
+    if (container?.status !== "draft" && container?.status !== "final-list-sent") return;
 
     setInlineSkuDrafts((current) => ({
       ...current,
-      [containerId]: current[containerId] ?? { sku: "", qty: "", cbm: "" },
+      [containerId]: current[containerId] ?? { sku: "", qty: "", cbm: "", skuMemo: "" },
     }));
   }
 
   function updateInlineSkuDraft(containerId: string, patch: Partial<InlineSkuDraft>) {
     setInlineSkuDrafts((current) => ({
       ...current,
-      [containerId]: { sku: "", qty: "", cbm: "", ...current[containerId], ...patch },
+      [containerId]: { sku: "", qty: "", cbm: "", skuMemo: "", ...current[containerId], ...patch },
     }));
   }
 
@@ -1410,7 +1418,7 @@ export function ContainerPlanningPage() {
     const container = containers.find((item) => item.id === containerId);
     if (!container) return;
 
-    const updatedContainer = getMergedContainer(container, [{ sku: found.masterSku, qty, cbm }]);
+    const updatedContainer = getMergedContainer(container, [{ sku: found.masterSku, qty, cbm, skuMemo: draft.skuMemo || undefined }]);
     if (!(await persistContainer(updatedContainer))) return;
 
     cancelInlineSkuAdd(containerId);
@@ -1418,7 +1426,7 @@ export function ContainerPlanningPage() {
 
   async function importContainerItems(containerId: string, file: File) {
     const container = containers.find((item) => item.id === containerId);
-    if (container?.status !== "draft") return;
+    if (container?.status !== "draft" && container?.status !== "final-list-sent") return;
 
     const extension = file.name.split(".").pop()?.toLowerCase();
     let rows: unknown[][] = [];
@@ -1442,7 +1450,8 @@ export function ContainerPlanningPage() {
         const sku = String(row[0] ?? "").trim().toUpperCase();
         const qty = Math.trunc(parseNumberCell(row[1]));
         const cbm = parseNumberCell(row[2]);
-        return { sku, qty, cbm };
+        const memo = String(row[3] ?? "").trim();
+        return { sku, qty, cbm, memo };
       })
       .filter((item) => Boolean(item.sku) && item.qty > 0);
 
@@ -1451,10 +1460,13 @@ export function ContainerPlanningPage() {
         const found = await lookupSkuMaster(item.sku);
         if (!found) return null;
         const cbm = item.cbm > 0 ? item.cbm : found.cbmPerUnit;
-        return cbm > 0 ? { sku: found.masterSku, qty: item.qty, cbm } : null;
+        if (cbm <= 0) return null;
+        const result: ContainerItem = { sku: found.masterSku, qty: item.qty, cbm };
+        if (item.memo) result.skuMemo = item.memo;
+        return result;
       })
     );
-    const validImportedItems = importedItems.filter((item): item is ContainerItem => Boolean(item));
+    const validImportedItems = importedItems.filter((item): item is ContainerItem => item !== null);
     const missingSkus = parsedItems
       .filter((item) => !validImportedItems.some((validItem) => validItem.sku === item.sku))
       .map((item) => item.sku);
@@ -1465,7 +1477,7 @@ export function ContainerPlanningPage() {
     }
 
     if (validImportedItems.length === 0) {
-      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM order.");
+      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order.");
       return;
     }
 
@@ -1489,9 +1501,10 @@ export function ContainerPlanningPage() {
       ["Notes", container.note || null],
       ["Status", containerStatusLabels[container.status]],
       [],
-      ["Master SKU", "Source", "Qty", "CBM / Unit", "Total CBM"],
+      ["Master SKU", "Memo", "Source", "Qty", "CBM / Unit", "Total CBM"],
       ...container.items.map((item) => [
         item.sku,
+        item.skuMemo ?? "",
         (item.allocations ?? [])
           .map((allocation) =>
             `Remain ${allocation.referenceNo} (${allocation.qty})`
@@ -1502,12 +1515,12 @@ export function ContainerPlanningPage() {
         Number((item.qty * item.cbm).toFixed(6)),
       ]),
       [],
-      ["Total", null, totalQty, null, Number(totalCbm.toFixed(6))],
+      ["Total", null, null, totalQty, null, Number(totalCbm.toFixed(6))],
     ];
 
     const XLSX = await import("xlsx");
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    worksheet["!cols"] = [{ wch: 28 }, { wch: 36 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    worksheet["!cols"] = [{ wch: 28 }, { wch: 24 }, { wch: 36 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Packing List");
@@ -1642,7 +1655,8 @@ export function ContainerPlanningPage() {
         const sku = String(row[0] ?? "").trim().toUpperCase();
         const qty = Math.trunc(parseNumberCell(row[1]));
         const cbm = parseNumberCell(row[2]);
-        return { sku, qty, cbm };
+        const memo = String(row[3] ?? "").trim();
+        return { sku, qty, cbm, memo };
       })
       .filter((item) => Boolean(item.sku) && item.qty > 0);
 
@@ -1651,10 +1665,13 @@ export function ContainerPlanningPage() {
         const found = await lookupSkuMaster(item.sku);
         if (!found) return null;
         const cbm = item.cbm > 0 ? item.cbm : found.cbmPerUnit;
-        return cbm > 0 ? { sku: found.masterSku, qty: item.qty, cbm } : null;
+        if (cbm <= 0) return null;
+        const result: ContainerItem = { sku: found.masterSku, qty: item.qty, cbm };
+        if (item.memo) result.skuMemo = item.memo;
+        return result;
       })
     );
-    const validImportedItems = importedItems.filter((item): item is ContainerItem => Boolean(item));
+    const validImportedItems = importedItems.filter((item): item is ContainerItem => item !== null);
     const missingSkus = parsedItems
       .filter((item) => !validImportedItems.some((v) => v.sku === item.sku))
       .map((item) => item.sku);
@@ -1664,7 +1681,7 @@ export function ContainerPlanningPage() {
       return;
     }
     if (validImportedItems.length === 0) {
-      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM order.");
+      window.alert("No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order.");
       return;
     }
 
@@ -1673,7 +1690,7 @@ export function ContainerPlanningPage() {
       for (const nextItem of validImportedItems) {
         const idx = merged.findIndex((item) => item.sku === nextItem.sku);
         if (idx >= 0) {
-          merged[idx] = { ...merged[idx], qty: merged[idx].qty + nextItem.qty, cbm: nextItem.cbm };
+          merged[idx] = { ...merged[idx], qty: merged[idx].qty + nextItem.qty, cbm: nextItem.cbm, skuMemo: nextItem.skuMemo ?? merged[idx].skuMemo };
         } else {
           merged.push(nextItem);
         }
@@ -1683,7 +1700,7 @@ export function ContainerPlanningPage() {
   }
 
   function downloadContainerTemplate() {
-    const csv = "Master SKU,Qty,CBM/Unit\n";
+    const csv = "Master SKU,Qty,CBM/Unit,Memo\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1984,6 +2001,7 @@ export function ContainerPlanningPage() {
                 skuInput={skuInput}
                 qtyInput={qtyInput}
                 cbmInput={cbmInput}
+                memoInput={memoInput}
                 draftQty={draftQty}
                 draftCbm={draftCbm}
                 cbmCapacity={cbmCapacity}
@@ -2001,6 +2019,7 @@ export function ContainerPlanningPage() {
                 onSkuInputBlur={fillCreateSkuCbm}
                 onQtyInputChange={setQtyInput}
                 onCbmInputChange={setCbmInput}
+                onMemoInputChange={setMemoInput}
                 onCbmInputBlur={updateCreateSkuCbm}
                 onAddSkuToDraft={addSkuToDraft}
                 onImportItems={importCreateFormItems}
@@ -2108,6 +2127,7 @@ function ContainerCreateForm({
   skuInput,
   qtyInput,
   cbmInput,
+  memoInput,
   draftQty,
   draftCbm,
   cbmCapacity,
@@ -2126,6 +2146,7 @@ function ContainerCreateForm({
   onQtyInputChange,
   onCbmInputChange,
   onCbmInputBlur,
+  onMemoInputChange,
   onAddSkuToDraft,
   onImportItems,
   onDownloadTemplate,
@@ -2139,6 +2160,7 @@ function ContainerCreateForm({
   skuInput: string;
   qtyInput: string;
   cbmInput: string;
+  memoInput: string;
   draftQty: number;
   draftCbm: number;
   cbmCapacity: number;
@@ -2157,6 +2179,7 @@ function ContainerCreateForm({
   onQtyInputChange: (value: string) => void;
   onCbmInputChange: (value: string) => void;
   onCbmInputBlur: () => void | Promise<void>;
+  onMemoInputChange: (value: string) => void;
   onAddSkuToDraft: () => void | Promise<void>;
   onImportItems: (file: File) => void | Promise<void>;
   onDownloadTemplate: () => void;
@@ -2173,7 +2196,7 @@ function ContainerCreateForm({
   const [selectedDraftSkus, setSelectedDraftSkus] = useState<string[]>([]);
   const [deletingSelectedDraftSkus, setDeletingSelectedDraftSkus] = useState(false);
   const statusLabel = statusOptions.find((opt) => opt.value === form.status)?.shortLabel ?? form.status;
-  const canChangeStructure = form.status === "draft";
+  const canChangeStructure = form.status === "draft" || form.status === "final-list-sent";
   const loadRate = cbmCapacity > 0 ? (draftCbm / cbmCapacity) * 100 : 0;
   const containersNeeded = draftCbm > 0 ? Math.ceil(draftCbm / cbmCapacity) : 0;
   const normalizedSkuSearch = skuSearch.trim().toLowerCase();
@@ -2443,7 +2466,7 @@ function ContainerCreateForm({
           </div>
         ) : null}
         <div className="overflow-hidden rounded-lg border border-[#e2dfd8]">
-          <div className={`grid bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canChangeStructure ? "grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"}`}>
+          <div className={`grid bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canChangeStructure ? "grid-cols-[32px_2fr_1.4fr_0.8fr_0.9fr_0.9fr_64px]" : "grid-cols-[2fr_1.4fr_0.8fr_0.9fr_0.9fr]"}`}>
             {canChangeStructure ? (
               <div>
                 <input
@@ -2456,6 +2479,7 @@ function ContainerCreateForm({
               </div>
             ) : null}
             <div>Master SKU</div>
+            <div>Memo</div>
             <div className="text-right">{pick("수량", "Qty")}</div>
             <div className="text-right">CBM / Unit</div>
             <div className="text-right">{pick("총 CBM", "Total CBM")}</div>
@@ -2484,8 +2508,8 @@ function ContainerCreateForm({
                 } : undefined}
                 className={`grid items-center border-t border-[#e2dfd8] px-3 py-2 text-sm last:rounded-b-lg ${
                   canChangeStructure
-                    ? "grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px] cursor-pointer hover:bg-[#f8f7f4]"
-                    : "grid-cols-[2fr_0.8fr_0.9fr_0.9fr]"
+                    ? "grid-cols-[32px_2fr_1.4fr_0.8fr_0.9fr_0.9fr_64px] cursor-pointer hover:bg-[#f8f7f4]"
+                    : "grid-cols-[2fr_1.4fr_0.8fr_0.9fr_0.9fr]"
                 } ${selected ? "bg-[#ebf0fd]" : ""}`}
               >
                 {canChangeStructure ? (
@@ -2501,6 +2525,7 @@ function ContainerCreateForm({
                   </div>
                 ) : null}
                 <span className="font-mono text-xs font-medium">{item.sku}</span>
+                <span className="truncate text-xs text-muted-foreground">{item.skuMemo ?? ""}</span>
                 <span className="text-right tabular-nums">{formatNumber(item.qty)}</span>
                 <span className="text-right font-mono text-xs tabular-nums">{item.cbm.toFixed(6)}</span>
                 <span className="text-right font-mono text-xs tabular-nums">{(item.qty * item.cbm).toFixed(6)}</span>
@@ -2531,7 +2556,7 @@ function ContainerCreateForm({
 
           {/* Inline add row */}
           {canChangeStructure ? (
-          <div className="grid grid-cols-[32px_2fr_0.8fr_0.9fr_0.9fr_64px] items-end gap-2 border-t border-[#e2dfd8] bg-[#fbfaf8] px-3 py-2">
+          <div className="grid grid-cols-[32px_2fr_1.4fr_0.8fr_0.9fr_0.9fr_64px] items-end gap-2 border-t border-[#e2dfd8] bg-[#fbfaf8] px-3 py-2">
             <div />
             <input
               className="form-input font-mono text-xs"
@@ -2539,6 +2564,12 @@ function ContainerCreateForm({
               onChange={(event) => onSkuInputChange(event.target.value)}
               onBlur={() => void onSkuInputBlur()}
               placeholder="Master SKU..."
+            />
+            <input
+              className="form-input text-xs"
+              value={memoInput}
+              onChange={(event) => onMemoInputChange(event.target.value)}
+              placeholder="Memo..."
             />
             <input
               className="form-input"
@@ -2733,7 +2764,7 @@ function ContainerCard({
     ? Math.min((usedCbm / container.cbmCapacity) * 100, 100)
     : 0;
   const cbmColor = cbmUsage > 95 ? "#c42b2b" : cbmUsage > 80 ? "#ef9f27" : "#1a5cdb";
-  const isStructureLocked = container.status === "final-list-sent";
+  const isStructureLocked = false;
   const isStockInCompleted = container.status === "complete";
   const isFullyLocked = container.status === "packing-list-received" || isStockInCompleted;
   const canEditContainer = !isStockInCompleted;
@@ -2922,8 +2953,9 @@ function ContainerCard({
             </div>
           ) : null}
           {skuListCollapsed ? null : <>
-          <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]"}`}>
+          <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr]"}`}>
             <div>Master SKU</div>
+            <div>Memo</div>
             <div>{pick("수량", "Qty")}</div>
             <div>CBM / Unit</div>
             <div>{pick("총 CBM", "Total CBM")}</div>
@@ -2985,7 +3017,7 @@ function ContainerCard({
               </div>
             ) : null}
             {inlineSkuDraft && canChangeStructure ? (
-              <div className="grid grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+              <div className="grid grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
                 <div className="pr-3">
                   <input
                     className="form-input font-mono text-xs"
@@ -3007,6 +3039,14 @@ function ContainerCard({
                       </span>
                     </div>
                   ) : null}
+                </div>
+                <div className="pr-3">
+                  <input
+                    className="form-input text-xs"
+                    value={inlineSkuDraft.skuMemo ?? ""}
+                    onChange={(event) => onUpdateInlineSkuDraft(container.id, { skuMemo: event.target.value })}
+                    placeholder="Memo..."
+                  />
                 </div>
                 <div className="pr-3">
                   <input
@@ -3221,7 +3261,7 @@ function SkuRow({
 
   if (editDraft) {
     return (
-      <div className="grid grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+      <div className="grid grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
         <div className="pr-3">
           <input
             className="form-input font-mono text-xs"
@@ -3235,6 +3275,14 @@ function SkuRow({
             <ProductBadge product={inferProductKey(editDraft.sku)} />
             <span className="truncate font-mono text-[11px] text-muted-foreground">{editDraft.sku}</span>
           </div>
+        </div>
+        <div className="pr-3">
+          <input
+            className="form-input text-xs"
+            value={editDraft.skuMemo ?? ""}
+            onChange={(event) => onUpdateDraft(containerId, item.sku, { skuMemo: event.target.value })}
+            placeholder="Memo..."
+          />
         </div>
         <div className="pr-3">
           <input
@@ -3295,7 +3343,7 @@ function SkuRow({
       } : undefined}
       className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${
         canSelectAllocations ? "cursor-pointer" : ""
-      } ${readonly ? "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_0.7fr_0.8fr_0.8fr_110px]"}`}
+      } ${readonly ? "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px]"}`}
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -3322,44 +3370,48 @@ function SkuRow({
           </div>
         ) : null}
       </div>
+      <div className="min-w-0 truncate text-xs text-muted-foreground">{item.skuMemo ?? ""}</div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
       <div className="font-mono text-xs text-muted-foreground">{item.cbm.toFixed(6)} m3</div>
       <div className="font-mono text-xs font-semibold">{(item.qty * item.cbm).toFixed(6)} m3</div>
-      {readonly ? null : hasAllocatedStock ? (
+      {readonly ? null : (
         <div className="flex flex-col items-end gap-1">
-          {allocations.map((allocation) => (
-            <button
-              key={allocation.id}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                void onRemoveAvailableAllocation(allocation.id, containerId);
-              }}
-              title={pick(`Remain ${allocation.referenceNo} 삭제`, `Delete Remain ${allocation.referenceNo}`)}
-              className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-2.5 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
-            >
-              {pick("삭제", "Delete")}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="flex justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => onStartEdit(containerId, item)}
-            className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#1a5cdb] hover:text-[#1a5cdb]"
-          >
-            {quantityOnly ? pick("수량", "Qty") : pick("수정", "Edit")}
-          </button>
-          {quantityOnly ? null : (
+          <div className="flex justify-end gap-1">
             <button
               type="button"
-              onClick={() => void onDelete(containerId, item.sku)}
-              className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#c42b2b] hover:text-[#c42b2b]"
+              onClick={(event) => { event.stopPropagation(); onStartEdit(containerId, item); }}
+              className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#1a5cdb] hover:text-[#1a5cdb]"
             >
-              {pick("삭제", "Delete")}
+              {quantityOnly ? pick("수량", "Qty") : pick("수정", "Edit")}
             </button>
-          )}
+            {!quantityOnly && !hasAllocatedStock ? (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); void onDelete(containerId, item.sku); }}
+                className="rounded-md border border-[#cccac4] px-2.5 py-1 text-xs text-muted-foreground hover:border-[#c42b2b] hover:text-[#c42b2b]"
+              >
+                {pick("삭제", "Delete")}
+              </button>
+            ) : null}
+          </div>
+          {hasAllocatedStock ? (
+            <div className="flex flex-col items-end gap-1">
+              {allocations.map((allocation) => (
+                <button
+                  key={allocation.id}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void onRemoveAvailableAllocation(allocation.id, containerId);
+                  }}
+                  title={pick(`Remain ${allocation.referenceNo} 삭제`, `Delete Remain ${allocation.referenceNo}`)}
+                  className="rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-2.5 py-1 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
+                >
+                  {pick("삭제", "Delete")}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
     </div>

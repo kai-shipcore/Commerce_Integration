@@ -16,6 +16,7 @@ import { z } from "zod";
 
 const BodySchema = z.object({
   qty: z.number().int().min(0),
+  sku_memo: z.string().optional(),
 });
 
 type ItemRow = {
@@ -98,7 +99,7 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: "qty must be a non-negative integer" }, { status: 400 });
   }
 
-  const { qty } = parsed.data;
+  const { qty, sku_memo } = parsed.data;
   const client = await getPrimaryPool().connect();
 
   try {
@@ -121,10 +122,11 @@ export async function PATCH(
     const result = await client.query<{ id: number; cbm_unit: string; total_cbm: string }>(
       `UPDATE shipcore.fc_container_items
        SET qty = $1,
+           sku_memo = $3,
            updated_at = NOW()
        WHERE id = $2
        RETURNING id, cbm_unit::float8, total_cbm::float8`,
-      [qty, itemId],
+      [qty, itemId, sku_memo ?? null],
     );
 
     const allocatedQty = await syncRemainingAllocationForContainerItem(client, {

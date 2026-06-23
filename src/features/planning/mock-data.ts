@@ -41,6 +41,7 @@ export interface MockContainer {
     sku: string;
     qty: number;
     cbm: number;
+    skuMemo?: string;
     allocations?: Array<{
       id: string;
       stockId: string;
