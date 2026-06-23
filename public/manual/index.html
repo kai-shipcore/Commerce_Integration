@@ -948,7 +948,7 @@
       <ul>
         <li>시트 커버 / 카 커버 / 플로어 매트 제품 탭 전환 (건수 뱃지 표시)</li>
         <li>검색창: SKU명·컨테이너 번호·판매 상태 실시간 필터</li>
-        <li>긴급도별 필터 뱃지 (All / Critical / Watch / High / Low / Order Required)</li>
+        <li>긴급도별 필터 뱃지 (전체 / 긴급 / 주의 / 정상 / 백오더 / 발주 필요)</li>
         <li>SKU 목록: 재고·일판매량·SOD·권장수량 열람 및 정렬</li>
       </ul>
     </div>
@@ -973,7 +973,6 @@
     <tr><td class="label">Sales 있는 SKU / 전체 SKU</td><td>토글. <strong>Sales 있는 SKU</strong>: 최근 판매 실적이 있는 SKU만 표시. <strong>전체 SKU</strong>: 판매 이력 없는 SKU까지 모두 표시.</td></tr>
     <tr><td class="label">Active 컨테이너 / Draft 포함</td><td>토글. <strong>Active 컨테이너</strong>: 확정된 컨테이너 기준 재고 계산. <strong>Draft 포함</strong>: 초안(Draft) 컨테이너 입고량까지 포함하여 계산.</td></tr>
     <tr><td class="label">목표 재고일 (1–365)</td><td>컨테이너 추천 탭의 목표 재고 일수를 설정합니다. 이 값이 커질수록 권장 발주 수량이 늘어납니다. KPI의 재고 유지일 기준이 됩니다.</td></tr>
-    <tr><td class="label">언어 전환 (KO / EN)</td><td>화면 레이블을 한국어·영어로 전환합니다. localStorage에 저장됩니다.</td></tr>
     <tr><td class="label">🔄 동기화</td><td>서버에서 최신 수요 계획 데이터를 다시 불러옵니다.</td></tr>
   </table>
 
@@ -984,12 +983,12 @@
   <p>검색창에 SKU 이름, 컨테이너 번호, 또는 판매 상태 일부를 입력하면 목록이 실시간으로 좁혀집니다. 검색창 아래에는 긴급도별 필터 뱃지가 있어 클릭 한 번으로 특정 상태의 SKU만 볼 수 있습니다.</p>
   <table class="feat-table">
     <tr><th style="width:160px">필터 뱃지</th><th>조건</th></tr>
-    <tr><td class="label">All</td><td>전체 SKU (필터 없음)</td></tr>
-    <tr><td class="label"><span class="status critical">Critical</span></td><td>긴급도 = Critical인 SKU (재고 소진 임박)</td></tr>
-    <tr><td class="label"><span class="status warn">Watch</span></td><td>긴급도 = Watch인 SKU (재고 주의 필요)</td></tr>
-    <tr><td class="label"><span class="status complete">High</span></td><td>긴급도 = Healthy인 SKU (재고 양호)</td></tr>
-    <tr><td class="label">Low</td><td>Back Order(재고 부족) 수치가 음수인 SKU</td></tr>
-    <tr><td class="label">Order Required</td><td>권장 발주 수량(Rec. Qty) > 0인 SKU</td></tr>
+    <tr><td class="label">전체</td><td>전체 SKU (필터 없음)</td></tr>
+    <tr><td class="label"><span class="status critical">긴급</span></td><td>긴급도 = Critical인 SKU (재고 소진 임박)</td></tr>
+    <tr><td class="label"><span class="status warn">주의</span></td><td>긴급도 = Watch인 SKU (재고 주의 필요)</td></tr>
+    <tr><td class="label"><span class="status complete">정상</span></td><td>긴급도 = Healthy인 SKU (재고 양호)</td></tr>
+    <tr><td class="label">백오더</td><td>Back Order(재고 부족) 수치가 음수인 SKU</td></tr>
+    <tr><td class="label">발주 필요</td><td>권장 발주 수량(Rec. Qty) > 0인 SKU</td></tr>
   </table>
 
   <h3 class="sub">SKU 목록 컬럼 (한국어 모드 기준)</h3>
@@ -2429,7 +2428,6 @@
     <tr><td class="label">Active Containers / Include Draft</td><td>Toggle. <strong>Active Containers</strong>: confirmed containers only. <strong>Include Draft</strong>: include Draft container inbound quantities in calculations.</td></tr>
     <tr><td class="label">Target Stock Days (1–365)</td><td>Sets the target inventory days for the Container Recommendation tab. Larger values increase the recommended order quantity.</td></tr>
     <tr><td class="label">🔄 Sync</td><td>Reload the latest demand planning data from the server.</td></tr>
-    <tr><td class="label">Language (KO / EN)</td><td>Switch all screen labels between Korean and English. Saved to localStorage.</td></tr>
   </table>
 
   <h3 id="en-sp-browser">① Left SKU Browser Panel</h3>
