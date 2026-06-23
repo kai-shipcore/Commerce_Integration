@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export interface OrderDetailItem {
   id: number;
@@ -61,12 +62,33 @@ function formatCurrency(value: number, currency: string | null) {
   }).format(value);
 }
 
+function formatStatusLabel(value: string | null | undefined, locale: "ko" | "en") {
+  if (!value) return "-";
+  const normalized = value.trim().toUpperCase();
+  const koLabels: Record<string, string> = {
+    CANCELLED: "취소됨",
+    DELIVERED: "배송 완료",
+    FULFILLED: "처리 완료",
+    PAID: "결제 완료",
+    PARTIALLY_REFUNDED: "부분 환불",
+    PENDING: "대기",
+    REFUNDED: "환불됨",
+    SHIPPED: "배송됨",
+    UNFULFILLED: "미처리",
+    VOIDED: "무효",
+  };
+  if (locale === "ko" && koLabels[normalized]) return koLabels[normalized];
+  return value.replace(/_/g, " ");
+}
+
 export function OrderDetailDialog({
   open,
   order,
   loading,
   onOpenChange,
 }: OrderDetailDialogProps) {
+  const { locale, pick } = useI18n();
+  const dateLocale = locale === "ko" ? "ko-KR" : "en-US";
   const subtotalPrice =
     order?.subtotalPrice ??
     order?.lineItems.reduce(
@@ -88,10 +110,10 @@ export function OrderDetailDialog({
       <DialogContent className="h-auto max-h-[92vh] max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-[min(96vw,1400px)]">
         <DialogHeader>
           <DialogTitle>
-            {order?.orderNumber || (loading ? "Loading order..." : "Order details")}
+            {order?.orderNumber || (loading ? pick("주문 불러오는 중...", "Loading order...") : pick("주문 상세", "Order details"))}
           </DialogTitle>
           <DialogDescription>
-            Review line items and channel metadata for the selected order.
+            {pick("선택한 주문의 라인 아이템과 채널 정보를 확인합니다.", "Review line items and channel metadata for the selected order.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -101,40 +123,40 @@ export function OrderDetailDialog({
           </div>
         ) : !order ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
-            Order details are not available.
+            {pick("주문 상세 정보를 사용할 수 없습니다.", "Order details are not available.")}
           </div>
         ) : (
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-3">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Platform</CardDescription>
+                  <CardDescription>{pick("플랫폼", "Platform")}</CardDescription>
                   <CardTitle className="text-base">{order.platformSource}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  {order.externalOrderId || `Internal ID ${order.id}`}
+                  {order.externalOrderId || `${pick("내부 ID", "Internal ID")} ${order.id}`}
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Order Status</CardDescription>
-                  <CardTitle className="text-base">{order.orderStatus || "-"}</CardTitle>
+                  <CardDescription>{pick("주문 상태", "Order Status")}</CardDescription>
+                  <CardTitle className="text-base">{formatStatusLabel(order.orderStatus, locale)}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  {order.orderDate ? new Date(order.orderDate).toLocaleString() : "-"}
+                  {order.orderDate ? new Date(order.orderDate).toLocaleString(dateLocale) : "-"}
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Total</CardDescription>
+                  <CardDescription>{pick("합계", "Total")}</CardDescription>
                   <CardTitle className="text-base">
                     {formatCurrency(order.totalPrice, order.currency)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  {order.fulfillmentChannel ? `Fulfillment: ${order.fulfillmentChannel}` : ""}
+                  {order.fulfillmentChannel ? `${pick("처리 채널", "Fulfillment")}: ${order.fulfillmentChannel}` : ""}
                   {order.cancelledAt
-                    ? ` · Cancelled ${new Date(order.cancelledAt).toLocaleDateString()}`
+                    ? ` · ${pick("취소일", "Cancelled")} ${new Date(order.cancelledAt).toLocaleDateString(dateLocale)}`
                     : ""}
                 </CardContent>
               </Card>
@@ -142,16 +164,19 @@ export function OrderDetailDialog({
 
             <Card>
               <CardHeader>
-                <CardTitle>Line Items</CardTitle>
+                <CardTitle>{pick("라인 아이템", "Line Items")}</CardTitle>
                 <CardDescription>
-                  {order.lineItems.length.toLocaleString()} line items in this order
+                  {pick(
+                    `이 주문에 라인 아이템 ${order.lineItems.length.toLocaleString()}개`,
+                    `${order.lineItems.length.toLocaleString()} line items in this order`,
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
                   {order.lineItems.length === 0 ? (
                     <div className="rounded-md border px-4 py-8 text-center text-sm text-muted-foreground">
-                      No line items found for this order.
+                      {pick("이 주문의 라인 아이템이 없습니다.", "No line items found for this order.")}
                     </div>
                   ) : (
                     order.lineItems.map((item) => (
@@ -159,7 +184,7 @@ export function OrderDetailDialog({
                         <div className="space-y-3">
                           <div className="min-w-0">
                             <div className="font-medium">
-                              {item.productName || "Untitled item"}
+                              {item.productName || pick("이름 없는 아이템", "Untitled item")}
                             </div>
                             {item.masterSku && item.masterSku !== item.sku ? (
                               <div className="mt-1 space-y-0.5">
@@ -179,14 +204,14 @@ export function OrderDetailDialog({
                             ) : null}
                             {item.fulfillmentStatus && (
                               <div className="mt-2">
-                                <Badge variant="outline">{item.fulfillmentStatus}</Badge>
+                                <Badge variant="outline">{formatStatusLabel(item.fulfillmentStatus, locale)}</Badge>
                               </div>
                             )}
                           </div>
                           <div className="grid grid-cols-3 gap-3">
                             <div className="rounded-md bg-muted/40 px-3 py-2">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                Qty
+                                {pick("수량", "Qty")}
                               </div>
                               <div className="mt-1 text-right font-medium tabular-nums">
                                 {item.quantity.toLocaleString()}
@@ -194,7 +219,7 @@ export function OrderDetailDialog({
                             </div>
                             <div className="rounded-md bg-muted/40 px-3 py-2">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                Unit Price
+                                {pick("단가", "Unit Price")}
                               </div>
                               <div className="mt-1 text-right font-medium tabular-nums">
                                 {formatCurrency(item.unitPrice, order.currency)}
@@ -202,7 +227,7 @@ export function OrderDetailDialog({
                             </div>
                             <div className="rounded-md bg-muted/40 px-3 py-2">
                               <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                Line Total
+                                {pick("라인 합계", "Line Total")}
                               </div>
                               <div className="mt-1 text-right font-medium tabular-nums">
                                 {formatCurrency(
@@ -223,25 +248,25 @@ export function OrderDetailDialog({
               <div className="ml-auto w-full max-w-sm px-1">
                 <div className="space-y-4 text-sm">
                   <div className="flex items-center justify-between">
-                    <span>Subtotal</span>
+                    <span>{pick("소계", "Subtotal")}</span>
                     <span className="font-medium tabular-nums">
                       {formatCurrency(subtotalPrice, order.currency)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Shipping</span>
+                    <span>{pick("배송비", "Shipping")}</span>
                     <span className="font-medium tabular-nums">
                       {formatCurrency(shippingPrice, order.currency)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span>Sales tax*</span>
+                    <span>{pick("판매세*", "Sales tax*")}</span>
                     <span className="font-medium tabular-nums">
                       {formatCurrency(taxPrice, order.currency)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between border-t pt-4 text-base font-semibold">
-                    <span>Order total**</span>
+                    <span>{pick("주문 합계**", "Order total**")}</span>
                     <span className="tabular-nums">
                       {formatCurrency(order.totalPrice, order.currency)}
                     </span>

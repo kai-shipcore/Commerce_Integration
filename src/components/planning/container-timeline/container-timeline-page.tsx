@@ -46,6 +46,9 @@ interface Container {
   containerNumber: string;
   etaDate: string | null;
   actualArrivalDate: string | null;
+  estLoadingDate: string | null;
+  etdNgbDate: string | null;
+  etaLaxLgbDate: string | null;
   status: ContainerStatus;
   cbmCapacity: number;
   factoryName: string | null;
@@ -71,6 +74,9 @@ interface ContainerApiRow {
   containerNumber?: unknown;
   etaDate?: unknown;
   actualArrivalDate?: unknown;
+  estLoadingDate?: unknown;
+  etdNgbDate?: unknown;
+  etaLaxLgbDate?: unknown;
   status?: unknown;
   cbmCapacity?: unknown;
   factoryName?: unknown;
@@ -89,7 +95,7 @@ interface MonthSegment {
   isCurrent: boolean;
 }
 
-const TIMELINE_CACHE_KEY = "container-timeline:data:v1";
+const TIMELINE_CACHE_KEY = "container-timeline:data:v2";
 const TIMELINE_CACHE_TTL_MS = 60_000;
 let timelineMemoryCache: { containers: Container[]; cachedAt: number } | null = null;
 const planningRowsCache = new Map<string, Record<string, DemandRow>>();
@@ -101,6 +107,9 @@ function mapTimelineContainers(rows: ContainerApiRow[]): Container[] {
     containerNumber: String(row.containerNumber ?? ""),
     etaDate: row.etaDate ? String(row.etaDate) : null,
     actualArrivalDate: row.actualArrivalDate ? String(row.actualArrivalDate) : null,
+    estLoadingDate: row.estLoadingDate ? String(row.estLoadingDate) : null,
+    etdNgbDate: row.etdNgbDate ? String(row.etdNgbDate) : null,
+    etaLaxLgbDate: row.etaLaxLgbDate ? String(row.etaLaxLgbDate) : null,
     status: normalizeStatus(String(row.status ?? "")),
     cbmCapacity: Number(row.cbmCapacity ?? 0),
     factoryName: row.factoryName ? String(row.factoryName) : null,
@@ -971,6 +980,7 @@ function ContainerDetailDrawer({
   const normalizedSkuSearch = skuSearchQuery.trim().toLowerCase();
   const [isSkuListOpen, setIsSkuListOpen] = useState(true);
   const [localSkuFilter, setLocalSkuFilter] = useState("");
+  const [selectedSkuRowId, setSelectedSkuRowId] = useState<string | null>(null);
   const highlightedSkuRowRef = useRef<HTMLTableRowElement | null>(null);
   const [skuSort, setSkuSort] = useState<{ key: SkuImpactSortKey; direction: SortDirection }>({
     key: "sku",
@@ -1057,6 +1067,16 @@ function ContainerDetailDrawer({
 
   const displayDate =
     c.status === "complete" && c.actualArrivalDate ? c.actualArrivalDate : c.etaDate;
+  const dateFields = [
+    { label: pick("예상 선적일", "Est. Loading"), value: c.estLoadingDate },
+    { label: "ETD NGB", value: c.etdNgbDate },
+    { label: "ETA LAX/LGB", value: c.etaLaxLgbDate },
+    {
+      label: c.status === "complete" ? pick("실제 입고", "Actual Arrival") : pick("창고 입고일 (ETA)", "Warehouse (ETA)"),
+      value: displayDate,
+      accent: c.status === "complete",
+    },
+  ];
 
   return (
     <>
@@ -1120,13 +1140,7 @@ function ContainerDetailDrawer({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {/* Meta info */}
           <div className="shrink-0 px-6 py-4 space-y-3 border-b border-[#e2dfd8]">
-            <div className="grid grid-cols-[minmax(150px,0.8fr)_minmax(220px,1.4fr)_minmax(100px,0.7fr)] items-center gap-x-6 text-[12px]">
-              <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-                <span className="font-semibold text-muted-foreground">
-                  {c.status === "complete" ? pick("실제 입고", "Actual Arrival") : "ETA"}:
-                </span>
-                <span className="font-semibold">{displayDate ?? "—"}</span>
-              </div>
+            <div className="grid grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_minmax(100px,0.7fr)] items-center gap-x-6 text-[12px]">
               <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
                 <span className="font-semibold text-muted-foreground">{pick("공장", "Factory")}:</span>
                 <span className="truncate font-semibold">{c.factoryName ?? "—"}</span>
@@ -1135,6 +1149,19 @@ function ContainerDetailDrawer({
                 <span className="font-semibold text-muted-foreground">{pick("창고", "Warehouse")}:</span>
                 <span className="truncate font-semibold">{c.destWarehouse ?? "—"}</span>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              {dateFields.map((field) => (
+                <div key={field.label} className="rounded-lg border border-[#e2dfd8] bg-[#fafaf7] px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                    {field.label}
+                  </div>
+                  <div className={`mt-0.5 font-mono text-xs font-semibold ${field.accent ? "text-[#22a666]" : "text-foreground"}`}>
+                    {field.value ?? "—"}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {(c.actualArrivalDate && c.status !== "complete" || c.origin) && (
@@ -1201,8 +1228,8 @@ function ContainerDetailDrawer({
             </button>
 
             {isSkuListOpen && (
-            <div className="min-h-0 flex-1 px-6 pb-4">
-              <div className="pb-3">
+            <div className="flex min-h-0 flex-1 flex-col px-6 pb-4">
+              <div className="shrink-0 pb-3">
                 <input
                   type="text"
                   value={localSkuFilter}
@@ -1216,37 +1243,38 @@ function ContainerDetailDrawer({
                   {pick("등록된 SKU가 없습니다", "No SKUs registered")}
                 </div>
               ) : (
-                <div className="h-full overflow-x-auto overflow-y-scroll rounded-lg border border-[#e2dfd8]">
-                  <table className="w-full table-fixed text-[11px]">
-                    <colgroup>
-                      <col className="w-[18%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[9%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[7%]" />
-                      <col className="w-[8%]" />
-                    </colgroup>
-                    <thead className="sticky top-0 z-10 bg-[#f5f4f0] shadow-[0_1px_0_#e2dfd8]">
-                      <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
-                        <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("Master SKU", "sku", "left")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("위험도", "Risk"), "level", "center")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("현재 재고", "Current Stock"), "stock", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("평균 판매/일", "Avg Sales/Day"), "sales", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("현재 SOD", "Current SOD"), "sod", "center")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("ETA 전 품절", "Stockout Before ETA"), "stockout", "center")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("ETA 재고 / BO", "ETA Stock / BO"), "etaImpact", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("추가 추천", "Rec. Add"), "quantity", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("해당 / 전체 입고", "This / Total Inbound"), "totalInbound", "right")}</th>
-                        <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("입고 후 SOD", "Post-Inbound SOD"), "postSod", "center")}</th>
-                        <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("CBM", "cbm", "right")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#e2dfd8]">
+                  <div className="min-h-0 flex-1 overflow-x-auto overflow-y-scroll">
+                    <table className="w-full table-fixed text-[11px]">
+                      <colgroup>
+                        <col className="w-[18%]" />
+                        <col className="w-[8%]" />
+                        <col className="w-[8%]" />
+                        <col className="w-[9%]" />
+                        <col className="w-[7%]" />
+                        <col className="w-[8%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[7%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[7%]" />
+                        <col className="w-[8%]" />
+                      </colgroup>
+                      <thead className="sticky top-0 z-10 bg-[#f5f4f0] shadow-[0_1px_0_#e2dfd8]">
+                        <tr className="bg-[#f5f4f0] border-b border-[#e2dfd8]">
+                          <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("Master SKU", "sku", "left")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("위험도", "Risk"), "level", "center")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("현재 재고", "Current Stock"), "stock", "right")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("평균 판매/일", "Avg Sales/Day"), "sales", "right")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("현재 SOD", "Current SOD"), "sod", "center")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("ETA 전 품절", "Stockout Before ETA"), "stockout", "center")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("ETA 재고 / BO", "ETA Stock / BO"), "etaImpact", "right")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("추가 추천", "Rec. Add"), "quantity", "right")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("해당 / 전체 입고", "This / Total Inbound"), "totalInbound", "right")}</th>
+                          <th className="px-2 py-2 font-semibold text-muted-foreground">{sortHeader(pick("입고 후 SOD", "Post-Inbound SOD"), "postSod", "center")}</th>
+                          <th className="px-3 py-2 font-semibold text-muted-foreground">{sortHeader("CBM", "cbm", "right")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                       {filteredSkuImpacts.length === 0 && (
                         <tr>
                           <td colSpan={11} className="py-8 text-center text-[12px] text-muted-foreground">
@@ -1270,10 +1298,13 @@ function ContainerDetailDrawer({
                         const isHighlighted = Boolean(
                           normalizedSkuSearch && item.sku.toLowerCase().includes(normalizedSkuSearch),
                         );
+                        const skuRowId = item.id || item.sku;
+                        const isSelectedSku = selectedSkuRowId === skuRowId;
                         return (
                         <tr
                           key={item.id || i}
                           ref={i === firstHighlightedIndex ? highlightedSkuRowRef : undefined}
+                          onClick={() => setSelectedSkuRowId(skuRowId)}
                           onDoubleClick={() => {
                             window.open(
                               withBasePath(`/planning/sku-forecasts?sku=${encodeURIComponent(item.sku)}&tab=inventory&includeDrafts=1&highlightContainerId=${encodeURIComponent(c.id)}&highlightContainer=${encodeURIComponent(c.containerNumber)}`),
@@ -1281,14 +1312,16 @@ function ContainerDetailDrawer({
                               "noopener,noreferrer",
                             );
                           }}
+                          aria-selected={isSelectedSku}
                           title={pick("더블클릭하여 SKU Planning에서 열기", "Double-click to open in SKU Planning")}
                           className={`cursor-pointer border-b border-[#f0ede8] last:border-b-0 transition-colors ${
+                            isSelectedSku ? "bg-[#dbeafe] outline outline-2 -outline-offset-2 outline-[#2563eb] hover:bg-[#dbeafe]" :
                             isHighlighted ? "bg-blue-100 outline outline-2 -outline-offset-2 outline-[#1a5cdb] hover:bg-blue-100" :
                             level === "critical" ? "bg-red-50/70 hover:bg-red-50" :
                             level === "warning" ? "bg-amber-50/60 hover:bg-amber-50" : "hover:bg-[#fafaf7]"
                           }`}
                         >
-                          <td className={`px-3 py-2 font-mono font-semibold truncate ${isHighlighted ? "text-[#1238a0]" : "text-[#1a1917]"}`}>{item.sku}</td>
+                          <td className={`px-3 py-2 font-mono font-semibold truncate ${isSelectedSku || isHighlighted ? "text-[#1238a0]" : "text-[#1a1917]"}`}>{item.sku}</td>
                           <td className="px-2 py-2 text-center">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
                               level === "critical" ? "bg-red-100 text-red-700" :
@@ -1318,17 +1351,16 @@ function ContainerDetailDrawer({
                         </tr>
                         );
                       })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t border-[#e2dfd8] bg-[#f5f4f0]">
-                        <td className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length} SKUs)</td>
-                        <td colSpan={7} />
-                        <td className="px-2 py-2 text-right tabular-nums font-bold">{pick("입고", "Inbound")} {totalQty.toLocaleString()} units</td>
-                        <td />
-                        <td className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)} m³</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="grid shrink-0 grid-cols-[18%_8%_8%_9%_7%_8%_10%_7%_10%_7%_8%] border-t border-[#e2dfd8] bg-[#f5f4f0] text-[11px] shadow-[0_-1px_0_#e2dfd8]">
+                    <div className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length} SKUs)</div>
+                    <div className="col-span-7" />
+                    <div className="px-2 py-2 text-right tabular-nums font-bold">{pick("입고", "Inbound")} {totalQty.toLocaleString()} units</div>
+                    <div />
+                    <div className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)} m³</div>
+                  </div>
                 </div>
               )}
             </div>

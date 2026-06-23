@@ -178,6 +178,10 @@ function isOrderIdentifierSearch(search: string): boolean {
   return false;
 }
 
+function isMasterSkuSearch(search: string): boolean {
+  return /^[A-Z]{2}-[A-Z0-9]{2,}(?:-[A-Z0-9]+)+$/i.test(search.trim());
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -397,9 +401,7 @@ export async function getCoverlandInventory(
 
   if (search) {
     params.push(`%${search}%`);
-    filters.push(
-      `(btrim(master_sku) ILIKE $${params.length} OR COALESCE(warehouse, '') ILIKE $${params.length})`,
-    );
+    filters.push(`btrim(master_sku) ILIKE $${params.length}`);
   }
 
   if (warehouse && warehouse !== "all") {
@@ -603,6 +605,9 @@ export async function getSalesOrders(
         : "orderDate"
     ];
   const sortOrder = options.sortOrder === "asc" ? "ASC" : "DESC";
+  const isFullMasterSkuSearch =
+    isMasterSkuSearch(search) && search.split("-").filter(Boolean).length >= 6;
+  const normalizedMasterSkuSearch = search.toUpperCase();
 
   const client = await pool.connect();
 
@@ -612,7 +617,44 @@ export async function getSalesOrders(
 
     if (search) {
       const isNumericId = /^\d+$/.test(search);
-      if (isOrderIdentifierSearch(search)) {
+      if (isMasterSkuSearch(search)) {
+        const directSkuPatterns = Array.from(
+          new Set([
+            `${normalizedMasterSkuSearch}%`,
+            `${search.replace(/^CA-/i, "CL-").toUpperCase()}%`,
+            `${search.replace(/^CA-/i, "AF-").toUpperCase()}%`,
+          ]),
+        );
+        params.push(`%${search}%`, directSkuPatterns);
+        const likeParamIndex = params.length - 1;
+        const directSkuPatternsParamIndex = params.length;
+        const masterSkuOrderMatchFilter = isFullMasterSkuSearch
+          ? `so.id IN (
+              SELECT DISTINCT direct_sku_match.order_id
+              FROM ecommerce_data.sales_order_items direct_sku_match
+              WHERE UPPER(direct_sku_match.sku) LIKE ANY($${directSkuPatternsParamIndex}::text[])
+            )`
+          : `so.order_number IN (
+              SELECT DISTINCT sku_match.order_number
+              FROM ecommerce_data.vw_sales_order_items_link_new sku_match
+              WHERE sku_match.master_sku ILIKE $${likeParamIndex}
+                AND sku_match.order_number IS NOT NULL
+              UNION
+              SELECT DISTINCT custom_match.order_number
+              FROM ecommerce_data.vw_sales_order_items_custom_new custom_match
+              WHERE custom_match.master_sku ILIKE $${likeParamIndex}
+                AND custom_match.order_number IS NOT NULL
+            )`;
+        filters.push(
+          `(
+            COALESCE(so.order_number, '') ILIKE $${likeParamIndex}
+            OR REPLACE(COALESCE(so.order_number, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
+            OR COALESCE(so.external_order_id, '') ILIKE $${likeParamIndex}
+            OR REPLACE(COALESCE(so.external_order_id, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
+            OR ${masterSkuOrderMatchFilter}
+          )`,
+        );
+      } else if (isOrderIdentifierSearch(search)) {
         const withoutHash = search.replace(/^#/, "");
         const withHash = withoutHash.startsWith("#") ? withoutHash : `#${withoutHash}`;
         const compact = withoutHash.replace(/-/g, "").toLowerCase();
@@ -659,8 +701,6 @@ export async function getSalesOrders(
             OR REPLACE(COALESCE(so.order_number, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
             OR COALESCE(so.external_order_id, '') ILIKE $${likeParamIndex}
             OR REPLACE(COALESCE(so.external_order_id, ''), '-', '') ILIKE REPLACE($${likeParamIndex}, '-', '')
-            OR COALESCE(so.buyer_email, '') ILIKE $${likeParamIndex}
-            OR COALESCE(so.customer_email, '') ILIKE $${likeParamIndex}
             OR EXISTS (
               SELECT 1
               FROM ecommerce_data.sales_order_items search_soi
@@ -782,6 +822,40 @@ export async function getSalesOrders(
       const countsMap = new Map<number, { lineCount: number; unitCount: number }>();
       const webSkuMap = new Map<number, { first: string; count: number }>();
       if (orderIds.length === 0) return { masterSkuMap, countsMap, webSkuMap };
+
+      if (isFullMasterSkuSearch) {
+        const rows = await client.query<{
+          order_id: number;
+          line_count: string;
+          unit_count: string;
+          order_skus: string[] | null;
+        }>(
+          `SELECT
+             soi.order_id,
+             COUNT(soi.id)::text AS line_count,
+             COALESCE(SUM(soi.net_quantity), 0)::text AS unit_count,
+             array_agg(DISTINCT soi.sku) FILTER (WHERE soi.sku IS NOT NULL) AS order_skus
+           FROM ecommerce_data.sales_order_items soi
+           WHERE soi.order_id = ANY($1)
+           GROUP BY soi.order_id`,
+          [orderIds],
+        );
+
+        for (const row of rows.rows) {
+          countsMap.set(row.order_id, {
+            lineCount: Number(row.line_count),
+            unitCount: Number(row.unit_count),
+          });
+          const wskus = row.order_skus;
+          if (wskus && wskus.length > 0) {
+            const sorted = [...wskus].sort();
+            webSkuMap.set(row.order_id, { first: sorted[0], count: sorted.length });
+          }
+          masterSkuMap.set(row.order_id, { first: normalizedMasterSkuSearch, count: 1 });
+        }
+
+        return { masterSkuMap, countsMap, webSkuMap };
+      }
 
       // Inline the view logic with an upfront order_id filter so only the
       // 20 returned rows are processed — avoids a full vw_sales_order_items scan.

@@ -583,7 +583,7 @@ function OrdersPageContent() {
                   totalRows={totalRows}
                   pageCount={pageCount}
                   pagination={pagination}
-                  searchPlaceholder={pick("주문 ID, 주문 번호, 구매자, 마스터 SKU 또는 웹 SKU로 검색...", "Search order ID, order number, buyer, master SKU, or web SKU...")}
+                  searchPlaceholder={pick("주문 ID, 주문 번호, 마스터 SKU 또는 웹 SKU로 검색...", "Search order ID, order number, master SKU, or web SKU...")}
                   onPaginationChange={handlePaginationChange}
                   onSortingChange={handleSortingChange}
                   onSearchChange={handleSearchChange}

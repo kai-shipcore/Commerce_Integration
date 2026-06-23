@@ -349,7 +349,7 @@ export default function InventoryPage() {
                 label={pick("총 제품 수", "Total Products")}
                 value={summary?.totalProducts.toLocaleString() ?? "-"}
                 sub={groupBy === "product"
-                  ? pick(`${summary?.totalRows.toLocaleString() ?? "-"} 소스 창고 행`, `${summary?.totalRows.toLocaleString() ?? "-"} source warehouse rows`)
+                  ? pick(`${summary?.totalRows.toLocaleString() ?? "-"} 창고 행 기준`, `${summary?.totalRows.toLocaleString() ?? "-"} warehouse rows`)
                   : pick(`${summary?.totalRows.toLocaleString() ?? "-"} 창고 행`, `${summary?.totalRows.toLocaleString() ?? "-"} warehouse rows`)}
               />
               <InventoryStat
@@ -360,12 +360,12 @@ export default function InventoryPage() {
               <InventoryStat
                 label={pick("가용 재고", "Available")}
                 value={summary?.available.toLocaleString() ?? "-"}
-                sub={pick("소스 피드의 판매 가능 재고", "Sellable inventory from source feed")}
+                sub={pick("판매 가능 재고", "Sellable inventory")}
               />
               <InventoryStat
                 label={pick("창고", "Warehouses")}
                 value={summary?.totalWarehouses.toLocaleString() ?? "-"}
-                sub={pick("소스 피드의 고유 창고 값", "Distinct warehouse values in source feed")}
+                sub={pick("고유 창고 수", "Distinct warehouse values")}
               />
             </div>
           ) : null}
@@ -416,7 +416,7 @@ export default function InventoryPage() {
                 totalRows={totalRows}
                 pageCount={pageCount}
                 pagination={pagination}
-                searchPlaceholder={pick("마스터 SKU 또는 창고로 재고 검색...", "Search inventory by master SKU or warehouse...")}
+                searchPlaceholder={pick("마스터 SKU로 재고 검색...", "Search inventory by master SKU...")}
                 onPaginationChange={handlePaginationChange}
                 onSortingChange={handleSortingChange}
                 onSearchChange={handleSearchChange}
