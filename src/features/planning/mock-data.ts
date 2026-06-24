@@ -232,7 +232,7 @@ export const mockPurchaseOrders: MockPurchaseOrder[] = [
 
 export const containerStatusLabels: Record<ContainerStatus, string> = {
   draft: "Container Draft (Pre-Plan)",
-  "final-list-sent": "Packing List to Factory",
+  "final-list-sent": "Final List Sent to Factory",
   "packing-list-received": "Shipped",
   complete: "Stock-in completed",
 };

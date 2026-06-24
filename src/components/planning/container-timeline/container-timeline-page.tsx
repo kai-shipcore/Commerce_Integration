@@ -165,14 +165,14 @@ const STATUS_ORDER: ContainerStatus[] = [
 
 const STATUS_LABEL: Record<ContainerStatus, string> = {
   "packing-list-received": "Shipped",
-  "final-list-sent": "Packing",
+  "final-list-sent": "Final",
   draft: "Draft",
   complete: "Complete",
 };
 
 const STATUS_LABEL_FULL: Record<ContainerStatus, string> = {
   "packing-list-received": "Shipped",
-  "final-list-sent": "Packing List",
+  "final-list-sent": "Final List",
   draft: "Draft",
   complete: "Complete",
 };

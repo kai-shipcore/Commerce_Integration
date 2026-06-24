@@ -46,7 +46,7 @@ const defaultFormState: ContainerFormState = {
 
 const statusOptions: Array<{ value: ContainerStatus; label: string; shortLabel: string }> = [
   { value: "draft", label: "Container Draft (Pre-Plan)", shortLabel: "Draft" },
-  { value: "final-list-sent", label: "Packing List to Factory", shortLabel: "Packing" },
+  { value: "final-list-sent", label: "Final List Sent to Factory", shortLabel: "Final" },
   { value: "packing-list-received", label: "Shipped", shortLabel: "Shipped" },
   { value: "complete", label: "Stock-in completed", shortLabel: "Complete" },
 ];
@@ -3463,7 +3463,7 @@ function ContainerMeta({ label, children }: { label: string; children: ReactNode
 
 const statusWorkflowLabels: Record<ContainerStatus, string> = {
   draft: "Container Draft (Pre-plan)",
-  "final-list-sent": "Packing List (Factory)",
+  "final-list-sent": "Final List Sent to Factory",
   "packing-list-received": "Shipped",
   complete: "Stock-in completed",
 };
