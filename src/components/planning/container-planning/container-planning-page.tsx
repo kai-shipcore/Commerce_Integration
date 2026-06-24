@@ -2109,6 +2109,7 @@ export function ContainerPlanningPage() {
                 onRemoveAvailableAllocation={removeAvailableStockAllocation}
                 onRemoveAvailableAllocations={removeAvailableStockAllocations}
                 canDeleteContainers={canDeleteContainers}
+                canRevertStatus={session?.user?.role === "admin" || session?.user?.role === "planner"}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
@@ -2139,6 +2140,7 @@ export function ContainerPlanningPage() {
           currentStatus={containers.find((c) => c.id === statusModalContainerId)?.status ?? "draft"}
           onConfirm={(newStatus) => changeContainerStatus(statusModalContainerId, newStatus)}
           onClose={() => setStatusModalContainerId(null)}
+          canRevert={session?.user?.role === "admin" || session?.user?.role === "planner"}
         />
       ) : null}
       {availableStockContainerId ? (
@@ -2761,6 +2763,7 @@ function ContainerCard({
   onRemoveAvailableAllocation,
   onRemoveAvailableAllocations,
   canDeleteContainers = false,
+  canRevertStatus = false,
   onChangeStatus,
   onDeleteContainer,
   warehouseNameByCode,
@@ -2794,6 +2797,7 @@ function ContainerCard({
   onRemoveAvailableAllocation: (allocationId: string, containerId: string) => void | Promise<boolean>;
   onRemoveAvailableAllocations: (allocationIds: string[], containerId: string) => void | Promise<boolean>;
   canDeleteContainers?: boolean;
+  canRevertStatus?: boolean;
   onChangeStatus: (containerId: string) => void;
   onDeleteContainer: (containerId: string) => void;
   warehouseNameByCode?: Map<string, string>;
@@ -3046,7 +3050,7 @@ function ContainerCard({
               {pick("내보내기", "Export")}
             </button>
             <div className="ml-auto flex items-center gap-2">
-              {container.status !== "complete" ? (
+              {(container.status !== "complete" || canRevertStatus) ? (
                 <button
                   type="button"
                   onClick={() => onChangeStatus(container.id)}
@@ -3838,14 +3842,20 @@ function StatusChangeModal({
   currentStatus,
   onConfirm,
   onClose,
+  canRevert = false,
 }: {
   currentStatus: ContainerStatus;
   onConfirm: (newStatus: ContainerStatus) => void;
   onClose: () => void;
+  canRevert?: boolean;
 }) {
   const { pick } = useI18n();
-  const nextStatus = STATUS_ORDER[STATUS_ORDER.indexOf(currentStatus) + 1];
-  if (!nextStatus) return null;
+  const currentIdx = STATUS_ORDER.indexOf(currentStatus);
+  const nextStatus = STATUS_ORDER[currentIdx + 1];
+  const prevStatus = STATUS_ORDER[currentIdx - 1];
+  const showRevert = canRevert && prevStatus !== undefined;
+
+  if (!nextStatus && !showRevert) return null;
 
   return (
     <div
@@ -3857,11 +3867,20 @@ function StatusChangeModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-5 text-base font-semibold">{pick("상태 변경", "Change Status")}</h2>
-        <div className="flex items-start justify-center gap-4 px-2">
-          <StatusBadge status={currentStatus} />
-          <span className="mt-1.5 text-lg text-muted-foreground">→</span>
-          <StatusBadge status={nextStatus} />
-        </div>
+        {nextStatus && (
+          <div className="flex items-start justify-center gap-4 px-2">
+            <StatusBadge status={currentStatus} />
+            <span className="mt-1.5 text-lg text-muted-foreground">→</span>
+            <StatusBadge status={nextStatus} />
+          </div>
+        )}
+        {showRevert && (
+          <div className={`flex items-start justify-center gap-4 px-2${nextStatus ? " mt-4 border-t border-[#e2dfd8] pt-4" : ""}`}>
+            <StatusBadge status={prevStatus} />
+            <span className="mt-1.5 text-lg text-muted-foreground">←</span>
+            <StatusBadge status={currentStatus} />
+          </div>
+        )}
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
@@ -3870,13 +3889,24 @@ function StatusChangeModal({
           >
             {pick("취소", "Cancel")}
           </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(nextStatus)}
-            className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
-          >
-            {pick("확인", "Confirm")}
-          </button>
+          {showRevert && (
+            <button
+              type="button"
+              onClick={() => onConfirm(prevStatus)}
+              className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f0eee9]"
+            >
+              {pick("이전 단계로", "Revert")}
+            </button>
+          )}
+          {nextStatus && (
+            <button
+              type="button"
+              onClick={() => onConfirm(nextStatus)}
+              className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
+            >
+              {pick("확인", "Confirm")}
+            </button>
+          )}
         </div>
       </div>
     </div>
