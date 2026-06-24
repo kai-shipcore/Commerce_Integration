@@ -7,9 +7,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sku:
   const search = req.nextUrl.searchParams.toString();
 
   try {
+    const isModelOverride = (req.nextUrl.searchParams.get("model") !== null &&
+      req.nextUrl.searchParams.get("model") !== "Auto") ||
+      Number(req.nextUrl.searchParams.get("horizon") ?? "0") > 0;
+
     const upstream = await fetch(
       `${FORECAST_API}/forecast/${encodeURIComponent(sku)}${search ? `?${search}` : ""}`,
-      { signal: AbortSignal.timeout(10_000) },
+      { signal: AbortSignal.timeout(isModelOverride ? 30_000 : 10_000) },
     );
 
     const body = await upstream.text();

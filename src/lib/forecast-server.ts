@@ -31,7 +31,7 @@ export async function startForecastServer(): Promise<"already_running" | "starte
   if (!serverDir) throw new Error("FORECAST_SERVER_DIR is not set in .env");
 
   const uvicorn = path.join(serverDir, ".venv", "bin", "uvicorn");
-  const child = spawn(uvicorn, ["api.main:app", "--host", "0.0.0.0", "--port", "8000"], {
+  const child = spawn(uvicorn, ["api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"], {
     cwd: serverDir,
     stdio: "ignore",
     detached: false,

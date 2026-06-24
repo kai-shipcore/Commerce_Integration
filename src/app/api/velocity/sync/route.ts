@@ -8,7 +8,7 @@
  *                           (500 rows per batch each).
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 
@@ -179,7 +179,11 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const full = req.nextUrl.searchParams.get("full") === "true";
+  const dateFilter = full ? "" : `AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'`;
+  const dateFilterC = full ? "" : `AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'`;
+
   const lookupPool = getLookupPool();
   if (!lookupPool) {
     return NextResponse.json(
@@ -218,7 +222,7 @@ export async function POST() {
          FROM ecommerce_data.vw_sales_order_items_link_new l
          WHERE l.master_sku  IS NOT NULL
            AND NOT (l.platform_source::text NOT IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND (l.master_sku LIKE '%NEW%' OR l.master_sku LIKE '%INV%'))
-           AND l.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
+           ${dateFilter}
            AND (
              (l.fulfilled_quantity > 0
               AND (
@@ -246,7 +250,7 @@ export async function POST() {
          FROM ecommerce_data.vw_sales_order_items_custom_new c
          WHERE c.master_sku  IS NOT NULL
            AND NOT (c.platform_source::text NOT IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND (c.master_sku LIKE '%NEW%' OR c.master_sku LIKE '%INV%'))
-           AND c.order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
+           ${dateFilterC}
            AND (
              (c.fulfilled_quantity > 0
               AND (
@@ -271,15 +275,15 @@ export async function POST() {
 
     const [linkDeleteRes, customDeleteRes] = await Promise.all([
       primaryPool().query(
-        `DELETE FROM shipcore.fc_velocity_link_snapshot
-         WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
-           AND synced_at < $1`,
+        full
+          ? `DELETE FROM shipcore.fc_velocity_link_snapshot WHERE synced_at < $1`
+          : `DELETE FROM shipcore.fc_velocity_link_snapshot WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days' AND synced_at < $1`,
         [syncedAt],
       ),
       primaryPool().query(
-        `DELETE FROM shipcore.fc_velocity_custom_snapshot
-         WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days'
-           AND synced_at < $1`,
+        full
+          ? `DELETE FROM shipcore.fc_velocity_custom_snapshot WHERE synced_at < $1`
+          : `DELETE FROM shipcore.fc_velocity_custom_snapshot WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days' AND synced_at < $1`,
         [syncedAt],
       ),
     ]);
