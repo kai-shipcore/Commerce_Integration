@@ -17,7 +17,7 @@ function setChild(c: ChildProcess | null) {
 async function isRunning(): Promise<boolean> {
   try {
     const res = await fetch(`${forecastApiBase()}/health`, {
-      signal: AbortSignal.timeout(600),
+      signal: AbortSignal.timeout(5_000),
     });
     return res.ok;
   } catch {

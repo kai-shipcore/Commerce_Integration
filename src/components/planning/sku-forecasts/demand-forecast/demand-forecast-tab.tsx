@@ -483,7 +483,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
         <p className="font-medium">{pick(language, "예측 서버 시작 실패", "Forecast server failed to start")}</p>
         <p className="text-xs">{serverError}</p>
         <p className="text-xs text-muted-foreground">
-          {pick(language, "FORECAST_SERVER_DIR 환경 변수와 가상환경을 확인하세요.", "Check the FORECAST_SERVER_DIR environment variable and venv.")}
+          {pick(language, "AI_SERVICE_URL 연결 상태를 확인하세요. 로컬 실행 방식이면 FORECAST_SERVER_DIR와 가상환경도 확인하세요.", "Check AI_SERVICE_URL connectivity. For local startup mode, also check FORECAST_SERVER_DIR and the venv.")}
         </p>
       </div>
     );
