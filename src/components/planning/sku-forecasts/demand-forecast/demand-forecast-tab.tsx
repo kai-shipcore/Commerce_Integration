@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { AlertTriangle, CalendarIcon, Loader2 } from "lucide-react";
 import { format, subWeeks } from "date-fns";
@@ -114,10 +114,14 @@ function shiftDate(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function trimFig(fig: PlotlyFig, forecastDates: string[], n: number): PlotlyFig {
+function trimFig(fig: PlotlyFig, forecastDates: string[], n: number, viewStart?: string | null): PlotlyFig {
   if (forecastDates.length === 0) return fig;
   const endX = forecastDates[Math.min(n, forecastDates.length) - 1];
-  const startX = ((fig.data[0] as Record<string, unknown>)?.x as string[] | undefined)?.[0];
+  const lastForecastX = forecastDates[forecastDates.length - 1];
+  // viewStart controls the initial zoom; null falls back to the first data point.
+  // All data remains in the traces so the user can pan left freely.
+  const firstDataX = ((fig.data[0] as Record<string, unknown>)?.x as string[] | undefined)?.[0];
+  const rangeStart = viewStart ?? firstDataX;
   return {
     ...fig,
     layout: {
@@ -126,9 +130,11 @@ function trimFig(fig: PlotlyFig, forecastDates: string[], n: number): PlotlyFig 
         ...((fig.layout as Record<string, unknown>).xaxis as object ?? {}),
         autorange: false,
         range: [
-          startX ? shiftDate(startX, -4) : startX,
+          rangeStart ? shiftDate(rangeStart, -4) : rangeStart,
           shiftDate(endX, 4),
         ],
+        minallowed: firstDataX,
+        maxallowed: shiftDate(lastForecastX, 4),
       },
     },
   };
@@ -139,6 +145,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
   const [mode, setMode] = useState<"forward" | "backtest">("forward");
 
   // ── Forward forecast state ────────────────────────────────────────────────
+  const [forwardModel, setForwardModel] = useState("Auto");
   const [chartStr, setChartStr] = useState<string | null>(null);
   const [meta, setMeta] = useState<ForecastMeta | null>(null);
   const [forecastDates, setForecastDates] = useState<string[]>([]);
@@ -146,6 +153,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
   const [forecastUpper, setForecastUpper] = useState<number[] | null>(null);
   const [forwardWeeks, setForwardWeeks] = useState(13);
   const [inputWeeks, setInputWeeks] = useState("13");
+  const [extraHorizon, setExtraHorizon] = useState(0);
   const [historyWeeks, setHistoryWeeks] = useState<number>(26);
   const [historyStart, setHistoryStart] = useState<Date | null>(null);
   const [historyFromDate, setHistoryFromDate] = useState<Date | null>(null);
@@ -199,10 +207,13 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     setNotFound(false);
     setLoading(true);
 
-    const historyParam = historyStart
-      ? `start=${format(historyStart, "yyyy-MM-dd")}`
-      : `weeks=${historyWeeks}`;
-    fetch(apiPath(`${FORECAST_API_BASE}/${encodeURIComponent(sku.sku)}?${historyParam}`))
+    const params = new URLSearchParams({ weeks: "0" }); // always fetch full history; zoom is client-side
+    if (forwardModel !== "Auto") params.set("model", forwardModel);
+    if (extraHorizon > 0) params.set("horizon", String(extraHorizon));
+    const isOverride = forwardModel !== "Auto" || extraHorizon > 0;
+    fetch(apiPath(`${FORECAST_API_BASE}/${encodeURIComponent(sku.sku)}?${params}`),
+      { signal: AbortSignal.timeout(isOverride ? 30_000 : 10_000) }
+    )
       .then(async (res) => {
         if (res.status === 404) { setNotFound(true); return null; }
         const json = await res.json();
@@ -216,15 +227,16 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
         setForecastDates(json.forecastDates);
         setForecastValues(json.forecastValues);
         setForecastUpper(json.forecastUpper);
-        setForwardWeeks(json.meta.forward_weeks);
-        setInputWeeks(String(json.meta.forward_weeks));
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [sku.sku, historyWeeks, historyStart]);
+  }, [sku.sku, forwardModel, extraHorizon]);
 
-  // Reset backtest when SKU changes
+  // Reset forward and backtest state when SKU changes
   useEffect(() => {
+    setForwardWeeks(13);
+    setInputWeeks("13");
+    setExtraHorizon(0);
     setBtResult(null);
     setBtError(null);
     setBtCutoff(defaultBtCutoff());
@@ -236,8 +248,13 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
   function applyForwardWeeks() {
     const parsed = parseInt(inputWeeks);
-    if (!isNaN(parsed) && parsed >= 1) setForwardWeeks(parsed);
-    else setInputWeeks(String(forwardWeeks));
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= 52) {
+      setForwardWeeks(parsed);
+      const available = meta?.forward_weeks ?? 0;
+      if (parsed > available) setExtraHorizon(parsed);
+    } else {
+      setInputWeeks(String(forwardWeeks));
+    }
     inputRef.current?.blur();
   }
 
@@ -296,6 +313,9 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
       .finally(() => setBtLoading(false));
   }
 
+  // ── Shared date references ────────────────────────────────────────────────
+  const lastSalesWeek = lastMonday();
+
   // ── Forward mode derived values ───────────────────────────────────────────
   const clampedWeeks = Math.min(Math.max(forwardWeeks, 1), forecastValues.length || meta?.forward_weeks || forwardWeeks);
   const sumSlice = (arr: number[]) => arr.slice(0, clampedWeeks).reduce((a, b) => a + b, 0);
@@ -310,10 +330,29 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
         : "—",
     [orderMin, orderMax],
   );
-  const displayFig = useMemo(
-    () => chartStr ? trimFig(JSON.parse(chartStr) as PlotlyFig, forecastDates, clampedWeeks) : null,
-    [chartStr, forecastDates, clampedWeeks],
-  );
+  const displayFig = useMemo(() => {
+    if (!chartStr) return null;
+    const parsed = JSON.parse(chartStr) as PlotlyFig;
+    if (language === "ko") {
+      const nameMap: Record<string, string> = {
+        "Actual demand": "실제 수요",
+        "P70 interval": "P70 구간",
+        "Forecast": "예측",
+      };
+      parsed.data = (parsed.data as Record<string, unknown>[]).map((trace) =>
+        trace.name && nameMap[trace.name as string]
+          ? { ...trace, name: nameMap[trace.name as string] }
+          : trace
+      );
+    }
+    // Derive the initial zoom start from the history picker (all data is always present)
+    const viewStart = historyStart
+      ? format(historyStart, "yyyy-MM-dd")
+      : historyWeeks > 0
+        ? format(subWeeks(lastSalesWeek, historyWeeks), "yyyy-MM-dd")
+        : null; // historyWeeks === 0 (All) → no restriction, show from first data point
+    return trimFig(parsed, forecastDates, clampedWeeks, viewStart);
+  }, [chartStr, forecastDates, clampedWeeks, language, historyWeeks, historyStart]);
   const forecastedStockout = useMemo(() => {
     const stock = sku.total_stock;
     if (!stock || stock <= 0 || forecastValues.length === 0 || forecastDates.length === 0) return null;
@@ -339,29 +378,28 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     if (!btResult) return null;
     const { predictions } = btResult;
 
-    const actuals_context = (() => {
-      const all = btResult.actuals_context;
-      if (btContextStart) {
-        const startStr = format(btContextStart, "yyyy-MM-dd");
-        return all.filter((a) => a.ds >= startStr);
-      }
-      if (btContextWeeks > 0) return all.slice(-btContextWeeks);
-      return all;
-    })();
+    // Always include all actuals_context in the traces — the context picker only sets zoom.
+    const allActuals = btResult.actuals_context;
     const hasPi = predictions.some((p) => p.yhat_lo !== null);
     const completedPreds = predictions.filter((p) => p.actual !== null);
 
     const actualsX = [
-      ...actuals_context.map((a) => a.ds),
+      ...allActuals.map((a) => a.ds),
       ...completedPreds.map((p) => p.ds),
     ];
     const actualsY = [
-      ...actuals_context.map((a) => a.y),
+      ...allActuals.map((a) => a.y),
       ...completedPreds.map((p) => p.actual as number),
     ];
 
-    const xStart = actualsX[0];
     const xEnd = predictions.length > 0 ? predictions[predictions.length - 1].ds : actualsX[actualsX.length - 1];
+
+    // Compute initial zoom start from the context picker (all data still panned to)
+    const viewStart = btContextStart
+      ? format(btContextStart, "yyyy-MM-dd")
+      : btContextWeeks > 0
+        ? format(subWeeks(new Date(format(btCutoff, "yyyy-MM-dd")), btContextWeeks), "yyyy-MM-dd")
+        : actualsX[0]; // All → show from first data point
     const cutoffStr = format(btCutoff, "yyyy-MM-dd");
 
     const traces: Plotly.Data[] = [];
@@ -424,7 +462,9 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
           showgrid: true,
           gridcolor: "#F0F0F0",
           autorange: false,
-          range: xStart && xEnd ? [shiftDate(xStart, -4), shiftDate(xEnd, 4)] : undefined,
+          range: viewStart && xEnd ? [shiftDate(viewStart, -4), shiftDate(xEnd, 4)] : undefined,
+          minallowed: actualsX[0],
+          maxallowed: xEnd ? shiftDate(xEnd, 4) : undefined,
         },
         yaxis: { showgrid: true, gridcolor: "#F0F0F0", rangemode: "tozero" },
         legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1 },
@@ -434,7 +474,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
           : [],
       },
     };
-  }, [btResult, btCutoff, btContextWeeks, btContextStart, language]);
+  }, [btResult, btCutoff, btContextWeeks, btContextStart, language]); // context deps control zoom only
 
   // ── Early returns (forward mode gates) ───────────────────────────────────
   if (serverError) {
@@ -483,7 +523,6 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
   if (mode === "forward" && (!displayFig || !meta)) return null;
 
   const isLowConfidence = meta?.confidence === "low";
-  const lastSalesWeek = lastMonday(); // most recently completed weekly sales period
   const btMaxCutoff = subWeeks(lastSalesWeek, 1);
 
   // ── Mode toggle button classes ─────────────────────────────────────────────
@@ -527,7 +566,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                   ref={inputRef}
                   type="number"
                   min={1}
-                  max={meta.forward_weeks}
+                  max={52}
                   value={inputWeeks}
                   onChange={(e) => setInputWeeks(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") applyForwardWeeks(); }}
@@ -581,18 +620,51 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                   </Popover>
                 </div>
               </div>
+              <select
+                value={forwardModel}
+                onChange={(e) => setForwardModel(e.target.value)}
+                className="rounded border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-blue-400 dark:border-zinc-600"
+              >
+                {MODEL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
 
             <Plot
               data={displayFig.data as Plotly.Data[]}
-              layout={{
-                ...(displayFig.layout as Partial<Plotly.Layout>),
-                autosize: true,
-                margin: { t: 40, r: 20, b: 60, l: 60 },
-                paper_bgcolor: "rgba(0,0,0,0)",
-                plot_bgcolor: "rgba(0,0,0,0)",
-                font: { size: 11 },
-              }}
+              layout={(() => {
+                const base = displayFig.layout as Record<string, unknown>;
+                const existingShapes = (base.shapes as object[] | undefined) ?? [];
+                const stockoutStr = forecastedStockout ? format(forecastedStockout, "yyyy-MM-dd") : null;
+                return {
+                  ...(base as Partial<Plotly.Layout>),
+                  autosize: true,
+                  margin: { t: 40, r: 20, b: 60, l: 60 },
+                  paper_bgcolor: "rgba(0,0,0,0)",
+                  plot_bgcolor: "rgba(0,0,0,0)",
+                  font: { size: 11 },
+                  shapes: stockoutStr ? [
+                    ...existingShapes,
+                    {
+                      type: "line",
+                      x0: stockoutStr, x1: stockoutStr,
+                      y0: 0, y1: 1, yref: "paper",
+                      line: { color: "#C026D3", width: 2, dash: "dash" },
+                    },
+                  ] : existingShapes,
+                  annotations: stockoutStr ? [
+                    {
+                      x: stockoutStr, y: 0.97, yref: "paper",
+                      text: "Stockout",
+                      showarrow: false,
+                      xanchor: "left", xshift: 5,
+                      font: { color: "#C026D3", size: 11 },
+                      bgcolor: "rgba(255,255,255,0.85)",
+                    },
+                  ] : [],
+                };
+              })()}
               config={{ responsive: true, displayModeBar: false }}
               style={{ width: "100%", height: "380px" }}
               useResizeHandler
@@ -811,29 +883,60 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
       {/* ── Forward meta strip ── */}
       {mode === "forward" && meta && (
         <div className="planning-panel grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border px-4 py-3 text-xs sm:grid-cols-5">
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-muted-foreground">
-              {clampedWeeks}{pick(language, "주 추천 주문량", "-Week Order Range")}
-            </span>
-            <span className="font-medium text-foreground">{orderRange}</span>
-          </div>
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-muted-foreground">{pick(language, "예측 재고 소진일", "Forecasted stockout")}</span>
-            <span className={`font-medium ${forecastedStockout ? "text-foreground" : "text-muted-foreground"}`}>
+          <MetaField
+            label={`${clampedWeeks}${pick(language, "주 추천 주문량", "-Week Order Range")}`}
+            value={orderRange}
+            tooltip={pick(
+              language,
+              `향후 ${clampedWeeks}주 예측 수요 합계입니다. P70 구간이 제공될 경우, 범위의 상한선은 수요 불확실성을 위한 안전 재고 버퍼로 활용할 수 있습니다.`,
+              `Total forecasted demand over the next ${clampedWeeks} weeks. When a prediction interval is available, the upper bound provides a safety buffer for demand uncertainty — useful when sizing order quantities.`,
+            )}
+          />
+          <MetaField
+            label={pick(language, "예측 재고 소진일", "Forecasted stockout")}
+            value={forecastedStockout ? format(forecastedStockout, "MMM d, yyyy") : forecastValues.length > 0 ? pick(language, `${forecastValues.length}주 이후`, `>${forecastValues.length}w`) : "—"}
+            tooltip={pick(
+              language,
+              "현재 보유 재고가 예측 수요 속도로 소진되는 예상 날짜입니다. 입고 예정 재고는 포함되지 않습니다. 입고 재고를 반영한 분석은 재고 탭을 확인하세요.",
+              "Estimated date when current on-hand inventory runs out at the forecasted demand rate. Inbound shipments are not included — check the Inventory tab to factor those in.",
+            )}
+          >
+            <span className={forecastedStockout ? "text-foreground" : "text-muted-foreground"}>
               {forecastedStockout
                 ? format(forecastedStockout, "MMM d, yyyy")
                 : forecastValues.length > 0
                   ? pick(language, `${forecastValues.length}주 이후`, `>${forecastValues.length}w`)
                   : "—"}
             </span>
-          </div>
-          <MetaField label={pick(language, "모델", "Model")} value={meta.model} />
+          </MetaField>
+          <MetaField
+            label={pick(language, "모델", "Model")}
+            value={meta.model}
+            tooltip={pick(
+              language,
+              "예측에 사용된 알고리즘입니다. Auto는 마지막 배치 실행 시 교차 검증 정확도 기반으로 가장 적합한 모델이 자동 선택된 것입니다. 위의 드롭다운으로 다른 모델을 직접 선택할 수 있습니다.",
+              "The algorithm used to generate this forecast. Auto means the best-fitting model was selected automatically during the last batch run using cross-validation accuracy. Use the model selector above to try a different one.",
+            )}
+          />
           <MetaField
             label={pick(language, "신뢰도", "Confidence")}
             value={meta.confidence === "low" ? pick(language, "낮음", "Low") : pick(language, "표준", "Standard")}
             highlight={isLowConfidence ? "amber" : undefined}
+            tooltip={pick(
+              language,
+              "표준: 모델 오차가 계획에 적합한 범위 내에 있습니다. 낮음: 이력 데이터가 짧거나 판매가 불규칙하거나 모델 오차가 높습니다. 수치를 방향성 참고용으로만 활용하세요.",
+              "Standard = the model's historical error is within an acceptable range for planning. Low = the SKU has short history, intermittent sales, or high model error — treat the forecast as directional guidance rather than a precise number.",
+            )}
           />
-          <MetaField label={pick(language, "예측 실행일", "Forecast run")} value={meta.forecast_date} />
+          <MetaField
+            label={pick(language, "예측 실행일", "Forecast run")}
+            value={meta.forecast_date}
+            tooltip={pick(
+              language,
+              "이 예측이 마지막으로 생성된 날짜입니다. 몇 주 이상 된 예측은 최근 수요 변화를 반영하지 못할 수 있습니다. 배치 실행은 일반적으로 매주 모든 SKU 예측을 업데이트합니다.",
+              "Date this forecast was last computed. A forecast that is several weeks old may not reflect recent demand changes. The batch run typically refreshes all SKU forecasts weekly.",
+            )}
+          />
         </div>
       )}
 
@@ -855,55 +958,96 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
         return (
           <div className="planning-panel grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border px-4 py-3 text-xs sm:grid-cols-6">
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-muted-foreground">MAE</span>
-              <span className="font-medium text-foreground">
-                {btResult.mae != null ? `${btResult.mae.toLocaleString()} units` : "—"}
-              </span>
-            </div>
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-muted-foreground">WAPE</span>
-              <span className="font-medium text-foreground">
-                {btResult.wape != null ? `${Number(btResult.wape).toFixed(1)}%` : "—"}
-              </span>
-            </div>
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-muted-foreground">MASE</span>
-              <span className={`font-medium ${btResult.mase != null && btResult.mase < 1 ? "text-green-600 dark:text-green-400" : "text-foreground"}`}>
+            <MetaField
+              label="MAE"
+              value={btResult.mae != null ? `${btResult.mae.toLocaleString()} units` : "—"}
+              tooltip={pick(
+                language,
+                "평균 절대 오차 — 예측과 실제 수요의 평균 차이(단위). MAE가 5이면 주당 평균 5개 오차를 의미합니다. 낮을수록 좋지만, 맥락이 중요합니다: 주당 200개 판매 SKU의 MAE 10은 우수하지만, 주당 12개 판매 SKU에서는 심각합니다.",
+                "Mean Absolute Error — the average gap between forecast and actual demand in units. A MAE of 5 means the forecast was off by 5 units per week on average. Lower is better, but context matters: MAE of 10 on a SKU selling 200/week is excellent; on one selling 12/week it is concerning.",
+              )}
+            />
+            <MetaField
+              label="WAPE"
+              value={btResult.wape != null ? `${Number(btResult.wape).toFixed(1)}%` : "—"}
+              tooltip={pick(
+                language,
+                "가중 절대 백분율 오차 — 전체 실제 수요 대비 총 예측 오차의 비율입니다. 저판매량 SKU에서 단순 MAPE보다 신뢰할 수 있습니다. 20% 미만은 우수, 30% 미만은 대부분의 계획 목적에 적합합니다.",
+                "Weighted Absolute Percentage Error — total forecast error as a percentage of total actual demand. More reliable than simple MAPE for low-volume SKUs. Under 20% is strong; under 30% is generally acceptable for planning.",
+              )}
+            />
+            <MetaField
+              label="MASE"
+              value={btResult.mase != null ? btResult.mase.toFixed(2) : "—"}
+              tooltip={pick(
+                language,
+                "평균 절대 스케일 오차 — 이 모델의 오차를 '지난 주 반복' 단순 기준선과 비교합니다. 1.0 미만(녹색)은 모델이 기준선을 초과함을 의미합니다. 1.0 이상은 지난 주를 그대로 반복하는 것이 더 정확했음을 의미합니다.",
+                "Mean Absolute Scaled Error — compares this model's error to a simple 'repeat last week' naïve baseline. Below 1.0 (shown in green) means the model outperforms the baseline. At or above 1.0 means even repeating last week's number would have been more accurate.",
+              )}
+            >
+              <span className={btResult.mase != null && btResult.mase < 1 ? "text-green-600 dark:text-green-400" : ""}>
                 {btResult.mase != null ? btResult.mase.toFixed(2) : "—"}
               </span>
-            </div>
+            </MetaField>
             <MetaField
               label={pick(language, "P70 적중률", "P70 coverage")}
               value={btResult.coverage != null ? `${btResult.coverage}%` : "—"}
               tooltip={pick(
                 language,
-                "실제 수요가 예측 구간(70%) 내에 든 주차 비율. 잘 보정된 모델은 70% 근처여야 합니다.",
-                "% of weeks where actual demand fell within the 70% prediction band. A well-calibrated model scores near 70% — higher means intervals are too wide, lower means overconfident.",
+                "실제 수요가 70% 예측 구간 내에 든 주차 비율입니다. 잘 보정된 모델은 70% 근처여야 합니다. 지속적으로 높으면 구간이 너무 넓은 것(과도하게 보수적), 낮으면 모델이 과신하는 것입니다.",
+                "Percentage of weeks where actual demand fell within the model's 70% prediction band. A well-calibrated model should score near 70%. Consistently above 70% means the intervals are too wide; below 70% means the model is overconfident.",
               )}
             />
-            <MetaField label={pick(language, "모델", "Model")} value={btResult.model_used} />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-muted-foreground">{pick(language, "학습 주차", "Train / Eval")}</span>
-              <span className="font-medium text-foreground">
-                {btResult.training_weeks}w / {btResult.completed_weeks}w
-              </span>
-            </div>
+            <MetaField
+              label={pick(language, "모델", "Model")}
+              value={btResult.model_used}
+              tooltip={pick(
+                language,
+                "이 백테스트에 사용된 예측 모델입니다. 위의 컨트롤에서 모델을 변경하고 다시 실행하여 모델 간 정확도를 비교할 수 있습니다.",
+                "The forecasting model used in this backtest. Change the model in the controls above and re-run to compare accuracy across different algorithms.",
+              )}
+            />
+            <MetaField
+              label={pick(language, "학습 주차", "Train / Eval")}
+              value={`${btResult.training_weeks}w / ${btResult.completed_weeks}w`}
+              tooltip={pick(
+                language,
+                "학습: 모델 훈련에 사용된 이력 데이터 주차 수. 평가: 실제 수요와 비교된 예측 주차 수(완료된 주차). 학습 데이터가 많을수록 일반적으로 정확도가 향상됩니다.",
+                "Train = weeks of historical data used to fit the model. Eval = number of forecast weeks compared against actual demand (completed weeks only). More training data generally improves accuracy.",
+              )}
+            />
 
             <div className="col-span-2 sm:col-span-6 border-t border-border/60 mt-0.5" />
 
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-muted-foreground">{pick(language, "기간 실제 판매", "Horizon actual")}</span>
-              <span className="font-medium text-foreground">
-                {completedPreds.length > 0 ? `${actualTotal.toLocaleString()} units` : "—"}
-              </span>
-            </div>
-            <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2">
-              <span className="text-muted-foreground">{pick(language, "기간 예측량", "Horizon forecast")}</span>
-              <span className="font-medium text-foreground">{forecastLabel}</span>
-            </div>
-            <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-3">
-              <span className="text-muted-foreground">{pick(language, "차이 (실제 − 예측)", "Difference (actual − forecast)")}</span>
+            <MetaField
+              label={pick(language, "기간 실제 판매", "Horizon actual")}
+              value={completedPreds.length > 0 ? `${actualTotal.toLocaleString()} units` : "—"}
+              tooltip={pick(
+                language,
+                "평가 기간 동안 실제로 판매된 총 단위 수입니다. 예측 정확도가 측정되는 기준값입니다.",
+                "Total units actually sold during the evaluation window. This is the ground truth the forecast accuracy is measured against.",
+              )}
+            />
+            <MetaField
+              label={pick(language, "기간 예측량", "Horizon forecast")}
+              value={forecastLabel}
+              tooltip={pick(
+                language,
+                "동일 평가 기간의 총 예측 단위 수입니다. P70 구간이 있으면 범위는 포인트 예측에서 상한선까지 표시됩니다. 실제 판매량과 비교하여 전반적인 편향을 확인하세요.",
+                "Total forecasted units for the same evaluation window. When a prediction interval is available, the range runs from the point forecast to the P70 upper bound. Compare with the horizon actual to assess overall forecast bias.",
+              )}
+              className="sm:col-span-2"
+            />
+            <MetaField
+              label={pick(language, "차이 (실제 − 예측)", "Difference (actual − forecast)")}
+              value={diff !== null ? `${diff >= 0 ? "+" : ""}${diff.toLocaleString()} units${diffPct !== null ? ` (${diff >= 0 ? "+" : ""}${diffPct}%)` : ""}` : "—"}
+              tooltip={pick(
+                language,
+                "실제 판매량 빼기 예측량입니다. 양수(+)는 수요가 예측을 초과했음을 의미하며, 이 패턴이 지속되면 재고 부족 위험이 있습니다. 음수(−)는 예측이 실제 수요를 초과한 것으로 과잉 재고 위험을 나타냅니다.",
+                "Actual demand minus forecast. Positive (+) means demand exceeded the forecast — ongoing stockout risk if this pattern continues. Negative (−) means the forecast overshot actual demand — potential overstock risk.",
+              )}
+              className="sm:col-span-3"
+            >
               {diff !== null ? (
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   <span className="font-medium text-foreground">
@@ -918,8 +1062,8 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                     </span>
                   )}
                 </div>
-              ) : <span className="font-medium text-muted-foreground">—</span>}
-            </div>
+              ) : <span className="text-muted-foreground">—</span>}
+            </MetaField>
           </div>
         );
       })()}
@@ -927,17 +1071,17 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
   );
 }
 
-function MetaField({ label, value, highlight, tooltip }: { label: string; value: string; highlight?: "amber"; tooltip?: string }) {
+function MetaField({ label, value, highlight, tooltip, children, className }: { label: string; value: string; highlight?: "amber"; tooltip?: string; children?: ReactNode; className?: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5">
+    <div className={`flex min-w-0 flex-col gap-0.5 ${className ?? ""}`}>
       <span className="text-muted-foreground">{label}</span>
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className={`truncate text-left font-medium ${highlight === "amber" ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}
+            className={`text-left font-medium ${children ? "" : "truncate"} ${highlight === "amber" ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}
           >
-            {value}
+            {children ?? value}
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] p-3">
