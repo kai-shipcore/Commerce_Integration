@@ -73,7 +73,15 @@ export async function GET(req: Request) {
       : null;
     const categoryParams = categoryCode ? [categoryCode] : [];
     const categoryWhere = categoryCode ? "AND p.category_code = $1" : "";
-    const productCategoryWhere = categoryCode ? "WHERE p.category_code = $1" : "";
+    // Mirrors home-stats pattern: accept rows where fc_products matches OR (no fc_products row AND SKU pattern matches).
+    // This ensures the planning grid counts match the home dashboard for every category.
+    const productCategoryWhere = (() => {
+      if (!categoryCode) return "";
+      if (categoryCode === "SC") return `WHERE (UPPER(p.category_code) = 'SC' OR (p.category_code IS NULL AND (UPPER(s.master_sku) LIKE 'CA-SC-%' OR UPPER(s.master_sku) LIKE 'CL-SC-%')))`;
+      if (categoryCode === "CC") return `WHERE (UPPER(p.category_code) = 'CC' OR (p.category_code IS NULL AND UPPER(s.master_sku) LIKE 'CC-%'))`;
+      if (categoryCode === "FM") return `WHERE (UPPER(p.category_code) = 'FM' OR (p.category_code IS NULL AND (UPPER(s.master_sku) LIKE 'CA-FM-%' OR 'FM' = ANY(string_to_array(UPPER(s.master_sku), '-')))))`;
+      return "WHERE p.category_code = $1";
+    })();
     const categoryJoinWhere = categoryCode ? "AND p.category_code = $1" : "";
     const todayDefault = planningLocalDateString();
     const asOfParam = searchParams.get("asOf");
@@ -230,7 +238,7 @@ export async function GET(req: Request) {
           FROM shipcore.fc_container_item_allocations
           GROUP BY source_stock_id
         ) alloc ON alloc.source_stock_id = s.id
-        ${productCategoryWhere}
+        ${categoryCode ? "WHERE p.category_code = $1" : ""}
         GROUP BY s.master_sku, s.source_type
       `, categoryParams),
       // 4. Last sync timestamp
@@ -541,6 +549,13 @@ export async function GET(req: Request) {
       const dailyRate = total_avg_curr;
       const invLife   = inventoryLifeDays(carryover, dailyRate, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
       const asOfMs    = new Date(todayStr).getTime();
+      // Raw SOD days using the same formula as home-stats (no velocity override, no Math.max floor)
+      const rawAvgCurr = r.total_avg_curr as number;
+      const sod_days_raw = (r.back as number) < 0
+        ? -1
+        : rawAvgCurr > 0
+          ? Math.floor((r.total_stock as number) / rawAvgCurr)
+          : 9999;
       const sod       = (() => {
         const rate = total_avg_curr;
         if (!rate) return null;
@@ -683,6 +698,7 @@ export async function GET(req: Request) {
         remaining:         availStockMap.get(masterSku)?.remaining ?? 0,
         mistake:           availStockMap.get(masterSku)?.mistake   ?? 0,
         sod,
+        sod_days_raw,
         containers:        includeContainers ? containersObj : {},
       };
     });

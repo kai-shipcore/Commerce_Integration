@@ -329,7 +329,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       setCategoryFilter(productParam);
     }
     const statusParam = searchParams.get("status");
-    if (statusParam === "crit" || statusParam === "warn" || statusParam === "bo") {
+    if (statusParam === "crit" || statusParam === "warn" || statusParam === "bo" || statusParam === "over") {
       setUrgencyFilter(statusParam);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -994,9 +994,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             padding: "2px 7px",
             borderRadius: 4,
             border: "1px solid",
-            borderColor: urgencyFilter === "crit" ? "#f0aaaa" : urgencyFilter === "warn" ? "#f0d0aa" : urgencyFilter === "bo" ? "#aac0f0" : "#C2BFB5",
-            background: urgencyFilter === "crit" ? "#FFEDED" : urgencyFilter === "warn" ? "#FEF3D8" : urgencyFilter === "bo" ? "#E5EEFF" : "#fff",
-            color: urgencyFilter === "crit" ? "#C42020" : urgencyFilter === "warn" ? "#9A5200" : urgencyFilter === "bo" ? "#1A4FC0" : "#1A1917",
+            borderColor: urgencyFilter === "crit" ? "#f0aaaa" : urgencyFilter === "warn" ? "#f0d0aa" : urgencyFilter === "bo" ? "#aac0f0" : urgencyFilter === "over" ? "#a0b4f0" : "#C2BFB5",
+            background: urgencyFilter === "crit" ? "#FFEDED" : urgencyFilter === "warn" ? "#FEF3D8" : urgencyFilter === "bo" ? "#E5EEFF" : urgencyFilter === "over" ? "#EEF3FF" : "#fff",
+            color: urgencyFilter === "crit" ? "#C42020" : urgencyFilter === "warn" ? "#9A5200" : urgencyFilter === "bo" ? "#1A4FC0" : urgencyFilter === "over" ? "#1940B0" : "#1A1917",
             fontSize: 11,
             fontWeight: 600,
             cursor: "pointer",

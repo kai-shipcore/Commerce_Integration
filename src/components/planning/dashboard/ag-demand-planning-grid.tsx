@@ -1343,6 +1343,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (urgencyFilter === "crit") return urgency === "crit";
       if (urgencyFilter === "warn") return urgency === "warn";
       if (urgencyFilter === "bo") return (row.back ?? 0) < 0;
+      if (urgencyFilter === "over") return urgency === "over";
       if (conQtyFilter) {
         const qty = qtyOverrides.get(`${row.sku}::${conQtyFilter}`)?.inbound_qty
           ?? row.containers?.[conQtyFilter]?.inbound_qty

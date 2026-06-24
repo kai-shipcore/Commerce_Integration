@@ -20,14 +20,16 @@ export function SkuKpiStrip({
   const projectedSod = projectedDays === null ? null : addDays(new Date(), Math.ceil(projectedDays));
   // sku.sod is current-stock-only and now uses the same total_avg_curr shown in Daily Average.
   const currentOnlySod = sku.sod ?? null;
+  const backorder = sku.back ?? 0;
   const inboundSub = includeDraftContainers
     ? pick(language, "Draft 포함", "Draft included")
     : sku.next_eta
       ? `${pick(language, "다음 ETA", "Next ETA")} ${sku.next_eta}`
       : pick(language, "활성 입고 없음", "No active inbound");
 
+  const currentStockLabel = pick(language, "현재 재고", "Current Stock");
   const items = [
-    { label: pick(language, "현재 재고", "Current Stock"), value: formatNumber(sku.total_stock), sub: `West ${formatNumber(sku.west_stock)} / East ${formatNumber(sku.east_stock)}` },
+    { label: currentStockLabel, value: formatNumber(sku.total_stock), sub: `West ${formatNumber(sku.west_stock)} / East ${formatNumber(sku.east_stock)}` },
     { label: pick(language, "입고 예정", "Expected Inbound"), value: formatNumber(inbound), sub: inboundSub },
     { label: pick(language, "예상 재고", "Projected"), value: formatNumber(projected), sub: `CBM/${pick(language, "개", "unit")} ${formatNumber(master.cbmPerUnit, 4)}` },
     { label: pick(language, "일평균 판매", "Daily Average"), value: formatNumber(sku.total_avg_curr, 2), sub: `30D ${formatNumber(sku.total_30d)} ${pick(language, "개", "units")}` },
@@ -48,6 +50,7 @@ export function SkuKpiStrip({
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
       {items.map((item) => {
         const isInvLife = item.label === invLifeLabel;
+        const isCurrentStock = item.label === currentStockLabel;
         return (
           <div key={item.label} className="planning-panel flex flex-col rounded-lg border p-4">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -55,7 +58,13 @@ export function SkuKpiStrip({
             </div>
             <div className="mt-2 font-mono text-2xl font-semibold">{item.value}</div>
             <div className="mt-1 flex-1 text-xs text-muted-foreground">{item.sub}</div>
-            {isInvLife && showCurrentOnly ? (
+            {isCurrentStock ? (
+              <div className={`mt-2 border-t pt-1.5 text-xs font-medium ${
+                backorder < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+              }`}>
+                {pick(language, "백오더", "Backorder")}: {formatNumber(backorder)}
+              </div>
+            ) : isInvLife && showCurrentOnly ? (
               <div className={`mt-2 border-t pt-1.5 text-xs font-medium ${
                 (stockOnlyDays ?? 999) < 30
                   ? "text-red-600 dark:text-red-400"

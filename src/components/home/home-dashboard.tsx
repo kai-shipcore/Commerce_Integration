@@ -421,7 +421,7 @@ export function HomeDashboard({
         {/* Right — Stock Distribution Donut (per category) */}
         <div className="rounded-xl border bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
           <h2 className="mb-3 text-sm font-semibold">{pick("재고 분포", "Stock Health")}</h2>
-          <SkuHealthDonut distribution={distribution} loading={kpiLoading} />
+          <SkuHealthDonut distribution={distribution} loading={kpiLoading} dashLink={dashLink} />
         </div>
       </div>
 

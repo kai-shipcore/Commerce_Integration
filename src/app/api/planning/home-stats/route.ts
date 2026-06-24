@@ -6,13 +6,13 @@
  * Uses only aggregate queries — does NOT load full SKU rows.
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v25";
+const CACHE_KEY = "home:planning-stats:v26";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -77,15 +77,20 @@ const CATEGORIZED_CTE = `
   )
 `;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const cached = await CacheManager.get<unknown>(CACHE_KEY);
-  if (cached) {
-    return NextResponse.json({ success: true, data: cached, cached: true });
+  const bustCache = req.nextUrl.searchParams.get("bust") === "1";
+  if (bustCache) {
+    await CacheManager.delete(CACHE_KEY);
+  } else {
+    const cached = await CacheManager.get<unknown>(CACHE_KEY);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached, cached: true });
+    }
   }
 
   try {
@@ -97,7 +102,7 @@ export async function GET() {
 
     // ── Row types ──────────────────────────────────────────────────────────────
     type SyncRow       = { last_sync: string | null };
-    type ContainerRow  = { name: string; eta: string | null; total_qty: string; status: string; cbm_capacity: string | null; used_cbm: string; sku_count: string };
+    type ContainerRow  = { name: string; est_loading: string | null; eta: string | null; total_qty: string; status: string; cbm_capacity: string | null; used_cbm: string; sku_count: string };
     type SalesRow      = { qty: string; revenue: string };
     type PartSkuRow    = { sku: string };
     type PartBackRow   = { sku: string; back: number };
@@ -149,6 +154,7 @@ export async function GET() {
       pool.query<ContainerRow>(`
         SELECT
           c.container_number                                    AS name,
+          c.est_loading_date::text                              AS est_loading,
           c.eta_date::text                                      AS eta,
           c.status,
           COALESCE(c.cbm_capacity, 0)::text                    AS cbm_capacity,
@@ -159,7 +165,7 @@ export async function GET() {
         LEFT JOIN shipcore.fc_container_items ci ON ci.container_id = c.id
         WHERE c.status NOT IN ('complete')
           AND (c.eta_date IS NULL OR c.eta_date >= CURRENT_DATE - INTERVAL '14 days')
-        GROUP BY c.id, c.container_number, c.eta_date, c.status, c.cbm_capacity
+        GROUP BY c.id, c.container_number, c.est_loading_date, c.eta_date, c.status, c.cbm_capacity
         ORDER BY c.eta_date ASC NULLS LAST
         LIMIT 10
       `),
@@ -447,6 +453,7 @@ export async function GET() {
     // ── inboundContainers ─────────────────────────────────────────────────────
     const containers = containersResult.rows.map((r) => ({
       name:        r.name,
+      estLoading:  r.est_loading ?? null,
       eta:         r.eta ?? null,
       qty:         parseInt(r.total_qty     ?? "0", 10),
       status:      r.status,

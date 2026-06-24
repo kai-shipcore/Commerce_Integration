@@ -382,6 +382,7 @@ export function DemandPlanningGrid({
       if (urgencyFilter === "crit") return u === "crit";
       if (urgencyFilter === "warn") return u === "warn";
       if (urgencyFilter === "bo")   return (r.back || 0) < 0;
+      if (urgencyFilter === "over") return u === "over";
       return true;
     });
   }, [ROWS, categoryFilter, productFilter, skuPartFilters, urgencyFilter, search, showZeroSales]);

@@ -69,7 +69,7 @@ export function SkuForecastsShell({
   useEffect(() => {
     let started = false;
 
-    fetch("/api/forecast-server/start", { method: "POST" })
+    fetch(apiPath("/api/forecast-server/start"), { method: "POST" })
       .then(async (res) => {
         if (!res.ok) {
           const json = await res.json().catch(() => ({})) as { error?: string };
@@ -81,13 +81,13 @@ export function SkuForecastsShell({
       .catch((err: Error) => setForecastServerError(err.message));
 
     const handleBeforeUnload = () => {
-      if (started) navigator.sendBeacon("/api/forecast-server/stop");
+      if (started) navigator.sendBeacon(apiPath("/api/forecast-server/stop"));
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (started) navigator.sendBeacon("/api/forecast-server/stop");
+      if (started) navigator.sendBeacon(apiPath("/api/forecast-server/stop"));
     };
   }, []);
 

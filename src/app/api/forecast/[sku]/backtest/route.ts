@@ -9,7 +9,9 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
-const FORECAST_API = "http://localhost:8000";
+function forecastApiBase() {
+  return (process.env.AI_SERVICE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90; // backtest can take up to ~60s for large SKUs
@@ -20,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sku:
 
   try {
     const upstream = await fetch(
-      `${FORECAST_API}/backtest/${encodeURIComponent(sku)}${search ? `?${search}` : ""}`,
+      `${forecastApiBase()}/backtest/${encodeURIComponent(sku)}${search ? `?${search}` : ""}`,
       { signal: AbortSignal.timeout(85_000) },
     );
 

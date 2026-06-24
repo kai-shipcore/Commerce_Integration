@@ -8,6 +8,7 @@ import type { DemandRow } from "@/types/demand-planning";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { pick, type SkuForecastLanguage } from "../language";
+import { apiPath } from "@/lib/api-path";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -173,7 +174,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
   // ── Bounds fetch ──────────────────────────────────────────────────────────
   useEffect(() => {
-    fetch("/api/forecast/bounds")
+    fetch(apiPath("/api/forecast/bounds"))
       .then((r) => r.json())
       .then((data: { minDate: string | null }) => {
         if (!data.minDate) return;
@@ -201,7 +202,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     const historyParam = historyStart
       ? `start=${format(historyStart, "yyyy-MM-dd")}`
       : `weeks=${historyWeeks}`;
-    fetch(`${FORECAST_API_BASE}/${encodeURIComponent(sku.sku)}?${historyParam}`)
+    fetch(apiPath(`${FORECAST_API_BASE}/${encodeURIComponent(sku.sku)}?${historyParam}`))
       .then(async (res) => {
         if (res.status === 404) { setNotFound(true); return null; }
         const json = await res.json();
@@ -284,7 +285,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     } else {
       params.set("history_weeks", String(btTrainWeeks));
     }
-    fetch(`${FORECAST_API_BASE}/${encodeURIComponent(sku.sku)}/backtest?${params}`)
+    fetch(apiPath(`${FORECAST_API_BASE}/${encodeURIComponent(sku.sku)}/backtest?${params}`))
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) throw new Error(json?.detail ?? json?.error ?? `Error ${res.status}`);

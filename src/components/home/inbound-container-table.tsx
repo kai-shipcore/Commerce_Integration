@@ -8,6 +8,7 @@ const DASHBOARD_LIST_ROW_HEIGHT = "h-9";
 
 export interface InboundContainer {
   name: string;
+  estLoading: string | null;
   eta: string | null;
   qty: number;
   status: string;
@@ -19,22 +20,14 @@ interface Props {
   loading?: boolean;
 }
 
-function normalizeStatus(raw: string): string {
-  if (raw === "shipped")          return "final-list-sent";
-  if (raw === "packing_received") return "packing-list-received";
-  if (raw === "complete")         return "complete";
-  return "draft";
-}
-
-const STATUS_LABEL: Record<string, { ko: string; en: string; color: string }> = {
-  "draft":                 { ko: "Draft",   en: "Draft",   color: "#d4537e" },
-  "final-list-sent":       { ko: "Packing", en: "Packing", color: "#ef9f27" },
-  "packing-list-received": { ko: "Shipped", en: "Shipped", color: "#378add" },
-  "complete":              { ko: "Complete",en: "Complete", color: "#22a666" },
-};
-
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className ?? ""}`} />;
+}
+
+function formatDate(value: string | null) {
+  return value
+    ? new Date(value).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" })
+    : "—";
 }
 
 export function InboundContainerTable({ items, loading }: Props) {
@@ -62,14 +55,13 @@ export function InboundContainerTable({ items, loading }: Props) {
         <thead>
           <tr className="border-b text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             <th className="pb-2 text-left">{pick("컨테이너", "Container")}</th>
+            <th className="pb-2 text-center">Est.Loading</th>
             <th className="pb-2 text-center">ETA</th>
-            <th className="pb-2 text-center">{pick("상태", "Status")}</th>
             <th className="pb-2 text-right">SKU</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#f0eee9] dark:divide-zinc-700/50">
           {items.map((item) => {
-            const cfg = STATUS_LABEL[normalizeStatus(item.status)] ?? { ko: item.status, en: item.status, color: "#94a3b8" };
             const isPast = item.eta ? new Date(item.eta) < new Date(new Date().toDateString()) : false;
             return (
               <tr key={item.name} className={`${DASHBOARD_LIST_ROW_HEIGHT} hover:bg-[#f8f7f4] dark:hover:bg-zinc-800/40`}>
@@ -81,18 +73,11 @@ export function InboundContainerTable({ items, loading }: Props) {
                     {item.name}
                   </Link>
                 </td>
-                <td className={`py-2 text-center tabular-nums ${isPast ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
-                  {item.eta
-                    ? new Date(item.eta).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" })
-                    : "—"}
+                <td className="py-2 text-center tabular-nums text-muted-foreground">
+                  {formatDate(item.estLoading)}
                 </td>
-                <td className="py-2 text-center">
-                  <span
-                    className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
-                    style={{ backgroundColor: cfg.color }}
-                  >
-                    {pick(cfg.ko, cfg.en)}
-                  </span>
+                <td className={`py-2 text-center tabular-nums ${isPast ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
+                  {formatDate(item.eta)}
                 </td>
                 <td className="py-2 text-right tabular-nums text-muted-foreground">
                   {item.skuCount}

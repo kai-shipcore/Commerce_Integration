@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const FORECAST_API = "http://localhost:8000";
+function forecastApiBase() {
+  return (process.env.AI_SERVICE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ sku: string }> }) {
   const { sku } = await params;
@@ -8,7 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sku:
 
   try {
     const upstream = await fetch(
-      `${FORECAST_API}/forecast/${encodeURIComponent(sku)}${search ? `?${search}` : ""}`,
+      `${forecastApiBase()}/forecast/${encodeURIComponent(sku)}${search ? `?${search}` : ""}`,
       { signal: AbortSignal.timeout(10_000) },
     );
 

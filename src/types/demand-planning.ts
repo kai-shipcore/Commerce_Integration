@@ -1,7 +1,7 @@
 export type ProductFilter = "all" | "orig" | "cust";
 export type CategoryFilter = "sc" | "cc" | "fm" | "ac";
-export type UrgencyFilter = "crit" | "warn" | "bo";
-export type UrgencyStatus = "crit" | "warn" | "ok";
+export type UrgencyFilter = "crit" | "warn" | "bo" | "over";
+export type UrgencyStatus = "crit" | "warn" | "ok" | "over";
 export type ColumnGroupKey =
   | "fix"
   | "stock"
@@ -98,6 +98,7 @@ export interface DemandRow {
   containers_list: string | null;
   next_eta: string | null;
   sod: string | null;
+  sod_days_raw?: number;
   containers: Record<string, ContainerRowData>;
 }
 
