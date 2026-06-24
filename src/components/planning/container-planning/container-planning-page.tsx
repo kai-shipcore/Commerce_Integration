@@ -1042,14 +1042,14 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
+        toast.error(json.error ?? pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
         return;
       }
 
       await fetchContainers();
       setExpandedId(containerId);
     } catch {
-      window.alert(pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
+      toast.error(pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
     }
   }
 
@@ -3850,12 +3850,53 @@ function StatusChangeModal({
   canRevert?: boolean;
 }) {
   const { pick } = useI18n();
+  const [revertConfirming, setRevertConfirming] = useState(false);
   const currentIdx = STATUS_ORDER.indexOf(currentStatus);
   const nextStatus = STATUS_ORDER[currentIdx + 1];
   const prevStatus = STATUS_ORDER[currentIdx - 1];
   const showRevert = canRevert && prevStatus !== undefined;
 
   if (!nextStatus && !showRevert) return null;
+
+  if (revertConfirming && prevStatus) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        onClick={onClose}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl border border-[#e2dfd8] bg-white p-6 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 className="mb-1 text-base font-semibold">{pick("이전 단계로 되돌리기", "Revert Status")}</h2>
+          <p className="mb-5 text-sm text-muted-foreground">
+            {pick("이 작업은 신중하게 진행해주세요.", "Please proceed with caution.")}
+          </p>
+          <div className="flex items-start justify-center gap-4 px-2">
+            <StatusBadge status={currentStatus} />
+            <span className="mt-1.5 text-lg text-amber-500">→</span>
+            <StatusBadge status={prevStatus} />
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setRevertConfirming(false)}
+              className="rounded-lg border border-[#cccac4] px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]"
+            >
+              {pick("취소", "Cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirm(prevStatus)}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+            >
+              {pick("되돌리기", "Revert")}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -3892,8 +3933,8 @@ function StatusChangeModal({
           {showRevert && (
             <button
               type="button"
-              onClick={() => onConfirm(prevStatus)}
-              className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f0eee9]"
+              onClick={() => setRevertConfirming(true)}
+              className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100"
             >
               {pick("이전 단계로", "Revert")}
             </button>
