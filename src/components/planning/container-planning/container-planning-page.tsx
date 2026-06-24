@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -48,6 +49,13 @@ const statusOptions: Array<{ value: ContainerStatus; label: string; shortLabel: 
   { value: "final-list-sent", label: "Final List Sent to Factory", shortLabel: "Final" },
   { value: "packing-list-received", label: "Packing List Received / Shipped", shortLabel: "Packing" },
   { value: "complete", label: "Stock-in completed", shortLabel: "Complete" },
+];
+
+const STATUS_ORDER: ContainerStatus[] = [
+  "draft",
+  "final-list-sent",
+  "packing-list-received",
+  "complete",
 ];
 
 const statusColors: Record<ContainerStatus, string> = {
@@ -119,7 +127,7 @@ type ApiContainer = {
   origin: string | null;
   destWarehouse: string | null;
   note: string | null;
-  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; skuMemo?: string | null; allocations?: StockAllocation[] }>;
+  items?: Array<{ id?: string; sku: string; qty: number; cbm: number; skuMemo?: string | null; remainingStockQty?: number; allocations?: StockAllocation[] }>;
 };
 
 type FactoryOption = {
@@ -235,6 +243,7 @@ function mapApiContainer(container: ApiContainer): MockContainer {
       qty: Number(item.qty ?? 0),
       cbm: Number(item.cbm ?? 0),
       skuMemo: item.skuMemo ?? undefined,
+      remainingStockQty: item.remainingStockQty ?? 0,
       allocations: (item.allocations ?? []).map((allocation) => ({
         ...allocation,
         qty: Number(allocation.qty ?? 0),
@@ -276,6 +285,14 @@ function formatExportDate(dateValue: string) {
   const [year, month, day] = dateValue.split("-").map((part) => Number.parseInt(part, 10));
   if (!year || !month || !day) return todayLabel().replace(/-/g, ".");
   return `${month}.${String(day).padStart(2, "0")}.${year}`;
+}
+
+function detectImportFormat(rows: unknown[][]): "packing-list" | "final-order" | "template" {
+  const firstCell = String(rows[0]?.[0] ?? "").trim();
+  const lastCell = String(rows[0]?.[(rows[0] as unknown[]).length - 1] ?? "").trim();
+  if (firstCell === "Container") return "packing-list";
+  if (firstCell === "Master SKU" && lastCell === "Remaining Stock") return "final-order";
+  return "template";
 }
 
 export function ContainerPlanningPage() {
@@ -1243,14 +1260,24 @@ export function ContainerPlanningPage() {
     cancelInlineEdit(containerId, originalSku);
   }
 
-  function getMergedContainer(container: MockContainer, itemsToMerge: ContainerItem[]): MockContainer {
+  function getMergedContainer(container: MockContainer, itemsToMerge: ContainerItem[], mode: "add" | "replace" | "overwrite" = "add"): MockContainer {
+    if (mode === "overwrite") {
+      const existingBySku = new Map(container.items.map((item) => [item.sku, item]));
+      const newItems = itemsToMerge.map((item) => {
+        const existing = existingBySku.get(item.sku);
+        return existing
+          ? { ...existing, qty: item.qty, cbm: item.cbm, skuMemo: item.skuMemo ?? existing.skuMemo }
+          : item;
+      });
+      return { ...container, items: newItems };
+    }
     const mergedItems = [...container.items];
     for (const nextItem of itemsToMerge) {
       const existingIndex = mergedItems.findIndex((item) => item.sku === nextItem.sku);
       if (existingIndex >= 0) {
         mergedItems[existingIndex] = {
           ...mergedItems[existingIndex],
-          qty: mergedItems[existingIndex].qty + nextItem.qty,
+          qty: mode === "add" ? mergedItems[existingIndex].qty + nextItem.qty : nextItem.qty,
           cbm: nextItem.cbm,
           skuMemo: nextItem.skuMemo ?? mergedItems[existingIndex].skuMemo,
         };
@@ -1426,7 +1453,9 @@ export function ContainerPlanningPage() {
 
   async function importContainerItems(containerId: string, file: File) {
     const container = containers.find((item) => item.id === containerId);
-    if (container?.status !== "draft" && container?.status !== "final-list-sent") return;
+    if (!container || container.status === "complete") return;
+
+    const toastId = toast.loading(pick("파일 처리 중...", "Processing file..."));
 
     const extension = file.name.split(".").pop()?.toLowerCase();
     let rows: unknown[][] = [];
@@ -1444,16 +1473,28 @@ export function ContainerPlanningPage() {
       rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as unknown[][];
     }
 
+    const format = detectImportFormat(rows);
+    let dataStartIdx = 1;
+    if (format === "packing-list") {
+      const headerIdx = rows.findIndex((r) => String(r[0] ?? "").trim() === "Master SKU");
+      if (headerIdx < 0) {
+        toast.error(pick("헤더를 찾을 수 없습니다.", "Header row not found."), { id: toastId });
+        return;
+      }
+      dataStartIdx = headerIdx + 1;
+    }
+
     const parsedItems = rows
-      .slice(1)
+      .slice(dataStartIdx)
       .map((row) => {
         const sku = String(row[0] ?? "").trim().toUpperCase();
         const qty = Math.trunc(parseNumberCell(row[1]));
         const cbm = parseNumberCell(row[2]);
-        const memo = String(row[3] ?? "").trim();
+        // row[3] = Total CBM (computed, skip)
+        const memo = String(row[4] ?? "").trim();
         return { sku, qty, cbm, memo };
       })
-      .filter((item) => Boolean(item.sku) && item.qty > 0);
+      .filter((item) => Boolean(item.sku) && item.sku !== "TOTAL" && item.qty > 0);
 
     const importedItems = await Promise.all(
       parsedItems.map(async (item) => {
@@ -1472,18 +1513,21 @@ export function ContainerPlanningPage() {
       .map((item) => item.sku);
 
     if (missingSkus.length > 0) {
-      window.alert(pick(`가져올 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, `Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`));
+      toast.error(`SKU Master에 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, { id: toastId });
       return;
     }
 
     if (validImportedItems.length === 0) {
-      window.alert(pick("가져올 SKU가 없습니다. 첫 행은 헤더로 두고 SKU / Qty / CBM / Memo 순서로 작성하세요.", "No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order."));
+      toast.error(pick("가져올 SKU가 없습니다.", "No SKUs to import."), { id: toastId });
       return;
     }
 
-    const updatedContainer = getMergedContainer(container, validImportedItems);
-    if (!(await persistContainer(updatedContainer))) return;
-    window.alert(pick(`SKU ${validImportedItems.length}개를 가져왔습니다.`, `Imported ${validImportedItems.length} SKU(s).`));
+    const updatedContainer = getMergedContainer(container, validImportedItems, "overwrite");
+    if (!(await persistContainer(updatedContainer))) {
+      toast.error(pick("저장 실패", "Save failed"), { id: toastId });
+      return;
+    }
+    toast.success(pick(`${validImportedItems.length}개 SKU 가져오기 완료`, `Imported ${validImportedItems.length} SKU(s).`), { id: toastId });
   }
 
   async function exportContainerItems(containerId: string) {
@@ -1501,26 +1545,21 @@ export function ContainerPlanningPage() {
       ["Notes", container.note || null],
       ["Status", containerStatusLabels[container.status]],
       [],
-      ["Master SKU", "Memo", "Source", "Qty", "CBM / Unit", "Total CBM"],
+      ["Master SKU", "Qty", "CBM / Unit", "Total CBM", "Memo"],
       ...container.items.map((item) => [
         item.sku,
-        item.skuMemo ?? "",
-        (item.allocations ?? [])
-          .map((allocation) =>
-            `Remain ${allocation.referenceNo} (${allocation.qty})`
-          )
-          .join(", ") || "Container / Manual",
         item.qty,
         item.cbm,
         Number((item.qty * item.cbm).toFixed(6)),
+        item.skuMemo ?? "",
       ]),
       [],
-      ["Total", null, null, totalQty, null, Number(totalCbm.toFixed(6))],
+      ["Total", totalQty, null, Number(totalCbm.toFixed(6)), null],
     ];
 
     const XLSX = await import("xlsx");
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    worksheet["!cols"] = [{ wch: 28 }, { wch: 24 }, { wch: 36 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    worksheet["!cols"] = [{ wch: 28 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 28 }];
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Packing List");
@@ -1633,6 +1672,8 @@ export function ContainerPlanningPage() {
   }
 
   async function importCreateFormItems(file: File) {
+    const toastId = toast.loading(pick("파일 처리 중...", "Processing file..."));
+
     const extension = file.name.split(".").pop()?.toLowerCase();
     let rows: unknown[][] = [];
 
@@ -1649,16 +1690,28 @@ export function ContainerPlanningPage() {
       rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as unknown[][];
     }
 
+    const format = detectImportFormat(rows);
+    let dataStartIdx = 1;
+    if (format === "packing-list") {
+      const headerIdx = rows.findIndex((r) => String(r[0] ?? "").trim() === "Master SKU");
+      if (headerIdx < 0) {
+        toast.error(pick("헤더를 찾을 수 없습니다.", "Header row not found."), { id: toastId });
+        return;
+      }
+      dataStartIdx = headerIdx + 1;
+    }
+
     const parsedItems = rows
-      .slice(1)
+      .slice(dataStartIdx)
       .map((row) => {
         const sku = String(row[0] ?? "").trim().toUpperCase();
         const qty = Math.trunc(parseNumberCell(row[1]));
         const cbm = parseNumberCell(row[2]);
-        const memo = String(row[3] ?? "").trim();
+        // row[3] = Total CBM (computed, skip)
+        const memo = String(row[4] ?? "").trim();
         return { sku, qty, cbm, memo };
       })
-      .filter((item) => Boolean(item.sku) && item.qty > 0);
+      .filter((item) => Boolean(item.sku) && item.sku !== "TOTAL" && item.qty > 0);
 
     const importedItems = await Promise.all(
       parsedItems.map(async (item) => {
@@ -1677,30 +1730,20 @@ export function ContainerPlanningPage() {
       .map((item) => item.sku);
 
     if (missingSkus.length > 0) {
-      window.alert(pick(`가져올 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, `Cannot import. SKU not found in SKU Master: ${[...new Set(missingSkus)].join(", ")}`));
+      toast.error(`SKU Master에 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, { id: toastId });
       return;
     }
     if (validImportedItems.length === 0) {
-      window.alert(pick("가져올 SKU가 없습니다. 첫 행은 헤더로 두고 SKU / Qty / CBM / Memo 순서로 작성하세요.", "No SKUs to import. Use the first row as a header and columns in SKU / Qty / CBM / Memo order."));
+      toast.error(pick("가져올 SKU가 없습니다.", "No SKUs to import."), { id: toastId });
       return;
     }
 
-    setDraftItems((current) => {
-      const merged = [...current];
-      for (const nextItem of validImportedItems) {
-        const idx = merged.findIndex((item) => item.sku === nextItem.sku);
-        if (idx >= 0) {
-          merged[idx] = { ...merged[idx], qty: merged[idx].qty + nextItem.qty, cbm: nextItem.cbm, skuMemo: nextItem.skuMemo ?? merged[idx].skuMemo };
-        } else {
-          merged.push(nextItem);
-        }
-      }
-      return merged;
-    });
+    setDraftItems(validImportedItems);
+    toast.success(pick(`${validImportedItems.length}개 SKU 가져오기 완료`, `Imported ${validImportedItems.length} SKU(s).`), { id: toastId });
   }
 
   function downloadContainerTemplate() {
-    const csv = "Master SKU,Qty,CBM/Unit,Memo\n";
+    const csv = "Master SKU,Qty,CBM/Unit,Total CBM,Memo\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -1711,6 +1754,8 @@ export function ContainerPlanningPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
+
+
 
   return (
     <section className="container-planning-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
@@ -2479,10 +2524,10 @@ function ContainerCreateForm({
               </div>
             ) : null}
             <div>Master SKU</div>
-            <div>Memo</div>
             <div className="text-right">{pick("수량", "Qty")}</div>
             <div className="text-right">CBM / Unit</div>
             <div className="text-right">{pick("총 CBM", "Total CBM")}</div>
+            <div>Memo</div>
             {canChangeStructure ? <div className="text-right">{pick("삭제", "Delete")}</div> : null}
           </div>
 
@@ -2525,10 +2570,10 @@ function ContainerCreateForm({
                   </div>
                 ) : null}
                 <span className="font-mono text-xs font-medium">{item.sku}</span>
-                <span className="truncate text-xs text-muted-foreground">{item.skuMemo ?? ""}</span>
                 <span className="text-right tabular-nums">{formatNumber(item.qty)}</span>
                 <span className="text-right font-mono text-xs tabular-nums">{item.cbm.toFixed(6)}</span>
                 <span className="text-right font-mono text-xs tabular-nums">{(item.qty * item.cbm).toFixed(6)}</span>
+                <span className="truncate text-xs text-muted-foreground">{item.skuMemo ?? ""}</span>
                 {canChangeStructure ? (
                   <div className="flex justify-end">
                     <button
@@ -2566,12 +2611,6 @@ function ContainerCreateForm({
               placeholder="Master SKU..."
             />
             <input
-              className="form-input text-xs"
-              value={memoInput}
-              onChange={(event) => onMemoInputChange(event.target.value)}
-              placeholder="Memo..."
-            />
-            <input
               className="form-input"
               type="number"
               value={qtyInput}
@@ -2592,6 +2631,12 @@ function ContainerCreateForm({
                 ? (parseFloat(cbmInput) * parseInt(qtyInput, 10) || 0).toFixed(6)
                 : "-"}
             </div>
+            <input
+              className="form-input text-xs"
+              value={memoInput}
+              onChange={(event) => onMemoInputChange(event.target.value)}
+              placeholder="Memo..."
+            />
             <div />
           </div>
           ) : null}
@@ -2952,13 +2997,106 @@ function ContainerCard({
               </div>
             </div>
           ) : null}
+          <div className="flex items-center gap-2 border-b border-[#e2dfd8] px-5 py-2">
+            <button
+              type="button"
+              onClick={() => onEditContainer(container)}
+              disabled={!canEditContainer}
+              className="rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff] disabled:cursor-not-allowed disabled:border-[#d8d6ce] disabled:bg-[#f0eee9] disabled:text-muted-foreground disabled:opacity-60"
+            >
+              {pick("수정", "Edit")}
+            </button>
+            {canChangeStructure ? (
+              <button
+                type="button"
+                onClick={() => onStartAddItem(container.id)}
+                disabled={Boolean(inlineSkuDraft)}
+                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pick("+ SKU 추가", "+ Add SKU")}
+              </button>
+            ) : null}
+            {canChangeStructure ? (
+              <button
+                type="button"
+                onClick={() => onAddAvailableStock(container.id)}
+                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+              >
+                {pick("+ 가용 재고 추가", "+ Add Available Stock")}
+              </button>
+            ) : null}
+            <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
+              <span>{pick("가져오기", "Import")}</span>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void onImportItems(container.id, file);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void onExportItems(container.id)}
+              className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+            >
+              {pick("내보내기", "Export")}
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {container.status !== "complete" ? (
+                <button
+                  type="button"
+                  onClick={() => onChangeStatus(container.id)}
+                  className="rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+                >
+                  {pick("상태 변경", "Change Status")}
+                </button>
+              ) : null}
+              {canDeleteThisContainer ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Delete container '${container.number}'?`)) {
+                      onDeleteContainer(container.id);
+                    }
+                  }}
+                  className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
+                >
+                  {pick("삭제", "Delete")}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center justify-between border-b border-[#e2dfd8] bg-[#f8f7f4] px-5 py-2 text-sm text-muted-foreground">
+            <div className="flex gap-5">
+              <span>
+                {pick("총 수량:", "Total Qty:")} <strong className="text-foreground">{formatNumber(totalQty)} units</strong>
+              </span>
+              <span>
+                CBM: <strong className="text-foreground">{usedCbm.toFixed(2)} m3</strong>
+              </span>
+            </div>
+            <div className="flex w-72 flex-col gap-1">
+              <div className="flex justify-between text-xs">
+                <span>{pick("CBM 사용량", "CBM usage")}</span>
+                <span>{cbmUsage.toFixed(0)}% ({usedCbm.toFixed(2)} / {container.cbmCapacity} m3)</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded border border-[#e2dfd8] bg-[#f0eee9]">
+                <div className="h-full rounded" style={{ width: `${cbmUsage}%`, backgroundColor: cbmColor }} />
+              </div>
+            </div>
+          </div>
           {skuListCollapsed ? null : <>
-          <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px]" : "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr]"}`}>
+          <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr_110px]" : "grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr]"}`}>
             <div>Master SKU</div>
-            <div>Memo</div>
             <div>{pick("수량", "Qty")}</div>
+            <div>Rem. Qty</div>
             <div>CBM / Unit</div>
             <div>{pick("총 CBM", "Total CBM")}</div>
+            <div>Memo</div>
             {canEditQuantity ? <div className="text-right">{pick("작업", "Actions")}</div> : null}
           </div>
           {canChangeStructure && removableAllocationIds.length > 0 ? (
@@ -3017,7 +3155,7 @@ function ContainerCard({
               </div>
             ) : null}
             {inlineSkuDraft && canChangeStructure ? (
-              <div className="grid grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+              <div className="grid grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
                 <div className="pr-3">
                   <input
                     className="form-input font-mono text-xs"
@@ -3042,14 +3180,6 @@ function ContainerCard({
                 </div>
                 <div className="pr-3">
                   <input
-                    className="form-input text-xs"
-                    value={inlineSkuDraft.skuMemo ?? ""}
-                    onChange={(event) => onUpdateInlineSkuDraft(container.id, { skuMemo: event.target.value })}
-                    placeholder="Memo..."
-                  />
-                </div>
-                <div className="pr-3">
-                  <input
                     className="form-input"
                     type="number"
                     value={inlineSkuDraft.qty}
@@ -3057,6 +3187,7 @@ function ContainerCard({
                     placeholder="Qty"
                   />
                 </div>
+                <div className="pb-2 text-xs text-muted-foreground">—</div>
                 <div className="pr-3">
                   <input
                     className="form-input"
@@ -3072,6 +3203,14 @@ function ContainerCard({
                   {inlineSkuDraft.qty && inlineSkuDraft.cbm
                     ? `${((Number.parseInt(inlineSkuDraft.qty, 10) || 0) * (Number.parseFloat(inlineSkuDraft.cbm) || 0)).toFixed(6)} m3`
                     : "-"}
+                </div>
+                <div className="pr-3">
+                  <input
+                    className="form-input text-xs"
+                    value={inlineSkuDraft.skuMemo ?? ""}
+                    onChange={(event) => onUpdateInlineSkuDraft(container.id, { skuMemo: event.target.value })}
+                    placeholder="Memo..."
+                  />
                 </div>
                 <div className="flex justify-end gap-1">
                   <button
@@ -3094,110 +3233,6 @@ function ContainerCard({
           </div>
           </>}
 
-          <div className="flex items-center gap-3 border-t px-5 py-3">
-            <button
-              type="button"
-              onClick={() => onEditContainer(container)}
-              disabled={!canEditContainer}
-              className="rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff] disabled:cursor-not-allowed disabled:border-[#d8d6ce] disabled:bg-[#f0eee9] disabled:text-muted-foreground disabled:opacity-60"
-            >
-              {pick("수정", "Edit")}
-            </button>
-            {canChangeStructure ? (
-              <button
-                type="button"
-                onClick={() => onStartAddItem(container.id)}
-                disabled={Boolean(inlineSkuDraft)}
-                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {pick("+ SKU 추가", "+ Add SKU")}
-              </button>
-            ) : null}
-            {canChangeStructure ? (
-              <button
-                type="button"
-                onClick={() => onAddAvailableStock(container.id)}
-                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
-              >
-                {pick("+ 가용 재고 추가", "+ Add Available Stock")}
-              </button>
-            ) : null}
-            {canExportItems ? (
-              <button
-                type="button"
-                onClick={() => void onExportItems(container.id)}
-                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
-              >
-                CSV/Excel
-              </button>
-            ) : null}
-            {canChangeStructure ? (
-              <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
-                <span>{pick("가져오기", "Import")}</span>
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = "";
-                    if (file) void onImportItems(container.id, file);
-                  }}
-                />
-              </label>
-            ) : null}
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onChangeStatus(container.id)}
-                className="rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
-              >
-                {pick("상태 변경", "Change Status")}
-              </button>
-              {canDeleteThisContainer ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm(pick(`컨테이너 '${container.number}'을(를) 삭제하시겠습니까?`, `Delete container '${container.number}'?`))) {
-                      onDeleteContainer(container.id);
-                    }
-                  }}
-                  className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
-                >
-                  {pick("삭제", "Delete")}
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 border-t bg-[#f0eee9] px-5 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-            <div className="flex gap-5">
-              <span>
-                {pick("총 수량:", "Total Qty:")} <strong className="text-foreground">{formatNumber(totalQty)} units</strong>
-              </span>
-              <span>
-                CBM: <strong className="text-foreground">{usedCbm.toFixed(2)} m3</strong>
-              </span>
-            </div>
-            <div className="text-xs">
-              {container.factory} · Warehouse {container.eta || "—"}
-            </div>
-          </div>
-
-          <div className="px-5 pb-4 pt-3">
-            <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>{pick("CBM 사용량", "CBM usage")}</span>
-              <span>
-                {cbmUsage.toFixed(0)}% ({usedCbm.toFixed(2)} / {container.cbmCapacity} m3)
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded border border-[#e2dfd8] bg-[#f0eee9]">
-              <div
-                className="h-full rounded"
-                style={{ width: `${cbmUsage}%`, backgroundColor: cbmColor }}
-              />
-            </div>
-          </div>
         </div>
       ) : null}
     </article>
@@ -3248,7 +3283,6 @@ function SkuRow({
   const { pick } = useI18n();
   const allocations = item.allocations ?? [];
   const hasAllocatedStock = allocations.length > 0;
-  const allocatedRemainQty = allocations.reduce((sum, allocation) => sum + allocation.qty, 0);
   const allocationIds = allocations.map((allocation) => allocation.id);
   const canSelectAllocations = hasAllocatedStock && !readonly && !quantityOnly;
   const allAllocationsSelected = canSelectAllocations
@@ -3261,7 +3295,7 @@ function SkuRow({
 
   if (editDraft) {
     return (
-      <div className="grid grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+      <div className="grid grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
         <div className="pr-3">
           <input
             className="form-input font-mono text-xs"
@@ -3278,20 +3312,15 @@ function SkuRow({
         </div>
         <div className="pr-3">
           <input
-            className="form-input text-xs"
-            value={editDraft.skuMemo ?? ""}
-            onChange={(event) => onUpdateDraft(containerId, item.sku, { skuMemo: event.target.value })}
-            placeholder="Memo..."
-          />
-        </div>
-        <div className="pr-3">
-          <input
             className="form-input"
             type="number"
             value={editDraft.qty}
             onChange={(event) => onUpdateDraft(containerId, item.sku, { qty: event.target.value })}
             placeholder="Qty"
           />
+        </div>
+        <div className="pb-2 font-mono text-xs font-medium text-[#0a5e45]">
+          {(item.remainingStockQty ?? 0) > 0 ? formatNumber(item.remainingStockQty!) : "—"}
         </div>
         <div className="pr-3">
           <input
@@ -3309,6 +3338,14 @@ function SkuRow({
           {editDraft.qty && editDraft.cbm
             ? `${((Number.parseInt(editDraft.qty, 10) || 0) * (Number.parseFloat(editDraft.cbm) || 0)).toFixed(6)} m3`
             : "-"}
+        </div>
+        <div className="pr-3">
+          <input
+            className="form-input text-xs"
+            value={editDraft.skuMemo ?? ""}
+            onChange={(event) => onUpdateDraft(containerId, item.sku, { skuMemo: event.target.value })}
+            placeholder="Memo..."
+          />
         </div>
         <div className="flex justify-end gap-1">
           <button
@@ -3343,7 +3380,7 @@ function SkuRow({
       } : undefined}
       className={`grid items-center border-t px-5 py-2 text-sm hover:bg-[#f8f7f4] ${
         canSelectAllocations ? "cursor-pointer" : ""
-      } ${readonly ? "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr]" : "grid-cols-[2.2fr_1.2fr_0.7fr_0.8fr_0.8fr_110px]"}`}
+      } ${readonly ? "grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr]" : "grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr_110px]"}`}
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -3359,21 +3396,14 @@ function SkuRow({
           <ProductBadge product={inferProductKey(item.sku)} />
           <span className="truncate font-mono text-xs font-medium">{item.sku}</span>
         </div>
-        {allocations.length > 0 ? (
-          <div className="mt-1 flex flex-wrap gap-1">
-            <span
-              title={allocations.map((allocation) => `${allocation.referenceNo} / ${allocation.qty}`).join(", ")}
-              className="inline-flex items-center gap-1 rounded bg-[#e6f5f0] px-1.5 py-0.5 text-[10px] font-medium text-[#0a5e45]"
-            >
-              Remain / {allocatedRemainQty}
-            </span>
-          </div>
-        ) : null}
       </div>
-      <div className="min-w-0 truncate text-xs text-muted-foreground">{item.skuMemo ?? ""}</div>
       <div className="font-semibold">{formatNumber(item.qty)} units</div>
+      <div className="font-mono text-xs font-medium text-[#0a5e45]">
+        {(item.remainingStockQty ?? 0) > 0 ? formatNumber(item.remainingStockQty!) : "—"}
+      </div>
       <div className="font-mono text-xs text-muted-foreground">{item.cbm.toFixed(6)} m3</div>
       <div className="font-mono text-xs font-semibold">{(item.qty * item.cbm).toFixed(6)} m3</div>
+      <div className="min-w-0 truncate text-xs text-muted-foreground">{item.skuMemo ?? ""}</div>
       {readonly ? null : (
         <div className="flex flex-col items-end gap-1">
           <div className="flex justify-end gap-1">
@@ -3787,6 +3817,23 @@ function AvailableStockModal({
   );
 }
 
+function StatusBadge({ status }: { status: ContainerStatus }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span
+        className="h-4 w-4 rounded-full border-2 border-black/10"
+        style={{
+          backgroundColor: statusColors[status],
+          boxShadow: `0 0 0 4px ${statusColors[status]}30`,
+        }}
+      />
+      <span className="text-center text-xs font-medium text-foreground">
+        {statusWorkflowLabels[status]}
+      </span>
+    </div>
+  );
+}
+
 function StatusChangeModal({
   currentStatus,
   onConfirm,
@@ -3797,7 +3844,8 @@ function StatusChangeModal({
   onClose: () => void;
 }) {
   const { pick } = useI18n();
-  const [selected, setSelected] = useState<ContainerStatus>(currentStatus);
+  const nextStatus = STATUS_ORDER[STATUS_ORDER.indexOf(currentStatus) + 1];
+  if (!nextStatus) return null;
 
   return (
     <div
@@ -3808,37 +3856,13 @@ function StatusChangeModal({
         className="w-full max-w-sm rounded-2xl border border-[#e2dfd8] bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-base font-semibold">{pick("상태 변경", "Change Status")}</h2>
-        <div className="space-y-3">
-          {statusOptions.map((option) => (
-            <label
-              key={option.value}
-              className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 transition-colors ${
-                selected === option.value
-                  ? "border-[#1a5cdb] bg-[#ebf0fd]"
-                  : "border-[#e2dfd8] hover:bg-[#f8f7f4]"
-              }`}
-            >
-              <input
-                type="radio"
-                name="containerStatus"
-                value={option.value}
-                checked={selected === option.value}
-                onChange={() => setSelected(option.value)}
-                className="sr-only"
-              />
-              <span
-                className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-black/10"
-                style={{
-                  backgroundColor: statusColors[option.value],
-                  boxShadow: `0 0 0 3px ${statusColors[option.value]}30`,
-                }}
-              />
-              <span className="text-sm font-medium">{statusWorkflowLabels[option.value]}</span>
-            </label>
-          ))}
+        <h2 className="mb-5 text-base font-semibold">{pick("상태 변경", "Change Status")}</h2>
+        <div className="flex items-start justify-center gap-4 px-2">
+          <StatusBadge status={currentStatus} />
+          <span className="mt-1.5 text-lg text-muted-foreground">→</span>
+          <StatusBadge status={nextStatus} />
         </div>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
@@ -3848,7 +3872,7 @@ function StatusChangeModal({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(selected)}
+            onClick={() => onConfirm(nextStatus)}
             className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
           >
             {pick("확인", "Confirm")}

@@ -154,6 +154,12 @@ export async function GET(request: NextRequest) {
                  0
                ),
                'sku_memo', fc_container_items.sku_memo,
+               'remaining_stock_qty', COALESCE((
+                 SELECT SUM(s.total_qty)::int
+                 FROM shipcore.fc_available_stock s
+                 WHERE s.master_sku = fc_container_items.master_sku
+                   AND s.source_type = 'remaining'
+               ), 0),
                ${timelineView ? `'categoryCode', p_item.category_code` : `'allocations', COALESCE((
                  SELECT json_agg(
                    json_build_object(
@@ -208,6 +214,7 @@ export async function GET(request: NextRequest) {
               qty?: number;
               cbm?: string | number;
               sku_memo?: string | null;
+              remaining_stock_qty?: number | null;
               categoryCode?: string | null;
               allocations?: Array<{
                 id: string;
@@ -223,6 +230,7 @@ export async function GET(request: NextRequest) {
               qty: Number(item.qty ?? 0),
               cbm: Number(item.cbm ?? 0),
               skuMemo: item.sku_memo ?? null,
+              remainingStockQty: Number(item.remaining_stock_qty ?? 0),
               ...(timelineView ? { categoryCode: item.categoryCode ?? null } : {}),
               ...(!timelineView
                 ? {
