@@ -4,13 +4,14 @@ import type { ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { pick, type SkuForecastLanguage } from "../language";
 
-export type SkuForecastTab = "sales" | "inventory" | "history" | "purchase";
+export type SkuForecastTab = "sales" | "inventory" | "history" | "purchase" | "forecast";
 
 interface SkuForecastTabsProps {
   sales: ReactNode;
   inventory: ReactNode;
   history: ReactNode;
   purchase: ReactNode;
+  forecast: ReactNode;
   language: SkuForecastLanguage;
   defaultTab?: SkuForecastTab;
 }
@@ -23,6 +24,7 @@ export function SkuForecastTabs({
   inventory,
   history,
   purchase,
+  forecast,
   language,
   defaultTab = "sales",
 }: SkuForecastTabsProps) {
@@ -41,12 +43,16 @@ export function SkuForecastTabs({
         <TabsTrigger value="purchase" className={triggerClassName}>
           {pick(language, "컨테이너 추천", "Container Recommendation")}
         </TabsTrigger>
+        <TabsTrigger value="forecast" className={triggerClassName}>
+          {pick(language, "수요 예측", "Demand Forecast")}
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="sales">{sales}</TabsContent>
       <TabsContent value="inventory">{inventory}</TabsContent>
       <TabsContent value="history">{history}</TabsContent>
       <TabsContent value="purchase">{purchase}</TabsContent>
+      <TabsContent value="forecast">{forecast}</TabsContent>
     </Tabs>
   );
 }
