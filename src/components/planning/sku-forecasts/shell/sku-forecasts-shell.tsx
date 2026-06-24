@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { DemandRow } from "@/types/demand-planning";
+import { DemandForecastTab } from "../demand-forecast/demand-forecast-tab";
 import { InboundHistoryTab } from "../inbound-history/inbound-history-tab";
 import { InventoryInboundTab } from "../inventory-inbound/inventory-inbound-tab";
 import { PurchaseRecommendationTab } from "../purchase-recommendation/purchase-recommendation-tab";
@@ -60,6 +61,34 @@ export function SkuForecastsShell({
   initialHighlightedContainerName,
 }: SkuForecastsShellProps) {
   const { locale: language } = useI18n();
+
+  const [forecastServerError, setForecastServerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let started = false;
+
+    fetch("/api/forecast-server/start", { method: "POST" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({})) as { error?: string };
+          setForecastServerError(json.error ?? `Server error ${res.status}`);
+          return;
+        }
+        started = true;
+      })
+      .catch((err: Error) => setForecastServerError(err.message));
+
+    const handleBeforeUnload = () => {
+      if (started) navigator.sendBeacon("/api/forecast-server/stop");
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (started) navigator.sendBeacon("/api/forecast-server/stop");
+    };
+  }, []);
+
   const normalizedInitialSku = initialSku.trim().toUpperCase();
   const [product, setProduct] = useState<ProductKey>(() => normalizedInitialSku ? productKeyForSku(normalizedInitialSku) : "fm");
   const [search, setSearch] = useState(normalizedInitialSku);
@@ -292,6 +321,7 @@ export function SkuForecastsShell({
                 inventory={<InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} highlightedContainerId={initialHighlightedContainerId} highlightedContainerName={initialHighlightedContainerName} />}
                 history={<InboundHistoryTab sku={selectedRow} language={language} />}
                 purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
+                forecast={<DemandForecastTab sku={selectedRow} language={language} serverError={forecastServerError} />}
               />
             </div>
           ) : (
