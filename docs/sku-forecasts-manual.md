@@ -19,7 +19,7 @@
 │  [All][●Crit][▲Watch]    │     📥 입고  🔮 예상재고             │
 │  [High][Low]             ├──────────────────────────────────────┤
 │  ┌───────────────────┐   │  [Sales Analysis] [Inventory&Inbound]│
-│  │ Master SKU ▲  SOD │   │  [Container Recommendation]          │  ← 탭
+│  │ Master SKU ▲  SOD │   │  [Order Recommendation]              │  ← 탭
 │  ├───────────────────┤   ├──────────────────────────────────────┤
 │  │ CA-XXX-BK   544d  │   │  (선택한 탭 콘텐츠)                  │
 │  │ CA-YYY-GR    30d  │   │                                      │
@@ -162,7 +162,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 | **Current Stock** | 현재 재고량 | "West {서부재고} / East {동부재고}" 표시 |
 | **Daily Average** | 일평균 판매량 | "30D {30일 판매} units" 표시 |
 | **Inv. Life** | SOD까지 남은 일수 | "Based on projected SOD" 표시. 데이터 없으면 `-` |
-| **Inbound** | 선적 완료·패킹리스트 수령 컨테이너의 총 입고 예정 수량 | "Next ETA {날짜}" 표시 |
+| **Inbound** | Shipped 상태 컨테이너의 총 입고 예정 수량 | "Next ETA {날짜}" 표시 |
 | **Projected** | 현재재고 + 입고 예정 + min(백오더, 0) | "CBM/unit {단위 부피}" 표시 |
 
 > 💡 **Inv. Life**는 현재 재고와 확정 입고 수량을 합쳐서 현재 판매 속도로 나눈 **예상 재고 소진까지의 남은 일수**입니다.  
@@ -236,7 +236,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 
 ### 6-3. Inbound Containers (입고 예정 컨테이너)
 
-**Shipped(선적 완료)** 또는 **Packing Received(패킹리스트 수령)** 상태의 컨테이너 중 이 SKU 입고 예정 수량이 있는 것들만 표시됩니다.  
+**Shipped(선적)** 상태의 컨테이너 중 이 SKU 입고 예정 수량이 있는 것들만 표시됩니다.  
 (Draft 상태는 아직 확정되지 않은 발주 계획이므로 제외됩니다.)
 
 각 컨테이너 행에는 아래 정보가 표시됩니다:
@@ -267,7 +267,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 
 ---
 
-## 7. 탭 3 — Container Recommendation (발주 권고)
+## 7. 탭 3 — Order Recommendation (발주 추천)
 
 현재 재고 상황과 목표 재고 일수(90일)를 기반으로 **추가로 발주해야 할 수량을 자동 계산**해 줍니다.
 
@@ -275,7 +275,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 
 | 항목 | 설명 |
 |------|------|
-| **Recommended Container Qty** | 권고 발주 수량 (큰 굵은 글씨, 4xl) |
+| **Recommended Order Quantity** | 권장 발주 수량 (큰 굵은 글씨, 4xl) |
 | **Multiple** | 주문 단위 (예: "Multiple 5 units" = 5의 배수로만 주문 가능) |
 | **Estimated CBM** | 권고 수량 × 개당 부피(m³) |
 
@@ -294,7 +294,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 | **Daily Average** | 현재 일평균 | 현재 적용 중인 일평균 판매 속도 |
 | **Target Stock** | 올림(일평균 × 90) | 90일치 판매를 위한 목표 재고량 |
 | **Current Stock** | 현재 재고량 | 지금 창고에 있는 재고 |
-| **Inbound** | 선적 완료 컨테이너 입고 예정 합계 | 들어올 예정인 수량 |
+| **Inbound** | Shipped 상태 컨테이너 입고 예정 합계 | 들어올 예정인 수량 |
 | **Backorder Impact** | min(백오더, 0) | 음수 재고분 반영 (0 이상이면 0으로 처리) |
 | **Projected Stock** | 현재 + 입고 + 백오더 | 예상 가용 재고 |
 | **Raw Need** | max(목표 - 예상, 0) | 부족분 (발주 필요량) (음수는 0으로 처리) |
@@ -490,7 +490,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 2. **● Critical** 필터 클릭 → 30일 이내 소진 예정 SKU만 표시
 3. **SOD 컬럼 헤더 클릭** → 소진일 빠른 순으로 정렬
 4. 가장 위의 SKU 클릭 → 오른쪽 패널에서 상세 확인
-5. **Container Recommendation 탭** → 권고 발주 수량 확인
+5. **Order Recommendation 탭** → 권장 발주 수량 확인
 
 ---
 
@@ -507,7 +507,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 ### 📌 시나리오 3: 재고가 낮지 않은데 발주 수량 확인
 
 1. **High** 필터 클릭 → 재고 여유가 있는 SKU 확인
-2. SKU 선택 → **Container Recommendation 탭** 확인
+2. SKU 선택 → **Order Recommendation 탭** 확인
 3. 권고 수량이 0이면 현재 상태로 90일치 재고가 충분
 4. 권고 수량이 있으면 Inbound 물량 포함해도 조금 부족한 상황
 
@@ -527,7 +527,7 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 
 1. **Low** 필터 클릭 → 백오더 SKU 표시
 2. SKU 클릭 → KPI 카드에서 **Inv. Life** 확인 (음수이거나 매우 짧을 수 있음)
-3. **Container Recommendation 탭** → 권고 발주 수량 확인 및 즉시 발주 조치
+3. **Order Recommendation 탭** → 권장 발주 수량 확인 및 즉시 발주 조치
 
 ---
 
@@ -575,9 +575,9 @@ SKU의 핵심 지표를 한눈에 볼 수 있는 카드입니다.
 A. 데이터 로딩 중일 수 있습니다. 상단에 "Loading…"이 사라진 후 다시 클릭해 주세요.
 
 **Q. Inbound Qty가 있는데 Inbound Containers 목록이 비어 있어요.**  
-A. 입고 예정 컨테이너가 "Shipped" 또는 "Packing Received" 상태여야 목록에 표시됩니다. Draft(계획 단계) 상태의 컨테이너는 목록에서 제외됩니다.
+A. 입고 예정 컨테이너가 "Shipped" 상태여야 목록에 표시됩니다. Draft(계획 단계) 상태의 컨테이너는 목록에서 제외됩니다.
 
-**Q. Container Recommendation의 권고 수량이 0인데 발주 안 해도 되나요?**  
+**Q. Order Recommendation의 권장 발주 수량이 0인데 발주 안 해도 되나요?**  
 A. 현재 재고 + 입고 예정으로 90일치가 충분하다는 의미입니다. 다만 판매 속도가 급변하거나 컨테이너 지연 가능성이 있다면 추가 검토를 권장합니다.
 
 **Q. Inv. Life가 `-`로 표시돼요.**  

@@ -31,11 +31,11 @@ export function PurchaseRecommendationTab({
   return (
     <div className="space-y-4">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        {pick(language, "컨테이너 추천", "Container recommendation")}
+        {pick(language, "발주 추천", "Order Recommendation")}
       </div>
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className={`planning-panel rounded-lg border p-5 ${recommendedQty > 0 ? "border-[#a0c0f0] bg-[#ebf0fd] dark:border-blue-700 dark:bg-blue-900/40" : ""}`}>
-          <div className="text-sm text-muted-foreground">{pick(language, "추천 컨테이너 수량", "Recommended Container Qty")}</div>
+          <div className="text-sm text-muted-foreground">{pick(language, "추천 발주 수량", "Recommended Order Quantity")}</div>
           <div className="mt-2 font-mono text-4xl font-bold">{formatNumber(recommendedQty)}</div>
           <div className="mt-2 text-sm text-muted-foreground">
             {pick(language, "주문 배수", "Multiple")} {formatNumber(orderMultiple)} {pick(language, "개", "units")}
@@ -137,7 +137,7 @@ function RecommendationSimulator({
         <div>
           <h3 className="text-sm font-semibold">{pick(language, "What-if 시뮬레이션", "What-if Simulation")}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            {pick(language, "제안 컨테이너 수량 또는 ETA를 변경하면 결과가 즉시 갱신됩니다.", "Adjust a proposed container quantity or ETA. Results update immediately.")}
+            {pick(language, "권장 발주 수량 또는 ETA를 변경하면 결과가 즉시 갱신됩니다.", "Adjust a recommended order quantity or ETA. Results update immediately.")}
           </p>
         </div>
         <button
@@ -154,7 +154,7 @@ function RecommendationSimulator({
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="rounded-md border p-3 text-sm">
-          <span className="block text-xs text-muted-foreground">{pick(language, "제안 컨테이너 수량", "Proposed Container Qty")}</span>
+          <span className="block text-xs text-muted-foreground">{pick(language, "권장 발주 수량", "Recommended Order Quantity")}</span>
           <input
             type="number"
             min={0}

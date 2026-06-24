@@ -42,6 +42,7 @@ export interface MockContainer {
     qty: number;
     cbm: number;
     skuMemo?: string;
+    remainingStockQty?: number;
     allocations?: Array<{
       id: string;
       stockId: string;
@@ -232,7 +233,7 @@ export const mockPurchaseOrders: MockPurchaseOrder[] = [
 export const containerStatusLabels: Record<ContainerStatus, string> = {
   draft: "Container Draft (Pre-Plan)",
   "final-list-sent": "Final List Sent to Factory",
-  "packing-list-received": "Packing List Received / Shipped",
+  "packing-list-received": "Shipped",
   complete: "Stock-in completed",
 };
 

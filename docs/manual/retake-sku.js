@@ -6,7 +6,7 @@
  *   02-sku-planning.png   전체 화면 (SKU 선택 전)
  *   02a-sku-sales.png     판매 분석 탭
  *   02b-sku-inventory.png 재고 및 입고 탭
- *   02c-sku-recommend.png 컨테이너 추천 탭
+ *   02c-sku-recommend.png 발주 추천 탭
  */
 
 const { chromium } = require("playwright");
@@ -108,9 +108,9 @@ async function clickTab(page, koName, enName) {
     console.log("   → 02b-sku-inventory.png");
   }
 
-  // ── 4. 컨테이너 추천 탭
-  console.log("📸 [4/4] 컨테이너 추천 탭...");
-  const ok4 = await clickTab(page, "컨테이너 추천", "Container Recommendation");
+  // ── 4. 발주 추천 탭
+  console.log("📸 [4/4] 발주 추천 탭...");
+  const ok4 = await clickTab(page, "발주 추천", "Order Recommendation");
   if (ok4) {
     await page.screenshot({ path: path.join(OUT, "02c-sku-recommend.png"), fullPage: false });
     console.log("   → 02c-sku-recommend.png");

@@ -273,6 +273,10 @@
   </div>
   <div class="nav-section">목차</div>
   <a class="nav-item" href="#overview"><span class="icon">🏠</span> 시작하기</a>
+  <a class="nav-item" href="#command-center"><span class="icon">🖥️</span> 커맨드 센터</a>
+  <a class="nav-sub" href="#cc-kpi">KPI 카드</a>
+  <a class="nav-sub" href="#cc-panels">3패널 현황</a>
+  <a class="nav-sub" href="#cc-sales">판매 추세</a>
   <a class="nav-item" href="#demand-planning"><span class="icon">📊</span> 수요 계획</a>
   <a class="nav-sub" href="#dp-filters">필터 & 검색</a>
   <a class="nav-sub" href="#dp-columns">컬럼 설정</a>
@@ -419,6 +423,136 @@
     <div class="screenshot-caption">▲ 런처 호버 — 마우스를 올리면 내비게이션 팝업이 표시됩니다</div>
   </div>
   <div class="tip"><strong>💡</strong> 내비 접기/펼치기 설정은 서버에 저장되어 다른 기기에서도 유지됩니다.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     0-1. COMMAND CENTER (홈 대시보드)
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="command-center">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🖥️</div>
+    <div>
+      <div class="menu-path">홈 › 커맨드 센터</div>
+      <h2>커맨드 센터</h2>
+      <p class="subtitle">로그인 직후 나타나는 홈 화면으로, 재고 상황·컨테이너 입고·판매 추세를 한눈에 파악합니다.</p>
+    </div>
+  </div>
+
+  <p>커맨드 센터는 Demand Pilot의 <strong>홈 대시보드</strong>입니다. 별도의 클릭 없이 로그인하자마자 현재 운영 상태를 즉시 파악할 수 있도록 설계되어 있습니다. 상단에서 제품 카테고리를 전환하면 각 카테고리별 KPI가 실시간으로 업데이트됩니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00-command-center.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🖥️</div><p>커맨드 센터 전체 화면</p></div>'" alt="커맨드 센터 전체 화면">
+    <div class="screenshot-caption">▲ 커맨드 센터 — 로그인 후 홈 화면 전체 구성</div>
+  </div>
+
+  <!-- 카테고리 탭 -->
+  <h3>카테고리 탭</h3>
+  <p>화면 상단의 탭으로 제품군을 전환합니다. KPI 카드와 위험 SKU 목록, 재고 분포 도넛 차트가 선택한 카테고리 기준으로 즉시 업데이트됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">탭</th><th>표시 범위</th></tr>
+    <tr><td class="label">시트 커버</td><td>SC 카테고리 SKU 전체</td></tr>
+    <tr><td class="label">카 커버</td><td>CC 카테고리 SKU 전체</td></tr>
+    <tr><td class="label">플로어 매트</td><td>FM 카테고리 SKU 전체</td></tr>
+  </table>
+
+  <!-- KPI 카드 -->
+  <h3 id="cc-kpi">① KPI 카드 (5개)</h3>
+  <p>선택한 카테고리의 핵심 지표를 한눈에 보여주는 5개의 클릭 가능한 카드입니다. 각 카드를 클릭하면 해당 조건으로 필터링된 수요 계획 또는 컨테이너 일정 화면으로 바로 이동합니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00a-command-center-kpi.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>KPI 카드 영역</p></div>'" alt="KPI 카드 영역">
+    <div class="screenshot-caption">▲ KPI 카드 — 카테고리 탭과 5개 지표 카드</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:180px">카드</th><th>의미</th><th>클릭 시 이동</th></tr>
+    <tr>
+      <td><span class="status critical">위험 SKU</span></td>
+      <td>SOD(품절예상일)가 30일 이내인 SKU 수.</td>
+      <td>수요 계획 → Critical 필터 적용</td>
+    </tr>
+    <tr>
+      <td><span class="status warn">품절 예상</span></td>
+      <td>SOD가 31~60일 이내인 SKU 수. 주의 관찰이 필요한 SKU입니다.</td>
+      <td>수요 계획 → Warning 필터 적용</td>
+    </tr>
+    <tr>
+      <td class="label">과잉 재고</td>
+      <td>SOD가 180일 초과인 SKU 수. 과잉 재고로 자본이 묶여 있는 상태입니다.</td>
+      <td>수요 계획 → Overstock 필터 적용</td>
+    </tr>
+    <tr>
+      <td class="label">긴급 발주</td>
+      <td>위험(Critical) 상태이면서 입고 예정 컨테이너가 없는 SKU 수. 즉시 발주가 필요합니다.</td>
+      <td>수요 계획 → Critical + 입고 없음 필터</td>
+    </tr>
+    <tr>
+      <td class="label">지연 컨테이너</td>
+      <td>ETA가 이미 지났는데 아직 입고 완료되지 않은 컨테이너 수. 전체 카테고리 기준입니다.</td>
+      <td>컨테이너 일정 화면</td>
+    </tr>
+  </table>
+
+  <!-- 3패널 그리드 -->
+  <h3 id="cc-panels">② 3패널 현황</h3>
+  <p>KPI 카드 아래에는 세 개의 패널이 나란히 표시됩니다. 각 패널의 "전체 보기 →" 링크를 클릭하면 상세 화면으로 이동합니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00b-command-center-panels.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>3패널 그리드</p></div>'" alt="3패널 그리드">
+    <div class="screenshot-caption">▲ 3패널 — 좌: 위험 SKU TOP 10 / 중: 입고 예정 컨테이너 / 우: 재고 분포</div>
+  </div>
+
+  <div class="card-grid col3" style="margin-top:20px">
+    <div class="card">
+      <h4>🔴 위험 SKU TOP 10</h4>
+      <p>선택한 카테고리에서 SOD가 가장 짧은 SKU를 최대 10개 보여줍니다. SKU명을 클릭하면 SKU 계획 화면으로 바로 이동합니다. 각 행에 일평균 판매량(Daily Avg)이 함께 표시됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>🚢 입고 예정 컨테이너</h4>
+      <p>ETA 순으로 정렬된 예정 컨테이너 목록입니다. 컨테이너명 클릭 시 컨테이너 일정으로 이동합니다. ETA가 이미 지난 항목은 <span style="color:#dc2626;font-weight:600">빨간색</span>으로 표시됩니다. 상태 배지(Draft / Packing / Shipped / Complete)로 진행 단계를 한눈에 확인할 수 있습니다.</p>
+    </div>
+    <div class="card">
+      <h4>🍩 재고 분포 (Stock Health)</h4>
+      <p>선택 카테고리의 SKU를 SOD 구간별로 나누어 도넛 차트로 시각화합니다.</p>
+      <ul>
+        <li><span style="color:#dc2626;font-weight:600">■</span> 위험 — SOD ≤ 30일</li>
+        <li><span style="color:#d97706;font-weight:600">■</span> 품절 예상 — 31~60일</li>
+        <li><span style="color:#22c55e;font-weight:600">■</span> 정상 — 61~180일</li>
+        <li><span style="color:#2563eb;font-weight:600">■</span> 과잉 재고 — 181일+</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 판매 추세 -->
+  <h3 id="cc-sales">③ 판매 추세 차트</h3>
+  <p>전체 채널의 판매 추세를 차트로 표시합니다. 차트 영역 전체를 클릭하면 주문 내역 화면으로 이동합니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00c-command-center-sales.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>판매 추세 섹션</p></div>'" alt="판매 추세 섹션">
+    <div class="screenshot-caption">▲ 판매 추세 — 기간·뷰·차트 유형 선택 가능</div>
+  </div>
+
+  <table class="feat-table" style="margin-top:16px">
+    <tr><th style="width:170px">컨트롤</th><th>설명</th></tr>
+    <tr>
+      <td class="label">기간 선택</td>
+      <td>최근 7일 / 30일 / 90일 / 6개월 / 1년 / 올해 누계(YTD) 중 선택합니다. 선택한 기간과 직전 동일 기간을 자동으로 비교합니다.</td>
+    </tr>
+    <tr>
+      <td class="label">매출 / 주문 토글</td>
+      <td>Y축을 <strong>매출(Revenue, $)</strong> 또는 <strong>주문 수량(Orders)</strong>으로 전환합니다.</td>
+    </tr>
+    <tr>
+      <td class="label">차트 유형</td>
+      <td>영역(Area) · 선(Line) · 막대(Bar) 중 선택합니다. 원하는 시각화 스타일로 자유롭게 변경할 수 있습니다.</td>
+    </tr>
+  </table>
+
+  <p>차트 오른쪽의 <strong>판매 요약 카드</strong>에는 선택 기간의 총 주문 수, 총 매출, 전기 대비 성장률(%)이 표시됩니다.</p>
+
+  <!-- 새로고침 -->
+  <h3>④ 새로고침</h3>
+  <p>우측 상단의 <span class="btn-label">↺ 새로고침</span> 버튼을 클릭하면 KPI 카드, 위험 SKU, 컨테이너 목록을 서버에서 최신 데이터로 다시 불러옵니다. 마지막 동기화 시각은 페이지 제목 아래에 표시됩니다.</p>
 </section>
 
 <!-- ═══════════════════════════════════════════════
@@ -598,7 +732,7 @@
       <td><strong>기준 컨테이너</strong><br><span style="font-size:11px;color:#6b7280">섹션 상단</span></td>
       <td>
         <strong>기준 (현재고)</strong> — 현재 보유 재고 기준 컬럼. 체크 해제 시 기준 열이 숨겨집니다.<br>
-        <strong>출고 기준</strong> — 마지막 출고/패킹 컨테이너의 잠금된 이월 재고·재고 유지일·SOD를 보여주는 가상 컬럼(회색 배경). 체크 해제 시 해당 컬럼이 완전히 사라집니다.
+        <strong>출고 기준</strong> — 마지막 출고/선적 컨테이너의 잠금된 이월 재고·재고 유지일·SOD를 보여주는 가상 컬럼(회색 배경). 체크 해제 시 해당 컬럼이 완전히 사라집니다.
       </td>
     </tr>
     <tr>
@@ -861,7 +995,7 @@
   <table class="feat-table">
     <tr><th style="width:200px">컨테이너 상태</th><th>수요 계획 표시</th><th>비고</th></tr>
     <tr><td><span class="status final">Final List Sent</span></td><td>✅ 항상 표시</td><td>공장 발송 완료 상태</td></tr>
-    <tr><td><span class="status packing">Packing List Rcvd</span></td><td>✅ 항상 표시</td><td>패킹 리스트 수령 상태</td></tr>
+    <tr><td><span class="status packing">Shipped (Packing List Rcvd)</span></td><td>✅ 항상 표시</td><td>패킹 리스트 수령 상태</td></tr>
     <tr><td><span class="status draft">Draft</span></td><td>⬜ Draft 포함 토글 ON 시만 표시</td><td>상단 필터에서 수동 활성화 필요</td></tr>
     <tr style="background:#fff7ed"><td><span class="status complete">Complete</span></td><td style="color:#dc2626;font-weight:700">❌ 표시 안 됨</td><td>입고 완료 처리된 컨테이너는 계획 대상에서 제외</td></tr>
   </table>
@@ -974,7 +1108,7 @@
     <tr><td class="label">제품 탭 (SC / CC / FM)</td><td>시트 커버 · 카 커버 · 플로어 매트 중 하나를 선택합니다. 탭 우측에 해당 제품의 총 SKU 수가 표시됩니다.</td></tr>
     <tr><td class="label">Sales 있는 SKU / 전체 SKU</td><td>토글. <strong>Sales 있는 SKU</strong>: 최근 판매 실적이 있는 SKU만 표시. <strong>전체 SKU</strong>: 판매 이력 없는 SKU까지 모두 표시.</td></tr>
     <tr><td class="label">Active 컨테이너 / Draft 포함</td><td>토글. <strong>Active 컨테이너</strong>: 확정된 컨테이너 기준 재고 계산. <strong>Draft 포함</strong>: 초안(Draft) 컨테이너 입고량까지 포함하여 계산.</td></tr>
-    <tr><td class="label">목표 재고일 (1–365)</td><td>컨테이너 추천 탭의 목표 재고 일수를 설정합니다. 이 값이 커질수록 권장 발주 수량이 늘어납니다. KPI의 재고 유지일 기준이 됩니다.</td></tr>
+    <tr><td class="label">목표 재고일 (1–365)</td><td>발주 추천 탭의 목표 재고 일수를 설정합니다. 이 값이 커질수록 권장 발주 수량이 늘어납니다. KPI의 재고 유지일 기준이 됩니다.</td></tr>
     <tr><td class="label">🔄 동기화</td><td>서버에서 최신 수요 계획 데이터를 다시 불러옵니다.</td></tr>
   </table>
 
@@ -1103,7 +1237,7 @@
   <table class="feat-table">
     <tr><th style="width:160px">항목 (화면 레이블)</th><th>설명</th></tr>
     <tr><td class="label">컨테이너 이름</td><td>컨테이너 번호. Draft 상태이면 <span class="status draft">Draft</span> 뱃지가 함께 표시되며 카드 테두리가 주황색으로 강조됩니다.</td></tr>
-    <tr><td class="label">상태</td><td>컨테이너의 현재 상태 (Draft / Final List Sent / Packing List Rcvd / Complete).</td></tr>
+    <tr><td class="label">상태</td><td>컨테이너의 현재 상태 (Draft / Final List Sent / Shipped (Packing List Rcvd) / Complete).</td></tr>
     <tr><td class="label">ETA</td><td>도착 예정일. 가까운 순서로 정렬됩니다.</td></tr>
     <tr><td class="label">수량</td><td>이 SKU에 배정된 입고 수량.</td></tr>
     <tr><td class="label">CBM</td><td>이 SKU가 차지하는 CBM 부피.</td></tr>
@@ -1155,7 +1289,7 @@
   <table class="feat-table">
     <tr><th style="width:160px">컬럼</th><th>설명</th></tr>
     <tr><td class="label">Container Number</td><td>컨테이너 번호. 클릭하면 Container Planning의 해당 컨테이너 상세 페이지로 이동합니다.</td></tr>
-    <tr><td class="label">Status</td><td>컨테이너 현재 상태를 색상 뱃지로 표시 (Draft · Final List Sent · Packing List Rcvd · Complete).</td></tr>
+    <tr><td class="label">Status</td><td>컨테이너 현재 상태를 색상 뱃지로 표시 (Draft · Final List Sent · Shipped (Packing List Rcvd) · Complete).</td></tr>
     <tr><td class="label">ETA</td><td>예상 도착일.</td></tr>
     <tr><td class="label">Qty</td><td>해당 컨테이너에 배정된 이 SKU의 수량.</td></tr>
     <tr><td class="label">Done / Changed</td><td>Complete 전환일 또는 마지막 수정일.</td></tr>
@@ -1165,20 +1299,20 @@
     <div>Container Number 링크를 클릭하면 Container Planning 페이지의 해당 컨테이너로 직접 이동합니다. 이력 조회와 상세 수정을 한 번에 할 수 있습니다.</div>
   </div>
 
-  <!-- 컨테이너 추천 탭 -->
-  <h3 id="sp-recommend">⑥ 컨테이너 추천 탭</h3>
+  <!-- 발주 추천 탭 -->
+  <h3 id="sp-recommend">⑥ 발주 추천 탭</h3>
 
   <div class="screenshot-box">
-    <img src="screenshots/02c-sku-recommend.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>컨테이너 추천 탭 – 권장 발주 수량 + What-If 시뮬레이션</p></div>'" alt="컨테이너 추천 탭">
-    <div class="screenshot-caption">▲ 컨테이너 추천 탭 – 권장 발주량 · 시뮬레이션 · 상세 계산 내역</div>
+    <img src="screenshots/02c-sku-recommend.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>발주 추천 탭 – 권장 발주 수량 + What-If 시뮬레이션</p></div>'" alt="발주 추천 탭">
+    <div class="screenshot-caption">▲ 발주 추천 탭 – 권장 발주량 · 시뮬레이션 · 상세 계산 내역</div>
   </div>
 
   <p>목표 재고 일수를 기준으로 <strong>권장 발주 수량</strong>을 산출하고, 임의의 수량과 ETA를 입력해 시나리오를 비교합니다.</p>
 
-  <h3 class="sub">추천 컨테이너 수량</h3>
+  <h3 class="sub">추천 발주 수량</h3>
   <table class="feat-table">
     <tr><th style="width:200px">항목 (화면 레이블)</th><th>설명</th></tr>
-    <tr><td class="label">추천 컨테이너 수량 (대형 숫자)</td><td>MOQ·발주 배수(주문 배수)를 자동 적용한 권장 컨테이너 입고 수량. 보라색 대형 텍스트로 표시.</td></tr>
+    <tr><td class="label">추천 발주 수량 (대형 숫자)</td><td>MOQ·발주 배수(주문 배수)를 자동 적용한 권장 발주 수량. 보라색 대형 텍스트로 표시.</td></tr>
     <tr><td class="label">주문 배수</td><td>적용된 발주 배수. 예: 5 단위 → 5, 10, 15 …</td></tr>
     <tr><td class="label">예상 CBM</td><td>권장 수량을 적재할 경우 필요한 CBM 부피 (단위: m³).</td></tr>
   </table>
@@ -1208,7 +1342,7 @@
   <p>권장 수량이 아닌 다른 수량·ETA로 발주했을 때 어떤 결과가 나오는지 미리 계산해 봅니다.</p>
   <table class="feat-table">
     <tr><th style="width:220px">입력 항목 (화면 레이블)</th><th>설명</th></tr>
-    <tr><td class="label">제안 컨테이너 수량</td><td>실제 발주하려는 수량을 입력합니다. 주문 배수 단위로 증감 가능. 초기값은 권장 수량.</td></tr>
+    <tr><td class="label">권장 발주 수량</td><td>실제 발주하려는 수량을 입력합니다. 주문 배수 단위로 증감 가능. 초기값은 권장 수량.</td></tr>
     <tr><td class="label">가정 ETA</td><td>예상 도착일을 날짜 picker로 설정합니다. 초기값은 오늘부터 90일 후.</td></tr>
     <tr><td class="label">추천값 초기화</td><td>입력값을 시스템 권장 수량·기본 ETA로 초기화합니다.</td></tr>
   </table>
@@ -1392,7 +1526,7 @@
     <span style="color:#9ca3af;font-size:20px">→</span>
     <span class="status final">Final List Sent</span>
     <span style="color:#9ca3af;font-size:20px">→</span>
-    <span class="status packing">Packing List Rcvd</span>
+    <span class="status packing">Shipped (Packing List Rcvd)</span>
     <span style="color:#9ca3af;font-size:20px">→</span>
     <span class="status complete">Complete</span>
   </div>
@@ -1417,7 +1551,7 @@
     </div>
     <div class="step">
       <div class="step-num">5</div>
-      <div><h4>상태 변경</h4><p>공장에 발주서를 보냈으면 <span class="status final">Final List Sent</span>으로 변경합니다. 패킹 리스트를 받으면 <span class="status packing">Packing List Rcvd</span>로 변경하세요.</p></div>
+      <div><h4>상태 변경</h4><p>공장에 발주서를 보냈으면 <span class="status final">Final List Sent</span>으로 변경합니다. 패킹 리스트를 받으면 <span class="status packing">Shipped (Packing List Rcvd)</span>로 변경하세요.</p></div>
     </div>
   </div>
 
@@ -1428,13 +1562,16 @@
   </div>
 
   <h3 id="cp-edit">② 컨테이너 수정하기</h3>
-  <p><span class="status draft">Draft</span> 상태의 컨테이너는 기본 정보와 SKU 목록을 자유롭게 수정할 수 있습니다.</p>
+  <p><span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태의 컨테이너는 기본 정보와 SKU 목록을 자유롭게 수정하거나 삭제할 수 있습니다.</p>
 
   <h3 class="sub">기본 정보 수정</h3>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr><td class="label">컨테이너 번호</td><td>컨테이너 정보 섹션에서 직접 클릭해 수정합니다.</td></tr>
-    <tr><td class="label">ETA (도착 예정일)</td><td>날짜 선택기로 변경합니다.</td></tr>
+    <tr><td class="label">예상 선적일</td><td>공장 출고 또는 선적 준비가 예상되는 날짜입니다.</td></tr>
+    <tr><td class="label">ETD NGB</td><td>닝보(NGB) 항구 출항 예정일입니다.</td></tr>
+    <tr><td class="label">ETA LAX/LGB</td><td>LA/LB 항구 도착 예정일입니다.</td></tr>
+    <tr><td class="label">창고 입고일 (ETA)</td><td>컨테이너가 목적지 창고에 입고될 예정일입니다.</td></tr>
     <tr><td class="label">목적지 창고</td><td>드롭다운에서 창고를 선택합니다.</td></tr>
     <tr><td class="label">CBM 용량</td><td>컨테이너 총 용량(기본 80 m³)을 수정합니다.</td></tr>
     <tr><td class="label">공장 (Factory)</td><td>콤보 입력창에서 이미 등록된 공장을 선택하거나, 새 공장명을 직접 입력합니다. 새 이름을 입력하면 저장 시 공장 DB에 자동으로 추가되어 이후 선택 목록에 표시됩니다.</td></tr>
@@ -1465,14 +1602,14 @@
   </div>
 
   <h3 class="sub">SKU 삭제 (일괄 삭제)</h3>
-  <p><span class="status draft">Draft</span> 상태의 컨테이너에서만 사용 가능합니다. SKU 목록 좌측 체크박스로 항목을 선택한 뒤 <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span> 버튼을 클릭합니다.</p>
+  <p><span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태의 컨테이너에서 사용 가능합니다. SKU 목록 좌측 체크박스로 항목을 선택한 뒤 <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span> 버튼을 클릭합니다.</p>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr><td class="label">개별 선택</td><td>각 행 왼쪽 체크박스를 클릭해 개별 선택.</td></tr>
     <tr><td class="label">전체 선택</td><td>헤더 체크박스(Select visible SKUs)로 현재 검색 결과의 전체 SKU를 선택.</td></tr>
     <tr><td class="label">삭제 조건</td><td>가용 재고가 배정된 SKU는 삭제 불가 — 먼저 배정 해제 후 삭제.</td></tr>
     <tr><td class="label">확인 다이얼로그</td><td>버튼 클릭 시 "Delete N selected SKU(s)?" 확인창이 표시되며 OK 후 삭제 진행.</td></tr>
-    <tr><td class="label">적용 상태</td><td><span class="status draft">Draft</span> 전용. Final List Sent 이상 상태에서는 버튼이 표시되지 않음.</td></tr>
+    <tr><td class="label">적용 상태</td><td><span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span>에서 사용 가능. Shipped (Packing List Rcvd) 이상 상태에서는 버튼이 표시되지 않음.</td></tr>
   </table>
   <div class="callout warn">
     <span class="callout-icon">⚠️</span>
@@ -1481,7 +1618,7 @@
 
   <div class="screenshot-box">
     <img src="screenshots/03b-container-edit.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>✏️</div><p>컨테이너 수정 화면</p></div>'" alt="컨테이너 수정">
-    <div class="screenshot-caption">▲ Seat Cover · Draft 필터에서 컨테이너를 선택하고 연 컨테이너 수정 화면</div>
+    <div class="screenshot-caption">▲ Seat Cover · Draft/Final List Sent 상태 컨테이너를 선택하고 연 컨테이너 수정 화면</div>
   </div>
 
   <h3 id="cp-status">③ 상태별 주의사항</h3>
@@ -1489,18 +1626,18 @@
     <tr><th style="width:180px">상태</th><th>편집 가능 항목</th><th>Demand Planning 표시 여부</th><th>비고</th></tr>
     <tr>
       <td><span class="status draft">Draft</span></td>
-      <td>모든 항목 편집 가능</td>
+      <td>모든 항목 편집/삭제 가능</td>
       <td style="text-align:center">✅ <span style="font-size:12px;color:#6b7280">(Draft 포함 토글 ON 시)</span></td>
       <td>초안 단계. 자유롭게 수정하세요.</td>
     </tr>
     <tr>
       <td><span class="status final">Final List Sent</span></td>
-      <td>수량만 편집 가능</td>
+      <td>모든 항목 편집/삭제 가능</td>
       <td style="text-align:center">✅ 항상 표시</td>
-      <td>공장 발송 후. SKU 추가/삭제 불가.</td>
+      <td>공장 발송 후에도 Draft와 동일하게 기본 정보, 일정, SKU 추가/삭제 및 수량 수정 가능.</td>
     </tr>
     <tr>
-      <td><span class="status packing">Packing List Rcvd</span></td>
+      <td><span class="status packing">Shipped (Packing List Rcvd)</span></td>
       <td>읽기 전용</td>
       <td style="text-align:center">✅ 항상 표시</td>
       <td>패킹 리스트 수신 후. 변경 불가.</td>
@@ -1515,7 +1652,7 @@
 
   <div class="callout warn" style="margin-top:16px">
     <span class="callout-icon">⚠️</span>
-    <div><b>컨테이너 전체 삭제:</b> 컨테이너를 완전히 삭제하려면 <strong>Planner 또는 Admin</strong> 권한이 필요합니다. 컨테이너 상세 패널 하단에서 삭제 버튼을 찾을 수 있습니다. 삭제된 컨테이너와 하위 SKU 수량은 복구할 수 없으므로 신중하게 사용하세요. 잘못 입력된 컨테이너를 숨기려면 삭제 대신 <span class="status draft">Draft</span> 상태를 유지하는 것을 권장합니다.</div>
+    <div><b>컨테이너 전체 삭제:</b> <span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태에서는 컨테이너 삭제가 가능합니다. 컨테이너를 완전히 삭제하려면 <strong>Planner 또는 Admin</strong> 권한이 필요합니다. 컨테이너 상세 패널 하단에서 삭제 버튼을 찾을 수 있습니다. 삭제된 컨테이너와 하위 SKU 수량은 복구할 수 없으므로 신중하게 사용하세요.</div>
   </div>
 
   <!-- Complete 상태 상세 설명 -->
@@ -1545,7 +1682,7 @@
       <h4>✅ Demand Planning에 표시되는 조건</h4>
       <ul>
         <li>상태 = <span class="status final">Final List Sent</span></li>
-        <li>상태 = <span class="status packing">Packing List Rcvd</span></li>
+        <li>상태 = <span class="status packing">Shipped (Packing List Rcvd)</span></li>
         <li>상태 = <span class="status draft">Draft</span> <em>(Draft 포함 토글 ON 시에만)</em></li>
       </ul>
     </div>
@@ -1557,7 +1694,7 @@
     <span style="color:#9ca3af">→</span>
     <span class="status final">Final List Sent</span>
     <span style="color:#9ca3af">→</span>
-    <span class="status packing">Packing List Rcvd</span>
+    <span class="status packing">Shipped (Packing List Rcvd)</span>
     <span style="color:#9ca3af">→</span>
     <span class="status complete" style="outline:2px solid #dc2626;outline-offset:2px">Complete ❌</span>
   </div>
@@ -1571,7 +1708,7 @@
     </tr>
     <tr>
       <td>아직 창고 입고 전인데 Complete로 잘못 변경한 경우</td>
-      <td>Container Planning에서 해당 컨테이너를 찾아 상태를 <span class="status packing">Packing List Rcvd</span>로 되돌리면 Demand Planning에 즉시 다시 표시됩니다.</td>
+      <td>Container Planning에서 해당 컨테이너를 찾아 상태를 <span class="status packing">Shipped (Packing List Rcvd)</span>로 되돌리면 Demand Planning에 즉시 다시 표시됩니다.</td>
     </tr>
     <tr>
       <td>Complete 컨테이너 내역을 다시 보고 싶은 경우</td>
@@ -1685,7 +1822,7 @@
       <div>
         <h4>CSV/Excel 버튼 클릭</h4>
         <p>상세 패널 하단 버튼 영역의 <span class="btn-label">CSV/Excel</span> 버튼을 클릭합니다.</p>
-        <p style="margin-top:6px;font-size:13px;color:#6b7280">이 버튼은 <span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태에서만 표시됩니다. <span class="status packing">Packing List Rcvd</span> 이상(입고 확정 후)에는 버튼이 숨겨집니다.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">이 버튼은 <span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태에서만 표시됩니다. <span class="status packing">Shipped (Packing List Rcvd)</span> 이상(입고 확정 후)에는 버튼이 숨겨집니다.</p>
       </div>
     </div>
   </div>
@@ -1757,7 +1894,7 @@
     <tr><td class="label">상태 필터 pills</td><td>
       <span class="status draft">Draft</span>&nbsp;
       <span class="status final">Final</span>&nbsp;
-      <span class="status packing">Packing</span>&nbsp;
+      <span class="status packing">Shipped</span>&nbsp;
       <span class="status complete">Complete</span>
       각 상태를 개별로 켜고 끌 수 있습니다. 최소 1개는 항상 활성 상태여야 합니다.
     </td></tr>
@@ -1780,7 +1917,7 @@
     <tr><td class="label">바(Bar) 색상</td><td>
       <span class="status draft">Draft</span> 분홍 &nbsp;|&nbsp;
       <span class="status final">Final List Sent</span> 주황 &nbsp;|&nbsp;
-      <span class="status packing">Packing List Rcvd</span> 파랑 &nbsp;|&nbsp;
+      <span class="status packing">Shipped (Packing List Rcvd)</span> 파랑 &nbsp;|&nbsp;
       <span class="status complete">Complete</span> 녹색
     </td></tr>
     <tr><td class="label">바의 길이</td><td>해상 운송 기간(약 30일)을 나타냅니다. 출발일부터 ETA까지가 바의 범위입니다.</td></tr>
@@ -1967,6 +2104,10 @@
   </div>
   <div class="nav-section">Contents</div>
   <a class="nav-item" href="#en-overview"><span class="icon">🏠</span> Getting Started</a>
+  <a class="nav-item" href="#en-command-center"><span class="icon">🖥️</span> Command Center</a>
+  <a class="nav-sub" href="#en-cc-kpi">KPI Cards</a>
+  <a class="nav-sub" href="#en-cc-panels">3-Panel View</a>
+  <a class="nav-sub" href="#en-cc-sales">Sales Trend</a>
   <a class="nav-item" href="#en-demand-planning"><span class="icon">📊</span> Demand Planning</a>
   <a class="nav-sub" href="#en-dp-filters">Filters &amp; Search</a>
   <a class="nav-sub" href="#en-dp-columns">Columns Panel</a>
@@ -2107,6 +2248,134 @@
     <div class="screenshot-caption">▲ Hover preview — hover over the launcher to see the navigation popup</div>
   </div>
   <div class="tip"><strong>💡</strong> The nav collapsed/expanded state is saved to the server and persists across devices.</div>
+</section>
+
+<!-- ═══ 1-1. COMMAND CENTER ═══ -->
+<section class="page-section" id="en-command-center">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🖥️</div>
+    <div>
+      <div class="menu-path">Home › Command Center</div>
+      <h2>Command Center</h2>
+      <p class="subtitle">The home dashboard shown immediately after login — see your inventory health, inbound containers, and sales trend at a glance.</p>
+    </div>
+  </div>
+
+  <p>The Command Center is the <strong>home dashboard</strong> of Demand Pilot. It is designed to give you an immediate snapshot of operations the moment you log in. Switch between product categories using the tabs at the top to update all KPIs in real time.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00-command-center-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🖥️</div><p>Command Center Overview</p></div>'" alt="Command Center Overview">
+    <div class="screenshot-caption">▲ Command Center — full home dashboard layout</div>
+  </div>
+
+  <!-- Category Tabs -->
+  <h3>Category Tabs</h3>
+  <p>Use the tabs at the top to switch between product categories. The KPI cards, Critical SKU list, and Stock Health donut all update instantly for the selected category.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">Tab</th><th>Scope</th></tr>
+    <tr><td class="label">Seat Cover</td><td>All SKUs in the SC category</td></tr>
+    <tr><td class="label">Car Cover</td><td>All SKUs in the CC category</td></tr>
+    <tr><td class="label">Floor Mat</td><td>All SKUs in the FM category</td></tr>
+  </table>
+
+  <!-- KPI Cards -->
+  <h3 id="en-cc-kpi">① KPI Cards (5 cards)</h3>
+  <p>Five clickable cards summarise the most critical inventory metrics for the selected category. Click any card to jump directly to the filtered Demand Planning or Container Timeline view.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00a-command-center-kpi-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>KPI Cards Area</p></div>'" alt="KPI Cards">
+    <div class="screenshot-caption">▲ KPI Cards — category tabs and 5 metric cards</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:180px">Card</th><th>What it measures</th><th>Click destination</th></tr>
+    <tr>
+      <td><span class="status critical">Critical SKUs</span></td>
+      <td>Number of SKUs with SOD ≤ 30 days.</td>
+      <td>Demand Planning → Critical filter</td>
+    </tr>
+    <tr>
+      <td><span class="status warn">Expected OOS</span></td>
+      <td>SKUs with SOD between 31 and 60 days — at risk of going out of stock soon.</td>
+      <td>Demand Planning → Warning filter</td>
+    </tr>
+    <tr>
+      <td class="label">Overstock</td>
+      <td>SKUs with SOD &gt; 180 days — capital is tied up in excess inventory.</td>
+      <td>Demand Planning → Overstock filter</td>
+    </tr>
+    <tr>
+      <td class="label">Urgent PO</td>
+      <td>SKUs that are Critical <em>and</em> have no inbound containers. Immediate purchase orders are needed.</td>
+      <td>Demand Planning → Critical + no inbound filter</td>
+    </tr>
+    <tr>
+      <td class="label">Delayed Cont.</td>
+      <td>Containers whose ETA has already passed but are not yet received. Covers all categories.</td>
+      <td>Container Timeline</td>
+    </tr>
+  </table>
+
+  <!-- 3-Panel Grid -->
+  <h3 id="en-cc-panels">② 3-Panel View</h3>
+  <p>Below the KPI cards, three panels sit side by side. Use the "View all →" link in each panel to open the full detail screen.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00b-command-center-panels-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>3-Panel Grid</p></div>'" alt="3-Panel Grid">
+    <div class="screenshot-caption">▲ 3-Panel — Left: Top 10 Critical SKUs / Center: Inbound Containers / Right: Stock Distribution</div>
+  </div>
+
+  <div class="card-grid col3" style="margin-top:20px">
+    <div class="card">
+      <h4>🔴 Top 10 Critical SKUs</h4>
+      <p>Lists up to 10 SKUs with the shortest SOD in the selected category. Click any SKU name to jump to the SKU Forecasts screen. The Daily Avg column shows the current average daily sales velocity.</p>
+    </div>
+    <div class="card">
+      <h4>🚢 Inbound Containers</h4>
+      <p>Scheduled containers sorted by ETA (earliest first). Click a container name to view it in Container Timeline. ETAs that have already passed appear in <span style="color:#dc2626;font-weight:600">red</span>. Status badges (Draft / Packing / Shipped / Complete) show the workflow stage at a glance.</p>
+    </div>
+    <div class="card">
+      <h4>🍩 Stock Health</h4>
+      <p>A donut chart breaking down SKUs in the selected category by SOD range:</p>
+      <ul>
+        <li><span style="color:#dc2626;font-weight:600">■</span> Critical — SOD ≤ 30d</li>
+        <li><span style="color:#d97706;font-weight:600">■</span> At Risk — 31–60d</li>
+        <li><span style="color:#22c55e;font-weight:600">■</span> Healthy — 61–180d</li>
+        <li><span style="color:#2563eb;font-weight:600">■</span> Overstock — 181d+</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Sales Trend -->
+  <h3 id="en-cc-sales">③ Sales Trend Chart</h3>
+  <p>Displays channel-wide sales data. Clicking anywhere on the chart area navigates to the Orders screen for the selected period.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00c-command-center-sales-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>Sales Trend Section</p></div>'" alt="Sales Trend">
+    <div class="screenshot-caption">▲ Sales Trend — configurable period, view mode, and chart type</div>
+  </div>
+
+  <table class="feat-table" style="margin-top:16px">
+    <tr><th style="width:170px">Control</th><th>Description</th></tr>
+    <tr>
+      <td class="label">Period selector</td>
+      <td>Choose from Last 7 Days / 30 Days / 90 Days / 6 Months / Last Year / Year to Date. The previous equivalent period is automatically used as the comparison baseline.</td>
+    </tr>
+    <tr>
+      <td class="label">Revenue / Orders toggle</td>
+      <td>Switch the Y-axis between <strong>Revenue ($)</strong> and <strong>Order quantity</strong>.</td>
+    </tr>
+    <tr>
+      <td class="label">Chart type</td>
+      <td>Choose Area, Line, or Bar to match your preferred visual style.</td>
+    </tr>
+  </table>
+
+  <p>The <strong>Sales summary card</strong> on the right shows the total orders, total revenue, and period-over-period growth percentage for the selected timeframe.</p>
+
+  <!-- Refresh -->
+  <h3>④ Refresh</h3>
+  <p>Click the <span class="btn-label">↺ Refresh</span> button in the top-right corner to reload KPI cards, the Critical SKU list, and the container table from the server. The last sync timestamp is displayed beneath the page title.</p>
 </section>
 
 <!-- ═══ 2. DEMAND PLANNING ═══ -->
@@ -2319,7 +2588,7 @@
       <td><strong>Base Containers</strong><br><span style="font-size:11px;color:#6b7280">Top of section</span></td>
       <td>
         <strong>Base (on-hand)</strong> — The on-hand inventory baseline column. Uncheck to hide the Base column.<br>
-        <strong>Shipped Base</strong> — A virtual column (amber background) showing the locked-in carryover · Inv.Life · SOD from the last Shipped/Packing container. Uncheck to remove it entirely.
+        <strong>Shipped Base</strong> — A virtual column (amber background) showing the locked-in carryover · Inv.Life · SOD from the last Shipped container. Uncheck to remove it entirely.
       </td>
     </tr>
     <tr>
@@ -2427,7 +2696,7 @@
   <table class="feat-table">
     <tr><th style="width:220px">Container Status</th><th>Shown in Demand Planning</th><th>Notes</th></tr>
     <tr><td><span class="status final">Final List Sent</span></td><td>✅ Always shown</td><td>Factory submission complete</td></tr>
-    <tr><td><span class="status packing">Packing List Rcvd</span></td><td>✅ Always shown</td><td>Packing list received</td></tr>
+    <tr><td><span class="status packing">Shipped (Packing List Rcvd)</span></td><td>✅ Always shown</td><td>Packing list received</td></tr>
     <tr><td><span class="status draft">Draft</span></td><td>⬜ Shown only when "Include Draft" toggle is ON</td><td>Must be manually enabled via the top filter</td></tr>
     <tr style="background:#fff7ed"><td><span class="status complete">Complete</span></td><td style="color:#dc2626;font-weight:700">❌ Not shown</td><td>Received containers are excluded from planning</td></tr>
   </table>
@@ -2535,7 +2804,7 @@
     <tr><td class="label">Product Tabs (SC / CC / FM)</td><td>Select Seat Cover, Car Cover, or Floor Mat. Total SKU count shown next to the tab.</td></tr>
     <tr><td class="label">SKUs with Sales / All SKUs</td><td>Toggle. <strong>SKUs with Sales</strong>: show only SKUs with recent sales. <strong>All SKUs</strong>: include SKUs with no sales history.</td></tr>
     <tr><td class="label">Active Containers / Include Draft</td><td>Toggle. <strong>Active Containers</strong>: confirmed containers only. <strong>Include Draft</strong>: include Draft container inbound quantities in calculations.</td></tr>
-    <tr><td class="label">Target Stock Days (1–365)</td><td>Sets the target inventory days for the Container Recommendation tab. Larger values increase the recommended order quantity.</td></tr>
+    <tr><td class="label">Target Stock Days (1–365)</td><td>Sets the target inventory days for the Order Recommendation tab. Larger values increase the recommended order quantity.</td></tr>
     <tr><td class="label">🔄 Sync</td><td>Reload the latest demand planning data from the server.</td></tr>
   </table>
 
@@ -2625,7 +2894,7 @@
   <table class="feat-table">
     <tr><th style="width:180px">Item</th><th>Description</th></tr>
     <tr><td class="label">Container Name</td><td>Container number. Draft containers show a <span class="status draft">Draft</span> badge with an orange card border.</td></tr>
-    <tr><td class="label">Status</td><td>Current container status (Draft / Final List Sent / Packing List Rcvd / Complete).</td></tr>
+    <tr><td class="label">Status</td><td>Current container status (Draft / Final List Sent / Shipped (Packing List Rcvd) / Complete).</td></tr>
     <tr><td class="label">ETA</td><td>Estimated arrival date. Sorted by nearest date first.</td></tr>
     <tr><td class="label">Qty</td><td>Inbound quantity assigned to this SKU.</td></tr>
     <tr><td class="label">CBM</td><td>Volume occupied by this SKU.</td></tr>
@@ -2662,7 +2931,7 @@
   <table class="feat-table">
     <tr><th style="width:180px">Column</th><th>Description</th></tr>
     <tr><td class="label">Container Number</td><td>Container identifier. Click to navigate directly to that container's detail page in Container Planning.</td></tr>
-    <tr><td class="label">Status</td><td>Current container status shown as a color-coded badge (Draft · Final List Sent · Packing List Rcvd · Complete).</td></tr>
+    <tr><td class="label">Status</td><td>Current container status shown as a color-coded badge (Draft · Final List Sent · Shipped (Packing List Rcvd) · Complete).</td></tr>
     <tr><td class="label">ETA</td><td>Estimated arrival date.</td></tr>
     <tr><td class="label">Qty</td><td>Units allocated to this SKU in that container.</td></tr>
     <tr><td class="label">Done / Changed</td><td>Date the container was marked Complete, or the last modification date.</td></tr>
@@ -2672,13 +2941,13 @@
     <div>Click any Container Number link to jump directly to that container in Container Planning — convenient for reviewing history and making edits in one flow.</div>
   </div>
 
-  <h3 id="en-sp-recommend">⑥ Container Recommendation Tab</h3>
+  <h3 id="en-sp-recommend">⑥ Order Recommendation Tab</h3>
   <div class="screenshot-box">
-    <img src="screenshots/02c-sku-recommend-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>Container Recommendation Tab</p></div>'" alt="Container Recommendation Tab">
-    <div class="screenshot-caption">▲ Container Recommendation Tab – Recommended Qty · Simulation · Calculation Detail</div>
+    <img src="screenshots/02c-sku-recommend-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🛒</div><p>Order Recommendation Tab</p></div>'" alt="Order Recommendation Tab">
+    <div class="screenshot-caption">▲ Order Recommendation Tab – Recommended Order Quantity · Simulation · Calculation Detail</div>
   </div>
   <p>Calculate the <strong>recommended order quantity</strong> based on target stock days and compare scenarios by entering custom quantities and ETAs.</p>
-  <h3 class="sub">Recommended Container Quantity</h3>
+  <h3 class="sub">Recommended Order Quantity</h3>
   <table class="feat-table">
     <tr><th style="width:220px">Item</th><th>Description</th></tr>
     <tr><td class="label">Recommended Qty (large number)</td><td>Recommended inbound quantity with MOQ and order multiples automatically applied. Displayed in large purple text.</td></tr>
@@ -2695,7 +2964,7 @@
   <h3 class="sub">What-If Simulation</h3>
   <table class="feat-table">
     <tr><th style="width:240px">Input</th><th>Description</th></tr>
-    <tr><td class="label">Proposed Container Qty</td><td>Enter the quantity you intend to order. Adjust in order multiple increments. Initial value is the recommended quantity.</td></tr>
+    <tr><td class="label">Recommended Order Quantity</td><td>Enter the quantity you intend to order. Adjust in order multiple increments. Initial value is the recommended quantity.</td></tr>
     <tr><td class="label">Hypothetical ETA</td><td>Set the expected arrival date with a date picker. Initial value is 90 days from today.</td></tr>
     <tr><td class="label">Reset to Recommended</td><td>Resets inputs to the system's recommended quantity and default ETA.</td></tr>
   </table>
@@ -2857,7 +3126,7 @@
     <span style="color:#9ca3af;font-size:20px">→</span>
     <span class="status final">Final List Sent</span>
     <span style="color:#9ca3af;font-size:20px">→</span>
-    <span class="status packing">Packing List Rcvd</span>
+    <span class="status packing">Shipped (Packing List Rcvd)</span>
     <span style="color:#9ca3af;font-size:20px">→</span>
     <span class="status complete">Complete</span>
   </div>
@@ -2868,7 +3137,7 @@
     <div class="step"><div class="step-num">2</div><div><h4>Enter Basic Information</h4><p>Enter the <strong>container number</strong> (e.g., 182-CA-SEAT), <strong>ETA</strong>, <strong>destination warehouse</strong>, and <strong>CBM capacity</strong> (default 80).</p></div></div>
     <div class="step"><div class="step-num">3</div><div><h4>Add SKUs</h4><p>Enter the Master SKU and register quantities. Bulk upload via Excel is also available (<span class="btn-label">Import Excel</span>).</p></div></div>
     <div class="step"><div class="step-num">4</div><div><h4>Allocate Available Stock (optional)</h4><p>To assign warehouse surplus to this container, use the <span class="btn-label">Available Stock</span> button.</p></div></div>
-    <div class="step"><div class="step-num">5</div><div><h4>Update Status</h4><p>Change to <span class="status final">Final List Sent</span> once you send the order to the factory. Change to <span class="status packing">Packing List Rcvd</span> when you receive the packing list.</p></div></div>
+    <div class="step"><div class="step-num">5</div><div><h4>Update Status</h4><p>Change to <span class="status final">Final List Sent</span> once you send the order to the factory. Change to <span class="status packing">Shipped (Packing List Rcvd)</span> when you receive the packing list.</p></div></div>
   </div>
   
   <div class="screenshot-box">
@@ -2877,13 +3146,16 @@
   </div>
 
   <h3 id="en-cp-edit">② Editing a Container</h3>
-  <p><span class="status draft">Draft</span> containers can be freely edited — both basic details and the SKU list.</p>
+  <p><span class="status draft">Draft</span> and <span class="status final">Final List Sent</span> containers can be freely edited or deleted — including basic details and the SKU list.</p>
 
   <h3 class="sub">Editing Basic Information</h3>
   <table class="feat-table">
     <tr><th style="width:200px">Field</th><th>Description</th></tr>
     <tr><td class="label">Container Number</td><td>Click directly in the Container Details section to edit.</td></tr>
-    <tr><td class="label">ETA (Estimated Arrival)</td><td>Change via the date picker.</td></tr>
+    <tr><td class="label">Est. Loading</td><td>Estimated factory loading or shipment preparation date.</td></tr>
+    <tr><td class="label">ETD NGB</td><td>Estimated departure date from Ningbo (NGB) port.</td></tr>
+    <tr><td class="label">ETA LAX/LGB</td><td>Estimated arrival date at the LA/LB port.</td></tr>
+    <tr><td class="label">Warehouse (ETA)</td><td>Estimated date the container will be received at the destination warehouse.</td></tr>
     <tr><td class="label">Destination Warehouse</td><td>Select from the dropdown.</td></tr>
     <tr><td class="label">CBM Capacity</td><td>Edit the total container capacity (default 80 m³).</td></tr>
     <tr><td class="label">Factory</td><td>Type to select from already-registered factories in the combo input, or enter a new factory name. Saving with a new name automatically adds it to the factory database so it appears in the dropdown for future containers.</td></tr>
@@ -2914,14 +3186,14 @@
   </div>
 
   <h3 class="sub">Deleting SKUs (Bulk Delete)</h3>
-  <p>Available in <span class="status draft">Draft</span> containers only. Select SKUs using the row checkboxes and click <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span>.</p>
+  <p>Available in <span class="status draft">Draft</span> and <span class="status final">Final List Sent</span> containers. Select SKUs using the row checkboxes and click <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span>.</p>
   <table class="feat-table">
     <tr><th style="width:200px">Item</th><th>Description</th></tr>
     <tr><td class="label">Individual selection</td><td>Check the checkbox on the left of each row.</td></tr>
     <tr><td class="label">Select all visible</td><td>Header checkbox (Select visible SKUs) selects all SKUs matching the current search filter.</td></tr>
     <tr><td class="label">Delete restriction</td><td>SKUs with Available Stock allocated cannot be deleted — remove the allocation first.</td></tr>
     <tr><td class="label">Confirmation dialog</td><td>"Delete N selected SKU(s)?" — click OK to proceed.</td></tr>
-    <tr><td class="label">Status restriction</td><td><span class="status draft">Draft</span> only. The button is hidden for Final List Sent and above.</td></tr>
+    <tr><td class="label">Status restriction</td><td>Available for <span class="status draft">Draft</span> and <span class="status final">Final List Sent</span>. The button is hidden for Shipped (Packing List Rcvd) and above.</td></tr>
   </table>
   <div class="callout warn">
     <span class="callout-icon">⚠️</span>
@@ -2930,7 +3202,7 @@
 
   <div class="screenshot-box">
     <img src="screenshots/03b-container-edit-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>✏️</div><p>Container Edit Screen</p></div>'" alt="Container Edit">
-    <div class="screenshot-caption">▲ Container Edit opened after selecting a Draft Seat Cover container from the left list</div>
+    <div class="screenshot-caption">▲ Container Edit opened after selecting a Draft/Final List Sent Seat Cover container from the left list</div>
   </div>
 
   <h3 id="en-cp-status">③ Status Details</h3>
@@ -2938,18 +3210,18 @@
     <tr><th style="width:200px">Status</th><th>Editable Fields</th><th>Shown in Demand Planning</th><th>Notes</th></tr>
     <tr>
       <td><span class="status draft">Draft</span></td>
-      <td>All fields editable</td>
+      <td>All fields editable/deletable</td>
       <td style="text-align:center">✅ <span style="font-size:12px;color:#6b7280">(Include Draft toggle ON)</span></td>
       <td>Draft stage. Edit freely.</td>
     </tr>
     <tr>
       <td><span class="status final">Final List Sent</span></td>
-      <td>Quantities only</td>
+      <td>All fields editable/deletable</td>
       <td style="text-align:center">✅ Always shown</td>
-      <td>After factory submission. Cannot add/remove SKUs.</td>
+      <td>After factory submission, it can still be edited like Draft: basic details, schedule, SKU add/delete, and quantity changes.</td>
     </tr>
     <tr>
-      <td><span class="status packing">Packing List Rcvd</span></td>
+      <td><span class="status packing">Shipped (Packing List Rcvd)</span></td>
       <td>Read-only</td>
       <td style="text-align:center">✅ Always shown</td>
       <td>After packing list received. No changes allowed.</td>
@@ -2964,7 +3236,7 @@
 
   <div class="callout warn" style="margin-top:16px">
     <span class="callout-icon">⚠️</span>
-    <div><b>Deleting a Container:</b> Deleting an entire container requires <strong>Planner or Admin</strong> role. The delete option is available at the bottom of the container detail panel. Deleted containers and their SKU quantities cannot be recovered. If you just want to hide an incorrectly created container, keeping it as <span class="status draft">Draft</span> is recommended instead of deleting.</div>
+    <div><b>Deleting a Container:</b> Containers can be deleted while they are in <span class="status draft">Draft</span> or <span class="status final">Final List Sent</span> status. Deleting an entire container requires <strong>Planner or Admin</strong> role. The delete option is available at the bottom of the container detail panel. Deleted containers and their SKU quantities cannot be recovered.</div>
   </div>
 
   <h3 id="en-cp-complete">④ Complete Status and Demand Planning Display Rules</h3>
@@ -2990,7 +3262,7 @@
       <h4>✅ Conditions that Show in Demand Planning</h4>
       <ul>
         <li>Status = <span class="status final">Final List Sent</span></li>
-        <li>Status = <span class="status packing">Packing List Rcvd</span></li>
+        <li>Status = <span class="status packing">Shipped (Packing List Rcvd)</span></li>
         <li>Status = <span class="status draft">Draft</span> <em>(only when Include Draft toggle is ON)</em></li>
       </ul>
     </div>
@@ -3001,7 +3273,7 @@
     <span style="color:#9ca3af">→</span>
     <span class="status final">Final List Sent</span>
     <span style="color:#9ca3af">→</span>
-    <span class="status packing">Packing List Rcvd</span>
+    <span class="status packing">Shipped (Packing List Rcvd)</span>
     <span style="color:#9ca3af">→</span>
     <span class="status complete" style="outline:2px solid #dc2626;outline-offset:2px">Complete ❌</span>
   </div>
@@ -3009,7 +3281,7 @@
   <table class="feat-table" style="margin-top:16px">
     <tr><th style="width:260px">Situation</th><th>Recommended Action</th></tr>
     <tr><td>Container has actually been received</td><td>Change to <span class="status complete">Complete</span> → Excluded from Demand Planning automatically. Verify updated stock in Demand Planning's Current Stock column.</td></tr>
-    <tr><td>Accidentally set to Complete before actual receipt</td><td>Find the container in Container Planning and revert to <span class="status packing">Packing List Rcvd</span> — it will immediately reappear in Demand Planning.</td></tr>
+    <tr><td>Accidentally set to Complete before actual receipt</td><td>Find the container in Container Planning and revert to <span class="status packing">Shipped (Packing List Rcvd)</span> — it will immediately reappear in Demand Planning.</td></tr>
     <tr><td>Need to review a Complete container's details</td><td>View it directly in Container Planning. Complete containers are not shown in Demand Planning or SKU Planning.</td></tr>
   </table>
   <div class="callout info" style="margin-top:20px">
@@ -3092,7 +3364,7 @@
       <div>
         <h4>Click CSV/Excel</h4>
         <p>Click <span class="btn-label">CSV/Excel</span> in the button area at the bottom of the detail panel.</p>
-        <p style="margin-top:6px;font-size:13px;color:#6b7280">This button is only shown for <span class="status draft">Draft</span> and <span class="status final">Final List Sent</span> status. Hidden for <span class="status packing">Packing List Rcvd</span> and above.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">This button is only shown for <span class="status draft">Draft</span> and <span class="status final">Final List Sent</span> status. Hidden for <span class="status packing">Shipped (Packing List Rcvd)</span> and above.</p>
       </div>
     </div>
   </div>
@@ -3157,7 +3429,7 @@
     <tr><td class="label">Status filter pills</td><td>
       <span class="status draft">Draft</span>&nbsp;
       <span class="status final">Final</span>&nbsp;
-      <span class="status packing">Packing</span>&nbsp;
+      <span class="status packing">Shipped</span>&nbsp;
       <span class="status complete">Complete</span>
       Toggle each status on or off individually. At least one must always remain active.
     </td></tr>
@@ -3180,7 +3452,7 @@
     <tr><td class="label">Bar color</td><td>
       <span class="status draft">Draft</span> pink &nbsp;|&nbsp;
       <span class="status final">Final List Sent</span> orange &nbsp;|&nbsp;
-      <span class="status packing">Packing List Rcvd</span> blue &nbsp;|&nbsp;
+      <span class="status packing">Shipped (Packing List Rcvd)</span> blue &nbsp;|&nbsp;
       <span class="status complete">Complete</span> green
     </td></tr>
     <tr><td class="label">Bar length</td><td>Represents the sea transit period (~30 days). The bar spans from the estimated departure date to the ETA.</td></tr>

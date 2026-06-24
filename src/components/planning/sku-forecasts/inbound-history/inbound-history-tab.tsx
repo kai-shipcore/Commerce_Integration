@@ -163,8 +163,8 @@ function StatusBadge({ status, language }: { status: string; language: SkuForeca
 
 function statusLabel(status: string, language: SkuForecastLanguage) {
   if (status === "draft") return "Draft";
-  if (status === "shipped") return pick(language, "Shipped", "Shipped");
-  if (status === "packing_received") return pick(language, "Packing", "Packing");
+  if (status === "shipped") return pick(language, "패킹", "Packing");
+  if (status === "packing_received") return pick(language, "선적", "Shipped");
   if (status === "complete") return "Complete";
   return status || "-";
 }
