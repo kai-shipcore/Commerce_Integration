@@ -3858,7 +3858,7 @@ function StatusChangeModal({
 
   if (!nextStatus && !showRevert) return null;
 
-  if (revertConfirming && prevStatus) {
+  if ((!nextStatus && showRevert && prevStatus) || (revertConfirming && prevStatus)) {
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -3880,7 +3880,7 @@ function StatusChangeModal({
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setRevertConfirming(false)}
+              onClick={() => nextStatus ? setRevertConfirming(false) : onClose()}
               className="rounded-lg border border-[#cccac4] px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]"
             >
               {pick("취소", "Cancel")}
@@ -3913,13 +3913,6 @@ function StatusChangeModal({
             <StatusBadge status={currentStatus} />
             <span className="mt-1.5 text-lg text-muted-foreground">→</span>
             <StatusBadge status={nextStatus} />
-          </div>
-        )}
-        {showRevert && (
-          <div className={`flex items-start justify-center gap-4 px-2${nextStatus ? " mt-4 border-t border-[#e2dfd8] pt-4" : ""}`}>
-            <StatusBadge status={prevStatus} />
-            <span className="mt-1.5 text-lg text-muted-foreground">←</span>
-            <StatusBadge status={currentStatus} />
           </div>
         )}
         <div className="mt-6 flex justify-end gap-2">
