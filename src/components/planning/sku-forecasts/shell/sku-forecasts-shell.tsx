@@ -9,7 +9,7 @@ import { InboundHistoryTab } from "../inbound-history/inbound-history-tab";
 import { InventoryInboundTab } from "../inventory-inbound/inventory-inbound-tab";
 import { PurchaseRecommendationTab } from "../purchase-recommendation/purchase-recommendation-tab";
 import { SalesAnalysisTab } from "../sales-analysis/sales-analysis-tab";
-import { SkuBrowserPanel } from "./sku-browser-panel";
+import { SkuBrowserPanel, type SkuFilterKey } from "./sku-browser-panel";
 import { SkuForecastTabs, type SkuForecastTab } from "./sku-forecast-tabs";
 import { SkuHeader } from "./sku-header";
 import { SkuKpiStrip } from "./sku-kpi-strip";
@@ -51,6 +51,7 @@ interface SkuForecastsShellProps {
   initialIncludeDraftContainers?: boolean;
   initialHighlightedContainerId?: string;
   initialHighlightedContainerName?: string;
+  initialFilter?: string;
 }
 
 export function SkuForecastsShell({
@@ -59,6 +60,7 @@ export function SkuForecastsShell({
   initialIncludeDraftContainers = false,
   initialHighlightedContainerId,
   initialHighlightedContainerName,
+  initialFilter,
 }: SkuForecastsShellProps) {
   const { locale: language } = useI18n();
 
@@ -307,6 +309,7 @@ export function SkuForecastsShell({
           onSelectSku={setSelectedSkuId}
           language={language}
           targetInventoryDays={targetInventoryDays}
+          initialSkuFilter={initialFilter as SkuFilterKey | undefined}
         />
 
         <div className="min-w-0 overflow-y-auto pr-1">

@@ -41,7 +41,7 @@ export function SkuForecastTabs({
           {pick(language, "입고 이력", "Inbound History")}
         </TabsTrigger>
         <TabsTrigger value="purchase" className={triggerClassName}>
-          {pick(language, "컨테이너 추천", "Container Recommendation")}
+          {pick(language, "발주 추천", "Order Recommendation")}
         </TabsTrigger>
         <TabsTrigger value="forecast" className={triggerClassName}>
           {pick(language, "수요 예측", "Demand Forecast")}

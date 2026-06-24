@@ -17,6 +17,7 @@ interface SkuBrowserPanelProps {
   onSelectSku: (skuId: string) => void;
   language: SkuForecastLanguage;
   targetInventoryDays: number;
+  initialSkuFilter?: SkuFilterKey;
 }
 
 const urgencyStyles = {
@@ -33,7 +34,7 @@ const sortLabels: Record<SortKey, string> = {
   order: "Rec. Qty",
 };
 
-type SkuFilterKey = "all" | "critical" | "watch" | "high" | "low" | "order";
+export type SkuFilterKey = "all" | "critical" | "watch" | "high" | "low" | "order";
 
 const SKU_FILTERS: Array<{
   id: SkuFilterKey;
@@ -125,10 +126,11 @@ export function SkuBrowserPanel({
   onSelectSku,
   language,
   targetInventoryDays,
+  initialSkuFilter,
 }: SkuBrowserPanelProps) {
   const [sortKey, setSortKey] = useState<SortKey>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
-  const [skuFilter, setSkuFilter] = useState<SkuFilterKey>("all");
+  const [skuFilter, setSkuFilter] = useState<SkuFilterKey>(initialSkuFilter ?? "all");
   const [scrollTop, setScrollTop] = useState(0);
   const [listHeight, setListHeight] = useState(600);
   const listRef = useRef<HTMLDivElement>(null);

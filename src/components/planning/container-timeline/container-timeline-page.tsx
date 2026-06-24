@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CalendarRange, ChevronDown, ExternalLink, Search, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -163,15 +164,15 @@ const STATUS_ORDER: ContainerStatus[] = [
 ];
 
 const STATUS_LABEL: Record<ContainerStatus, string> = {
-  "packing-list-received": "Packing",
-  "final-list-sent": "Final",
+  "packing-list-received": "Shipped",
+  "final-list-sent": "Packing",
   draft: "Draft",
   complete: "Complete",
 };
 
 const STATUS_LABEL_FULL: Record<ContainerStatus, string> = {
-  "packing-list-received": "Packing List Rcvd",
-  "final-list-sent": "Final List Sent",
+  "packing-list-received": "Shipped",
+  "final-list-sent": "Packing List",
   draft: "Draft",
   complete: "Complete",
 };
@@ -313,6 +314,10 @@ function buildMonths(rangeStart: Date, totalDays: number): MonthSegment[] {
 
 export function ContainerTimelinePage() {
   const { pick } = useI18n();
+  const searchParams = useSearchParams();
+  const initialContainerName = searchParams.get("container");
+  const didAutoSelect = useRef(false);
+
   const [containers, setContainers] = useState<Container[]>(() => timelineMemoryCache?.containers ?? []);
   const [planningRowsBySku, setPlanningRowsBySku] = useState<Record<string, DemandRow>>({});
   const [loading, setLoading] = useState(() => !timelineMemoryCache);
@@ -373,6 +378,18 @@ export function ContainerTimelinePage() {
       cancelled = true;
     };
   }, []);
+
+  // Auto-select container from ?container=NAME URL param
+  useEffect(() => {
+    if (didAutoSelect.current || !initialContainerName || containers.length === 0) return;
+    const match = containers.find(
+      (c) => c.containerNumber.toLowerCase() === initialContainerName.toLowerCase()
+    );
+    if (match) {
+      setSelected(match);
+      didAutoSelect.current = true;
+    }
+  }, [containers, initialContainerName]);
 
   const selectedPlanningScope = useMemo(() => {
     if (!selected) return null;

@@ -46,8 +46,8 @@ const defaultFormState: ContainerFormState = {
 
 const statusOptions: Array<{ value: ContainerStatus; label: string; shortLabel: string }> = [
   { value: "draft", label: "Container Draft (Pre-Plan)", shortLabel: "Draft" },
-  { value: "final-list-sent", label: "Final List Sent to Factory", shortLabel: "Final" },
-  { value: "packing-list-received", label: "Packing List Received / Shipped", shortLabel: "Packing" },
+  { value: "final-list-sent", label: "Packing List to Factory", shortLabel: "Packing" },
+  { value: "packing-list-received", label: "Shipped", shortLabel: "Shipped" },
   { value: "complete", label: "Stock-in completed", shortLabel: "Complete" },
 ];
 
@@ -679,7 +679,7 @@ export function ContainerPlanningPage() {
 
   async function addSkuToDraft() {
     if (editingContainerId && form.status !== "draft" && form.status !== "final-list-sent") {
-      setFormError("SKU add/delete is available only while the container is Draft or Final List.");
+      setFormError("SKU add/delete is available only while the container is Draft or Packing List.");
       return;
     }
 
@@ -2319,7 +2319,7 @@ function ContainerCreateForm({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold">{isEditing ? pick("컨테이너 수정", "Edit Container") : pick("신규 컨테이너 등록", "New Container Registration")}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{pick("이 컨테이너의 각 SKU 수량을 입력하세요.", "Enter quantities for each SKU in this container.")}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{pick("컨테이너의 기본 정보와 일정을 입력하세요.", "Enter the basic information and schedule for this container.")}</p>
         </div>
         <button
           type="button"
@@ -2918,7 +2918,7 @@ function ContainerCard({
         <div className="border-t">
           {isStructureLocked ? (
             <div className="flex items-center gap-2 border-b border-[#fde68a] bg-[#fffbeb] px-5 py-2 text-xs text-[#92400e]">
-              <span>{pick("Final List 발송: SKU 추가/삭제가 잠겼습니다. 패킹리스트 수령 전까지 수량은 수정 가능합니다.", "Final List Sent: SKU add/delete is locked. Qty can still be edited before packing list receipt.")}</span>
+              <span>{pick("패킹 리스트 발송: SKU 추가/삭제가 잠겼습니다. 선적 전까지 수량은 수정 가능합니다.", "Packing List Sent: SKU add/delete is locked. Qty can still be edited before shipment.")}</span>
             </div>
           ) : null}
           {isFullyLocked ? (
@@ -2926,7 +2926,7 @@ function ContainerCard({
               <span>
                 {isStockInCompleted
                   ? pick("입고 완료: 수정 및 첨부 작업이 잠겼습니다.", "Stock-in completed: edits and attachment actions are locked.")
-                  : pick("패킹리스트 수령: 실물 수량이 확정되어 모든 SKU 수정이 잠겼습니다.", "Packing List Received: all SKU edits are locked because physical quantities are confirmed.")}
+                  : pick("선적 완료: 실물 수량이 확정되어 모든 SKU 수정이 잠겼습니다.", "Shipped: all SKU edits are locked because physical quantities are confirmed.")}
               </span>
             </div>
           ) : null}
@@ -3463,8 +3463,8 @@ function ContainerMeta({ label, children }: { label: string; children: ReactNode
 
 const statusWorkflowLabels: Record<ContainerStatus, string> = {
   draft: "Container Draft (Pre-plan)",
-  "final-list-sent": "Final List Sent (Factory)",
-  "packing-list-received": "Packing List Received / Shipped",
+  "final-list-sent": "Packing List (Factory)",
+  "packing-list-received": "Shipped",
   complete: "Stock-in completed",
 };
 

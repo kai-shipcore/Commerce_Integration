@@ -10,6 +10,8 @@ function parseTab(value: string | undefined): SkuForecastTab {
   return "sales";
 }
 
+const VALID_FILTERS = ["all", "critical", "watch", "high", "low", "order"];
+
 export default async function SkuForecastsPage({
   searchParams,
 }: {
@@ -19,6 +21,7 @@ export default async function SkuForecastsPage({
     includeDrafts?: string | string[];
     highlightContainerId?: string | string[];
     highlightContainer?: string | string[];
+    filter?: string | string[];
   }>;
 }) {
   const params = await searchParams;
@@ -26,6 +29,8 @@ export default async function SkuForecastsPage({
   const initialTab = parseTab(firstParam(params.tab));
   const includeDrafts = firstParam(params.includeDrafts);
   const initialIncludeDraftContainers = includeDrafts === "1" || includeDrafts === "true";
+  const filterParam = firstParam(params.filter);
+  const initialFilter = filterParam && VALID_FILTERS.includes(filterParam) ? filterParam : undefined;
 
   return (
     <SkuForecastsShell
@@ -34,6 +39,7 @@ export default async function SkuForecastsPage({
       initialIncludeDraftContainers={initialIncludeDraftContainers}
       initialHighlightedContainerId={firstParam(params.highlightContainerId)}
       initialHighlightedContainerName={firstParam(params.highlightContainer)}
+      initialFilter={initialFilter}
     />
   );
 }

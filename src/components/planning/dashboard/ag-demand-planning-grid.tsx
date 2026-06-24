@@ -1113,7 +1113,7 @@ function ContainerGroupHeader(
           : "";
   const statusLabel =
     props.status === "packing_received" ? "Shipped" :
-    props.status === "shipped"          ? "Final" :
+    props.status === "shipped"          ? "Packing" :
     props.status === "draft"            ? "Draft" : null;
   const statusColor =
     props.status === "packing_received" ? "text-blue-300" :
