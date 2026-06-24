@@ -117,6 +117,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const launcherRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const matchedItem = useMemo(() => {
     return navigationItems
@@ -159,7 +161,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         }
 
         setAccessState("denied");
-        toast.error(t("common.accessDenied"));
+        toast.error(tRef.current("common.accessDenied"));
         router.replace(getDefaultLandingPath(visibleMenuIds, role));
       } catch {
         if (!cancelled) {
@@ -173,7 +175,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [matchedItem, router, t]);
+  }, [matchedItem, router]);
 
   useEffect(() => {
     let cancelled = false;
