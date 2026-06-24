@@ -273,6 +273,10 @@
   </div>
   <div class="nav-section">목차</div>
   <a class="nav-item" href="#overview"><span class="icon">🏠</span> 시작하기</a>
+  <a class="nav-item" href="#command-center"><span class="icon">🖥️</span> 커맨드 센터</a>
+  <a class="nav-sub" href="#cc-kpi">KPI 카드</a>
+  <a class="nav-sub" href="#cc-panels">3패널 현황</a>
+  <a class="nav-sub" href="#cc-sales">판매 추세</a>
   <a class="nav-item" href="#demand-planning"><span class="icon">📊</span> 수요 계획</a>
   <a class="nav-sub" href="#dp-filters">필터 & 검색</a>
   <a class="nav-sub" href="#dp-columns">컬럼 설정</a>
@@ -418,6 +422,146 @@
     <div class="screenshot-caption">▲ 런처 호버 — 마우스를 올리면 내비게이션 팝업이 표시됩니다</div>
   </div>
   <div class="tip"><strong>💡</strong> 내비 접기/펼치기 설정은 서버에 저장되어 다른 기기에서도 유지됩니다.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     0-1. COMMAND CENTER (홈 대시보드)
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="command-center">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🖥️</div>
+    <div>
+      <div class="menu-path">홈 › 커맨드 센터</div>
+      <h2>커맨드 센터</h2>
+      <p class="subtitle">로그인 직후 나타나는 홈 화면으로, 재고 상황·컨테이너 입고·판매 추세를 한눈에 파악합니다.</p>
+    </div>
+  </div>
+
+  <p>커맨드 센터는 Demand Pilot의 <strong>홈 대시보드</strong>입니다. 별도의 클릭 없이 로그인하자마자 현재 운영 상태를 즉시 파악할 수 있도록 설계되어 있습니다. 상단에서 제품 카테고리를 전환하면 각 카테고리별 KPI가 실시간으로 업데이트됩니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00-command-center.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🖥️</div><p>커맨드 센터 전체 화면</p></div>'" alt="커맨드 센터 전체 화면">
+    <div class="screenshot-caption">▲ 커맨드 센터 — 로그인 후 홈 화면 전체 구성</div>
+  </div>
+
+  <!-- 카테고리 탭 -->
+  <h3>카테고리 탭</h3>
+  <p>화면 상단의 탭으로 제품군을 전환합니다. KPI 카드와 위험 SKU 목록, 재고 분포 도넛 차트가 선택한 카테고리 기준으로 즉시 업데이트됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">탭</th><th>표시 범위</th></tr>
+    <tr><td class="label">시트 커버</td><td>SC 카테고리 SKU 전체</td></tr>
+    <tr><td class="label">카 커버</td><td>CC 카테고리 SKU 전체</td></tr>
+    <tr><td class="label">플로어 매트</td><td>FM 카테고리 SKU 전체</td></tr>
+  </table>
+
+  <!-- KPI 카드 -->
+  <h3 id="cc-kpi">① KPI 카드 (5개)</h3>
+  <p>선택한 카테고리의 핵심 지표를 한눈에 보여주는 5개의 클릭 가능한 카드입니다. 각 카드를 클릭하면 해당 조건으로 필터링된 수요 계획 또는 컨테이너 일정 화면으로 바로 이동합니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00a-command-center-kpi.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>KPI 카드 영역</p></div>'" alt="KPI 카드 영역">
+    <div class="screenshot-caption">▲ KPI 카드 — 카테고리 탭과 5개 지표 카드</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:180px">카드</th><th>의미</th><th>클릭 시 이동</th></tr>
+    <tr>
+      <td><span class="status critical">위험 SKU</span></td>
+      <td>SOD(품절예상일)가 30일 이내인 SKU 수. 전일 대비 증감이 함께 표시됩니다.</td>
+      <td>수요 계획 → Critical 필터 적용</td>
+    </tr>
+    <tr>
+      <td><span class="status warn">품절 예상</span></td>
+      <td>SOD가 31~60일 이내인 SKU 수. 주의 관찰이 필요한 SKU입니다.</td>
+      <td>수요 계획 → Warning 필터 적용</td>
+    </tr>
+    <tr>
+      <td class="label">과잉 재고</td>
+      <td>SOD가 180일 초과인 SKU 수. 과잉 재고로 자본이 묶여 있는 상태입니다.</td>
+      <td>수요 계획 → Overstock 필터 적용</td>
+    </tr>
+    <tr>
+      <td class="label">긴급 발주</td>
+      <td>위험(Critical) 상태이면서 입고 예정 컨테이너가 없는 SKU 수. 즉시 발주가 필요합니다.</td>
+      <td>수요 계획 → Critical + 입고 없음 필터</td>
+    </tr>
+    <tr>
+      <td class="label">지연 컨테이너</td>
+      <td>ETA가 이미 지났는데 아직 입고 완료되지 않은 컨테이너 수. 전체 카테고리 기준입니다.</td>
+      <td>컨테이너 일정 화면</td>
+    </tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>카드 하단의 <strong>↑/↓ 숫자</strong>는 전일 대비 증감입니다. 초록색은 개선(감소), 빨간색은 악화(증가)를 나타냅니다.</div>
+  </div>
+
+  <!-- 3패널 그리드 -->
+  <h3 id="cc-panels">② 3패널 현황</h3>
+  <p>KPI 카드 아래에는 세 개의 패널이 나란히 표시됩니다. 각 패널의 "전체 보기 →" 링크를 클릭하면 상세 화면으로 이동합니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00b-command-center-panels.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>3패널 그리드</p></div>'" alt="3패널 그리드">
+    <div class="screenshot-caption">▲ 3패널 — 좌: 위험 SKU TOP 10 / 중: 입고 예정 컨테이너 / 우: 재고 분포</div>
+  </div>
+
+  <div class="card-grid col3" style="margin-top:20px">
+    <div class="card">
+      <h4>🔴 위험 SKU TOP 10</h4>
+      <p>선택한 카테고리에서 SOD가 가장 짧은 SKU를 최대 10개 보여줍니다. SKU명을 클릭하면 SKU 계획 화면으로 바로 이동합니다. 각 행에 일평균 판매량(Daily Avg)이 함께 표시됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>🚢 입고 예정 컨테이너</h4>
+      <p>ETA 순으로 정렬된 예정 컨테이너 목록입니다. 컨테이너명 클릭 시 컨테이너 일정으로 이동합니다. ETA가 이미 지난 항목은 <span style="color:#dc2626;font-weight:600">빨간색</span>으로 표시됩니다. 상태 배지(Draft / Packing / Shipped / Complete)로 진행 단계를 한눈에 확인할 수 있습니다.</p>
+    </div>
+    <div class="card">
+      <h4>🍩 재고 분포 (Stock Health)</h4>
+      <p>선택 카테고리의 SKU를 SOD 구간별로 나누어 도넛 차트로 시각화합니다.</p>
+      <ul>
+        <li><span style="color:#dc2626;font-weight:600">■</span> 위험 — SOD ≤ 30일</li>
+        <li><span style="color:#d97706;font-weight:600">■</span> 품절 예상 — 31~60일</li>
+        <li><span style="color:#22c55e;font-weight:600">■</span> 정상 — 61~180일</li>
+        <li><span style="color:#2563eb;font-weight:600">■</span> 과잉 재고 — 181일+</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 판매 추세 -->
+  <h3 id="cc-sales">③ 판매 추세 차트</h3>
+  <p>Shopify 연동 판매 데이터를 기반으로 전체 채널의 판매 추세를 차트로 표시합니다. 차트 영역 전체를 클릭하면 주문 내역 화면으로 이동합니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00c-command-center-sales.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>판매 추세 섹션</p></div>'" alt="판매 추세 섹션">
+    <div class="screenshot-caption">▲ 판매 추세 — 기간·뷰·차트 유형 선택 가능</div>
+  </div>
+
+  <table class="feat-table" style="margin-top:16px">
+    <tr><th style="width:170px">컨트롤</th><th>설명</th></tr>
+    <tr>
+      <td class="label">기간 선택</td>
+      <td>최근 7일 / 30일 / 90일 / 6개월 / 1년 / 올해 누계(YTD) 중 선택합니다. 선택한 기간과 직전 동일 기간을 자동으로 비교합니다.</td>
+    </tr>
+    <tr>
+      <td class="label">매출 / 주문 토글</td>
+      <td>Y축을 <strong>매출(Revenue, $)</strong> 또는 <strong>주문 수량(Orders)</strong>으로 전환합니다.</td>
+    </tr>
+    <tr>
+      <td class="label">차트 유형</td>
+      <td>영역(Area) · 선(Line) · 막대(Bar) 중 선택합니다. 원하는 시각화 스타일로 자유롭게 변경할 수 있습니다.</td>
+    </tr>
+  </table>
+
+  <p>차트 오른쪽의 <strong>판매 요약 카드</strong>에는 선택 기간의 총 주문 수, 총 매출, 전기 대비 성장률(%)이 표시됩니다.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>판매 추세는 Shopify 채널 판매 데이터 기준입니다. Shopify 연동이 설정되어 있지 않으면 데이터가 표시되지 않습니다.</div>
+  </div>
+
+  <!-- 새로고침 -->
+  <h3>④ 새로고침</h3>
+  <p>우측 상단의 <span class="btn-label">↺ 새로고침</span> 버튼을 클릭하면 KPI 카드, 위험 SKU, 컨테이너 목록을 서버에서 최신 데이터로 다시 불러옵니다. 마지막 동기화 시각은 페이지 제목 아래에 표시됩니다.</p>
 </section>
 
 <!-- ═══════════════════════════════════════════════
@@ -1863,6 +2007,10 @@
   </div>
   <div class="nav-section">Contents</div>
   <a class="nav-item" href="#en-overview"><span class="icon">🏠</span> Getting Started</a>
+  <a class="nav-item" href="#en-command-center"><span class="icon">🖥️</span> Command Center</a>
+  <a class="nav-sub" href="#en-cc-kpi">KPI Cards</a>
+  <a class="nav-sub" href="#en-cc-panels">3-Panel View</a>
+  <a class="nav-sub" href="#en-cc-sales">Sales Trend</a>
   <a class="nav-item" href="#en-demand-planning"><span class="icon">📊</span> Demand Planning</a>
   <a class="nav-sub" href="#en-dp-filters">Filters &amp; Search</a>
   <a class="nav-sub" href="#en-dp-columns">Columns Panel</a>
@@ -2002,6 +2150,144 @@
     <div class="screenshot-caption">▲ Hover preview — hover over the launcher to see the navigation popup</div>
   </div>
   <div class="tip"><strong>💡</strong> The nav collapsed/expanded state is saved to the server and persists across devices.</div>
+</section>
+
+<!-- ═══ 1-1. COMMAND CENTER ═══ -->
+<section class="page-section" id="en-command-center">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🖥️</div>
+    <div>
+      <div class="menu-path">Home › Command Center</div>
+      <h2>Command Center</h2>
+      <p class="subtitle">The home dashboard shown immediately after login — see your inventory health, inbound containers, and sales trend at a glance.</p>
+    </div>
+  </div>
+
+  <p>The Command Center is the <strong>home dashboard</strong> of Demand Pilot. It is designed to give you an immediate snapshot of operations the moment you log in. Switch between product categories using the tabs at the top to update all KPIs in real time.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00-command-center-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🖥️</div><p>Command Center Overview</p></div>'" alt="Command Center Overview">
+    <div class="screenshot-caption">▲ Command Center — full home dashboard layout</div>
+  </div>
+
+  <!-- Category Tabs -->
+  <h3>Category Tabs</h3>
+  <p>Use the tabs at the top to switch between product categories. The KPI cards, Critical SKU list, and Stock Health donut all update instantly for the selected category.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">Tab</th><th>Scope</th></tr>
+    <tr><td class="label">Seat Cover</td><td>All SKUs in the SC category</td></tr>
+    <tr><td class="label">Car Cover</td><td>All SKUs in the CC category</td></tr>
+    <tr><td class="label">Floor Mat</td><td>All SKUs in the FM category</td></tr>
+  </table>
+
+  <!-- KPI Cards -->
+  <h3 id="en-cc-kpi">① KPI Cards (5 cards)</h3>
+  <p>Five clickable cards summarise the most critical inventory metrics for the selected category. Click any card to jump directly to the filtered Demand Planning or Container Timeline view.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00a-command-center-kpi-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>KPI Cards Area</p></div>'" alt="KPI Cards">
+    <div class="screenshot-caption">▲ KPI Cards — category tabs and 5 metric cards</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:180px">Card</th><th>What it measures</th><th>Click destination</th></tr>
+    <tr>
+      <td><span class="status critical">Critical SKUs</span></td>
+      <td>Number of SKUs with SOD ≤ 30 days. Day-over-day delta is shown below the count.</td>
+      <td>Demand Planning → Critical filter</td>
+    </tr>
+    <tr>
+      <td><span class="status warn">Expected OOS</span></td>
+      <td>SKUs with SOD between 31 and 60 days — at risk of going out of stock soon.</td>
+      <td>Demand Planning → Warning filter</td>
+    </tr>
+    <tr>
+      <td class="label">Overstock</td>
+      <td>SKUs with SOD &gt; 180 days — capital is tied up in excess inventory.</td>
+      <td>Demand Planning → Overstock filter</td>
+    </tr>
+    <tr>
+      <td class="label">Urgent PO</td>
+      <td>SKUs that are Critical <em>and</em> have no inbound containers. Immediate purchase orders are needed.</td>
+      <td>Demand Planning → Critical + no inbound filter</td>
+    </tr>
+    <tr>
+      <td class="label">Delayed Cont.</td>
+      <td>Containers whose ETA has already passed but are not yet received. Covers all categories.</td>
+      <td>Container Timeline</td>
+    </tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>The <strong>↑/↓ delta</strong> below each KPI shows the change vs. yesterday. Green = improvement (count decreased), Red = deterioration (count increased).</div>
+  </div>
+
+  <!-- 3-Panel Grid -->
+  <h3 id="en-cc-panels">② 3-Panel View</h3>
+  <p>Below the KPI cards, three panels sit side by side. Use the "View all →" link in each panel to open the full detail screen.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00b-command-center-panels-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>3-Panel Grid</p></div>'" alt="3-Panel Grid">
+    <div class="screenshot-caption">▲ 3-Panel — Left: Top 10 Critical SKUs / Center: Inbound Containers / Right: Stock Distribution</div>
+  </div>
+
+  <div class="card-grid col3" style="margin-top:20px">
+    <div class="card">
+      <h4>🔴 Top 10 Critical SKUs</h4>
+      <p>Lists up to 10 SKUs with the shortest SOD in the selected category. Click any SKU name to jump to the SKU Forecasts screen. The Daily Avg column shows the current average daily sales velocity.</p>
+    </div>
+    <div class="card">
+      <h4>🚢 Inbound Containers</h4>
+      <p>Scheduled containers sorted by ETA (earliest first). Click a container name to view it in Container Timeline. ETAs that have already passed appear in <span style="color:#dc2626;font-weight:600">red</span>. Status badges (Draft / Packing / Shipped / Complete) show the workflow stage at a glance.</p>
+    </div>
+    <div class="card">
+      <h4>🍩 Stock Health</h4>
+      <p>A donut chart breaking down SKUs in the selected category by SOD range:</p>
+      <ul>
+        <li><span style="color:#dc2626;font-weight:600">■</span> Critical — SOD ≤ 30d</li>
+        <li><span style="color:#d97706;font-weight:600">■</span> At Risk — 31–60d</li>
+        <li><span style="color:#22c55e;font-weight:600">■</span> Healthy — 61–180d</li>
+        <li><span style="color:#2563eb;font-weight:600">■</span> Overstock — 181d+</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Sales Trend -->
+  <h3 id="en-cc-sales">③ Sales Trend Chart</h3>
+  <p>Displays channel-wide sales data from the Shopify integration. Clicking anywhere on the chart area navigates to the Orders screen for the selected period.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/00c-command-center-sales-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>Sales Trend Section</p></div>'" alt="Sales Trend">
+    <div class="screenshot-caption">▲ Sales Trend — configurable period, view mode, and chart type</div>
+  </div>
+
+  <table class="feat-table" style="margin-top:16px">
+    <tr><th style="width:170px">Control</th><th>Description</th></tr>
+    <tr>
+      <td class="label">Period selector</td>
+      <td>Choose from Last 7 Days / 30 Days / 90 Days / 6 Months / Last Year / Year to Date. The previous equivalent period is automatically used as the comparison baseline.</td>
+    </tr>
+    <tr>
+      <td class="label">Revenue / Orders toggle</td>
+      <td>Switch the Y-axis between <strong>Revenue ($)</strong> and <strong>Order quantity</strong>.</td>
+    </tr>
+    <tr>
+      <td class="label">Chart type</td>
+      <td>Choose Area, Line, or Bar to match your preferred visual style.</td>
+    </tr>
+  </table>
+
+  <p>The <strong>Sales summary card</strong> on the right shows the total orders, total revenue, and period-over-period growth percentage for the selected timeframe.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>Sales Trend data is sourced from the Shopify channel integration. If Shopify is not configured, this section will show no data.</div>
+  </div>
+
+  <!-- Refresh -->
+  <h3>④ Refresh</h3>
+  <p>Click the <span class="btn-label">↺ Refresh</span> button in the top-right corner to reload KPI cards, the Critical SKU list, and the container table from the server. The last sync timestamp is displayed beneath the page title.</p>
 </section>
 
 <!-- ═══ 2. DEMAND PLANNING ═══ -->
