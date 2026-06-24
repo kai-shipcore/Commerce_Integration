@@ -369,7 +369,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <div className="mr-4 flex">
           <Link className="mr-6 flex items-center" href="/">
             <Image
-              src="/DemandPilot_Logo_NSlogan_S_transparent.png"
+              src={withBasePath("/DemandPilot_Logo_NSlogan_S_transparent.png")}
               alt="Demand Pilot"
               width={140}
               height={32}
@@ -481,7 +481,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <Link className="flex h-8 items-center rounded px-1 hover:bg-slate-100 dark:hover:bg-slate-800" href="/">
             <span className="relative block h-7 w-7 overflow-hidden">
               <Image
-                src="/DemandPilot_Logo_NSlogan_S_transparent.png"
+                src={withBasePath("/DemandPilot_Logo_NSlogan_S_transparent.png")}
                 alt="Demand Pilot"
                 width={104}
                 height={24}
