@@ -289,6 +289,7 @@
   <a class="nav-sub" href="#sp-inventory">재고 및 입고 탭</a>
   <a class="nav-sub" href="#sp-inbound-history">입고 이력 탭</a>
   <a class="nav-sub" href="#sp-recommend">컨테이너 추천 탭</a>
+  <a class="nav-sub" href="#sp-forecast">수요 예측 탭</a>
   <a class="nav-item" href="#container-planning"><span class="icon">🚢</span> 컨테이너 계획</a>
   <a class="nav-sub" href="#cp-create">컨테이너 등록</a>
   <a class="nav-sub" href="#cp-status">상태 관리</a>
@@ -961,6 +962,7 @@
         <li><strong>재고 및 입고</strong> 탭: 재고 커버리지·입고 컨테이너 목록</li>
         <li><strong>입고 이력</strong> 탭: 과거 입고 이력 전체 조회 (컨테이너 단위)</li>
         <li><strong>컨테이너 추천</strong> 탭: 권장 발주 수량 + What-If 시뮬레이션</li>
+        <li><strong>수요 예측</strong> 탭: 머신러닝 모델 기반 주간 판매 예측 및 재고 소진일 산출</li>
       </ul>
     </div>
   </div>
@@ -1256,6 +1258,111 @@
   <div class="callout info">
     <span class="callout-icon">✅</span>
     <div><b>MOQ & 주문 배수 자동 적용:</b> 필요 수량이 MOQ보다 작으면 자동으로 MOQ를 적용합니다. 최종 권장 수량은 항상 주문 배수의 배수로 올림(ROUNDUP) 처리됩니다. SKU Master에 MOQ·주문 배수가 올바르게 설정되어 있어야 합니다.</div>
+  </div>
+</section>
+
+<section class="page-section">
+  <!-- 수요 예측 탭 -->
+  <h3 id="sp-forecast">⑦ 수요 예측 탭</h3>
+
+  <div class="screenshot-box">
+    <img src="screenshots/06a-demand-forecast-forward.png" alt="수요 예측 탭 — Forward 모드">
+    <div class="screenshot-caption">▲ 수요 예측 탭 — Forward(순방향) 모드: 실제 수요(파란선) · 예측(주황 점선) · 재고 소진 예상선(분홍 점선) · 메타 정보</div>
+  </div>
+
+  <p>통계 머신러닝 모델을 사용하여 이 SKU의 <strong>향후 주간 판매량을 예측</strong>합니다. 예측 결과를 바탕으로 재고 소진 시점을 미리 파악하고 발주 타이밍을 사전에 계획할 수 있습니다.</p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>탭에는 <b>Forward(예측)</b>와 <b>Backtest(검증)</b> 두 가지 모드가 있습니다. Forward는 지금부터 미래를 예측하고, Backtest는 과거 데이터로 모델 정확도를 검증합니다.</div>
+  </div>
+
+  <h3 class="sub">Forward 모드 — 미래 예측</h3>
+
+  <p>차트에는 아래 네 가지 요소가 표시됩니다. 차트는 마우스 드래그로 좌우 이동하거나 스크롤로 확대·축소할 수 있습니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">차트 요소</th><th>색상</th><th>설명</th></tr>
+    <tr><td class="label">Actual demand</td><td>파란색 실선</td><td>과거 실제 주간 판매 이력</td></tr>
+    <tr><td class="label">Forecast</td><td>주황색 실선</td><td>모델이 예측한 향후 주간 판매량</td></tr>
+    <tr><td class="label">P70 interval</td><td>주황색 반투명 영역</td><td>70% 확률 예측 구간 — "10번 중 7번은 실제 판매가 이 범위 안에 들어온다"는 의미. 구간이 넓을수록 예측 불확실성이 높음</td></tr>
+    <tr><td class="label">Stockout 예상선</td><td>분홍색(#C026D3) 점선</td><td>현재 재고를 예측 판매 속도로 소진하면 재고가 0이 되는 날짜. 이 날짜 이전에 발주·입고가 완료되어야 품절을 막을 수 있음. 예측 기간 내에 재고가 충분하면 표시되지 않음</td></tr>
+  </table>
+
+  <h3 class="sub">Forward 모드 컨트롤</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">Forecast weeks</td><td>예측 기간 (1~52주). 기본 13주. 저장된 범위를 초과하면 서버가 예측을 새로 실행합니다 (5~30초 소요). <kbd>Enter</kbd> 또는 입력창 밖 클릭으로 적용</td></tr>
+    <tr><td class="label">History</td><td>차트에서 과거 이력을 얼마나 보여줄지 설정. 달력으로 날짜 선택 또는 주 단위 입력. <strong>이력을 줄여도 데이터는 삭제되지 않으며 차트 줌만 변경됩니다.</strong> 왼쪽으로 스크롤하면 더 오래된 이력을 볼 수 있음</td></tr>
+    <tr><td class="label">Model</td><td>예측 모델 선택. 기본 <code>Auto</code>는 이 SKU에 가장 적합한 모델을 자동 결정. 변경 시 재예측 실행 (5~30초 소요)</td></tr>
+  </table>
+
+  <h3 class="sub">Forward 모드 — 메타 정보</h3>
+  <p>차트 아래 항목을 <strong>클릭하면 상세 설명 팝업</strong>이 나타납니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">Order Range</td><td>이 예측 모델이 학습한 판매 데이터 기간 (학습 시작일 ~ 종료일)</td></tr>
+    <tr><td class="label">Forecasted Stockout</td><td>재고 소진 예상 날짜. "None"이면 예측 기간 내 재고가 충분함</td></tr>
+    <tr><td class="label">Model</td><td>실제 예측에 사용된 모델 이름 (Auto 선택 시 자동 결정된 모델명 표시)</td></tr>
+    <tr><td class="label">Confidence</td><td>예측 불확실성 구간의 수준 (기본 P70 = 70%)</td></tr>
+    <tr><td class="label">Forecast run</td><td>이 예측이 마지막으로 실행된 날짜·시간</td></tr>
+  </table>
+
+  <div class="divider"></div>
+
+  <h3 class="sub">Backtest 모드 — 과거 검증</h3>
+
+  <div class="screenshot-box">
+    <img src="screenshots/06b-demand-forecast-backtest.png" alt="수요 예측 탭 — Backtest 모드">
+    <div class="screenshot-caption">▲ 수요 예측 탭 — Backtest(백테스트) 모드: P70 구간 · 백테스트 예측 · 실제 수요 · 정확도 지표(MAE · WAPE · MASE · P70 적중률)</div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>백테스트란?</b> "6개월 전에 이 모델로 예측했다면 실제 판매와 얼마나 맞았을까?"를 계산합니다. 모델이 이 SKU에 신뢰할 수 있는지 판단하는 데 사용합니다.</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">항목 (화면 레이블)</th><th>설명</th></tr>
+    <tr><td class="label">Cutoff (기준일)</td><td>예측의 시작점. 이 날짜 이전 데이터를 학습에 사용하고, 이후 실제 판매와 예측을 비교합니다. 월요일 단위로 선택</td></tr>
+    <tr><td class="label">Horizon (예측 기간)</td><td>기준일로부터 몇 주 앞을 예측할지 설정 (1~52주)</td></tr>
+    <tr><td class="label">Train (학습 기간)</td><td>학습 데이터를 최근 N주로 제한. 0은 전체 이력 사용</td></tr>
+    <tr><td class="label">History (차트 표시)</td><td>기준일 이전 데이터를 차트에 얼마나 표시할지 설정. 줌만 변경되며 스크롤로 더 많은 이력을 볼 수 있음</td></tr>
+    <tr><td class="label">Model 1</td><td>기본 예측 모델 선택</td></tr>
+    <tr><td class="label">Model 2 (앙상블)</td><td>선택 사항. 두 번째 모델을 선택하면 두 모델 예측의 평균이 차트에 추가로 표시됨</td></tr>
+    <tr><td class="label">Run 버튼</td><td>위 설정으로 백테스트 실행. 최초 실행 시 5~30초 소요</td></tr>
+  </table>
+
+  <h3 class="sub">백테스트 결과 — 정확도 지표</h3>
+  <p>실행 후 차트 아래에 정확도 지표가 표시됩니다. 각 항목을 <strong>클릭하면 상세 설명 팝업</strong>이 나타납니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th><th>판단 기준</th></tr>
+    <tr><td class="label">MAE</td><td>평균 절대 오차. 예측값과 실제값 차이의 평균 (단위: 수량)</td><td>낮을수록 좋음</td></tr>
+    <tr><td class="label">WAPE</td><td>가중 절대 백분율 오차. 오차를 퍼센트로 표현</td><td>10% 이하 우수 · 20% 이하 양호</td></tr>
+    <tr><td class="label">MASE</td><td>"지난 주 판매량을 그대로 쓰는 것"보다 얼마나 나은지 나타냄. 1.0 미만이면 유효한 모델</td><td>1.0 미만이면 기준보다 나음</td></tr>
+    <tr><td class="label">P70 Coverage</td><td>실제 판매 중 P70 예측 구간 안에 들어온 비율</td><td>70% 근처가 이상적</td></tr>
+    <tr><td class="label">Model</td><td>사용된 모델 이름</td><td>—</td></tr>
+    <tr><td class="label">Train / Eval</td><td>학습 주차 수 / 평가(검증) 주차 수</td><td>—</td></tr>
+    <tr><td class="label">Horizon actual</td><td>평가 기간 동안의 실제 총 판매량</td><td>—</td></tr>
+    <tr><td class="label">Horizon forecast</td><td>평가 기간 동안의 예측 총 판매량</td><td>—</td></tr>
+    <tr><td class="label">Difference</td><td>예측 총량 − 실제 총량. 양수면 과다 예측, 음수면 과소 예측</td><td>0에 가까울수록 좋음</td></tr>
+  </table>
+
+  <h3 class="sub">예측 모델 안내</h3>
+  <p>특별한 이유가 없으면 <strong>Auto</strong>를 권장합니다.</p>
+  <div class="card-grid col2">
+    <div class="card"><h4>🤖 Auto (권장)</h4><p>교차 검증으로 이 SKU에 가장 정확한 모델을 자동 결정합니다.</p></div>
+    <div class="card"><h4>📊 AutoARIMA</h4><p>추세와 계절성을 자동으로 파악하는 통계 모델. 연간 계절 패턴이 뚜렷한 제품에 적합합니다.</p></div>
+    <div class="card"><h4>📈 AutoETS</h4><p>지수평활법 기반. 판매가 서서히 증가하거나 감소하는 완만한 추세에 강합니다.</p></div>
+    <div class="card"><h4>📉 AutoTheta</h4><p>장기 추세 포착에 강한 모델. 꾸준히 성장하거나 감소하는 제품에 적합합니다.</p></div>
+    <div class="card"><h4>📋 Window Avg</h4><p>최근 N주의 평균을 예측값으로 사용. 추세 없이 일정한 판매량에 적합합니다.</p></div>
+    <div class="card"><h4>📋 Historic Avg</h4><p>전체 이력의 평균값을 사용. 장기 평균이 안정적인 제품에 적합합니다.</p></div>
+    <div class="card"><h4>🔄 Seasonal Naïve</h4><p>작년 같은 주차 실적을 반복. 강한 연간 계절성이 있는 제품에 적합합니다.</p></div>
+    <div class="card"><h4>➡️ Naïve</h4><p>지난 주 실적을 그대로 반복. 매우 불규칙한 판매나 기준선 비교용으로 사용합니다.</p></div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><b>예측 서버가 필요합니다:</b> 수요 예측 탭은 별도의 예측 서버(FastAPI)가 실행 중인 경우에만 동작합니다. 차트가 표시되지 않으면 관리자에게 문의하세요.</div>
   </div>
 </section>
 
@@ -1876,6 +1983,7 @@
   <a class="nav-sub" href="#en-sp-inventory">Inventory &amp; Inbound</a>
   <a class="nav-sub" href="#en-sp-inbound-history">Inbound History</a>
   <a class="nav-sub" href="#en-sp-recommend">Container Recommendation</a>
+  <a class="nav-sub" href="#en-sp-forecast">Demand Forecast</a>
   <a class="nav-item" href="#en-container-planning"><span class="icon">🚢</span> Container Planning</a>
   <a class="nav-sub" href="#en-cp-create">Create Container</a>
   <a class="nav-sub" href="#en-cp-status">Status Management</a>
@@ -2416,6 +2524,7 @@
         <li><strong>Inventory &amp; Inbound</strong> tab: stock coverage and inbound containers</li>
         <li><strong>Inbound History</strong> tab: full historical inbound records by container</li>
         <li><strong>Container Recommendation</strong> tab: recommended qty + What-If simulation</li>
+        <li><strong>Demand Forecast</strong> tab: ML-based weekly sales forecast and stockout date projection</li>
       </ul>
     </div>
   </div>
@@ -2616,6 +2725,111 @@
   <div class="callout info">
     <span class="callout-icon">✅</span>
     <div><b>MOQ &amp; Order Multiple Auto-Applied:</b> If the required quantity is less than MOQ, MOQ is applied automatically. The final recommended quantity is always rounded up (ROUNDUP) to the nearest order multiple. MOQ and order multiples must be set correctly in SKU Master.</div>
+  </div>
+</section>
+
+<section class="page-section">
+  <!-- Demand Forecast Tab -->
+  <h3 id="en-sp-forecast">⑦ Demand Forecast Tab</h3>
+
+  <div class="screenshot-box">
+    <img src="screenshots/06a-demand-forecast-forward-en.png" alt="Demand Forecast Tab — Forward mode">
+    <div class="screenshot-caption">▲ Demand Forecast Tab — Forward mode: Actual demand (blue) · Forecast (orange dashed) · Stockout line (fuchsia dashed) · Meta strip</div>
+  </div>
+
+  <p>Uses statistical machine learning models to <strong>predict this SKU's future weekly sales</strong>. Use the forecast to identify when stock will run out and plan purchase orders before that happens.</p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>The tab has two modes: <b>Forward</b> (predict future sales from today) and <b>Backtest</b> (check how accurate the model was against real past sales).</div>
+  </div>
+
+  <h3 class="sub">Forward Mode — Future Forecast</h3>
+
+  <p>The chart displays four elements. You can drag to pan left/right and scroll to zoom in or out.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Chart Element</th><th>Color</th><th>Description</th></tr>
+    <tr><td class="label">Actual demand</td><td>Blue solid line</td><td>Historical weekly sales data</td></tr>
+    <tr><td class="label">Forecast</td><td>Orange solid line</td><td>Model-predicted future weekly sales</td></tr>
+    <tr><td class="label">P70 interval</td><td>Orange shaded band</td><td>70% probability range — "7 out of 10 times, actual sales will land inside this band." A wider band means higher uncertainty.</td></tr>
+    <tr><td class="label">Stockout line</td><td>Fuchsia (#C026D3) dashed line</td><td>The estimated date when current inventory will be fully consumed at the forecast sales rate. An order must arrive before this date to avoid a stockout. Not shown if stock is sufficient through the forecast period.</td></tr>
+  </table>
+
+  <h3 class="sub">Forward Mode Controls</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Control</th><th>Description</th></tr>
+    <tr><td class="label">Forecast weeks</td><td>How many weeks to forecast (1–52). Default 13 weeks. Exceeding the stored horizon triggers a server re-run (5–30 seconds). Apply with <kbd>Enter</kbd> or clicking outside the input.</td></tr>
+    <tr><td class="label">History</td><td>How much historical data to show in the chart. Select a calendar date or enter a week count. <strong>Reducing history does not delete data — it only changes the initial chart zoom.</strong> Scroll left to view older history.</td></tr>
+    <tr><td class="label">Model</td><td>Forecast model selection. Default <code>Auto</code> picks the best model for this SKU automatically. Changing the model triggers a server re-run (5–30 seconds).</td></tr>
+  </table>
+
+  <h3 class="sub">Forward Mode — Meta Strip</h3>
+  <p><strong>Click any item</strong> to see a detailed explanation popup.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Order Range</td><td>The date range of sales data used to train this forecast model</td></tr>
+    <tr><td class="label">Forecasted Stockout</td><td>Estimated date inventory hits zero. "None" means stock is sufficient through the forecast period.</td></tr>
+    <tr><td class="label">Model</td><td>Model name actually used (Auto resolves to a specific model name)</td></tr>
+    <tr><td class="label">Confidence</td><td>Probability level of the forecast interval (default P70 = 70%)</td></tr>
+    <tr><td class="label">Forecast run</td><td>Date and time this forecast was last computed</td></tr>
+  </table>
+
+  <div class="divider"></div>
+
+  <h3 class="sub">Backtest Mode — Accuracy Validation</h3>
+
+  <div class="screenshot-box">
+    <img src="screenshots/06b-demand-forecast-backtest-en.png" alt="Demand Forecast Tab — Backtest mode">
+    <div class="screenshot-caption">▲ Demand Forecast Tab — Backtest mode: P70 interval · Forecast vs. actual · Accuracy metrics (MAE · WAPE · MASE · P70 Coverage)</div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>What is a backtest?</b> It answers: "If I had used this model 6 months ago, how close would the forecasts have been to real sales?" This tells you whether to trust the model for this SKU.</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">Control</th><th>Description</th></tr>
+    <tr><td class="label">Cutoff</td><td>The forecast start point. Data before this date is used for training; actual sales after it are compared against the forecast. Must be a Monday.</td></tr>
+    <tr><td class="label">Horizon</td><td>How many weeks ahead to forecast from the cutoff (1–52)</td></tr>
+    <tr><td class="label">Train</td><td>Limit training data to the most recent N weeks. 0 uses all available history.</td></tr>
+    <tr><td class="label">History</td><td>How much pre-cutoff data to show in the chart. Zoom only — scroll left to see older data.</td></tr>
+    <tr><td class="label">Model 1</td><td>Primary forecast model</td></tr>
+    <tr><td class="label">Model 2 (Ensemble)</td><td>Optional second model. When selected, the average of both models is plotted as an additional line.</td></tr>
+    <tr><td class="label">Run</td><td>Execute the backtest with the current settings. First run may take 5–30 seconds.</td></tr>
+  </table>
+
+  <h3 class="sub">Backtest Results — Accuracy Metrics</h3>
+  <p><strong>Click any metric</strong> to see a detailed explanation popup.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Metric</th><th>Description</th><th>Benchmark</th></tr>
+    <tr><td class="label">MAE</td><td>Mean Absolute Error — average difference between predicted and actual sales (in units)</td><td>Lower is better</td></tr>
+    <tr><td class="label">WAPE</td><td>Weighted Absolute Percentage Error — error expressed as a percentage of total actual sales</td><td>≤10% excellent · ≤20% acceptable</td></tr>
+    <tr><td class="label">MASE</td><td>Mean Absolute Scaled Error — how much better the model is vs. "just repeat last week's sales." Below 1.0 means the model beats that naive baseline.</td><td>&lt;1.0 = useful model</td></tr>
+    <tr><td class="label">P70 Coverage</td><td>Percentage of actual sales weeks that fell inside the P70 forecast band</td><td>~70% is ideal</td></tr>
+    <tr><td class="label">Model</td><td>Model name used</td><td>—</td></tr>
+    <tr><td class="label">Train / Eval</td><td>Training weeks / evaluation weeks</td><td>—</td></tr>
+    <tr><td class="label">Horizon actual</td><td>Total actual sales during the evaluation period</td><td>—</td></tr>
+    <tr><td class="label">Horizon forecast</td><td>Total forecasted sales during the evaluation period</td><td>—</td></tr>
+    <tr><td class="label">Difference</td><td>Forecast total − Actual total. Positive = over-forecast, negative = under-forecast.</td><td>Closer to 0 is better</td></tr>
+  </table>
+
+  <h3 class="sub">Forecast Model Guide</h3>
+  <p>Use <strong>Auto</strong> unless you have a specific reason to choose otherwise.</p>
+  <div class="card-grid col2">
+    <div class="card"><h4>🤖 Auto (Recommended)</h4><p>Cross-validation automatically picks the most accurate model for this SKU.</p></div>
+    <div class="card"><h4>📊 AutoARIMA</h4><p>Automatically identifies trends and seasonality. Best for products with clear annual seasonal patterns.</p></div>
+    <div class="card"><h4>📈 AutoETS</h4><p>Exponential smoothing — strong at smooth, gradual trends up or down.</p></div>
+    <div class="card"><h4>📉 AutoTheta</h4><p>Good at capturing long-term trends. Suited for steadily growing or declining products.</p></div>
+    <div class="card"><h4>📋 Window Avg</h4><p>Uses the average of the most recent N weeks. Best when sales are flat with no trend.</p></div>
+    <div class="card"><h4>📋 Historic Avg</h4><p>Uses the average of all history. Best when long-run average is stable.</p></div>
+    <div class="card"><h4>🔄 Seasonal Naïve</h4><p>Repeats the same week from last year. Best for products with strong annual seasonality.</p></div>
+    <div class="card"><h4>➡️ Naïve</h4><p>Repeats last week's sales. Used for highly erratic products or as a baseline comparison.</p></div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Forecast server required:</b> The Demand Forecast tab only works when the forecast server (FastAPI) is running. If no chart appears, contact your administrator.</div>
   </div>
 </section>
 
