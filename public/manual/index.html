@@ -292,7 +292,7 @@
   <a class="nav-sub" href="#sp-analysis">판매 분석 탭</a>
   <a class="nav-sub" href="#sp-inventory">재고 및 입고 탭</a>
   <a class="nav-sub" href="#sp-inbound-history">입고 이력 탭</a>
-  <a class="nav-sub" href="#sp-recommend">컨테이너 추천 탭</a>
+  <a class="nav-sub" href="#sp-recommend">발주 추천 탭</a>
   <a class="nav-sub" href="#sp-forecast">수요 예측 탭</a>
   <a class="nav-item" href="#container-planning"><span class="icon">🚢</span> 컨테이너 계획</a>
   <a class="nav-sub" href="#cp-create">컨테이너 등록</a>
@@ -731,8 +731,7 @@
     <tr style="background:#f0f4ff">
       <td><strong>기준 컨테이너</strong><br><span style="font-size:11px;color:#6b7280">섹션 상단</span></td>
       <td>
-        <strong>기준 (현재고)</strong> — 현재 보유 재고 기준 컬럼. 체크 해제 시 기준 열이 숨겨집니다.<br>
-        <strong>출고 기준</strong> — 마지막 출고/선적 컨테이너의 잠금된 이월 재고·재고 유지일·SOD를 보여주는 가상 컬럼(회색 배경). 체크 해제 시 해당 컬럼이 완전히 사라집니다.
+        <strong>기준 (현재고)</strong> — 현재 보유 재고 기준 컬럼. 체크 해제 시 기준 열이 숨겨집니다.
       </td>
     </tr>
     <tr>
@@ -767,7 +766,6 @@
       <ul style="font-size:13px;line-height:1.9">
         <li>Draft 컨테이너를 숨기면 확정된 입고 계획만 집중해서 볼 수 있습니다.</li>
         <li>특정 컨테이너만 숨겨서 해당 컨테이너 제외 시나리오를 빠르게 확인할 수 있습니다.</li>
-        <li>출고 기준을 숨기면 출하 기준 가상 컬럼이 사라져 그리드가 단순해집니다.</li>
         <li>숨긴 컨테이너가 있으면 상단에 <span class="btn-label">모두 표시</span> 버튼이 나타나 한 번에 복원할 수 있습니다.</li>
       </ul>
     </div>
@@ -1072,7 +1070,7 @@
 
   <div class="screenshot-box">
     <img src="screenshots/02-sku-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU 계획 전체 화면</p></div>'" alt="SKU 계획">
-    <div class="screenshot-caption">▲ SKU 계획 — 좌측 SKU 브라우저 + 우측 4개 탭 상세 분석</div>
+    <div class="screenshot-caption">▲ SKU 계획 — 좌측 SKU 브라우저 + 우측 5개 탭 상세 분석</div>
   </div>
 
   <!-- 화면 구성 개요 -->
@@ -1095,7 +1093,7 @@
         <li><strong>판매 분석</strong> 탭: 기간별 판매 추이 차트</li>
         <li><strong>재고 및 입고</strong> 탭: 재고 커버리지·입고 컨테이너 목록</li>
         <li><strong>입고 이력</strong> 탭: 과거 입고 이력 전체 조회 (컨테이너 단위)</li>
-        <li><strong>컨테이너 추천</strong> 탭: 권장 발주 수량 + What-If 시뮬레이션</li>
+        <li><strong>발주 추천</strong> 탭: 권장 발주 수량 + What-If 시뮬레이션</li>
         <li><strong>수요 예측</strong> 탭: 머신러닝 모델 기반 주간 판매 예측 및 재고 소진일 산출</li>
       </ul>
     </div>
@@ -1514,8 +1512,8 @@
   </div>
 
     <div class="screenshot-box">
-    <img src="screenshots/03a-container-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 화면 (SKU 목록)</p></div>'" alt="컨테이너 상세">
-    <div class="screenshot-caption">▲ 컨테이너 계획 — Draft 필터 및 컨테이너 선택 상태</div>
+    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>컨테이너 계획 전체 화면</p></div>'" alt="컨테이너 계획 전체 화면">
+    <div class="screenshot-caption">▲ 컨테이너 계획 전체 화면 — 요약 KPI 바(접힘), 상태·상품 필터 pills, 컨테이너 목록</div>
   </div>
 
 
@@ -1531,7 +1529,43 @@
     <span class="status complete">Complete</span>
   </div>
 
-  <h3 id="cp-create">① 컨테이너 등록하기</h3>
+  <h3 id="cp-overview">① 화면 구성 및 필터</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📊 요약 (Summary) 바</h4>
+      <p>목록 위에 표시되는 접힘/펼침 가능한 KPI 섹션입니다. 헤더에는 <strong>전체 · 진행중 · 완료 컨테이너 수</strong>와 <strong>이번달 · 다음달 입고 예정 수</strong>가 항상 표시됩니다. 펼치면 6개의 KPI 카드(전체 컨테이너, 진행 중, 이번달 입고 예정, 다음달 입고 예정, 입고 수량, 전체 CBM)가 나타납니다.</p>
+    </div>
+    <div class="card">
+      <h4>🔍 필터 바</h4>
+      <p>검색창, 상태 필터 pills, 상품 필터 pills가 위치합니다. 상태는 <strong>다중 선택</strong> 가능하며, 상품은 전체 / FM / CC / SC / SKU없음 중 하나를 선택합니다.</p>
+    </div>
+    <div class="card">
+      <h4>📋 컨테이너 목록</h4>
+      <p>Active(진행 중)와 Completed(완료) 탭으로 구분됩니다. 각 컨테이너를 클릭하면 오른쪽 상세 패널이 열립니다. 하단 체크박스로 여러 컨테이너를 선택해 Excel Export할 수 있습니다.</p>
+    </div>
+    <div class="card">
+      <h4>📅 일정 보기 이동</h4>
+      <p>상단의 <span class="btn-label">컨테이너 일정 →</span> 버튼을 클릭하면 현재 검색어·필터 상태 그대로 컨테이너 일정 페이지로 이동합니다.</p>
+    </div>
+  </div>
+
+  <table class="feat-table" style="margin-bottom:24px">
+    <tr><th style="width:210px">컨트롤</th><th>설명</th></tr>
+    <tr><td class="label">🔍 검색창</td><td>컨테이너 번호, 공장명, SKU 코드로 실시간 필터링합니다.</td></tr>
+    <tr><td class="label">상태 필터 pills<br><small>(다중 선택)</small></td><td>
+      <span class="status draft">Draft</span>&nbsp;
+      <span class="status final">Final</span>&nbsp;
+      <span class="status packing">Shipped</span>&nbsp;
+      <span class="status complete">Complete</span>
+      — 여러 상태를 동시에 켜거나 끌 수 있습니다. 아무것도 선택하지 않으면 모든 상태가 표시됩니다.
+    </td></tr>
+    <tr><td class="label">상품 필터 pills<br><small>(단일 선택)</small></td><td>
+      <strong>전체</strong> · <strong>FM</strong>(Floor Mat) · <strong>CC</strong>(Car Cover) · <strong>SC</strong>(Seat Cover) · <strong>SKU없음</strong> 중 하나를 선택합니다. <em>SKU없음</em> 선택 시 SKU가 아직 배정되지 않은 컨테이너만 표시됩니다.
+    </td></tr>
+    <tr><td class="label">Active / Completed 탭</td><td>진행 중 탭 ↔ 완료 탭 전환. Completed 탭 선택 시 상태 필터가 자동으로 Complete만 활성화됩니다.</td></tr>
+  </table>
+
+  <h3 id="cp-create">② 컨테이너 등록하기</h3>
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
@@ -1557,11 +1591,11 @@
 
   
   <div class="screenshot-box">
-    <img src="screenshots/03-container-planning.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>컨테이너 계획 전체 화면</p></div>'" alt="컨테이너 계획">
-    <div class="screenshot-caption">▲ 컨테이너 등록 – + 컨테이너 추가 클릭 시 나타나는 신규 컨테이너 등록 입력 화면</div>
+    <img src="screenshots/03-container-add.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>➕</div><p>컨테이너 등록 화면</p></div>'" alt="컨테이너 등록">
+    <div class="screenshot-caption">▲ 컨테이너 등록 — + 컨테이너 추가 클릭 시 나타나는 신규 컨테이너 등록 입력 화면</div>
   </div>
 
-  <h3 id="cp-edit">② 컨테이너 수정하기</h3>
+  <h3 id="cp-edit">③ 컨테이너 수정하기</h3>
   <p><span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태의 컨테이너는 기본 정보와 SKU 목록을 자유롭게 수정하거나 삭제할 수 있습니다.</p>
 
   <h3 class="sub">기본 정보 수정</h3>
@@ -1621,7 +1655,7 @@
     <div class="screenshot-caption">▲ Seat Cover · Draft/Final List Sent 상태 컨테이너를 선택하고 연 컨테이너 수정 화면</div>
   </div>
 
-  <h3 id="cp-status">③ 상태별 주의사항</h3>
+  <h3 id="cp-status">④ 상태별 주의사항</h3>
   <table class="feat-table">
     <tr><th style="width:180px">상태</th><th>편집 가능 항목</th><th>Demand Planning 표시 여부</th><th>비고</th></tr>
     <tr>
@@ -1656,7 +1690,7 @@
   </div>
 
   <!-- Complete 상태 상세 설명 -->
-  <h3 id="cp-complete">④ Complete 상태와 Demand Planning 표시 규칙</h3>
+  <h3 id="cp-complete">⑤ Complete 상태와 Demand Planning 표시 규칙</h3>
 
   <div class="callout warn" style="margin-bottom:16px">
     <span class="callout-icon">⚠️</span>
@@ -1735,7 +1769,7 @@
   </div>
 
   <!-- Excel Export 상세 설명 -->
-  <h3 id="cp-export">⑤ 엑셀(Excel) Export</h3>
+  <h3 id="cp-export">⑥ 엑셀(Excel) Export</h3>
   <p>Container Planning에는 두 가지 Export 기능이 있습니다. 목적에 따라 구분해서 사용합니다.</p>
 
   <div class="card-grid col2" style="margin:20px 0">
@@ -1864,26 +1898,26 @@
 
   <div class="screenshot-box">
     <img src="screenshots/03c-container-timeline.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Container Timeline 전체 화면</p></div>'" alt="Container Timeline 메인 화면">
-    <div class="screenshot-caption">▲ Container Timeline – ETA 기준 Gantt 뷰. 상태 필터 · 기간 필터 · 검색으로 표시 범위를 제어합니다.</div>
+    <div class="screenshot-caption">▲ Container Timeline – ETA 기준 Gantt 뷰. 상태·상품 필터 · 기간 버튼 · 검색으로 표시 범위를 제어하며, 월별 헤더에 해당 월의 컨테이너 수가 표시됩니다.</div>
   </div>
 
   <h3 id="ct-overview">① 화면 구성</h3>
   <div class="card-grid col2">
     <div class="card">
       <h4>🔍 필터 바</h4>
-      <p>화면 상단에 검색창, 상태 필터 pills, 기간 선택 버튼이 위치합니다. 조건을 변경하면 Gantt 표가 즉시 업데이트됩니다.</p>
+      <p>화면 상단에 검색창, 상태 필터 pills(다중 선택), 상품 필터 pills, 기간 선택 버튼이 위치합니다. 조건을 변경하면 Gantt 표가 즉시 업데이트됩니다.</p>
     </div>
     <div class="card">
       <h4>📊 Gantt 표</h4>
-      <p>좌측에 컨테이너 정보, 우측에 X축(날짜) 기준 입고 일정 바가 표시됩니다. 상태별로 색상이 구분됩니다.</p>
+      <p>월별로 그룹화되어 표시됩니다. 월 헤더 옆에 <strong>(N)</strong> 형식으로 해당 월의 컨테이너 수가 표시됩니다. 각 행은 컨테이너 하나를 나타내며 상태별로 색상이 구분됩니다.</p>
     </div>
     <div class="card">
       <h4>📋 상세 드로어</h4>
       <p>Gantt 바 또는 행을 클릭하면 우측에 상세 패널이 슬라이드로 열립니다. SKU 목록, CBM 적재율, 메타 정보를 확인할 수 있습니다.</p>
     </div>
     <div class="card">
-      <h4>🚢 컨테이너 계획 연결</h4>
-      <p>상세 드로어 상단의 링크를 클릭하면 컨테이너 계획 페이지의 해당 컨테이너로 바로 이동합니다.</p>
+      <h4>📋 목록 보기 이동</h4>
+      <p>상단의 <span class="btn-label">← 목록</span> 버튼을 클릭하면 현재 검색어·필터 상태 그대로 컨테이너 계획(목록) 페이지로 이동합니다.</p>
     </div>
   </div>
 
@@ -1891,12 +1925,15 @@
   <table class="feat-table">
     <tr><th style="width:180px">컨트롤</th><th>설명</th></tr>
     <tr><td class="label">🔍 검색창</td><td>컨테이너 번호, 공장명, 출발지·목적지 창고로 실시간 필터링합니다.</td></tr>
-    <tr><td class="label">상태 필터 pills</td><td>
+    <tr><td class="label">상태 필터 pills<br><small>(다중 선택)</small></td><td>
       <span class="status draft">Draft</span>&nbsp;
       <span class="status final">Final</span>&nbsp;
       <span class="status packing">Shipped</span>&nbsp;
       <span class="status complete">Complete</span>
-      각 상태를 개별로 켜고 끌 수 있습니다. 최소 1개는 항상 활성 상태여야 합니다.
+      각 상태를 개별로 켜고 끌 수 있습니다. 여러 상태를 동시에 활성화할 수 있으며, 아무것도 선택하지 않으면 모든 상태가 표시됩니다.
+    </td></tr>
+    <tr><td class="label">상품 필터 pills<br><small>(단일 선택)</small></td><td>
+      <strong>전체</strong> · <strong>FM</strong>(Floor Mat) · <strong>CC</strong>(Car Cover) · <strong>SC</strong>(Seat Cover) · <strong>SKU없음</strong> 중 하나를 선택합니다. 컨테이너 계획 페이지에서 선택한 상품 필터가 그대로 유지됩니다.
     </td></tr>
     <tr><td class="label">기간 버튼 (3M / 6M / 전체)</td><td>
       <strong>3M</strong> – 오늘부터 3개월 이내 ETA 컨테이너만 표시하고, X축도 3개월로 고정합니다. (기본값)<br>
@@ -1907,11 +1944,11 @@
 
   <div class="callout tip">
     <span class="callout-icon">💡</span>
-    <div><b>Draft 상태를 숨기고 싶다면?</b> 상단 필터 pills에서 <span class="status draft">Draft</span>를 클릭해 비활성화하면 Draft 컨테이너가 Gantt에서 사라집니다. 같은 방식으로 Complete도 숨길 수 있습니다.</div>
+    <div><b>특정 상태만 보고 싶다면?</b> 상단 상태 필터 pills에서 원하는 상태만 켜고 나머지를 끄면 됩니다. 예를 들어 <span class="status packing">Shipped</span>만 활성화하면 선적 완료된 컨테이너만 표시됩니다. 컨테이너 계획 페이지에서 선택한 필터 상태는 일정 페이지로 이동해도 그대로 유지됩니다.</div>
   </div>
 
   <h3 id="ct-gantt">③ Gantt 바 읽기</h3>
-  <p>Gantt 표는 상태별로 그룹화되어 표시됩니다. 각 행은 컨테이너 하나를 나타냅니다.</p>
+  <p>Gantt 표는 월별로 그룹화되어 표시됩니다. 월 헤더 오른쪽에 <strong>(N)</strong> 형식으로 해당 월의 컨테이너 수가 표시됩니다. 각 행은 컨테이너 하나를 나타냅니다.</p>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr><td class="label">바(Bar) 색상</td><td>
@@ -2123,7 +2160,7 @@
   <a class="nav-sub" href="#en-sp-analysis">Sales Analysis</a>
   <a class="nav-sub" href="#en-sp-inventory">Inventory &amp; Inbound</a>
   <a class="nav-sub" href="#en-sp-inbound-history">Inbound History</a>
-  <a class="nav-sub" href="#en-sp-recommend">Container Recommendation</a>
+  <a class="nav-sub" href="#en-sp-recommend">Order Recommendation</a>
   <a class="nav-sub" href="#en-sp-forecast">Demand Forecast</a>
   <a class="nav-item" href="#en-container-planning"><span class="icon">🚢</span> Container Planning</a>
   <a class="nav-sub" href="#en-cp-create">Create Container</a>
@@ -2587,8 +2624,7 @@
     <tr style="background:#f0f4ff">
       <td><strong>Base Containers</strong><br><span style="font-size:11px;color:#6b7280">Top of section</span></td>
       <td>
-        <strong>Base (on-hand)</strong> — The on-hand inventory baseline column. Uncheck to hide the Base column.<br>
-        <strong>Shipped Base</strong> — A virtual column (amber background) showing the locked-in carryover · Inv.Life · SOD from the last Shipped container. Uncheck to remove it entirely.
+        <strong>Base (on-hand)</strong> — The on-hand inventory baseline column. Uncheck to hide the Base column.
       </td>
     </tr>
     <tr>
@@ -2770,7 +2806,7 @@
   </div>
   <div class="screenshot-box">
     <img src="screenshots/02-sku-planning-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>SKU Planning Main Screen</p></div>'" alt="SKU Planning">
-    <div class="screenshot-caption">▲ SKU Planning – Left SKU Browser + Right 4-Tab Detail Panel</div>
+    <div class="screenshot-caption">▲ SKU Planning – Left SKU Browser + Right 5-Tab Detail Panel</div>
   </div>
 
   <h3>Screen Layout</h3>
@@ -2792,7 +2828,7 @@
         <li><strong>Sales Analysis</strong> tab: sales trends by period</li>
         <li><strong>Inventory &amp; Inbound</strong> tab: stock coverage and inbound containers</li>
         <li><strong>Inbound History</strong> tab: full historical inbound records by container</li>
-        <li><strong>Container Recommendation</strong> tab: recommended qty + What-If simulation</li>
+        <li><strong>Order Recommendation</strong> tab: recommended qty + What-If simulation</li>
         <li><strong>Demand Forecast</strong> tab: ML-based weekly sales forecast and stockout date projection</li>
       </ul>
     </div>
@@ -3114,8 +3150,8 @@
   </div>
 
     <div class="screenshot-box">
-    <img src="screenshots/03a-container-detail-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Container Detail Screen</p></div>'" alt="Container Detail">
-    <div class="screenshot-caption">▲ Container Planning — Active containers and the selected container's SKU details</div>
+    <img src="screenshots/03-container-planning-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning Overview</p></div>'" alt="Container Planning Overview">
+    <div class="screenshot-caption">▲ Container Planning overview — Summary KPI bar (collapsed), status &amp; product filter pills, container list</div>
   </div>
 
 
@@ -3131,7 +3167,43 @@
     <span class="status complete">Complete</span>
   </div>
 
-  <h3 id="en-cp-create">① Creating a Container</h3>
+  <h3 id="en-cp-overview">① Screen Layout &amp; Filters</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📊 Summary Bar</h4>
+      <p>A collapsible KPI section above the container list. The header always shows <strong>total · active · completed container counts</strong> and <strong>this month's · next month's inbound count</strong>. Expand it to reveal 6 KPI cards: Total Containers, Active Containers, Arriving This Month, Arriving Next Month, Inbound Units, and Total CBM.</p>
+    </div>
+    <div class="card">
+      <h4>🔍 Filter Bar</h4>
+      <p>Search box, status filter pills, and product filter pills. Status supports <strong>multi-select</strong> (multiple statuses active at once). Product is single-select: All / FM / CC / SC / No SKU.</p>
+    </div>
+    <div class="card">
+      <h4>📋 Container List</h4>
+      <p>Split into Active and Completed tabs. Click any container to open the detail panel on the right. Use the bottom checkboxes to select multiple containers for Excel Export.</p>
+    </div>
+    <div class="card">
+      <h4>📅 Timeline View</h4>
+      <p>Click the <span class="btn-label">Container Timeline →</span> button at the top to navigate to the Timeline page — your current search query and filters are preserved.</p>
+    </div>
+  </div>
+
+  <table class="feat-table" style="margin-bottom:24px">
+    <tr><th style="width:210px">Control</th><th>Description</th></tr>
+    <tr><td class="label">🔍 Search</td><td>Real-time filtering by container number, factory name, or SKU code.</td></tr>
+    <tr><td class="label">Status filter pills<br><small>(multi-select)</small></td><td>
+      <span class="status draft">Draft</span>&nbsp;
+      <span class="status final">Final</span>&nbsp;
+      <span class="status packing">Shipped</span>&nbsp;
+      <span class="status complete">Complete</span>
+      — Toggle each pill on or off individually. Multiple statuses can be active at once. Selecting none shows all statuses.
+    </td></tr>
+    <tr><td class="label">Product filter pills<br><small>(single-select)</small></td><td>
+      <strong>All</strong> · <strong>FM</strong> (Floor Mat) · <strong>CC</strong> (Car Cover) · <strong>SC</strong> (Seat Cover) · <strong>No SKU</strong>. Selecting <em>No SKU</em> shows only containers that have no SKUs assigned yet.
+    </td></tr>
+    <tr><td class="label">Active / Completed tabs</td><td>Switch between in-progress containers (Draft · Final · Shipped) and completed containers. Selecting the Completed tab automatically activates only the Complete status filter.</td></tr>
+  </table>
+
+  <h3 id="en-cp-create">② Creating a Container</h3>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div><h4>Click + Add Container</h4><p>Click the <span class="btn-label">+ Add Container</span> button in the top-right of the screen.</p></div></div>
     <div class="step"><div class="step-num">2</div><div><h4>Enter Basic Information</h4><p>Enter the <strong>container number</strong> (e.g., 182-CA-SEAT), <strong>ETA</strong>, <strong>destination warehouse</strong>, and <strong>CBM capacity</strong> (default 80).</p></div></div>
@@ -3141,11 +3213,11 @@
   </div>
   
   <div class="screenshot-box">
-    <img src="screenshots/03-container-planning-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🚢</div><p>Container Planning</p></div>'" alt="New Container Registration">
-    <div class="screenshot-caption">▲ Container Registration – New Container Registration form (click + Add Container)</div>
+    <img src="screenshots/03-container-add-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>➕</div><p>Add Container Form</p></div>'" alt="Add Container Form">
+    <div class="screenshot-caption">▲ Add Container — New container registration form opened by clicking + Add Container</div>
   </div>
 
-  <h3 id="en-cp-edit">② Editing a Container</h3>
+  <h3 id="en-cp-edit">③ Editing a Container</h3>
   <p><span class="status draft">Draft</span> and <span class="status final">Final List Sent</span> containers can be freely edited or deleted — including basic details and the SKU list.</p>
 
   <h3 class="sub">Editing Basic Information</h3>
@@ -3205,7 +3277,7 @@
     <div class="screenshot-caption">▲ Container Edit opened after selecting a Draft/Final List Sent Seat Cover container from the left list</div>
   </div>
 
-  <h3 id="en-cp-status">③ Status Details</h3>
+  <h3 id="en-cp-status">④ Status Details</h3>
   <table class="feat-table">
     <tr><th style="width:200px">Status</th><th>Editable Fields</th><th>Shown in Demand Planning</th><th>Notes</th></tr>
     <tr>
@@ -3239,7 +3311,7 @@
     <div><b>Deleting a Container:</b> Containers can be deleted while they are in <span class="status draft">Draft</span> or <span class="status final">Final List Sent</span> status. Deleting an entire container requires <strong>Planner or Admin</strong> role. The delete option is available at the bottom of the container detail panel. Deleted containers and their SKU quantities cannot be recovered.</div>
   </div>
 
-  <h3 id="en-cp-complete">④ Complete Status and Demand Planning Display Rules</h3>
+  <h3 id="en-cp-complete">⑤ Complete Status and Demand Planning Display Rules</h3>
   <div class="callout warn" style="margin-bottom:16px">
     <span class="callout-icon">⚠️</span>
     <div>
@@ -3301,7 +3373,7 @@
     <div><b>CBM Overload Warning:</b> Current CBM usage is shown at the top. Do not exceed 80 CBM.</div>
   </div>
 
-  <h3 id="en-cp-export">⑤ Excel Export</h3>
+  <h3 id="en-cp-export">⑥ Excel Export</h3>
   <p>Container Planning has two Export functions. Use each based on your purpose.</p>
   <div class="card-grid col2" style="margin:20px 0">
     <div class="card" style="border-left:4px solid #1a5cdb">
@@ -3399,26 +3471,26 @@
 
   <div class="screenshot-box">
     <img src="screenshots/03c-container-timeline-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Container Timeline Screen</p></div>'" alt="Container Timeline Main Screen">
-    <div class="screenshot-caption">▲ Container Timeline – ETA-based Gantt view. Use status filters, period buttons, and search to control what is displayed.</div>
+    <div class="screenshot-caption">▲ Container Timeline – ETA-based Gantt view. Status &amp; product filters, period buttons, and search control what is displayed. Each month header shows the container count for that month.</div>
   </div>
 
   <h3 id="en-ct-overview">① Screen Layout</h3>
   <div class="card-grid col2">
     <div class="card">
       <h4>🔍 Filter Bar</h4>
-      <p>Search box, status filter pills, and period buttons sit at the top of the screen. Change any setting and the Gantt table updates immediately.</p>
+      <p>Search box, status filter pills (multi-select), product filter pills, and period buttons sit at the top of the screen. Change any setting and the Gantt table updates immediately.</p>
     </div>
     <div class="card">
       <h4>📊 Gantt Table</h4>
-      <p>Container info on the left; timeline bars aligned to the date X-axis on the right. Bars are color-coded by status.</p>
+      <p>Grouped by month. Each month header displays the container count for that month as <strong>(N)</strong>. Rows are color-coded by status.</p>
     </div>
     <div class="card">
       <h4>📋 Detail Drawer</h4>
       <p>Click any Gantt bar or row to slide open a detail panel on the right. Shows the SKU list, CBM fill rate, and container metadata.</p>
     </div>
     <div class="card">
-      <h4>🚢 Container Planning Link</h4>
-      <p>A link at the top of the detail drawer jumps directly to that container in Container Planning for editing.</p>
+      <h4>📋 Back to List</h4>
+      <p>Click the <span class="btn-label">← List</span> button at the top to return to Container Planning — your current search query and filters are preserved.</p>
     </div>
   </div>
 
@@ -3426,12 +3498,15 @@
   <table class="feat-table">
     <tr><th style="width:200px">Control</th><th>Description</th></tr>
     <tr><td class="label">🔍 Search</td><td>Real-time filtering by container number, factory name, or origin/destination warehouse.</td></tr>
-    <tr><td class="label">Status filter pills</td><td>
+    <tr><td class="label">Status filter pills<br><small>(multi-select)</small></td><td>
       <span class="status draft">Draft</span>&nbsp;
       <span class="status final">Final</span>&nbsp;
       <span class="status packing">Shipped</span>&nbsp;
       <span class="status complete">Complete</span>
-      Toggle each status on or off individually. At least one must always remain active.
+      Toggle each status on or off individually. Multiple statuses can be active simultaneously. Selecting none shows all statuses.
+    </td></tr>
+    <tr><td class="label">Product filter pills<br><small>(single-select)</small></td><td>
+      <strong>All</strong> · <strong>FM</strong> (Floor Mat) · <strong>CC</strong> (Car Cover) · <strong>SC</strong> (Seat Cover) · <strong>No SKU</strong>. Filter is preserved when navigating from Container Planning. Selecting <em>No SKU</em> shows only containers with no SKUs assigned.
     </td></tr>
     <tr><td class="label">Period buttons (3M / 6M / All)</td><td>
       <strong>3M</strong> – Show only containers with ETA within the next 3 months; fixes the X-axis to 3 months. (Default)<br>
@@ -3442,11 +3517,11 @@
 
   <div class="callout tip">
     <span class="callout-icon">💡</span>
-    <div><b>Want to hide Draft containers?</b> Click the <span class="status draft">Draft</span> pill in the filter bar to deactivate it — Draft containers disappear from the Gantt. You can hide Complete the same way.</div>
+    <div><b>Want to focus on a specific status?</b> Toggle the status pills to show only what you need — e.g., activate only <span class="status packing">Shipped</span> to see containers in transit. Filter state is preserved when you navigate between Container Planning and Container Timeline.</div>
   </div>
 
   <h3 id="en-ct-gantt">③ Reading Gantt Bars</h3>
-  <p>The Gantt table groups containers by status. Each row represents one container.</p>
+  <p>The Gantt table groups containers by month. Each month header shows the container count as <strong>(N)</strong> next to the month label. Each row represents one container.</p>
   <table class="feat-table">
     <tr><th style="width:220px">Item</th><th>Description</th></tr>
     <tr><td class="label">Bar color</td><td>
