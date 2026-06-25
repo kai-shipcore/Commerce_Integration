@@ -35,6 +35,24 @@ const TOP_NAV_COLLAPSED_PREF_KEY = "layout.topNavCollapsed";
 const TOP_NAV_COLLAPSED_STORAGE_KEY = "demandpilot-top-nav-collapsed";
 const TOP_NAV_LAUNCHER_STORAGE_KEY = "demandpilot-top-nav-launcher-position";
 const TOP_NAV_LAUNCHER_EDGE_GAP = 4;
+const DEFAULT_MANUAL_SECTION = "overview";
+
+const manualSectionByNavigationId: Record<string, string> = {
+  dashboard: "command-center",
+  inventory: "inventory",
+  orders: "orders",
+  velocity: "velocity",
+  "demand-planning": "demand-planning",
+  "sku-forecasts": "sku-planning",
+  "container-planning": "container-planning",
+  "container-timeline": "container-timeline",
+  "available-stock": "available-stock",
+  "sku-master": "sku-master",
+  "seat-cover-parts": "parts",
+  factories: "factories",
+  "warehouse-admin": "warehouse",
+  integrations: "integrations",
+};
 
 interface LauncherPosition {
   x: number;
@@ -125,6 +143,13 @@ export function AppLayout({ children }: AppLayoutProps) {
       .filter((item) => isItemMatch(pathname, item.href))
       .sort((left, right) => right.href.length - left.href.length)[0] ?? null;
   }, [pathname]);
+  const manualHref = useMemo(() => {
+    const section = matchedItem
+      ? manualSectionByNavigationId[matchedItem.id] ?? DEFAULT_MANUAL_SECTION
+      : DEFAULT_MANUAL_SECTION;
+
+    return withBasePath(`/manual/index.html?lang=${locale}&section=${section}`);
+  }, [locale, matchedItem]);
 
   useEffect(() => {
     let cancelled = false;
@@ -394,7 +419,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <ChevronsUp className="h-4 w-4" />
           </Button>
           <a
-            href={withBasePath(`/manual/index.html?lang=${locale}`)}
+            href={manualHref}
             target="_blank"
             rel="noopener noreferrer"
             title={t("common.help")}
@@ -409,7 +434,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       ) : (
         <div className="ml-auto flex items-center gap-1 pl-4">
           <a
-            href={withBasePath(`/manual/index.html?lang=${locale}`)}
+            href={manualHref}
             target="_blank"
             rel="noopener noreferrer"
             title={t("common.help")}

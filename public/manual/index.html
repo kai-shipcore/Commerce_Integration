@@ -277,6 +277,11 @@
   <a class="nav-sub" href="#cc-kpi">KPI 카드</a>
   <a class="nav-sub" href="#cc-panels">3패널 현황</a>
   <a class="nav-sub" href="#cc-sales">판매 추세</a>
+  <div class="nav-section" style="margin-top:12px">커머스</div>
+  <a class="nav-item" href="#inventory"><span class="icon">📦</span> 재고</a>
+  <a class="nav-item" href="#orders"><span class="icon">📋</span> 주문</a>
+  <a class="nav-item" href="#velocity"><span class="icon">⚡</span> 판매 속도</a>
+  <div class="nav-section" style="margin-top:12px">계획</div>
   <a class="nav-item" href="#demand-planning"><span class="icon">📊</span> 수요 계획</a>
   <a class="nav-sub" href="#dp-filters">필터 & 검색</a>
   <a class="nav-sub" href="#dp-columns">컬럼 설정</a>
@@ -306,6 +311,11 @@
   <a class="nav-sub" href="#ct-detail">상세 드로어</a>
   <a class="nav-item" href="#available-stock"><span class="icon">📦</span> 가용 재고</a>
   <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU 마스터</a>
+  <div class="nav-section" style="margin-top:12px">기준 · 운영</div>
+  <a class="nav-item" href="#parts"><span class="icon">🔩</span> 부품</a>
+  <a class="nav-item" href="#factories"><span class="icon">🏭</span> 공장</a>
+  <a class="nav-item" href="#warehouse"><span class="icon">🏢</span> 창고</a>
+  <a class="nav-item" href="#integrations"><span class="icon">🔌</span> 마켓플레이스 API</a>
   <div class="nav-section" style="margin-top:20px">부록</div>
   <a class="nav-item" href="#glossary"><span class="icon">📖</span> 용어 설명</a>
 </nav>
@@ -553,6 +563,141 @@
   <!-- 새로고침 -->
   <h3>④ 새로고침</h3>
   <p>우측 상단의 <span class="btn-label">↺ 새로고침</span> 버튼을 클릭하면 KPI 카드, 위험 SKU, 컨테이너 목록을 서버에서 최신 데이터로 다시 불러옵니다. 마지막 동기화 시각은 페이지 제목 아래에 표시됩니다.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════
+     커머스: 재고 / 주문 / 판매 속도
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="inventory">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4;font-size:28px">📦</div>
+    <div>
+      <div class="menu-path">메뉴 › 재고</div>
+      <h2>재고 현황</h2>
+      <p class="subtitle">외부 재고 DB(coverland_inventory)에서 실시간으로 가져온 창고별 재고 스냅샷을 확인합니다.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🔍 필터 & 보기 옵션</h4>
+      <ul>
+        <li>Master SKU 텍스트 검색</li>
+        <li>창고 필터 드롭다운</li>
+        <li>그룹 기준 전환: <span class="btn-label">제품별</span> / <span class="btn-label">창고별</span></li>
+        <li><span class="btn-label">CSV 내보내기</span> — 현재 필터 결과 다운로드</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📊 요약 바</h4>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse;margin-top:4px">
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Products</td><td style="color:#6b7280;padding:4px 0">검색 조건에 맞는 SKU 수</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">On Hand</td><td style="color:#6b7280;padding:4px 0">창고 전체 보유 재고 합계</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Available</td><td style="color:#6b7280;padding:4px 0">할당 후 실제 사용 가능 수량</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Warehouses</td><td style="color:#6b7280;padding:4px 0">조회 창고 수</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h3>주요 컬럼</h3>
+  <table class="feat-table">
+    <tr><th style="width:150px">컬럼</th><th>설명</th></tr>
+    <tr><td class="label">Master SKU</td><td>SKU 식별자</td></tr>
+    <tr><td class="label">Warehouse</td><td>창고 코드</td></tr>
+    <tr><td class="label">On Hand</td><td>창고 보유 재고 수량</td></tr>
+    <tr><td class="label">Allocated</td><td>이미 할당된 수량 (주황색 표시)</td></tr>
+    <tr><td class="label">Available</td><td>실제 사용 가능 수량 (On Hand − Allocated)</td></tr>
+    <tr><td class="label">Backorder</td><td>재고 부족으로 발생한 미처리 수요</td></tr>
+    <tr><td class="label">Snapshot Time</td><td>재고 데이터 마지막 업데이트 시각</td></tr>
+  </table>
+</section>
+
+<section class="page-section" id="orders">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff;font-size:28px">📋</div>
+    <div>
+      <div class="menu-path">메뉴 › 주문</div>
+      <h2>주문 현황</h2>
+      <p class="subtitle">연결된 판매 채널의 주문 피드를 조회합니다. 행 클릭 시 주문 상세 정보를 확인할 수 있습니다.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🗓 기간 & 필터</h4>
+      <ul>
+        <li>기간 프리셋: 오늘 / 어제 / 최근 7·30·90일 / 최근 6개월 / 연간 / 직접 설정</li>
+        <li>플랫폼 필터 (Shopify · Amazon · eBay · Walmart 등)</li>
+        <li>주문 상태 필터</li>
+        <li>주문 ID · 주문번호 · SKU 텍스트 검색</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🛠 액션</h4>
+      <ul>
+        <li><span class="btn-label">CSV 내보내기</span> — 현재 조건 전체 다운로드</li>
+        <li><span class="btn-label">↺ 새로고침</span> — 주문 데이터 수동 재동기화</li>
+        <li>행 클릭 → 주문 상세 드로어 (라인 아이템, SKU별 수량 등)</li>
+        <li>행 마우스오버 → 주문 상세 미리 로드</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>주요 컬럼</h3>
+  <table class="feat-table">
+    <tr><th style="width:150px">컬럼</th><th>설명</th></tr>
+    <tr><td class="label">Order ID</td><td>시스템 내부 주문 ID</td></tr>
+    <tr><td class="label">Platform</td><td>판매 채널 (Shopify / Amazon / eBay / Walmart)</td></tr>
+    <tr><td class="label">Order Number</td><td>채널 주문 번호</td></tr>
+    <tr><td class="label">Order Date</td><td>주문 접수일</td></tr>
+    <tr><td class="label">Status</td><td>주문 처리 상태</td></tr>
+    <tr><td class="label">Line Count</td><td>주문 라인(상품 종류) 수</td></tr>
+    <tr><td class="label">Unit Count</td><td>총 주문 수량</td></tr>
+    <tr><td class="label">Total Price</td><td>주문 금액 합계</td></tr>
+  </table>
+</section>
+
+<section class="page-section" id="velocity">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8;font-size:28px">⚡</div>
+    <div>
+      <div class="menu-path">메뉴 › 판매 속도</div>
+      <h2>판매 속도 (Velocity)</h2>
+      <p class="subtitle">상품·채널·기간별 판매 속도를 비교하여 수요 추이를 빠르게 파악합니다.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col3">
+    <div class="card">
+      <h4>🏷 분석 설정</h4>
+      <ul>
+        <li><b>상품:</b> Car Cover / Seat Cover / Floor Mat</li>
+        <li><b>채널:</b> Shopify B2B·B2C / Icarcover / Amazon FBA·FBM / eBay / Walmart (다중 선택)</li>
+        <li><b>모드:</b> Sales · TTM · Pre-Order</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📅 기간 설정</h4>
+      <ul>
+        <li><b>기간 칩 모드:</b> 90D · 60D · 30D · 15D · 7D 등 원하는 구간을 직접 추가</li>
+        <li><b>직접 설정 모드:</b> 시작~종료일 수동 입력, 일수 자동 계산</li>
+        <li>설정은 로컬 스토리지에 자동 저장</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🛠 내보내기</h4>
+      <ul>
+        <li><span class="btn-label">현재 보기 내보내기</span> — 현재 모드 데이터</li>
+        <li><span class="btn-label">전체 내보내기</span> — Sales + TTM + Pre-Order 3가지 모드 통합</li>
+        <li>시간대 전환: UTC / LA Time</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Total 행:</b> 항상 목록 상단에 고정되어 모드·기간별 합계를 표시합니다.</div>
+  </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════
@@ -2143,6 +2288,158 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════
+     기준 정보 · 운영: 부품 / 공장 / 창고 / 마켓플레이스 API
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="parts">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4;font-size:28px">🔩</div>
+    <div>
+      <div class="menu-path">메뉴 › 부품</div>
+      <h2>부품 주문 관리</h2>
+      <p class="subtitle">시트 커버 부품 주문 현황을 출하 상태별 탭으로 관리합니다.</p>
+    </div>
+  </div>
+
+  <h3>탭 구성</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">탭</th><th>표시 내용</th></tr>
+    <tr><td class="label">Ready / Not Ready</td><td>출하 전 처리 중인 부품 주문. 90일 이상 된 항목은 주황색으로 강조 표시.</td></tr>
+    <tr><td class="label">Shipped</td><td>출하 완료된 부품 주문 목록</td></tr>
+    <tr><td class="label">Canceled</td><td>취소된 주문 목록</td></tr>
+    <tr><td class="label">Deleted</td><td>삭제된 항목 기록 (복구 가능)</td></tr>
+  </table>
+
+  <h3>주요 컬럼</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">컬럼</th><th>설명</th></tr>
+    <tr><td class="label">Request Received Date</td><td>부품 요청 접수일</td></tr>
+    <tr><td class="label">Order Number</td><td>주문 번호</td></tr>
+    <tr><td class="label">Part Number</td><td>부품 번호</td></tr>
+    <tr><td class="label">Related SKU</td><td>관련 Master SKU</td></tr>
+    <tr><td class="label">QTY / Order Request</td><td>요청 수량 / 발주 수량</td></tr>
+    <tr><td class="label">Shipping Status</td><td><span class="status complete">Ready</span> / <span class="status draft">Not Ready</span> / <span class="status packing">Shipped</span> / <span class="status critical">Canceled</span></td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>행을 선택해야 <span class="btn-label">편집</span>·<span class="btn-label">삭제</span> 버튼이 활성화됩니다. 새 행 추가와 가져오기는 <b>Ready / Not Ready</b> 탭에서만 사용할 수 있습니다.</div>
+  </div>
+</section>
+
+<section class="page-section" id="factories">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef9c3;font-size:28px">🏭</div>
+    <div>
+      <div class="menu-path">메뉴 › 공장</div>
+      <h2>공장 관리</h2>
+      <p class="subtitle">발주 워크플로우에 사용되는 공장 마스터 데이터를 등록·관리합니다.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📋 목록 패널 (좌)</h4>
+      <ul>
+        <li>공장 이름·코드·원산지로 검색</li>
+        <li>비활성 공장 표시/숨김 토글</li>
+        <li>항목 클릭 → 우측 상세 패널로 이동</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📝 상세 패널 (우)</h4>
+      <ul>
+        <li>기본 정보: 공장명, 원산지</li>
+        <li>연락처: 담당자명, 전화번호, 이메일</li>
+        <li>운영 설정: 활성 / 비활성 토글</li>
+        <li><span class="btn-label">편집</span> → <span class="btn-label">저장</span> 클릭으로 즉시 반영</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="page-section" id="warehouse">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff;font-size:28px">🏢</div>
+    <div>
+      <div class="menu-path">메뉴 › 창고</div>
+      <h2>창고 관리</h2>
+      <p class="subtitle">창고 마스터 데이터와 입고 예정 컨테이너를 관리합니다. 관리자(Admin) 전용 메뉴입니다.</p>
+    </div>
+  </div>
+
+  <h3>창고 타입</h3>
+  <table class="feat-table">
+    <tr><th style="width:120px">타입</th><th>설명</th></tr>
+    <tr><td class="label">Own</td><td>자사 직영 창고</td></tr>
+    <tr><td class="label">FBA</td><td>Amazon Fulfilled by Amazon 창고</td></tr>
+    <tr><td class="label">3PL</td><td>제3자 물류 창고</td></tr>
+    <tr><td class="label">In Transit</td><td>운송 중 가상 창고 (재고 추적용)</td></tr>
+  </table>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📋 목록 패널 (좌)</h4>
+      <ul>
+        <li>창고 코드·이름으로 검색</li>
+        <li>타입 필터 드롭다운</li>
+        <li>비활성 창고 표시 토글</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📝 상세 패널 (우)</h4>
+      <ul>
+        <li>기본 정보: 창고 코드, 이름, 타입, 시간대</li>
+        <li>위치: 국가, 주/지역, 도시</li>
+        <li>입고 예정 컨테이너 목록 (ETA, SKU 수, 수량, CBM)</li>
+        <li>컨테이너 클릭 → 컨테이너 계획 페이지로 이동</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="page-section" id="integrations">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f3e8ff;font-size:28px">🔌</div>
+    <div>
+      <div class="menu-path">메뉴 › 마켓플레이스 API</div>
+      <h2>마켓플레이스 API</h2>
+      <p class="subtitle">Shopify · Amazon · eBay · Walmart 연동을 관리하고 판매 데이터 동기화 상태를 모니터링합니다.</p>
+    </div>
+  </div>
+
+  <h3>지원 플랫폼</h3>
+  <table class="feat-table">
+    <tr><th style="width:130px">플랫폼</th><th>필요 정보</th><th>동기화</th></tr>
+    <tr><td class="label">Shopify</td><td>Shop 도메인, Access Token</td><td>주문 → SalesRecord 자동 동기화</td></tr>
+    <tr><td class="label">Amazon</td><td>Seller ID, Marketplace ID, LWA 자격증명</td><td>자격증명 저장 (동기화 별도 설정)</td></tr>
+    <tr><td class="label">eBay</td><td>Client ID, Secret, RuName (OAuth)</td><td>자격증명 저장 + 재인증 버튼 제공</td></tr>
+    <tr><td class="label">Walmart</td><td>Client ID, Secret</td><td>자격증명 저장</td></tr>
+  </table>
+
+  <h3>연동 카드 정보</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📊 표시 지표</h4>
+      <ul>
+        <li>연동 상태 배지: 비활성 / 동기화 안 됨 / 동기화 완료 / 실패</li>
+        <li>총 동기화 주문 수 · 판매 레코드 수</li>
+        <li>마지막 동기화 시각</li>
+        <li>토큰 만료 상태 (유효 / 곧 만료 / 만료됨)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🛠 관리 작업 (관리자 전용)</h4>
+      <ul>
+        <li><span class="btn-label">연결 확인</span> — 현재 자격증명 유효성 검증</li>
+        <li><span class="btn-label">신규 동기화</span> — 마지막 이후 신규 주문만 동기화</li>
+        <li><span class="btn-label">전체 동기화</span> — 전체 이력 재동기화</li>
+        <li><span class="btn-label">편집 / 삭제</span> — 자격증명 수정·연동 제거</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
      부록: 용어 설명
 ═══════════════════════════════════════════════ -->
 <section class="page-section" id="glossary">
@@ -2186,6 +2483,11 @@
   <a class="nav-sub" href="#en-cc-kpi">KPI Cards</a>
   <a class="nav-sub" href="#en-cc-panels">3-Panel View</a>
   <a class="nav-sub" href="#en-cc-sales">Sales Trend</a>
+  <div class="nav-section" style="margin-top:12px">Commerce</div>
+  <a class="nav-item" href="#en-inventory"><span class="icon">📦</span> Inventory</a>
+  <a class="nav-item" href="#en-orders"><span class="icon">📋</span> Orders</a>
+  <a class="nav-item" href="#en-velocity"><span class="icon">⚡</span> Velocity</a>
+  <div class="nav-section" style="margin-top:12px">Planning</div>
   <a class="nav-item" href="#en-demand-planning"><span class="icon">📊</span> Demand Planning</a>
   <a class="nav-sub" href="#en-dp-filters">Filters &amp; Search</a>
   <a class="nav-sub" href="#en-dp-columns">Columns Panel</a>
@@ -2215,6 +2517,11 @@
   <a class="nav-sub" href="#en-ct-detail">Detail Drawer</a>
   <a class="nav-item" href="#en-available-stock"><span class="icon">📦</span> Available Stock</a>
   <a class="nav-item" href="#en-sku-master"><span class="icon">🗂️</span> SKU Master</a>
+  <div class="nav-section" style="margin-top:12px">Reference &amp; Ops</div>
+  <a class="nav-item" href="#en-parts"><span class="icon">🔩</span> Parts</a>
+  <a class="nav-item" href="#en-factories"><span class="icon">🏭</span> Factories</a>
+  <a class="nav-item" href="#en-warehouse"><span class="icon">🏢</span> Warehouse</a>
+  <a class="nav-item" href="#en-integrations"><span class="icon">🔌</span> Marketplace APIs</a>
   <div class="nav-section" style="margin-top:20px">Appendix</div>
   <a class="nav-item" href="#en-glossary"><span class="icon">📖</span> Glossary</a>
 </nav>
@@ -2454,6 +2761,139 @@
   <!-- Refresh -->
   <h3>④ Refresh</h3>
   <p>Click the <span class="btn-label">↺ Refresh</span> button in the top-right corner to reload KPI cards, the Critical SKU list, and the container table from the server. The last sync timestamp is displayed beneath the page title.</p>
+</section>
+
+<!-- ═══ COMMERCE: Inventory / Orders / Velocity ═══ -->
+<section class="page-section" id="en-inventory">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4;font-size:28px">📦</div>
+    <div>
+      <div class="menu-path">Menu › Inventory</div>
+      <h2>Inventory</h2>
+      <p class="subtitle">Real-time warehouse inventory snapshot pulled from the external coverland_inventory feed.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🔍 Filters &amp; View Options</h4>
+      <ul>
+        <li>Master SKU text search</li>
+        <li>Warehouse filter dropdown</li>
+        <li>Group by: <span class="btn-label">Product</span> / <span class="btn-label">Warehouse</span></li>
+        <li><span class="btn-label">Export CSV</span> — download current filtered results</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📊 Summary Bar</h4>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse;margin-top:4px">
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Products</td><td style="color:#6b7280;padding:4px 0">SKUs matching search criteria</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">On Hand</td><td style="color:#6b7280;padding:4px 0">Total stock held across all warehouses</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Available</td><td style="color:#6b7280;padding:4px 0">Unallocated, usable quantity</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Warehouses</td><td style="color:#6b7280;padding:4px 0">Number of warehouses in view</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h3>Key Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">Column</th><th>Description</th></tr>
+    <tr><td class="label">Master SKU</td><td>SKU identifier</td></tr>
+    <tr><td class="label">Warehouse</td><td>Warehouse code</td></tr>
+    <tr><td class="label">On Hand</td><td>Physical quantity in warehouse</td></tr>
+    <tr><td class="label">Allocated</td><td>Quantity reserved/allocated (shown in orange)</td></tr>
+    <tr><td class="label">Available</td><td>Usable quantity (On Hand − Allocated)</td></tr>
+    <tr><td class="label">Backorder</td><td>Unfulfilled demand from insufficient stock</td></tr>
+    <tr><td class="label">Snapshot Time</td><td>Timestamp of last inventory data update</td></tr>
+  </table>
+</section>
+
+<section class="page-section" id="en-orders">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff;font-size:28px">📋</div>
+    <div>
+      <div class="menu-path">Menu › Orders</div>
+      <h2>Orders</h2>
+      <p class="subtitle">Browse the order feed from connected sales channels. Click any row to view full order details.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🗓 Date &amp; Filters</h4>
+      <ul>
+        <li>Date presets: Today / Yesterday / Last 7·30·90 days / Last 6 months / YTD / Custom</li>
+        <li>Platform filter (Shopify · Amazon · eBay · Walmart, etc.)</li>
+        <li>Order status filter</li>
+        <li>Text search by order ID, order number, or SKU</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🛠 Actions</h4>
+      <ul>
+        <li><span class="btn-label">Export CSV</span> — download all matching orders</li>
+        <li><span class="btn-label">↺ Refresh</span> — manually re-sync order data</li>
+        <li>Row click → order detail drawer (line items, per-SKU qty, etc.)</li>
+        <li>Row hover → pre-loads order details for faster viewing</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Key Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">Column</th><th>Description</th></tr>
+    <tr><td class="label">Order ID</td><td>Internal system order ID</td></tr>
+    <tr><td class="label">Platform</td><td>Sales channel (Shopify / Amazon / eBay / Walmart)</td></tr>
+    <tr><td class="label">Order Number</td><td>Channel-assigned order number</td></tr>
+    <tr><td class="label">Order Date</td><td>Date order was placed</td></tr>
+    <tr><td class="label">Status</td><td>Order processing status</td></tr>
+    <tr><td class="label">Line Count</td><td>Number of line items (product types)</td></tr>
+    <tr><td class="label">Unit Count</td><td>Total units ordered</td></tr>
+    <tr><td class="label">Total Price</td><td>Order total amount</td></tr>
+  </table>
+</section>
+
+<section class="page-section" id="en-velocity">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8;font-size:28px">⚡</div>
+    <div>
+      <div class="menu-path">Menu › Velocity</div>
+      <h2>Sales Velocity</h2>
+      <p class="subtitle">Compare sales velocity across products, channels, and time periods to spot demand trends quickly.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col3">
+    <div class="card">
+      <h4>🏷 Analysis Settings</h4>
+      <ul>
+        <li><b>Product:</b> Car Cover / Seat Cover / Floor Mat</li>
+        <li><b>Channel:</b> Shopify B2B·B2C / Icarcover / Amazon FBA·FBM / eBay / Walmart (multi-select)</li>
+        <li><b>Mode:</b> Sales · TTM · Pre-Order</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📅 Period Settings</h4>
+      <ul>
+        <li><b>Period chip mode:</b> add chips like 90D · 60D · 30D · 15D · 7D</li>
+        <li><b>Custom mode:</b> manual start–end date input with auto day-count</li>
+        <li>Settings persist via local storage</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🛠 Export</h4>
+      <ul>
+        <li><span class="btn-label">Export Current View</span> — active mode data</li>
+        <li><span class="btn-label">Export All</span> — Sales + TTM + Pre-Order combined</li>
+        <li>Timezone toggle: UTC / LA Time</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Total row:</b> Always pinned at the top of the table, showing the sum across all modes and periods.</div>
+  </div>
 </section>
 
 <!-- ═══ 2. DEMAND PLANNING ═══ -->
@@ -3718,6 +4158,156 @@
     <div class="callout info" style="margin:0">
       <span class="callout-icon">🔄</span>
       <div><b>Inventory Sync:</b> Click <span class="btn-label">Sync Inventory</span> to pull the latest SKU list from the external coverland_inventory DB and auto-add or update entries.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ REFERENCE & OPS: Parts / Factories / Warehouse / Integrations ═══ -->
+<section class="page-section" id="en-parts">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4;font-size:28px">🔩</div>
+    <div>
+      <div class="menu-path">Menu › Parts</div>
+      <h2>Parts</h2>
+      <p class="subtitle">Manage seat cover parts orders, organized by shipping status tabs.</p>
+    </div>
+  </div>
+
+  <h3>Tabs</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">Tab</th><th>Contents</th></tr>
+    <tr><td class="label">Ready / Not Ready</td><td>Parts orders pending shipment. Rows older than 90 days are highlighted in orange.</td></tr>
+    <tr><td class="label">Shipped</td><td>Parts orders that have been shipped</td></tr>
+    <tr><td class="label">Canceled</td><td>Canceled order records</td></tr>
+    <tr><td class="label">Deleted</td><td>Deleted records (for audit)</td></tr>
+  </table>
+
+  <h3>Key Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Column</th><th>Description</th></tr>
+    <tr><td class="label">Request Received Date</td><td>Date the parts request was received</td></tr>
+    <tr><td class="label">Order Number</td><td>Order reference number</td></tr>
+    <tr><td class="label">Part Number</td><td>Parts identifier</td></tr>
+    <tr><td class="label">Related SKU</td><td>Associated Master SKU</td></tr>
+    <tr><td class="label">QTY / Order Request</td><td>Requested qty / order qty</td></tr>
+    <tr><td class="label">Shipping Status</td><td><span class="status complete">Ready</span> / <span class="status draft">Not Ready</span> / <span class="status packing">Shipped</span> / <span class="status critical">Canceled</span></td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>Select a row to enable the <span class="btn-label">Edit</span> and <span class="btn-label">Delete</span> buttons. Row addition and import are only available on the <b>Ready / Not Ready</b> tab.</div>
+  </div>
+</section>
+
+<section class="page-section" id="en-factories">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef9c3;font-size:28px">🏭</div>
+    <div>
+      <div class="menu-path">Menu › Factories</div>
+      <h2>Factories</h2>
+      <p class="subtitle">Register and manage factory master records used in purchase order workflows.</p>
+    </div>
+  </div>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📋 List Panel (left)</h4>
+      <ul>
+        <li>Search by factory name, code, or origin</li>
+        <li>Toggle to show/hide inactive factories</li>
+        <li>Click a factory to load its details on the right</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📝 Detail Panel (right)</h4>
+      <ul>
+        <li>Basic Info: factory name, origin</li>
+        <li>Contact: contact name, phone, email</li>
+        <li>Settings: Active / Inactive toggle</li>
+        <li>Click <span class="btn-label">Edit</span> → <span class="btn-label">Save</span> to apply changes immediately</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="page-section" id="en-warehouse">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff;font-size:28px">🏢</div>
+    <div>
+      <div class="menu-path">Menu › Warehouse</div>
+      <h2>Warehouse</h2>
+      <p class="subtitle">Manage warehouse master records and view inbound container schedules. Admin-only menu.</p>
+    </div>
+  </div>
+
+  <h3>Warehouse Types</h3>
+  <table class="feat-table">
+    <tr><th style="width:120px">Type</th><th>Description</th></tr>
+    <tr><td class="label">Own</td><td>Company-owned warehouse</td></tr>
+    <tr><td class="label">FBA</td><td>Amazon Fulfilled by Amazon fulfillment center</td></tr>
+    <tr><td class="label">3PL</td><td>Third-party logistics warehouse</td></tr>
+    <tr><td class="label">In Transit</td><td>Virtual warehouse for tracking in-transit inventory</td></tr>
+  </table>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📋 List Panel (left)</h4>
+      <ul>
+        <li>Search by warehouse code or name</li>
+        <li>Type filter dropdown</li>
+        <li>Toggle inactive warehouse visibility</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📝 Detail Panel (right)</h4>
+      <ul>
+        <li>Basic Info: code, name, type, timezone</li>
+        <li>Location: country, state/region, city</li>
+        <li>Inbound containers list with ETA, SKU count, qty, CBM</li>
+        <li>Container link → navigate to Container Planning</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="page-section" id="en-integrations">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f3e8ff;font-size:28px">🔌</div>
+    <div>
+      <div class="menu-path">Menu › Marketplace APIs</div>
+      <h2>Marketplace APIs</h2>
+      <p class="subtitle">Connect e-commerce platform accounts and monitor sales data sync status.</p>
+    </div>
+  </div>
+
+  <h3>Supported Platforms</h3>
+  <table class="feat-table">
+    <tr><th style="width:130px">Platform</th><th>Required Credentials</th><th>Sync</th></tr>
+    <tr><td class="label">Shopify</td><td>Shop domain, Access Token</td><td>Orders → SalesRecord auto-sync</td></tr>
+    <tr><td class="label">Amazon</td><td>Seller ID, Marketplace ID, LWA credentials</td><td>Credentials stored (sync configured separately)</td></tr>
+    <tr><td class="label">eBay</td><td>Client ID, Secret, RuName (OAuth)</td><td>Credentials stored + re-authenticate button</td></tr>
+    <tr><td class="label">Walmart</td><td>Client ID, Secret</td><td>Credentials stored</td></tr>
+  </table>
+
+  <h3>Integration Card Info</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>📊 Metrics Displayed</h4>
+      <ul>
+        <li>Status badge: Inactive / Never Synced / Synced / Failed</li>
+        <li>Total orders synced &amp; sales records</li>
+        <li>Last sync timestamp</li>
+        <li>Token status: Valid / Expiring Soon / Expired</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🛠 Management Actions (admin only)</h4>
+      <ul>
+        <li><span class="btn-label">Check Connection</span> — validate current credentials</li>
+        <li><span class="btn-label">Sync New</span> — sync only new orders since last run</li>
+        <li><span class="btn-label">Full Sync</span> — re-sync complete order history</li>
+        <li><span class="btn-label">Edit / Remove</span> — update credentials or delete integration</li>
+      </ul>
     </div>
   </div>
 </section>
