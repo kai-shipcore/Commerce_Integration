@@ -2064,17 +2064,32 @@
 
   <h3>① 화면 구성</h3>
   <div class="card-grid col3">
-    <div class="info-card">
-      <h4>검색 &amp; 필터</h4>
-      <p>SKU 이름 검색 + 제품 타입(전체/Car Cover/Floor Mat/Seat Cover/Accessories) + 상태(활성/비활성) + 판매 유형(Original/Custom 등) 4가지 필터로 목록을 좁힐 수 있습니다.</p>
+    <div class="card">
+      <h4>🔍 검색 &amp; 필터</h4>
+      <ul>
+        <li>SKU 이름 텍스트 검색</li>
+        <li>제품 타입: 전체 / Car Cover / Floor Mat / Seat Cover / Accessories</li>
+        <li>상태: 활성 / 비활성 / 전체 상태</li>
+        <li>판매 유형: Original / Custom / Hold / Part / Discontinued / TBD</li>
+      </ul>
     </div>
-    <div class="info-card">
-      <h4>요약 바</h4>
-      <p><b>전체</b> — 필터 조건에 맞는 총 SKU 수 &nbsp;|&nbsp; <b>이 페이지</b> — 현재 페이지 표시 건수 &nbsp;|&nbsp; <b>CBM 누락</b> — CBM이 미입력된 SKU 수 &nbsp;|&nbsp; <b>평균 CBM</b> — 전체 평균 &nbsp;|&nbsp; <b>유형</b> — 제품 타입 수</p>
+    <div class="card">
+      <h4>📊 요약 바</h4>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse;margin-top:4px">
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">전체</td><td style="color:#6b7280;padding:4px 0">필터 기준 총 SKU 수</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">이 페이지</td><td style="color:#6b7280;padding:4px 0">현재 페이지 건수</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">CBM 누락</td><td style="color:#6b7280;padding:4px 0">CBM 미입력 SKU 수</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">평균 CBM</td><td style="color:#6b7280;padding:4px 0">전체 평균 (m³/unit)</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">유형</td><td style="color:#6b7280;padding:4px 0">제품 타입 수</td></tr>
+      </table>
     </div>
-    <div class="info-card">
-      <h4>도구 버튼</h4>
-      <p><span class="btn-label">CSV 다운로드</span> — 현재 필터 결과 내보내기<br><span class="btn-label">엑셀 가져오기</span> — CBM 일괄 업로드(.xlsx)<br><span class="btn-label">재고 동기화</span> — 외부 DB(coverland_inventory) 연동</p>
+    <div class="card">
+      <h4>🛠 도구 버튼</h4>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse;margin-top:4px">
+        <tr><td style="padding:5px 8px 5px 0;vertical-align:top;white-space:nowrap"><span class="btn-label">CSV 다운로드</span></td><td style="color:#6b7280;padding:5px 0;vertical-align:top">현재 필터 결과 내보내기</td></tr>
+        <tr><td style="padding:5px 8px 5px 0;vertical-align:top;white-space:nowrap"><span class="btn-label">엑셀 가져오기</span></td><td style="color:#6b7280;padding:5px 0;vertical-align:top">CBM 일괄 업로드 (.xlsx)</td></tr>
+        <tr><td style="padding:5px 8px 5px 0;vertical-align:top;white-space:nowrap"><span class="btn-label">재고 동기화</span></td><td style="color:#6b7280;padding:5px 0;vertical-align:top">외부 DB(coverland_inventory) 연동</td></tr>
+      </table>
     </div>
   </div>
 
@@ -3638,17 +3653,32 @@
 
   <h3>① Screen Layout</h3>
   <div class="card-grid col3">
-    <div class="info-card">
-      <h4>Search &amp; Filters</h4>
-      <p>Filter by SKU name search + product type (All / Car Cover / Floor Mat / Seat Cover / Accessories) + status (Active / Inactive) + sales type (Original / Custom / etc.) — four filters work together.</p>
+    <div class="card">
+      <h4>🔍 Search &amp; Filters</h4>
+      <ul>
+        <li>SKU name text search</li>
+        <li>Product type: All / Car Cover / Floor Mat / Seat Cover / Accessories</li>
+        <li>Status: Active / Inactive / All Status</li>
+        <li>Sales type: Original / Custom / Hold / Part / Discontinued / TBD</li>
+      </ul>
     </div>
-    <div class="info-card">
-      <h4>Summary Bar</h4>
-      <p><b>Total</b> — matching SKU count &nbsp;|&nbsp; <b>Page</b> — rows on this page &nbsp;|&nbsp; <b>Missing CBM</b> — SKUs without a CBM value &nbsp;|&nbsp; <b>Avg CBM</b> — overall average &nbsp;|&nbsp; <b>Types</b> — product type count</p>
+    <div class="card">
+      <h4>📊 Summary Bar</h4>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse;margin-top:4px">
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Total</td><td style="color:#6b7280;padding:4px 0">SKU count matching filters</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Page</td><td style="color:#6b7280;padding:4px 0">Rows on current page</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Missing CBM</td><td style="color:#6b7280;padding:4px 0">SKUs without a CBM value</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Avg CBM</td><td style="color:#6b7280;padding:4px 0">Overall average (m³/unit)</td></tr>
+        <tr><td style="font-weight:600;padding:4px 8px 4px 0;color:#374151;white-space:nowrap">Types</td><td style="color:#6b7280;padding:4px 0">Product type count</td></tr>
+      </table>
     </div>
-    <div class="info-card">
-      <h4>Action Buttons</h4>
-      <p><span class="btn-label">Download CSV</span> — export current filtered results<br><span class="btn-label">Excel Import</span> — bulk CBM upload (.xlsx)<br><span class="btn-label">Sync Inventory</span> — sync from external coverland_inventory DB</p>
+    <div class="card">
+      <h4>🛠 Action Buttons</h4>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse;margin-top:4px">
+        <tr><td style="padding:5px 8px 5px 0;vertical-align:top;white-space:nowrap"><span class="btn-label">Download CSV</span></td><td style="color:#6b7280;padding:5px 0;vertical-align:top">Export current filtered results</td></tr>
+        <tr><td style="padding:5px 8px 5px 0;vertical-align:top;white-space:nowrap"><span class="btn-label">Excel Import</span></td><td style="color:#6b7280;padding:5px 0;vertical-align:top">Bulk CBM upload (.xlsx)</td></tr>
+        <tr><td style="padding:5px 8px 5px 0;vertical-align:top;white-space:nowrap"><span class="btn-label">Sync Inventory</span></td><td style="color:#6b7280;padding:5px 0;vertical-align:top">Sync from coverland_inventory DB</td></tr>
+      </table>
     </div>
   </div>
 
@@ -3725,12 +3755,44 @@
 <script>
 // 사이드바 활성 항목 하이라이트
 const languageButtons = document.querySelectorAll('[data-lang-button]');
-const requestedLanguage = new URLSearchParams(window.location.search).get('lang');
+const urlParams = new URLSearchParams(window.location.search);
+const requestedLanguage = urlParams.get('lang');
+const requestedSection = urlParams.get('section') || '';
 const savedLanguage = requestedLanguage === 'ko' || requestedLanguage === 'en'
   ? requestedLanguage
   : localStorage.getItem('manualLanguage') || 'ko';
+let activeLanguage = savedLanguage;
+
+function normalizeSectionId(value) {
+  return (value || '').replace(/^#/, '').replace(/^en-/, '');
+}
+
+function sectionIdForLanguage(section, language) {
+  const normalized = normalizeSectionId(section) || 'overview';
+  return language === 'en' ? `en-${normalized}` : normalized;
+}
+
+function findManualSection(section, language) {
+  const preferredId = sectionIdForLanguage(section, language);
+  const preferred = document.getElementById(preferredId);
+  if (preferred) return preferred;
+
+  const fallbackId = sectionIdForLanguage('overview', language);
+  return document.getElementById(fallbackId) || document.getElementById(language === 'en' ? 'en-top' : 'top');
+}
+
+function scrollToManualSection(section, language, behavior) {
+  const target = findManualSection(section, language);
+  if (!target) return;
+  target.scrollIntoView({ behavior, block: 'start' });
+  const normalized = normalizeSectionId(target.id);
+  if (normalized && normalized !== 'top') {
+    history.replaceState(null, '', `${window.location.pathname}?lang=${language}&section=${normalized}`);
+  }
+}
 
 function applyLanguage(language) {
+  activeLanguage = language;
   document.body.classList.toggle('lang-en', language === 'en');
   document.documentElement.lang = language;
   document.title = 'Demand Pilot - User Manual';
@@ -3740,12 +3802,17 @@ function applyLanguage(language) {
 languageButtons.forEach((button) => {
   button.addEventListener('click', () => {
     const language = button.getAttribute('data-lang-button') || 'ko';
+    const currentSection = normalizeSectionId(window.location.hash) || new URLSearchParams(window.location.search).get('section') || requestedSection || 'overview';
     applyLanguage(language);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToManualSection(currentSection, language, 'smooth');
   });
 });
 
 applyLanguage(savedLanguage);
+window.addEventListener('load', () => {
+  const sectionFromHash = normalizeSectionId(window.location.hash);
+  scrollToManualSection(requestedSection || sectionFromHash || 'overview', activeLanguage, 'auto');
+});
 
 function isVisible(element) {
   return !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length);
