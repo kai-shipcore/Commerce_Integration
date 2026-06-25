@@ -67,7 +67,7 @@ interface MenuPermissionEntry {
 export default function UserAccessPage() {
   const { pick } = useI18n();
   const { data: session, status } = useSession();
-  const isElevatedRole = (role: string) => role === "admin" || role === "dev" || role === "planner";
+  const isElevatedRole = (role: string) => role === "admin" || role === "dev" || role === "planner" || role === "operation" || role === "production";
   const configurableMenus = useMemo(
     () => navigationItems.filter((item) => item.hideable !== false && !item.hidden),
     []
@@ -237,7 +237,7 @@ export default function UserAccessPage() {
 
   const updateUserRole = async (
     userId: string,
-    nextRole: "user" | "admin" | "dev" | "planner"
+    nextRole: "user" | "admin" | "dev" | "planner" | "operation" | "production"
   ) => {
     setSavingUserId(userId);
     setError(null);
@@ -353,6 +353,8 @@ export default function UserAccessPage() {
                   <option value="admin">admin</option>
                   <option value="dev">dev</option>
                   <option value="planner">planner</option>
+                  <option value="operation">operation</option>
+                  <option value="production">production</option>
                 </select>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4 text-sm text-muted-foreground dark:border-slate-700">
@@ -482,7 +484,7 @@ export default function UserAccessPage() {
                       disabled={
                         savingUserId === selectedUser.id || session?.user?.id === selectedUser.id
                       }
-                      onValueChange={(value: "user" | "admin" | "dev" | "planner") => {
+                      onValueChange={(value: "user" | "admin" | "dev" | "planner" | "operation" | "production") => {
                         void updateUserRole(selectedUser.id, value);
                       }}
                     >
@@ -494,6 +496,8 @@ export default function UserAccessPage() {
                         <SelectItem value="admin">admin</SelectItem>
                         <SelectItem value="dev">dev</SelectItem>
                         <SelectItem value="planner">planner</SelectItem>
+                        <SelectItem value="operation">operation</SelectItem>
+                        <SelectItem value="production">production</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
