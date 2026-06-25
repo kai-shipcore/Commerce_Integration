@@ -49,6 +49,35 @@ const MODEL2_BASE_OPTIONS = [
   { value: "Naive", label: "Naïve" },
 ];
 
+const MODEL_DESCRIPTIONS: Record<string, { ko: string; en: string }> = {
+  Auto:            { ko: "여러 후보 모델을 자동으로 비교해 가장 정확한 예측 모델을 선택합니다.", en: "Automatically compares candidate models and selects the best-performing one." },
+  AutoARIMA:       { ko: "자기회귀·이동평균 기반 자동 탐색. 트렌드와 계절성이 있는 데이터에 적합합니다.", en: "Auto-tuned ARIMA. Best for data with trends and seasonal patterns." },
+  AutoETS:         { ko: "지수평활법 자동 선택. 계절성 패턴이 뚜렷한 SKU에 강합니다.", en: "Auto exponential smoothing. Strong when seasonal patterns are clear." },
+  AutoTheta:       { ko: "Theta 분해 기반. 단순하면서 노이즈에 강인하고 속도가 빠릅니다.", en: "Theta decomposition. Simple, fast, and resistant to noisy data." },
+  WindowAverage:   { ko: "최근 N주 평균을 반복 사용합니다. 판매량이 완만하고 안정적인 SKU에 적합합니다.", en: "Repeats the average of the last N weeks. Good for stable, flat-trend SKUs." },
+  HistoricAverage: { ko: "전체 판매 이력의 평균을 예측값으로 사용합니다. 가장 단순한 기준선입니다.", en: "Uses the overall historical average as the forecast. The simplest baseline." },
+  SeasonalNaive:   { ko: "작년 동일 기간 판매량을 그대로 반복합니다. 계절성이 강한 SKU에 유리합니다.", en: "Repeats last year's same-period values. Best for strongly seasonal SKUs." },
+  Naive:           { ko: "마지막 관측값을 예측값으로 사용합니다. 최소한의 기준선 모델입니다.", en: "Uses the last observed value as the forecast. A minimal baseline." },
+};
+
+function ModelTooltip({ value, language, children }: { value: string; language: SkuForecastLanguage; children: ReactNode }) {
+  const [show, setShow] = useState(false);
+  const desc = MODEL_DESCRIPTIONS[value];
+  if (!desc) return <>{children}</>;
+  const text = language === "ko" ? desc.ko : desc.en;
+  return (
+    <div className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      {show && (
+        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
+          <span className="font-semibold text-foreground">{value}</span>
+          <p className="mt-0.5 leading-snug text-muted-foreground">{text}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function lastMonday(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -620,15 +649,17 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                   </Popover>
                 </div>
               </div>
-              <select
-                value={forwardModel}
-                onChange={(e) => setForwardModel(e.target.value)}
-                className="rounded border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-blue-400 dark:border-zinc-600"
-              >
-                {MODEL_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+              <ModelTooltip value={forwardModel} language={language}>
+                <select
+                  value={forwardModel}
+                  onChange={(e) => setForwardModel(e.target.value)}
+                  className="rounded border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-blue-400 dark:border-zinc-600"
+                >
+                  {MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </ModelTooltip>
             </div>
 
             <Plot
@@ -809,29 +840,33 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
               {/* Model */}
               <div className="flex items-center gap-1">
-                <select
-                  value={btModel}
-                  onChange={(e) => {
-                    setBtModel(e.target.value);
-                    if (e.target.value === btModel2) setBtModel2("");
-                  }}
-                  className="rounded border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-blue-400 dark:border-zinc-600"
-                >
-                  {MODEL_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <ModelTooltip value={btModel} language={language}>
+                  <select
+                    value={btModel}
+                    onChange={(e) => {
+                      setBtModel(e.target.value);
+                      if (e.target.value === btModel2) setBtModel2("");
+                    }}
+                    className="rounded border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-blue-400 dark:border-zinc-600"
+                  >
+                    {MODEL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </ModelTooltip>
                 <span className="text-muted-foreground">+</span>
-                <select
-                  value={btModel2}
-                  onChange={(e) => setBtModel2(e.target.value)}
-                  className="rounded border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-blue-400 dark:border-zinc-600"
-                >
-                  <option value="">None</option>
-                  {MODEL2_BASE_OPTIONS.filter((opt) => opt.value !== btModel).map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <ModelTooltip value={btModel2} language={language}>
+                  <select
+                    value={btModel2}
+                    onChange={(e) => setBtModel2(e.target.value)}
+                    className="rounded border bg-background px-2 py-1 text-xs text-foreground outline-none focus:border-blue-400 dark:border-zinc-600"
+                  >
+                    <option value="">None</option>
+                    {MODEL2_BASE_OPTIONS.filter((opt) => opt.value !== btModel).map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </ModelTooltip>
               </div>
 
             </div>
