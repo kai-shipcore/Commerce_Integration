@@ -143,6 +143,12 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(200, Math.max(20, Number(searchParams.get("limit") ?? 50)));
     const offset = (page - 1) * limit;
 
+    const salesType = searchParams.get("salesType")?.trim() ?? "all";
+    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD"];
+    if (salesType !== "all" && !validSalesStatuses.includes(salesType)) {
+      return NextResponse.json({ success: false, error: "Invalid salesType filter" }, { status: 400 });
+    }
+
     const filters: string[] = [];
     const params: unknown[] = [];
 
@@ -151,12 +157,12 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: false, error: "Invalid status filter" }, { status: 400 });
       }
       params.push(status);
-      filters.push(`status = $${params.length}::shipcore.fc_product_status`);
+      filters.push(`p.status = $${params.length}::shipcore.fc_product_status`);
     }
 
     if (search) {
       params.push(`%${search}%`);
-      filters.push(`master_sku ILIKE $${params.length}`);
+      filters.push(`p.master_sku ILIKE $${params.length}`);
     }
 
     if (product !== "all") {
@@ -168,8 +174,13 @@ export async function GET(request: NextRequest) {
       const code = productMap[product];
       if (code) {
         params.push(code);
-        filters.push(`category_code = $${params.length}`);
+        filters.push(`p.category_code = $${params.length}`);
       }
+    }
+
+    if (salesType !== "all") {
+      params.push(salesType);
+      filters.push(`COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), (SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSkuValue" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END), 'Original') = $${params.length}`);
     }
 
     const pool = getPrimaryPool();
@@ -178,18 +189,19 @@ export async function GET(request: NextRequest) {
     if (masterSku) {
       const result = await pool.query(
         `SELECT
-           master_sku,
-           product_name,
-           category,
-           category_code,
-           status::text AS status,
-           moq,
-           order_multiple,
-           cbm_per_unit::text AS cbm_per_unit,
-           case_qty,
-           weight_kg::text AS weight_kg
-         FROM shipcore.fc_products
-         WHERE master_sku = $1 AND status = 'active'
+           p.master_sku,
+           p.product_name,
+           p.category,
+           p.category_code,
+           p.status::text AS status,
+           COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), (SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSkuValue" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END), 'Original') AS sales_status,
+           p.moq,
+           p.order_multiple,
+           p.cbm_per_unit::text AS cbm_per_unit,
+           p.case_qty,
+           p.weight_kg::text AS weight_kg
+         FROM shipcore.fc_products p
+         WHERE p.master_sku = $1 AND p.status = 'active'
          LIMIT 1`,
         [masterSku]
       );
@@ -212,6 +224,7 @@ export async function GET(request: NextRequest) {
           category: row.category ?? inferred.category,
           categoryCode: row.category_code ?? inferred.categoryCode,
           status: row.status ?? "active",
+          salesStatus: (row.sales_status as string | null) ?? null,
           moq: Number(row.moq ?? inferred.moq),
           orderMultiple: Number(row.order_multiple ?? inferred.moq),
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
@@ -223,7 +236,7 @@ export async function GET(request: NextRequest) {
 
     const countResult = await pool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
-       FROM shipcore.fc_products
+       FROM shipcore.fc_products p
        WHERE ${whereClause}`,
       params
     );
@@ -235,19 +248,20 @@ export async function GET(request: NextRequest) {
 
     const result = await pool.query(
       `SELECT
-         master_sku,
-         product_name,
-         category,
-         category_code,
-         status::text AS status,
-         moq,
-         order_multiple,
-         cbm_per_unit::text AS cbm_per_unit,
-         case_qty,
-         weight_kg::text AS weight_kg
-       FROM shipcore.fc_products
+         p.master_sku,
+         p.product_name,
+         p.category,
+         p.category_code,
+         p.status::text AS status,
+         COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), (SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSkuValue" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END), 'Original') AS sales_status,
+         p.moq,
+         p.order_multiple,
+         p.cbm_per_unit::text AS cbm_per_unit,
+         p.case_qty,
+         p.weight_kg::text AS weight_kg
+       FROM shipcore.fc_products p
        WHERE ${whereClause}
-       ORDER BY category_code NULLS LAST, master_sku
+       ORDER BY p.category_code NULLS LAST, p.master_sku
        LIMIT $${limitParam} OFFSET $${offsetParam}`,
       dataParams
     );
@@ -263,6 +277,7 @@ export async function GET(request: NextRequest) {
           category: row.category ?? inferred.category,
           categoryCode: row.category_code ?? inferred.categoryCode,
           status: row.status ?? "active",
+          salesStatus: (row.sales_status as string | null) ?? null,
           moq: Number(row.moq ?? inferred.moq),
           orderMultiple: Number(row.order_multiple ?? inferred.moq),
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
@@ -402,6 +417,13 @@ export async function PATCH(request: NextRequest) {
     const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.000001, Number(body.cbmPerUnit));
     const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
     const statusValue = body.status == null ? null : String(body.status).trim().toLowerCase();
+    const salesStatusRaw = body.salesStatus == null ? undefined : String(body.salesStatus).trim();
+    const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
+
+    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD"];
+    if (salesStatusValue != null && !validSalesStatuses.includes(salesStatusValue)) {
+      return NextResponse.json({ success: false, error: "Invalid salesStatus" }, { status: 400 });
+    }
 
     if (statusValue !== null && statusValue !== "active" && statusValue !== "inactive") {
       return NextResponse.json({ success: false, error: "Invalid status" }, { status: 400 });
@@ -416,10 +438,11 @@ export async function PATCH(request: NextRequest) {
            case_qty = COALESCE($5, case_qty),
            weight_kg = COALESCE($6, weight_kg),
            status = COALESCE($7::shipcore.fc_product_status, status),
+           sales_status = CASE WHEN $8::text IS NOT NULL THEN $8::text ELSE sales_status END,
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,
-      [masterSku, moq, orderMultiple, cbmPerUnit, caseQty, weightKg, statusValue]
+      [masterSku, moq, orderMultiple, cbmPerUnit, caseQty, weightKg, statusValue, salesStatusValue ?? null]
     );
 
     if (result.rowCount === 0) {

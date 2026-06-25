@@ -1318,8 +1318,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (row.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
-      if (productFilter === "orig" && row.sales_status !== "Original") return false;
-      if (productFilter === "cust" && row.sales_status !== "Custom") return false;
+      if (productFilter === "orig" && row.sales_status !== "Original")      return false;
+      if (productFilter === "cust" && row.sales_status !== "Custom")        return false;
+      if (productFilter === "hold" && row.sales_status !== "Hold")          return false;
+      if (productFilter === "part" && row.sales_status !== "Part")          return false;
+      if (productFilter === "disc" && row.sales_status !== "Discontinued")  return false;
+      if (productFilter === "tbd"  && row.sales_status !== "TBD")           return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
       if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       const urgency = urgStatus(row);

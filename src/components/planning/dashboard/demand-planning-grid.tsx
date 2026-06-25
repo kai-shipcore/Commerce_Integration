@@ -374,8 +374,12 @@ export function DemandPlanningGrid({
       if (r.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
-      if (productFilter === "orig" && r.sales_status !== "Original") return false;
-      if (productFilter === "cust" && r.sales_status !== "Custom")   return false;
+      if (productFilter === "orig" && r.sales_status !== "Original")      return false;
+      if (productFilter === "cust" && r.sales_status !== "Custom")        return false;
+      if (productFilter === "hold" && r.sales_status !== "Hold")          return false;
+      if (productFilter === "part" && r.sales_status !== "Part")          return false;
+      if (productFilter === "disc" && r.sales_status !== "Discontinued")  return false;
+      if (productFilter === "tbd"  && r.sales_status !== "TBD")           return false;
       if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
       const u: UrgencyStatus = urgStatus(r);

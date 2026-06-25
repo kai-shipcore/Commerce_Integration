@@ -159,7 +159,7 @@ export async function GET(req: Request) {
         agg.latest_container,
         agg.latest_eta,
         agg.latest_qty,
-        COALESCE(s.sales_status,   'Original')               AS sales_status,
+        COALESCE(p.sales_status, s.sales_status, 'Original')  AS sales_status,
         p.category_code                                      AS category_code,
         COALESCE(p.cbm_per_unit, 0)::float8                  AS cbm_per_unit,
         COALESCE(p.case_qty, 1)::int                          AS case_qty,

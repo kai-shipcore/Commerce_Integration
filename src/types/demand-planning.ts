@@ -1,4 +1,4 @@
-export type ProductFilter = "all" | "orig" | "cust";
+export type ProductFilter = "all" | "orig" | "cust" | "hold" | "part" | "disc" | "tbd";
 export type CategoryFilter = "sc" | "cc" | "fm" | "ac";
 export type UrgencyFilter = "crit" | "warn" | "bo" | "over";
 export type UrgencyStatus = "crit" | "warn" | "ok" | "over";
@@ -51,7 +51,7 @@ export interface DemandRow {
   color: string;
   tone: string;
   back: number;
-  sales_status: "Original" | "Custom" | "Hold" | "Part";
+  sales_status: "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD";
   category_code?: "SC" | "CC" | "FM" | "AC";
   sku: string;
   west_stock: number;

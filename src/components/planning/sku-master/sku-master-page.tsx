@@ -14,6 +14,7 @@ type SkuMasterRow = {
   category: string;
   categoryCode: string;
   status: SkuStatus;
+  salesStatus: SalesStatus | null;
   moq: number;
   orderMultiple: number;
   cbmPerUnit: number;
@@ -22,6 +23,7 @@ type SkuMasterRow = {
 };
 
 type SkuStatus = "active" | "inactive";
+type SalesStatus = "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD";
 type StatusFilter = SkuStatus | "all";
 
 const productMeta: Record<
@@ -161,6 +163,7 @@ export function SkuMasterPage() {
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState<ProductKey | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [salesTypeFilter, setSalesTypeFilter] = useState<SalesStatus | "all">("all");
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [editingSnapshot, setEditingSnapshot] = useState<SkuMasterRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -186,6 +189,7 @@ export function SkuMasterPage() {
       if (query.trim()) params.set("search", query.trim());
       if (product !== "all") params.set("product", product);
       if (statusFilter !== "active") params.set("status", statusFilter);
+      if (salesTypeFilter !== "all") params.set("salesType", salesTypeFilter);
       params.set("page", String(page));
       params.set("limit", String(limit));
       const res = await fetch(apiPath(`/api/planning/sku-master?${params.toString()}`), { cache: "no-store" });
@@ -207,7 +211,7 @@ export function SkuMasterPage() {
     }, 200);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, product, statusFilter, page, limit]);
+  }, [query, product, statusFilter, salesTypeFilter, page, limit]);
 
   const visibleSkus = useMemo(
     () => rows,
@@ -225,7 +229,7 @@ export function SkuMasterPage() {
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status" | "salesStatus">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
@@ -257,6 +261,7 @@ export function SkuMasterPage() {
         caseQty: row.caseQty,
         weightKg: row.weightKg,
         status: row.status,
+        salesStatus: row.salesStatus,
       }),
     });
     const json = await res.json();
@@ -331,6 +336,7 @@ export function SkuMasterPage() {
         if (query.trim()) params.set("search", query.trim());
         if (product !== "all") params.set("product", product);
         if (statusFilter !== "active") params.set("status", statusFilter);
+        if (salesTypeFilter !== "all") params.set("salesType", salesTypeFilter);
         params.set("page", String(exportPage));
         params.set("limit", String(exportLimit));
 
@@ -452,6 +458,19 @@ export function SkuMasterPage() {
             <option value="active">{pick("활성", "Active")}</option>
             <option value="inactive">{pick("비활성", "Inactive")}</option>
             <option value="all">{pick("전체 상태", "All Status")}</option>
+          </select>
+          <select
+            value={salesTypeFilter}
+            onChange={(event) => {
+              setSalesTypeFilter(event.target.value as SalesStatus | "all");
+              setPage(1);
+            }}
+            className="form-input h-9 w-36 bg-white text-xs"
+          >
+            <option value="all">{pick("전체 유형", "All Types")}</option>
+            {SALES_STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
           </select>
           <button
             type="button"
@@ -586,10 +605,11 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[1200px] grid-cols-[180px_290px_120px_180px_90px_110px_90px_140px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[1320px] grid-cols-[180px_290px_120px_120px_180px_90px_110px_90px_140px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">{pick("제품", "Product")}</div>
           <div className="px-4 py-3">{pick("마스터 SKU", "Master SKU")}</div>
           <div className="px-4 py-3">{pick("상태", "Status")}</div>
+          <div className="px-4 py-3">{pick("판매 유형", "Type")}</div>
           <div className="px-4 py-3">{pick("CBM / 단위", "CBM / Unit")}</div>
           <div className="px-4 py-3">{pick("최소 주문량", "MOQ")}</div>
           <div className="px-4 py-3">{pick("주문 배수", "Order Mult")}</div>
@@ -600,7 +620,7 @@ export function SkuMasterPage() {
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[1200px] grid-cols-[180px_290px_120px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            className="grid min-w-[1320px] grid-cols-[180px_290px_120px_120px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
@@ -610,6 +630,11 @@ export function SkuMasterPage() {
               active={editingSku === sku.masterSku}
               value={sku.status}
               onChange={(value) => updateRow(sku.masterSku, { status: value })}
+            />
+            <EditableSalesStatus
+              active={editingSku === sku.masterSku}
+              value={sku.salesStatus}
+              onChange={(value) => updateRow(sku.masterSku, { salesStatus: value })}
             />
             <EditableNumber
               active={editingSku === sku.masterSku}
@@ -757,6 +782,41 @@ function EditableStatus({
   return (
     <div className="px-4 py-3">
       <StatusBadge status={value} />
+    </div>
+  );
+}
+
+const SALES_STATUS_OPTIONS: SalesStatus[] = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD"];
+
+function EditableSalesStatus({
+  active,
+  value,
+  onChange,
+}: {
+  active: boolean;
+  value: SalesStatus | null;
+  onChange: (value: SalesStatus | null) => void;
+}) {
+  if (active) {
+    return (
+      <div className="px-4 py-3">
+        <select
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value === "" ? null : e.target.value as SalesStatus)}
+          className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
+        >
+          <option value="">—</option>
+          {SALES_STATUS_OPTIONS.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3 text-xs text-muted-foreground">
+      {value ?? "—"}
     </div>
   );
 }

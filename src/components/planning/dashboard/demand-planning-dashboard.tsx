@@ -981,6 +981,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           <option value="all">All Types</option>
           <option value="orig">Original</option>
           <option value="cust">Custom</option>
+          <option value="hold">Hold</option>
+          <option value="part">Part</option>
+          <option value="disc">Discontinued</option>
+          <option value="tbd">TBD</option>
         </select>
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
