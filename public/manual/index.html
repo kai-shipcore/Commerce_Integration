@@ -2053,50 +2053,76 @@
     <div>
       <div class="menu-path">메뉴 › SKU 마스터</div>
       <h2>SKU 마스터 관리</h2>
-      <p class="subtitle">SKU별 CBM(부피)·MOQ(최소 발주)·발주 배수·케이스 수량 등 기준 데이터를 관리합니다.</p>
+      <p class="subtitle">SKU별 CBM(부피)·MOQ(최소 발주)·발주 배수·케이스 수량·판매 유형 등 기준 데이터를 관리합니다.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
     <img src="screenshots/05-sku-master.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU 마스터 화면</p></div>'" alt="SKU 마스터">
-    <div class="screenshot-caption">▲ SKU 마스터 관리 — 전체 SKU 목록 및 편집 화면</div>
+    <div class="screenshot-caption">▲ SKU 마스터 관리 — 필터 바·요약 바·전체 SKU 목록</div>
   </div>
 
-  <h3>주요 컬럼 설명</h3>
+  <h3>① 화면 구성</h3>
+  <div class="card-grid col3">
+    <div class="info-card">
+      <h4>검색 &amp; 필터</h4>
+      <p>SKU 이름 검색 + 제품 타입(전체/Car Cover/Floor Mat/Seat Cover/Accessories) + 상태(활성/비활성) + 판매 유형(Original/Custom 등) 4가지 필터로 목록을 좁힐 수 있습니다.</p>
+    </div>
+    <div class="info-card">
+      <h4>요약 바</h4>
+      <p><b>전체</b> — 필터 조건에 맞는 총 SKU 수 &nbsp;|&nbsp; <b>이 페이지</b> — 현재 페이지 표시 건수 &nbsp;|&nbsp; <b>CBM 누락</b> — CBM이 미입력된 SKU 수 &nbsp;|&nbsp; <b>평균 CBM</b> — 전체 평균 &nbsp;|&nbsp; <b>유형</b> — 제품 타입 수</p>
+    </div>
+    <div class="info-card">
+      <h4>도구 버튼</h4>
+      <p><span class="btn-label">CSV 다운로드</span> — 현재 필터 결과 내보내기<br><span class="btn-label">엑셀 가져오기</span> — CBM 일괄 업로드(.xlsx)<br><span class="btn-label">재고 동기화</span> — 외부 DB(coverland_inventory) 연동</p>
+    </div>
+  </div>
+
+  <h3>② 주요 컬럼 설명</h3>
   <table class="feat-table">
     <tr><th style="width:140px">항목</th><th>설명</th><th style="width:120px">예시</th></tr>
     <tr><td class="label">Master SKU</td><td>고유 SKU 식별자</td><td><code style="font-size:12px">CA-SC-10-F-10-BK-1TO</code></td></tr>
+    <tr><td class="label">상태</td><td><span class="status complete">활성</span> / <span class="status draft">비활성</span> — 비활성화 시 발주 계산에서 제외됩니다.</td><td></td></tr>
+    <tr><td class="label">판매 유형</td><td>SKU의 판매 성격을 분류합니다. 인라인 편집 가능.<br>
+      <span style="display:inline-flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+        <span style="background:#f3f4f6;color:#4b5563;font-size:11px;padding:1px 6px;border-radius:4px">Original</span>
+        <span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:1px 6px;border-radius:4px">Custom</span>
+        <span style="background:#fef3c7;color:#b45309;font-size:11px;padding:1px 6px;border-radius:4px">Hold</span>
+        <span style="background:#ede9fe;color:#6d28d9;font-size:11px;padding:1px 6px;border-radius:4px">Part</span>
+        <span style="background:#fee2e2;color:#dc2626;font-size:11px;padding:1px 6px;border-radius:4px">Discontinued</span>
+        <span style="background:#f1f5f9;color:#64748b;font-size:11px;padding:1px 6px;border-radius:4px">TBD</span>
+      </span>
+    </td><td>Original</td></tr>
     <tr><td class="label">CBM / Unit</td><td>박스 1개당 부피(㎥). 발주 계산의 핵심 값.</td><td>0.042500</td></tr>
     <tr><td class="label">MOQ</td><td>최소 발주 수량. 이 수량 미만으로 발주 불가.</td><td>10</td></tr>
     <tr><td class="label">Order Multiple</td><td>발주 수량의 배수 단위 (예: 5 → 5, 10, 15, 20…)</td><td>5</td></tr>
     <tr><td class="label">Case Qty</td><td>박스 1개에 들어가는 제품 수량</td><td>1</td></tr>
-    <tr><td class="label">Status</td><td><span class="status complete">Active</span> / <span class="status draft">Inactive</span> – 비활성화 시 발주 계산에서 제외</td><td></td></tr>
   </table>
 
-  <h3>SKU 정보 수정하기</h3>
+  <h3>③ SKU 정보 수정하기</h3>
   <div class="steps">
     <div class="step">
       <div class="step-num">1</div>
-      <div><h4>검색으로 SKU 찾기</h4><p>상단 검색창에 SKU 이름 일부를 입력하거나 제품 타입 드롭다운으로 범위를 좁힙니다.</p></div>
+      <div><h4>검색/필터로 SKU 찾기</h4><p>상단 검색창에 SKU 이름 일부를 입력하거나 제품 타입·상태·판매 유형 드롭다운으로 범위를 좁힙니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div><h4>편집 버튼 클릭</h4><p>수정할 SKU 행의 <span class="btn-label">편집</span> 버튼을 클릭하면 CBM·MOQ·배수·케이스 수량 필드가 편집 가능해집니다.</p></div>
+      <div><h4>편집 버튼 클릭</h4><p>수정할 SKU 행의 <span class="btn-label">편집</span> 버튼을 클릭하면 상태·판매 유형·CBM·MOQ·배수·케이스 수량 필드가 인라인 편집 가능해집니다.</p></div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div><h4>값 수정 후 완료 클릭</h4><p>수정 완료 후 <span class="btn-label">완료</span>를 클릭하면 자동으로 저장됩니다.</p></div>
+      <div><h4>값 수정 후 완료 클릭</h4><p>수정 완료 후 <span class="btn-label">완료</span>를 클릭하면 자동으로 저장됩니다. <span class="btn-label">취소</span>는 변경을 되돌립니다.</p></div>
     </div>
   </div>
 
   <div class="card-grid col2">
     <div class="callout tip" style="margin:0">
       <span class="callout-icon">💡</span>
-    <div><b>일괄 CBM 업데이트:</b> <span class="btn-label">엑셀 가져오기</span>로 여러 SKU의 CBM을 한 번에 업데이트할 수 있습니다.</div>
+      <div><b>일괄 CBM 업데이트:</b> <span class="btn-label">엑셀 가져오기</span>로 여러 SKU의 CBM을 한 번에 업데이트할 수 있습니다. Master SKU·CBM 두 컬럼이 있는 .xlsx 파일을 업로드하면 됩니다.</div>
     </div>
     <div class="callout info" style="margin:0">
       <span class="callout-icon">🔄</span>
-    <div><b>재고 동기화:</b> <span class="btn-label">재고 동기화</span>를 누르면 외부 재고 DB(coverland_inventory)에서 최신 데이터를 가져옵니다.</div>
+      <div><b>재고 동기화:</b> <span class="btn-label">재고 동기화</span>를 누르면 외부 재고 DB(coverland_inventory)에서 최신 SKU 목록을 가져와 자동으로 추가·갱신합니다.</div>
     </div>
   </div>
 </section>
@@ -3602,37 +3628,66 @@
     <div>
       <div class="menu-path">Menu › SKU Master</div>
       <h2>SKU Master</h2>
-      <p class="subtitle">Manage reference data per SKU: CBM (volume), MOQ (minimum order), order multiples, and case quantity.</p>
+      <p class="subtitle">Manage reference data per SKU: CBM (volume), MOQ (minimum order), order multiples, case quantity, and sales type.</p>
     </div>
   </div>
   <div class="screenshot-box">
     <img src="screenshots/05-sku-master-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🗂️</div><p>SKU Master Screen</p></div>'" alt="SKU Master">
-    <div class="screenshot-caption">▲ SKU Master – Full SKU List and Edit Screen</div>
+    <div class="screenshot-caption">▲ SKU Master – Filter Bar, Summary Bar, and Full SKU List</div>
   </div>
-  <h3>Key Column Descriptions</h3>
+
+  <h3>① Screen Layout</h3>
+  <div class="card-grid col3">
+    <div class="info-card">
+      <h4>Search &amp; Filters</h4>
+      <p>Filter by SKU name search + product type (All / Car Cover / Floor Mat / Seat Cover / Accessories) + status (Active / Inactive) + sales type (Original / Custom / etc.) — four filters work together.</p>
+    </div>
+    <div class="info-card">
+      <h4>Summary Bar</h4>
+      <p><b>Total</b> — matching SKU count &nbsp;|&nbsp; <b>Page</b> — rows on this page &nbsp;|&nbsp; <b>Missing CBM</b> — SKUs without a CBM value &nbsp;|&nbsp; <b>Avg CBM</b> — overall average &nbsp;|&nbsp; <b>Types</b> — product type count</p>
+    </div>
+    <div class="info-card">
+      <h4>Action Buttons</h4>
+      <p><span class="btn-label">Download CSV</span> — export current filtered results<br><span class="btn-label">Excel Import</span> — bulk CBM upload (.xlsx)<br><span class="btn-label">Sync Inventory</span> — sync from external coverland_inventory DB</p>
+    </div>
+  </div>
+
+  <h3>② Key Column Descriptions</h3>
   <table class="feat-table">
     <tr><th style="width:160px">Item</th><th>Description</th><th style="width:160px">Example</th></tr>
     <tr><td class="label">Master SKU</td><td>Unique SKU identifier</td><td><code style="font-size:12px">CA-SC-10-F-10-BK-1TO</code></td></tr>
+    <tr><td class="label">Status</td><td><span class="status complete">Active</span> / <span class="status draft">Inactive</span> — Inactive SKUs are excluded from order calculations.</td><td></td></tr>
+    <tr><td class="label">Sales Type</td><td>Classifies the SKU's sales nature. Editable inline.<br>
+      <span style="display:inline-flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+        <span style="background:#f3f4f6;color:#4b5563;font-size:11px;padding:1px 6px;border-radius:4px">Original</span>
+        <span style="background:#dbeafe;color:#1d4ed8;font-size:11px;padding:1px 6px;border-radius:4px">Custom</span>
+        <span style="background:#fef3c7;color:#b45309;font-size:11px;padding:1px 6px;border-radius:4px">Hold</span>
+        <span style="background:#ede9fe;color:#6d28d9;font-size:11px;padding:1px 6px;border-radius:4px">Part</span>
+        <span style="background:#fee2e2;color:#dc2626;font-size:11px;padding:1px 6px;border-radius:4px">Discontinued</span>
+        <span style="background:#f1f5f9;color:#64748b;font-size:11px;padding:1px 6px;border-radius:4px">TBD</span>
+      </span>
+    </td><td>Original</td></tr>
     <tr><td class="label">CBM / Unit</td><td>Volume per box (m³). The core value for order calculations.</td><td>0.042500</td></tr>
     <tr><td class="label">MOQ</td><td>Minimum Order Quantity. Cannot order below this amount.</td><td>10</td></tr>
     <tr><td class="label">Order Multiple</td><td>Order quantity increment (e.g., 5 → 5, 10, 15, 20…)</td><td>5</td></tr>
     <tr><td class="label">Case Qty</td><td>Number of products per box</td><td>1</td></tr>
-    <tr><td class="label">Status</td><td><span class="status complete">Active</span> / <span class="status draft">Inactive</span> — Inactive SKUs are excluded from order calculations</td><td></td></tr>
   </table>
-  <h3>Editing SKU Information</h3>
+
+  <h3>③ Editing SKU Information</h3>
   <div class="steps">
-    <div class="step"><div class="step-num">1</div><div><h4>Find SKU via Search</h4><p>Type part of the SKU name in the search box, or narrow scope with the product type dropdown.</p></div></div>
-    <div class="step"><div class="step-num">2</div><div><h4>Click Edit</h4><p>Click the <span class="btn-label">Edit</span> button in the SKU row to make CBM, MOQ, multiple, and case quantity fields editable.</p></div></div>
-    <div class="step"><div class="step-num">3</div><div><h4>Edit Values and Click Done</h4><p>Click <span class="btn-label">Done</span> after editing — changes are saved automatically.</p></div></div>
+    <div class="step"><div class="step-num">1</div><div><h4>Find SKU via Search / Filter</h4><p>Type part of the SKU name in the search box, or narrow scope with the product type, status, or sales type dropdowns.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Click Edit</h4><p>Click the <span class="btn-label">Edit</span> button in the SKU row. Status, Sales Type, CBM, MOQ, Order Multiple, and Case Qty all become inline-editable.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Edit Values and Click Done</h4><p>Click <span class="btn-label">Done</span> after editing — changes are saved automatically. <span class="btn-label">Cancel</span> rolls back all changes.</p></div></div>
   </div>
+
   <div class="card-grid col2">
     <div class="callout tip" style="margin:0">
       <span class="callout-icon">💡</span>
-      <div><b>Bulk CBM Update:</b> Use <span class="btn-label">Import Excel</span> to update CBM for multiple SKUs at once.</div>
+      <div><b>Bulk CBM Update:</b> Use <span class="btn-label">Excel Import</span> to update CBM for multiple SKUs at once. Upload an .xlsx file with Master SKU and CBM columns.</div>
     </div>
     <div class="callout info" style="margin:0">
       <span class="callout-icon">🔄</span>
-      <div><b>Inventory Sync:</b> Click <span class="btn-label">Sync Inventory</span> to fetch the latest data from the external coverland_inventory DB.</div>
+      <div><b>Inventory Sync:</b> Click <span class="btn-label">Sync Inventory</span> to pull the latest SKU list from the external coverland_inventory DB and auto-add or update entries.</div>
     </div>
   </div>
 </section>
