@@ -1086,6 +1086,7 @@ function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
     baseline: boolean;
+    qtyEditable: boolean;
     status?: string;
     totalColumns: ContainerTotalColumn[];
     onEtaChange: (value: string) => void;
@@ -1113,7 +1114,7 @@ function ContainerGroupHeader(
           : "";
   const statusLabel =
     props.status === "packing_received" ? "Shipped" :
-    props.status === "shipped"          ? "Packing" :
+    props.status === "shipped"          ? "Final" :
     props.status === "draft"            ? "Draft" : null;
   const statusColor =
     props.status === "packing_received" ? "text-blue-300" :
@@ -1153,6 +1154,7 @@ function ContainerGroupHeader(
             <input
               type="number"
               value={targetDays}
+              disabled={!props.qtyEditable}
               onChange={(e) => setTargetDays(Math.max(1, Number(e.target.value)))}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
@@ -1166,7 +1168,7 @@ function ContainerGroupHeader(
             />
             <button
               onClick={() => props.onAutoFill2?.(targetDays)}
-              disabled={props.autoFilling2}
+              disabled={!props.qtyEditable || props.autoFilling2}
               title={`Con qty 고정 목표 계산 (${targetDays}일 INV Life)`}
               aria-label={`Calculate automatic order for a fixed ${targetDays}-day inventory target`}
               className="inline-flex items-center justify-center rounded px-2.5 py-1.5 bg-blue-500/30 hover:bg-blue-500/50 disabled:opacity-40 cursor-pointer"
@@ -1175,14 +1177,14 @@ function ContainerGroupHeader(
             </button>
 <button
               onClick={props.onAutoFill3}
-              disabled={props.autoFilling3}
+              disabled={!props.qtyEditable || props.autoFilling3}
               title="Con qty 세일즈 구간별 목표 계산"
               aria-label="판매량 구간별 자동 발주 계산"
               className="inline-flex items-center justify-center rounded px-2.5 py-1.5 bg-emerald-500/30 hover:bg-emerald-500/50 disabled:opacity-40 cursor-pointer"
             >
               {props.autoFilling3 ? "..." : <ChartColumn className="h-4 w-4" aria-hidden="true" />}
             </button>
-            {props.dirty && (
+            {props.qtyEditable && props.dirty && (
               <>
                 <button
                   onClick={props.onReset}
@@ -1306,27 +1308,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         return container.categories.includes(categoryFilter.toUpperCase());
       });
 
-    // Insert virtual "Shipped Base" after the last shipped/packing container
-    if (!hiddenBases.has("Shipped Base")) {
-      let lastActiveIdx = -1;
-      for (let i = filtered.length - 1; i >= 0; i--) {
-        const s = filtered[i].status;
-        if (s === "shipped" || s === "packing_received") { lastActiveIdx = i; break; }
-      }
-      if (lastActiveIdx >= 0) {
-        const lastActive = filtered[lastActiveIdx];
-        filtered.splice(lastActiveIdx + 1, 0, {
-          col: -1,
-          name: "Shipped Base",
-          eta: lastActive.eta,
-          cbm_cap: 0,
-          status: "shipped_base",
-        });
-      }
-    }
-
     return filtered;
-  }, [categoryFilter, data.containers, etaOverrides, hiddenContainers, hiddenBases]);
+  }, [categoryFilter, data.containers, etaOverrides, hiddenContainers]);
 
   const visibleRows = useMemo(() => {
     const query = search.toLowerCase();
@@ -2097,15 +2080,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     }));
 
     if (groupVis.con) {
-      // Render order: baseline, shipped_base (regardless of chain position), then all others
+      // Render order: baseline first, then all real containers.
       const renderOrder = [
         ...containers.filter((c) => c.status === "baseline"),
-        ...containers.filter((c) => c.status === "shipped_base"),
-        ...containers.filter((c) => c.status !== "baseline" && c.status !== "shipped_base"),
+        ...containers.filter((c) => c.status !== "baseline"),
       ];
       for (const [containerIndex, container] of renderOrder.entries()) {
         if (container.status === "baseline" && hiddenBases.has("Base")) continue;
-        const baseline = container.status === "baseline" || container.status === "shipped_base";
+        const baseline = container.status === "baseline";
+        const qtyEditable = !baseline && container.status !== "packing_received";
         groups.push({
           groupId: `container-${container.name}`,
           headerName: container.name,
@@ -2114,6 +2097,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
           headerGroupComponentParams: {
             eta: container.eta,
             baseline,
+            qtyEditable,
             status: container.status,
             totalColumns: subColumns.map((column) => ({
               id: column.id,
@@ -2166,11 +2150,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
               : column.id === "remaining"
                 ? "Rem. Qty"
                 : column.label.replace("\n", " "),
-            headerTooltip: column.id === "inb_qty" && !baseline
+            headerTooltip: column.id === "inb_qty" && qtyEditable
               ? "Right-click to filter Qty > 0"
               : column.label.replace("\n", " "),
-            headerComponent: column.id === "inb_qty" && !baseline ? ConQtyHeader : undefined,
-            headerComponentParams: column.id === "inb_qty" && !baseline ? {
+            headerComponent: column.id === "inb_qty" && qtyEditable ? ConQtyHeader : undefined,
+            headerComponentParams: column.id === "inb_qty" && qtyEditable ? {
               isFiltered: conQtyFilter === container.name,
               onRightClick: (x: number, y: number) => setQtyCtxMenu({ x, y, containerName: container.name }),
             } : undefined,
@@ -2207,8 +2191,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
                   return getNum(nodeA) - getNum(nodeB);
                 }
               : undefined,
-            cellRenderer: column.id === "inb_qty" && !baseline ? QtyCellRenderer : CellRenderer,
-            cellRendererParams: column.id === "inb_qty" && !baseline ? (params: ICellRendererParams<DemandRow, CellContent>) => {
+            cellRenderer: column.id === "inb_qty" && qtyEditable ? QtyCellRenderer : CellRenderer,
+            cellRendererParams: column.id === "inb_qty" && qtyEditable ? (params: ICellRendererParams<DemandRow, CellContent>) => {
               const row = params.data;
               if (!row) return { onSave: async () => false };
               const raw = row.containers?.[container.name] ?? {
