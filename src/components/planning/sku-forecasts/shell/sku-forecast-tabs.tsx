@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { pick, type SkuForecastLanguage } from "../language";
 
@@ -28,8 +29,27 @@ export function SkuForecastTabs({
   language,
   defaultTab = "sales",
 }: SkuForecastTabsProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<SkuForecastTab>(defaultTab);
+
+  function changeTab(nextValue: string) {
+    const nextTab = parseSkuForecastTab(nextValue);
+    setActiveTab(nextTab);
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextTab === "sales") {
+      params.delete("tab");
+    } else {
+      params.set("tab", nextTab);
+    }
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  }
+
   return (
-    <Tabs defaultValue={defaultTab} className="space-y-4">
+    <Tabs value={activeTab} onValueChange={changeTab} className="space-y-4">
       <TabsList className="planning-panel h-auto rounded-xl border bg-white dark:bg-zinc-900 dark:border-zinc-700 p-1 gap-0.5">
         <TabsTrigger value="sales" className={triggerClassName}>
           {pick(language, "판매 분석", "Sales Analysis")}
@@ -55,4 +75,14 @@ export function SkuForecastTabs({
       <TabsContent value="forecast">{forecast}</TabsContent>
     </Tabs>
   );
+}
+
+function parseSkuForecastTab(value: string): SkuForecastTab {
+  if (
+    value === "inventory" ||
+    value === "history" ||
+    value === "purchase" ||
+    value === "forecast"
+  ) return value;
+  return "sales";
 }

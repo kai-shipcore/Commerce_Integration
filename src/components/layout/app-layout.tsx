@@ -11,7 +11,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { BookOpen, ChevronsDown, ChevronsUp, GripVertical, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,14 @@ const manualSectionByNavigationId: Record<string, string> = {
   factories: "factories",
   "warehouse-admin": "warehouse",
   integrations: "integrations",
+};
+
+const skuForecastManualSectionByTab: Record<string, string> = {
+  sales: "sp-analysis",
+  inventory: "sp-inventory",
+  history: "sp-inbound-history",
+  purchase: "sp-recommend",
+  forecast: "sp-forecast",
 };
 
 interface LauncherPosition {
@@ -125,6 +133,7 @@ function storeLauncherPosition(position: LauncherPosition) {
 export function AppLayout({ children }: AppLayoutProps) {
   const { locale, t } = useI18n();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { data: session } = useSession();
   const [accessState, setAccessState] = useState<"checking" | "allowed" | "denied">("checking");
@@ -144,12 +153,15 @@ export function AppLayout({ children }: AppLayoutProps) {
       .sort((left, right) => right.href.length - left.href.length)[0] ?? null;
   }, [pathname]);
   const manualHref = useMemo(() => {
-    const section = matchedItem
-      ? manualSectionByNavigationId[matchedItem.id] ?? DEFAULT_MANUAL_SECTION
-      : DEFAULT_MANUAL_SECTION;
+    let section = DEFAULT_MANUAL_SECTION;
+    if (matchedItem?.id === "sku-forecasts") {
+      section = skuForecastManualSectionByTab[searchParams.get("tab") ?? "sales"] ?? manualSectionByNavigationId["sku-forecasts"];
+    } else if (matchedItem) {
+      section = manualSectionByNavigationId[matchedItem.id] ?? DEFAULT_MANUAL_SECTION;
+    }
 
     return withBasePath(`/manual/index.html?lang=${locale}&section=${section}`);
-  }, [locale, matchedItem]);
+  }, [locale, matchedItem, searchParams]);
 
   useEffect(() => {
     let cancelled = false;

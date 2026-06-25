@@ -6,7 +6,12 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 }
 
 function parseTab(value: string | undefined): SkuForecastTab {
-  if (value === "inventory" || value === "history" || value === "purchase") return value;
+  if (
+    value === "inventory" ||
+    value === "history" ||
+    value === "purchase" ||
+    value === "forecast"
+  ) return value;
   return "sales";
 }
 

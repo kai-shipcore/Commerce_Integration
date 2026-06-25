@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { AlertTriangle, CalendarIcon, Loader2 } from "lucide-react";
 import { format, subWeeks } from "date-fns";
@@ -60,20 +61,68 @@ const MODEL_DESCRIPTIONS: Record<string, { ko: string; en: string }> = {
   Naive:           { ko: "마지막 관측값을 예측값으로 사용합니다. 최소한의 기준선 모델입니다.", en: "Uses the last observed value as the forecast. A minimal baseline." },
 };
 
-function ModelTooltip({ value, language, children }: { value: string; language: SkuForecastLanguage; children: ReactNode }) {
+function ModelTooltip({
+  value,
+  options,
+  language,
+  children,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  language: SkuForecastLanguage;
+  children: ReactNode;
+}) {
   const [show, setShow] = useState(false);
-  const desc = MODEL_DESCRIPTIONS[value];
-  if (!desc) return <>{children}</>;
-  const text = language === "ko" ? desc.ko : desc.en;
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const describedOptions = options.filter((opt) => MODEL_DESCRIPTIONS[opt.value]);
+  if (describedOptions.length === 0) return <>{children}</>;
+
+  const handleMouseEnter = () => {
+    if (ref.current) setAnchorRect(ref.current.getBoundingClientRect());
+    setShow(true);
+  };
+
+  const panel =
+    show && anchorRect && typeof window !== "undefined"
+      ? createPortal(
+          <div
+            className="pointer-events-none fixed z-[9999] w-64 overflow-hidden rounded-md border bg-popover text-xs shadow-lg"
+            style={{
+              left: Math.min(anchorRect.left, window.innerWidth - 264),
+              ...(anchorRect.top > 300
+                ? { bottom: window.innerHeight - anchorRect.top + 6 }
+                : { top: anchorRect.bottom + 6 }),
+            }}
+          >
+            {describedOptions.map((opt) => {
+              const desc = MODEL_DESCRIPTIONS[opt.value]!;
+              const isSelected = opt.value === value;
+              return (
+                <div
+                  key={opt.value}
+                  className={`border-b border-border/50 px-3 py-2 last:border-b-0 ${isSelected ? "bg-blue-50 dark:bg-blue-950/40" : ""}`}
+                >
+                  <div className={`font-semibold ${isSelected ? "text-blue-600 dark:text-blue-400" : "text-foreground"}`}>
+                    {opt.label}
+                    {isSelected && <span className="ml-1.5 font-normal opacity-50">✓</span>}
+                  </div>
+                  <p className="mt-0.5 leading-snug text-muted-foreground">
+                    {language === "ko" ? desc.ko : desc.en}
+                  </p>
+                </div>
+              );
+            })}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div className="relative" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+    <div ref={ref} onMouseEnter={handleMouseEnter} onMouseLeave={() => setShow(false)}>
       {children}
-      {show && (
-        <div className="pointer-events-none absolute bottom-full left-0 z-50 mb-1.5 w-56 rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
-          <span className="font-semibold text-foreground">{value}</span>
-          <p className="mt-0.5 leading-snug text-muted-foreground">{text}</p>
-        </div>
-      )}
+      {panel}
     </div>
   );
 }
@@ -649,7 +698,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                   </Popover>
                 </div>
               </div>
-              <ModelTooltip value={forwardModel} language={language}>
+              <ModelTooltip value={forwardModel} options={MODEL_OPTIONS} language={language}>
                 <select
                   value={forwardModel}
                   onChange={(e) => setForwardModel(e.target.value)}
@@ -840,7 +889,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
               {/* Model */}
               <div className="flex items-center gap-1">
-                <ModelTooltip value={btModel} language={language}>
+                <ModelTooltip value={btModel} options={MODEL_OPTIONS} language={language}>
                   <select
                     value={btModel}
                     onChange={(e) => {
@@ -855,7 +904,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                   </select>
                 </ModelTooltip>
                 <span className="text-muted-foreground">+</span>
-                <ModelTooltip value={btModel2} language={language}>
+                <ModelTooltip value={btModel2} options={MODEL2_BASE_OPTIONS} language={language}>
                   <select
                     value={btModel2}
                     onChange={(e) => setBtModel2(e.target.value)}
