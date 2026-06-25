@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CalendarRange, ChevronDown, ExternalLink, Search, X } from "lucide-react";
+import { CalendarRange, ChevronDown, ExternalLink, FileDown, List, Plus, Search, X } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import type { DemandPlanningData, DemandRow } from "@/types/demand-planning";
@@ -14,7 +15,7 @@ import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-f
 type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received" | "complete";
 type Period = "3M" | "6M" | "all";
 type TimelineProductKey = "sc" | "cc" | "fm";
-type TimelineProductFilter = "all" | TimelineProductKey;
+type TimelineProductFilter = "all" | TimelineProductKey | "empty";
 
 interface ContainerItem {
   id: string;
@@ -202,6 +203,7 @@ const PRODUCT_OPTIONS: { value: TimelineProductFilter; label: string; shortLabel
   { value: "sc", label: "Seat Cover", shortLabel: "SC" },
   { value: "cc", label: "Car Cover", shortLabel: "CC" },
   { value: "fm", label: "Floor Mat", shortLabel: "FM" },
+  { value: "empty", label: "SKU없음", shortLabel: "SKU없음" },
 ];
 
 const PRODUCT_BADGE: Record<TimelineProductKey, string> = {
@@ -324,14 +326,29 @@ export function ContainerTimelinePage() {
   const [planningLoading, setPlanningLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Container | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [productFilter, setProductFilter] = useState<TimelineProductFilter>("all");
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
+  const [productFilter, setProductFilter] = useState<TimelineProductFilter>(() => {
+    const p = searchParams.get("product");
+    if (p === "sc" || p === "cc" || p === "fm" || p === "empty") return p;
+    return "all";
+  });
 
   // ── Filter state ──
-  const [activeStatuses, setActiveStatuses] = useState<Set<ContainerStatus>>(
-    () => new Set<ContainerStatus>(["packing-list-received", "final-list-sent", "draft"])
-  );
+  const [activeStatuses, setActiveStatuses] = useState<Set<ContainerStatus>>(() => {
+    const s = searchParams.get("status");
+    if (s) {
+      const valid: ContainerStatus[] = ["packing-list-received", "final-list-sent", "draft", "complete"];
+      const parsed = s.split(",").filter((v): v is ContainerStatus => valid.includes(v as ContainerStatus));
+      if (parsed.length > 0) return new Set(parsed);
+    }
+    return new Set<ContainerStatus>(["packing-list-received", "final-list-sent", "draft"]);
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<ContainerStatus>>(() => new Set());
   const [period, setPeriod] = useState<Period>("3M");
+  const [viewMode, setViewMode] = useState<"compact" | "detailed">(() => {
+    if (typeof window === "undefined") return "compact";
+    return (localStorage.getItem("container-timeline:viewMode") as "compact" | "detailed") ?? "compact";
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -517,6 +534,7 @@ export function ContainerTimelinePage() {
 
   const productMatchedContainers = useMemo(() => {
     if (productFilter === "all") return containers;
+    if (productFilter === "empty") return containers.filter((c) => c.items.length === 0);
     return containers.filter((container) => productKeysByContainer.get(container.id)?.includes(productFilter));
   }, [containers, productFilter, productKeysByContainer]);
 
@@ -546,6 +564,20 @@ export function ContainerTimelinePage() {
     })).filter((g) => g.items.length > 0);
   }, [searchMatchedContainers, activeStatuses, period, rangeStart, rangeEnd]);
 
+  // ── Container count per month (for timeline header) ─────────────────────
+  const countByMonth = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const group of grouped) {
+      for (const c of group.items) {
+        if (!c.etaDate) continue;
+        const eta = toDate(c.etaDate);
+        const key = fmtMonthYear(new Date(eta.getFullYear(), eta.getMonth(), 1));
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [grouped]);
+
   // ── Summary counts for filter pills ──────────────────────────────────────
   const countsByStatus = useMemo(() => {
     const counts: Partial<Record<ContainerStatus, number>> = {};
@@ -554,6 +586,15 @@ export function ContainerTimelinePage() {
     }
     return counts;
   }, [searchMatchedContainers]);
+
+  function toggleGroup(status: ContainerStatus) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      return next;
+    });
+  }
 
   function toggleStatus(status: ContainerStatus) {
     setActiveStatuses((prev) => {
@@ -566,6 +607,38 @@ export function ContainerTimelinePage() {
       }
       return next;
     });
+  }
+
+  const listHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set("q", searchQuery);
+    params.set("product", productFilter);
+    const statusStr = [...activeStatuses].join(",");
+    if (statusStr) params.set("status", statusStr);
+    const qs = params.toString();
+    return `/planning/container-planning${qs ? `?${qs}` : ""}`;
+  }, [searchQuery, productFilter, activeStatuses]);
+
+  function exportToExcel() {
+    const visibleContainers = grouped.flatMap((g) => g.items);
+    const rows: (string | number)[][] = [
+      ["Container", "Status", "ETA", "Factory", "Warehouse", "SKU Count", "Total Qty", "Total CBM (m³)"],
+      ...visibleContainers.map((c) => [
+        c.containerNumber,
+        STATUS_LABEL_FULL[c.status],
+        c.etaDate ?? "",
+        c.factoryName ?? "",
+        c.destWarehouse ?? "",
+        c.itemCount,
+        c.totalQty,
+        c.totalCbm,
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Container Timeline");
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    XLSX.writeFile(wb, `container_timeline_${date}.xlsx`);
   }
 
   function barProps(c: Container): { left: number; width: number } | null {
@@ -622,13 +695,52 @@ export function ContainerTimelinePage() {
     <>
       <div className={`flex flex-col gap-4 transition-[margin] duration-200 ${selected ? "2xl:mr-[1120px]" : ""}`}>
         {/* ── Page header ───────────────────────────────────────────────── */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex shrink-0 items-start gap-2">
             <CalendarRange className="mt-1 h-5 w-5 shrink-0" />
             <div>
-            <h1 className="text-lg font-bold text-[#1a1917]">{pick("컨테이너 일정", "Container Timeline")}</h1>
-            <p className="text-sm text-muted-foreground">{pick("입고 예정 컨테이너 · ETA 기준 Gantt 뷰", "Inbound containers · Gantt view by ETA")}</p>
+              <h1 className="text-lg font-bold text-[#1a1917]">{pick("컨테이너 일정", "Container Timeline")}</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {pick("입고 예정 컨테이너를 날짜 기준으로 시각화합니다.", "Visualizes scheduled inbound containers on a date-based timeline.")}
+              </p>
             </div>
+          </div>
+
+          {/* ── Top-right action buttons ─── */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* List / Timeline view toggle */}
+            <div className="flex overflow-hidden rounded-md border border-[#d8d6ce]">
+              <Link
+                href={listHref}
+                className="flex items-center gap-1.5 border-r border-[#d8d6ce] bg-white px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#f0eee9]"
+              >
+                <List className="h-4 w-4" />
+                {pick("목록", "List")}
+              </Link>
+              <span className="flex items-center gap-1.5 bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white">
+                <CalendarRange className="h-4 w-4" />
+                {pick("일정", "Timeline")}
+              </span>
+            </div>
+
+            {/* Add container → container-planning with form open */}
+            <Link
+              href="/planning/container-planning?action=add"
+              className="flex items-center gap-1.5 rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1650c4]"
+            >
+              <Plus className="h-4 w-4" />
+              {pick("컨테이너 추가", "Add Container")}
+            </Link>
+
+            {/* Excel export */}
+            <button
+              type="button"
+              onClick={exportToExcel}
+              className="flex items-center gap-1.5 rounded-md border border-[#d8d6ce] bg-white px-3 py-2 text-sm font-medium text-[#1a1917] transition-colors hover:bg-[#f0eee9]"
+            >
+              <FileDown className="h-4 w-4" />
+              {pick("엑셀 내보내기", "Excel Export")}
+            </button>
           </div>
         </div>
 
@@ -637,7 +749,7 @@ export function ContainerTimelinePage() {
           <div className="relative w-[280px] shrink-0">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400" />
             <input
-              type="search"
+              type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={pick("컨테이너 이름 또는 SKU 검색", "Search container or SKU")}
@@ -672,7 +784,7 @@ export function ContainerTimelinePage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {option.value === "all" ? pick("전체", "All") : option.shortLabel}
+                {option.value === "all" ? pick("전체", "All") : option.value === "empty" ? pick("SKU없음", "No SKU") : option.shortLabel}
               </button>
             ))}
           </div>
@@ -732,6 +844,28 @@ export function ContainerTimelinePage() {
             ))}
           </div>
 
+          <span className="w-px h-4 bg-[#d8d6ce]" />
+
+          {/* View mode toggle */}
+          <div className="flex bg-[#f0eee9] border border-[#d8d6ce] rounded-lg p-0.5 gap-0.5">
+            {(["compact", "detailed"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  setViewMode(mode);
+                  localStorage.setItem("container-timeline:viewMode", mode);
+                }}
+                className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                  viewMode === mode
+                    ? "bg-white text-[#1a1917] shadow-sm ring-1 ring-inset ring-[#d8d6ce]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {mode === "compact" ? pick("간략하게", "Compact") : pick("상세하게", "Detailed")}
+              </button>
+            ))}
+          </div>
+
           {/* Result count */}
           <span className="ml-auto text-[11px] text-muted-foreground">
             {pick(`${totalVisible}개 표시 중`, `${totalVisible} shown`)}
@@ -755,19 +889,25 @@ export function ContainerTimelinePage() {
                     key={i}
                     style={{ width: `${m.widthPct}%` }}
                     className={`shrink-0 py-2.5 text-center text-[11px] font-semibold border-r border-[#e8e6e1] last:border-r-0 ${
-                      m.isCurrent ? "text-[#1a5cdb]" : "text-stone-500"
+                      m.isCurrent ? "text-[#1a5cdb] bg-blue-50" : "text-stone-500"
                     }`}
                   >
                     {m.label}
+                    {countByMonth[m.label] ? (
+                      <span className="ml-1.5 font-normal opacity-60">({countByMonth[m.label]})</span>
+                    ) : null}
                   </div>
                 ))}
               </div>
               {todayVisible && (
                 <div
-                  className="absolute top-0 bottom-0 pointer-events-none"
+                  className="absolute top-0 bottom-0 pointer-events-none z-10"
                   style={{ left: `${todayPct}%` }}
                 >
-                  <div className="w-px h-full bg-red-400 opacity-50" />
+                  <div className="w-[2px] h-full bg-red-500" />
+                  <div className="absolute top-1 left-0 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-sm whitespace-nowrap shadow-sm">
+                    Today
+                  </div>
                 </div>
               )}
             </div>
@@ -785,7 +925,10 @@ export function ContainerTimelinePage() {
             grouped.map((group) => (
               <div key={group.status}>
                 {/* Group label */}
-                <div className="flex border-b border-[#f0ede8] bg-[#fafaf7]">
+                <div
+                  className="flex border-b border-[#f0ede8] bg-[#fafaf7] cursor-pointer select-none hover:bg-[#eceae4] transition-colors"
+                  onClick={() => toggleGroup(group.status)}
+                >
                   <div className="w-[280px] shrink-0 border-r border-[#e2dfd8] px-4 py-1.5 flex items-center gap-2">
                     <span
                       className="w-2 h-2 rounded-full shrink-0"
@@ -798,11 +941,17 @@ export function ContainerTimelinePage() {
                       {group.items.length}
                     </span>
                   </div>
-                  <div className="flex-1" />
+                  <div className="flex-1 flex items-center justify-end pr-3">
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-stone-400 transition-transform duration-150 ${
+                        collapsedGroups.has(group.status) ? "-rotate-90" : ""
+                      }`}
+                    />
+                  </div>
                 </div>
 
                 {/* Container rows */}
-                {group.items.map((c) => {
+                {!collapsedGroups.has(group.status) && group.items.map((c) => {
                   const bar = barProps(c);
                   const isSelected = selected?.id === c.id;
                   const containerProductKeys = productKeysByContainer.get(c.id) ?? [];
@@ -825,50 +974,72 @@ export function ContainerTimelinePage() {
                       onClick={() => setSelected(isSelected ? null : c)}
                     >
                       {/* Sidebar */}
-                      <div
-                        className={`border-r border-[#e2dfd8] px-4 py-2.5 flex flex-col gap-0.5 justify-center ${
-                          isSelected ? "w-[276px] shrink-0" : "w-[280px] shrink-0"
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5">
+                      {viewMode === "compact" ? (
+                        <div
+                          className={`border-r border-[#e2dfd8] px-3 py-1.5 flex items-center gap-2 ${
+                            isSelected ? "w-[276px] shrink-0" : "w-[280px] shrink-0"
+                          }`}
+                        >
                           <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10"
-                            style={{
-                              backgroundColor: STATUS_COLOR[c.status],
-                              boxShadow: `0 0 0 3px ${STATUS_COLOR[c.status]}30`,
-                            }}
+                            className="w-2 h-2 rounded-full shrink-0 border border-black/10"
+                            style={{ backgroundColor: STATUS_COLOR[c.status] }}
                           />
-                          <span className="font-mono text-[12px] font-bold text-[#1a1917] truncate">
+                          <span className="font-mono text-[11px] font-bold text-[#1a1917] truncate flex-1">
                             {c.containerNumber}
                           </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-wrap pl-4">
-                          <span
-                            className={`text-[10px] font-semibold px-1.5 py-px rounded-md ${STATUS_PILL[c.status]}`}
-                          >
-                            {STATUS_LABEL_FULL[c.status]}
+                          <span className="text-[10px] text-stone-400 shrink-0">
+                            {c.itemCount} SKUs
                           </span>
-                          {containerProductKeys.map((key) => (
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            · {displayDate ?? "—"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div
+                          className={`border-r border-[#e2dfd8] px-4 py-2.5 flex flex-col gap-0.5 justify-center ${
+                            isSelected ? "w-[276px] shrink-0" : "w-[280px] shrink-0"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
                             <span
-                              key={key}
-                              className={`rounded px-1.5 py-px text-[9px] font-bold ${PRODUCT_BADGE[key]}`}
+                              className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10"
+                              style={{
+                                backgroundColor: STATUS_COLOR[c.status],
+                                boxShadow: `0 0 0 3px ${STATUS_COLOR[c.status]}30`,
+                              }}
+                            />
+                            <span className="font-mono text-[12px] font-bold text-[#1a1917] truncate">
+                              {c.containerNumber}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap pl-4">
+                            <span
+                              className={`text-[10px] font-semibold px-1.5 py-px rounded-md ${STATUS_PILL[c.status]}`}
                             >
-                              {key.toUpperCase()}
+                              {STATUS_LABEL_FULL[c.status]}
                             </span>
-                          ))}
-                          {c.destWarehouse && (
-                            <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
-                              {c.destWarehouse}
-                            </span>
-                          )}
+                            {containerProductKeys.map((key) => (
+                              <span
+                                key={key}
+                                className={`rounded px-1.5 py-px text-[9px] font-bold ${PRODUCT_BADGE[key]}`}
+                              >
+                                {key.toUpperCase()}
+                              </span>
+                            ))}
+                            {c.destWarehouse && (
+                              <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                                {c.destWarehouse}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground pl-4">
+                            ETA {displayDate ?? "—"} · {c.itemCount} SKUs · {c.totalQty.toLocaleString()} units
+                          </div>
                         </div>
-                        <div className="text-[10px] text-muted-foreground pl-4">
-                          ETA {displayDate ?? "—"} · {c.itemCount} SKUs · {c.totalQty.toLocaleString()} units
-                        </div>
-                      </div>
+                      )}
 
                       {/* Timeline */}
-                      <div className="flex-1 relative py-3 min-h-[62px]">
+                      <div className={`flex-1 relative ${viewMode === "compact" ? "py-1.5 min-h-[36px]" : "py-3 min-h-[62px]"}`}>
                         {/* Month grid */}
                         <div className="absolute inset-0 flex pointer-events-none">
                           {months.map((m, i) => (
@@ -876,7 +1047,7 @@ export function ContainerTimelinePage() {
                               key={i}
                               style={{ width: `${m.widthPct}%` }}
                               className={`shrink-0 border-r border-[#f0ede8] last:border-r-0 ${
-                                m.isCurrent ? "bg-blue-50/20" : ""
+                                m.isCurrent ? "bg-blue-50" : ""
                               }`}
                             />
                           ))}
@@ -888,14 +1059,14 @@ export function ContainerTimelinePage() {
                             className="absolute top-0 bottom-0 pointer-events-none"
                             style={{ left: `${todayPct}%` }}
                           >
-                            <div className="w-px h-full bg-red-400 opacity-30" />
+                            <div className="w-[2px] h-full bg-red-500 opacity-60" />
                           </div>
                         )}
 
                         {/* Gantt bar */}
                         {bar ? (
                           <div
-                            className="absolute top-3 bottom-3 rounded-md flex items-center overflow-hidden shadow-sm"
+                            className={`absolute rounded-md flex items-center overflow-hidden shadow-sm ${viewMode === "compact" ? "top-1 bottom-1" : "top-3 bottom-3"}`}
                             style={{
                               left: `${bar.left}%`,
                               width: `${bar.width}%`,
@@ -954,8 +1125,12 @@ export function ContainerTimelinePage() {
           ))}
           <span className="w-px h-3.5 bg-[#d8d6ce]" />
           <div className="flex items-center gap-1.5">
-            <div className="w-px h-4 bg-red-400 opacity-60" />
+            <div className="w-[2px] h-4 bg-red-500" />
             {pick("오늘", "Today")}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3.5 h-3 rounded-sm bg-blue-50 border border-blue-200" />
+            {pick("이번달", "This Month")}
           </div>
           <span className="ml-auto text-[10px] text-stone-300">
             {pick("※ 바 너비 = 30일 Transit 기간 (발주일 컬럼 추가 시 실제 기간으로 전환 가능)", "※ Bar width = 30-day transit period (can switch to actual period when order date column is added)")}

@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import { ChevronDown, ChevronUp, PackageOpen, Ship } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronUp, List, PackageOpen, Plus, Ship } from "lucide-react";
 import {
   containerStatusLabels,
   mockSkus,
@@ -17,6 +18,7 @@ import { isPOApproverRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
 
 type ContainerItem = MockContainer["items"][number];
+type PlanningProductFilter = ProductKey | "empty" | null;
 
 type ContainerFormState = {
   number: string;
@@ -157,6 +159,13 @@ const productLabels: Record<ProductKey, string> = {
   cc: "Car Cover",
   sc: "Seat Cover",
   ac: "Accessories",
+};
+
+const productShortLabels: Record<ProductKey, string> = {
+  fm: "FM",
+  cc: "CC",
+  sc: "SC",
+  ac: "AC",
 };
 
 const productFilterOrder: ProductKey[] = ["fm", "cc", "sc"];
@@ -310,7 +319,7 @@ export function ContainerPlanningPage() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [loadingWarehouses, setLoadingWarehouses] = useState(true);
   const [factories, setFactories] = useState<FactoryOption[]>([]);
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(() => searchParams.get("action") === "add");
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
   const [savingContainer, setSavingContainer] = useState(false);
   const [statusModalContainerId, setStatusModalContainerId] = useState<string | null>(null);
@@ -322,10 +331,29 @@ export function ContainerPlanningPage() {
   const [cbmInput, setCbmInput] = useState("");
   const [memoInput, setMemoInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ContainerStatus | null>(null);
-  const [productFilter, setProductFilter] = useState<ProductKey | null>(targetContainerId ? null : "fm");
-  const [containerListTab, setContainerListTab] = useState<ContainerListTab>("active");
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState<Set<ContainerStatus>>(() => {
+    const s = searchParams.get("status");
+    if (!s) return new Set();
+    const valid: ContainerStatus[] = ["packing-list-received", "final-list-sent", "draft", "complete"];
+    const parsed = s.split(",").filter((v): v is ContainerStatus => valid.includes(v as ContainerStatus));
+    return new Set(parsed);
+  });
+  const [productFilter, setProductFilter] = useState<PlanningProductFilter>(() => {
+    if (targetContainerId) return null;
+    const p = searchParams.get("product");
+    if (p === "all") return null;
+    if (p === "sc" || p === "cc" || p === "fm" || p === "empty") return p;
+    return "fm";
+  });
+  const [containerListTab, setContainerListTab] = useState<ContainerListTab>(() => {
+    const s = searchParams.get("status");
+    if (s) {
+      const parts = s.split(",");
+      if (parts.length === 1 && parts[0] === "complete") return "completed";
+    }
+    return "active";
+  });
   const [inlineSkuDrafts, setInlineSkuDrafts] = useState<Record<string, InlineSkuDraft | undefined>>({});
   const [inlineEditDrafts, setInlineEditDrafts] = useState<Record<string, InlineEditDraft | undefined>>({});
   const [skuListCollapsed, setSkuListCollapsed] = useState<boolean | null>(() => (targetSku ? false : null));
@@ -357,6 +385,31 @@ export function ContainerPlanningPage() {
   );
   const activeContainers = containers.filter((container) => container.status !== "complete").length;
   const completedContainers = containers.length - activeContainers;
+
+  const { thisMonthInbound, nextMonthInbound } = useMemo(() => {
+    const now = new Date();
+    const thisY = now.getFullYear(), thisM = now.getMonth();
+    const nextM = thisM === 11 ? 0 : thisM + 1;
+    const nextY = thisM === 11 ? thisY + 1 : thisY;
+    let thisCount = 0, nextCount = 0;
+    for (const c of containers) {
+      if (!c.eta) continue;
+      const d = new Date(c.eta);
+      if (d.getFullYear() === thisY && d.getMonth() === thisM) thisCount++;
+      else if (d.getFullYear() === nextY && d.getMonth() === nextM) nextCount++;
+    }
+    return { thisMonthInbound: thisCount, nextMonthInbound: nextCount };
+  }, [containers]);
+  const timelineHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (productFilter) params.set("product", productFilter);
+    const statusStr = [...statusFilter].join(",");
+    if (statusStr) params.set("status", statusStr);
+    const qs = params.toString();
+    return `/planning/container-timeline${qs ? `?${qs}` : ""}`;
+  }, [query, productFilter, statusFilter]);
+
   const filteredContainers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return containers.filter((container) => {
@@ -383,8 +436,9 @@ export function ContainerPlanningPage() {
 
       if (containerListTab === "active" && container.status === "complete") return false;
       if (containerListTab === "completed" && container.status !== "complete") return false;
-      if (statusFilter && container.status !== statusFilter) return false;
-      if (productFilter && container.items.length > 0 && !getContainerProducts(container).has(productFilter)) return false;
+      if (statusFilter.size > 0 && !statusFilter.has(container.status)) return false;
+      if (productFilter === "empty") return container.items.length === 0;
+      if (productFilter && !getContainerProducts(container).has(productFilter)) return false;
       return true;
     });
   }, [containerListTab, containers, query, statusFilter, productFilter]);
@@ -1579,7 +1633,7 @@ export function ContainerPlanningPage() {
     }
     const productLabel = productKeys.size === 1
       ? productLabels[[...productKeys][0]]
-      : productFilter
+      : productFilter && productFilter !== "empty"
         ? productLabels[productFilter]
         : "Mixed Product";
     const etaForFile = sortedContainers
@@ -1770,6 +1824,21 @@ export function ContainerPlanningPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* List / Timeline view toggle */}
+          <div className="flex overflow-hidden rounded-md border border-[#d8d6ce]">
+            <span className="flex items-center gap-1.5 bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white">
+              <List className="h-4 w-4" />
+              {pick("목록", "List")}
+            </span>
+            <Link
+              href={timelineHref}
+              className="flex items-center gap-1.5 border-l border-[#d8d6ce] bg-white px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-[#f0eee9]"
+            >
+              <CalendarRange className="h-4 w-4" />
+              {pick("일정", "Timeline")}
+            </Link>
+          </div>
+
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -1779,9 +1848,10 @@ export function ContainerPlanningPage() {
           <button
             type="button"
             onClick={openForm}
-            className="rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
+            className="flex items-center gap-1.5 rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1650c4]"
           >
-            {pick("+ 컨테이너 추가", "+ Add Container")}
+            <Plus className="h-4 w-4" />
+            {pick("컨테이너 추가", "Add Container")}
           </button>
           <button
             type="button"
@@ -1813,6 +1883,12 @@ export function ContainerPlanningPage() {
               {pick("완료", "Completed")} <span className="font-mono font-semibold text-foreground">{completedContainers}</span>
             </span>
             <span className="text-muted-foreground">
+              {pick("이번달", "This Month")} <span className="font-mono font-semibold text-foreground">{thisMonthInbound}</span>
+            </span>
+            <span className="text-muted-foreground">
+              {pick("다음달", "Next Month")} <span className="font-mono font-semibold text-foreground">{nextMonthInbound}</span>
+            </span>
+            <span className="text-muted-foreground">
               {pick("수량", "Units")} <span className="font-mono font-semibold text-foreground">{formatNumber(totalUnits)}</span>
             </span>
             <span className="text-muted-foreground">
@@ -1826,11 +1902,13 @@ export function ContainerPlanningPage() {
           )}
         </button>
         {!summaryCollapsed ? (
-          <div className="grid grid-cols-2 border-t border-[#e2dfd8] dark:border-slate-700 md:grid-cols-4">
+          <div className="grid grid-cols-3 border-t border-[#e2dfd8] dark:border-slate-700 lg:grid-cols-6">
             <ContainerStat label={pick("전체 컨테이너", "Total Containers")} value={containers.length} sub={pick("등록된 계획", "Registered plans")} />
+            <ContainerStat label={pick("진행 중 컨테이너", "Active Containers")} value={activeContainers} sub={pick("완료 제외", "Excl. completed")} />
+            <ContainerStat label={pick("이번달 입고 예정", "Arriving This Month")} value={thisMonthInbound} sub={pick("ETA 기준", "By ETA")} />
+            <ContainerStat label={pick("다음달 입고 예정", "Arriving Next Month")} value={nextMonthInbound} sub={pick("ETA 기준", "By ETA")} />
             <ContainerStat label={pick("입고 수량", "Inbound Units")} value={formatNumber(totalUnits)} sub={pick("전체 SKU 합계", "Across all SKUs")} />
-            <ContainerStat label={pick("전체 CBM", "Total CBM")} value={totalCbm.toFixed(2)} sub={pick("현재 사용량", "Current usage")} />
-            <ContainerStat label={pick("진행 중 컨테이너", "Active Containers")} value={activeContainers} sub={pick("Draft / 진행 중", "Draft / in progress")} />
+            <ContainerStat label={pick("전체 CBM", "Total CBM")} value={formatNumber(Math.round(totalCbm * 100) / 100)} sub={pick("m³ 합계", "m³ total")} />
           </div>
         ) : null}
       </div>
@@ -1857,8 +1935,12 @@ export function ContainerPlanningPage() {
                       );
                       setIsFormOpen(false);
                       setStatusFilter((current) => {
-                        if (tab.id === "active" && current === "complete") return null;
-                        if (tab.id === "completed" && current !== "complete") return null;
+                        if (tab.id === "active") {
+                          const next = new Set(current);
+                          next.delete("complete");
+                          return next;
+                        }
+                        if (tab.id === "completed") return new Set(["complete"] as ContainerStatus[]);
                         return current;
                       });
                     }}
@@ -1877,7 +1959,7 @@ export function ContainerPlanningPage() {
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-muted-foreground">
                 {filteredContainers.length}
-                {(statusFilter || productFilter) ? (
+                {(statusFilter.size > 0 || productFilter) ? (
                   <span className="ml-1 text-[11px] font-normal text-[#1a5cdb] dark:text-blue-300">
                     {pick("(필터 적용)", "(filtered)")}
                   </span>
@@ -1886,12 +1968,17 @@ export function ContainerPlanningPage() {
               {containerListTab === "active" ? (
                 <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
                 {statusOptions.filter((status) => status.value !== "complete").map((status) => {
-                  const isActive = statusFilter === status.value;
+                  const isActive = statusFilter.has(status.value);
                   return (
                     <button
                       key={status.value}
                       type="button"
-                      onClick={() => setStatusFilter(isActive ? null : status.value)}
+                      onClick={() => setStatusFilter(prev => {
+                        const next = new Set(prev);
+                        if (next.has(status.value)) next.delete(status.value);
+                        else next.add(status.value);
+                        return next;
+                      })}
                       className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 transition-colors ${
                         isActive
                           ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4] dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-600"
@@ -1906,9 +1993,21 @@ export function ContainerPlanningPage() {
                 </div>
               ) : null}
             </div>
-            <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
+            <div className="hidden flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground sm:flex">
+              {/* 전체 */}
+              <button
+                type="button"
+                onClick={() => setProductFilter(null)}
+                className={`rounded-full px-2 py-0.5 transition-colors ${
+                  productFilter === null
+                    ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4] dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-600"
+                    : "hover:text-foreground dark:hover:text-slate-50"
+                }`}
+              >
+                {pick("전체", "All")}
+              </button>
+              {/* FM / CC / SC */}
               {productFilterOrder.map((key) => {
-                const label = productLabels[key];
                 const isActive = productFilter === key;
                 return (
                   <button
@@ -1931,10 +2030,22 @@ export function ContainerPlanningPage() {
                     >
                       {productFilterIcons[key]}
                     </span>
-                    {label}
+                    {productShortLabels[key]}
                   </button>
                 );
               })}
+              {/* SKU없음 */}
+              <button
+                type="button"
+                onClick={() => setProductFilter(productFilter === "empty" ? null : "empty")}
+                className={`rounded-full px-2 py-0.5 transition-colors ${
+                  productFilter === "empty"
+                    ? "bg-[#f0eee9] font-semibold text-foreground ring-1 ring-inset ring-[#cccac4] dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-600"
+                    : "hover:text-foreground dark:hover:text-slate-50"
+                }`}
+              >
+                {pick("SKU없음", "No SKU")}
+              </button>
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-[#e2dfd8] pt-2 text-[11px] text-muted-foreground dark:border-slate-700">
               <label className="flex items-center gap-2">
