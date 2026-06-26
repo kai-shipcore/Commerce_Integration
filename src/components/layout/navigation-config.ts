@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Package,
   Plug,
+  ScrollText,
   ShieldCheck,
   Ship,
   ShoppingCart,
@@ -181,6 +182,14 @@ export const navigationItems: NavigationItem[] = [
     icon: Plug,
     group: "Operations",
     hideable: true,
+  },
+  {
+    id: "audit-log",
+    name: "Audit Log",
+    href: "/admin/audit-log",
+    icon: ScrollText,
+    hideable: true,
+    adminOnly: true,
   },
   {
     id: "warehouse-admin",

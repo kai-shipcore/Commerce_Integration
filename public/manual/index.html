@@ -317,6 +317,7 @@
   <a class="nav-item" href="#factories"><span class="icon">🏭</span> 공장</a>
   <a class="nav-item" href="#warehouse"><span class="icon">🏢</span> 창고</a>
   <a class="nav-item" href="#integrations"><span class="icon">🔌</span> 마켓플레이스 API</a>
+  <a class="nav-item" href="#audit-log"><span class="icon">📜</span> 감사 로그</a>
   <div class="nav-section" style="margin-top:20px">부록</div>
   <a class="nav-item" href="#glossary"><span class="icon">📖</span> 용어 설명</a>
 </nav>
@@ -2439,6 +2440,58 @@
   </div>
 </section>
 
+<section class="page-section" id="audit-log">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eef2ff;font-size:28px">📜</div>
+    <div>
+      <div class="menu-path">메뉴 › 관리 › 감사 로그</div>
+      <h2>감사 로그</h2>
+      <p class="subtitle">컨테이너 상태 변경과 주요 수정 이력을 사용자·기간·컨테이너·변경 유형 기준으로 추적합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/07-audit-log.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📜</div><p>감사 로그 화면</p></div>'" alt="감사 로그 화면">
+    <div class="screenshot-caption">▲ 감사 로그 — 전체 컨테이너 변경 이력 검색, 페이지네이션, CSV 내보내기</div>
+  </div>
+
+  <h3>주요 사용 목적</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🔎 전체 로그 검색</h4>
+      <ul>
+        <li>사용자 이름, 이메일, 사용자 ID로 변경자를 검색합니다.</li>
+        <li>컨테이너 번호 또는 컨테이너 ID로 특정 컨테이너 이력을 찾습니다.</li>
+        <li>상태 변경, ETA 수정, 정보 수정, 수량/SKU 변경, 메모, 생성, 삭제 유형으로 좁혀 봅니다.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🧾 변경 전/후 확인</h4>
+      <ul>
+        <li>변경 전 값과 변경 후 값을 한 줄에서 비교합니다.</li>
+        <li>메모가 기록된 경우 Note 컬럼에서 내용을 확인합니다.</li>
+        <li>CSV 내보내기로 현재 필터 결과를 외부 검토용 파일로 저장합니다.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>필터와 컬럼</h3>
+  <table class="feat-table">
+    <tr><th style="width:170px">항목</th><th>설명</th></tr>
+    <tr><td class="label">사용자 검색</td><td>사용자 이름, 이메일, ID를 기준으로 로그를 검색합니다.</td></tr>
+    <tr><td class="label">컨테이너 ID</td><td>컨테이너 번호 또는 내부 ID를 입력해 관련 로그만 표시합니다.</td></tr>
+    <tr><td class="label">변경 유형</td><td>상태 변경, ETA 수정, 정보 수정, 수량/SKU 변경, 메모, 생성, 삭제 중 하나를 선택합니다.</td></tr>
+    <tr><td class="label">날짜 기간</td><td>시작일과 종료일을 선택해 해당 기간의 로그를 조회합니다.</td></tr>
+    <tr><td class="label">행 / 페이지</td><td>페이지당 표시할 행 수를 10, 20, 50개 중 선택하고 이전/다음으로 이동합니다.</td></tr>
+    <tr><td class="label">Note</td><td>컨테이너 이력에서 추가된 메모 또는 로그에 저장된 설명을 보여줍니다.</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>권한:</b> 감사 로그는 관리(Admin) 메뉴 아래에 있으며 관리자 또는 개발자 권한이 있는 사용자만 접근할 수 있습니다.</div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════════════
      부록: 용어 설명
 ═══════════════════════════════════════════════ -->
@@ -2522,6 +2575,7 @@
   <a class="nav-item" href="#en-factories"><span class="icon">🏭</span> Factories</a>
   <a class="nav-item" href="#en-warehouse"><span class="icon">🏢</span> Warehouse</a>
   <a class="nav-item" href="#en-integrations"><span class="icon">🔌</span> Marketplace APIs</a>
+  <a class="nav-item" href="#en-audit-log"><span class="icon">📜</span> Audit Log</a>
   <div class="nav-section" style="margin-top:20px">Appendix</div>
   <a class="nav-item" href="#en-glossary"><span class="icon">📖</span> Glossary</a>
 </nav>
@@ -4308,6 +4362,58 @@
         <li><span class="btn-label">Edit / Remove</span> — update credentials or delete integration</li>
       </ul>
     </div>
+  </div>
+</section>
+
+<section class="page-section" id="en-audit-log">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eef2ff;font-size:28px">📜</div>
+    <div>
+      <div class="menu-path">Menu › Admin › Audit Log</div>
+      <h2>Audit Log</h2>
+      <p class="subtitle">Track container status changes and key edits by user, date range, container, and action type.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/07-audit-log-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📜</div><p>Audit Log Screen</p></div>'" alt="Audit Log Screen">
+    <div class="screenshot-caption">▲ Audit Log — search all container change history, paginate results, and export CSV</div>
+  </div>
+
+  <h3>Main Use Cases</h3>
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🔎 Search All Logs</h4>
+      <ul>
+        <li>Search the actor by user name, email, or user ID.</li>
+        <li>Find records for a specific container by container number or internal container ID.</li>
+        <li>Narrow results by status change, ETA change, details update, item change, note, create, or delete.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🧾 Review Before / After</h4>
+      <ul>
+        <li>Compare the previous value and the updated value in the same row.</li>
+        <li>If a note was recorded, review it in the Note column.</li>
+        <li>Use CSV Export to save the current filtered result for external review.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Filters and Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:170px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Search user</td><td>Search logs by user name, email, or ID.</td></tr>
+    <tr><td class="label">Container ID</td><td>Enter a container number or internal ID to show only related records.</td></tr>
+    <tr><td class="label">Action type</td><td>Select status change, ETA change, details update, item change, note, create, or delete.</td></tr>
+    <tr><td class="label">Date range</td><td>Select start and end dates to limit the log period.</td></tr>
+    <tr><td class="label">Rows / Page</td><td>Choose 10, 20, or 50 rows per page, then navigate with Previous / Next.</td></tr>
+    <tr><td class="label">Note</td><td>Shows manual notes or additional descriptions saved with the log entry.</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Access:</b> Audit Log is under the Admin menu and is available only to admin or developer roles.</div>
   </div>
 </section>
 

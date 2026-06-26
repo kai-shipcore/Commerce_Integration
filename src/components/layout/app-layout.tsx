@@ -52,6 +52,7 @@ const manualSectionByNavigationId: Record<string, string> = {
   factories: "factories",
   "warehouse-admin": "warehouse",
   integrations: "integrations",
+  "audit-log": "audit-log",
 };
 
 const skuForecastManualSectionByTab: Record<string, string> = {

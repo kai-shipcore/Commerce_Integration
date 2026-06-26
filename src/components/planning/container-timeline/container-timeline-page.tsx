@@ -1172,7 +1172,6 @@ function ContainerDetailDrawer({
   const { pick } = useI18n();
   const normalizedSkuSearch = skuSearchQuery.trim().toLowerCase();
   const [activeTab, setActiveTab] = useState<"sku" | "history">("sku");
-  const [isSkuListOpen, setIsSkuListOpen] = useState(true);
   const [localSkuFilter, setLocalSkuFilter] = useState("");
   const [selectedSkuRowId, setSelectedSkuRowId] = useState<string | null>(null);
   const highlightedSkuRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -1231,12 +1230,12 @@ function ContainerDetailDrawer({
     : -1;
 
   useEffect(() => {
-    if (!isSkuListOpen || firstHighlightedIndex < 0) return;
+    if (firstHighlightedIndex < 0) return;
     const frame = window.requestAnimationFrame(() => {
       highlightedSkuRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [firstHighlightedIndex, isSkuListOpen]);
+  }, [firstHighlightedIndex]);
 
   function toggleSkuSort(key: SkuImpactSortKey) {
     setSkuSort((current) => ({
@@ -1419,18 +1418,17 @@ function ContainerDetailDrawer({
           {/* SKU tab */}
           {activeTab === "sku" && (
           <div className="flex min-h-0 flex-1 flex-col border-b border-[#e2dfd8]">
-            <button
-              type="button"
-              onClick={() => setIsSkuListOpen((current) => !current)}
-              className="flex shrink-0 cursor-pointer items-center justify-between gap-3 px-6 py-4 text-left hover:bg-[#fafaf7] transition-colors"
-            >
-              <span className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <ChevronDown
-                  className={`h-3.5 w-3.5 transition-transform ${isSkuListOpen ? "rotate-180" : ""}`}
+            <div className="flex shrink-0 flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 flex-1 sm:max-w-[420px]">
+                <input
+                  type="text"
+                  value={localSkuFilter}
+                  onChange={(e) => setLocalSkuFilter(e.target.value)}
+                  placeholder={pick("SKU 검색...", "Search SKU...")}
+                  className="w-full rounded-md border border-[#e2dfd8] bg-[#fafaf7] px-3 py-1.5 text-[12px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
                 />
-                {pick("SKU 목록", "SKU List")}
-              </span>
-              <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 text-[11px] text-muted-foreground sm:justify-end">
                 {criticalCount > 0 && (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700">
                     Critical {criticalCount}
@@ -1442,20 +1440,10 @@ function ContainerDetailDrawer({
                   </span>
                 )}
                 <span>{c.items.length} SKUs · {totalQty.toLocaleString()} units</span>
-              </span>
-            </button>
-
-            {isSkuListOpen && (
-            <div className="flex min-h-0 flex-1 flex-col px-6 pb-4">
-              <div className="shrink-0 pb-3">
-                <input
-                  type="text"
-                  value={localSkuFilter}
-                  onChange={(e) => setLocalSkuFilter(e.target.value)}
-                  placeholder={pick("SKU 검색...", "Search SKU...")}
-                  className="w-full rounded-md border border-[#e2dfd8] bg-[#fafaf7] px-3 py-1.5 text-[12px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
-                />
               </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col px-6 pb-4">
               {c.items.length === 0 ? (
                 <div className="py-8 text-center text-[12px] text-muted-foreground border border-dashed border-[#d8d6ce] rounded-lg">
                   {pick("등록된 SKU가 없습니다", "No SKUs registered")}
@@ -1582,7 +1570,6 @@ function ContainerDetailDrawer({
                 </div>
               )}
             </div>
-            )}
           </div>
           )}
           {activeTab === "history" && (

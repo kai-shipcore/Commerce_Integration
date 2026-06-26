@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import { CalendarRange, ChevronDown, ChevronUp, List, PackageOpen, Plus, Ship } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronUp, History, List, PackageOpen, Plus, Ship } from "lucide-react";
 import {
   containerStatusLabels,
   mockSkus,
@@ -16,6 +16,7 @@ import {
 } from "@/features/planning/mock-data";
 import { isPOApproverRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
+import { ContainerHistoryTab } from "../container-timeline/container-history-tab";
 
 type ContainerItem = MockContainer["items"][number];
 type PlanningProductFilter = ProductKey | "empty" | null;
@@ -2936,6 +2937,7 @@ function ContainerCard({
   const [selectedAllocationIds, setSelectedAllocationIds] = useState<string[]>([]);
   const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
   const [skuSearch, setSkuSearch] = useState(initialSkuSearch);
+  const [detailPanel, setDetailPanel] = useState<"sku" | "history">("sku");
   const normalizedSkuSearch = skuSearch.trim().toLowerCase();
   const visibleItems = normalizedSkuSearch
     ? container.items.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))
@@ -2943,6 +2945,10 @@ function ContainerCard({
   const activeSelectedAllocationIds = selectedAllocationIds.filter((id) => removableAllocationIds.includes(id));
   const getEditDraft = (sku: string) => inlineEditDrafts[`${container.id}::${sku}`];
   const destinationLabel = warehouseNameByCode?.get(container.destination) ?? container.destination;
+
+  useEffect(() => {
+    setDetailPanel("sku");
+  }, [container.id]);
 
   function toggleAllocationSelection(allocationIds: string[], checked: boolean) {
     setSelectedAllocationIds((current) => {
@@ -3071,18 +3077,18 @@ function ContainerCard({
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] bg-[#fbfaf8] px-5 py-3">
               <button
                 type="button"
-                aria-label={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
-                title={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
-                onClick={onToggleSkuList}
+                onClick={() => setDetailPanel("sku")}
                 className="flex-1 text-left"
               >
-                <div className="text-sm font-semibold">{pick("SKU 목록", "SKU List")}</div>
+                <div className={`text-sm font-semibold ${detailPanel === "sku" ? "text-[#1a5cdb]" : "text-foreground"}`}>
+                  {pick("SKU 목록", "SKU List")}
+                </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   {pick(`${visibleItems.length} / ${container.items.length} SKU 표시 중`, `Showing ${visibleItems.length} of ${container.items.length} SKUs`)}
                 </div>
               </button>
               <div className="flex items-center gap-2">
-                {!skuListCollapsed ? (
+                {detailPanel === "sku" && !skuListCollapsed ? (
                   <input
                     aria-label="Search SKU"
                     className="form-input w-64 bg-white font-mono text-xs"
@@ -3091,7 +3097,7 @@ function ContainerCard({
                     onChange={(event) => setSkuSearch(event.target.value)}
                   />
                 ) : null}
-                {!skuListCollapsed && skuSearch ? (
+                {detailPanel === "sku" && !skuListCollapsed && skuSearch ? (
                   <button
                     type="button"
                     onClick={() => setSkuSearch("")}
@@ -3100,15 +3106,17 @@ function ContainerCard({
                     {pick("지우기", "Clear")}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  aria-label={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
-                  title={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
-                  onClick={onToggleSkuList}
-                  className="flex h-9 w-9 items-center justify-center rounded-md border border-[#cccac4] bg-white text-muted-foreground hover:bg-[#f0eee9]"
-                >
-                  {skuListCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                </button>
+                {detailPanel === "sku" ? (
+                  <button
+                    type="button"
+                    aria-label={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
+                    title={skuListCollapsed ? "Expand SKU List" : "Collapse SKU List"}
+                    onClick={onToggleSkuList}
+                    className="flex h-9 w-9 items-center justify-center rounded-md border border-[#cccac4] bg-white text-muted-foreground hover:bg-[#f0eee9]"
+                  >
+                    {skuListCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -3162,6 +3170,20 @@ function ContainerCard({
             >
               {pick("내보내기", "Export")}
             </button>
+            {detailMode ? (
+              <button
+                type="button"
+                onClick={() => setDetailPanel((current) => current === "history" ? "sku" : "history")}
+                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium ${
+                  detailPanel === "history"
+                    ? "border-[#8fb8ff] bg-[#ebf0fd] text-[#1a5cdb]"
+                    : "border-[#cccac4] bg-white text-muted-foreground hover:bg-[#f8f7f4]"
+                }`}
+              >
+                <History className="h-4 w-4" />
+                {pick("변경 이력", "Change History")}
+              </button>
+            ) : null}
             <div className="ml-auto flex items-center gap-2">
               {(container.status !== "complete" || canRevertStatus) ? (
                 <button
@@ -3206,7 +3228,11 @@ function ContainerCard({
               </div>
             </div>
           </div>
-          {skuListCollapsed ? null : <>
+          {detailPanel === "history" ? (
+            <div className="h-[calc(100vh-330px)] min-h-[560px]">
+              <ContainerHistoryTab containerId={String(container.id)} />
+            </div>
+          ) : skuListCollapsed ? null : <>
           <div className={`grid bg-[#f0eee9] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground ${canEditQuantity ? "grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr_110px]" : "grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr]"}`}>
             <div>Master SKU</div>
             <div>{pick("수량", "Qty")}</div>

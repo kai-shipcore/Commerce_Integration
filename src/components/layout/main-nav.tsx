@@ -34,7 +34,7 @@ const navigationGroups = [
   { name: "Commerce", labelKey: "nav.commerce" as const, itemIds: ["inventory", "orders", "velocity"] },
   { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"] },
   { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
-  { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "user-access"] },
+  { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "audit-log", "user-access"] },
 ];
 
 const navigationLabelKeys: Record<string, MessageKey> = {
@@ -56,6 +56,7 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   "seat-cover-parts": "nav.parts",
   factories: "nav.factories",
   integrations: "nav.marketplaceApis",
+  "audit-log": "nav.auditLog",
   "warehouse-admin": "nav.warehouse",
   "user-access": "nav.userAccess",
 };

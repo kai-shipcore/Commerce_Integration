@@ -18,6 +18,16 @@ interface AuditEntry {
   createdAt: string;
 }
 
+function dateInputValue(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultHistoryStartDate(): string {
+  const date = new Date();
+  date.setMonth(date.getMonth() - 1);
+  return dateInputValue(date);
+}
+
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
   "final-list-sent": "Final List Sent",
@@ -217,10 +227,21 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
   const [showNote, setShowNote] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [userFilter, setUserFilter] = useState("");
+  const [startDate, setStartDate] = useState(defaultHistoryStartDate);
+  const [endDate, setEndDate] = useState(() => dateInputValue(new Date()));
+  const [actionFilter, setActionFilter] = useState("all");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   function fetchEntries() {
-    fetch(apiPath(`/api/containers/${containerId}/history`))
+    const params = new URLSearchParams();
+    if (userFilter.trim()) params.set("user", userFilter.trim());
+    if (startDate) params.set("startDate", startDate);
+    if (endDate) params.set("endDate", endDate);
+    if (actionFilter !== "all") params.set("action", actionFilter);
+    const query = params.toString();
+
+    fetch(apiPath(`/api/containers/${containerId}/history${query ? `?${query}` : ""}`))
       .then((r) => r.json())
       .then((json: { success: boolean; data: AuditEntry[] }) => {
         if (json.success) setEntries(json.data);
@@ -234,7 +255,7 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
     setEntries([]);
     fetchEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerId]);
+  }, [containerId, userFilter, startDate, endDate, actionFilter]);
 
   useEffect(() => {
     if (showNote) textareaRef.current?.focus();
@@ -261,12 +282,49 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       {/* Sub-header with Add note button */}
-      <div className="flex shrink-0 items-center justify-between border-b border-[#e2dfd8] px-6 py-2.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] px-6 py-2.5">
         <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           {pick("변경 이력", "Change History")}
         </span>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <input
+            type="search"
+            value={userFilter}
+            onChange={(e) => setUserFilter(e.target.value)}
+            placeholder={pick("사용자 검색...", "Search user...")}
+            className="h-8 min-w-[150px] rounded-md border border-[#d1c9be] bg-white px-2.5 text-[11px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
+          />
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            aria-label={pick("시작일", "Start date")}
+            className="h-8 w-[130px] rounded-md border border-[#d1c9be] bg-white px-2 text-[11px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            aria-label={pick("종료일", "End date")}
+            className="h-8 w-[130px] rounded-md border border-[#d1c9be] bg-white px-2 text-[11px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
+          />
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            className="h-8 min-w-[140px] rounded-md border border-[#d1c9be] bg-white px-2 text-[11px] outline-none focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
+          >
+            <option value="all">{pick("모든 변경 유형", "All actions")}</option>
+            <option value="status_change">{pick("상태 변경", "Status Change")}</option>
+            <option value="eta_change">{pick("ETA 수정", "ETA Change")}</option>
+            <option value="details_update">{pick("정보 수정", "Details Update")}</option>
+            <option value="items_update">{pick("수량/SKU 변경", "Item Change")}</option>
+            <option value="note_added">{pick("메모", "Note")}</option>
+            <option value="create">{pick("생성", "Create")}</option>
+            <option value="delete">{pick("삭제", "Delete")}</option>
+          </select>
+        </div>
         <button
           type="button"
           onClick={() => setShowNote((v) => !v)}

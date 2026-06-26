@@ -9,7 +9,21 @@ import { logContainerAudit } from "@/lib/container-audit";
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, { params }: Params) {
+const ACTIONS = new Set([
+  "status_change",
+  "details_update",
+  "eta_change",
+  "items_update",
+  "note_added",
+  "create",
+  "delete",
+]);
+
+function clean(value: string | null): string {
+  return value?.trim() ?? "";
+}
+
+export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
 
   if (!/^\d+$/.test(id)) {
@@ -17,15 +31,49 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   try {
+    const searchParams = req.nextUrl.searchParams;
+    const user = clean(searchParams.get("user"));
+    const action = clean(searchParams.get("action"));
+    const startDate = clean(searchParams.get("startDate"));
+    const endDate = clean(searchParams.get("endDate"));
+    const filters = ["container_id = $1::bigint"];
+    const values: unknown[] = [id];
+    let idx = 2;
+
+    if (user) {
+      values.push(`%${user}%`);
+      filters.push(`(
+        COALESCE(user_name, '') ILIKE $${idx}
+        OR COALESCE(user_email, '') ILIKE $${idx}
+        OR COALESCE(user_id, '') ILIKE $${idx}
+      )`);
+      idx++;
+    }
+
+    if (action && ACTIONS.has(action)) {
+      values.push(action);
+      filters.push(`action = $${idx++}`);
+    }
+
+    if (startDate) {
+      values.push(startDate);
+      filters.push(`created_at >= $${idx++}::date`);
+    }
+
+    if (endDate) {
+      values.push(endDate);
+      filters.push(`created_at < ($${idx++}::date + INTERVAL '1 day')`);
+    }
+
     const result = await getPrimaryPool().query(
       `SELECT id, container_id, container_number,
               user_id, user_name, user_email,
               action, before, after, note, ip, created_at
        FROM shipcore.fc_container_audit_log
-       WHERE container_id = $1::bigint
+       WHERE ${filters.join(" AND ")}
        ORDER BY created_at DESC
        LIMIT 200`,
-      [id],
+      values,
     );
 
     return NextResponse.json({
