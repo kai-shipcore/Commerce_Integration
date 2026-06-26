@@ -2112,16 +2112,31 @@
   <h3 id="ct-detail">④ 상세 드로어 (오른쪽 패널)</h3>
   <div class="screenshot-box">
     <img src="screenshots/03d-container-timeline-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 드로어</p></div>'" alt="Container Timeline 상세 드로어">
-    <div class="screenshot-caption">▲ 컨테이너 클릭 시 우측에 슬라이드로 열리는 상세 드로어 — SKU 목록, CBM 적재율, 메타 정보를 표시합니다.</div>
+    <div class="screenshot-caption">▲ 175-CA-SEAT 컨테이너 선택 시 우측에 슬라이드로 열리는 상세 드로어 — 상단 탭으로 <b>SKU 목록</b>과 <b>변경 이력</b>을 전환할 수 있습니다.</div>
   </div>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr><td class="label">메타 정보 그리드</td><td>컨테이너 번호, ETA, 공장, 출발지, 목적지 창고, 상태를 한눈에 정리해 표시합니다.</td></tr>
     <tr><td class="label">CBM 적재율 바</td><td>총 CBM / 컨테이너 용량 비율을 시각적 프로그레스 바로 표시합니다. 과적재 시 색상이 변합니다.</td></tr>
-    <tr><td class="label">SKU 목록 테이블</td><td>이 컨테이너에 포함된 SKU별 수량(Qty)과 CBM을 표시합니다. 테이블 하단에 합계가 표시됩니다.</td></tr>
-    <tr><td class="label">메모(Note)</td><td>컨테이너에 등록된 메모를 확인합니다.</td></tr>
+    <tr><td class="label">SKU 목록 탭</td><td>이 컨테이너에 포함된 SKU별 수량(Qty)과 CBM을 표시합니다. 테이블 하단에 합계가 표시됩니다.</td></tr>
+    <tr><td class="label">변경 이력 탭</td><td>상단 탭에서 <b>변경 이력</b>을 클릭하면 상태 변경·SKU 수정·메모 등 모든 변경 사항을 시간순으로 조회할 수 있습니다.</td></tr>
     <tr><td class="label">컨테이너 계획에서 열기</td><td>드로어 상단 링크를 클릭하면 컨테이너 계획 페이지의 해당 컨테이너로 바로 이동합니다.</td></tr>
     <tr><td class="label">닫기 (✕ 또는 배경 클릭)</td><td>드로어 오른쪽 상단 ✕ 버튼 또는 드로어 바깥 영역을 클릭하면 닫힙니다.</td></tr>
+  </table>
+
+  <h4>변경 이력 탭</h4>
+  <div class="screenshot-box">
+    <img src="screenshots/03e-container-timeline-history.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🕐</div><p>변경 이력 탭</p></div>'" alt="컨테이너 변경 이력">
+    <div class="screenshot-caption">▲ 변경 이력 탭 — 상태 변경, SKU 수량 수정, 메모 등 이 컨테이너의 모든 변경 사항을 시간순으로 표시합니다.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">변경 유형</td><td>상태 변경 · SKU 수량 수정 · 메모를 아이콘과 레이블로 구분해 표시합니다.</td></tr>
+    <tr><td class="label">Before / After</td><td>각 이력 항목에 변경 전(BEFORE)과 변경 후(AFTER) 값을 나란히 보여줍니다.</td></tr>
+    <tr><td class="label">작성자 &amp; 일시</td><td>변경을 수행한 사용자 이름과 날짜·시간이 함께 기록됩니다.</td></tr>
+    <tr><td class="label">날짜 필터</td><td>조회 기간을 직접 지정해 특정 날짜 범위의 이력만 볼 수 있습니다.</td></tr>
+    <tr><td class="label">변경 유형 필터</td><td>상태 변경·SKU 수정·메모 중 원하는 유형만 선택해 필터링할 수 있습니다.</td></tr>
+    <tr><td class="label">메모 추가</td><td>우측 상단 <b>+ 메모 추가</b> 버튼으로 컨테이너에 메모를 남길 수 있습니다.</td></tr>
   </table>
 
   <div class="callout info">
@@ -4073,16 +4088,31 @@
   <h3 id="en-ct-detail">④ Detail Drawer (Right Panel)</h3>
   <div class="screenshot-box">
     <img src="screenshots/03d-container-timeline-detail-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Container Detail Drawer</p></div>'" alt="Container Timeline Detail Drawer">
-    <div class="screenshot-caption">▲ Detail drawer that slides open on the right when a container is clicked — shows SKU list, CBM fill rate, and metadata.</div>
+    <div class="screenshot-caption">▲ Detail drawer for 175-CA-SEAT — slides open on the right when a container is clicked. Use the tabs at the top to switch between <b>SKU List</b> and <b>Change History</b>.</div>
   </div>
   <table class="feat-table">
     <tr><th style="width:220px">Item</th><th>Description</th></tr>
     <tr><td class="label">Metadata grid</td><td>Container number, ETA, factory, origin, destination warehouse, and status — all in one compact grid.</td></tr>
     <tr><td class="label">CBM fill-rate bar</td><td>Visual progress bar showing total CBM vs. container capacity. Color shifts if over-packed.</td></tr>
-    <tr><td class="label">SKU list table</td><td>Lists every SKU in this container with quantity (Qty) and CBM. Totals appear at the bottom of the table.</td></tr>
-    <tr><td class="label">Note</td><td>Displays any notes attached to the container.</td></tr>
+    <tr><td class="label">SKU List tab</td><td>Lists every SKU in this container with quantity (Qty) and CBM. Totals appear at the bottom of the table.</td></tr>
+    <tr><td class="label">Change History tab</td><td>Click <b>Change History</b> in the tab bar to view a chronological log of all changes — status updates, SKU edits, and notes.</td></tr>
     <tr><td class="label">Open in Container Planning</td><td>Link at the top of the drawer — jumps directly to this container in Container Planning.</td></tr>
     <tr><td class="label">Close (✕ or backdrop click)</td><td>Click the ✕ button in the top-right corner of the drawer, or click outside the drawer to close it.</td></tr>
+  </table>
+
+  <h4>Change History Tab</h4>
+  <div class="screenshot-box">
+    <img src="screenshots/03e-container-timeline-history-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🕐</div><p>Change History Tab</p></div>'" alt="Container Change History">
+    <div class="screenshot-caption">▲ Change History tab — shows a full audit trail of status changes, SKU quantity edits, and notes for this container, in chronological order.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Change type</td><td>Each entry is categorized by icon and label: status change, SKU quantity edit, or note.</td></tr>
+    <tr><td class="label">Before / After</td><td>Every entry shows the previous value (BEFORE) and the new value (AFTER) side by side.</td></tr>
+    <tr><td class="label">Author &amp; timestamp</td><td>The name of the user who made the change and the exact date and time are recorded.</td></tr>
+    <tr><td class="label">Date filter</td><td>Set a custom date range to view only the history entries within that period.</td></tr>
+    <tr><td class="label">Change type filter</td><td>Filter by status changes, SKU edits, or notes to focus on what you need.</td></tr>
+    <tr><td class="label">Add note</td><td>Use the <b>+ Add Note</b> button in the top-right to attach a note to the container.</td></tr>
   </table>
 
   <div class="callout info">
