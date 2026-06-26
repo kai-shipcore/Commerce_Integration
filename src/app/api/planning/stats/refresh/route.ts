@@ -337,6 +337,30 @@ export async function POST() {
       batchUpsert(primary, "shipcore.fc_stats",        linkRows,   salesCols, salesUpdateSet),
       batchUpsert(primary, "shipcore.fc_stats_custom", customRows, salesCols, salesUpdateSet),
     ]);
+
+    // ── Step 3: Sync SWC SKUs from velocity snapshot → fc_products ──────────
+    await primary.query(`
+      INSERT INTO shipcore.fc_products
+        (master_sku, product_name, category, category_code, status, sales_status,
+         moq, order_multiple, cbm_per_unit, case_qty, weight_kg, created_at, updated_at)
+      SELECT DISTINCT
+        link_master_sku,
+        link_master_sku,
+        'Car Cover',
+        'CC',
+        'active'::shipcore.fc_product_status,
+        'SWC',
+        1, 1, 0.078, 1, 2.8,
+        NOW(), NOW()
+      FROM shipcore.fc_velocity_link_snapshot
+      WHERE link_master_sku ILIKE '%SWC%'
+        AND link_master_sku IS NOT NULL
+      ON CONFLICT (master_sku) DO UPDATE SET
+        category_code = 'CC',
+        sales_status  = 'SWC',
+        updated_at = NOW()
+    `);
+
     await invalidatePlanningDashboardCache();
 
     return NextResponse.json({

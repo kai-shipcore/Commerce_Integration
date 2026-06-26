@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 import { exportCurrentVelocity, exportAllVelocity } from "@/lib/velocity-export";
 import { apiPath } from "@/lib/api-path";
 
-const ITEMS = ["Car Cover", "Seat Cover", "Floor Mat"] as const;
+const ITEMS = ["Car Cover", "Seat Cover", "Floor Mat", "SWC"] as const;
 const CHANNELS = [
   "Shopify Coverland B2B",
   "Shopify Coverland B2C",
@@ -430,6 +430,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
 
   const columns = useMemo(() => {
     if (selectedItem === "Car Cover") return createCarCoverColumns(labels);
+    if (selectedItem === "SWC")       return createCarCoverColumns(labels);
     if (selectedItem === "Floor Mat") return createFloorMatColumns(labels);
     if (mode === "preorder") return createPreOrderColumns(labels);
     if (mode === "ttm") return createTtmColumns(labels);
@@ -470,6 +471,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
       if (selectedItem === "Car Cover") {
         return r.masterSku.replace("BKGR", "BKLG").toLowerCase().includes(q);
       }
+      if (selectedItem === "SWC") return false;
       if (selectedItem === "Floor Mat") return false;
       // Seat Cover
       if (r.customMasterSku?.toLowerCase().includes(q)) return true;

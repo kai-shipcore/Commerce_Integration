@@ -23,7 +23,7 @@ type SkuMasterRow = {
 };
 
 type SkuStatus = "active" | "inactive";
-type SalesStatus = "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD";
+type SalesStatus = "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC";
 type StatusFilter = SkuStatus | "all";
 
 const productMeta: Record<
@@ -786,7 +786,7 @@ function EditableStatus({
   );
 }
 
-const SALES_STATUS_OPTIONS: SalesStatus[] = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD"];
+const SALES_STATUS_OPTIONS: SalesStatus[] = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD", "SWC"];
 
 function EditableSalesStatus({
   active,
@@ -821,6 +821,7 @@ function EditableSalesStatus({
     Part:         "bg-purple-100 text-purple-700",
     Discontinued: "bg-red-100 text-red-600",
     TBD:          "bg-slate-100 text-slate-500",
+    SWC:          "bg-orange-50 text-orange-700",
   };
 
   return (

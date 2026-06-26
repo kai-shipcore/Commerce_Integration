@@ -380,6 +380,7 @@ export function DemandPlanningGrid({
       if (productFilter === "part" && r.sales_status !== "Part")          return false;
       if (productFilter === "disc" && r.sales_status !== "Discontinued")  return false;
       if (productFilter === "tbd"  && r.sales_status !== "TBD")           return false;
+      if (productFilter === "swc"  && r.sales_status !== "SWC")           return false;
       if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
       const u: UrgencyStatus = urgStatus(r);
@@ -562,6 +563,7 @@ export function DemandPlanningGrid({
         .sc-part { background: #EDE9FE; color: #5B21B6; }
         .sc-disc { background: #FEE2E2; color: #B91C1C; }
         .sc-tbd  { background: #F1F5F9; color: #64748B; }
+        .sc-swc  { background: #FFF7ED; color: #C2410C; }
         .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; vertical-align: middle; }
         .d-crit { background: #FF4444; }
         .d-warn { background: #EF9F27; }

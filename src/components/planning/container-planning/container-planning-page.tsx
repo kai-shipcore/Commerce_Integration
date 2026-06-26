@@ -3140,19 +3140,21 @@ function ContainerCard({
                 {pick("+ 가용 재고 추가", "+ Add Available Stock")}
               </button>
             ) : null}
-            <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
-              <span>{pick("가져오기", "Import")}</span>
-              <input
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (file) void onImportItems(container.id, file);
-                }}
-              />
-            </label>
+            {container.status !== "complete" && (
+              <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
+                <span>{pick("가져오기", "Import")}</span>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void onImportItems(container.id, file);
+                  }}
+                />
+              </label>
+            )}
             <button
               type="button"
               onClick={() => void onExportItems(container.id)}
