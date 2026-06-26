@@ -1,11 +1,12 @@
 // Code Guide: Manage role-level permission defaults.
-// GET  → returns all roles' permission matrices (DB rows merged over hardcoded defaults)
-// PUT  → saves one role's full permission matrix to DB
+// GET  → returns all roles' permission matrices (cache-first, TTL 10 min)
+// PUT  → saves one role's full permission matrix to DB, then invalidates cache
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { CacheManager } from "@/lib/redis";
 import {
   MANAGED_ROLES,
   PERM_SECTIONS,
@@ -18,7 +19,31 @@ import {
   type PermAction,
 } from "@/lib/permissions-config";
 
+const CACHE_KEY = "perm:roles:all";
+const CACHE_TTL = 600; // 10 minutes
+
 type DbRow = { role: string; section: string; action: string; allowed: boolean };
+
+async function loadFromDb(): Promise<Record<string, RolePermMatrix>> {
+  const result = await getPrimaryPool().query<DbRow>(
+    `SELECT role, section, action, allowed
+     FROM shipcore.fc_role_permissions
+     ORDER BY role, section, action`
+  );
+
+  const byRole = new Map<string, DbRow[]>();
+  for (const row of result.rows) {
+    const rows = byRole.get(row.role) ?? [];
+    rows.push(row);
+    byRole.set(row.role, rows);
+  }
+
+  const data: Record<string, RolePermMatrix> = {};
+  for (const role of MANAGED_ROLES) {
+    data[role] = blendRolePermissions(DEFAULT_ROLE_PERMISSIONS[role], byRole.get(role) ?? []);
+  }
+  return data;
+}
 
 export async function GET() {
   const session = await auth();
@@ -27,25 +52,13 @@ export async function GET() {
   }
 
   try {
-    const result = await getPrimaryPool().query<DbRow>(
-      `SELECT role, section, action, allowed
-       FROM shipcore.role_permissions
-       ORDER BY role, section, action`
-    );
-
-    const byRole = new Map<string, DbRow[]>();
-    for (const row of result.rows) {
-      if (!byRole.has(row.role)) byRole.set(row.role, []);
-      byRole.get(row.role)!.push(row);
+    const cached = await CacheManager.get<Record<string, RolePermMatrix>>(CACHE_KEY);
+    if (cached) {
+      return NextResponse.json({ success: true, data: cached });
     }
 
-    const data: Record<string, RolePermMatrix> = {};
-    for (const role of MANAGED_ROLES) {
-      const base = DEFAULT_ROLE_PERMISSIONS[role];
-      const rows = byRole.get(role) ?? [];
-      data[role] = blendRolePermissions(base, rows);
-    }
-
+    const data = await loadFromDb();
+    void CacheManager.set(CACHE_KEY, data, CACHE_TTL);
     return NextResponse.json({ success: true, data });
   } catch (err) {
     console.error("[role-permissions GET]", err);
@@ -77,33 +90,29 @@ export async function PUT(req: NextRequest) {
 
   try {
     await client.query("BEGIN");
-    await client.query(
-      `DELETE FROM shipcore.role_permissions WHERE role = $1`,
-      [role]
-    );
+    await client.query(`DELETE FROM shipcore.fc_role_permissions WHERE role = $1`, [role]);
 
     const insertRows: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
 
     for (const sec of PERM_SECTIONS) {
-      const secId = sec.id as PermSection;
       for (const act of PERM_ACTIONS) {
-        const actId = act.id as PermAction;
-        const allowed = perms[secId]?.[actId] ?? false;
+        const allowed = perms[sec.id as PermSection]?.[act.id as PermAction] ?? false;
         insertRows.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++})`);
-        values.push(role, secId, actId, Boolean(allowed));
+        values.push(role, sec.id, act.id, Boolean(allowed));
       }
     }
 
     if (insertRows.length > 0) {
       await client.query(
-        `INSERT INTO shipcore.role_permissions (role, section, action, allowed) VALUES ${insertRows.join(",")}`,
+        `INSERT INTO shipcore.fc_role_permissions (role, section, action, allowed) VALUES ${insertRows.join(",")}`,
         values
       );
     }
 
     await client.query("COMMIT");
+    void CacheManager.delete(CACHE_KEY);
     return NextResponse.json({ success: true });
   } catch (err) {
     await client.query("ROLLBACK");

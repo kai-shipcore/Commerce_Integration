@@ -436,7 +436,7 @@ model RolePermission {
   allowed Boolean @default(false)
 
   @@id([role, section, action])
-  @@map("role_permissions")
+  @@map("fc_role_permissions")
   @@schema("shipcore")
 }
 
@@ -447,7 +447,7 @@ model UserPermissionOverride {
   allowed Boolean
 
   @@id([userId, section, action])
-  @@map("user_permission_overrides")
+  @@map("fc_user_permission_overrides")
   @@schema("shipcore")
 }
 
