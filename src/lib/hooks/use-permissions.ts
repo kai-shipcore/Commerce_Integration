@@ -33,7 +33,7 @@ export function usePermissions() {
   }, [userId, status]);
 
   function can(section: PermSection, action: PermAction): boolean {
-    if (!matrix) return false;
+    if (matrix === null) return true; // still loading — API enforces server-side
     return matrix[section]?.[action] ?? false;
   }
 
