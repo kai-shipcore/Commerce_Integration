@@ -15,7 +15,6 @@ import {
   type MockContainer,
   type ProductKey,
 } from "@/features/planning/mock-data";
-import { isPOApproverRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
 import { ContainerHistoryTab } from "../container-timeline/container-history-tab";
 
@@ -310,7 +309,7 @@ export function ContainerPlanningPage() {
   const { pick } = useI18n();
   const { data: session } = useSession();
   const { can } = usePermissions();
-  const canDeleteContainers = isPOApproverRole(session?.user?.role);
+  const canDeleteContainers = can("container-planning", "delete");
   const searchParams = useSearchParams();
   const targetContainerId = searchParams.get("containerId");
   const targetSku = searchParams.get("sku")?.trim().toUpperCase() ?? "";
@@ -2302,7 +2301,7 @@ export function ContainerPlanningPage() {
                 onRemoveAvailableAllocation={removeAvailableStockAllocation}
                 onRemoveAvailableAllocations={removeAvailableStockAllocations}
                 canDeleteContainers={canDeleteContainers}
-                canRevertStatus={session?.user?.role === "admin" || session?.user?.role === "planner"}
+                canRevertStatus={can("container-planning", "status")}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
