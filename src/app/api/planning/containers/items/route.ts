@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { syncRemainingAllocationForContainerItem } from "@/lib/planning/available-stock-allocation";
+import { guardPermission } from "@/lib/permissions";
 import { z } from "zod";
 
 const BodySchema = z.object({
@@ -22,6 +23,8 @@ function errorMessage(e: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await guardPermission("container-planning", "edit");
+  if (denied) return denied;
   const body = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {

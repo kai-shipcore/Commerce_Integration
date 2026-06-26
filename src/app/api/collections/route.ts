@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
+import { guardPermission } from "@/lib/permissions";
 
 // Validation schema for creating/updating collections
 const CollectionSchema = z.object({
@@ -71,6 +72,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/collections - Create a new collection
 export async function POST(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "create");
+  if (denied) return denied;
   try {
     const body = await request.json();
     const validatedData = CollectionSchema.parse(body);

@@ -12,6 +12,7 @@ import {
   deleteRemainingAllocationsForContainerItem,
   syncRemainingAllocationForContainerItem,
 } from "@/lib/planning/available-stock-allocation";
+import { guardPermission } from "@/lib/permissions";
 import { z } from "zod";
 
 const BodySchema = z.object({
@@ -40,6 +41,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = await guardPermission("container-planning", "delete");
+  if (denied) return denied;
   const { id } = await params;
   const itemId = parseItemId(id);
   if (itemId == null) {
@@ -87,6 +90,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = await guardPermission("container-planning", "edit");
+  if (denied) return denied;
   const { id } = await params;
   const itemId = parseItemId(id);
   if (itemId == null) {

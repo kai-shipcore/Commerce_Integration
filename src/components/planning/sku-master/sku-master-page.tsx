@@ -6,6 +6,8 @@ import { ChevronDown, ChevronUp, Database, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
 import { apiPath } from "@/lib/api-path";
+import { usePermissions } from "@/lib/hooks/use-permissions";
+import { toast } from "sonner";
 
 type SkuMasterRow = {
   masterSku: string;
@@ -159,6 +161,7 @@ function extractExcelCbmRows(workbook: XLSX.WorkBook): ExcelCbmImportRow[] {
 
 export function SkuMasterPage() {
   const { pick } = useI18n();
+  const { can } = usePermissions();
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState<ProductKey | "all">("all");
@@ -250,6 +253,10 @@ export function SkuMasterPage() {
   }
 
   async function saveRow(row: SkuMasterRow) {
+    if (!can("sku-master", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const res = await fetch(apiPath("/api/planning/sku-master"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -269,6 +276,10 @@ export function SkuMasterPage() {
   }
 
   async function syncFromInventory() {
+    if (!can("sku-master", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     setSyncing(true);
     setMessage("");
     try {
@@ -285,6 +296,10 @@ export function SkuMasterPage() {
   }
 
   async function importExcel(file: File) {
+    if (!can("sku-master", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     setImporting(true);
     setMessage("");
 

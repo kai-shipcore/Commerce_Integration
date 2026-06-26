@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePermissions } from "@/lib/hooks/use-permissions";
+import { toast } from "sonner";
 
 import { AgGridReact } from "ag-grid-react";
 import {
@@ -126,6 +128,7 @@ type FilterKey = "ready-not-ready" | "shipped" | "canceled" | "deleted";
 
 export function PartsGrid() {
   const { pick } = useI18n();
+  const { can } = usePermissions();
 
   const FILTER_BUTTONS: { key: FilterKey; label: string }[] = useMemo(() => [
     { key: "ready-not-ready", label: pick("준비 / 미준비", "Ready / Not Ready") },
@@ -375,6 +378,10 @@ export function PartsGrid() {
               title={pick("부품 삭제", "Delete Part")}
               description={`Order #${selectedRow?.orderNumber ?? ""} ` + pick("행을 삭제합니다. 되돌릴 수 없습니다.", "row will be permanently deleted.")}
               onConfirm={async () => {
+                if (!can("parts", "delete")) {
+                  toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+                  return;
+                }
                 await fetch(apiPath(`/api/planning/seat-cover/parts/${selectedRow!.id}`), {
                   method: "DELETE",
                   headers: { "Content-Type": "application/json" },

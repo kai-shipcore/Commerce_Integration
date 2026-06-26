@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 import { CalendarRange, ChevronDown, ChevronUp, History, List, PackageOpen, Plus, Ship } from "lucide-react";
 import {
   containerStatusLabels,
@@ -308,6 +309,7 @@ function detectImportFormat(rows: unknown[][]): "packing-list" | "final-order" |
 export function ContainerPlanningPage() {
   const { pick } = useI18n();
   const { data: session } = useSession();
+  const { can } = usePermissions();
   const canDeleteContainers = isPOApproverRole(session?.user?.role);
   const searchParams = useSearchParams();
   const targetContainerId = searchParams.get("containerId");
@@ -673,6 +675,9 @@ export function ContainerPlanningPage() {
   }
 
   async function updateSkuMasterCbm(masterSku: string, cbm: number): Promise<string | null> {
+    if (!can("sku-master", "edit")) {
+      return pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.");
+    }
     const sku = masterSku.trim().toUpperCase();
     if (!sku) return "Master SKU is required.";
     if (!Number.isFinite(cbm) || cbm <= 0) return "CBM must be greater than 0.";
@@ -788,6 +793,10 @@ export function ContainerPlanningPage() {
   }
 
   async function removeDraftItem(sku: string) {
+    if (!can("container-planning", "delete")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     if (editingContainerId && form.status !== "draft" && form.status !== "final-list-sent") return;
     const itemToDelete = draftItems.find((item) => item.sku === sku);
     const allocationCount = itemToDelete?.allocations?.length ?? 0;
@@ -804,6 +813,10 @@ export function ContainerPlanningPage() {
         const json = await response.json();
 
         if (!response.ok || !json.success) {
+          if (response.status === 403) {
+            toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+            return;
+          }
           throw new Error(json.error ?? pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`));
         }
 
@@ -820,6 +833,10 @@ export function ContainerPlanningPage() {
   }
 
   async function removeDraftItems(skus: string[]) {
+    if (!can("container-planning", "delete")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return false;
+    }
     const skuSet = new Set(skus);
     if (skuSet.size === 0) return false;
     if (editingContainerId && form.status !== "draft" && form.status !== "final-list-sent") return false;
@@ -847,6 +864,10 @@ export function ContainerPlanningPage() {
           const json = await response.json();
 
           if (!response.ok || !json.success) {
+            if (response.status === 403) {
+              toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+              return false;
+            }
             throw new Error(json.error ?? pick(`${item.sku} 삭제에 실패했습니다.`, `Failed to delete ${item.sku}.`));
           }
         }
@@ -869,6 +890,11 @@ export function ContainerPlanningPage() {
   }
 
   async function saveContainer() {
+    const requiredAction = editingContainerId ? "edit" : "create";
+    if (!can("container-planning", requiredAction)) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const number = form.number.trim();
     const eta = form.eta.trim();
 
@@ -920,7 +946,6 @@ export function ContainerPlanningPage() {
             estLoading: newContainer.estLoadingDate ?? "",
             etdNgb: newContainer.etdNgbDate ?? "",
             etaLaxLgb: newContainer.etaLaxLgbDate ?? "",
-            status: newContainer.status,
             cbmCapacity: newContainer.cbmCapacity,
             factory: newContainer.factory,
             destination: newContainer.destination,
@@ -931,7 +956,11 @@ export function ContainerPlanningPage() {
         const json = await response.json();
 
         if (!response.ok || !json.success) {
-          setFormError(json.error ?? pick("컨테이너 저장에 실패했습니다.", "Failed to save container."));
+          if (response.status === 403) {
+            toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+          } else {
+            setFormError(json.error ?? pick("컨테이너 저장에 실패했습니다.", "Failed to save container."));
+          }
           return;
         }
 
@@ -955,7 +984,6 @@ export function ContainerPlanningPage() {
           estLoading: newContainer.estLoadingDate ?? "",
           etdNgb: newContainer.etdNgbDate ?? "",
           etaLaxLgb: newContainer.etaLaxLgbDate ?? "",
-          status: newContainer.status,
           cbmCapacity: newContainer.cbmCapacity,
           factory: newContainer.factory,
           destination: newContainer.destination,
@@ -966,7 +994,11 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        setFormError(json.error ?? pick("컨테이너 생성에 실패했습니다.", "Failed to create container."));
+        if (response.status === 403) {
+          toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+        } else {
+          setFormError(json.error ?? pick("컨테이너 생성에 실패했습니다.", "Failed to create container."));
+        }
         return;
       }
 
@@ -982,7 +1014,10 @@ export function ContainerPlanningPage() {
 
   async function saveContainerDetails() {
     if (!editingContainerId) return;
-
+    if (!can("container-planning", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const number = form.number.trim();
     const eta = form.eta.trim();
     if (!number) {
@@ -1011,7 +1046,6 @@ export function ContainerPlanningPage() {
             estLoading: form.estLoading,
             etdNgb: form.etdNgb,
             etaLaxLgb: form.etaLaxLgb,
-            status: form.status,
             cbmCapacity,
             factory: form.factory.trim(),
             destination: form.destination,
@@ -1022,7 +1056,11 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        setFormError(json.error ?? pick("컨테이너 상세 정보 저장에 실패했습니다.", "Failed to save container details."));
+        if (response.status === 403) {
+          toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+        } else {
+          setFormError(json.error ?? pick("컨테이너 상세 정보 저장에 실패했습니다.", "Failed to save container details."));
+        }
         return;
       }
 
@@ -1037,6 +1075,10 @@ export function ContainerPlanningPage() {
   }
 
   async function deleteContainerItem(containerId: string, sku: string) {
+    if (!can("container-planning", "delete")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const container = containers.find((item) => item.id === containerId);
     if (container?.status !== "draft" && container?.status !== "final-list-sent") return;
     const itemToDelete = container?.items.find((item) => item.sku === sku);
@@ -1054,14 +1096,16 @@ export function ContainerPlanningPage() {
         const json = await response.json();
 
         if (!response.ok || !json.success) {
-          window.alert(json.error ?? pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`));
+          toast.error(response.status === 403
+            ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+            : (json.error ?? pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`)));
           return;
         }
 
         await fetchContainers();
         setExpandedId(containerId);
       } catch {
-        window.alert(pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`));
+        toast.error(pick(`${sku} 삭제에 실패했습니다.`, `Failed to delete ${sku}.`));
         return;
       }
     }
@@ -1076,6 +1120,11 @@ export function ContainerPlanningPage() {
   }
 
   async function changeContainerStatus(containerId: string, newStatus: ContainerStatus) {
+    if (!can("container-planning", "status")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      setStatusModalContainerId(null);
+      return;
+    }
     const container = containers.find((entry) => entry.id === containerId);
     setStatusModalContainerId(null);
 
@@ -1097,7 +1146,9 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        toast.error(json.error ?? pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
+        toast.error(response.status === 403
+          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+          : (json.error ?? pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status.")));
         return;
       }
 
@@ -1111,7 +1162,11 @@ export function ContainerPlanningPage() {
   async function addAvailableStockToContainer(
     containerId: string,
     allocations: Array<{ stockId: string; qty: number }>
-  ) {
+  ): Promise<boolean> {
+    if (!can("container-planning", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return false;
+    }
     try {
       const response = await fetch(apiPath("/api/container-available-stock"), {
         method: "POST",
@@ -1120,7 +1175,9 @@ export function ContainerPlanningPage() {
       });
       const json = await response.json();
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? pick("사용 가능 재고 배정에 실패했습니다.", "Failed to allocate available stock."));
+        toast.error(response.status === 403
+          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+          : (json.error ?? pick("사용 가능 재고 배정에 실패했습니다.", "Failed to allocate available stock.")));
         return false;
       }
 
@@ -1129,12 +1186,16 @@ export function ContainerPlanningPage() {
       setAvailableStockContainerId(null);
       return true;
     } catch {
-      window.alert(pick("사용 가능 재고 배정에 실패했습니다.", "Failed to allocate available stock."));
+      toast.error(pick("사용 가능 재고 배정에 실패했습니다.", "Failed to allocate available stock."));
       return false;
     }
   }
 
   async function removeAvailableStockAllocations(allocationIds: string[], containerId: string) {
+    if (!can("container-planning", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return false;
+    }
     if (allocationIds.length === 0) return false;
     const prompt = allocationIds.length === 1
       ? pick("이 컨테이너에서 배정된 사용 가능 재고를 제거하시겠습니까?", "Remove this allocated available stock from the container?")
@@ -1147,14 +1208,16 @@ export function ContainerPlanningPage() {
       );
       const json = await response.json();
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? pick("배정 재고 제거에 실패했습니다.", "Failed to remove allocated stock."));
+        toast.error(response.status === 403
+          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+          : (json.error ?? pick("배정 재고 제거에 실패했습니다.", "Failed to remove allocated stock.")));
         return false;
       }
       await fetchContainers();
       setExpandedId(containerId);
       return true;
     } catch {
-      window.alert(pick("배정 재고 제거에 실패했습니다.", "Failed to remove allocated stock."));
+      toast.error(pick("배정 재고 제거에 실패했습니다.", "Failed to remove allocated stock."));
       return false;
     }
   }
@@ -1164,9 +1227,13 @@ export function ContainerPlanningPage() {
   }
 
   async function deleteContainer(containerId: string) {
+    if (!can("container-planning", "delete")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const container = containers.find((item) => item.id === containerId);
     if (container?.status === "complete" && !canDeleteContainers) {
-      window.alert(pick("입고 완료된 컨테이너는 Planner 또는 Admin만 삭제할 수 있습니다.", "Only Planner or Admin can delete Stock-in completed containers."));
+      toast.error(pick("입고 완료된 컨테이너는 Planner 또는 Admin만 삭제할 수 있습니다.", "Only Planner or Admin can delete Stock-in completed containers."));
       return;
     }
 
@@ -1177,14 +1244,16 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? pick("컨테이너 삭제에 실패했습니다.", "Failed to delete container."));
+        toast.error(response.status === 403
+          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+          : (json.error ?? pick("컨테이너 삭제에 실패했습니다.", "Failed to delete container.")));
         return;
       }
 
       await fetchContainers();
       if (expandedId === containerId) setExpandedId(null);
     } catch {
-      window.alert(pick("컨테이너 삭제에 실패했습니다.", "Failed to delete container."));
+      toast.error(pick("컨테이너 삭제에 실패했습니다.", "Failed to delete container."));
     }
   }
 
@@ -1225,6 +1294,10 @@ export function ContainerPlanningPage() {
   }
 
   async function saveInlineEdit(containerId: string, originalSku: string) {
+    if (!can("container-planning", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const key = editDraftKey(containerId, originalSku);
     const draft = inlineEditDrafts[key];
     if (!draft) return;
@@ -1274,7 +1347,9 @@ export function ContainerPlanningPage() {
       const json = await response.json();
 
       if (!response.ok || !json.success) {
-        window.alert(json.error ?? pick("수량 수정에 실패했습니다.", "Failed to update quantity."));
+        toast.error(response.status === 403
+          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+          : (json.error ?? pick("수량 수정에 실패했습니다.", "Failed to update quantity.")));
         return;
       }
 
@@ -1344,6 +1419,10 @@ export function ContainerPlanningPage() {
   }
 
   async function persistContainer(container: MockContainer): Promise<boolean> {
+    if (!can("container-planning", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return false;
+    }
     if (!/^\d+$/.test(container.id)) {
       setContainers((current) => current.map((item) => (item.id === container.id ? container : item)));
       return true;
@@ -1369,7 +1448,9 @@ export function ContainerPlanningPage() {
     const json = await response.json();
 
     if (!response.ok || !json.success) {
-      window.alert(json.error ?? pick("컨테이너 저장에 실패했습니다.", "Failed to save container."));
+      toast.error(response.status === 403
+        ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+        : (json.error ?? pick("컨테이너 저장에 실패했습니다.", "Failed to save container.")));
       return false;
     }
 
@@ -2457,11 +2538,12 @@ function ContainerCreateForm({
             <input className="form-input bg-white" value={form.number} onChange={(event) => onUpdateForm("number", event.target.value)} placeholder="#165" />
           </Field>
           <Field label={pick("상태", "Status")}>
-            <select className="form-input bg-white" value={form.status} onChange={(event) => onUpdateForm("status", event.target.value as ContainerStatus)}>
-              {statusOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
+            <div
+              aria-readonly="true"
+              className="form-input flex items-center bg-[#f8f7f4] text-foreground"
+            >
+              {statusOptions.find((option) => option.value === form.status)?.label ?? form.status}
+            </div>
           </Field>
           <Field label={pick("CBM 용량", "CBM Capacity")}>
             <input className="form-input bg-white" type="number" step="0.1" value={form.cbmCapacity} onChange={(event) => onUpdateForm("cbmCapacity", event.target.value)} placeholder="80" />

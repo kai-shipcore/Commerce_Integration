@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { z } from "zod";
+import { guardPermission } from "@/lib/permissions";
 
 const UpdateCollectionSchema = z.object({
   name: z.string().min(1).optional(),
@@ -126,6 +127,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("sku-master", "edit");
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -188,6 +191,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("sku-master", "delete");
+  if (denied) return denied;
   try {
     const { id } = await params;
 

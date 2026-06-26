@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Building2 } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { usePermissions } from "@/lib/hooks/use-permissions";
+import { toast } from "sonner";
 
 type FactoryRecord = {
   id: string;
@@ -61,6 +63,7 @@ function formatDate(iso: string | null): string {
 
 export function FactoriesPage() {
   const { pick } = useI18n();
+  const { can } = usePermissions();
   const [factories, setFactories] = useState<FactoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -158,6 +161,11 @@ export function FactoriesPage() {
   }
 
   async function saveFactory() {
+    const requiredAction = isNew ? "create" : "edit";
+    if (!can("factory", requiredAction)) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const name = form.factoryName.trim();
     if (!name) { setErrorMsg(pick("공장명은 필수입니다.", "Factory name is required.")); return; }
 
@@ -203,6 +211,10 @@ export function FactoriesPage() {
 
   async function toggleActive() {
     if (!selectedFactory) return;
+    if (!can("factory", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const next = !selectedFactory.isActive;
     setSaving(true);
     try {

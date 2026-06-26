@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { usePermissions } from "@/lib/hooks/use-permissions";
+import { toast } from "sonner";
 
 type WarehouseType = "own" | "fba" | "3pl" | "transit";
 
@@ -104,6 +106,7 @@ function formatNumber(value: number) {
 
 export function WarehousePage() {
   const { pick } = useI18n();
+  const { can } = usePermissions();
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -235,6 +238,11 @@ export function WarehousePage() {
   }
 
   async function saveWarehouse() {
+    const requiredAction = isNew ? "create" : "edit";
+    if (!can("warehouse", requiredAction)) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const code = form.warehouseCode.trim().toUpperCase();
     const name = form.warehouseName.trim();
 
@@ -276,6 +284,10 @@ export function WarehousePage() {
 
   async function toggleActive() {
     if (!selectedWarehouse) return;
+    if (!can("warehouse", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const nextActive = !selectedWarehouse.isActive;
     setSaving(true);
     try {
@@ -295,6 +307,10 @@ export function WarehousePage() {
 
   async function deleteWarehouse() {
     if (!selectedWarehouse) return;
+    if (!can("warehouse", "delete")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     if (!window.confirm(pick(`창고 "${selectedWarehouse.warehouseCode}"을(를) 삭제하시겠습니까?`, `Delete warehouse "${selectedWarehouse.warehouseCode}"?`))) return;
     setSaving(true);
     try {

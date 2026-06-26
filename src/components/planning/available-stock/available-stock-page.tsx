@@ -5,6 +5,8 @@ import { Boxes } from "lucide-react";
 import * as XLSX from "xlsx";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { usePermissions } from "@/lib/hooks/use-permissions";
+import { toast } from "sonner";
 
 type StockSourceType = "remaining" | "mistake";
 type StockSortColumn = "referenceNo" | "plNo" | "masterSku" | "totalQty" | "allocatedQty" | "availableQty" | "cbm" | "totalCbm" | "note";
@@ -146,6 +148,7 @@ function readAvailableStockWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
 
 export function AvailableStockPage() {
   const { pick } = useI18n();
+  const { can } = usePermissions();
   const [rows, setRows] = useState<AvailableStockRow[]>([]);
   const [sourceType, setSourceType] = useState<StockSourceType>("remaining");
   const [query, setQuery] = useState("");
@@ -269,6 +272,10 @@ export function AvailableStockPage() {
   }
 
   async function createStock() {
+    if (!can("available-stock", "create")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const parsed = parseForm(createForm);
     if (!parsed) {
       setMessage(pick("Reference, Master SKU, 1 이상의 수량, CBM은 필수입니다.", "Reference, Master SKU, positive quantity, and CBM are required."));
@@ -313,6 +320,10 @@ export function AvailableStockPage() {
   }
 
   async function updateStock(row: AvailableStockRow) {
+    if (!can("available-stock", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const parsed = parseForm(editForm);
     if (!parsed) {
       setMessage(pick("Reference, Master SKU, 1 이상의 수량, CBM은 필수입니다.", "Reference, Master SKU, positive quantity, and CBM are required."));
@@ -344,6 +355,10 @@ export function AvailableStockPage() {
   }
 
   async function deleteStock(row: AvailableStockRow) {
+    if (!can("available-stock", "delete")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     if (!window.confirm(pick(`${row.referenceNo} / ${row.masterSku} 재고를 삭제하시겠습니까?`, `Delete ${row.referenceNo} / ${row.masterSku}?`))) return;
     setSaving(true);
     setMessage("");
@@ -364,6 +379,10 @@ export function AvailableStockPage() {
   }
 
   async function importExcel(file: File) {
+    if (!can("available-stock", "create")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     setImporting(true);
     setMessage("");
     try {
