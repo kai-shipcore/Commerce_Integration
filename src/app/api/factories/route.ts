@@ -89,6 +89,8 @@ function serializeFactory(row: FactoryRow) {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = await guardPermission("factory", "read");
+  if (denied) return denied;
   try {
     await ensureFactoryCodes();
 

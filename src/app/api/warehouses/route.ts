@@ -27,6 +27,8 @@ const WarehouseCreateSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  const denied = await guardPermission("warehouse", "read");
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") ?? "";
