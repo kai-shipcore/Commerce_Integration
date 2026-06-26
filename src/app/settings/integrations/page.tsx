@@ -7,9 +7,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
 import { AppLayout } from "@/components/layout/app-layout";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 import {
   Card,
   CardContent,
@@ -125,7 +124,7 @@ function getErrorMessage(error: unknown) {
 
 export default function IntegrationsPage() {
   const { locale, pick } = useI18n();
-  const { data: session } = useSession();
+  const { can } = usePermissions();
   const searchParams = useSearchParams();
   const [reauthBanner, setReauthBanner] = useState<{
     type: "success" | "error";
@@ -384,7 +383,9 @@ export default function IntegrationsPage() {
 
   const supportsSync = (platform: string) =>
     platform === "shopify" || platform === "ebay" || platform === "walmart" || platform === "amazon";
-  const isAdmin = isAdminLikeRole(session?.user?.role);
+  const canEditIntegrations = can("integrations", "edit");
+  const canDeleteIntegrations = can("integrations", "delete");
+  const canCreateIntegrations = can("integrations", "create");
 
   const addDialogMeta = getDialogMeta(formData.platform, "add", pick);
   const editDialogMeta = getDialogMeta(editFormData.platform, "edit", pick);
@@ -460,7 +461,18 @@ export default function IntegrationsPage() {
           </div>
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-[#1a5cdb] hover:bg-[#1650c4]">
+              <Button
+                className="bg-[#1a5cdb] hover:bg-[#1650c4]"
+                disabled={!canCreateIntegrations}
+                title={
+                  !canCreateIntegrations
+                    ? pick(
+                        "마켓플레이스 연동을 추가하려면 권한이 필요합니다.",
+                        "You need permission to add marketplace integrations.",
+                      )
+                    : undefined
+                }
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 {pick("마켓플레이스 추가", "Add Marketplace")}
               </Button>
@@ -594,7 +606,7 @@ export default function IntegrationsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {getStatusBadge(integration)}
-                    {!isAdmin && (
+                    {!canEditIntegrations && (
                       <Badge variant="outline">
                         {pick("관리자만 수정 가능", "Admin only for edits")}
                       </Badge>
@@ -679,9 +691,9 @@ export default function IntegrationsPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => openEditDialog(integration.id)}
-                      disabled={!isAdmin || loadingEditId === integration.id}
+                      disabled={!canEditIntegrations || loadingEditId === integration.id}
                       title={
-                        !isAdmin
+                        !canEditIntegrations
                           ? pick(
                               "마켓플레이스 연동을 수정하려면 관리자 권한이 필요합니다.",
                               "You need admin access to edit marketplace integrations.",
@@ -696,7 +708,7 @@ export default function IntegrationsPage() {
                       )}
                       {pick("수정", "Edit")}
                     </Button>
-                    {integration.platform === "ebay" && isAdmin && (
+                    {integration.platform === "ebay" && canEditIntegrations && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -730,12 +742,12 @@ export default function IntegrationsPage() {
                       size="sm"
                       onClick={() => handleSync(integration.id, false)}
                       disabled={
-                        !isAdmin ||
+                        !canEditIntegrations ||
                         syncing === integration.id ||
                         !supportsSync(integration.platform)
                       }
                       title={
-                        !isAdmin
+                        !canEditIntegrations
                           ? pick(
                               "마켓플레이스 연동을 동기화하려면 관리자 또는 개발자 권한이 필요합니다.",
                               "You need admin or dev access to sync marketplace integrations.",
@@ -755,12 +767,12 @@ export default function IntegrationsPage() {
                       size="sm"
                       onClick={() => handleSync(integration.id, true)}
                       disabled={
-                        !isAdmin ||
+                        !canEditIntegrations ||
                         syncing === integration.id ||
                         !supportsSync(integration.platform)
                       }
                       title={
-                        !isAdmin
+                        !canEditIntegrations
                           ? pick(
                               "마켓플레이스 연동을 동기화하려면 관리자 또는 개발자 권한이 필요합니다.",
                               "You need admin or dev access to sync marketplace integrations.",
@@ -779,7 +791,7 @@ export default function IntegrationsPage() {
                       open={deleteDialogOpen === integration.id}
                       onOpenChange={(open) =>
                         setDeleteDialogOpen(
-                          open && isAdmin ? integration.id : null,
+                          open && canDeleteIntegrations ? integration.id : null,
                         )
                       }
                     >
@@ -788,9 +800,9 @@ export default function IntegrationsPage() {
                           variant="outline"
                           size="sm"
                           className="text-destructive"
-                          disabled={!isAdmin}
+                          disabled={!canDeleteIntegrations}
                           title={
-                            !isAdmin
+                            !canDeleteIntegrations
                               ? pick(
                                   "마켓플레이스 연동을 삭제하려면 관리자 권한이 필요합니다.",
                                   "You need admin access to remove marketplace integrations.",
@@ -834,7 +846,7 @@ export default function IntegrationsPage() {
                       )}
                     </p>
                   )}
-                  {!isAdmin && (
+                  {!canEditIntegrations && (
                     <p className="mt-2 text-sm text-muted-foreground">
                       {pick(
                         "수정, 동기화 및 삭제 기능은 관리자 또는 개발자 권한이 있는 사용자만 사용할 수 있습니다.",

@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
-import { isAdminLikeRole, isPOApproverRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { usePermissions } from "@/lib/hooks/use-permissions";
+import { toast } from "sonner";
 
 type PurchaseOrderStatus = "draft" | "pending" | "approved" | "sent";
 type PurchaseOrderStatusFilter = "draft" | "pending" | "sent";
@@ -119,6 +120,7 @@ const statusClasses: Record<PurchaseOrderStatus, string> = {
 export function PurchaseOrdersPage() {
   const { pick } = useI18n();
   const { data: session } = useSession();
+  const { can } = usePermissions();
   const [orders, setOrders] = useState<PurchaseOrderRecord[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -165,8 +167,8 @@ export function PurchaseOrdersPage() {
     orders.find((order) => order.id === selectedId) ??
     filteredOrders[0] ??
     null;
-  const canDeletePurchaseOrders = isAdminLikeRole(session?.user?.role);
-  const isPoApprover = isPOApproverRole(session?.user?.role);
+  const canDeletePurchaseOrders = can("container-planning", "delete");
+  const isPoApprover = can("container-planning", "status");
 
   const draftTotals = useMemo(() => {
     const validItems = draftItems.filter((item) => item.sku.trim() || parseNumber(item.qty) > 0);
@@ -301,6 +303,11 @@ export function PurchaseOrdersPage() {
   }
 
   async function savePurchaseOrder(nextStatus: PurchaseOrderStatus = "draft") {
+    const isEditing = Boolean(editingPoId);
+    if (!can("container-planning", isEditing ? "edit" : "create")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const payload = buildSavePayload(nextStatus);
 
     if (!payload.number) {
@@ -328,7 +335,6 @@ export function PurchaseOrdersPage() {
 
     setSavingPo(true);
     try {
-      const isEditing = Boolean(editingPoId);
       const response = await fetch(
         apiPath(isEditing ? `/api/purchase-orders?id=${encodeURIComponent(editingPoId ?? "")}` : "/api/purchase-orders"),
         {
@@ -355,6 +361,11 @@ export function PurchaseOrdersPage() {
   }
 
   async function workflowAction(orderId: string, action: "request_review" | "approve" | "reject" | "send_to_factory") {
+    const needsApproverRole = action === "approve" || action === "reject" || action === "send_to_factory";
+    if (needsApproverRole && !isPoApprover) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     const response = await fetch(apiPath(`/api/purchase-orders?id=${encodeURIComponent(orderId)}&workflow=true`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -369,7 +380,11 @@ export function PurchaseOrdersPage() {
   }
 
   async function deletePurchaseOrder(order: PurchaseOrderRecord) {
-    if (!canDeletePurchaseOrders || deletingPoId) return;
+    if (!canDeletePurchaseOrders) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
+    if (deletingPoId) return;
 
     const confirmed = window.confirm(
       pick(`구매 주문 ${order.number}을(를) 삭제하시겠습니까? PO 아이템 행과 컨테이너 연결도 함께 제거됩니다.`, `Delete purchase order ${order.number}? This will also remove its PO item rows and container links.`)

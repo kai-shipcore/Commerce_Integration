@@ -201,7 +201,8 @@ export default function AuditLogPage() {
           entry.note || "",
         ].map(csvEscape).join(",");
       });
-      const blob = new Blob([[header.map(csvEscape).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+      const csvContent = `\uFEFF${[header.map(csvEscape).join(","), ...lines].join("\r\n")}`;
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
