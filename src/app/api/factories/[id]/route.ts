@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { z } from "zod";
+import { guardPermission } from "@/lib/permissions";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -60,6 +61,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("factory", "edit");
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -142,6 +145,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("factory", "edit");
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();

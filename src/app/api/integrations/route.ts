@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/platform-integrations";
 import { getIntegrationAdapter } from "@/lib/integrations/core/registry";
 import { z } from "zod";
+import { guardPermission } from "@/lib/permissions";
 
 // Schema for creating a new integration
 const CreateIntegrationSchema = z.object({
@@ -80,6 +81,8 @@ export async function GET() {
 
 // POST /api/integrations - Create a new integration
 export async function POST(request: NextRequest) {
+  const denied = await guardPermission("integrations", "create");
+  if (denied) return denied;
   try {
     const body = await request.json();
     const data = CreateIntegrationSchema.parse(body);

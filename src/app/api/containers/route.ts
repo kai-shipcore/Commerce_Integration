@@ -6,6 +6,7 @@ import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache
 import { auth } from "@/lib/auth";
 import { isPOApproverRole } from "@/components/layout/navigation-config";
 import { logContainerAudit } from "@/lib/container-audit";
+import { canDo, guardPermission } from "@/lib/permissions";
 import { z } from "zod";
 
 const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-received", "complete"]);
@@ -273,6 +274,10 @@ export async function POST(request: NextRequest) {
   const session = await auth();
 
   try {
+    if (session?.user?.id) {
+      const allowed = await canDo(session.user.id, (session.user.role as string) ?? "user", "container-planning", "create");
+      if (!allowed) return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
+    }
     const body: unknown = await request.json();
     const validated = ContainerSaveSchema.parse(body);
     const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim().toUpperCase()))];
@@ -379,6 +384,10 @@ export async function PATCH(request: NextRequest) {
   const ip = getRequestIp(request);
 
   try {
+    if (session?.user?.id) {
+      const allowed = await canDo(session.user.id, (session.user.role as string) ?? "user", "container-planning", "edit");
+      if (!allowed) return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
+    }
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id")?.trim();
 
@@ -768,6 +777,8 @@ export async function DELETE(request: NextRequest) {
   const client = await getPrimaryPool().connect();
 
   try {
+    const denied = await guardPermission("container-planning", "delete");
+    if (denied) return denied;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id")?.trim();
 

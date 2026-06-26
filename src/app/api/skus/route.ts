@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
+import { guardPermission } from "@/lib/permissions";
 
 const DEFAULT_INVENTORY_LOCATION_CODE = "DEFAULT";
 
@@ -209,6 +210,8 @@ export async function GET(request: NextRequest) {
 
 // POST /api/skus - Create a new SKU
 export async function POST(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "create");
+  if (denied) return denied;
   try {
     const body = await request.json();
 

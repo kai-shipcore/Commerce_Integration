@@ -15,6 +15,7 @@ import { getIntegrationAdapter } from "@/lib/integrations/core/registry";
 import type { UpdatePlatformIntegrationInput } from "@/lib/db/platform-integrations";
 import { auth } from "@/lib/auth";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { canDo } from "@/lib/permissions";
 import { z } from "zod";
 
 // Schema for updating an integration
@@ -81,6 +82,11 @@ export async function PATCH(
         { success: false, error: "Forbidden" },
         { status: 403 }
       );
+    }
+
+    const allowed = await canDo(session.user.id, session.user.role as string, "integrations", "edit");
+    if (!allowed) {
+      return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -155,6 +161,11 @@ export async function DELETE(
         { success: false, error: "Forbidden" },
         { status: 403 }
       );
+    }
+
+    const allowed = await canDo(session.user.id, session.user.role as string, "integrations", "delete");
+    if (!allowed) {
+      return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
     }
 
     const { id } = await params;

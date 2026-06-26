@@ -5,11 +5,14 @@ import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notifySlack } from "@/lib/slack";
 import { getShipHeroOrderLineItems, updateShipHeroLineItemSku } from "@/lib/shiphero";
+import { guardPermission } from "@/lib/permissions";
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("parts", "edit");
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await req.json();
@@ -96,6 +99,8 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("parts", "delete");
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await req.json();

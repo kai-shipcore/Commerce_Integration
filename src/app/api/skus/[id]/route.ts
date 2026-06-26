@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
 import { getVariantNames } from "@/lib/db/supabase-lookup";
+import { guardPermission } from "@/lib/permissions";
 
 const DEFAULT_INVENTORY_LOCATION_CODE = "DEFAULT";
 
@@ -129,6 +130,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("sku-master", "edit");
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -286,6 +289,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await guardPermission("sku-master", "delete");
+  if (denied) return denied;
   try {
     const { id } = await params;
 

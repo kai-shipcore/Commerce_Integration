@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
+import { guardPermission } from "@/lib/permissions";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -59,6 +60,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await guardPermission("warehouse", "create");
+  if (denied) return denied;
   try {
     const body = await request.json();
     const validated = WarehouseCreateSchema.parse(body);

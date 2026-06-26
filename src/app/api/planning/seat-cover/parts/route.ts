@@ -5,8 +5,11 @@ import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notifySlack } from "@/lib/slack";
 import { getShipHeroOrder, createShipHeroOrder } from "@/lib/shiphero";
+import { guardPermission } from "@/lib/permissions";
 
 export async function GET(req: Request) {
+  const denied = await guardPermission("parts", "read");
+  if (denied) return denied;
   const { searchParams } = new URL(req.url);
   const deletedOnly = searchParams.get("deleted") === "true";
   try {
@@ -34,6 +37,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = await guardPermission("parts", "create");
+  if (denied) return denied;
   try {
     const body = await req.json();
     const {

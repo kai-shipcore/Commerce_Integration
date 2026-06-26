@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { z } from "zod";
+import { guardPermission } from "@/lib/permissions";
 
 const FactoryCreateSchema = z.object({
   factoryName: z.string().trim().min(1),
@@ -138,6 +139,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await guardPermission("factory", "create");
+  if (denied) return denied;
   try {
     const body = await request.json();
     const validated = FactoryCreateSchema.parse(body);
