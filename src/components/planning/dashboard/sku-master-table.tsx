@@ -118,13 +118,15 @@ export function SkuMasterTable({ rows }: SkuMasterTableProps) {
                         r.sales_status === "Hold"         ? "#FEF3D8" :
                         r.sales_status === "Part"         ? "#EDE9FE" :
                         r.sales_status === "Discontinued" ? "#FEE2E2" :
-                        r.sales_status === "TBD"          ? "#F1F5F9" : "#E5EEFF",
+                        r.sales_status === "TBD"          ? "#F1F5F9" :
+                        r.sales_status === "SWC"          ? "#FFF7ED" : "#E5EEFF",
                       color:
                         r.sales_status === "Custom"       ? "#0A6A45" :
                         r.sales_status === "Hold"         ? "#9A5200" :
                         r.sales_status === "Part"         ? "#5B21B6" :
                         r.sales_status === "Discontinued" ? "#B91C1C" :
-                        r.sales_status === "TBD"          ? "#64748B" : "#1238A0",
+                        r.sales_status === "TBD"          ? "#64748B" :
+                        r.sales_status === "SWC"          ? "#C2410C" : "#1238A0",
                       whiteSpace: "nowrap",
                     }}
                   >

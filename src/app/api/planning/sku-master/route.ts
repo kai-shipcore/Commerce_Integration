@@ -64,6 +64,18 @@ function inferProduct(masterSku: string): {
 } {
   const sku = masterSku.toUpperCase();
 
+  if (sku.includes("SWC")) {
+    return {
+      productKey: "cc",
+      category: "Car Cover",
+      categoryCode: "CC",
+      moq: 1,
+      cbmPerUnit: 0.078,
+      caseQty: 1,
+      weightKg: 2.8,
+    };
+  }
+
   if (sku.startsWith("CC-") || sku === "C-SJ-GR-7") {
     return {
       productKey: "cc",
@@ -144,7 +156,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     const salesType = searchParams.get("salesType")?.trim() ?? "all";
-    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD"];
+    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD", "SWC"];
     if (salesType !== "all" && !validSalesStatuses.includes(salesType)) {
       return NextResponse.json({ success: false, error: "Invalid salesType filter" }, { status: 400 });
     }
@@ -420,7 +432,7 @@ export async function PATCH(request: NextRequest) {
     const salesStatusRaw = body.salesStatus == null ? undefined : String(body.salesStatus).trim();
     const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
 
-    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD"];
+    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD", "SWC"];
     if (salesStatusValue != null && !validSalesStatuses.includes(salesStatusValue)) {
       return NextResponse.json({ success: false, error: "Invalid salesStatus" }, { status: 400 });
     }

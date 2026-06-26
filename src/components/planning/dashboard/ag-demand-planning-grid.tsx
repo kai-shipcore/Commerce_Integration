@@ -1324,6 +1324,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (productFilter === "part" && row.sales_status !== "Part")          return false;
       if (productFilter === "disc" && row.sales_status !== "Discontinued")  return false;
       if (productFilter === "tbd"  && row.sales_status !== "TBD")           return false;
+      if (productFilter === "swc"  && row.sales_status !== "SWC")           return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
       if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       const urgency = urgStatus(row);
