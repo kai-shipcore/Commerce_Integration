@@ -168,6 +168,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "seat-cover-sizes",
+    name: "Seat Cover Parts",
+    href: "/production/seat-cover-parts",
+    icon: Package,
+    group: "Production",
+    hideable: false,
+  },
+  {
     id: "factories",
     name: "Factories",
     href: "/planning/factories",
