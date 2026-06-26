@@ -409,6 +409,26 @@ model Container {
   @@schema("shipcore")
 }
 
+model ContainerAuditLog {
+  id              BigInt   @id @default(autoincrement())
+  containerId     BigInt   @map("container_id")
+  containerNumber String?  @map("container_number")
+  userId          String?  @map("user_id")
+  userName        String?  @map("user_name")
+  userEmail       String?  @map("user_email")
+  action          String
+  before          Json?
+  after           Json?
+  note            String?
+  ip              String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([containerId])
+  @@index([createdAt(sort: Desc)])
+  @@map("fc_container_audit_log")
+  @@schema("shipcore")
+}
+
 // ============================================
 // WAREHOUSES
 // ============================================

@@ -5,6 +5,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { auth } from "@/lib/auth";
 import { isPOApproverRole } from "@/components/layout/navigation-config";
+import { logContainerAudit } from "@/lib/container-audit";
 import { z } from "zod";
 
 const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-received", "complete"]);
@@ -58,6 +59,17 @@ function toDbStatus(status: z.infer<typeof ContainerSaveSchema>["status"]) {
   if (status === "packing-list-received") return "packing_received";
   if (status === "complete") return "complete";
   return "draft";
+}
+
+function fromDbStatus(s: string): z.infer<typeof ContainerStatusSchema> {
+  if (s === "shipped") return "final-list-sent";
+  if (s === "packing_received") return "packing-list-received";
+  if (s === "complete") return "complete";
+  return "draft";
+}
+
+function getRequestIp(request: NextRequest): string | null {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 }
 
 export async function GET(request: NextRequest) {
@@ -258,6 +270,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const client = await getPrimaryPool().connect();
+  const session = await auth();
 
   try {
     const body: unknown = await request.json();
@@ -313,6 +326,25 @@ export async function POST(request: NextRequest) {
 
     await client.query("COMMIT");
     await invalidatePlanningDashboardCache();
+
+    void logContainerAudit({
+      containerId: containerId,
+      containerNumber: validated.number.trim(),
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: "create",
+      after: {
+        status: validated.status,
+        eta: validated.eta,
+        factory: validated.factory ?? null,
+        destWarehouse: validated.destination ?? null,
+        skuCount: validated.items.length,
+        totalQty: validated.items.reduce((s, i) => s + i.qty, 0),
+      },
+      ip: getRequestIp(request),
+    });
+
     return NextResponse.json({ success: true, data: { id: containerId } }, { status: 201 });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -343,6 +375,8 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const client = await getPrimaryPool().connect();
+  const session = await auth();
+  const ip = getRequestIp(request);
 
   try {
     const { searchParams } = new URL(request.url);
@@ -364,17 +398,40 @@ export async function PATCH(request: NextRequest) {
 
     const body: unknown = await request.json();
     const detailsOnly = searchParams.get("detailsOnly") === "true";
-    const existingStatus = await client.query(
-      `SELECT status::text AS status FROM shipcore.fc_containers WHERE id = $1::bigint`,
-      [id]
+    const existingRow = await client.query<{
+      status: string;
+      container_number: string;
+      eta: string | null;
+      cbm_capacity: number;
+      factory_name: string | null;
+      dest_warehouse: string | null;
+      note: string | null;
+      est_loading: string | null;
+      etd_ngb: string | null;
+      eta_lax_lgb: string | null;
+    }>(
+      `SELECT status::text AS status,
+              container_number,
+              eta_date::text AS eta,
+              cbm_capacity,
+              factory_name,
+              dest_warehouse,
+              note,
+              est_loading_date::text AS est_loading,
+              etd_ngb_date::text AS etd_ngb,
+              eta_lax_lgb_date::text AS eta_lax_lgb
+       FROM shipcore.fc_containers WHERE id = $1::bigint`,
+      [id],
     );
 
-    if (existingStatus.rowCount === 0) {
+    if (existingRow.rowCount === 0) {
       return NextResponse.json(
         { success: false, error: "Container not found" },
         { status: 404 }
       );
     }
+
+    const existing = existingRow.rows[0]!;
 
     const statusOnly = z.object({ status: ContainerStatusSchema }).strict().safeParse(body);
 
@@ -396,10 +453,26 @@ export async function PATCH(request: NextRequest) {
       }
 
       await invalidatePlanningDashboardCache();
+
+      const oldStatus = fromDbStatus(existing.status);
+      if (oldStatus !== statusOnly.data.status) {
+        void logContainerAudit({
+          containerId: id,
+          containerNumber: existing.container_number,
+          userId: session?.user?.id ?? null,
+          userName: session?.user?.name ?? null,
+          userEmail: session?.user?.email ?? null,
+          action: "status_change",
+          before: { status: oldStatus },
+          after: { status: statusOnly.data.status },
+          ip,
+        });
+      }
+
       return NextResponse.json({ success: true, data: { id } });
     }
 
-    if (existingStatus.rows[0]?.status === "complete") {
+    if (existing.status === "complete") {
       return NextResponse.json(
         { success: false, error: "Stock-in completed containers cannot be modified." },
         { status: 403 }
@@ -446,6 +519,54 @@ export async function PATCH(request: NextRequest) {
       }
 
       await invalidatePlanningDashboardCache();
+
+      const beforeSnap = {
+        status: fromDbStatus(existing.status), eta: existing.eta,
+        factory: existing.factory_name, destWarehouse: existing.dest_warehouse,
+        cbmCapacity: existing.cbm_capacity, note: existing.note,
+        estLoading: existing.est_loading, etdNgb: existing.etd_ngb, etaLaxLgb: existing.eta_lax_lgb,
+      };
+      const afterSnap = {
+        status: details.status, eta: details.eta,
+        factory: details.factory ?? null, destWarehouse: details.destination ?? null,
+        cbmCapacity: details.cbmCapacity, note: details.note ?? null,
+        estLoading: details.estLoading ?? null, etdNgb: details.etdNgb ?? null, etaLaxLgb: details.etaLaxLgb ?? null,
+      };
+
+      // Determine which sub-action to log
+      const statusChanged = beforeSnap.status !== afterSnap.status;
+      if (statusChanged) {
+        void logContainerAudit({
+          containerId: id, containerNumber: existing.container_number,
+          userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+          action: "status_change",
+          before: { status: beforeSnap.status }, after: { status: afterSnap.status },
+          ip,
+        });
+      }
+      const etaChanged = beforeSnap.eta !== afterSnap.eta;
+      if (etaChanged) {
+        void logContainerAudit({
+          containerId: id, containerNumber: details.number,
+          userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+          action: "eta_change",
+          before: { eta: beforeSnap.eta }, after: { eta: afterSnap.eta },
+          ip,
+        });
+      }
+      const otherFields = ["factory", "destWarehouse", "cbmCapacity", "note", "estLoading", "etdNgb", "etaLaxLgb"] as const;
+      const otherChanged = otherFields.some((k) => String(beforeSnap[k] ?? "") !== String(afterSnap[k] ?? ""));
+      if (otherChanged) {
+        void logContainerAudit({
+          containerId: id, containerNumber: details.number,
+          userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+          action: "details_update",
+          before: beforeSnap as Record<string, unknown>,
+          after: afterSnap as Record<string, unknown>,
+          ip,
+        });
+      }
+
       return NextResponse.json({ success: true, data: { id, updated: "details" } });
     }
 
@@ -469,6 +590,17 @@ export async function PATCH(request: NextRequest) {
       }
 
       await invalidatePlanningDashboardCache();
+
+      if (existing.eta !== etaOnly.data.eta) {
+        void logContainerAudit({
+          containerId: id, containerNumber: existing.container_number,
+          userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+          action: "eta_change",
+          before: { eta: existing.eta }, after: { eta: etaOnly.data.eta },
+          ip,
+        });
+      }
+
       return NextResponse.json({ success: true, data: { id } });
     }
 
@@ -477,18 +609,26 @@ export async function PATCH(request: NextRequest) {
 
     await client.query("BEGIN");
 
-    const existing = await client.query(
-      `SELECT id FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
-      [id]
+    const existingForUpdate = await client.query<{ id: string; sku_count: number; total_qty: number }>(
+      `SELECT c.id,
+              COUNT(i.id)::int AS sku_count,
+              COALESCE(SUM(i.qty), 0)::int AS total_qty
+       FROM shipcore.fc_containers c
+       LEFT JOIN shipcore.fc_container_items i ON i.container_id = c.id
+       WHERE c.id = $1::bigint
+       FOR UPDATE OF c`,
+      [id],
     );
 
-    if (existing.rowCount === 0) {
+    if (existingForUpdate.rowCount === 0) {
       await client.query("ROLLBACK");
       return NextResponse.json(
         { success: false, error: "Container not found" },
         { status: 404 }
       );
     }
+
+    const itemsBefore = { skuCount: existingForUpdate.rows[0]!.sku_count, totalQty: existingForUpdate.rows[0]!.total_qty };
 
     const skuResult = await client.query<{ master_sku: string }>(
       `SELECT master_sku FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
@@ -553,6 +693,56 @@ export async function PATCH(request: NextRequest) {
 
     await client.query("COMMIT");
     await invalidatePlanningDashboardCache();
+
+    // Log details change
+    const detailsBefore = {
+      status: fromDbStatus(existing.status), eta: existing.eta,
+      factory: existing.factory_name, destWarehouse: existing.dest_warehouse,
+      cbmCapacity: existing.cbm_capacity, note: existing.note,
+      estLoading: existing.est_loading, etdNgb: existing.etd_ngb, etaLaxLgb: existing.eta_lax_lgb,
+    };
+    const detailsAfter = {
+      status: validated.status, eta: validated.eta,
+      factory: validated.factory ?? null, destWarehouse: validated.destination ?? null,
+      cbmCapacity: validated.cbmCapacity, note: validated.note ?? null,
+      estLoading: validated.estLoading ?? null, etdNgb: validated.etdNgb ?? null, etaLaxLgb: validated.etaLaxLgb ?? null,
+    };
+    if (detailsBefore.status !== detailsAfter.status) {
+      void logContainerAudit({
+        containerId: id, containerNumber: validated.number.trim(),
+        userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+        action: "status_change",
+        before: { status: detailsBefore.status }, after: { status: detailsAfter.status },
+        ip,
+      });
+    }
+    if (detailsBefore.eta !== detailsAfter.eta) {
+      void logContainerAudit({
+        containerId: id, containerNumber: validated.number.trim(),
+        userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+        action: "eta_change",
+        before: { eta: detailsBefore.eta }, after: { eta: detailsAfter.eta },
+        ip,
+      });
+    }
+    // Log items change
+    if (validated.items.length > 0) {
+      const itemsAfter = {
+        skuCount: validated.items.length,
+        totalQty: validated.items.reduce((s, i) => s + i.qty, 0),
+      };
+      if (itemsBefore.skuCount !== itemsAfter.skuCount || itemsBefore.totalQty !== itemsAfter.totalQty) {
+        void logContainerAudit({
+          containerId: id, containerNumber: validated.number.trim(),
+          userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+          action: "items_update",
+          before: itemsBefore as Record<string, unknown>,
+          after: itemsAfter as Record<string, unknown>,
+          ip,
+        });
+      }
+    }
+
     return NextResponse.json({ success: true, data: { id } });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -595,11 +785,18 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const session = await auth();
+    const ip = getRequestIp(request);
+
     await client.query("BEGIN");
 
-    const existing = await client.query(
-      `SELECT id, status::text AS status FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
-      [id]
+    const existing = await client.query<{
+      id: string; status: string; container_number: string; eta: string | null;
+    }>(
+      `SELECT id, status::text AS status, container_number,
+              eta_date::text AS eta
+       FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
+      [id],
     );
 
     if (existing.rowCount === 0) {
@@ -611,7 +808,6 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (existing.rows[0]?.status === "complete") {
-      const session = await auth();
       if (!session?.user || !isPOApproverRole(session.user.role)) {
         await client.query("ROLLBACK");
         return NextResponse.json(
@@ -620,6 +816,8 @@ export async function DELETE(request: NextRequest) {
         );
       }
     }
+
+    const deletedContainer = existing.rows[0]!;
 
     await client.query(`DELETE FROM shipcore.fc_container_item_allocations WHERE container_id = $1::bigint`, [id]);
     await client.query(`DELETE FROM shipcore.fc_container_items WHERE container_id = $1::bigint`, [id]);
@@ -632,6 +830,21 @@ export async function DELETE(request: NextRequest) {
 
     await client.query("COMMIT");
     await invalidatePlanningDashboardCache();
+
+    void logContainerAudit({
+      containerId: id,
+      containerNumber: deletedContainer.container_number,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: "delete",
+      before: {
+        status: fromDbStatus(deletedContainer.status),
+        eta: deletedContainer.eta,
+        containerNumber: deletedContainer.container_number,
+      },
+      ip,
+    });
 
     return NextResponse.json({
       success: true,

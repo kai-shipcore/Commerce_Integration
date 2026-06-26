@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CalendarRange, ChevronDown, ExternalLink, FileDown, List, Plus, Search, X } from "lucide-react";
+import { CalendarRange, ChevronDown, ExternalLink, FileDown, History, List, Plus, Search, X } from "lucide-react";
+import { ContainerHistoryTab } from "./container-history-tab";
 import * as XLSX from "xlsx";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath, withBasePath } from "@/lib/api-path";
@@ -1170,6 +1171,7 @@ function ContainerDetailDrawer({
 }) {
   const { pick } = useI18n();
   const normalizedSkuSearch = skuSearchQuery.trim().toLowerCase();
+  const [activeTab, setActiveTab] = useState<"sku" | "history">("sku");
   const [isSkuListOpen, setIsSkuListOpen] = useState(true);
   const [localSkuFilter, setLocalSkuFilter] = useState("");
   const [selectedSkuRowId, setSelectedSkuRowId] = useState<string | null>(null);
@@ -1178,6 +1180,10 @@ function ContainerDetailDrawer({
     key: "sku",
     direction: "asc",
   });
+
+  useEffect(() => {
+    setActiveTab("sku");
+  }, [c.id]);
   const totalCbm = c.items.reduce((sum, item) => sum + item.qty * item.cbm, 0);
   const totalQty = c.items.reduce((sum, item) => sum + item.qty, 0);
   const cbmUsedPct = c.cbmCapacity > 0 ? Math.min(100, (totalCbm / c.cbmCapacity) * 100) : 0;
@@ -1391,7 +1397,27 @@ function ContainerDetailDrawer({
             )}
           </div>
 
-          {/* SKU table */}
+          {/* Tab bar */}
+          <div className="flex shrink-0 border-b border-[#e2dfd8] px-6">
+            <button
+              type="button"
+              onClick={() => setActiveTab("sku")}
+              className={`mr-6 border-b-2 py-2.5 text-[11px] font-semibold transition-colors ${activeTab === "sku" ? "border-[#1a5cdb] text-[#1a5cdb]" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            >
+              {pick("SKU 목록", "SKU List")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("history")}
+              className={`flex items-center gap-1.5 border-b-2 py-2.5 text-[11px] font-semibold transition-colors ${activeTab === "history" ? "border-[#1a5cdb] text-[#1a5cdb]" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            >
+              <History className="h-3.5 w-3.5" />
+              {pick("변경 이력", "Change History")}
+            </button>
+          </div>
+
+          {/* SKU tab */}
+          {activeTab === "sku" && (
           <div className="flex min-h-0 flex-1 flex-col border-b border-[#e2dfd8]">
             <button
               type="button"
@@ -1549,7 +1575,7 @@ function ContainerDetailDrawer({
                   <div className="grid shrink-0 grid-cols-[18%_8%_8%_9%_7%_8%_10%_7%_10%_7%_8%] border-t border-[#e2dfd8] bg-[#f5f4f0] text-[11px] shadow-[0_-1px_0_#e2dfd8]">
                     <div className="px-3 py-2 font-semibold text-muted-foreground">Total ({c.items.length} SKUs)</div>
                     <div className="col-span-7" />
-                    <div className="px-2 py-2 text-right tabular-nums font-bold">{pick("입고", "Inbound")} {totalQty.toLocaleString()} units</div>
+                    <div className="whitespace-nowrap px-2 py-2 text-right tabular-nums font-bold">{pick("입고", "Inbound")} {totalQty.toLocaleString()} units</div>
                     <div />
                     <div className="px-3 py-2 text-right tabular-nums font-bold">{totalCbm.toFixed(2)} m³</div>
                   </div>
@@ -1558,6 +1584,10 @@ function ContainerDetailDrawer({
             </div>
             )}
           </div>
+          )}
+          {activeTab === "history" && (
+            <ContainerHistoryTab containerId={String(c.id)} />
+          )}
         </div>
 
       </div>
