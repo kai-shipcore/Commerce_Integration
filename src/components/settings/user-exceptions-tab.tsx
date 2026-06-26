@@ -11,6 +11,7 @@ import {
   type PermSection,
   type PermAction,
   type ManagedRole,
+  type RolePermMatrix,
 } from "@/lib/permissions-config";
 
 export interface UserSummary {
@@ -37,18 +38,20 @@ function getEffective(
   role: string,
   section: string,
   action: string,
-  overrides: PermOverride[]
+  overrides: PermOverride[],
+  roleMatrix: RolePermMatrix | null
 ): { value: boolean; isOverride: boolean } {
   const ov = overrides.find((o) => o.section === section && o.action === action);
   if (ov !== undefined) return { value: ov.allowed, isOverride: true };
-  const rolePerms = DEFAULT_ROLE_PERMISSIONS[role as ManagedRole] ?? DEFAULT_ROLE_PERMISSIONS.user;
-  const val = rolePerms[section as PermSection]?.[action as PermAction] ?? false;
+  const matrix = roleMatrix ?? DEFAULT_ROLE_PERMISSIONS[role as ManagedRole] ?? DEFAULT_ROLE_PERMISSIONS.user;
+  const val = matrix[section as PermSection]?.[action as PermAction] ?? false;
   return { value: val, isOverride: false };
 }
 
 export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
   const { pick } = useI18n();
   const [overrides, setOverrides] = useState<PermOverride[]>([]);
+  const [roleMatrix, setRoleMatrix] = useState<RolePermMatrix | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [formSection, setFormSection] = useState<string>(PERM_SECTIONS[0].id);
@@ -65,18 +68,23 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
   }, [toast]);
 
   useEffect(() => {
-    if (!user) { setOverrides([]); return; }
+    if (!user) { setOverrides([]); setRoleMatrix(null); return; }
     setLoading(true);
     setShowAddForm(false);
     setPreviewOpen(false);
-    void fetch(apiPath(`/api/admin/users/${user.id}/permission-overrides`))
-      .then((r) => r.json())
-      .then((json: { success: boolean; data?: PermOverride[] }) => {
-        if (json.success) setOverrides(json.data ?? []);
+    Promise.all([
+      fetch(apiPath(`/api/admin/users/${user.id}/permission-overrides`))
+        .then((r) => r.json() as Promise<{ success: boolean; data?: PermOverride[] }>),
+      fetch(apiPath("/api/admin/role-permissions"))
+        .then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, RolePermMatrix> }>),
+    ])
+      .then(([ovJson, rpJson]) => {
+        if (ovJson.success) setOverrides(ovJson.data ?? []);
+        if (rpJson.success && rpJson.data?.[user.role]) setRoleMatrix(rpJson.data[user.role]);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   async function handleAddOverride() {
     if (!user) return;
@@ -347,7 +355,8 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
                         user.role,
                         sec.id,
                         act.id,
-                        overrides
+                        overrides,
+                        roleMatrix
                       );
                       return (
                         <td key={act.id} className="px-2 py-2 text-center">
