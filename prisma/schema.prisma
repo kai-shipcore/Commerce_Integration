@@ -429,6 +429,28 @@ model ContainerAuditLog {
   @@schema("shipcore")
 }
 
+model RolePermission {
+  role    String
+  section String
+  action  String
+  allowed Boolean @default(false)
+
+  @@id([role, section, action])
+  @@map("role_permissions")
+  @@schema("shipcore")
+}
+
+model UserPermissionOverride {
+  userId  String @map("user_id")
+  section String
+  action  String
+  allowed Boolean
+
+  @@id([userId, section, action])
+  @@map("user_permission_overrides")
+  @@schema("shipcore")
+}
+
 // ============================================
 // WAREHOUSES
 // ============================================
