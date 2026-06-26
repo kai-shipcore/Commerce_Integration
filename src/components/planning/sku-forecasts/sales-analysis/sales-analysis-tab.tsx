@@ -51,7 +51,7 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
   return (
     <div className="space-y-3">
       <SectionLabel>{pick(language, "판매 현황", "Sales status")}</SectionLabel>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_360px]">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.2fr)_360px]">
         <div className="planning-panel rounded-lg border p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -121,7 +121,7 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
             </div>
           ) : null}
 
-          <div className="mt-4 h-48 w-full">
+          <div className="mt-4 h-64 w-full">
             {viewMode === "history" && history.loading ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading sales history...</div>
             ) : viewMode === "history" && history.error ? (
@@ -178,7 +178,7 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           {viewMode === "history" ? (
             <HistorySummary
               loading={history.loading}
@@ -191,6 +191,7 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
           ) : (
             <>
               <MetricTable
+                className="flex-1"
                 title={pick(language, "West 판매", "West Sales")}
                 rows={[
                   ["7D", sku.west_7d],
@@ -198,9 +199,11 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
                   ["30D", sku.west_30d],
                   ["60D", sku.west_60d],
                   ["90D", sku.west_90d],
+                  [pick(language, "선주문 30D", "Pre 30D"), sku.west_30d_pre],
                 ]}
               />
               <MetricTable
+                className="flex-1"
                 title={pick(language, "East 판매", "East Sales")}
                 rows={[
                   ["7D", sku.east_7d],
@@ -208,6 +211,7 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
                   ["30D", sku.east_30d],
                   ["60D", sku.east_60d],
                   ["90D", sku.east_90d],
+                  [pick(language, "선주문 30D", "Pre 30D"), sku.east_30d_pre],
                 ]}
               />
             </>
@@ -317,15 +321,15 @@ function HistoryTooltip({
   );
 }
 
-function MetricTable({ title, rows }: { title: string; rows: Array<[string, number]> }) {
+function MetricTable({ title, rows, className }: { title: string; rows: Array<[string, number]>; className?: string }) {
   return (
-    <div className="planning-panel rounded-lg border p-4">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="mt-3 grid grid-cols-5 gap-2 text-center text-sm">
+    <div className={`planning-panel rounded-lg border px-3 py-2.5 ${className ?? ""}`}>
+      <h3 className="text-xs font-semibold">{title}</h3>
+      <div className="mt-2 grid grid-cols-3 grid-rows-2 gap-1.5 text-center text-sm">
         {rows.map(([label, value]) => (
-          <div key={label} className="rounded-md border bg-[#f8f7f4] p-2 dark:border-zinc-700 dark:bg-zinc-800">
-            <div className="text-xs text-muted-foreground">{label}</div>
-            <div className="mt-1 font-mono font-semibold">{formatNumber(value)}</div>
+          <div key={label} className="rounded-md border bg-[#f8f7f4] px-1 py-1.5 dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="text-[10px] text-muted-foreground">{label}</div>
+            <div className="mt-0.5 font-mono text-sm font-semibold">{formatNumber(value)}</div>
           </div>
         ))}
       </div>
