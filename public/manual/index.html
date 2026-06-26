@@ -200,9 +200,9 @@
 
   /* 상태 뱃지 */
   .status { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-  .status.draft { background: #f3f4f6; color: #6b7280; }
-  .status.final { background: #dbeafe; color: #1d4ed8; }
-  .status.packing { background: #fef9c3; color: #854d0e; }
+  .status.draft { background: #fee2e2; color: #b91c1c; }
+  .status.final { background: #fef3c7; color: #92400e; }
+  .status.packing { background: #dbeafe; color: #1d4ed8; }
   .status.complete { background: #dcfce7; color: #15803d; }
   .status.critical { background: #fee2e2; color: #991b1b; }
   .status.warn { background: #fef9c3; color: #854d0e; }
@@ -902,9 +902,9 @@
     <div class="card">
       <h4>🎨 컨테이너 상태 색상</h4>
       <table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px">
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#3B82F6;width:80px">SHIPPED</td><td style="padding:4px 8px">항만 수령 완료 컨테이너 (파란색)</td></tr>
-        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#F59E0B">FINAL</td><td style="padding:4px 8px">선적 완료·운송 중 컨테이너 (amber)</td></tr>
-        <tr><td style="padding:4px 8px;font-weight:700;color:#EF4444">DRAFT</td><td style="padding:4px 8px">초안(예정) 컨테이너 (빨간색)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#3B82F6;width:100px">선적 SHIPPED</td><td style="padding:4px 8px">선적 완료·운송 중 컨테이너 (파란색)</td></tr>
+        <tr style="border-bottom:1px solid #e5e7eb"><td style="padding:4px 8px;font-weight:700;color:#F59E0B">최종 FINAL</td><td style="padding:4px 8px">중국 공장 발송 (amber)</td></tr>
+        <tr><td style="padding:4px 8px;font-weight:700;color:#EF4444">초안 DRAFT</td><td style="padding:4px 8px">예정 컨테이너 (빨간색)</td></tr>
       </table>
     </div>
     <div class="card">
@@ -1137,11 +1137,11 @@
   <h3>④ 컨테이너 표시 조건</h3>
   <p>수요 계획의 컨테이너 열에는 <strong>모든 상태의 컨테이너가 표시되지 않습니다.</strong> 아래 규칙에 따라 필터링됩니다.</p>
   <table class="feat-table">
-    <tr><th style="width:200px">컨테이너 상태</th><th>수요 계획 표시</th><th>비고</th></tr>
-    <tr><td><span class="status final">Final List Sent</span></td><td>✅ 항상 표시</td><td>공장 발송 완료 상태</td></tr>
-    <tr><td><span class="status packing">Shipped (Packing List Rcvd)</span></td><td>✅ 항상 표시</td><td>패킹 리스트 수령 상태</td></tr>
-    <tr><td><span class="status draft">Draft</span></td><td>⬜ Draft 포함 토글 ON 시만 표시</td><td>상단 필터에서 수동 활성화 필요</td></tr>
-    <tr style="background:#fff7ed"><td><span class="status complete">Complete</span></td><td style="color:#dc2626;font-weight:700">❌ 표시 안 됨</td><td>입고 완료 처리된 컨테이너는 계획 대상에서 제외</td></tr>
+    <tr><th style="width:240px">컨테이너 상태</th><th>수요 계획 표시</th><th>비고</th></tr>
+    <tr><td><span class="status final">최종 Final List Sent</span></td><td>✅ 항상 표시</td><td>공장 발송 완료 상태</td></tr>
+    <tr><td><span class="status packing">선적 Shipped (Packing List Rcvd)</span></td><td>✅ 항상 표시</td><td>패킹 리스트 수령 상태</td></tr>
+    <tr><td><span class="status draft">초안 Draft</span></td><td>✅ 항상 표시</td><td>발주 계획 단계</td></tr>
+    <tr style="background:#fff7ed"><td><span class="status complete">입고 Complete</span></td><td style="color:#dc2626;font-weight:700">❌ 표시 안 됨</td><td>입고 완료 처리된 컨테이너는 계획 대상에서 제외</td></tr>
   </table>
   <div class="callout tip">
     <span class="callout-icon">💡</span>
@@ -2098,8 +2098,8 @@
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
     <tr><td class="label">바(Bar) 색상</td><td>
-      <span class="status draft">Draft</span> 분홍 &nbsp;|&nbsp;
-      <span class="status final">Final List Sent</span> 주황 &nbsp;|&nbsp;
+      <span class="status draft">Draft</span> 빨강 &nbsp;|&nbsp;
+      <span class="status final">Final List Sent</span> 주황(amber) &nbsp;|&nbsp;
       <span class="status packing">Shipped (Packing List Rcvd)</span> 파랑 &nbsp;|&nbsp;
       <span class="status complete">Complete</span> 녹색
     </td></tr>
@@ -4007,8 +4007,8 @@
   <table class="feat-table">
     <tr><th style="width:220px">Item</th><th>Description</th></tr>
     <tr><td class="label">Bar color</td><td>
-      <span class="status draft">Draft</span> pink &nbsp;|&nbsp;
-      <span class="status final">Final List Sent</span> orange &nbsp;|&nbsp;
+      <span class="status draft">Draft</span> red &nbsp;|&nbsp;
+      <span class="status final">Final List Sent</span> amber &nbsp;|&nbsp;
       <span class="status packing">Shipped (Packing List Rcvd)</span> blue &nbsp;|&nbsp;
       <span class="status complete">Complete</span> green
     </td></tr>
