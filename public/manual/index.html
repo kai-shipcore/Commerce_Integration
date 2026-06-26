@@ -1138,9 +1138,9 @@
   <p>수요 계획의 컨테이너 열에는 <strong>모든 상태의 컨테이너가 표시되지 않습니다.</strong> 아래 규칙에 따라 필터링됩니다.</p>
   <table class="feat-table">
     <tr><th style="width:240px">컨테이너 상태</th><th>수요 계획 표시</th><th>비고</th></tr>
+    <tr><td><span class="status draft">초안 Draft</span></td><td>✅ 항상 표시</td><td>발주 계획 단계</td></tr>
     <tr><td><span class="status final">최종 Final List Sent</span></td><td>✅ 항상 표시</td><td>공장 발송 완료 상태</td></tr>
     <tr><td><span class="status packing">선적 Shipped (Packing List Rcvd)</span></td><td>✅ 항상 표시</td><td>패킹 리스트 수령 상태</td></tr>
-    <tr><td><span class="status draft">초안 Draft</span></td><td>✅ 항상 표시</td><td>발주 계획 단계</td></tr>
     <tr style="background:#fff7ed"><td><span class="status complete">입고 Complete</span></td><td style="color:#dc2626;font-weight:700">❌ 표시 안 됨</td><td>입고 완료 처리된 컨테이너는 계획 대상에서 제외</td></tr>
   </table>
   <div class="callout tip">
@@ -1152,7 +1152,6 @@
   <p>수요 계획 그리드의 <strong>컨테이너 헤더(컨테이너 번호 영역)를 더블클릭</strong>하면 해당 컨테이너의 컨테이너 계획 상세 페이지가 <strong>새 탭</strong>으로 열립니다.</p>
   <table class="feat-table">
     <tr><th style="width:200px">항목</th><th>설명</th></tr>
-    <tr><td class="label">이동 URL</td><td><code>/forecast/planning/container-planning?containerId={id}</code> — 해당 컨테이너가 자동 선택된 상태로 열립니다.</td></tr>
     <tr><td class="label">커서 힌트</td><td>헤더에 마우스를 올리면 커서가 <code>pointer</code>로 변경되어 클릭 가능함을 나타냅니다.</td></tr>
     <tr><td class="label">미저장 컨테이너</td><td>DB에 아직 저장되지 않은 컨테이너는 이동 불가 — "This container does not have a saved container ID yet." 알림이 표시됩니다.</td></tr>
   </table>
@@ -3213,9 +3212,9 @@
   <p>Not all containers are shown in the Demand Planning grid. Containers are filtered as follows.</p>
   <table class="feat-table">
     <tr><th style="width:220px">Container Status</th><th>Shown in Demand Planning</th><th>Notes</th></tr>
+    <tr><td><span class="status draft">Draft</span></td><td>✅ Always shown</td><td>Purchase Planning</td></tr>
     <tr><td><span class="status final">Final List Sent</span></td><td>✅ Always shown</td><td>Factory submission complete</td></tr>
     <tr><td><span class="status packing">Shipped (Packing List Rcvd)</span></td><td>✅ Always shown</td><td>Packing list received</td></tr>
-    <tr><td><span class="status draft">Draft</span></td><td>⬜ Shown only when "Include Draft" toggle is ON</td><td>Must be manually enabled via the top filter</td></tr>
     <tr style="background:#fff7ed"><td><span class="status complete">Complete</span></td><td style="color:#dc2626;font-weight:700">❌ Not shown</td><td>Received containers are excluded from planning</td></tr>
   </table>
   <div class="callout tip">
@@ -3227,7 +3226,6 @@
   <p><strong>Double-click the container name area</strong> in any container header column of the Demand Planning grid to open that container's detail page in Container Planning in a <strong>new tab</strong>.</p>
   <table class="feat-table">
     <tr><th style="width:220px">Item</th><th>Description</th></tr>
-    <tr><td class="label">Navigation URL</td><td><code>/forecast/planning/container-planning?containerId={id}</code> — opens with that container already selected.</td></tr>
     <tr><td class="label">Cursor hint</td><td>The cursor changes to <code>pointer</code> when hovering over the container name to indicate it's clickable.</td></tr>
     <tr><td class="label">Unsaved containers</td><td>Containers not yet saved to the DB cannot be opened — an alert is shown: "This container does not have a saved container ID yet."</td></tr>
   </table>
