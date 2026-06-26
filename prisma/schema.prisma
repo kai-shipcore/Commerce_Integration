@@ -704,3 +704,137 @@ model SeatCoverSize {
   @@map("fc_seat_cover_parts_front")
   @@schema("shipcore")
 }
+
+model SeatCoverSizeRear {
+  id                     String   @id @default(cuid())
+  size                   String   @unique
+  inventory              String?
+  fitting_photo          String?
+  confirmed              String?
+  blueprint              String?
+  manual                 String?
+  ymm                    String?
+  fitting_dp_detail      String?
+  added_date             String?
+  package                String?
+  headrest               String?
+  headrest_dp_detail     String?
+  headrest_qty           String?
+  headrest2              String?
+  headrest2_dp_detail    String?
+  headrest2_qty          String?
+  top_body               String?
+  top_body_dp_detail     String?
+  top_body_qty           String?
+  top_body2              String?
+  top_body2_dp_detail    String?
+  top_body2_qty          String?
+  bottom                 String?
+  bottom_dp_detail       String?
+  bottom_qty             String?
+  bottom2                String?
+  bottom2_dp_detail      String?
+  bottom2_qty            String?
+  middle_headrest        String?
+  middle_headrest_detail String?
+  middle_headrest_qty    String?
+  middle_top_body        String?
+  middle_top_body_detail String?
+  middle_top_body_qty    String?
+  middle_bottom          String?
+  middle_bottom_detail   String?
+  middle_bottom_qty      String?
+  console                String?
+  console_dp_detail      String?
+  console_qty            String?
+  backrest_storage       String?
+  backrest_storage_dp_detail String?
+  backrest_storage_qty   String?
+  backrest_storage2      String?
+  backrest_storage2_dp_detail String?
+  backrest_storage2_qty  String?
+  armrest                String?
+  armrest_detail         String?
+  armrest_qty            String?
+  armrest2               String?
+  armrest2_detail        String?
+  armrest2_qty           String?
+  subpart                String?
+  subpart_dp_detail      String?
+  subpart_qty            String?
+  subpart2               String?
+  subpart2_dp_detail     String?
+  subpart2_qty           String?
+  note                   String?
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  @@map("fc_seat_cover_parts_rear")
+  @@schema("shipcore")
+}
+
+model SeatCoverSizeThird {
+  id                     String   @id @default(cuid())
+  size                   String   @unique
+  inventory              String?
+  fitting_photo          String?
+  confirmed              String?
+  blueprint              String?
+  manual                 String?
+  ymm                    String?
+  package                String?
+  headrest               String?
+  headrest_dp_detail     String?
+  headrest_qty           String?
+  headrest2              String?
+  headrest2_dp_detail    String?
+  headrest2_qty          String?
+  top_body               String?
+  top_body_dp_detail     String?
+  top_body_qty           String?
+  top_body2              String?
+  top_body2_dp_detail    String?
+  top_body2_qty          String?
+  bottom                 String?
+  bottom_dp_detail       String?
+  bottom_qty             String?
+  bottom2                String?
+  bottom2_dp_detail      String?
+  bottom2_qty            String?
+  middle_headrest        String?
+  middle_headrest_detail String?
+  middle_headrest_qty    String?
+  middle_top_body        String?
+  middle_top_body_detail String?
+  middle_top_body_qty    String?
+  middle_bottom          String?
+  middle_bottom_detail   String?
+  middle_bottom_qty      String?
+  console                String?
+  console_dp_detail      String?
+  console_qty            String?
+  backrest_storage       String?
+  backrest_storage_dp_detail String?
+  backrest_storage_qty   String?
+  backrest_storage2      String?
+  backrest_storage2_dp_detail String?
+  backrest_storage2_qty  String?
+  armrest                String?
+  armrest_detail         String?
+  armrest_qty            String?
+  armrest2               String?
+  armrest2_detail        String?
+  armrest2_qty           String?
+  subpart                String?
+  subpart_dp_detail      String?
+  subpart_qty            String?
+  subpart2               String?
+  subpart2_dp_detail     String?
+  subpart2_qty           String?
+  note                   String?
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  @@map("fc_seat_cover_parts_third")
+  @@schema("shipcore")
+}
