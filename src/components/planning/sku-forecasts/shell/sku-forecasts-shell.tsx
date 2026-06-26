@@ -67,27 +67,23 @@ export function SkuForecastsShell({
   const [forecastServerError, setForecastServerError] = useState<string | null>(null);
 
   useEffect(() => {
-    let started = false;
-
     fetch(apiPath("/api/forecast-server/start"), { method: "POST" })
       .then(async (res) => {
         if (!res.ok) {
           const json = await res.json().catch(() => ({})) as { error?: string };
           setForecastServerError(json.error ?? `Server error ${res.status}`);
-          return;
         }
-        started = true;
       })
       .catch((err: Error) => setForecastServerError(err.message));
 
     const handleBeforeUnload = () => {
-      if (started) navigator.sendBeacon(apiPath("/api/forecast-server/stop"));
+      navigator.sendBeacon(apiPath("/api/forecast-server/stop"));
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (started) navigator.sendBeacon(apiPath("/api/forecast-server/stop"));
+      // Do not stop on navigation — keep the server alive while the browser is open
     };
   }, []);
 
@@ -151,6 +147,22 @@ export function SkuForecastsShell({
     }
     return grouped;
   }, [data.rows, salesOnly]);
+
+  // When arriving with an explicit SKU, look up its category_code from the DB and switch tabs.
+  useEffect(() => {
+    if (!normalizedInitialSku) return;
+    fetch(apiPath(`/api/planning/sku-master?masterSku=${encodeURIComponent(normalizedInitialSku)}`))
+      .then((res) => res.json() as Promise<SkuMasterResponse>)
+      .then((json) => {
+        if (!json.success || !json.data) return;
+        const code = json.data.categoryCode?.toUpperCase();
+        const key: ProductKey | null =
+          code === "CC" ? "cc" : code === "FM" ? "fm" : code === "SC" ? "sc" : null;
+        if (key && key !== product) setProduct(key);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedInitialSku]);
 
   useEffect(() => {
     if (loading) return;

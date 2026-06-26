@@ -144,11 +144,24 @@ function defaultBtCutoff(): Date {
 interface ForecastMeta {
   sku_id: string;
   bucket: string;
+  history_length: string;
   model: string;
   confidence: string;
   forecast_date: string;
   has_pi: boolean;
   forward_weeks: number;
+}
+
+function segmentLabel(bucket: string, historyLength: string): string {
+  if (bucket !== "smooth") return "Intermittent";
+  if (historyLength === "short") return "Smooth / Short history";
+  return "Smooth";
+}
+
+function segmentMethod(bucket: string, historyLength: string): string {
+  if (bucket !== "smooth") return "Restock policy";
+  if (historyLength === "short") return "V1";
+  return "StatsForecast";
 }
 
 interface ForecastResponse {
@@ -554,47 +567,65 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     };
   }, [btResult, btCutoff, btContextWeeks, btContextStart, language]); // context deps control zoom only
 
+  const sectionHeader = (
+    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      {pick(language, "수요 예측", "Demand Forecast")}
+    </div>
+  );
+
   // ── Early returns (forward mode gates) ───────────────────────────────────
   if (serverError) {
     return (
-      <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-6 text-center text-sm text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
-        <p className="font-medium">{pick(language, "예측 서버 시작 실패", "Forecast server failed to start")}</p>
-        <p className="text-xs">{serverError}</p>
-        <p className="text-xs text-muted-foreground">
-          {pick(language, "AI_SERVICE_URL 연결 상태를 확인하세요. 로컬 실행 방식이면 FORECAST_SERVER_DIR와 가상환경도 확인하세요.", "Check AI_SERVICE_URL connectivity. For local startup mode, also check FORECAST_SERVER_DIR and the venv.")}
-        </p>
+      <div className="space-y-3">
+        {sectionHeader}
+        <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-6 text-center text-sm text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
+          <p className="font-medium">{pick(language, "예측 서버 시작 실패", "Forecast server failed to start")}</p>
+          <p className="text-xs">{serverError}</p>
+          <p className="text-xs text-muted-foreground">
+            {pick(language, "AI_SERVICE_URL 연결 상태를 확인하세요. 로컬 실행 방식이면 FORECAST_SERVER_DIR와 가상환경도 확인하세요.", "Check AI_SERVICE_URL connectivity. For local startup mode, also check FORECAST_SERVER_DIR and the venv.")}
+          </p>
+        </div>
       </div>
     );
   }
   if (loading && mode === "forward") {
     return (
-      <div className="planning-panel flex h-64 items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        {pick(language, "예측 데이터 불러오는 중...", "Loading forecast...")}
+      <div className="space-y-3">
+        {sectionHeader}
+        <div className="planning-panel flex h-64 items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {pick(language, "예측 데이터 불러오는 중...", "Loading forecast...")}
+        </div>
       </div>
     );
   }
   if (notFound && mode === "forward") {
     return (
-      <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
-        <p className="font-medium">{pick(language, "예측 없음", "No forecast available")}</p>
-        <p className="text-xs">
-          {pick(language, "이 SKU는 간헐적 수요 SKU이거나 아직 예측이 실행되지 않았습니다.", "This SKU is classified as intermittent demand or has not been forecasted yet.")}
-        </p>
+      <div className="space-y-3">
+        {sectionHeader}
+        <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
+          <p className="font-medium">{pick(language, "예측 없음", "No forecast available")}</p>
+          <p className="text-xs">
+            {pick(language, "이 SKU는 간헐적 수요 SKU이거나 아직 예측이 실행되지 않았습니다.", "This SKU is classified as intermittent demand or has not been forecasted yet.")}
+          </p>
+        </div>
       </div>
     );
   }
   if (error && mode === "forward") {
     const isServerDown = error.toLowerCase().includes("fetch") || error.toLowerCase().includes("reach");
     return (
-      <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-6 text-center text-sm text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
-        <p className="font-medium">{pick(language, "오류", "Error")}</p>
-        <p className="text-xs">{error}</p>
-        {isServerDown && (
-          <p className="text-xs text-muted-foreground">
-            {pick(language, "예측 서버가 실행 중인지 확인하세요 (port 8000)", "Make sure the forecast server is running on port 8000")}
-          </p>
-        )}
+      <div className="space-y-3">
+        {sectionHeader}
+        <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-6 text-center text-sm text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300">
+          <p className="font-medium">{pick(language, "오류", "Error")}</p>
+          <p className="text-xs">{error}</p>
+          {isServerDown && (
+            <p className="text-xs text-muted-foreground">
+              {pick(language, "예측 서버가 실행 중인지 확인하세요 (port 8000)", "Make sure the forecast server is running on port 8000")}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -609,11 +640,12 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
   return (
     <div className="space-y-3">
+      {sectionHeader}
       {mode === "forward" && isLowConfidence && (
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            {pick(language, "낮은 신뢰도 예측입니다. 이력 데이터가 부족하거나 모델 오차가 높습니다.", "Low confidence forecast — short history or high model error. Treat with caution.")}
+            {pick(language, "낮은 신뢰도 예측", "Low confidence forecast")}
           </span>
         </div>
       )}
@@ -966,7 +998,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
       {/* ── Forward meta strip ── */}
       {mode === "forward" && meta && (
-        <div className="planning-panel grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border px-4 py-3 text-xs sm:grid-cols-5">
+        <div className="planning-panel grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border px-4 py-3 text-xs sm:grid-cols-3">
           <MetaField
             label={`${clampedWeeks}${pick(language, "주 추천 주문량", "-Week Order Range")}`}
             value={orderRange}
@@ -994,6 +1026,15 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
             </span>
           </MetaField>
           <MetaField
+            label={pick(language, "세그먼트", "Segment")}
+            value={segmentLabel(meta.bucket, meta.history_length)}
+            tooltip={pick(
+              language,
+              "이 SKU의 예측 방법 분류입니다. Smooth: StatsForecast 앙상블 모델 사용. Smooth / Short history: 이력이 짧아 단순화된 V1 모델 사용. Intermittent: 간헐적 수요 전용 Restock policy 모델 사용.",
+              "The forecasting method assigned to this SKU. Smooth: StatsForecast ensemble. Smooth / Short history: simplified V1 model for SKUs with limited history. Intermittent: Restock policy model for sporadic demand.",
+            )}
+          />
+          <MetaField
             label={pick(language, "모델", "Model")}
             value={meta.model}
             tooltip={pick(
@@ -1011,7 +1052,18 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
               "표준: 모델 오차가 계획에 적합한 범위 내에 있습니다. 낮음: 이력 데이터가 짧거나 판매가 불규칙하거나 모델 오차가 높습니다. 수치를 방향성 참고용으로만 활용하세요.",
               "Standard = the model's historical error is within an acceptable range for planning. Low = the SKU has short history, intermittent sales, or high model error — treat the forecast as directional guidance rather than a precise number.",
             )}
-          />
+          >
+            {isLowConfidence ? (
+              <>
+                <span className="text-amber-600 dark:text-amber-400">{pick(language, "낮음", "Low")}</span>
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  ({meta.history_length === "short"
+                    ? pick(language, "이력 부족", "Short history")
+                    : pick(language, "예측 오차 높음", "Accuracy")})
+                </span>
+              </>
+            ) : undefined}
+          </MetaField>
           <MetaField
             label={pick(language, "예측 실행일", "Forecast run")}
             value={meta.forecast_date}
