@@ -58,7 +58,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
   const [formAction, setFormAction] = useState<string>(PERM_ACTIONS[0].id);
   const [formAllowed, setFormAllowed] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
     if (!user) { setOverrides([]); setRoleMatrix(null); return; }
     setLoading(true);
     setShowAddForm(false);
-    setPreviewOpen(false);
+    setPreviewOpen(true);
     Promise.all([
       fetch(apiPath(`/api/admin/users/${user.id}/permission-overrides`))
         .then((r) => r.json() as Promise<{ success: boolean; data?: PermOverride[] }>),

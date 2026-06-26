@@ -8,6 +8,14 @@ import {
   sanitizeVisibleMenuIds,
 } from "@/components/layout/navigation-config";
 import { z } from "zod";
+import { getPrimaryPool } from "@/lib/db/primary-db";
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  blendRolePermissions,
+  type ManagedRole,
+  type PermAction,
+  type PermSection,
+} from "@/lib/permissions-config";
 
 const UpdateUserMenuSchema = z.object({
   visibleMenuIds: z.array(z.string()),
@@ -46,6 +54,37 @@ export async function PATCH(
       return NextResponse.json(
         { success: false, error: "User not found" },
         { status: 404 }
+      );
+    }
+
+    const pool = getPrimaryPool();
+    const [rolePerms, userOverrides] = await Promise.all([
+      pool.query<{ section: string; action: string; allowed: boolean }>(
+        `SELECT section, action, allowed
+         FROM shipcore.fc_role_permissions
+         WHERE role = $1`,
+        [targetUser.role],
+      ),
+      pool.query<{ section: string; action: string; allowed: boolean }>(
+        `SELECT section, action, allowed
+         FROM shipcore.fc_user_permission_overrides
+         WHERE user_id = $1`,
+        [userId],
+      ),
+    ]);
+    const base = DEFAULT_ROLE_PERMISSIONS[targetUser.role as ManagedRole] ?? DEFAULT_ROLE_PERMISSIONS.user;
+    const effective = blendRolePermissions(base, rolePerms.rows);
+    for (const override of userOverrides.rows) {
+      const section = override.section as PermSection;
+      const action = override.action as PermAction;
+      if (effective[section] && action in effective[section]) {
+        effective[section][action] = override.allowed;
+      }
+    }
+    if (!effective["user-permissions"].edit || !effective["user-permissions"].status) {
+      return NextResponse.json(
+        { success: false, error: "User Permissions edit and status permissions are required to update menu access." },
+        { status: 403 }
       );
     }
 

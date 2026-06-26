@@ -201,8 +201,8 @@ function HistoryEntry({ entry }: { entry: AuditEntry }) {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-[12px] font-semibold text-[#1a1917]">{userLabel}</span>
           <span className="text-[10px] text-stone-400">{date} · {time}</span>
+          <span className="text-[12px] font-semibold text-[#1a1917]">{actionLabel}</span>
         </div>
-        <div className="mt-0.5 text-[12px] font-semibold text-[#1a1917]">{actionLabel}</div>
         {subLabel && (
           <div className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
             {entry.action === "note_added" ? (

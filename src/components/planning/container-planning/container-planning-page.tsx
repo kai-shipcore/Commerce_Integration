@@ -2938,6 +2938,9 @@ function ContainerCard({
   const [deletingSelectedAllocations, setDeletingSelectedAllocations] = useState(false);
   const [skuSearch, setSkuSearch] = useState(initialSkuSearch);
   const [detailPanel, setDetailPanel] = useState<"sku" | "history">("sku");
+  const inlineSkuRowRef = useRef<HTMLDivElement | null>(null);
+  const inlineSkuInputRef = useRef<HTMLInputElement | null>(null);
+  const hasInlineSkuDraft = Boolean(inlineSkuDraft);
   const normalizedSkuSearch = skuSearch.trim().toLowerCase();
   const visibleItems = normalizedSkuSearch
     ? container.items.filter((item) => item.sku.toLowerCase().includes(normalizedSkuSearch))
@@ -2949,6 +2952,21 @@ function ContainerCard({
   useEffect(() => {
     setDetailPanel("sku");
   }, [container.id]);
+
+  useEffect(() => {
+    if (!hasInlineSkuDraft || !canChangeStructure || detailPanel !== "sku" || skuListCollapsed) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      inlineSkuRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      const input = inlineSkuInputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      const cursorPosition = input.value.length;
+      input.setSelectionRange(cursorPosition, cursorPosition);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [hasInlineSkuDraft, canChangeStructure, detailPanel, skuListCollapsed]);
 
   function toggleAllocationSelection(allocationIds: string[], checked: boolean) {
     setSelectedAllocationIds((current) => {
@@ -3132,7 +3150,11 @@ function ContainerCard({
             {canChangeStructure ? (
               <button
                 type="button"
-                onClick={() => onStartAddItem(container.id)}
+                onClick={() => {
+                  setDetailPanel("sku");
+                  if (detailMode && skuListCollapsed) onToggleSkuList?.();
+                  onStartAddItem(container.id);
+                }}
                 disabled={Boolean(inlineSkuDraft)}
                 className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -3298,9 +3320,10 @@ function ContainerCard({
               </div>
             ) : null}
             {inlineSkuDraft && canChangeStructure ? (
-              <div className="grid grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
+              <div ref={inlineSkuRowRef} className="grid grid-cols-[1.8fr_0.7fr_0.6fr_0.7fr_0.8fr_1.2fr_110px] items-end border-t bg-[#fbfaf8] px-5 py-3 text-sm">
                 <div className="pr-3">
                   <input
+                    ref={inlineSkuInputRef}
                     className="form-input font-mono text-xs"
                     value={inlineSkuDraft.sku}
                     onChange={(event) => {

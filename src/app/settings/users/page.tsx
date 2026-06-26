@@ -36,6 +36,11 @@ import { Loader2, Search, ShieldAlert, ShieldCheck } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { RolePermissionsTab } from "@/components/settings/role-permissions-tab";
 import { UserExceptionsTab } from "@/components/settings/user-exceptions-tab";
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  type ManagedRole,
+  type RolePermMatrix,
+} from "@/lib/permissions-config";
 
 type SettingsTab = "menu" | "role-permissions" | "exceptions";
 
@@ -56,6 +61,12 @@ interface UserPagination {
   limit: number;
   total: number;
   totalPages: number;
+}
+
+interface PermOverride {
+  section: string;
+  action: string;
+  allowed: boolean;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -116,6 +127,9 @@ export default function UserAccessPage() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermMatrix> | null>(null);
+  const [selectedUserOverrides, setSelectedUserOverrides] = useState<PermOverride[]>([]);
+  const [menuPermissionLoading, setMenuPermissionLoading] = useState(false);
   const [pagination, setPagination] = useState<UserPagination>({
     page: 1,
     limit: 20,
@@ -176,6 +190,47 @@ export default function UserAccessPage() {
   }, [debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, pick, session?.user?.role, status]);
 
   const selectedUser = users.find((user) => user.id === selectedUserId) || users[0] || null;
+  const selectedUserCanManageMenus = useMemo(() => {
+    if (!selectedUser) return false;
+    const matrix = rolePermissions?.[selectedUser.role]
+      ?? DEFAULT_ROLE_PERMISSIONS[selectedUser.role as ManagedRole]
+      ?? DEFAULT_ROLE_PERMISSIONS.user;
+    const overrideValue = (action: "edit" | "status") =>
+      selectedUserOverrides.find((override) => override.section === "user-permissions" && override.action === action)?.allowed;
+
+    return (overrideValue("edit") ?? matrix["user-permissions"].edit) &&
+      (overrideValue("status") ?? matrix["user-permissions"].status);
+  }, [rolePermissions, selectedUser, selectedUserOverrides]);
+  const menuControlsDisabled = !selectedUserCanManageMenus || menuPermissionLoading;
+
+  useEffect(() => {
+    if (!selectedUser) {
+      setSelectedUserOverrides([]);
+      return;
+    }
+
+    let cancelled = false;
+    setMenuPermissionLoading(true);
+    Promise.all([
+      rolePermissions
+        ? Promise.resolve({ success: true, data: rolePermissions })
+        : fetch(apiPath("/api/admin/role-permissions")).then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, RolePermMatrix> }>),
+      fetch(apiPath(`/api/admin/users/${selectedUser.id}/permission-overrides`)).then((r) => r.json() as Promise<{ success: boolean; data?: PermOverride[] }>),
+    ])
+      .then(([roleJson, overrideJson]) => {
+        if (cancelled) return;
+        if (roleJson.success && roleJson.data) setRolePermissions(roleJson.data);
+        setSelectedUserOverrides(overrideJson.success ? overrideJson.data ?? [] : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedUserOverrides([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMenuPermissionLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [rolePermissions, selectedUser]);
 
   const refreshUsers = async () => {
     const params = new URLSearchParams({ page: String(pagination.page), limit: String(pagination.limit) });
@@ -190,6 +245,10 @@ export default function UserAccessPage() {
   };
 
   const updateUserMenus = async (userId: string, nextVisibleMenuIds: string[]) => {
+    if (!selectedUserCanManageMenus) {
+      setError(pick("사용자 권한의 수정 및 상태변경 권한이 있어야 메뉴 권한을 수정할 수 있습니다.", "Edit and Status permission for User Permissions are required to update menu access."));
+      return;
+    }
     const sanitized = filterToValidMenuIds(nextVisibleMenuIds);
     setSavingUserId(userId);
     setError(null);
@@ -598,13 +657,18 @@ export default function UserAccessPage() {
                               <p className="text-xs text-muted-foreground">
                                 {pick("이 사용자가 접근할 수 있는 메뉴를 선택하세요.", "Choose which menus this user can access.")}
                               </p>
+                              {selectedUser && !menuPermissionLoading && !selectedUserCanManageMenus ? (
+                                <p className="mt-1 text-xs text-amber-700">
+                                  {pick("사용자 권한의 수정/상태변경 권한이 비활성화되어 메뉴 권한을 수정할 수 없습니다.", "Menu access cannot be edited because User Permissions Edit/Status is disabled.")}
+                                </p>
+                              ) : null}
                             </div>
                             <div className="flex shrink-0 gap-1">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                disabled={savingUserId === selectedUser.id}
+                                disabled={savingUserId === selectedUser.id || menuControlsDisabled}
                                 onClick={() =>
                                   void updateUserMenus(selectedUser.id, configurableMenus.map((item) => item.id))
                                 }
@@ -615,7 +679,7 @@ export default function UserAccessPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                disabled={savingUserId === selectedUser.id}
+                                disabled={savingUserId === selectedUser.id || menuControlsDisabled}
                                 onClick={() => void updateUserMenus(selectedUser.id, [])}
                               >
                                 {pick("전체 해제", "Deselect All")}
@@ -624,7 +688,7 @@ export default function UserAccessPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                disabled={savingUserId === selectedUser.id}
+                                disabled={savingUserId === selectedUser.id || menuControlsDisabled}
                                 onClick={() =>
                                   void updateUserMenus(selectedUser.id, getDefaultVisibleMenuIds(selectedUser.role))
                                 }
@@ -637,7 +701,7 @@ export default function UserAccessPage() {
                           {menuGroups.map(({ group, entries }) => {
                             const configurableEntries = entries.filter((entry) => entry.configurable);
                             const groupIds = configurableEntries.map((entry) => entry.item.id);
-                            const disabled = savingUserId === selectedUser.id;
+                            const disabled = savingUserId === selectedUser.id || menuControlsDisabled;
                             const allChecked =
                               groupIds.length > 0 &&
                               groupIds.every((id) => selectedUser.menuVisibility.includes(id));
