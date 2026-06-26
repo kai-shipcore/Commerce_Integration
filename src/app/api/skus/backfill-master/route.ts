@@ -9,12 +9,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { lookupMasterSkusFromSupabase, testLookupConnection } from "@/lib/db/supabase-lookup";
+import { guardPermission } from "@/lib/permissions";
 
 /**
  * POST /api/skus/backfill-master
  * Backfill master SKU codes for existing SKUs and SalesRecords
  */
 export async function POST(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "edit");
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const batchSize = parseInt(searchParams.get("batchSize") || "500");
@@ -137,6 +140,8 @@ export async function POST(request: NextRequest) {
  * Get stats on how many records need backfill
  */
 export async function GET() {
+  const denied = await guardPermission("sku-master", "read");
+  if (denied) return denied;
   try {
     const [skusWithoutMaster, skusWithMaster] = await Promise.all([
       prisma.sKU.count({ where: { masterSkuCode: null } }),

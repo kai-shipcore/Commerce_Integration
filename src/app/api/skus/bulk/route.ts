@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { CacheManager } from "@/lib/redis";
+import { guardPermission } from "@/lib/permissions";
 
 const BulkDeleteSchema = z.object({
   ids: z.array(z.string()).min(1).max(100),
@@ -17,6 +18,8 @@ const BulkDeleteSchema = z.object({
 
 // DELETE /api/skus/bulk - Delete multiple SKUs
 export async function DELETE(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "delete");
+  if (denied) return denied;
   try {
     const body = await request.json();
     const { ids } = BulkDeleteSchema.parse(body);

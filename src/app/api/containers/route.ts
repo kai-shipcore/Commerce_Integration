@@ -14,7 +14,7 @@ const ContainerStatusSchema = z.enum(["draft", "final-list-sent", "packing-list-
 const ContainerSaveSchema = z.object({
   number: z.string().trim().min(1),
   eta: z.string().trim().min(1),
-  status: ContainerStatusSchema,
+  status: ContainerStatusSchema.optional(),
   cbmCapacity: z.number().positive().default(80),
   factory: z.string().trim().optional(),
   origin: z.string().trim().optional(),
@@ -35,7 +35,6 @@ const ContainerSaveSchema = z.object({
 const ContainerDetailsSchema = z.object({
   number: z.string().trim().min(1),
   eta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  status: ContainerStatusSchema,
   cbmCapacity: z.number().positive(),
   factory: z.string().trim().optional(),
   destination: z.string().trim().optional(),
@@ -55,7 +54,7 @@ function serializeDate(value: unknown): string | null {
   return String(value).slice(0, 10);
 }
 
-function toDbStatus(status: z.infer<typeof ContainerSaveSchema>["status"]) {
+function toDbStatus(status: z.infer<typeof ContainerStatusSchema>) {
   if (status === "final-list-sent") return "shipped";
   if (status === "packing-list-received") return "packing_received";
   if (status === "complete") return "complete";
@@ -280,6 +279,7 @@ export async function POST(request: NextRequest) {
     }
     const body: unknown = await request.json();
     const validated = ContainerSaveSchema.parse(body);
+    const createStatus = validated.status ?? "draft";
     const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim().toUpperCase()))];
 
     await client.query("BEGIN");
@@ -307,7 +307,7 @@ export async function POST(request: NextRequest) {
       [
         validated.number.trim(),
         validated.eta,
-        toDbStatus(validated.status),
+        toDbStatus(createStatus),
         validated.cbmCapacity,
         validated.factory?.trim() || null,
         validated.origin?.trim() || null,
@@ -340,7 +340,7 @@ export async function POST(request: NextRequest) {
       userEmail: session?.user?.email ?? null,
       action: "create",
       after: {
-        status: validated.status,
+        status: createStatus,
         eta: validated.eta,
         factory: validated.factory ?? null,
         destWarehouse: validated.destination ?? null,
@@ -494,14 +494,13 @@ export async function PATCH(request: NextRequest) {
         `UPDATE shipcore.fc_containers
          SET container_number = $2,
              eta_date = $3::date,
-             status = $4::shipcore.fc_container_status,
-             cbm_capacity = $5::numeric,
-             factory_name = $6,
-             dest_warehouse = $7,
-             note = $8,
-             est_loading_date = $9::date,
-             etd_ngb_date = $10::date,
-             eta_lax_lgb_date = $11::date,
+             cbm_capacity = $4::numeric,
+             factory_name = $5,
+             dest_warehouse = $6,
+             note = $7,
+             est_loading_date = $8::date,
+             etd_ngb_date = $9::date,
+             eta_lax_lgb_date = $10::date,
              updated_at = NOW()
          WHERE id = $1::bigint
          RETURNING id`,
@@ -509,7 +508,6 @@ export async function PATCH(request: NextRequest) {
           id,
           details.number,
           details.eta,
-          toDbStatus(details.status),
           details.cbmCapacity,
           details.factory || null,
           details.destination || null,
@@ -536,7 +534,7 @@ export async function PATCH(request: NextRequest) {
         estLoading: existing.est_loading, etdNgb: existing.etd_ngb, etaLaxLgb: existing.eta_lax_lgb,
       };
       const afterSnap = {
-        status: details.status, eta: details.eta,
+        status: fromDbStatus(existing.status), eta: details.eta,
         factory: details.factory ?? null, destWarehouse: details.destination ?? null,
         cbmCapacity: details.cbmCapacity, note: details.note ?? null,
         estLoading: details.estLoading ?? null, etdNgb: details.etdNgb ?? null, etaLaxLgb: details.etaLaxLgb ?? null,
@@ -658,22 +656,20 @@ export async function PATCH(request: NextRequest) {
       `UPDATE shipcore.fc_containers
        SET container_number = $2,
            eta_date = $3::date,
-           status = $4::shipcore.fc_container_status,
-           cbm_capacity = $5::numeric,
-           factory_name = $6,
-           origin = $7,
-           dest_warehouse = $8,
-           note = $9,
-           est_loading_date = $10::date,
-           etd_ngb_date = $11::date,
-           eta_lax_lgb_date = $12::date,
+           cbm_capacity = $4::numeric,
+           factory_name = $5,
+           origin = $6,
+           dest_warehouse = $7,
+           note = $8,
+           est_loading_date = $9::date,
+           etd_ngb_date = $10::date,
+           eta_lax_lgb_date = $11::date,
            updated_at = NOW()
        WHERE id = $1::bigint`,
       [
         id,
         validated.number.trim(),
         validated.eta,
-        toDbStatus(validated.status),
         validated.cbmCapacity,
         validated.factory?.trim() || null,
         validated.origin?.trim() || null,
@@ -711,7 +707,7 @@ export async function PATCH(request: NextRequest) {
       estLoading: existing.est_loading, etdNgb: existing.etd_ngb, etaLaxLgb: existing.eta_lax_lgb,
     };
     const detailsAfter = {
-      status: validated.status, eta: validated.eta,
+      status: fromDbStatus(existing.status), eta: validated.eta,
       factory: validated.factory ?? null, destWarehouse: validated.destination ?? null,
       cbmCapacity: validated.cbmCapacity, note: validated.note ?? null,
       estLoading: validated.estLoading ?? null, etdNgb: validated.etdNgb ?? null, etaLaxLgb: validated.etaLaxLgb ?? null,

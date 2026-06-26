@@ -63,16 +63,16 @@ export async function PATCH(
         `SELECT section, action, allowed
          FROM shipcore.fc_role_permissions
          WHERE role = $1`,
-        [targetUser.role],
+        [session.user.role],
       ),
       pool.query<{ section: string; action: string; allowed: boolean }>(
         `SELECT section, action, allowed
          FROM shipcore.fc_user_permission_overrides
          WHERE user_id = $1`,
-        [userId],
+        [session.user.id],
       ),
     ]);
-    const base = DEFAULT_ROLE_PERMISSIONS[targetUser.role as ManagedRole] ?? DEFAULT_ROLE_PERMISSIONS.user;
+    const base = DEFAULT_ROLE_PERMISSIONS[session.user.role as ManagedRole] ?? DEFAULT_ROLE_PERMISSIONS.user;
     const effective = blendRolePermissions(base, rolePerms.rows);
     for (const override of userOverrides.rows) {
       const section = override.section as PermSection;

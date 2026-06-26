@@ -11,7 +11,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
-import { authPath } from "@/lib/api-path";
+import { authPath, withBasePath } from "@/lib/api-path";
 
 // Build providers list dynamically
 const providers: Provider[] = [
@@ -60,7 +60,6 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      allowDangerousEmailAccountLinking: true,
     })
   );
 }
@@ -76,8 +75,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ account, profile }) {
       if (account?.provider === "google") {
-        return (profile as { email_verified?: boolean | null } | undefined)
-          ?.email_verified === true;
+        const googleProfile = profile as { email_verified?: boolean | null; email?: string } | undefined;
+        if (!googleProfile?.email_verified) return false;
+
+        // Only allow Google sign-in for pre-registered emails
+        const email = googleProfile.email?.trim().toLowerCase();
+        if (!email) return false;
+        const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+        if (!existing) {
+          const params = new URLSearchParams({ email, source: "google" });
+          return withBasePath(`/auth/signup?${params.toString()}`);
+        }
+
+        return true;
       }
 
       return true;

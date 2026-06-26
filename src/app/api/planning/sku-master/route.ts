@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
+import { guardPermission } from "@/lib/permissions";
 
 type ProductKey = "cc" | "fm" | "sc" | "ac";
 
@@ -145,6 +146,8 @@ async function ensureCbmPrecision(client: QueryClient) {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "read");
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim() ?? "";
@@ -311,6 +314,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST() {
+  const denied = await guardPermission("sku-master", "edit");
+  if (denied) return denied;
   const lookup = getLookupPool();
   if (!lookup) {
     return NextResponse.json(
@@ -416,6 +421,8 @@ export async function POST() {
 }
 
 export async function PATCH(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "edit");
+  if (denied) return denied;
   try {
     const body = await request.json();
     const masterSku = String(body.masterSku ?? "").trim();
@@ -469,6 +476,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "edit");
+  if (denied) return denied;
   const pool = getPrimaryPool();
   const client = await pool.connect();
 
@@ -591,6 +600,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "delete");
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const masterSku = searchParams.get("masterSku")?.trim() ?? "";

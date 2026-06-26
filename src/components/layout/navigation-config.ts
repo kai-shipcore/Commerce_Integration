@@ -189,7 +189,6 @@ export const navigationItems: NavigationItem[] = [
     href: "/admin/audit-log",
     icon: ScrollText,
     hideable: true,
-    adminOnly: true,
   },
   {
     id: "warehouse-admin",
@@ -198,7 +197,6 @@ export const navigationItems: NavigationItem[] = [
     icon: Warehouse,
     group: "Operations",
     hideable: true,
-    adminOnly: true,
   },
   {
     id: "user-access",

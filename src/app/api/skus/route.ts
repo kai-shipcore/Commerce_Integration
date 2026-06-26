@@ -40,6 +40,8 @@ const SKUSchema = z.object({
 
 // GET /api/skus - List products from sc_products + sc_inventory_snapshot
 export async function GET(request: NextRequest) {
+  const denied = await guardPermission("sku-master", "read");
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
 

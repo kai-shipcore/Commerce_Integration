@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ChevronLeft, ChevronRight, Download, Loader2, ScrollText, Search } from "lucide-react";
 import { AppLayout } from "@/components/layout/app-layout";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
@@ -141,8 +140,6 @@ export default function AuditLogPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isAdmin = isAdminLikeRole(session?.user?.role);
-
   const queryString = useCallback((page: number, exportAll = false, limitOverride?: number) => {
     const params = new URLSearchParams();
     if (userSearch.trim()) params.set("user", userSearch.trim());
@@ -157,7 +154,6 @@ export default function AuditLogPage() {
   }, [action, containerSearch, endDate, pagination.limit, startDate, userSearch]);
 
   const fetchLogs = useCallback(async (page = 1, limitOverride?: number) => {
-    if (!isAdmin) return;
     setLoading(true);
     setError(null);
     try {
@@ -173,11 +169,11 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, queryString]);
+  }, [queryString]);
 
   useEffect(() => {
-    if (status === "authenticated" && isAdmin) void fetchLogs(1);
-  }, [fetchLogs, isAdmin, status]);
+    if (status === "authenticated") void fetchLogs(1);
+  }, [fetchLogs, status]);
 
   const actionLabel = useMemo(() => {
     const map = new Map(ACTION_OPTIONS.map((item) => [item.value, pick(item.ko, item.en)]));
@@ -185,7 +181,7 @@ export default function AuditLogPage() {
   }, [pick]);
 
   async function exportCsv() {
-    if (!isAdmin || exporting) return;
+    if (exporting) return;
     setExporting(true);
     try {
       const response = await fetch(apiPath(`/api/admin/audit-log?${queryString(1, true)}`), { cache: "no-store" });
@@ -235,11 +231,7 @@ export default function AuditLogPage() {
           </span>
         </header>
 
-        {!isAdmin && status !== "loading" ? (
-          <div className="m-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {pick("관리자 권한이 필요합니다.", "Admin access required.")}
-          </div>
-        ) : (
+        {(
           <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-slate-950">
             <section className="border-b border-[#e2dfd8] px-5 py-4 dark:border-slate-700">
               <div className="flex flex-wrap items-center gap-2">

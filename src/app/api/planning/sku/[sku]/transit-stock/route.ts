@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
+import { guardPermission } from "@/lib/permissions";
 
 const bodySchema = z.object({
   transit_stock: z.number().int().min(0),
@@ -13,6 +14,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ sku: string }> },
 ) {
+  const denied = await guardPermission("available-stock", "edit");
+  if (denied) return denied;
   try {
     const { sku } = await params;
     const body = await req.json();

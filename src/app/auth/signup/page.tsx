@@ -1,20 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LanguageToggle } from "@/components/layout/language-toggle";
-import { TrendingUp, Loader2 } from "lucide-react";
+import { TrendingUp, Loader2, Info } from "lucide-react";
 import { apiPath, authPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
-export default function SignUpPage() {
+function SignUpForm() {
   const { pick } = useI18n();
+  const searchParams = useSearchParams();
+  const prefillEmail = searchParams.get("email") ?? "";
+  const fromGoogle = searchParams.get("source") === "google";
+
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(prefillEmail);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,10 +103,23 @@ export default function SignUpPage() {
           </div>
           <CardTitle className="text-2xl">{pick("계정 만들기", "Create Account")}</CardTitle>
           <CardDescription>
-            {pick("새 Demand Pilot 계정을 등록하세요", "Register a new Demand Pilot account")}
+            {fromGoogle
+              ? pick("Google 계정으로 접속했습니다. 비밀번호를 설정하여 계정을 완성하세요.", "You signed in with Google. Set a password to complete your account.")
+              : pick("새 Demand Pilot 계정을 등록하세요", "Register a new Demand Pilot account")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {fromGoogle ? (
+            <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                {pick(
+                  "이 Google 계정은 아직 등록되지 않았습니다. 아래 양식을 작성하여 계정을 만들어 주세요.",
+                  "This Google account is not registered yet. Please complete the form below to create your account."
+                )}
+              </span>
+            </div>
+          ) : null}
           {error ? (
             <div className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-center text-sm text-destructive">
               {error}
@@ -168,5 +186,13 @@ export default function SignUpPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense>
+      <SignUpForm />
+    </Suspense>
   );
 }

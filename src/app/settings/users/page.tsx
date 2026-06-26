@@ -129,6 +129,7 @@ export default function UserAccessPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermMatrix> | null>(null);
   const [selectedUserOverrides, setSelectedUserOverrides] = useState<PermOverride[]>([]);
+  const [currentUserOverrides, setCurrentUserOverrides] = useState<PermOverride[]>([]);
   const [menuPermissionLoading, setMenuPermissionLoading] = useState(false);
   const [pagination, setPagination] = useState<UserPagination>({
     page: 1,
@@ -189,18 +190,28 @@ export default function UserAccessPage() {
     void loadUsers();
   }, [debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, pick, session?.user?.role, status]);
 
+  // Fetch the logged-in user's own permission overrides once (needed to compute menu-edit capability)
+  useEffect(() => {
+    if (!session?.user?.id || status !== "authenticated") return;
+    fetch(apiPath(`/api/admin/users/${session.user.id}/permission-overrides`))
+      .then((r) => r.json() as Promise<{ success: boolean; data?: PermOverride[] }>)
+      .then((json) => { if (json.success) setCurrentUserOverrides(json.data ?? []); })
+      .catch(() => setCurrentUserOverrides([]));
+  }, [session?.user?.id, status]);
+
   const selectedUser = users.find((user) => user.id === selectedUserId) || users[0] || null;
+  // Check whether the CURRENT logged-in user has permission to edit menus (not the selected user)
   const selectedUserCanManageMenus = useMemo(() => {
-    if (!selectedUser) return false;
-    const matrix = rolePermissions?.[selectedUser.role]
-      ?? DEFAULT_ROLE_PERMISSIONS[selectedUser.role as ManagedRole]
+    const currentRole = session?.user?.role;
+    if (!currentRole) return false;
+    const matrix = rolePermissions?.[currentRole]
+      ?? DEFAULT_ROLE_PERMISSIONS[currentRole as ManagedRole]
       ?? DEFAULT_ROLE_PERMISSIONS.user;
     const overrideValue = (action: "edit" | "status") =>
-      selectedUserOverrides.find((override) => override.section === "user-permissions" && override.action === action)?.allowed;
-
+      currentUserOverrides.find((o) => o.section === "user-permissions" && o.action === action)?.allowed;
     return (overrideValue("edit") ?? matrix["user-permissions"].edit) &&
       (overrideValue("status") ?? matrix["user-permissions"].status);
-  }, [rolePermissions, selectedUser, selectedUserOverrides]);
+  }, [rolePermissions, session?.user?.role, currentUserOverrides]);
   const menuControlsDisabled = !selectedUserCanManageMenus || menuPermissionLoading;
 
   useEffect(() => {

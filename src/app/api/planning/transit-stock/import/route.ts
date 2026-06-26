@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { guardPermission } from "@/lib/permissions";
 
 const RowSchema = z.object({
   masterSku: z.string().min(1),
@@ -20,6 +21,8 @@ function errorMessage(error: unknown): string {
 }
 
 export async function PUT(request: NextRequest) {
+  const denied = await guardPermission("available-stock", "edit");
+  if (denied) return denied;
   const parsed = BodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ success: false, error: "Invalid import rows" }, { status: 400 });

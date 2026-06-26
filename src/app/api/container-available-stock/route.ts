@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { guardPermission } from "@/lib/permissions";
 
 const StockSourceSchema = z.enum(["remaining", "mistake"]);
 
@@ -46,6 +47,8 @@ function errorMessage(error: unknown): string {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = await guardPermission("available-stock", "read");
+  if (denied) return denied;
   try {
     const containerId = new URL(request.url).searchParams.get("containerId")?.trim() ?? "";
     const params: unknown[] = [];
@@ -97,6 +100,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body: unknown = await request.json();
+  // allocate action modifies existing records; import/create add new ones
+  const actionCheck = (body as { action?: string } | null)?.action;
+  const postAction = actionCheck === "allocate" ? "edit" : "create";
+  const denied = await guardPermission("available-stock", postAction);
+  if (denied) return denied;
   const importRequest = ImportStockSchema.safeParse(body);
   if (importRequest.success) {
     const client = await getPrimaryPool().connect();
@@ -302,6 +310,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const denied = await guardPermission("available-stock", "edit");
+  if (denied) return denied;
   const client = await getPrimaryPool().connect();
 
   try {
@@ -409,6 +419,8 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const denied = await guardPermission("available-stock", "delete");
+  if (denied) return denied;
   const searchParams = new URL(request.url).searchParams;
   const stockId = searchParams.get("stockId")?.trim() ?? "";
   if (stockId) {

@@ -20,6 +20,7 @@ function AuthErrorContent() {
     Configuration: "There is a problem with the server configuration.",
     AccessDenied: "You do not have permission to sign in.",
     Verification: "The verification link has expired or has already been used.",
+    NotRegistered: "This Google account is not registered. Please contact your administrator to get access.",
     Default: "An error occurred during authentication.",
   };
 
