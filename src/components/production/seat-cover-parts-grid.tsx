@@ -8,6 +8,7 @@ import {
   type ColDef,
 } from "ag-grid-community";
 import { apiPath } from "@/lib/api-path";
+import { SeatCoverPartsEditDialog } from "./seat-cover-parts-edit-dialog";
 
 const modules = [AllCommunityModule];
 
@@ -124,6 +125,10 @@ export function SeatCoverPartsGrid() {
   const [activeTab, setActiveTab] = useState<Tab>("front");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"add" | "edit">("edit");
+  const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
 
   const loadRows = useCallback((tab: Tab) => {
     setLoading(true);
@@ -185,9 +190,50 @@ export function SeatCoverPartsGrid() {
         {loading && (
           <span style={{ fontSize: 13, color: "#7A766F" }}>Loading…</span>
         )}
-        <span style={{ marginLeft: "auto", fontSize: 13, color: "#7A766F" }}>
-          {rows.length.toLocaleString()} rows
-        </span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 13, color: "#7A766F" }}>
+            {rows.length.toLocaleString()} rows
+          </span>
+          <button
+            onClick={() => {
+              setDialogMode("add");
+              setEditData(null);
+              setDialogOpen(true);
+            }}
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#fff",
+              background: "#2A2825",
+              border: "1px solid #2A2825",
+              borderRadius: 6,
+              padding: "5px 14px",
+              cursor: "pointer",
+            }}
+          >
+            Add
+          </button>
+          <button
+            onClick={() => {
+              setDialogMode("edit");
+              setEditData(selectedRow);
+              setDialogOpen(true);
+            }}
+            disabled={!selectedRow}
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: selectedRow ? "#1A1917" : "#A8A49E",
+              background: selectedRow ? "#F0EEE9" : "#F7F6F3",
+              border: "1px solid #D8D6CE",
+              borderRadius: 6,
+              padding: "5px 14px",
+              cursor: selectedRow ? "pointer" : "not-allowed",
+            }}
+          >
+            Edit
+          </button>
+        </div>
       </div>
 
       {/* Tab Bar */}
@@ -226,6 +272,15 @@ export function SeatCoverPartsGrid() {
         })}
       </div>
 
+      <SeatCoverPartsEditDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSuccess={() => loadRows(activeTab)}
+        editData={editData}
+        tab={activeTab}
+        mode={dialogMode}
+      />
+
       {/* Grid */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         <div className="h-full min-h-0 w-full overflow-hidden bg-white">
@@ -238,6 +293,11 @@ export function SeatCoverPartsGrid() {
             defaultColDef={defaultColDef}
             suppressCellFocus={false}
             enableCellTextSelection
+            rowSelection="single"
+            onSelectionChanged={(e) => {
+              const sel = e.api.getSelectedRows();
+              setSelectedRow(sel[0] ?? null);
+            }}
           />
         </div>
       </div>

@@ -1,6 +1,5 @@
-// Code Guide: GET + POST for seat cover parts (front/rear/third tables).
-// GET  /api/production/seat-cover-parts?tab=front|rear|third
-// POST /api/production/seat-cover-parts?tab=front|rear|third  — insert new row
+// Code Guide: PATCH endpoint for updating a single seat cover parts row.
+// PATCH /api/production/seat-cover-parts/{id}?tab=front|rear|third
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
@@ -78,64 +77,54 @@ const ALL_COLUMNS = [
   "note",
 ] as const;
 
-export async function GET(req: NextRequest) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  const { id } = await params;
   const tab = (req.nextUrl.searchParams.get("tab") ?? "front") as Tab;
-  if (!ALLOWED_TABS.includes(tab)) {
-    return NextResponse.json({ success: false, error: "Invalid tab" }, { status: 400 });
-  }
 
-  try {
-    const pool = getPrimaryPool();
-    const result = await pool.query(`SELECT * FROM ${TABLE[tab]} ORDER BY size`);
-    return NextResponse.json({ success: true, data: result.rows });
-  } catch (err) {
-    console.error("[seat-cover-parts GET]", err);
-    return NextResponse.json({ success: false, error: "DB error" }, { status: 500 });
-  }
-}
-
-export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
-
-  const tab = (req.nextUrl.searchParams.get("tab") ?? "front") as Tab;
   if (!ALLOWED_TABS.includes(tab)) {
     return NextResponse.json({ success: false, error: "Invalid tab" }, { status: 400 });
   }
 
   const body = await req.json() as Record<string, unknown>;
-  if (!body["size"] || String(body["size"]).trim() === "") {
-    return NextResponse.json({ success: false, error: "size is required" }, { status: 400 });
-  }
-
   const pool = getPrimaryPool();
-  const cols: string[] = [];
+
+  // Build SET clause dynamically from columns present in body
+  const setClauses: string[] = [];
   const values: unknown[] = [];
+  let paramIndex = 1;
 
   for (const col of ALL_COLUMNS) {
+    if (col === "size") continue; // size is the unique key, don't update it
     if (col in body) {
-      cols.push(col);
+      setClauses.push(`${col} = $${paramIndex}`);
       values.push(body[col] === "" ? null : body[col]);
+      paramIndex++;
     }
   }
 
-  const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
+  if (setClauses.length === 0) {
+    return NextResponse.json({ success: false, error: "No fields to update" }, { status: 400 });
+  }
+
+  setClauses.push(`updated_at = NOW()`);
+  values.push(id);
 
   try {
     await pool.query(
-      `INSERT INTO ${TABLE[tab]} (${cols.join(", ")}) VALUES (${placeholders})`,
+      `UPDATE ${TABLE[tab]} SET ${setClauses.join(", ")} WHERE id = $${paramIndex}`,
       values
     );
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("[seat-cover-parts POST]", err);
+    console.error("[seat-cover-parts PATCH]", err);
     return NextResponse.json({ success: false, error: "DB error" }, { status: 500 });
   }
 }
