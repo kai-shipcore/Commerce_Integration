@@ -4487,6 +4487,8 @@ const savedLanguage = requestedLanguage === 'ko' || requestedLanguage === 'en'
   ? requestedLanguage
   : localStorage.getItem('manualLanguage') || 'ko';
 let activeLanguage = savedLanguage;
+let manualJumpInProgress = false;
+let navFocusTimer = 0;
 
 function normalizeSectionId(value) {
   return (value || '').replace(/^#/, '').replace(/^en-/, '');
@@ -4515,14 +4517,19 @@ function focusManualNavItem(sectionId) {
 
   document.querySelectorAll('.nav-item, .nav-sub').forEach(item => item.classList.remove('active'));
   navItem.classList.add('active');
-  navItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  navItem.scrollIntoView({ behavior: manualJumpInProgress ? 'smooth' : 'auto', block: 'nearest' });
 }
 
 function scrollToManualSection(section, language, behavior) {
   const target = findManualSection(section, language);
   if (!target) return;
+  manualJumpInProgress = true;
   target.scrollIntoView({ behavior, block: 'start' });
   focusManualNavItem(target.id);
+  window.clearTimeout(navFocusTimer);
+  navFocusTimer = window.setTimeout(() => {
+    manualJumpInProgress = false;
+  }, behavior === 'smooth' ? 700 : 120);
   const normalized = normalizeSectionId(target.id);
   if (normalized && normalized !== 'top') {
     history.replaceState(null, '', `${window.location.pathname}?lang=${language}&section=${normalized}`);
@@ -4565,7 +4572,9 @@ const observer = new IntersectionObserver((entries) => {
       const active = Array.from(navItems).find(item => item.getAttribute('href') === `#${entry.target.id}` && isVisible(item));
       if (active) {
         active.classList.add('active');
-        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (!manualJumpInProgress) {
+          active.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+        }
       }
     }
   });
