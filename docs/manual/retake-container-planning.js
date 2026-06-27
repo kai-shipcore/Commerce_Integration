@@ -61,7 +61,7 @@ async function loadAndSelect(page, locale) {
   if (!fs.existsSync(OUT)) fs.mkdirSync(OUT, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1680, height: 900 } });
   const page = await context.newPage();
 
   console.log("🔐 로그인 중...");

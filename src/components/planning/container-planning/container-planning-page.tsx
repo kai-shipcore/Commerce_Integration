@@ -3219,12 +3219,12 @@ function ContainerCard({
               </div>
             </div>
           ) : null}
-          <div className="flex items-center gap-2 border-b border-[#e2dfd8] px-5 py-2">
+          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto border-b border-[#e2dfd8] px-5 py-2">
             <button
               type="button"
               onClick={() => onEditContainer(container)}
               disabled={!canEditContainer}
-              className="rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff] disabled:cursor-not-allowed disabled:border-[#d8d6ce] disabled:bg-[#f0eee9] disabled:text-muted-foreground disabled:opacity-60"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-[#8fb8ff] bg-[#ebf0fd] px-4 py-2 text-sm font-medium text-[#1a5cdb] hover:bg-[#dfe9ff] disabled:cursor-not-allowed disabled:border-[#d8d6ce] disabled:bg-[#f0eee9] disabled:text-muted-foreground disabled:opacity-60"
             >
               {pick("수정", "Edit")}
             </button>
@@ -3237,7 +3237,7 @@ function ContainerCard({
                   onStartAddItem(container.id);
                 }}
                 disabled={Boolean(inlineSkuDraft)}
-                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
+                className="shrink-0 whitespace-nowrap rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {pick("+ SKU 추가", "+ Add SKU")}
               </button>
@@ -3246,13 +3246,13 @@ function ContainerCard({
               <button
                 type="button"
                 onClick={() => onAddAvailableStock(container.id)}
-                className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+                className="shrink-0 whitespace-nowrap rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
               >
                 {pick("+ 가용 재고 추가", "+ Add Available Stock")}
               </button>
             ) : null}
             {container.status !== "complete" && (
-              <label className="cursor-pointer rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
+              <label className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
                 <span>{pick("가져오기", "Import")}</span>
                 <input
                   type="file"
@@ -3269,7 +3269,7 @@ function ContainerCard({
             <button
               type="button"
               onClick={() => void onExportItems(container.id)}
-              className="rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
             >
               {pick("내보내기", "Export")}
             </button>
@@ -3277,7 +3277,7 @@ function ContainerCard({
               <button
                 type="button"
                 onClick={() => setDetailPanel((current) => current === "history" ? "sku" : "history")}
-                className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium ${
+                className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-medium ${
                   detailPanel === "history"
                     ? "border-[#8fb8ff] bg-[#ebf0fd] text-[#1a5cdb]"
                     : "border-[#cccac4] bg-white text-muted-foreground hover:bg-[#f8f7f4]"
@@ -3292,7 +3292,7 @@ function ContainerCard({
                 <button
                   type="button"
                   onClick={() => onChangeStatus(container.id)}
-                  className="rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+                  className="shrink-0 whitespace-nowrap rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
                 >
                   {pick("상태 변경", "Change Status")}
                 </button>
@@ -3305,7 +3305,7 @@ function ContainerCard({
                       onDeleteContainer(container.id);
                     }
                   }}
-                  className="rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
+                  className="shrink-0 whitespace-nowrap rounded-lg border border-[#fecaca] bg-[#fff5f5] px-4 py-2 text-sm font-medium text-[#c42b2b] hover:bg-[#fee2e2]"
                 >
                   {pick("삭제", "Delete")}
                 </button>
