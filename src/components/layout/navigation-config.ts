@@ -177,6 +177,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: false,
   },
   {
+    id: "production-vehicles",
+    name: "Vehicles",
+    href: "/production/vehicles",
+    icon: Database,
+    group: "Production",
+    hideable: false,
+  },
+  {
     id: "factories",
     name: "Factories",
     href: "/planning/factories",

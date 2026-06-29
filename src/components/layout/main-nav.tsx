@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Package } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -34,7 +34,7 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 const navigationGroups = [
   { name: "Commerce", labelKey: "nav.commerce" as const, itemIds: ["inventory", "orders", "velocity"] },
   { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"] },
-  { name: "Production", labelKey: "nav.production" as const, itemIds: ["seat-cover-sizes"] },
+  { name: "Production", labelKey: "nav.production" as const, itemIds: ["seat-cover-sizes", "production-vehicles"] },
   { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
   { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "audit-log", "user-access"] },
 ];
@@ -253,29 +253,12 @@ export function MainNav({ showDashboard = true }: MainNavProps) {
     );
   };
 
-  const isProductionActive = pathname?.startsWith("/production") ?? false;
-
   return (
     <nav className="flex items-center space-x-4 lg:space-x-6">
       {showDashboard && dashboardItem ? renderNavigationLink(dashboardItem) : null}
       {renderNavigationGroup(groupedNavigation[0])}
       {renderNavigationGroup(groupedNavigation[1])}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button type="button" className={navItemClassName(isProductionActive)}>
-            {t("nav.production")}
-            <ChevronDown className="h-4 w-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-48">
-          <DropdownMenuItem asChild>
-            <Link href="/production/seat-cover-parts">
-              <Package className="h-4 w-4" />
-              {t("nav.seatCoverParts")}
-            </Link>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {renderNavigationGroup(groupedNavigation[2])}
       {renderNavigationGroup(groupedNavigation[3])}
       {renderNavigationGroup(groupedNavigation[4])}
     </nav>

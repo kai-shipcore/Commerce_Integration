@@ -6,9 +6,34 @@ import {
   AllCommunityModule,
   themeQuartz,
   type ColDef,
+  type ICellRendererParams,
 } from "ag-grid-community";
 import { apiPath } from "@/lib/api-path";
 import { SeatCoverPartsEditDialog } from "./seat-cover-parts-edit-dialog";
+
+function UrlCellRenderer({ value }: ICellRendererParams) {
+  if (!value) return null;
+  const str = String(value);
+  if (str.startsWith("http://") || str.startsWith("https://")) {
+    return (
+      <a
+        href={str}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          color: "#1a5cdb",
+          textDecoration: "underline",
+          fontSize: 12,
+          whiteSpace: "nowrap",
+        }}
+      >
+        View
+      </a>
+    );
+  }
+  return <span>{str}</span>;
+}
 
 const modules = [AllCommunityModule];
 
@@ -152,6 +177,7 @@ export function SeatCoverPartsGrid() {
       filter: "agTextColumnFilter",
       floatingFilter: true,
       suppressMovable: false,
+      cellRenderer: UrlCellRenderer,
     }),
     []
   );
