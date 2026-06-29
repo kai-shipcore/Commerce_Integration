@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/layout/app-layout";
 import {
   filterToValidMenuIds,
   getDefaultVisibleMenuIds,
+  getPermissionSectionForMenuId,
   getReadablePermissionMenuIds,
   isAdminLikeRole,
   type NavigationItem,
@@ -235,6 +236,31 @@ export default function UserAccessPage() {
 
     return new Set(getReadablePermissionMenuIds(matrix));
   }, [rolePermissions, selectedUser, selectedUserOverrides]);
+  const selectedUserReadBlockedMenuIds = useMemo(() => {
+    if (!selectedUser) return new Set<string>();
+    const matrix = JSON.parse(JSON.stringify(
+      rolePermissions?.[selectedUser.role]
+        ?? DEFAULT_ROLE_PERMISSIONS[selectedUser.role as ManagedRole]
+        ?? DEFAULT_ROLE_PERMISSIONS.user
+    )) as RolePermMatrix;
+
+    for (const override of selectedUserOverrides) {
+      const section = override.section as keyof RolePermMatrix;
+      const action = override.action as keyof RolePermMatrix[keyof RolePermMatrix];
+      if (matrix[section] && action in matrix[section]) {
+        matrix[section][action] = override.allowed;
+      }
+    }
+
+    return new Set(
+      configurableMenus
+        .filter((item) => {
+          const section = getPermissionSectionForMenuId(item.id);
+          return section ? matrix[section]?.read === false : false;
+        })
+        .map((item) => item.id)
+    );
+  }, [configurableMenus, rolePermissions, selectedUser, selectedUserOverrides]);
 
   useEffect(() => {
     if (!selectedUser) {
@@ -740,7 +766,7 @@ export default function UserAccessPage() {
                             const configurableEntries = entries.filter((entry) => entry.configurable);
                             const groupIds = configurableEntries
                               .map((entry) => entry.item.id)
-                              .filter((id) => !selectedUserAutoMenuIds.has(id));
+                              .filter((id) => !selectedUserAutoMenuIds.has(id) && !selectedUserReadBlockedMenuIds.has(id));
                             const disabled = savingUserId === selectedUser.id || menuControlsDisabled;
                             const allChecked =
                               groupIds.length > 0 &&
@@ -786,18 +812,23 @@ export default function UserAccessPage() {
                                 <div className="grid gap-2">
                                   {entries.map(({ item, configurable, description }) => {
                                     const autoVisible = selectedUserAutoMenuIds.has(item.id);
+                                    const readBlocked = selectedUserReadBlockedMenuIds.has(item.id);
                                     const checked = configurable
-                                      ? autoVisible || selectedUser.menuVisibility.includes(item.id)
+                                      ? !readBlocked && (autoVisible || selectedUser.menuVisibility.includes(item.id))
                                       : item.adminOnly
                                         ? isAdminLikeRole(selectedUser.role)
                                         : true;
                                     const effectiveDescription = autoVisible
                                       ? pick("조회 권한으로 자동 표시됩니다.", "Shown automatically by view permission.")
+                                      : readBlocked
+                                        ? pick("조회 권한이 차단되어 메뉴를 표시할 수 없습니다.", "This menu cannot be shown because view permission is blocked.")
                                       : description;
                                     return (
                                       <div
                                         key={`${selectedUser.id}-${item.id}`}
-                                        className="flex items-center justify-between rounded-lg border px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40"
+                                        className={`flex items-center justify-between rounded-lg border px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40 ${
+                                          readBlocked ? "bg-muted/40 opacity-75" : ""
+                                        }`}
                                       >
                                         <div className="space-y-0.5">
                                           <Label
@@ -814,7 +845,7 @@ export default function UserAccessPage() {
                                         <Checkbox
                                           id={`${selectedUser.id}-${item.id}`}
                                           checked={checked}
-                                          disabled={disabled || !configurable || autoVisible}
+                                          disabled={disabled || !configurable || autoVisible || readBlocked}
                                           onCheckedChange={(value) => {
                                             const next =
                                               value === true

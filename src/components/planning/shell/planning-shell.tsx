@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AppLayout } from "@/components/layout/app-layout";
+import { stripBasePath } from "@/lib/api-path";
 
 interface PlanningShellProps {
   children: ReactNode;
@@ -10,6 +11,7 @@ interface PlanningShellProps {
 
 export function PlanningShell({ children }: PlanningShellProps) {
   const pathname = usePathname();
+  const appPathname = stripBasePath(pathname);
   const fullBleedPages = new Set([
     "/planning/dashboard-ag-grid",
     "/planning/dashboard",
@@ -20,7 +22,7 @@ export function PlanningShell({ children }: PlanningShellProps) {
     "/planning/factories",
     "/planning/seat-cover/parts",
   ]);
-  const surfaceClass = fullBleedPages.has(pathname)
+  const surfaceClass = fullBleedPages.has(appPathname)
     ? "min-w-0"
     : "planning-surface min-w-0";
 

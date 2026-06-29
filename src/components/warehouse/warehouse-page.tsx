@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChevronDown, ChevronRight, PackageOpen, Warehouse } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
@@ -674,7 +674,7 @@ function WarehouseDetail({
                 {inboundContainers.map((container) => (
                   <Link
                     key={container.id}
-                    href={`/planning/container-planning?containerId=${encodeURIComponent(container.id)}`}
+                    href={withBasePath(`/planning/container-planning?containerId=${encodeURIComponent(container.id)}`)}
                     className="flex items-center gap-3 rounded-lg border border-[#e2dfd8] bg-white p-3 transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd]"
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/70 dark:text-blue-300">

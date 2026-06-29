@@ -1367,7 +1367,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       return;
     }
 
-    const url = `/forecast/planning/container-planning?containerId=${encodeURIComponent(String(container.container_id))}`;
+    const url = withBasePath(`/planning/container-planning?containerId=${encodeURIComponent(String(container.container_id))}`);
     window.open(url, "_blank", "noopener,noreferrer");
   }
 

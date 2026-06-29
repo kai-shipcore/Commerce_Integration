@@ -50,6 +50,7 @@ export async function GET() {
         role: session.user.role,
         visibleMenuIds,
         defaults: getDefaultVisibleMenuIds(session.user.role),
+        permissions,
       },
     });
   } catch (error: unknown) {

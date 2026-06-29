@@ -252,27 +252,45 @@ export function SkuMasterPage() {
     setEditingSnapshot(null);
   }
 
-  async function saveRow(row: SkuMasterRow) {
+  function revertEditingSnapshot() {
+    if (editingSnapshot) {
+      setRows((current) =>
+        current.map((sku) => (sku.masterSku === editingSnapshot.masterSku ? editingSnapshot : sku))
+      );
+    }
+    setEditingSku(null);
+    setEditingSnapshot(null);
+  }
+
+  async function saveRow(row: SkuMasterRow): Promise<boolean> {
     if (!can("sku-master", "edit")) {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
-      return;
+      revertEditingSnapshot();
+      return false;
     }
-    const res = await fetch(apiPath("/api/planning/sku-master"), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        masterSku: row.masterSku,
-        cbmPerUnit: row.cbmPerUnit,
-        moq: row.moq,
-        orderMultiple: row.orderMultiple,
-        caseQty: row.caseQty,
-        weightKg: row.weightKg,
-        status: row.status,
-        salesStatus: row.salesStatus,
-      }),
-    });
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error ?? pick("SKU 저장에 실패했습니다.", "Failed to save SKU"));
+    try {
+      const res = await fetch(apiPath("/api/planning/sku-master"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          masterSku: row.masterSku,
+          cbmPerUnit: row.cbmPerUnit,
+          moq: row.moq,
+          orderMultiple: row.orderMultiple,
+          caseQty: row.caseQty,
+          weightKg: row.weightKg,
+          status: row.status,
+          salesStatus: row.salesStatus,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error ?? pick("SKU 저장에 실패했습니다.", "Failed to save SKU"));
+      return true;
+    } catch (error) {
+      revertEditingSnapshot();
+      toast.error(error instanceof Error ? error.message : pick("SKU 저장에 실패했습니다.", "Failed to save SKU"));
+      return false;
+    }
   }
 
   async function syncFromInventory() {
@@ -691,13 +709,11 @@ export function SkuMasterPage() {
                 type="button"
                 onClick={async () => {
                   if (editingSku === sku.masterSku) {
-                    try {
-                      await saveRow(sku);
+                    const saved = await saveRow(sku);
+                    if (saved) {
                       setEditingSku(null);
                       setEditingSnapshot(null);
                       setMessage(pick(`${sku.masterSku} 저장됨`, `Saved ${sku.masterSku}`));
-                    } catch (error) {
-                      window.alert(error instanceof Error ? error.message : pick("SKU 저장에 실패했습니다.", "Failed to save SKU"));
                     }
                   } else {
                     startEditing(sku);

@@ -244,6 +244,13 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "user-permissions": ["user-access"],
 };
 
+export function getPermissionSectionForMenuId(menuId: string): PermSection | null {
+  for (const [section, menuIds] of Object.entries(permissionMenuIdsBySection) as Array<[PermSection, string[]]>) {
+    if (menuIds.includes(menuId)) return section;
+  }
+  return null;
+}
+
 export function isAdminLikeRole(role?: string | null): boolean {
   return role === "admin" || role === "dev";
 }
@@ -274,20 +281,9 @@ export function sanitizeVisibleMenuIds(
       .map((item) => item.id)
   );
 
-  const filtered = value.filter(
+  return value.filter(
     (entry): entry is string => typeof entry === "string" && allowedIds.has(entry)
   );
-
-  // Merge any newly added default items that are missing from saved preferences
-  // so existing users automatically see new menu items without clearing storage.
-  const filteredSet = new Set(filtered);
-  for (const id of defaultVisibleMenuIds) {
-    if (!filteredSet.has(id)) {
-      filtered.push(id);
-    }
-  }
-
-  return filtered;
 }
 
 export function filterToRenderableMenuIds(value: unknown): string[] {
@@ -317,8 +313,19 @@ export function mergeVisibleMenuIdsWithPermissions(
   role: string | null | undefined,
   permissions: RolePermMatrix
 ): string[] {
+  const blockedPermissionMenuIds = new Set<string>();
+  for (const [section, menuIds] of Object.entries(permissionMenuIdsBySection) as Array<[PermSection, string[]]>) {
+    if (permissions[section]?.read) continue;
+    for (const id of menuIds) {
+      blockedPermissionMenuIds.add(id);
+    }
+  }
+
+  const visibleMenuIds = sanitizeVisibleMenuIds(value, role)
+    .filter((id) => !blockedPermissionMenuIds.has(id));
+
   return [...new Set([
-    ...sanitizeVisibleMenuIds(value, role),
+    ...visibleMenuIds,
     ...getReadablePermissionMenuIds(permissions),
   ])];
 }

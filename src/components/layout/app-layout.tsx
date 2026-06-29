@@ -21,10 +21,12 @@ import { UserMenu } from "./user-menu";
 import { LanguageToggle } from "./language-toggle";
 import {
   getDefaultLandingPath,
+  getPermissionSectionForMenuId,
   isAdminLikeRole,
   navigationItems,
 } from "./navigation-config";
-import { apiPath, authPath, withBasePath } from "@/lib/api-path";
+import type { RolePermMatrix } from "@/lib/permissions-config";
+import { apiPath, authPath, stripBasePath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface AppLayoutProps {
@@ -134,6 +136,7 @@ function storeLauncherPosition(position: LauncherPosition) {
 export function AppLayout({ children }: AppLayoutProps) {
   const { locale, t } = useI18n();
   const pathname = usePathname();
+  const appPathname = useMemo(() => stripBasePath(pathname), [pathname]);
   const searchParams = useSearchParams();
   const router = useRouter();
   const { data: session } = useSession();
@@ -153,9 +156,9 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const matchedItem = useMemo(() => {
     return navigationItems
-      .filter((item) => isItemMatch(pathname, item.href))
+      .filter((item) => isItemMatch(appPathname, item.href))
       .sort((left, right) => right.href.length - left.href.length)[0] ?? null;
-  }, [pathname]);
+  }, [appPathname]);
   const manualHref = useMemo(() => {
     let section = DEFAULT_MANUAL_SECTION;
     if (matchedItem?.id === "sku-forecasts") {
@@ -190,7 +193,13 @@ export function AppLayout({ children }: AppLayoutProps) {
           ? result.data.visibleMenuIds as string[]
           : [];
         const role = typeof result.data?.role === "string" ? result.data.role : null;
+        const permissions = result.data?.permissions as RolePermMatrix | undefined;
+        const permissionSection = getPermissionSectionForMenuId(matchedItem.id);
+        const hasReadPermission = permissionSection
+          ? permissions?.[permissionSection]?.read === true
+          : true;
         const allowed =
+          hasReadPermission &&
           (!matchedItem.adminOnly || isAdminLikeRole(role) || visibleMenuIds.includes(matchedItem.id)) &&
           (matchedItem.hideable === false || visibleMenuIds.includes(matchedItem.id));
 

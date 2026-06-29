@@ -24,7 +24,7 @@ import {
   navigationItems,
   sanitizeVisibleMenuIds,
 } from "./navigation-config";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, stripBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { MessageKey } from "@/lib/i18n/messages";
 
@@ -111,6 +111,7 @@ interface MainNavProps {
 export function MainNav({ showDashboard = true }: MainNavProps) {
   const { t } = useI18n();
   const pathname = usePathname();
+  const appPathname = stripBasePath(pathname);
   const fallbackVisibleMenuIds = getDefaultVisibleMenuIds();
   const [visibleMenuIds, setVisibleMenuIds] = useState<string[]>(
     fallbackVisibleMenuIds
@@ -187,7 +188,7 @@ export function MainNav({ showDashboard = true }: MainNavProps) {
   }
 
   const isItemActive = (href: string) =>
-    pathname === href || pathname?.startsWith(`${href}/`) || false;
+    appPathname === href || appPathname?.startsWith(`${href}/`) || false;
   const navItemClassName = (isActive: boolean) =>
     cn(
       "flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors hover:text-primary dark:hover:text-white",

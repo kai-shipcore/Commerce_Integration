@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
 import { formatNumber } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, withBasePath } from "@/lib/api-path";
 
 type InboundHistoryRow = {
   itemId: number;
@@ -113,7 +113,7 @@ export function InboundHistoryTab({
               className="grid grid-cols-[180px_120px_120px_1fr_120px_48px_170px] items-center border-t border-[#e2dfd8] px-3 py-2 text-sm"
             >
               <Link
-                href={`/planning/container-planning?containerId=${encodeURIComponent(String(row.containerId))}&sku=${encodeURIComponent(sku.sku)}`}
+                href={withBasePath(`/planning/container-planning?containerId=${encodeURIComponent(String(row.containerId))}&sku=${encodeURIComponent(sku.sku)}`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="truncate font-mono text-xs font-semibold text-[#1a5cdb] hover:underline"

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DemandRow } from "@/types/demand-planning";
 import { daysUntil, formatNumber } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
-import { apiPath } from "@/lib/api-path";
+import { apiPath, withBasePath } from "@/lib/api-path";
 
 type InboundContainer = {
   id: number;
@@ -149,7 +149,7 @@ export function InventoryInboundTab({
                   <Link
                     key={container.name}
                     ref={isHighlighted ? highlightedContainerRef : undefined}
-                    href={`/planning/container-planning?containerId=${encodeURIComponent(String(container.id))}`}
+                    href={withBasePath(`/planning/container-planning?containerId=${encodeURIComponent(String(container.id))}`)}
                     className={className}
                   >
                     <div className="min-w-0">
