@@ -8,6 +8,8 @@ import { CacheManager } from "@/lib/redis";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import {
   MANAGED_ROLES,
+  PERM_ACTIONS,
+  PERM_SECTIONS,
   DEFAULT_ROLE_PERMISSIONS,
   blendRolePermissions,
   type ManagedRole,
@@ -43,16 +45,20 @@ async function getUserOverrides(userId: string) {
   return result.rows as Array<{ section: string; action: string; allowed: boolean }>;
 }
 
-// Core check: resolves role matrix + user overrides in parallel (both cache-first).
-// On Redis hit: ~2ms (2 network calls). DB only on cache miss (once per 10 min).
-// dev role always returns true.
-export async function canDo(
+export async function getEffectivePermissions(
   userId: string,
-  role: string,
-  section: PermSection,
-  action: PermAction
-): Promise<boolean> {
-  if (role === "dev") return true;
+  role: string
+): Promise<RolePermMatrix> {
+  if (role === "dev") {
+    const permissions = {} as RolePermMatrix;
+    for (const sec of PERM_SECTIONS) {
+      permissions[sec.id] = {} as RolePermMatrix[PermSection];
+      for (const act of PERM_ACTIONS) {
+        permissions[sec.id][act.id] = true;
+      }
+    }
+    return permissions;
+  }
 
   const managedRole: ManagedRole = (MANAGED_ROLES as readonly string[]).includes(role)
     ? (role as ManagedRole)
@@ -63,10 +69,29 @@ export async function canDo(
     getUserOverrides(userId),
   ]);
 
-  const override = overrides.find((o) => o.section === section && o.action === action);
-  if (override !== undefined) return override.allowed;
+  const effective = JSON.parse(JSON.stringify(matrix)) as RolePermMatrix;
+  for (const override of overrides) {
+    const section = override.section as PermSection;
+    const action = override.action as PermAction;
+    if (effective[section] && action in effective[section]) {
+      effective[section][action] = override.allowed;
+    }
+  }
 
-  return matrix[section]?.[action] ?? false;
+  return effective;
+}
+
+// Core check: resolves role matrix + user overrides in parallel (both cache-first).
+// On Redis hit: ~2ms (2 network calls). DB only on cache miss (once per 10 min).
+// dev role always returns true.
+export async function canDo(
+  userId: string,
+  role: string,
+  section: PermSection,
+  action: PermAction
+): Promise<boolean> {
+  const permissions = await getEffectivePermissions(userId, role);
+  return permissions[section]?.[action] ?? false;
 }
 
 // For routes that don't already have a session loaded.

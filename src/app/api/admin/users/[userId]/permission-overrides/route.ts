@@ -6,9 +6,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import { CacheManager } from "@/lib/redis";
 import { PERM_SECTIONS, PERM_ACTIONS } from "@/lib/permissions-config";
+import { canDo } from "@/lib/permissions";
 
 type Params = { params: Promise<{ userId: string }> };
 
@@ -26,12 +26,28 @@ function validateSectionAction(section: unknown, action: unknown): string | null
   return null;
 }
 
+async function requireUserPermission(action: "read" | "edit") {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const allowed = await canDo(
+    session.user.id,
+    (session.user.role as string) ?? "user",
+    "user-permissions",
+    action
+  );
+
+  return allowed
+    ? null
+    : NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   const { userId } = await params;
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role as string)) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
-  }
+  const denied = await requireUserPermission("read");
+  if (denied) return denied;
 
   try {
     type Override = { section: string; action: string; allowed: boolean };
@@ -59,10 +75,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { userId } = await params;
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role as string)) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
-  }
+  const denied = await requireUserPermission("edit");
+  if (denied) return denied;
 
   let body: unknown;
   try { body = await req.json(); } catch { body = {}; }
@@ -91,10 +105,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { userId } = await params;
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role as string)) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
-  }
+  const denied = await requireUserPermission("edit");
+  if (denied) return denied;
 
   let body: unknown;
   try { body = await req.json(); } catch { body = {}; }

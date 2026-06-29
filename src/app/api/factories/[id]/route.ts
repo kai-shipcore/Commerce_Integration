@@ -145,12 +145,12 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await guardPermission("factory", "edit");
-  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();
     const validated = FactoryPatchSchema.parse(body);
+    const denied = await guardPermission("factory", validated.isActive ? "status" : "delete");
+    if (denied) return denied;
 
     const pool = getPrimaryPool();
 

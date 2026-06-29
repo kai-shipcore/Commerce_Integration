@@ -5,15 +5,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import { CacheManager } from "@/lib/redis";
+import { canDo } from "@/lib/permissions";
 import {
   MANAGED_ROLES,
   PERM_SECTIONS,
   PERM_ACTIONS,
   DEFAULT_ROLE_PERMISSIONS,
   blendRolePermissions,
-  type ManagedRole,
   type RolePermMatrix,
   type PermSection,
   type PermAction,
@@ -23,6 +22,24 @@ const CACHE_KEY = "perm:roles:all";
 const CACHE_TTL = 600; // 10 minutes
 
 type DbRow = { role: string; section: string; action: string; allowed: boolean };
+
+async function requireUserPermission(action: "read" | "edit") {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const allowed = await canDo(
+    session.user.id,
+    (session.user.role as string) ?? "user",
+    "user-permissions",
+    action
+  );
+
+  return allowed
+    ? null
+    : NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
+}
 
 async function loadFromDb(): Promise<Record<string, RolePermMatrix>> {
   const result = await getPrimaryPool().query<DbRow>(
@@ -46,10 +63,8 @@ async function loadFromDb(): Promise<Record<string, RolePermMatrix>> {
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role as string)) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
-  }
+  const denied = await requireUserPermission("read");
+  if (denied) return denied;
 
   try {
     const cached = await CacheManager.get<Record<string, RolePermMatrix>>(CACHE_KEY);
@@ -67,10 +82,8 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role as string)) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
-  }
+  const denied = await requireUserPermission("edit");
+  if (denied) return denied;
 
   let body: unknown;
   try { body = await req.json(); } catch { body = {}; }

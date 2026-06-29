@@ -4,13 +4,19 @@ import { prisma } from "@/lib/db/prisma";
 import {
   getDefaultVisibleMenuIds,
   isAdminLikeRole,
+  mergeVisibleMenuIdsWithPermissions,
   sanitizeVisibleMenuIds,
 } from "@/components/layout/navigation-config";
+import { getEffectivePermissions } from "@/lib/permissions";
 import { z } from "zod";
 
 const UpdateMenuVisibilitySchema = z.object({
   visibleMenuIds: z.array(z.string()),
 });
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
 
 export async function GET() {
   try {
@@ -28,17 +34,27 @@ export async function GET() {
       select: { menuVisibility: true },
     });
 
+    const permissions = await getEffectivePermissions(
+      session.user.id,
+      (session.user.role as string) ?? "user"
+    );
+    const visibleMenuIds = mergeVisibleMenuIdsWithPermissions(
+      user?.menuVisibility,
+      session.user.role,
+      permissions
+    );
+
     return NextResponse.json({
       success: true,
       data: {
         role: session.user.role,
-        visibleMenuIds: sanitizeVisibleMenuIds(user?.menuVisibility, session.user.role),
+        visibleMenuIds,
         defaults: getDefaultVisibleMenuIds(session.user.role),
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }
@@ -77,7 +93,7 @@ export async function PATCH(request: NextRequest) {
       success: true,
       data: { visibleMenuIds },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: error.issues[0]?.message ?? "Invalid request" },
@@ -86,7 +102,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }

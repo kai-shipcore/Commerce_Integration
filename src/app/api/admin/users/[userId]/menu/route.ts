@@ -5,7 +5,7 @@ import {
   filterToValidMenuIds,
   getDefaultVisibleMenuIds,
   isAdminLikeRole,
-  sanitizeVisibleMenuIds,
+  mergeVisibleMenuIdsWithPermissions,
 } from "@/components/layout/navigation-config";
 import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
@@ -16,10 +16,15 @@ import {
   type PermAction,
   type PermSection,
 } from "@/lib/permissions-config";
+import { getEffectivePermissions } from "@/lib/permissions";
 
 const UpdateUserMenuSchema = z.object({
   visibleMenuIds: z.array(z.string()),
 });
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -36,6 +41,19 @@ export async function PATCH(
     }
 
     if (!isAdminLikeRole(session.user.role)) {
+      const currentPermissions = await getEffectivePermissions(
+        session.user.id,
+        (session.user.role as string) ?? "user"
+      );
+      if (!currentPermissions["user-permissions"].edit || !currentPermissions["user-permissions"].status) {
+        return NextResponse.json(
+          { success: false, error: "Forbidden" },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (!session.user.role) {
       return NextResponse.json(
         { success: false, error: "Forbidden" },
         { status: 403 }
@@ -102,15 +120,21 @@ export async function PATCH(
       },
     });
 
+    const targetPermissions = await getEffectivePermissions(targetUser.id, targetUser.role);
+
     return NextResponse.json({
       success: true,
       data: {
         ...updatedUser,
         defaults: getDefaultVisibleMenuIds(targetUser.role),
-        menuVisibility: filterToValidMenuIds(updatedUser.menuVisibility),
+        menuVisibility: mergeVisibleMenuIdsWithPermissions(
+          updatedUser.menuVisibility,
+          targetUser.role,
+          targetPermissions
+        ),
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: error.issues[0]?.message ?? "Invalid request" },
@@ -119,7 +143,7 @@ export async function PATCH(
     }
 
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }

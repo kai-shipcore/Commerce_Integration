@@ -1,5 +1,5 @@
 // Code Guide: CRUD API for a single fc_warehouses record by id.
-// PATCH updates any subset of fields; DELETE removes the record.
+// PATCH updates any subset of fields; DELETE soft-deletes by marking the warehouse inactive.
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
@@ -29,12 +29,16 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await guardPermission("warehouse", "edit");
-  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();
     const validated = WarehouseUpdateSchema.parse(body);
+    const isStatusOnly = Object.keys(validated).length === 1 && validated.isActive !== undefined;
+    const requiredAction = isStatusOnly
+      ? (validated.isActive ? "status" : "delete")
+      : "edit";
+    const denied = await guardPermission("warehouse", requiredAction);
+    if (denied) return denied;
 
     const existing = await prisma.warehouse.findUnique({ where: { id: BigInt(id) } });
     if (!existing) {
@@ -96,9 +100,12 @@ export async function DELETE(
       );
     }
 
-    await prisma.warehouse.delete({ where: { id: BigInt(id) } });
+    await prisma.warehouse.update({
+      where: { id: BigInt(id) },
+      data: { isActive: false },
+    });
 
-    return NextResponse.json({ success: true, message: "Warehouse deleted successfully" });
+    return NextResponse.json({ success: true, message: "Warehouse deactivated successfully" });
   } catch (error: unknown) {
     console.error("Error deleting warehouse:", error);
     return NextResponse.json(

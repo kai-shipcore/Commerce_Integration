@@ -209,13 +209,49 @@ export function FactoriesPage() {
     }
   }
 
-  async function toggleActive() {
+  async function deleteFactory() {
     if (!selectedFactory) return;
-    if (!can("factory", "edit")) {
+    if (!can("factory", "delete")) {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       return;
     }
+    const confirmed = window.confirm(
+      pick(
+        `"${selectedFactory.factoryName}" 공장을 삭제하시겠습니까? 구매 주문 옵션에서 숨겨집니다.`,
+        `Delete factory "${selectedFactory.factoryName}"? It will be hidden from purchase order options.`
+      )
+    );
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch(apiPath(`/api/factories/${selectedFactory.id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: false }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error(json.error ?? pick("삭제에 실패했습니다.", "Failed to delete factory."));
+        return;
+      }
+      setSelectedId(null);
+      setForm(emptyForm);
+      setEditMode(false);
+    } finally {
+      setSaving(false);
+      await fetchFactories();
+    }
+  }
+
+  async function toggleActive() {
+    if (!selectedFactory) return;
     const next = !selectedFactory.isActive;
+    const requiredAction = next ? "status" : "delete";
+    if (!can("factory", requiredAction)) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(apiPath(`/api/factories/${selectedFactory.id}`), {
@@ -251,7 +287,7 @@ export function FactoriesPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="form-input h-9 w-64 bg-white"
-              placeholder={pick("이름, 코드, 원산지 검색...", "Search name, code, or origin...")}
+              placeholder={pick("이름, 코드, 소재지 검색...", "Search name, code, or location...")}
             />
             <button
               type="button"
@@ -358,8 +394,10 @@ export function FactoriesPage() {
                 savedMessage={savedMessage}
                 errorMsg={errorMsg}
                 selectedFactory={selectedFactory}
+                canDelete={can("factory", "delete")}
                 onEdit={() => setEditMode(true)}
                 onToggleActive={toggleActive}
+                onDelete={deleteFactory}
                 onCancel={cancelEdit}
                 onSave={saveFactory}
                 onChange={updateForm}
@@ -424,8 +462,10 @@ function FactoryDetail({
   savedMessage,
   errorMsg,
   selectedFactory,
+  canDelete,
   onEdit,
   onToggleActive,
+  onDelete,
   onCancel,
   onSave,
   onChange,
@@ -437,8 +477,10 @@ function FactoryDetail({
   savedMessage: string;
   errorMsg: string;
   selectedFactory: FactoryRecord | null;
+  canDelete: boolean;
   onEdit: () => void;
   onToggleActive: () => void;
+  onDelete: () => void;
   onCancel: () => void;
   onSave: () => void;
   onChange: <K extends keyof FactoryForm>(key: K, value: FactoryForm[K]) => void;
@@ -481,6 +523,16 @@ function FactoryDetail({
             >
               {editMode ? pick("편집 중", "Editing") : pick("편집", "Edit")}
             </button>
+            {!editMode && canDelete && selectedFactory?.isActive ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={saving}
+                className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {pick("삭제", "Delete")}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -497,7 +549,7 @@ function FactoryDetail({
               placeholder={pick("예) 광저우 텍스타일", "e.g. Guangzhou Textiles Co.")}
             />
           </FactoryField>
-          <FactoryField label={pick("원산지 (origin)", "Origin (origin)")}>
+          <FactoryField label={pick("소재지 (location)", "Location (location)")}>
             <input
               className={fieldClass}
               readOnly={readonly}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PackageOpen, Warehouse } from "lucide-react";
+import { ChevronDown, ChevronRight, PackageOpen, Warehouse } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { apiPath } from "@/lib/api-path";
@@ -284,11 +284,12 @@ export function WarehousePage() {
 
   async function toggleActive() {
     if (!selectedWarehouse) return;
-    if (!can("warehouse", "edit")) {
+    const nextActive = !selectedWarehouse.isActive;
+    const requiredAction = nextActive ? "status" : "delete";
+    if (!can("warehouse", requiredAction)) {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       return;
     }
-    const nextActive = !selectedWarehouse.isActive;
     setSaving(true);
     try {
       const res = await fetch(apiPath(`/api/warehouses/${selectedWarehouse.id}`), {
@@ -311,10 +312,17 @@ export function WarehousePage() {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       return;
     }
-    if (!window.confirm(pick(`창고 "${selectedWarehouse.warehouseCode}"을(를) 삭제하시겠습니까?`, `Delete warehouse "${selectedWarehouse.warehouseCode}"?`))) return;
+    if (!window.confirm(pick(
+      `창고 "${selectedWarehouse.warehouseCode}"을(를) 삭제하시겠습니까? PO 및 컨테이너 목적지 옵션에서 숨겨집니다.`,
+      `Delete warehouse "${selectedWarehouse.warehouseCode}"? It will be hidden from PO and container destination options.`
+    ))) return;
     setSaving(true);
     try {
-      const res = await fetch(apiPath(`/api/warehouses/${selectedWarehouse.id}`), { method: "DELETE" });
+      const res = await fetch(apiPath(`/api/warehouses/${selectedWarehouse.id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: false }),
+      });
       const json = await res.json();
       if (!json.success) { window.alert(json.error ?? pick("창고 삭제에 실패했습니다.", "Failed to delete warehouse.")); return; }
       setSelectedId(null);
@@ -336,7 +344,7 @@ export function WarehousePage() {
             <div>
               <h1 className="text-lg font-semibold">{pick("창고 관리", "Warehouse Management")}</h1>
               <p className="mt-1 text-xs text-muted-foreground">
-                {pick("창고 마스터 및 SKU 재고 현황 관리", "Manage warehouse master records and SKU-level inventory status")}
+                {pick("구매 주문 및 컨테이너 워크플로에 사용되는 창고 정보를 관리합니다", "Manage warehouse master records used across purchase order and container workflows")}
               </p>
             </div>
           </div>
@@ -530,6 +538,7 @@ function WarehouseDetail({
   const detailType = warehouseTypes[form.warehouseType];
   const readonly = !editMode;
   const editableFieldClass = readonly ? "form-input bg-[#f0eee9]" : "form-input bg-white";
+  const [containersOpen, setContainersOpen] = useState(false);
 
   return (
     <div className="h-full overflow-y-auto px-7 py-6">
@@ -639,38 +648,57 @@ function WarehouseDetail({
       </WarehouseSection>
 
       {!isNew ? (
-        <WarehouseSection title={pick("이 창고의 입고 컨테이너", "Inbound Containers for This Warehouse")} right={`${inboundContainers.length} ${pick("건", "records")}`}>
-          {containersLoading ? (
-            <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-xs text-muted-foreground">
-              {pick("컨테이너 불러오는 중...", "Loading containers...")}
-            </div>
-          ) : inboundContainers.length > 0 ? (
-            <div className="space-y-2">
-              {inboundContainers.map((container) => (
-                <Link
-                  key={container.id}
-                  href={`/planning/container-planning?containerId=${encodeURIComponent(container.id)}`}
-                  className="flex items-center gap-3 rounded-lg border border-[#e2dfd8] bg-white p-3 transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd]"
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/70 dark:text-blue-300">
-                    <PackageOpen className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <div className="flex-1">
-                    <div className="font-mono text-xs font-semibold">{pick("컨테이너", "Container")} {container.containerNumber}</div>
-                    <div className="text-xs text-muted-foreground">
-                      ETA: {container.etaDate ?? "-"} · {container.itemCount} SKUs · {formatNumber(container.totalQty)} {pick("개", "units")} · {container.totalCbm.toFixed(2)} CBM
+        <section className="mb-6">
+          <button
+            type="button"
+            onClick={() => setContainersOpen((prev) => !prev)}
+            className="mb-3 flex w-full items-center justify-between border-b border-[#e2dfd8] pb-2 text-left"
+          >
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              {containersOpen
+                ? <ChevronDown className="h-3.5 w-3.5" />
+                : <ChevronRight className="h-3.5 w-3.5" />}
+              {pick("이 창고의 입고 컨테이너", "Inbound Containers for This Warehouse")}
+            </span>
+            <span className="text-[10px] font-normal normal-case text-muted-foreground">
+              {containersLoading ? "..." : `${inboundContainers.length} ${pick("건", "records")}`}
+            </span>
+          </button>
+          {containersOpen ? (
+            containersLoading ? (
+              <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-xs text-muted-foreground">
+                {pick("컨테이너 불러오는 중...", "Loading containers...")}
+              </div>
+            ) : inboundContainers.length > 0 ? (
+              <div className="space-y-2">
+                {inboundContainers.map((container) => (
+                  <Link
+                    key={container.id}
+                    href={`/planning/container-planning?containerId=${encodeURIComponent(container.id)}`}
+                    className="flex items-center gap-3 rounded-lg border border-[#e2dfd8] bg-white p-3 transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd]"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/70 dark:text-blue-300">
+                      <PackageOpen className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <div className="flex-1">
+                      <div className="font-mono text-xs font-semibold">{pick("컨테이너", "Container")} {container.containerNumber}</div>
+                      <div className="text-xs text-muted-foreground">
+                        ETA: {container.etaDate ?? "-"} · {container.itemCount} SKUs · {formatNumber(container.totalQty)} {pick("개", "units")} · {container.totalCbm.toFixed(2)} CBM
+                      </div>
                     </div>
-                  </div>
-                  <span className="rounded-lg bg-[#ebf0fd] px-2 py-0.5 text-[10px] font-semibold text-[#1a4db0]">
-                    {container.status}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-xs text-muted-foreground">{pick("입고 컨테이너 없음", "No inbound containers")}</div>
-          )}
-        </WarehouseSection>
+                    <span className="rounded-lg bg-[#ebf0fd] px-2 py-0.5 text-[10px] font-semibold text-[#1a4db0]">
+                      {container.status}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-xs text-muted-foreground">
+                {pick("입고 컨테이너 없음", "No inbound containers")}
+              </div>
+            )
+          ) : null}
+        </section>
       ) : null}
 
       <div className="mt-4 flex items-center gap-2 border-t border-[#e2dfd8] pt-4">

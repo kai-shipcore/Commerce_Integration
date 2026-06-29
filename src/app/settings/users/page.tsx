@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/layout/app-layout";
 import {
   filterToValidMenuIds,
   getDefaultVisibleMenuIds,
+  getReadablePermissionMenuIds,
   isAdminLikeRole,
   type NavigationItem,
   navigationItems,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, Search, ShieldAlert, ShieldCheck } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 import { RolePermissionsTab } from "@/components/settings/role-permissions-tab";
 import { UserExceptionsTab } from "@/components/settings/user-exceptions-tab";
 import {
@@ -82,6 +84,7 @@ interface MenuPermissionEntry {
 export default function UserAccessPage() {
   const { pick } = useI18n();
   const { data: session, status } = useSession();
+  const { can, ready: permissionsReady } = usePermissions();
   const [activeTab, setActiveTab] = useState<SettingsTab>("menu");
 
   const isElevatedRole = (role: string) =>
@@ -154,8 +157,9 @@ export default function UserAccessPage() {
         setLoading(false);
         return;
       }
-      if (!isAdminLikeRole(session?.user?.role)) {
-        setError(pick("관리자 권한이 필요합니다.", "Admin access required"));
+      if (!permissionsReady) return;
+      if (!isAdminLikeRole(session?.user?.role) && !can("user-permissions", "read")) {
+        setError(pick("사용자 권한 조회 권한이 필요합니다.", "User Permissions view access required"));
         setLoading(false);
         return;
       }
@@ -188,7 +192,7 @@ export default function UserAccessPage() {
       }
     };
     void loadUsers();
-  }, [debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, pick, session?.user?.role, status]);
+  }, [can, debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, permissionsReady, pick, session?.user?.role, status]);
 
   // Fetch the logged-in user's own permission overrides once (needed to compute menu-edit capability)
   useEffect(() => {
@@ -213,15 +217,35 @@ export default function UserAccessPage() {
       (overrideValue("status") ?? matrix["user-permissions"].status);
   }, [rolePermissions, session?.user?.role, currentUserOverrides]);
   const menuControlsDisabled = !selectedUserCanManageMenus || menuPermissionLoading;
+  const selectedUserAutoMenuIds = useMemo(() => {
+    if (!selectedUser) return new Set<string>();
+    const matrix = JSON.parse(JSON.stringify(
+      rolePermissions?.[selectedUser.role]
+        ?? DEFAULT_ROLE_PERMISSIONS[selectedUser.role as ManagedRole]
+        ?? DEFAULT_ROLE_PERMISSIONS.user
+    )) as RolePermMatrix;
+
+    for (const override of selectedUserOverrides) {
+      const section = override.section as keyof RolePermMatrix;
+      const action = override.action as keyof RolePermMatrix[keyof RolePermMatrix];
+      if (matrix[section] && action in matrix[section]) {
+        matrix[section][action] = override.allowed;
+      }
+    }
+
+    return new Set(getReadablePermissionMenuIds(matrix));
+  }, [rolePermissions, selectedUser, selectedUserOverrides]);
 
   useEffect(() => {
     if (!selectedUser) {
-      setSelectedUserOverrides([]);
+      Promise.resolve().then(() => setSelectedUserOverrides([]));
       return;
     }
 
     let cancelled = false;
-    setMenuPermissionLoading(true);
+    Promise.resolve().then(() => {
+      if (!cancelled) setMenuPermissionLoading(true);
+    });
     Promise.all([
       rolePermissions
         ? Promise.resolve({ success: true, data: rolePermissions })
@@ -339,15 +363,15 @@ export default function UserAccessPage() {
     );
   }
 
-  if (!isAdminLikeRole(session?.user?.role)) {
+  if (!isAdminLikeRole(session?.user?.role) && !can("user-permissions", "read")) {
     return (
       <AppLayout>
         <Alert variant="destructive">
           <ShieldAlert className="h-4 w-4" />
           <AlertDescription>
             {pick(
-              "관리자만 사용자 메뉴 접근 권한을 조회하고 수정할 수 있습니다.",
-              "Only administrators can view and update user menu access."
+              "사용자 권한 조회 권한이 필요합니다.",
+              "User Permissions view access required."
             )}
           </AlertDescription>
         </Alert>
@@ -656,7 +680,10 @@ export default function UserAccessPage() {
                         {session?.user?.id === selectedUser.id && (
                           <Alert>
                             <AlertDescription>
-                              Your own administrator role is locked to avoid removing the last active admin session.
+                              {pick(
+                                "마지막 활성 관리자 세션이 사라지는 것을 방지하기 위해 본인의 관리자 역할은 변경할 수 없습니다.",
+                                "Your own administrator role is locked to avoid removing the last active admin session."
+                              )}
                             </AlertDescription>
                           </Alert>
                         )}
@@ -711,7 +738,9 @@ export default function UserAccessPage() {
 
                           {menuGroups.map(({ group, entries }) => {
                             const configurableEntries = entries.filter((entry) => entry.configurable);
-                            const groupIds = configurableEntries.map((entry) => entry.item.id);
+                            const groupIds = configurableEntries
+                              .map((entry) => entry.item.id)
+                              .filter((id) => !selectedUserAutoMenuIds.has(id));
                             const disabled = savingUserId === selectedUser.id || menuControlsDisabled;
                             const allChecked =
                               groupIds.length > 0 &&
@@ -756,11 +785,15 @@ export default function UserAccessPage() {
                                 </div>
                                 <div className="grid gap-2">
                                   {entries.map(({ item, configurable, description }) => {
+                                    const autoVisible = selectedUserAutoMenuIds.has(item.id);
                                     const checked = configurable
-                                      ? selectedUser.menuVisibility.includes(item.id)
+                                      ? autoVisible || selectedUser.menuVisibility.includes(item.id)
                                       : item.adminOnly
                                         ? isAdminLikeRole(selectedUser.role)
                                         : true;
+                                    const effectiveDescription = autoVisible
+                                      ? pick("조회 권한으로 자동 표시됩니다.", "Shown automatically by view permission.")
+                                      : description;
                                     return (
                                       <div
                                         key={`${selectedUser.id}-${item.id}`}
@@ -774,14 +807,14 @@ export default function UserAccessPage() {
                                             {item.name}
                                           </Label>
                                           <p className="text-xs text-muted-foreground">{item.href}</p>
-                                          {description ? (
-                                            <p className="text-xs text-muted-foreground">{description}</p>
+                                          {effectiveDescription ? (
+                                            <p className="text-xs text-muted-foreground">{effectiveDescription}</p>
                                           ) : null}
                                         </div>
                                         <Checkbox
                                           id={`${selectedUser.id}-${item.id}`}
                                           checked={checked}
-                                          disabled={disabled || !configurable}
+                                          disabled={disabled || !configurable || autoVisible}
                                           onCheckedChange={(value) => {
                                             const next =
                                               value === true

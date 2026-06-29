@@ -4,8 +4,9 @@ import { prisma } from "@/lib/db/prisma";
 import {
   getDefaultVisibleMenuIds,
   isAdminLikeRole,
-  sanitizeVisibleMenuIds,
+  mergeVisibleMenuIdsWithPermissions,
 } from "@/components/layout/navigation-config";
+import { canDo, getEffectivePermissions } from "@/lib/permissions";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -22,7 +23,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!isAdminLikeRole(session.user.role)) {
+    const canReadUserPermissions = await canDo(
+      session.user.id,
+      (session.user.role as string) ?? "user",
+      "user-permissions",
+      "read"
+    );
+
+    if (!isAdminLikeRole(session.user.role) && !canReadUserPermissions) {
       return NextResponse.json(
         { success: false, error: "Forbidden" },
         { status: 403 }
@@ -72,6 +80,23 @@ export async function GET(request: NextRequest) {
     ]);
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
+    const usersWithEffectiveMenus = await Promise.all(
+      users.map(async (user: typeof users[number]) => {
+        const permissions = await getEffectivePermissions(user.id, user.role);
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          menuVisibility: mergeVisibleMenuIdsWithPermissions(user.menuVisibility, user.role, permissions),
+          authProviders: [...new Set(user.accounts.map((account) => account.provider))],
+          hasGoogleAccount: user.accounts.some((account) => account.provider === "google"),
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        };
+      })
+    );
+
     return NextResponse.json({
       success: true,
       data: {
@@ -80,17 +105,7 @@ export async function GET(request: NextRequest) {
           dev: getDefaultVisibleMenuIds("dev"),
           user: getDefaultVisibleMenuIds("user"),
         },
-        users: users.map((user: typeof users[number]) => ({
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          menuVisibility: sanitizeVisibleMenuIds(user.menuVisibility, user.role),
-          authProviders: [...new Set(user.accounts.map((account) => account.provider))],
-          hasGoogleAccount: user.accounts.some((account) => account.provider === "google"),
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-        })),
+        users: usersWithEffectiveMenus,
         pagination: {
           page,
           limit,

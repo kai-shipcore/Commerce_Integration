@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   MENU_VISIBILITY_STORAGE_KEY,
+  filterToRenderableMenuIds,
   getDefaultVisibleMenuIds,
   isAdminLikeRole,
   navigationItems,
@@ -79,7 +80,9 @@ function readStoredVisibleMenuIds(role?: string | null): string[] | null {
 
   try {
     const parsed = JSON.parse(stored);
-    const sanitized = sanitizeVisibleMenuIds(parsed, role);
+    const sanitized = role === undefined
+      ? filterToRenderableMenuIds(parsed)
+      : sanitizeVisibleMenuIds(parsed, role);
     cachedVisibleMenuIds = sanitized;
     return sanitized;
   } catch {
@@ -147,10 +150,7 @@ export function MainNav({ showDashboard = true }: MainNavProps) {
 
         const result = await response.json();
         if (result.success) {
-          const sanitized = sanitizeVisibleMenuIds(
-            result.data?.visibleMenuIds,
-            result.data?.role
-          );
+          const sanitized = filterToRenderableMenuIds(result.data?.visibleMenuIds);
           setVisibleMenuIds(sanitized);
           storeVisibleMenuIds(sanitized);
           setIsAdmin(isAdminLikeRole(result.data?.role));
@@ -178,7 +178,7 @@ export function MainNav({ showDashboard = true }: MainNavProps) {
   const visibleNavigation = navigationItems.filter(
     (item) =>
       !item.hidden &&
-      (!item.adminOnly || isAdmin) &&
+      (!item.adminOnly || isAdmin || visibleMenuIds.includes(item.id)) &&
       (item.hideable === false || visibleMenuIds.includes(item.id))
   );
 

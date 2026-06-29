@@ -146,7 +146,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
   const tRef = useRef(t);
-  tRef.current = t;
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   const matchedItem = useMemo(() => {
     return navigationItems
@@ -188,7 +191,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           : [];
         const role = typeof result.data?.role === "string" ? result.data.role : null;
         const allowed =
-          (!matchedItem.adminOnly || isAdminLikeRole(role)) &&
+          (!matchedItem.adminOnly || isAdminLikeRole(role) || visibleMenuIds.includes(matchedItem.id)) &&
           (matchedItem.hideable === false || visibleMenuIds.includes(matchedItem.id));
 
         if (cancelled) return;

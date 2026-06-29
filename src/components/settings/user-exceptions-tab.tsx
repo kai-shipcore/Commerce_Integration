@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath } from "@/lib/api-path";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 import {
   PERM_SECTIONS,
   PERM_ACTIONS,
@@ -50,6 +51,7 @@ function getEffective(
 
 export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
   const { pick } = useI18n();
+  const { can, ready: permissionsReady } = usePermissions();
   const [overrides, setOverrides] = useState<PermOverride[]>([]);
   const [roleMatrix, setRoleMatrix] = useState<RolePermMatrix | null>(null);
   const [loading, setLoading] = useState(false);
@@ -60,6 +62,13 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
   const [submitting, setSubmitting] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const canEditExceptions = permissionsReady && can("user-permissions", "edit");
+  const userId = user?.id;
+  const userRole = user?.role;
+  const readOnlyMessage = pick(
+    "사용자 권한 수정 권한이 없어 예외를 추가하거나 삭제할 수 없습니다.",
+    "User Permissions edit access is required to add or remove exceptions."
+  );
 
   useEffect(() => {
     if (!toast) return;
@@ -68,26 +77,48 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
   }, [toast]);
 
   useEffect(() => {
-    if (!user) { setOverrides([]); setRoleMatrix(null); return; }
-    setLoading(true);
-    setShowAddForm(false);
-    setPreviewOpen(true);
+    if (!userId || !userRole) {
+      Promise.resolve().then(() => {
+        setOverrides([]);
+        setRoleMatrix(null);
+      });
+      return;
+    }
+
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setShowAddForm(false);
+      setPreviewOpen(true);
+    });
     Promise.all([
-      fetch(apiPath(`/api/admin/users/${user.id}/permission-overrides`))
+      fetch(apiPath(`/api/admin/users/${userId}/permission-overrides`))
         .then((r) => r.json() as Promise<{ success: boolean; data?: PermOverride[] }>),
       fetch(apiPath("/api/admin/role-permissions"))
         .then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, RolePermMatrix> }>),
     ])
       .then(([ovJson, rpJson]) => {
+        if (cancelled) return;
         if (ovJson.success) setOverrides(ovJson.data ?? []);
-        if (rpJson.success && rpJson.data?.[user.role]) setRoleMatrix(rpJson.data[user.role]);
+        if (rpJson.success && rpJson.data?.[userRole]) setRoleMatrix(rpJson.data[userRole]);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [user?.id, user?.role]);
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, userRole]);
 
   async function handleAddOverride() {
     if (!user) return;
+    if (!canEditExceptions) {
+      setToast(readOnlyMessage);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch(apiPath(`/api/admin/users/${user.id}/permission-overrides`), {
@@ -96,7 +127,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
         body: JSON.stringify({ section: formSection, action: formAction, allowed: formAllowed }),
       });
       const json = (await res.json()) as { success: boolean };
-      if (!json.success) throw new Error("Failed");
+      if (!res.ok || !json.success) throw new Error("Failed");
       setOverrides((prev) => {
         const next = prev.filter((o) => !(o.section === formSection && o.action === formAction));
         return [...next, { section: formSection, action: formAction, allowed: formAllowed }];
@@ -115,12 +146,18 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
 
   async function handleRemoveOverride(section: string, action: string) {
     if (!user) return;
+    if (!canEditExceptions) {
+      setToast(readOnlyMessage);
+      return;
+    }
     try {
-      await fetch(apiPath(`/api/admin/users/${user.id}/permission-overrides`), {
+      const res = await fetch(apiPath(`/api/admin/users/${user.id}/permission-overrides`), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ section, action }),
       });
+      const json = (await res.json()) as { success: boolean };
+      if (!res.ok || !json.success) throw new Error("Failed");
       setOverrides((prev) => prev.filter((o) => !(o.section === section && o.action === action)));
       setToast(pick("예외 권한이 삭제되었습니다", "Exception removed"));
     } catch {
@@ -180,11 +217,24 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
                 {pick(`모든 권한이 ${user.role} 역할 기본값을 따릅니다.`, `All permissions follow the ${user.role} role defaults.`)}
               </p>
             )}
+            {!canEditExceptions && permissionsReady ? (
+              <p className="mt-0.5 text-[11px] text-amber-700">
+                {readOnlyMessage}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
-            onClick={() => setShowAddForm((v) => !v)}
-            className="flex items-center gap-1.5 rounded-md border border-[#ccc7be] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#1a1917] transition-colors hover:bg-[#fafaf7]"
+            onClick={() => {
+              if (!canEditExceptions) {
+                setToast(readOnlyMessage);
+                return;
+              }
+              setShowAddForm((v) => !v);
+            }}
+            disabled={!canEditExceptions}
+            className="flex items-center gap-1.5 rounded-md border border-[#ccc7be] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#1a1917] transition-colors hover:bg-[#fafaf7] disabled:cursor-not-allowed disabled:opacity-50"
+            title={!canEditExceptions ? readOnlyMessage : undefined}
           >
             <Plus className="h-3 w-3" />
             {pick("예외 추가", "Add exception")}
@@ -245,7 +295,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
             <button
               type="button"
               onClick={() => void handleAddOverride()}
-              disabled={submitting}
+              disabled={submitting || !canEditExceptions}
               className="flex items-center gap-1 rounded-md bg-[#1a5cdb] px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-[#1650c4] disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -294,8 +344,9 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
                 <button
                   type="button"
                   onClick={() => void handleRemoveOverride(ov.section, ov.action)}
-                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-[#fef2f2] hover:text-[#dc2626]"
-                  title={pick("예외 삭제", "Remove exception")}
+                  disabled={!canEditExceptions}
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-[#fef2f2] hover:text-[#dc2626] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  title={!canEditExceptions ? readOnlyMessage : pick("예외 삭제", "Remove exception")}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>

@@ -19,6 +19,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import type { PermSection, RolePermMatrix } from "@/lib/permissions-config";
 
 export const MENU_VISIBILITY_STORAGE_KEY = "menu-visibility-preferences";
 
@@ -231,6 +232,18 @@ export const userDefaultVisibleMenuIds = [
   "orders",
 ];
 
+export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
+  "demand-planning": ["demand-planning"],
+  "container-planning": ["container-planning"],
+  "available-stock": ["available-stock"],
+  "sku-master": ["sku-master"],
+  parts: ["seat-cover-parts"],
+  factory: ["factories"],
+  warehouse: ["warehouse-admin"],
+  integrations: ["integrations"],
+  "user-permissions": ["user-access"],
+};
+
 export function isAdminLikeRole(role?: string | null): boolean {
   return role === "admin" || role === "dev";
 }
@@ -277,6 +290,39 @@ export function sanitizeVisibleMenuIds(
   return filtered;
 }
 
+export function filterToRenderableMenuIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const allowedIds = new Set(
+    navigationItems.filter((item) => !item.hidden).map((item) => item.id)
+  );
+  return value.filter((id): id is string => typeof id === "string" && allowedIds.has(id));
+}
+
+export function getReadablePermissionMenuIds(permissions: RolePermMatrix): string[] {
+  const validIds = new Set(navigationItems.filter((item) => !item.hidden).map((item) => item.id));
+  const ids = new Set<string>();
+
+  for (const [section, menuIds] of Object.entries(permissionMenuIdsBySection) as Array<[PermSection, string[]]>) {
+    if (!permissions[section]?.read) continue;
+    for (const id of menuIds) {
+      if (validIds.has(id)) ids.add(id);
+    }
+  }
+
+  return [...ids];
+}
+
+export function mergeVisibleMenuIdsWithPermissions(
+  value: unknown,
+  role: string | null | undefined,
+  permissions: RolePermMatrix
+): string[] {
+  return [...new Set([
+    ...sanitizeVisibleMenuIds(value, role),
+    ...getReadablePermissionMenuIds(permissions),
+  ])];
+}
+
 // Validates menu IDs against the known navigation items without merging role defaults.
 // Use this on the save path so explicit unchecks are preserved for all roles.
 // sanitizeVisibleMenuIds (which auto-merges defaults) is only for the read/render path.
@@ -288,9 +334,8 @@ export function filterToValidMenuIds(value: unknown): string[] {
   return value.filter((id): id is string => typeof id === "string" && allowedIds.has(id));
 }
 
-export function getDefaultLandingPath(
-  value: unknown,
-  role?: string | null
-): string {
+export function getDefaultLandingPath(value: unknown, role?: string | null): string {
+  void value;
+  void role;
   return "/";
 }
