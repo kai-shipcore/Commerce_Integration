@@ -8,6 +8,8 @@ import { apiPath } from "@/lib/api-path";
 import {
   PERM_SECTIONS,
   PERM_ACTIONS,
+  PERM_SECTION_GROUP_LABELS,
+  PERM_SECTION_ACTIONS,
   MANAGED_ROLES,
   ROLE_LABEL,
   DEFAULT_ROLE_PERMISSIONS,
@@ -17,6 +19,17 @@ import {
   type PermSection,
   type PermAction,
 } from "@/lib/permissions-config";
+
+// Group sections by their group field, preserving order
+const GROUPED_SECTIONS = (() => {
+  const map = new Map<string, (typeof PERM_SECTIONS)[number][]>();
+  for (const sec of PERM_SECTIONS) {
+    const group = sec.group;
+    if (!map.has(group)) map.set(group, []);
+    map.get(group)!.push(sec);
+  }
+  return [...map.entries()].map(([group, sections]) => ({ group, sections }));
+})();
 
 function deepClone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
@@ -105,6 +118,29 @@ export function RolePermissionsTab() {
       }
     })();
   }, []);
+
+  function handleGroupToggle(group: string, action: PermAction, value: boolean) {
+    const allGroupSections = GROUPED_SECTIONS.find((g) => g.group === group)?.sections ?? [];
+    // Only toggle sections that actually support this action
+    const groupSections = allGroupSections.filter((sec) =>
+      PERM_SECTION_ACTIONS[sec.id as PermSection].includes(action)
+    );
+    setPendingPerms((prev) => {
+      const updated = { ...prev[currentRole] };
+      for (const sec of groupSections) {
+        const id = sec.id as PermSection;
+        const next = { ...updated[id], [action]: value };
+        if (action === "read" && !value) {
+          next.create = false;
+          next.edit = false;
+          next.status = false;
+          next.delete = false;
+        }
+        updated[id] = next;
+      }
+      return { ...prev, [currentRole]: updated };
+    });
+  }
 
   function handleToggle(section: PermSection, action: PermAction, value: boolean) {
     setPendingPerms((prev) => {
@@ -259,31 +295,72 @@ export function RolePermissionsTab() {
               </tr>
             </thead>
             <tbody>
-              {PERM_SECTIONS.map((sec) => (
-                <tr
-                  key={sec.id}
-                  className="border-b border-[#e2dfd8] transition-colors last:border-0 hover:bg-[#fafaf7]"
-                >
-                  <td className="px-5 py-3">
-                    <div className="text-[12px] font-semibold text-[#1a1917]">
-                      {pick(sec.nameKo, sec.nameEn)}
-                    </div>
-                    <div className="mt-0.5 text-[10px] text-[#9b9189]">{sec.nameEn}</div>
-                  </td>
-                  {PERM_ACTIONS.map((act) => (
-                    <td key={act.id} className="px-4 py-3 text-center">
-                      <div className="flex justify-center">
-                        <Toggle
-                          checked={perms[sec.id as PermSection][act.id as PermAction]}
-                          onChange={(v) =>
-                            handleToggle(sec.id as PermSection, act.id as PermAction, v)
-                          }
-                          disabled={saving}
-                        />
-                      </div>
+              {GROUPED_SECTIONS.map(({ group, sections }) => (
+                <>
+                  <tr key={`group-${group}`} className="border-b border-[#e2dfd8] bg-[#f0ede8]">
+                    <td className="px-5 py-2 text-[9px] font-bold uppercase tracking-[0.08em] text-[#6b6359]">
+                      {pick(PERM_SECTION_GROUP_LABELS[group].ko, PERM_SECTION_GROUP_LABELS[group].en)}
                     </td>
+                    {PERM_ACTIONS.map((act) => {
+                      const supported = sections.filter((sec) =>
+                        PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id)
+                      );
+                      if (supported.length === 0) {
+                        return (
+                          <td key={act.id} className="px-4 py-2 text-center">
+                            <span className="text-[13px] text-[#d6d3cc]">—</span>
+                          </td>
+                        );
+                      }
+                      const allOn = supported.every(
+                        (sec) => perms[sec.id as PermSection][act.id as PermAction]
+                      );
+                      return (
+                        <td key={act.id} className="px-4 py-2 text-center">
+                          <div className="flex justify-center">
+                            <Toggle
+                              checked={allOn}
+                              onChange={(v) => handleGroupToggle(group, act.id as PermAction, v)}
+                              disabled={saving}
+                            />
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {sections.map((sec, idx) => (
+                    <tr
+                      key={sec.id}
+                      className={`border-b border-[#e2dfd8] transition-colors hover:bg-[#fafaf7] ${idx === sections.length - 1 ? "border-b-2 border-[#d6d3cc]" : ""}`}
+                    >
+                      <td className="px-5 py-3">
+                        <div className="text-[12px] font-semibold text-[#1a1917]">
+                          {pick(sec.nameKo, sec.nameEn)}
+                        </div>
+                      </td>
+                      {PERM_ACTIONS.map((act) => {
+                        const supported = PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id);
+                        return (
+                          <td key={act.id} className="px-4 py-3 text-center">
+                            <div className="flex justify-center">
+                              {supported ? (
+                                <Toggle
+                                  checked={perms[sec.id as PermSection][act.id as PermAction]}
+                                  onChange={(v) =>
+                                    handleToggle(sec.id as PermSection, act.id as PermAction, v)
+                                  }
+                                  disabled={saving}
+                                />
+                              ) : (
+                                <span className="text-[13px] text-[#d6d3cc]">—</span>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
                   ))}
-                </tr>
+                </>
               ))}
             </tbody>
           </table>

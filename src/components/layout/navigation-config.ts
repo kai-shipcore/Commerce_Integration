@@ -32,6 +32,7 @@ export interface NavigationItem {
   hideable?: boolean;
   adminOnly?: boolean;
   hidden?: boolean;
+  requireRole?: string[];
 }
 
 export const navigationItems: NavigationItem[] = [
@@ -174,7 +175,7 @@ export const navigationItems: NavigationItem[] = [
     href: "/production/seat-cover-parts",
     icon: Package,
     group: "Production",
-    hideable: false,
+    hideable: true,
   },
   {
     id: "production-vehicles",
@@ -182,7 +183,7 @@ export const navigationItems: NavigationItem[] = [
     href: "/production/vehicles",
     icon: Database,
     group: "Production",
-    hideable: false,
+    hideable: true,
   },
   {
     id: "factories",
@@ -223,6 +224,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: false,
     adminOnly: true,
   },
+  {
+    id: "shiphero-credentials",
+    name: "ShipHero Credentials",
+    href: "/admin/shiphero",
+    icon: Ship,
+    hideable: true,
+    adminOnly: true,
+  },
 ];
 
 export const adminDefaultVisibleMenuIds = navigationItems
@@ -241,15 +250,24 @@ export const userDefaultVisibleMenuIds = [
 ];
 
 export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
-  "demand-planning": ["demand-planning"],
-  "container-planning": ["container-planning"],
-  "available-stock": ["available-stock"],
-  "sku-master": ["sku-master"],
-  parts: ["seat-cover-parts"],
-  factory: ["factories"],
-  warehouse: ["warehouse-admin"],
-  integrations: ["integrations"],
-  "user-permissions": ["user-access"],
+  "inventory":           ["inventory"],
+  "orders":              ["orders"],
+  "velocity":            ["velocity"],
+  "demand-planning":     ["demand-planning"],
+  "container-planning":  ["container-planning"],
+  "available-stock":     ["available-stock"],
+  "sku-master":          ["sku-master"],
+  "sku-forecasts":       ["sku-forecasts"],
+  "container-timeline":  ["container-timeline"],
+  "parts":               ["seat-cover-parts"],
+  "seat-cover-sizes":    ["seat-cover-sizes"],
+  "production-vehicles": ["production-vehicles"],
+  "factory":             ["factories"],
+  "warehouse":           ["warehouse-admin"],
+  "integrations":        ["integrations"],
+  "audit-log":           ["audit-log"],
+  "user-permissions":    ["user-access"],
+  "shiphero":            ["shiphero-credentials"],
 };
 
 export function getPermissionSectionForMenuId(menuId: string): PermSection | null {
@@ -270,6 +288,7 @@ export function isPOApproverRole(role?: string | null): boolean {
 export function getDefaultVisibleMenuIds(role?: string | null): string[] {
   if (isAdminLikeRole(role)) return adminDefaultVisibleMenuIds;
   if (role === "production") return [];
+  if (role === "operation") return [];
   return userDefaultVisibleMenuIds;
 }
 
@@ -278,6 +297,12 @@ export function sanitizeVisibleMenuIds(
   role?: string | null
 ): string[] {
   const defaultVisibleMenuIds = getDefaultVisibleMenuIds(role);
+
+  // Roles with empty defaults are permission-gated: ignore saved prefs entirely
+  // so only mergeVisibleMenuIdsWithPermissions controls what appears.
+  if (defaultVisibleMenuIds.length === 0) {
+    return [];
+  }
 
   if (!Array.isArray(value)) {
     return defaultVisibleMenuIds;
@@ -289,9 +314,17 @@ export function sanitizeVisibleMenuIds(
       .map((item) => item.id)
   );
 
-  return value.filter(
+  const filtered = value.filter(
     (entry): entry is string => typeof entry === "string" && allowedIds.has(entry)
   );
+
+  // Auto-merge newly added default items so existing users see new menu items
+  const filteredSet = new Set(filtered);
+  for (const id of defaultVisibleMenuIds) {
+    if (!filteredSet.has(id)) filtered.push(id);
+  }
+
+  return filtered;
 }
 
 export function filterToRenderableMenuIds(value: unknown): string[] {

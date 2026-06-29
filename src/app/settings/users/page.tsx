@@ -5,16 +5,9 @@ import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { AppLayout } from "@/components/layout/app-layout";
 import {
-  filterToValidMenuIds,
-  getDefaultVisibleMenuIds,
-  getPermissionSectionForMenuId,
-  getReadablePermissionMenuIds,
   isAdminLikeRole,
-  type NavigationItem,
   navigationItems,
 } from "@/components/layout/navigation-config";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,11 +32,6 @@ import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { RolePermissionsTab } from "@/components/settings/role-permissions-tab";
 import { UserExceptionsTab } from "@/components/settings/user-exceptions-tab";
-import {
-  DEFAULT_ROLE_PERMISSIONS,
-  type ManagedRole,
-  type RolePermMatrix,
-} from "@/lib/permissions-config";
 
 type SettingsTab = "menu" | "role-permissions" | "exceptions";
 
@@ -76,11 +64,6 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
-interface MenuPermissionEntry {
-  item: NavigationItem;
-  configurable: boolean;
-  description?: string;
-}
 
 export default function UserAccessPage() {
   const { pick } = useI18n();
@@ -91,38 +74,6 @@ export default function UserAccessPage() {
   const isElevatedRole = (role: string) =>
     role === "admin" || role === "dev" || role === "planner" || role === "operation" || role === "production";
 
-  const configurableMenus = useMemo(
-    () => navigationItems.filter((item) => item.hideable !== false && !item.hidden),
-    []
-  );
-
-  const menuGroups = useMemo(() => {
-    const byId = new Map(navigationItems.map((item) => [item.id, item]));
-    const configurableIds = new Set(configurableMenus.map((item) => item.id));
-    const makeEntries = (ids: string[]): MenuPermissionEntry[] =>
-      ids.reduce<MenuPermissionEntry[]>((entries, id) => {
-        const item = byId.get(id);
-        if (item) {
-          entries.push({
-            item,
-            configurable: configurableIds.has(id),
-            description:
-              item.hideable === false
-                ? pick("권한으로 제어됨", "Controlled by role")
-                : undefined,
-          });
-        }
-        return entries;
-      }, []);
-
-    return [
-      { group: "Commerce",    entries: makeEntries(["inventory", "orders", "velocity"]) },
-      { group: "Planning",    entries: makeEntries(["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"]) },
-      { group: "Master Data", entries: makeEntries(["sku-master", "seat-cover-parts", "factories", "warehouse-admin"]) },
-      { group: "Production",  entries: makeEntries(["seat-cover-sizes", "production-vehicles"]) },
-      { group: "Admin",       entries: makeEntries(["integrations", "audit-log", "user-access"]) },
-    ].filter((group) => group.entries.length > 0);
-  }, [configurableMenus, pick]);
 
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,10 +83,6 @@ export default function UserAccessPage() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermMatrix> | null>(null);
-  const [selectedUserOverrides, setSelectedUserOverrides] = useState<PermOverride[]>([]);
-  const [currentUserOverrides, setCurrentUserOverrides] = useState<PermOverride[]>([]);
-  const [menuPermissionLoading, setMenuPermissionLoading] = useState(false);
   const [pagination, setPagination] = useState<UserPagination>({
     page: 1,
     limit: 20,
@@ -196,103 +143,7 @@ export default function UserAccessPage() {
     void loadUsers();
   }, [can, debouncedSearchTerm, roleFilter, pagination.limit, pagination.page, permissionsReady, pick, session?.user?.role, status]);
 
-  // Fetch the logged-in user's own permission overrides once (needed to compute menu-edit capability)
-  useEffect(() => {
-    if (!session?.user?.id || status !== "authenticated") return;
-    fetch(apiPath(`/api/admin/users/${session.user.id}/permission-overrides`))
-      .then((r) => r.json() as Promise<{ success: boolean; data?: PermOverride[] }>)
-      .then((json) => { if (json.success) setCurrentUserOverrides(json.data ?? []); })
-      .catch(() => setCurrentUserOverrides([]));
-  }, [session?.user?.id, status]);
-
   const selectedUser = users.find((user) => user.id === selectedUserId) || users[0] || null;
-  // Check whether the CURRENT logged-in user has permission to edit menus (not the selected user)
-  const selectedUserCanManageMenus = useMemo(() => {
-    const currentRole = session?.user?.role;
-    if (!currentRole) return false;
-    const matrix = rolePermissions?.[currentRole]
-      ?? DEFAULT_ROLE_PERMISSIONS[currentRole as ManagedRole]
-      ?? DEFAULT_ROLE_PERMISSIONS.user;
-    const overrideValue = (action: "edit" | "status") =>
-      currentUserOverrides.find((o) => o.section === "user-permissions" && o.action === action)?.allowed;
-    return (overrideValue("edit") ?? matrix["user-permissions"].edit) &&
-      (overrideValue("status") ?? matrix["user-permissions"].status);
-  }, [rolePermissions, session?.user?.role, currentUserOverrides]);
-  const menuControlsDisabled = !selectedUserCanManageMenus || menuPermissionLoading;
-  const selectedUserAutoMenuIds = useMemo(() => {
-    if (!selectedUser) return new Set<string>();
-    const matrix = JSON.parse(JSON.stringify(
-      rolePermissions?.[selectedUser.role]
-        ?? DEFAULT_ROLE_PERMISSIONS[selectedUser.role as ManagedRole]
-        ?? DEFAULT_ROLE_PERMISSIONS.user
-    )) as RolePermMatrix;
-
-    for (const override of selectedUserOverrides) {
-      const section = override.section as keyof RolePermMatrix;
-      const action = override.action as keyof RolePermMatrix[keyof RolePermMatrix];
-      if (matrix[section] && action in matrix[section]) {
-        matrix[section][action] = override.allowed;
-      }
-    }
-
-    return new Set(getReadablePermissionMenuIds(matrix));
-  }, [rolePermissions, selectedUser, selectedUserOverrides]);
-  const selectedUserReadBlockedMenuIds = useMemo(() => {
-    if (!selectedUser) return new Set<string>();
-    const matrix = JSON.parse(JSON.stringify(
-      rolePermissions?.[selectedUser.role]
-        ?? DEFAULT_ROLE_PERMISSIONS[selectedUser.role as ManagedRole]
-        ?? DEFAULT_ROLE_PERMISSIONS.user
-    )) as RolePermMatrix;
-
-    for (const override of selectedUserOverrides) {
-      const section = override.section as keyof RolePermMatrix;
-      const action = override.action as keyof RolePermMatrix[keyof RolePermMatrix];
-      if (matrix[section] && action in matrix[section]) {
-        matrix[section][action] = override.allowed;
-      }
-    }
-
-    return new Set(
-      configurableMenus
-        .filter((item) => {
-          const section = getPermissionSectionForMenuId(item.id);
-          return section ? matrix[section]?.read === false : false;
-        })
-        .map((item) => item.id)
-    );
-  }, [configurableMenus, rolePermissions, selectedUser, selectedUserOverrides]);
-
-  useEffect(() => {
-    if (!selectedUser) {
-      Promise.resolve().then(() => setSelectedUserOverrides([]));
-      return;
-    }
-
-    let cancelled = false;
-    Promise.resolve().then(() => {
-      if (!cancelled) setMenuPermissionLoading(true);
-    });
-    Promise.all([
-      rolePermissions
-        ? Promise.resolve({ success: true, data: rolePermissions })
-        : fetch(apiPath("/api/admin/role-permissions")).then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, RolePermMatrix> }>),
-      fetch(apiPath(`/api/admin/users/${selectedUser.id}/permission-overrides`)).then((r) => r.json() as Promise<{ success: boolean; data?: PermOverride[] }>),
-    ])
-      .then(([roleJson, overrideJson]) => {
-        if (cancelled) return;
-        if (roleJson.success && roleJson.data) setRolePermissions(roleJson.data);
-        setSelectedUserOverrides(overrideJson.success ? overrideJson.data ?? [] : []);
-      })
-      .catch(() => {
-        if (!cancelled) setSelectedUserOverrides([]);
-      })
-      .finally(() => {
-        if (!cancelled) setMenuPermissionLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [rolePermissions, selectedUser]);
 
   const refreshUsers = async () => {
     const params = new URLSearchParams({ page: String(pagination.page), limit: String(pagination.limit) });
@@ -303,46 +154,6 @@ export default function UserAccessPage() {
     if (reloadResponse.ok && reloadResult.success) {
       setUsers(reloadResult.data?.users ?? []);
       setPagination(reloadResult.data?.pagination ?? pagination);
-    }
-  };
-
-  const updateUserMenus = async (userId: string, nextVisibleMenuIds: string[]) => {
-    if (!selectedUserCanManageMenus) {
-      setError(pick("사용자 권한의 수정 및 상태변경 권한이 있어야 메뉴 권한을 수정할 수 있습니다.", "Edit and Status permission for User Permissions are required to update menu access."));
-      return;
-    }
-    const sanitized = filterToValidMenuIds(nextVisibleMenuIds);
-    setSavingUserId(userId);
-    setError(null);
-    setUsers((current) =>
-      current.map((user) => (user.id === userId ? { ...user, menuVisibility: sanitized } : user))
-    );
-    try {
-      const response = await fetch(apiPath(`/api/admin/users/${userId}/menu`), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibleMenuIds: sanitized }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || pick("사용자 메뉴 권한 수정에 실패했습니다.", "Failed to update user access"));
-      }
-      setUsers((current) =>
-        current.map((user) =>
-          user.id === userId
-            ? {
-                ...user,
-                menuVisibility: filterToValidMenuIds(result.data?.menuVisibility),
-                updatedAt: result.data?.updatedAt ?? user.updatedAt,
-              }
-            : user
-        )
-      );
-    } catch (saveError: unknown) {
-      setError(getErrorMessage(saveError));
-      await refreshUsers();
-    } finally {
-      setSavingUserId(null);
     }
   };
 
@@ -407,7 +218,7 @@ export default function UserAccessPage() {
   }
 
   const TABS: { id: SettingsTab; label: string }[] = [
-    { id: "menu",             label: pick("메뉴 권한",  "Menu Access") },
+    { id: "menu",             label: pick("사용자 관리", "Users") },
     { id: "role-permissions", label: pick("역할 권한",  "Role Permissions") },
     { id: "exceptions",       label: pick("사용자 예외", "User Exceptions") },
   ];
@@ -715,154 +526,6 @@ export default function UserAccessPage() {
                           </Alert>
                         )}
 
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h2 className="text-sm font-medium">{pick("메뉴 권한", "Menu Permissions")}</h2>
-                              <p className="text-xs text-muted-foreground">
-                                {pick("이 사용자가 접근할 수 있는 메뉴를 선택하세요.", "Choose which menus this user can access.")}
-                              </p>
-                              {selectedUser && !menuPermissionLoading && !selectedUserCanManageMenus ? (
-                                <p className="mt-1 text-xs text-amber-700">
-                                  {pick("사용자 권한의 수정/상태변경 권한이 비활성화되어 메뉴 권한을 수정할 수 없습니다.", "Menu access cannot be edited because User Permissions Edit/Status is disabled.")}
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="flex shrink-0 gap-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={savingUserId === selectedUser.id || menuControlsDisabled}
-                                onClick={() =>
-                                  void updateUserMenus(selectedUser.id, configurableMenus.map((item) => item.id))
-                                }
-                              >
-                                {pick("전체 선택", "Select All")}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={savingUserId === selectedUser.id || menuControlsDisabled}
-                                onClick={() => void updateUserMenus(selectedUser.id, [])}
-                              >
-                                {pick("전체 해제", "Deselect All")}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={savingUserId === selectedUser.id || menuControlsDisabled}
-                                onClick={() =>
-                                  void updateUserMenus(selectedUser.id, getDefaultVisibleMenuIds(selectedUser.role))
-                                }
-                              >
-                                {pick("기본값 초기화", "Reset Default")}
-                              </Button>
-                            </div>
-                          </div>
-
-                          {menuGroups.map(({ group, entries }) => {
-                            const configurableEntries = entries.filter((entry) => entry.configurable);
-                            const groupIds = configurableEntries
-                              .map((entry) => entry.item.id)
-                              .filter((id) => !selectedUserAutoMenuIds.has(id) && !selectedUserReadBlockedMenuIds.has(id));
-                            const disabled = savingUserId === selectedUser.id || menuControlsDisabled;
-                            const allChecked =
-                              groupIds.length > 0 &&
-                              groupIds.every((id) => selectedUser.menuVisibility.includes(id));
-                            const allUnchecked = groupIds.every((id) => !selectedUser.menuVisibility.includes(id));
-
-                            return (
-                              <div key={group} className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                                    {group}
-                                  </span>
-                                  <div className="flex gap-1">
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 px-2 text-xs"
-                                      disabled={disabled || allChecked || groupIds.length === 0}
-                                      onClick={() => {
-                                        const next = [...new Set([...selectedUser.menuVisibility, ...groupIds])];
-                                        void updateUserMenus(selectedUser.id, next);
-                                      }}
-                                    >
-                                      All
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 px-2 text-xs"
-                                      disabled={disabled || allUnchecked || groupIds.length === 0}
-                                      onClick={() => {
-                                        const groupIdSet = new Set(groupIds);
-                                        const next = selectedUser.menuVisibility.filter((id) => !groupIdSet.has(id));
-                                        void updateUserMenus(selectedUser.id, next);
-                                      }}
-                                    >
-                                      None
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="grid gap-2">
-                                  {entries.map(({ item, configurable, description }) => {
-                                    const autoVisible = selectedUserAutoMenuIds.has(item.id);
-                                    const readBlocked = selectedUserReadBlockedMenuIds.has(item.id);
-                                    const checked = configurable
-                                      ? !readBlocked && (autoVisible || selectedUser.menuVisibility.includes(item.id))
-                                      : item.adminOnly
-                                        ? isAdminLikeRole(selectedUser.role)
-                                        : true;
-                                    const effectiveDescription = autoVisible
-                                      ? pick("조회 권한으로 자동 표시됩니다.", "Shown automatically by view permission.")
-                                      : readBlocked
-                                        ? pick("조회 권한이 차단되어 메뉴를 표시할 수 없습니다.", "This menu cannot be shown because view permission is blocked.")
-                                      : description;
-                                    return (
-                                      <div
-                                        key={`${selectedUser.id}-${item.id}`}
-                                        className={`flex items-center justify-between rounded-lg border px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40 ${
-                                          readBlocked ? "bg-muted/40 opacity-75" : ""
-                                        }`}
-                                      >
-                                        <div className="space-y-0.5">
-                                          <Label
-                                            htmlFor={`${selectedUser.id}-${item.id}`}
-                                            className="cursor-pointer text-sm font-medium"
-                                          >
-                                            {item.name}
-                                          </Label>
-                                          <p className="text-xs text-muted-foreground">{item.href}</p>
-                                          {effectiveDescription ? (
-                                            <p className="text-xs text-muted-foreground">{effectiveDescription}</p>
-                                          ) : null}
-                                        </div>
-                                        <Checkbox
-                                          id={`${selectedUser.id}-${item.id}`}
-                                          checked={checked}
-                                          disabled={disabled || !configurable || autoVisible || readBlocked}
-                                          onCheckedChange={(value) => {
-                                            const next =
-                                              value === true
-                                                ? [...selectedUser.menuVisibility, item.id]
-                                                : selectedUser.menuVisibility.filter((id) => id !== item.id);
-                                            void updateUserMenus(selectedUser.id, next);
-                                          }}
-                                        />
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
                       </>
                     )}
                   </div>

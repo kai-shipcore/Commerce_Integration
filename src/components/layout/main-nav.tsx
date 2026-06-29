@@ -36,7 +36,7 @@ const navigationGroups = [
   { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"] },
   { name: "Production", labelKey: "nav.production" as const, itemIds: ["seat-cover-sizes", "production-vehicles"] },
   { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
-  { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "audit-log", "user-access"] },
+  { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "audit-log", "user-access", "shiphero-credentials"] },
 ];
 
 const navigationLabelKeys: Record<string, MessageKey> = {
@@ -62,6 +62,7 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   "audit-log": "nav.auditLog",
   "warehouse-admin": "nav.warehouse",
   "user-access": "nav.userAccess",
+  "shiphero-credentials": "nav.shipHeroCredentials",
 };
 
 function readStoredVisibleMenuIds(role?: string | null): string[] | null {
