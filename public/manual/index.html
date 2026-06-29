@@ -1781,6 +1781,36 @@
     </div>
   </div>
 
+  <h3 class="sub">SKU 메모</h3>
+  <p>SKU 테이블 마지막 열에 SKU별 <strong>메모</strong>를 입력할 수 있습니다. 중국 공장에 발주를 넣기 전에 CBM이 초과될 경우 빼야 할 SKU를 미리 표시해 두는 용도로 사용합니다.</p>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>
+      <b>활용 예시:</b> CBM 한도에 가깝게 컨테이너를 구성할 때, 우선순위가 낮은 SKU에 <code>CBM 초과 시 제거</code>와 같은 메모를 입력해 두면 공장이 최종 수량을 확정했을 때 어떤 SKU를 빼야 할지 빠르게 파악할 수 있습니다.
+    </div>
+  </div>
+  <p style="font-size:13px;color:#6b7280;margin-top:8px">메모는 CSV/Excel Import로 다시 불러올 때도 유지됩니다 — SKU 코드가 일치하면 기존 메모가 보존됩니다.</p>
+
+  <h3 class="sub" style="margin-top:24px">CSV/Excel Import 동작 방식</h3>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>
+      <b>CSV/Excel Import는 기존 SKU 목록 전체를 교체합니다.</b><br>
+      Import는 <em>덮어쓰기(overwrite)</em> 방식으로 동작합니다. 파일에 포함된 SKU만 유지되며,
+      현재 컨테이너에 있지만 <u>파일에 없는 SKU는 삭제</u>됩니다.
+    </div>
+  </div>
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th style="width:260px">경우</th><th>결과</th></tr>
+    <tr><td>컨테이너와 파일 모두에 SKU가 있는 경우</td><td>파일의 수량·CBM으로 업데이트. 기존 가용 재고 배정 및 메모는 유지됩니다.</td></tr>
+    <tr><td>파일에는 있지만 컨테이너에 없는 SKU</td><td>신규 추가.</td></tr>
+    <tr><td>컨테이너에는 있지만 <strong>파일에 없는</strong> SKU</td><td>컨테이너에서 <strong>삭제</strong>됩니다.</td></tr>
+  </table>
+  <div class="callout tip" style="margin-top:12px">
+    <span class="callout-icon">💡</span>
+    <div>기존 SKU를 삭제하지 않고 추가만 하려면 Import 대신 <span class="btn-label">+ Add</span>로 개별 입력하세요.</div>
+  </div>
+
   <h3 class="sub">SKU 삭제 (일괄 삭제)</h3>
   <p><span class="status draft">Draft</span> 및 <span class="status final">Final List Sent</span> 상태의 컨테이너에서 사용 가능합니다. SKU 목록 좌측 체크박스로 항목을 선택한 뒤 <span class="btn-label" style="background:#fff5f5;color:#c42b2b">Delete Selected (N)</span> 버튼을 클릭합니다.</p>
   <table class="feat-table">
@@ -3804,6 +3834,36 @@
       <div class="step-num">3</div>
       <div><h4>Click + Add</h4><p>Click <span class="btn-label">+ Add</span> to add the SKU to the list. To register multiple SKUs at once, use <span class="btn-label">CSV/Excel Import</span>.</p></div>
     </div>
+  </div>
+
+  <h3 class="sub">SKU Memo</h3>
+  <p>Each SKU row has a <strong>Memo</strong> field (last column in the SKU table). Use it to flag SKUs that should be removed first if the container's CBM exceeds capacity before the factory order is placed.</p>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>
+      <b>Typical use:</b> When planning a container near the CBM limit, mark lower-priority SKUs with a memo such as <code>remove if over CBM</code>. This makes it easy to identify which SKUs to cut when the factory confirms final quantities.
+    </div>
+  </div>
+  <p style="font-size:13px;color:#6b7280;margin-top:8px">Memo values are preserved when re-importing via CSV/Excel — as long as the SKU code matches, the existing memo is kept.</p>
+
+  <h3 class="sub" style="margin-top:24px">CSV/Excel Import Behavior</h3>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>
+      <b>CSV/Excel Import replaces the entire SKU list.</b><br>
+      The import uses <em>overwrite</em> mode: only SKUs present in the file are kept.
+      Any SKUs currently in the container but <u>not</u> in the file will be removed.
+    </div>
+  </div>
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th style="width:260px">Case</th><th>Result</th></tr>
+    <tr><td>SKU exists in both container and file</td><td>Qty and CBM are updated to the file values. Existing Available Stock allocation and Memo are preserved.</td></tr>
+    <tr><td>SKU is in the file but not in the container</td><td>Added as a new SKU.</td></tr>
+    <tr><td>SKU is in the container but <strong>not</strong> in the file</td><td><strong>Removed</strong> from the container.</td></tr>
+  </table>
+  <div class="callout tip" style="margin-top:12px">
+    <span class="callout-icon">💡</span>
+    <div>To add SKUs without removing existing ones, use the manual <span class="btn-label">+ Add</span> entry instead of Import.</div>
   </div>
 
   <h3 class="sub">Deleting SKUs (Bulk Delete)</h3>
