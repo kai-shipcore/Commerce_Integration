@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { guardPermission } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { logAudit, getIp } from "@/lib/audit";
 
 type ProductKey = "cc" | "fm" | "sc" | "ac";
 
@@ -468,6 +470,21 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: "SKU not found" }, { status: 404 });
     }
 
+    const session = await auth();
+    void logAudit({
+      entityType: "sku",
+      entityId: masterSku,
+      entityLabel: masterSku,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: statusValue === "inactive" ? "delete" : "update",
+      after: Object.fromEntries(
+        Object.entries({ moq, orderMultiple, cbmPerUnit, caseQty, weightKg, status: statusValue, salesStatus: salesStatusValue })
+          .filter(([, v]) => v != null)
+      ),
+      ip: getIp(request.headers),
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("SKU master PATCH failed:", error);
@@ -617,6 +634,19 @@ export async function DELETE(request: NextRequest) {
       [masterSku]
     );
 
+    const session = await auth();
+    void logAudit({
+      entityType: "sku",
+      entityId: masterSku,
+      entityLabel: masterSku,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: "delete",
+      before: { status: "active" },
+      after: { status: "inactive" },
+      ip: getIp(request.headers),
+    });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("SKU master DELETE failed:", error);

@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { logAudit, getIp } from "@/lib/audit";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -70,8 +72,9 @@ export async function PUT(
 
     const pool = getPrimaryPool();
 
-    const existing = await pool.query<{ id: string }>(
-      "SELECT id::text FROM shipcore.fc_factories WHERE id = $1",
+    const existing = await pool.query<FactoryRow>(
+      `SELECT id::text, factory_code, factory_name, origin, contact_name, email, phone, is_active, created_at, updated_at
+       FROM shipcore.fc_factories WHERE id = $1`,
       [id]
     );
     if (existing.rows.length === 0) {
@@ -80,6 +83,7 @@ export async function PUT(
         { status: 404 }
       );
     }
+    const beforeData = serializeFactory(existing.rows[0]);
 
     const factoryName = validated.factoryName.trim();
 
@@ -125,7 +129,21 @@ export async function PUT(
       ]
     );
 
-    return NextResponse.json({ success: true, data: serializeFactory(result.rows[0]) });
+    const updated = serializeFactory(result.rows[0]);
+    const session = await auth();
+    void logAudit({
+      entityType: "factory",
+      entityId: id,
+      entityLabel: updated.factoryName,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: "update",
+      before: { factoryName: beforeData.factoryName, origin: beforeData.origin, contactName: beforeData.contactName, email: beforeData.email, phone: beforeData.phone },
+      after: { factoryName: updated.factoryName, origin: updated.origin, contactName: updated.contactName, email: updated.email, phone: updated.phone },
+      ip: getIp(request.headers),
+    });
+    return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -180,7 +198,21 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json({ success: true, data: serializeFactory(result.rows[0]) });
+    const patched = serializeFactory(result.rows[0]);
+    const session = await auth();
+    void logAudit({
+      entityType: "factory",
+      entityId: id,
+      entityLabel: patched.factoryName,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: validated.isActive ? "status_change" : "delete",
+      before: { isActive: !validated.isActive },
+      after: { isActive: validated.isActive },
+      ip: getIp(request.headers),
+    });
+    return NextResponse.json({ success: true, data: patched });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

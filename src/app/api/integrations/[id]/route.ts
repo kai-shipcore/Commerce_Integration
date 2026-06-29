@@ -17,6 +17,7 @@ import { auth } from "@/lib/auth";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import { canDo } from "@/lib/permissions";
 import { z } from "zod";
+import { logAudit, getIp } from "@/lib/audit";
 
 // Schema for updating an integration
 const UpdateIntegrationSchema = z.object({
@@ -120,6 +121,19 @@ export async function PATCH(
 
     const integration = await updatePlatformIntegration(id, updateData);
 
+    void logAudit({
+      entityType: "integration",
+      entityId: id,
+      entityLabel: `${existing.platform} - ${existing.name}`,
+      userId: session.user.id,
+      userName: session.user.name ?? null,
+      userEmail: session.user.email ?? null,
+      action: "config_update",
+      before: { name: existing.name, isActive: existing.isActive },
+      after: { name: integration?.name, isActive: integration?.isActive },
+      ip: getIp(request.headers),
+    });
+
     return NextResponse.json({
       success: true,
       data: integration,
@@ -180,6 +194,18 @@ export async function DELETE(
     }
 
     await deletePlatformIntegration(id);
+
+    void logAudit({
+      entityType: "integration",
+      entityId: id,
+      entityLabel: `${integration.platform} - ${integration.name}`,
+      userId: session.user.id,
+      userName: session.user.name ?? null,
+      userEmail: session.user.email ?? null,
+      action: "delete",
+      before: { name: integration.name, platform: integration.platform, isActive: integration.isActive },
+      ip: getIp(request.headers),
+    });
 
     return NextResponse.json({
       success: true,

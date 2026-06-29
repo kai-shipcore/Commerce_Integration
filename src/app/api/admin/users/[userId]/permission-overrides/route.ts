@@ -9,6 +9,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { CacheManager } from "@/lib/redis";
 import { PERM_SECTIONS, PERM_ACTIONS } from "@/lib/permissions-config";
 import { canDo } from "@/lib/permissions";
+import { logAudit, getIp } from "@/lib/audit";
 
 type Params = { params: Promise<{ userId: string }> };
 
@@ -73,9 +74,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
+async function getTargetUserLabel(userId: string): Promise<string> {
+  try {
+    const row = await getPrimaryPool().query<{ name: string | null; email: string | null }>(
+      `SELECT name, email FROM shipcore."User" WHERE id = $1 LIMIT 1`,
+      [userId]
+    );
+    const u = row.rows[0];
+    return u?.email ?? u?.name ?? userId;
+  } catch {
+    return userId;
+  }
+}
+
 export async function POST(req: NextRequest, { params }: Params) {
   const { userId } = await params;
-  const denied = await requireUserPermission("edit");
+  const [denied, session] = await Promise.all([requireUserPermission("edit"), auth()]);
   if (denied) return denied;
 
   let body: unknown;
@@ -96,6 +110,19 @@ export async function POST(req: NextRequest, { params }: Params) {
       [userId, section, action, allowed]
     );
     void CacheManager.delete(cacheKey(userId));
+    void getTargetUserLabel(userId).then((label) =>
+      logAudit({
+        entityType: "user_permission",
+        entityId: userId,
+        entityLabel: label,
+        userId: session?.user?.id ?? null,
+        userName: session?.user?.name ?? null,
+        userEmail: session?.user?.email ?? null,
+        action: "permission_grant",
+        after: { section, action, allowed },
+        ip: getIp(req.headers),
+      })
+    );
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[permission-overrides POST]", err);
@@ -105,7 +132,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
 export async function DELETE(req: NextRequest, { params }: Params) {
   const { userId } = await params;
-  const denied = await requireUserPermission("edit");
+  const [denied, session] = await Promise.all([requireUserPermission("edit"), auth()]);
   if (denied) return denied;
 
   let body: unknown;
@@ -122,6 +149,19 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       [userId, section, action]
     );
     void CacheManager.delete(cacheKey(userId));
+    void getTargetUserLabel(userId).then((label) =>
+      logAudit({
+        entityType: "user_permission",
+        entityId: userId,
+        entityLabel: label,
+        userId: session?.user?.id ?? null,
+        userName: session?.user?.name ?? null,
+        userEmail: session?.user?.email ?? null,
+        action: "permission_revoke",
+        before: { section, action },
+        ip: getIp(req.headers),
+      })
+    );
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[permission-overrides DELETE]", err);

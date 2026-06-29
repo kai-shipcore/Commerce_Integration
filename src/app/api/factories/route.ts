@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { logAudit, getIp } from "@/lib/audit";
 
 const FactoryCreateSchema = z.object({
   factoryName: z.string().trim().min(1),
@@ -191,7 +193,20 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    return NextResponse.json({ success: true, data: serializeFactory(result.rows[0]) }, { status: 201 });
+    const created = serializeFactory(result.rows[0]);
+    const session = await auth();
+    void logAudit({
+      entityType: "factory",
+      entityId: created.id,
+      entityLabel: created.factoryName,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: "create",
+      after: { factoryCode: created.factoryCode, factoryName: created.factoryName, origin: created.origin },
+      ip: getIp(request.headers),
+    });
+    return NextResponse.json({ success: true, data: created }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

@@ -782,7 +782,7 @@
     <tr style="background:#f0f4ff">
       <td><strong>기본 정보</strong></td>
       <td>#(행 번호) · 컨테이너 정보 · CBM · 백오더 · 판매 상태 · 마스터 SKU</td>
-      <td>항상 표시. 숨길 수 없음.</td>
+      <td></td>
     </tr>
     <tr>
       <td><strong>재고</strong></td>
@@ -2491,31 +2491,32 @@
     <div>
       <div class="menu-path">메뉴 › 관리 › 감사 로그</div>
       <h2>감사 로그</h2>
-      <p class="subtitle">컨테이너 상태 변경과 주요 수정 이력을 사용자·기간·컨테이너·변경 유형 기준으로 추적합니다.</p>
+      <p class="subtitle">공장·창고·SKU 기준정보·사용자 권한·역할·연동 설정 등 시스템 전반의 변경 이력을 사용자·기간·유형 기준으로 추적합니다.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
     <img src="screenshots/07-audit-log.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📜</div><p>감사 로그 화면</p></div>'" alt="감사 로그 화면">
-    <div class="screenshot-caption">▲ 감사 로그 — 전체 컨테이너 변경 이력 검색, 페이지네이션, CSV 내보내기</div>
+    <div class="screenshot-caption">▲ 감사 로그 — 공장·창고·SKU·권한·역할·연동 등 모든 변경 이력을 유형별로 필터링하고 CSV로 내보냅니다</div>
   </div>
 
-  <h3>주요 사용 목적</h3>
+  <h3>추적 대상</h3>
   <div class="card-grid col2">
     <div class="card">
-      <h4>🔎 전체 로그 검색</h4>
+      <h4>📦 기준정보 변경</h4>
       <ul>
-        <li>사용자 이름, 이메일, 사용자 ID로 변경자를 검색합니다.</li>
-        <li>컨테이너 번호 또는 컨테이너 ID로 특정 컨테이너 이력을 찾습니다.</li>
-        <li>상태 변경, ETA 수정, 정보 수정, 수량/SKU 변경, 메모, 생성, 삭제 유형으로 좁혀 봅니다.</li>
+        <li><b>공장</b> — 생성, 정보 수정, 활성/비활성 전환</li>
+        <li><b>창고</b> — 생성, 정보 수정, 활성/비활성 전환</li>
+        <li><b>SKU 기준정보</b> — MOQ·CBM·재고 속성 수정, 비활성 처리</li>
+        <li><b>컨테이너</b> — 상태 변경, ETA 수정, 수량/SKU 변경, 메모</li>
       </ul>
     </div>
     <div class="card">
-      <h4>🧾 변경 전/후 확인</h4>
+      <h4>🔐 권한 및 시스템 변경</h4>
       <ul>
-        <li>변경 전 값과 변경 후 값을 한 줄에서 비교합니다.</li>
-        <li>메모가 기록된 경우 Note 컬럼에서 내용을 확인합니다.</li>
-        <li>CSV 내보내기로 현재 필터 결과를 외부 검토용 파일로 저장합니다.</li>
+        <li><b>사용자 권한</b> — 예외 권한 부여 및 취소</li>
+        <li><b>사용자 역할</b> — admin·planner 등 역할 변경</li>
+        <li><b>연동 설정</b> — Shopify·Amazon 등 플랫폼 설정 수정</li>
       </ul>
     </div>
   </div>
@@ -2524,11 +2525,13 @@
   <table class="feat-table">
     <tr><th style="width:170px">항목</th><th>설명</th></tr>
     <tr><td class="label">사용자 검색</td><td>사용자 이름, 이메일, ID를 기준으로 로그를 검색합니다.</td></tr>
-    <tr><td class="label">컨테이너 ID</td><td>컨테이너 번호 또는 내부 ID를 입력해 관련 로그만 표시합니다.</td></tr>
-    <tr><td class="label">변경 유형</td><td>상태 변경, ETA 수정, 정보 수정, 수량/SKU 변경, 메모, 생성, 삭제 중 하나를 선택합니다.</td></tr>
-    <tr><td class="label">날짜 기간</td><td>시작일과 종료일을 선택해 해당 기간의 로그를 조회합니다.</td></tr>
-    <tr><td class="label">행 / 페이지</td><td>페이지당 표시할 행 수를 10, 20, 50개 중 선택하고 이전/다음으로 이동합니다.</td></tr>
-    <tr><td class="label">Note</td><td>컨테이너 이력에서 추가된 메모 또는 로그에 저장된 설명을 보여줍니다.</td></tr>
+    <tr><td class="label">엔티티 검색</td><td>공장명, 창고 코드, SKU 코드, 사용자 이메일 등 대상 이름 또는 ID로 검색합니다.</td></tr>
+    <tr><td class="label">모든 유형</td><td>컨테이너·공장·창고·SKU·권한·역할·연동 중 특정 유형만 표시합니다.</td></tr>
+    <tr><td class="label">변경 유형</td><td>생성·수정·삭제·상태 변경·권한 부여/취소·역할 변경·설정 변경 중 하나를 선택합니다.</td></tr>
+    <tr><td class="label">날짜 기간</td><td>시작일과 종료일을 선택해 해당 기간의 로그만 조회합니다.</td></tr>
+    <tr><td class="label">유형 뱃지</td><td>각 로그 행의 유형 컬럼에 색상 뱃지로 엔티티 종류를 표시합니다.</td></tr>
+    <tr><td class="label">변경 전 / 후</td><td>변경 이전 값과 이후 값을 같은 행에서 한눈에 비교합니다.</td></tr>
+    <tr><td class="label">CSV 내보내기</td><td>현재 필터 조건의 전체 결과를 CSV 파일로 저장합니다.</td></tr>
   </table>
 
   <div class="callout tip">
@@ -3050,7 +3053,7 @@
   <p>The center area of the panel lets you control column groups and individual columns. Click a group header to collapse or expand it. The number next to each group (e.g., <code>5/6</code>) shows visible / total columns.</p>
   <table class="feat-table">
     <tr><th style="width:200px">Group</th><th>Included Columns</th><th>Notes</th></tr>
-    <tr style="background:#f0f4ff"><td><strong>Basic Info</strong></td><td># · Container Info. · CBM · Back · Sales Status · Master SKU</td><td>Always visible. Cannot be hidden.</td></tr>
+    <tr style="background:#f0f4ff"><td><strong>Basic Info</strong></td><td># · Container Info. · CBM · Back · Sales Status · Master SKU</td><td></td></tr>
     <tr><td><strong>Inventory</strong></td><td>Mode · West Stock · East Stock · Transit Stock · Total Stock</td><td>Inventory figures. <strong>Mode</strong> switches the calculation basis: <strong>Onhand</strong> = raw warehouse stock count; <strong>Available</strong> = on-hand minus quantities allocated from Available Stock.</td></tr>
     <tr><td><strong>West FBM Sales</strong></td><td>West 90D · 60D · 30D · 15D · 7D · W Pre 30D</td><td>West (FBM) sales by period.</td></tr>
     <tr><td><strong>East FBM Sales</strong></td><td>East 90D · 60D · 30D · 15D · 7D · E Pre 30D</td><td>East (FBM) sales by period.</td></tr>
@@ -4461,31 +4464,32 @@
     <div>
       <div class="menu-path">Menu › Admin › Audit Log</div>
       <h2>Audit Log</h2>
-      <p class="subtitle">Track container status changes and key edits by user, date range, container, and action type.</p>
+      <p class="subtitle">Track changes across factories, warehouses, SKU master, user permissions, roles, and integration configurations — all in one place.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
     <img src="screenshots/07-audit-log-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📜</div><p>Audit Log Screen</p></div>'" alt="Audit Log Screen">
-    <div class="screenshot-caption">▲ Audit Log — search all container change history, paginate results, and export CSV</div>
+    <div class="screenshot-caption">▲ Audit Log — filter by entity type, search by user or entity name, compare before/after values, and export CSV</div>
   </div>
 
-  <h3>Main Use Cases</h3>
+  <h3>What Is Tracked</h3>
   <div class="card-grid col2">
     <div class="card">
-      <h4>🔎 Search All Logs</h4>
+      <h4>📦 Master Data Changes</h4>
       <ul>
-        <li>Search the actor by user name, email, or user ID.</li>
-        <li>Find records for a specific container by container number or internal container ID.</li>
-        <li>Narrow results by status change, ETA change, details update, item change, note, create, or delete.</li>
+        <li><b>Factories</b> — create, edit details, activate / deactivate</li>
+        <li><b>Warehouses</b> — create, edit details, activate / deactivate</li>
+        <li><b>SKU Master</b> — MOQ, CBM, and attribute edits; deactivation</li>
+        <li><b>Containers</b> — status changes, ETA edits, item updates, notes</li>
       </ul>
     </div>
     <div class="card">
-      <h4>🧾 Review Before / After</h4>
+      <h4>🔐 Permission &amp; System Changes</h4>
       <ul>
-        <li>Compare the previous value and the updated value in the same row.</li>
-        <li>If a note was recorded, review it in the Note column.</li>
-        <li>Use CSV Export to save the current filtered result for external review.</li>
+        <li><b>User Permissions</b> — exception overrides granted or revoked</li>
+        <li><b>User Roles</b> — role changes (admin, planner, etc.)</li>
+        <li><b>Integration Config</b> — Shopify, Amazon, and other platform settings</li>
       </ul>
     </div>
   </div>
@@ -4493,12 +4497,14 @@
   <h3>Filters and Columns</h3>
   <table class="feat-table">
     <tr><th style="width:170px">Item</th><th>Description</th></tr>
-    <tr><td class="label">Search user</td><td>Search logs by user name, email, or ID.</td></tr>
-    <tr><td class="label">Container ID</td><td>Enter a container number or internal ID to show only related records.</td></tr>
-    <tr><td class="label">Action type</td><td>Select status change, ETA change, details update, item change, note, create, or delete.</td></tr>
+    <tr><td class="label">Search user</td><td>Search logs by user name, email, or user ID.</td></tr>
+    <tr><td class="label">Entity name or ID</td><td>Search by factory name, warehouse code, SKU code, user email, or any entity identifier.</td></tr>
+    <tr><td class="label">All types</td><td>Filter to a specific entity type: Container, Factory, Warehouse, SKU, User Permission, User Role, or Integration.</td></tr>
+    <tr><td class="label">Action type</td><td>Select create, update, delete, status change, permission grant/revoke, role change, or config update.</td></tr>
     <tr><td class="label">Date range</td><td>Select start and end dates to limit the log period.</td></tr>
-    <tr><td class="label">Rows / Page</td><td>Choose 10, 20, or 50 rows per page, then navigate with Previous / Next.</td></tr>
-    <tr><td class="label">Note</td><td>Shows manual notes or additional descriptions saved with the log entry.</td></tr>
+    <tr><td class="label">Type badge</td><td>Color-coded badge in the Type column identifies the entity kind at a glance.</td></tr>
+    <tr><td class="label">Before / After</td><td>Compare the previous value and the updated value side by side in the same row.</td></tr>
+    <tr><td class="label">Export CSV</td><td>Download the full filtered result set as a CSV file for external review.</td></tr>
   </table>
 
   <div class="callout tip">

@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { logAudit, getIp } from "@/lib/audit";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -84,6 +86,18 @@ export async function POST(request: NextRequest) {
       data: { ...validated, warehouseCode: code },
     });
 
+    const session = await auth();
+    void logAudit({
+      entityType: "warehouse",
+      entityId: String(warehouse.id),
+      entityLabel: warehouse.warehouseCode,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: "create",
+      after: { warehouseName: warehouse.warehouseName, warehouseType: warehouse.warehouseType, country: warehouse.country },
+      ip: getIp(request.headers),
+    });
     return NextResponse.json({ success: true, data: serialize(warehouse) }, { status: 201 });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {

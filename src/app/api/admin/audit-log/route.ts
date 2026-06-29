@@ -2,14 +2,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 
+// All valid action values across both audit tables
 const ACTIONS = new Set([
+  // Container audit actions
   "status_change",
   "details_update",
   "eta_change",
   "items_update",
   "note_added",
+  // General audit actions
   "create",
+  "update",
   "delete",
+  "permission_grant",
+  "permission_revoke",
+  "role_change",
+  "config_update",
+]);
+
+const ENTITY_TYPES = new Set([
+  "container",
+  "factory",
+  "warehouse",
+  "sku",
+  "user_permission",
+  "user_role",
+  "integration",
 ]);
 
 function clean(value: string | null): string {
@@ -30,7 +48,8 @@ export async function GET(req: NextRequest) {
 
   const searchParams = req.nextUrl.searchParams;
   const user = clean(searchParams.get("user"));
-  const container = clean(searchParams.get("container"));
+  const entity = clean(searchParams.get("entity"));
+  const entityType = clean(searchParams.get("entityType"));
   const action = clean(searchParams.get("action"));
   const startDate = clean(searchParams.get("startDate"));
   const endDate = clean(searchParams.get("endDate"));
@@ -53,13 +72,18 @@ export async function GET(req: NextRequest) {
     idx++;
   }
 
-  if (container) {
-    values.push(`%${container}%`);
+  if (entity) {
+    values.push(`%${entity}%`);
     filters.push(`(
-      COALESCE(container_number, '') ILIKE $${idx}
-      OR container_id::text ILIKE $${idx}
+      COALESCE(entity_label, '') ILIKE $${idx}
+      OR COALESCE(entity_id, '') ILIKE $${idx}
     )`);
     idx++;
+  }
+
+  if (entityType && ENTITY_TYPES.has(entityType)) {
+    values.push(entityType);
+    filters.push(`entity_type = $${idx++}`);
   }
 
   if (action && ACTIONS.has(action)) {
@@ -79,20 +103,44 @@ export async function GET(req: NextRequest) {
 
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
+  // UNION of container-specific table and general audit table
+  const unionSql = `
+    SELECT
+      'c:' || id::text      AS id,
+      'container'           AS entity_type,
+      container_id::text    AS entity_id,
+      COALESCE(container_number, container_id::text) AS entity_label,
+      user_id, user_name, user_email,
+      action, before, after, note, ip, created_at
+    FROM shipcore.fc_container_audit_log
+
+    UNION ALL
+
+    SELECT
+      'a:' || id::text      AS id,
+      entity_type,
+      entity_id,
+      COALESCE(entity_label, entity_id) AS entity_label,
+      user_id, user_name, user_email,
+      action, before, after, note, ip, created_at
+    FROM shipcore.fc_audit_log
+  `;
+
   try {
     const pool = getPrimaryPool();
+
     const countPromise = pool.query<{ total: string }>(
       `SELECT COUNT(*)::text AS total
-       FROM shipcore.fc_container_audit_log
+       FROM (${unionSql}) combined
        ${where}`,
       values,
     );
 
     const dataPromise = pool.query(
-      `SELECT id, container_id, container_number,
+      `SELECT id, entity_type, entity_id, entity_label,
               user_id, user_name, user_email,
               action, before, after, note, ip, created_at
-       FROM shipcore.fc_container_audit_log
+       FROM (${unionSql}) combined
        ${where}
        ORDER BY created_at DESC, id DESC
        LIMIT $${idx++} OFFSET $${idx}`,
@@ -105,9 +153,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: dataResult.rows.map((row) => ({
-        id: String(row.id),
-        containerId: String(row.container_id),
-        containerNumber: row.container_number as string | null,
+        id: row.id as string,
+        entityType: row.entity_type as string,
+        entityId: row.entity_id as string,
+        entityLabel: row.entity_label as string | null,
         userId: row.user_id as string | null,
         userName: row.user_name as string | null,
         userEmail: row.user_email as string | null,

@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { logAudit, getIp } from "@/lib/audit";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -67,6 +69,26 @@ export async function PATCH(
       data: validated,
     });
 
+    const session = await auth();
+    const auditAction = isStatusOnly
+      ? (validated.isActive ? "status_change" : "delete")
+      : "update";
+    void logAudit({
+      entityType: "warehouse",
+      entityId: id,
+      entityLabel: existing.warehouseCode,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: auditAction,
+      before: isStatusOnly
+        ? { isActive: !validated.isActive }
+        : { warehouseName: existing.warehouseName, warehouseType: existing.warehouseType, country: existing.country },
+      after: isStatusOnly
+        ? { isActive: validated.isActive }
+        : { warehouseName: warehouse.warehouseName, warehouseType: warehouse.warehouseType, country: warehouse.country },
+      ip: getIp(request.headers),
+    });
     return NextResponse.json({ success: true, data: serialize(warehouse) });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
@@ -105,6 +127,18 @@ export async function DELETE(
       data: { isActive: false },
     });
 
+    const session = await auth();
+    void logAudit({
+      entityType: "warehouse",
+      entityId: id,
+      entityLabel: existing.warehouseCode,
+      userId: session?.user?.id ?? null,
+      userName: session?.user?.name ?? null,
+      userEmail: session?.user?.email ?? null,
+      action: "delete",
+      before: { isActive: true, warehouseName: existing.warehouseName },
+      ip: getIp(_request.headers),
+    });
     return NextResponse.json({ success: true, message: "Warehouse deactivated successfully" });
   } catch (error: unknown) {
     console.error("Error deleting warehouse:", error);
