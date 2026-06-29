@@ -107,13 +107,20 @@ export function RolePermissionsTab() {
   }, []);
 
   function handleToggle(section: PermSection, action: PermAction, value: boolean) {
-    setPendingPerms((prev) => ({
-      ...prev,
-      [currentRole]: {
-        ...prev[currentRole],
-        [section]: { ...prev[currentRole][section], [action]: value },
-      },
-    }));
+    setPendingPerms((prev) => {
+      const updated = { ...prev[currentRole][section], [action]: value };
+      // Turning off read disables all other actions
+      if (action === "read" && !value) {
+        updated.create = false;
+        updated.edit = false;
+        updated.status = false;
+        updated.delete = false;
+      }
+      return {
+        ...prev,
+        [currentRole]: { ...prev[currentRole], [section]: updated },
+      };
+    });
   }
 
   function handleDiscard() {

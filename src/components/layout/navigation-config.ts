@@ -268,9 +268,9 @@ export function isPOApproverRole(role?: string | null): boolean {
 }
 
 export function getDefaultVisibleMenuIds(role?: string | null): string[] {
-  return isAdminLikeRole(role)
-    ? adminDefaultVisibleMenuIds
-    : userDefaultVisibleMenuIds;
+  if (isAdminLikeRole(role)) return adminDefaultVisibleMenuIds;
+  if (role === "production") return [];
+  return userDefaultVisibleMenuIds;
 }
 
 export function sanitizeVisibleMenuIds(
