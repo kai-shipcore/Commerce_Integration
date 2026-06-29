@@ -96,12 +96,19 @@ export function createOrderColumns(): ColumnDef<OrderTableRow>[] {
     {
       accessorKey: "orderDate",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Order Time" />
+        <DataTableColumnHeader column={column} title="Order Time (PT)" />
       ),
       cell: ({ row }) => (
         <div className="text-sm text-muted-foreground">
           {row.original.orderDate
-            ? new Date(row.original.orderDate).toLocaleString()
+            ? new Date(row.original.orderDate).toLocaleString("en-US", {
+                timeZone: "America/Los_Angeles",
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
             : "-"}
         </div>
       ),

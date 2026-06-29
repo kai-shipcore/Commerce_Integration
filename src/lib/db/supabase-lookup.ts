@@ -587,6 +587,8 @@ export async function getSalesOrders(
   const platformSource = options.platformSource?.trim() ?? "";
   const startDate = options.startDate?.trim() ?? "";
   const endDate = options.endDate?.trim() ?? "";
+  const orderDateDisplaySql =
+    "(((so.order_date AT TIME ZONE 'America/Los_Angeles') AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')";
   const sortByMap = {
     orderDate: "so.order_date",
     orderNumber: "so.order_number",
@@ -728,13 +730,13 @@ export async function getSalesOrders(
 
     if (startDate) {
       params.push(startDate);
-      filters.push(`so.order_date >= $${params.length}::date`);
+      filters.push(`${orderDateDisplaySql} >= $${params.length}::date`);
     }
 
     if (endDate) {
       params.push(endDate);
       filters.push(
-        `so.order_date < ($${params.length}::date + INTERVAL '1 day')`,
+        `${orderDateDisplaySql} < ($${params.length}::date + INTERVAL '1 day')`,
       );
     }
 
@@ -784,6 +786,7 @@ export async function getSalesOrders(
       external_order_id: string | null;
       order_number: string | null;
       order_date: Date | string | null;
+      order_date_display: string | null;
       order_status: string | null;
       total_price: string | null;
       currency: string | null;
@@ -798,6 +801,7 @@ export async function getSalesOrders(
         so.external_order_id,
         so.order_number,
         so.order_date,
+        to_char(so.order_date AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS order_date_display,
         so.order_status,
         COALESCE(so.total_price, 0)::text AS total_price,
         so.currency::text AS currency,
@@ -973,10 +977,11 @@ export async function getSalesOrders(
         platformSource: row.platform_source,
         externalOrderId: row.external_order_id,
         orderNumber: row.order_number,
-        orderDate:
+        orderDate: row.order_date_display ?? (
           row.order_date instanceof Date
             ? row.order_date.toISOString()
-            : row.order_date,
+            : row.order_date
+        ),
         orderStatus: row.order_status,
         totalPrice: Number(row.total_price ?? 0),
         currency: row.currency,
@@ -1042,6 +1047,7 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
         external_order_id: string | null;
         order_number: string | null;
         order_date: Date | string | null;
+        order_date_display: string | null;
         order_status: string | null;
         total_price: string | null;
         currency: string | null;
@@ -1057,6 +1063,7 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
           external_order_id,
           order_number,
           order_date,
+          to_char(order_date AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS order_date_display,
           order_status,
           COALESCE(total_price, 0)::text AS total_price,
           currency::text AS currency,
@@ -1192,10 +1199,11 @@ export async function getSalesOrderDetail(orderId: number): Promise<{
       platformSource: order.platform_source,
       externalOrderId: order.external_order_id,
       orderNumber: order.order_number,
-      orderDate:
+      orderDate: order.order_date_display ?? (
         order.order_date instanceof Date
           ? order.order_date.toISOString()
-          : order.order_date,
+          : order.order_date
+      ),
       orderStatus: order.order_status,
       totalPrice: Number(order.total_price ?? 0),
       currency: order.currency,
