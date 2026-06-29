@@ -31,6 +31,29 @@ export default async function HomePage() {
   }
 
   const role = (session.user as { role?: string }).role ?? "user";
+  const name = (session.user as { name?: string }).name ?? session.user.email ?? "";
+
+  if (role === "user") {
+    return (
+      <AppLayout>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f0ede8]">
+            <svg className="h-7 w-7 text-[#6b6359]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+            </svg>
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-[22px] font-bold tracking-tight text-[#1a1917]">
+              Welcome{name ? `, ${name}` : ""}
+            </h1>
+            <p className="text-[13px] text-[#9b9189]">
+              If you need access to additional menus, please contact your administrator.
+            </p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   let visibleIds: string[];
   if (isAdminLikeRole(role)) {
