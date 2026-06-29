@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { subDays, subMonths, subYears, format } from "date-fns";
+import { differenceInCalendarDays, subDays, subMonths, subYears, format } from "date-fns";
 import { toast } from "sonner";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
@@ -80,8 +80,9 @@ function getDateRange(period: Period) {
 
 function getPrevDateRange(period: Period) {
   const { start: cStart, end: cEnd } = getDateRange(period);
-  const diff = cEnd.getTime() - cStart.getTime();
-  return { start: new Date(cStart.getTime() - diff), end: cStart };
+  const days = differenceInCalendarDays(cEnd, cStart) + 1;
+  const end = subDays(cStart, 1);
+  return { start: subDays(end, days - 1), end };
 }
 
 function Skeleton({ className }: { className?: string }) {
@@ -238,7 +239,7 @@ export function HomeDashboard({
 
   const chartData   = trendData.map((d) => ({
     ...d,
-    dateLabel: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    dateLabel: new Date(`${d.date}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
   }));
   const dataKey     = viewMode === "revenue" ? "revenue" : "quantity";
   const periodLabel = PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? period;

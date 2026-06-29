@@ -143,7 +143,16 @@ export function OrderDetailDialog({
                   <CardTitle className="text-base">{formatStatusLabel(order.orderStatus, locale)}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground">
-                  {order.orderDate ? new Date(order.orderDate).toLocaleString(dateLocale) : "-"}
+                  {order.orderDate
+                    ? new Date(order.orderDate).toLocaleString(dateLocale, {
+                        timeZone: "America/Los_Angeles",
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }) + " PT"
+                    : "-"}
                 </CardContent>
               </Card>
               <Card>
@@ -156,7 +165,7 @@ export function OrderDetailDialog({
                 <CardContent className="text-sm text-muted-foreground">
                   {order.fulfillmentChannel ? `${pick("처리 채널", "Fulfillment")}: ${order.fulfillmentChannel}` : ""}
                   {order.cancelledAt
-                    ? ` · ${pick("취소일", "Cancelled")} ${new Date(order.cancelledAt).toLocaleDateString(dateLocale)}`
+                    ? ` · ${pick("취소일", "Cancelled")} ${new Date(order.cancelledAt).toLocaleDateString(dateLocale, { timeZone: "America/Los_Angeles" })}`
                     : ""}
                 </CardContent>
               </Card>

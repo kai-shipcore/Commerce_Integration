@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
     const skipMeta = searchParams.get("skipMeta") === "true";
 
-    const cacheKey = `orders:v2:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${platformSource}:${orderStatus}:${startDate}:${endDate}`;
+    const cacheKey = `orders:v3:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${platformSource}:${orderStatus}:${startDate}:${endDate}`;
 
     if (!exportAll) {
       const cached = await CacheManager.get<object>(cacheKey);

@@ -11,6 +11,8 @@ import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
 const CACHE_TTL = 5 * 60; // 5 minutes
+const ORDER_DATE_DISPLAY_SQL =
+  "(((so.order_date AT TIME ZONE 'America/Los_Angeles') AT TIME ZONE 'UTC') AT TIME ZONE 'America/Los_Angeles')";
 
 function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : "Unknown error";
@@ -35,7 +37,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const cacheKey = `home:sales-trend:v2:${startDate}:${endDate}:${prevStartDate ?? ""}:${prevEndDate ?? ""}`;
+  const cacheKey = `home:sales-trend:v3:${startDate}:${endDate}:${prevStartDate ?? ""}:${prevEndDate ?? ""}`;
   const cached = await CacheManager.get<unknown>(cacheKey);
   if (cached) {
     return NextResponse.json({ success: true, data: cached, cached: true });
@@ -56,14 +58,14 @@ export async function GET(request: NextRequest) {
     const [trendResult, totalResult, prevResult] = await Promise.all([
       pool.query<TrendRow>(`
         SELECT
-          so.order_date::date::text                  AS day,
+          ${ORDER_DATE_DISPLAY_SQL}::date::text      AS day,
           COUNT(*)::text                             AS quantity,
           COALESCE(SUM(so.total_price), 0)::text     AS revenue
         FROM ecommerce_data.sales_orders so
-        WHERE so.order_date >= $1::date
-          AND so.order_date < ($2::date + INTERVAL '1 day')
-        GROUP BY so.order_date::date
-        ORDER BY so.order_date::date ASC
+        WHERE ${ORDER_DATE_DISPLAY_SQL} >= $1::date
+          AND ${ORDER_DATE_DISPLAY_SQL} < ($2::date + INTERVAL '1 day')
+        GROUP BY ${ORDER_DATE_DISPLAY_SQL}::date
+        ORDER BY ${ORDER_DATE_DISPLAY_SQL}::date ASC
       `, [startDate, endDate]),
 
       pool.query<TotalRow>(`
@@ -71,16 +73,16 @@ export async function GET(request: NextRequest) {
           COUNT(*)::text                             AS quantity,
           COALESCE(SUM(so.total_price), 0)::text     AS revenue
         FROM ecommerce_data.sales_orders so
-        WHERE so.order_date >= $1::date
-          AND so.order_date < ($2::date + INTERVAL '1 day')
+        WHERE ${ORDER_DATE_DISPLAY_SQL} >= $1::date
+          AND ${ORDER_DATE_DISPLAY_SQL} < ($2::date + INTERVAL '1 day')
       `, [startDate, endDate]),
 
       prevStartDate && prevEndDate
         ? pool.query<TotalRow>(`
             SELECT COUNT(*)::text AS quantity
             FROM ecommerce_data.sales_orders so
-            WHERE so.order_date >= $1::date
-              AND so.order_date < ($2::date + INTERVAL '1 day')
+            WHERE ${ORDER_DATE_DISPLAY_SQL} >= $1::date
+              AND ${ORDER_DATE_DISPLAY_SQL} < ($2::date + INTERVAL '1 day')
           `, [prevStartDate, prevEndDate])
         : Promise.resolve(null),
     ]);
