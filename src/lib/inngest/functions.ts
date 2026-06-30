@@ -5,6 +5,7 @@
  */
 
 import { inngest } from './client';
+import { prisma } from '../db/prisma';
 import { identifyHotSKUs } from '../analytics/hot-skus';
 import { CacheManager, CacheKeys, CacheTTL } from '../redis';
 import {
@@ -23,7 +24,7 @@ export const syncSalesData = inngest.createFunction(
     name: 'Sync Sales Data',
   },
   { cron: '0 * * * *' }, // Every hour
-  async ({ event, step }) => {
+  async ({ step }) => {
     // Step 1: Get all active integrations
     const integrations = await step.run('get-active-integrations', async () => {
       return await listActivePlatformIntegrations();
@@ -69,7 +70,7 @@ export const syncSalesData = inngest.createFunction(
               skusCreated: syncResult.skusCreated,
               error: syncResult.errors.length > 0 ? syncResult.errors[0] : undefined,
             };
-          } catch (error: any) {
+          } catch (error: unknown) {
             console.error(`Error syncing ${integration.platform}:`, error);
 
             return {
@@ -80,7 +81,7 @@ export const syncSalesData = inngest.createFunction(
               ordersProcessed: 0,
               recordsCreated: 0,
               skusCreated: 0,
-              error: error.message,
+              error: error instanceof Error ? error.message : 'Unknown error',
             };
           }
         }
@@ -119,7 +120,7 @@ export const refreshHotSKUCache = inngest.createFunction(
     name: 'Refresh Hot SKU Cache',
   },
   { cron: '0 */6 * * *' }, // Every 6 hours
-  async ({ event, step }) => {
+  async ({ step }) => {
     const hotSKUs = await step.run('identify-and-cache-hot-skus', async () => {
       const skus = await identifyHotSKUs(100);
 
@@ -186,9 +187,32 @@ export const manualSyncTrigger = inngest.createFunction(
   }
 );
 
+/**
+ * Record a user login: write to login log table and update lastLoginAt
+ */
+export const logUserLogin = inngest.createFunction(
+  { id: 'log-user-login', name: 'Log User Login' },
+  { event: 'user/login' },
+  async ({ event, step }) => {
+    const { userId, ip, userAgent } = event.data as {
+      userId: string;
+      ip: string | null;
+      userAgent: string | null;
+    };
+
+    await step.run('write-login-record', async () => {
+      await prisma.$transaction([
+        prisma.userLoginLog.create({ data: { userId, ip, userAgent } }),
+        prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } }),
+      ]);
+    });
+  }
+);
+
 // Export all functions
 export const functions = [
   syncSalesData,
   refreshHotSKUCache,
   manualSyncTrigger,
+  logUserLogin,
 ];

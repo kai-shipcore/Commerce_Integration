@@ -4,7 +4,7 @@
  * Providers, session shaping, and development login behavior are defined here.
  */
 
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Provider } from "next-auth/providers";
 import Google from "next-auth/providers/google";
@@ -12,6 +12,35 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
 import { authPath, withBasePath } from "@/lib/api-path";
+import { headers } from "next/headers";
+
+class AccountInactiveError extends CredentialsSignin {
+  code = "AccountInactive";
+}
+
+async function getLoginMeta(): Promise<{ ip: string | null; userAgent: string | null }> {
+  try {
+    const h = await headers();
+    const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? h.get("x-real-ip") ?? null;
+    const userAgent = h.get("user-agent") ?? null;
+    return { ip, userAgent };
+  } catch {
+    return { ip: null, userAgent: null };
+  }
+}
+
+async function recordLogin(userId: string): Promise<void> {
+  try {
+    const { ip, userAgent } = await getLoginMeta();
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.userLoginLog.create({ data: { userId, loggedInAt: now, ip, userAgent } }),
+      prisma.user.update({ where: { id: userId }, data: { lastLoginAt: now } }),
+    ]);
+  } catch {
+    // Non-critical: never block auth flow
+  }
+}
 
 // Build providers list dynamically
 const providers: Provider[] = [
@@ -36,6 +65,10 @@ const providers: Provider[] = [
 
       if (!user?.passwordHash) {
         return null;
+      }
+
+      if (!user.isActive) {
+        throw new AccountInactiveError();
       }
 
       const isValid = verifyPassword(password, user.passwordHash);
@@ -73,7 +106,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     strategy: "jwt",
   },
   callbacks: {
-    async signIn({ account, profile }) {
+    async signIn({ user, account, profile }) {
       if (account?.provider === "google") {
         const googleProfile = profile as { email_verified?: boolean | null; email?: string } | undefined;
         if (!googleProfile?.email_verified) return false;
@@ -81,13 +114,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Only allow Google sign-in for pre-registered emails
         const email = googleProfile.email?.trim().toLowerCase();
         if (!email) return false;
-        const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+        const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, isActive: true } });
         if (!existing) {
           const params = new URLSearchParams({ email, source: "google" });
           return withBasePath(`/auth/signup?${params.toString()}`);
         }
+        if (!existing.isActive) return false;
 
+        void recordLogin(existing.id);
         return true;
+      }
+
+      // Credentials login — user.id is populated by authorize()
+      if (user?.id) {
+        void recordLogin(user.id);
       }
 
       return true;

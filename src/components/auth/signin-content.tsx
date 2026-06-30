@@ -102,8 +102,9 @@ function SignInCardContent({ googleEnabled }: SignInContentProps) {
             {error === "Callback" && pick("로그인 처리 중 오류가 발생했습니다.", "Error during callback.")}
             {error === "OAuthAccountNotLinked" && pick("이미 다른 계정에 연결된 이메일입니다.", "Email already linked to another account.")}
             {error === "CredentialsSignin" && pick("이메일 또는 비밀번호가 올바르지 않습니다.", "Invalid email or password.")}
+            {error === "AccountInactive" && pick("비활성화된 계정입니다. 관리자에게 문의하세요.", "This account has been deactivated. Please contact an administrator.")}
             {error === "SessionRequired" && pick("계속하려면 로그인하세요.", "Please sign in to continue.")}
-            {!["OAuthSignin", "OAuthCallback", "OAuthCreateAccount", "EmailCreateAccount", "Callback", "OAuthAccountNotLinked", "CredentialsSignin", "SessionRequired"].includes(error) && pick("로그인 중 오류가 발생했습니다.", "An error occurred during sign in.")}
+            {!["OAuthSignin", "OAuthCallback", "OAuthCreateAccount", "EmailCreateAccount", "Callback", "OAuthAccountNotLinked", "CredentialsSignin", "AccountInactive", "SessionRequired"].includes(error) && pick("로그인 중 오류가 발생했습니다.", "An error occurred during sign in.")}
           </div>
         )}
 

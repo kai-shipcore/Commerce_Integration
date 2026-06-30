@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Download, Loader2, ScrollText, Search } from "lucide-react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 
 type AuditEntry = {
   id: string;
@@ -220,6 +223,8 @@ function csvEscape(value: string): string {
 export default function AuditLogPage() {
   const { pick } = useI18n();
   const { data: session, status } = useSession();
+  const router = useRouter();
+  const { can } = usePermissions();
   const [userSearch, setUserSearch] = useState("");
   const [entitySearch, setEntitySearch] = useState("");
   const [entityTypeFilter, setEntityTypeFilter] = useState("all");
@@ -265,7 +270,9 @@ export default function AuditLogPage() {
   }, [queryString]);
 
   useEffect(() => {
-    if (status === "authenticated") void fetchLogs(1);
+    if (status !== "authenticated") return;
+    const timer = window.setTimeout(() => void fetchLogs(1), 0);
+    return () => window.clearTimeout(timer);
   }, [fetchLogs, status]);
 
   const actionLabel = useMemo(() => {
@@ -275,6 +282,13 @@ export default function AuditLogPage() {
 
   const entityTypeLabel = (type: string) =>
     pick(ENTITY_TYPE_LABEL_KO[type] ?? type, ENTITY_TYPE_LABEL_EN[type] ?? type);
+  const canOpenUserManagement =
+    isAdminLikeRole(session?.user?.role) || can("user-permissions", "read");
+
+  function openUserDetail(userId: string | null) {
+    if (!userId || !canOpenUserManagement) return;
+    router.push(`/settings/users?userId=${encodeURIComponent(userId)}`);
+  }
 
   async function exportCsv() {
     if (exporting) return;
@@ -473,12 +487,26 @@ export default function AuditLogPage() {
                         <tr key={entry.id} className="border-t border-[#f0ede7]">
                           <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-muted-foreground">{formatTimestamp(entry.createdAt)}</td>
                           <td className="px-4 py-2">
-                            <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={!entry.userId || !canOpenUserManagement}
+                              onClick={() => openUserDetail(entry.userId)}
+                              className={`flex items-center gap-2 text-left ${
+                                entry.userId && canOpenUserManagement
+                                  ? "rounded-md hover:text-[#1a5cdb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a5cdb]"
+                                  : "cursor-default"
+                              }`}
+                              title={
+                                entry.userId && canOpenUserManagement
+                                  ? pick("사용자 관리에서 보기", "View in user management")
+                                  : undefined
+                              }
+                            >
                               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">
                                 {getInitials(entry.userName, entry.userEmail)}
                               </span>
                               <span className="font-medium">{entry.userName || entry.userEmail || "System"}</span>
-                            </div>
+                            </button>
                           </td>
                           <td className="px-4 py-2">
                             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ENTITY_TYPE_CLASS[entry.entityType] ?? "bg-stone-100 text-stone-600"}`}>

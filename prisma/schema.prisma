@@ -485,16 +485,33 @@ model User {
   emailVerified DateTime?
   image         String?
   role          String    @default("user") // user, admin
+  isActive      Boolean   @default(true)
   passwordHash  String?
   menuVisibility Json?
+  lastLoginAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accounts Account[]
-  sessions Session[]
+  accounts   Account[]
+  sessions   Session[]
+  loginLogs  UserLoginLog[]
 
   @@map("fc_user")
+  @@schema("shipcore")
+}
+
+model UserLoginLog {
+  id         String   @id @default(cuid())
+  userId     String
+  loggedInAt DateTime @default(now())
+  ip         String?
+  userAgent  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, loggedInAt(sort: Desc)])
+  @@map("fc_user_login_log")
   @@schema("shipcore")
 }
 
