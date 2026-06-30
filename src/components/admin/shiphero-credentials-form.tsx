@@ -21,8 +21,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Pencil, Trash2 } from "lucide-react";
+import { KeyRound, Loader2, Pencil, Trash2 } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 type TokenStatus = "valid" | "expiring_soon" | "expired" | "none";
 
@@ -38,25 +39,34 @@ interface UserCredentialRow {
   updatedAt: string | null;
 }
 
-const STATUS_BADGE: Record<TokenStatus, { label: string; className: string }> = {
-  valid:         { label: "Valid",          className: "bg-green-50 text-green-700 border-green-200" },
-  expiring_soon: { label: "Expiring Soon",  className: "bg-yellow-50 text-yellow-700 border-yellow-200" },
-  expired:       { label: "Expired",        className: "bg-red-50 text-red-700 border-red-200" },
-  none:          { label: "—",              className: "bg-gray-50 text-gray-400 border-gray-200" },
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  admin:      "bg-[#1a1917] text-[#fafaf7]",
+  dev:        "bg-[#1a1917] text-[#fafaf7]",
+  planner:    "bg-[#dbeafe] text-[#1d4ed8]",
+  operation:  "bg-[#d1fae5] text-[#065f46]",
+  production: "bg-[#fef3c7] text-[#92400e]",
+  user:       "bg-[#f3f4f6] text-[#374151]",
+  guest:      "bg-[#f3f4f6] text-[#374151]",
 };
 
 export function ShipHeroCredentialsForm() {
+  const { pick } = useI18n();
   const [rows, setRows] = useState<UserCredentialRow[] | null>(null);
   const [editTarget, setEditTarget] = useState<UserCredentialRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-
   const [shEmail, setShEmail] = useState("");
   const [shPassword, setShPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
   const [deleteTarget, setDeleteTarget] = useState<UserCredentialRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const tokenStatusConfig: Record<TokenStatus, { label: string; className: string }> = {
+    valid:         { label: pick("유효", "Valid"),       className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400" },
+    expiring_soon: { label: pick("만료 임박", "Expiring"), className: "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400" },
+    expired:       { label: pick("만료됨", "Expired"),   className: "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400" },
+    none:          { label: "—",                         className: "border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800" },
+  };
 
   const loadData = useCallback(() => {
     fetch(apiPath("/api/admin/shiphero-credentials"))
@@ -88,11 +98,11 @@ export function ShipHeroCredentialsForm() {
         body: JSON.stringify({ userId: editTarget.userId, email: shEmail, password: shPassword }),
       });
       const json = await res.json() as { success: boolean; error?: string };
-      if (!json.success) throw new Error(json.error ?? "Save failed");
+      if (!json.success) throw new Error(json.error ?? pick("저장에 실패했습니다.", "Save failed"));
       setDialogOpen(false);
       loadData();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : "Save failed");
+      setSaveError(err instanceof Error ? err.message : pick("저장에 실패했습니다.", "Save failed"));
     } finally {
       setSaving(false);
     }
@@ -107,7 +117,7 @@ export function ShipHeroCredentialsForm() {
         body: JSON.stringify({ userId: row.userId }),
       });
       const json = await res.json() as { success: boolean; error?: string };
-      if (!json.success) throw new Error(json.error ?? "Delete failed");
+      if (!json.success) throw new Error(json.error ?? pick("삭제에 실패했습니다.", "Delete failed"));
       setDeleteTarget(null);
       loadData();
     } catch {
@@ -117,157 +127,195 @@ export function ShipHeroCredentialsForm() {
     }
   }
 
-  if (rows === null) {
-    return <div style={{ padding: 32, color: "#7A766F", fontSize: 14 }}>Loading…</div>;
-  }
-
   return (
-    <div style={{ padding: "24px 32px" }}>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: "#1A1917", margin: 0 }}>
-          ShipHero Credentials
-        </h1>
-        <p style={{ fontSize: 13, color: "#7A766F", marginTop: 4 }}>
-          Manage ShipHero login credentials per user. Stored credentials are used to authenticate ShipHero API calls (order creation).
-        </p>
-      </div>
+    <section className="relative left-1/2 flex min-h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>User</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>ShipHero Email</TableHead>
-            <TableHead>Password</TableHead>
-            <TableHead>Token</TableHead>
-            <TableHead>Last Updated</TableHead>
-            <TableHead className="w-20" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => {
-            const badge = STATUS_BADGE[row.tokenStatus];
-            return (
-              <TableRow key={row.userId}>
-                <TableCell>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{row.name ?? row.userEmail}</div>
-                  {row.name && (
-                    <div style={{ fontSize: 11, color: "#9A9790" }}>{row.userEmail}</div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <span style={{ fontSize: 12, color: "#7A766F" }}>{row.role}</span>
-                </TableCell>
-                <TableCell>
-                  <span style={{ fontSize: 13 }}>{row.shipHeroEmail ?? <span style={{ color: "#C0BAB4" }}>—</span>}</span>
-                </TableCell>
-                <TableCell>
-                  <span style={{ fontSize: 12, color: row.passwordSet ? "#3D9A5A" : "#C0BAB4" }}>
-                    {row.passwordSet ? "Set" : "—"}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={badge.className} style={{ fontSize: 11 }}>
-                    {badge.label}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <span style={{ fontSize: 11, color: "#9A9790" }}>
-                    {row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : "—"}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      style={{ height: 28, width: 28 }}
-                      onClick={() => openEdit(row)}
-                      title="Edit"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    {row.shipHeroEmail && (
-                      deleteTarget?.userId === row.userId ? (
-                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            style={{ height: 26, fontSize: 11, padding: "0 8px" }}
-                            onClick={() => void handleDelete(row)}
-                            disabled={deleting}
-                          >
-                            {deleting ? "…" : "Confirm"}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            style={{ height: 26, fontSize: 11, padding: "0 6px" }}
-                            onClick={() => setDeleteTarget(null)}
-                            disabled={deleting}
-                          >
-                            Cancel
-                          </Button>
+      {/* Page header */}
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-start gap-2">
+          <KeyRound className="mt-1 h-5 w-5" />
+          <div>
+            <h1 className="text-lg font-semibold">ShipHero {pick("자격 증명", "Credentials")}</h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {pick(
+                "사용자별 ShipHero 로그인 자격 증명을 관리합니다. 저장된 자격 증명은 ShipHero API 호출(주문 생성)에 사용됩니다.",
+                "Manage ShipHero login credentials per user. Used to authenticate ShipHero API calls (order creation)."
+              )}
+            </p>
+          </div>
+        </div>
+        {rows !== null && (
+          <Badge variant="secondary">{rows.length.toLocaleString()} {pick("명", "users")}</Badge>
+        )}
+      </header>
+
+      {/* Content */}
+      <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-slate-950">
+        {rows === null ? (
+          <div className="flex min-h-[300px] items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="flex min-h-[200px] items-center justify-center text-sm text-muted-foreground">
+            {pick("사용자 데이터가 없습니다.", "No users found.")}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-[#f8f7f4] dark:bg-slate-900">
+              <TableRow>
+                <TableHead>{pick("사용자", "User")}</TableHead>
+                <TableHead>{pick("역할", "Role")}</TableHead>
+                <TableHead>ShipHero {pick("이메일", "Email")}</TableHead>
+                <TableHead>{pick("비밀번호", "Password")}</TableHead>
+                <TableHead>{pick("토큰", "Token")}</TableHead>
+                <TableHead>{pick("최종 수정", "Last Updated")}</TableHead>
+                <TableHead className="w-24" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => {
+                const tokenCfg = tokenStatusConfig[row.tokenStatus];
+                return (
+                  <TableRow key={row.userId}>
+                    {/* User: avatar + name + email */}
+                    <TableCell>
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e8e5df] text-[11px] font-bold text-[#6b6359] dark:bg-slate-700 dark:text-slate-300">
+                          {(row.name ?? row.userEmail).slice(0, 2).toUpperCase()}
                         </div>
-                      ) : (
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-medium leading-tight">{row.name ?? row.userEmail}</div>
+                          {row.name && (
+                            <div className="text-[11px] text-muted-foreground">{row.userEmail}</div>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    {/* Role badge */}
+                    <TableCell>
+                      <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] ${ROLE_BADGE_CLASS[row.role] ?? ROLE_BADGE_CLASS.user}`}>
+                        {row.role}
+                      </span>
+                    </TableCell>
+                    {/* ShipHero email */}
+                    <TableCell className="text-[13px]">
+                      {row.shipHeroEmail ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    {/* Password status */}
+                    <TableCell>
+                      <span className={`text-xs font-medium ${row.passwordSet ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                        {row.passwordSet ? pick("설정됨", "Set") : "—"}
+                      </span>
+                    </TableCell>
+                    {/* Token status */}
+                    <TableCell>
+                      <Badge variant="outline" className={`text-[11px] ${tokenCfg.className}`}>
+                        {tokenCfg.label}
+                      </Badge>
+                    </TableCell>
+                    {/* Last updated */}
+                    <TableCell className="tabular-nums text-xs text-muted-foreground">
+                      {row.updatedAt
+                        ? new Date(row.updatedAt).toLocaleDateString(pick("ko-KR", "en-US"))
+                        : "—"}
+                    </TableCell>
+                    {/* Actions */}
+                    <TableCell>
+                      <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          style={{ height: 28, width: 28, color: "#c0392b" }}
-                          onClick={() => setDeleteTarget(row)}
-                          title="Delete"
+                          className="h-7 w-7"
+                          onClick={() => openEdit(row)}
+                          title={pick("수정", "Edit")}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                      )
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                        {row.shipHeroEmail && (
+                          deleteTarget?.userId === row.userId ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => void handleDelete(row)}
+                                disabled={deleting}
+                              >
+                                {deleting
+                                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                                  : pick("확인", "Confirm")}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-[11px]"
+                                onClick={() => setDeleteTarget(null)}
+                                disabled={deleting}
+                              >
+                                {pick("취소", "Cancel")}
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => setDeleteTarget(row)}
+                              title={pick("삭제", "Delete")}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
-      {/* Edit Dialog */}
+      {/* Edit / Set Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent style={{ maxWidth: 420 }}>
+        <DialogContent className="max-w-[420px]">
           <DialogHeader>
-            <DialogTitle style={{ fontSize: 15 }}>
-              {editTarget?.shipHeroEmail ? "Edit" : "Set"} ShipHero Credentials
+            <DialogTitle>
+              {editTarget?.shipHeroEmail
+                ? pick("ShipHero 자격 증명 수정", "Edit ShipHero Credentials")
+                : pick("ShipHero 자격 증명 등록", "Set ShipHero Credentials")}
             </DialogTitle>
             {editTarget && (
-              <p style={{ fontSize: 12, color: "#7A766F", marginTop: 2 }}>
+              <p className="text-sm text-muted-foreground">
                 {editTarget.name ?? editTarget.userEmail}
               </p>
             )}
           </DialogHeader>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "8px 0" }}>
-            <div>
-              <Label htmlFor="sh-email" style={{ fontSize: 12, color: "#7A766F" }}>ShipHero Email</Label>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="sh-email">ShipHero {pick("이메일", "Email")}</Label>
               <Input
                 id="sh-email"
                 type="email"
                 value={shEmail}
                 onChange={(e) => setShEmail(e.target.value)}
                 placeholder="shiphero@example.com"
-                style={{ marginTop: 4, fontSize: 13 }}
               />
             </div>
-            <div>
-              <Label htmlFor="sh-password" style={{ fontSize: 12, color: "#7A766F" }}>Password</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="sh-password">{pick("비밀번호", "Password")}</Label>
               <Input
                 id="sh-password"
                 type="password"
                 value={shPassword}
                 onChange={(e) => setShPassword(e.target.value)}
-                placeholder={editTarget?.passwordSet ? "••••••••" : "Enter password"}
-                style={{ marginTop: 4, fontSize: 13 }}
+                placeholder={editTarget?.passwordSet ? "••••••••" : pick("비밀번호 입력", "Enter password")}
               />
               {editTarget?.passwordSet && (
-                <p style={{ fontSize: 11, color: "#9A9790", marginTop: 4 }}>
-                  Leave blank to keep existing password.
+                <p className="text-[11px] text-muted-foreground">
+                  {pick("비워두면 기존 비밀번호를 유지합니다.", "Leave blank to keep existing password.")}
                 </p>
               )}
             </div>
@@ -275,20 +323,25 @@ export function ShipHeroCredentialsForm() {
 
           {saveError && (
             <Alert variant="destructive">
-              <AlertDescription style={{ fontSize: 13 }}>{saveError}</AlertDescription>
+              <AlertDescription>{saveError}</AlertDescription>
             </Alert>
           )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
-              Cancel
+              {pick("취소", "Cancel")}
             </Button>
             <Button onClick={() => void handleSave()} disabled={saving || !shEmail.trim()}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {pick("저장 중…", "Saving…")}
+                </>
+              ) : pick("저장", "Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const FORECAST_API = "http://localhost:8000";
+const FORECAST_API = (process.env.AI_SERVICE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
 export async function GET(
   request: Request,

@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { apiPath } from "@/lib/api-path";
 
 // ── Smooth row ──────────────────────────────────────────────────────────────
 interface SmoothRow {
@@ -775,7 +776,7 @@ export function SegmentDetailTable({ segment, initialTypes }: { segment: string;
     setCyclesLoading(true);
     setEvalDate("");
     setCycles([]);
-    const url = testMode ? "/api/forecast/backtest-cycles?test=true" : "/api/forecast/backtest-cycles";
+    const url = apiPath(testMode ? "/api/forecast/backtest-cycles?test=true" : "/api/forecast/backtest-cycles");
     fetch(url)
       .then((r) => r.json())
       .then((json: unknown) => {
@@ -799,7 +800,7 @@ export function SegmentDetailTable({ segment, initialTypes }: { segment: string;
     const params = new URLSearchParams({ weeks: String(weeks), product_type: productType, mode });
     if (mode === "backtest" && evalDate) params.set("eval_date", evalDate);
     if (testModeRef.current) params.set("test", "true");
-    fetch(`/api/forecast/segment/${encodeURIComponent(segment)}?${params}`)
+    fetch(apiPath(`/api/forecast/segment/${encodeURIComponent(segment)}?${params}`))
       .then((r) => r.json())
       .then((json) => {
         if (json.error) throw new Error(json.error as string);

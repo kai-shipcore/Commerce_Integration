@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2, Play, Square } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { apiPath } from "@/lib/api-path";
 
 const HORIZON_OPTIONS = [4, 8, 10, 13, 26, 52];
 
@@ -109,7 +110,7 @@ export function RunForecast({ initialLastRun }: { initialLastRun: LastRun | null
   useEffect(() => {
     const saved = sessionStorage.getItem(SESSION_KEY);
     if (!saved) return;
-    fetch(`/api/forecast/status/${saved}`)
+    fetch(apiPath(`/api/forecast/status/${saved}`))
       .then((r) => r.ok ? r.json() : null)
       .then((data: JobStatus | null) => {
         if (data && data.status === "running") {
@@ -127,14 +128,14 @@ export function RunForecast({ initialLastRun }: { initialLastRun: LastRun | null
     if (!jobId || job?.status !== "running") return;
     const id = setInterval(async () => {
       try {
-        const res = await fetch(`/api/forecast/status/${jobId}`);
+        const res = await fetch(apiPath(`/api/forecast/status/${jobId}`));
         const data = (await res.json()) as JobStatus;
         setJob(data);
         if (data.status !== "running") {
           clearInterval(id);
           sessionStorage.removeItem(SESSION_KEY);
           if (data.status === "done") {
-            fetch("/api/forecast/last-run")
+            fetch(apiPath("/api/forecast/last-run"))
               .then((r) => r.json())
               .then((d: LastRun) => setLastRun(d))
               .catch(() => {});
@@ -158,7 +159,7 @@ export function RunForecast({ initialLastRun }: { initialLastRun: LastRun | null
     setJob({ status: "running", lines: [], exit_code: null });
     setJobId(null);
     try {
-      const res = await fetch(`/api/forecast/run?horizon=${horizon}`, { method: "POST" });
+      const res = await fetch(apiPath(`/api/forecast/run?horizon=${horizon}`), { method: "POST" });
       const data = (await res.json()) as { job_id?: string; error?: string };
       if (!res.ok || data.error) {
         setJob({ status: "failed", lines: [data.error ?? "Failed to start job"], exit_code: -1 });
@@ -176,7 +177,7 @@ export function RunForecast({ initialLastRun }: { initialLastRun: LastRun | null
   async function handleCancel() {
     if (!jobId) return;
     try {
-      await fetch(`/api/forecast/cancel/${jobId}`, { method: "POST" });
+      await fetch(apiPath(`/api/forecast/cancel/${jobId}`), { method: "POST" });
     } catch {
       // ignore — status polling will catch the cancelled state
     }

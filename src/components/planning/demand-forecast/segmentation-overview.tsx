@@ -8,6 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { DemandConcentration, type ParetoData } from "./demand-concentration";
+import { apiPath } from "@/lib/api-path";
 
 const fmt = new Intl.NumberFormat("en-US");
 
@@ -300,7 +301,7 @@ export function SegmentationOverview() {
     async function waitForServer() {
       for (let attempt = 0; attempt < 20; attempt++) {
         try {
-          const res = await fetch("/api/forecast-server/start", { method: "POST" });
+          const res = await fetch(apiPath("/api/forecast-server/start"), { method: "POST" });
           if (res.ok) { if (!cancelled) setServerReady(true); return; }
           const json = await res.json().catch(() => ({})) as { error?: string };
           if (!cancelled) setError(json.error ?? `Forecast server error ${res.status}`);
@@ -332,7 +333,7 @@ export function SegmentationOverview() {
     const allSelected = selectedTypes.length === PRODUCT_TYPES.length;
     const productType = allSelected ? "All" : selectedTypes.join(",");
     const params = new URLSearchParams({ weeks: String(weeks), product_type: productType });
-    fetch(`/api/forecast/segmentation?${params}`)
+    fetch(apiPath(`/api/forecast/segmentation?${params}`))
       .then((r) => r.json())
       .then((json) => {
         if (json.error) throw new Error(json.error);

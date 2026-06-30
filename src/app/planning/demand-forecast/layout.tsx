@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { apiPath } from "@/lib/api-path";
 
 export default function DemandForecastLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    fetch("/api/forecast-server/start", { method: "POST" }).catch(() => {});
+    fetch(apiPath("/api/forecast-server/start"), { method: "POST" }).catch(() => {});
 
     const handleBeforeUnload = () => {
-      navigator.sendBeacon("/api/forecast-server/stop");
+      navigator.sendBeacon(apiPath("/api/forecast-server/stop"));
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
 
