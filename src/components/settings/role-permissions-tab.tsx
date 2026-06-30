@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Loader2, Save, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -19,6 +19,9 @@ import {
   type PermSection,
   type PermAction,
 } from "@/lib/permissions-config";
+
+// Status is merged into Edit in the UI — hide the column, sync status = edit on toggle
+const DISPLAY_ACTIONS = PERM_ACTIONS.filter((a) => a.id !== "status");
 
 // Group sections by their group field, preserving order
 const GROUPED_SECTIONS = (() => {
@@ -122,7 +125,6 @@ export function RolePermissionsTab() {
 
   function handleGroupToggle(group: string, action: PermAction, value: boolean) {
     const allGroupSections = GROUPED_SECTIONS.find((g) => g.group === group)?.sections ?? [];
-    // Only toggle sections that actually support this action
     const groupSections = allGroupSections.filter((sec) =>
       PERM_SECTION_ACTIONS[sec.id as PermSection].includes(action)
     );
@@ -137,6 +139,7 @@ export function RolePermissionsTab() {
           next.status = false;
           next.delete = false;
         }
+        if (action === "edit") next.status = value;
         updated[id] = next;
       }
       return { ...prev, [currentRole]: updated };
@@ -146,13 +149,13 @@ export function RolePermissionsTab() {
   function handleToggle(section: PermSection, action: PermAction, value: boolean) {
     setPendingPerms((prev) => {
       const updated = { ...prev[currentRole][section], [action]: value };
-      // Turning off read disables all other actions
       if (action === "read" && !value) {
         updated.create = false;
         updated.edit = false;
         updated.status = false;
         updated.delete = false;
       }
+      if (action === "edit") updated.status = value;
       return {
         ...prev,
         [currentRole]: { ...prev[currentRole], [section]: updated },
@@ -285,7 +288,7 @@ export function RolePermissionsTab() {
                 <th className="w-[220px] px-5 py-2.5 text-left text-[9px] font-bold uppercase tracking-[0.08em] text-[#9b9189]">
                   {pick("섹션", "Section")}
                 </th>
-                {PERM_ACTIONS.map((act) => (
+                {DISPLAY_ACTIONS.map((act) => (
                   <th
                     key={act.id}
                     className="px-4 py-2.5 text-center text-[9px] font-bold uppercase tracking-[0.08em] text-[#9b9189] whitespace-nowrap"
@@ -297,12 +300,12 @@ export function RolePermissionsTab() {
             </thead>
             <tbody>
               {GROUPED_SECTIONS.map(({ group, sections }) => (
-                <>
-                  <tr key={`group-${group}`} className="border-b border-[#e2dfd8] bg-[#f0ede8]">
+                <Fragment key={`group-${group}`}>
+                  <tr className="border-b border-[#e2dfd8] bg-[#f0ede8]">
                     <td className="px-5 py-2 text-[9px] font-bold uppercase tracking-[0.08em] text-[#6b6359]">
                       {pick(PERM_SECTION_GROUP_LABELS[group].ko, PERM_SECTION_GROUP_LABELS[group].en)}
                     </td>
-                    {PERM_ACTIONS.map((act) => {
+                    {DISPLAY_ACTIONS.map((act) => {
                       const supported = sections.filter((sec) =>
                         PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id)
                       );
@@ -339,7 +342,7 @@ export function RolePermissionsTab() {
                           {pick(sec.nameKo, sec.nameEn)}
                         </div>
                       </td>
-                      {PERM_ACTIONS.map((act) => {
+                      {DISPLAY_ACTIONS.map((act) => {
                         const supported = PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id);
                         return (
                           <td key={act.id} className="px-4 py-3 text-center">
@@ -361,7 +364,7 @@ export function RolePermissionsTab() {
                       })}
                     </tr>
                   ))}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

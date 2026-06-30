@@ -166,7 +166,7 @@ export const PERM_SECTION_ACTIONS: Record<PermSection, readonly PermAction[]> = 
   "orders":              ["read"],
   "velocity":            ["read"],
   "demand-planning":     ["read", "edit"],
-  "container-planning":  ["read", "create", "edit", "status", "delete"],
+  "container-planning":  ["read", "create", "edit", "delete"],
   "available-stock":     ["read", "create", "edit", "delete"],
   "sku-master":          ["read", "create", "edit", "delete"],
   "sku-forecasts":       ["read"],
