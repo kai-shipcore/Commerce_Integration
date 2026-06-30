@@ -430,7 +430,7 @@ export async function createShipHeroOrder(data: CreateOrderInput, userToken?: st
     const json = await res.json();
 
     if (json?.errors?.length) {
-      console.error("[createShipHeroOrder] GraphQL error:", json.errors[0]?.message);
+      console.error("[createShipHeroOrder] GraphQL error:", JSON.stringify(json.errors));
       return null;
     }
 

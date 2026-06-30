@@ -370,9 +370,9 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       setCreateOrderError(pick("Shiphero Order 번호가 필요합니다.", "Shiphero Order number is required."));
       return;
     }
-    const qtyNum = parseInt(formData.orderRequest, 10);
-    if (!qtyNum || qtyNum < 1) {
-      setCreateOrderError(pick("Order Request 수량은 1 이상의 정수여야 합니다.", "Order Request quantity must be a positive integer."));
+    const qtyNum = Number(formData.qty) || 0;
+    if (qtyNum <= 0) {
+      setCreateOrderError(pick("QTY는 1 이상이어야 합니다.", "QTY must be greater than 0."));
       return;
     }
 

@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     notifySlack(`[Parts] ${userName} added a new row — Order #${orderNumber}`);
 
     if (body.createShipHeroOrder && partSku && shipheroOrder) {
-      const qtyNum = parseInt(body.orderRequest ?? "0", 10);
+      const qtyNum = Number(qty) || 0;
       if (qtyNum >= 1) {
         try {
           const userToken = session?.user?.id ? await getUserShipHeroToken(session.user.id) : null;
