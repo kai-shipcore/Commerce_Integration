@@ -260,7 +260,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "sku-forecasts":       ["sku-forecasts"],
   "container-timeline":  ["container-timeline"],
   "parts":               ["seat-cover-parts"],
-  "seat-cover-sizes":    ["seat-cover-sizes"],
+  "seat-cover-parts":    ["seat-cover-sizes"],
   "production-vehicles": ["production-vehicles"],
   "factory":             ["factories"],
   "warehouse":           ["warehouse-admin"],
@@ -289,6 +289,7 @@ export function getDefaultVisibleMenuIds(role?: string | null): string[] {
   if (isAdminLikeRole(role)) return adminDefaultVisibleMenuIds;
   if (role === "production") return [];
   if (role === "operation") return [];
+  if (role === "guest") return [];
   return userDefaultVisibleMenuIds;
 }
 

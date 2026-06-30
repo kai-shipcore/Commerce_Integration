@@ -6,5 +6,7 @@ export default async function Page() {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
 
-  return <SeatCoverPartsGrid />;
+  const role = (session.user as { role?: string }).role ?? "user";
+
+  return <SeatCoverPartsGrid role={role} />;
 }

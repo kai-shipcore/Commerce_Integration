@@ -33,7 +33,7 @@ export default async function HomePage() {
   const role = (session.user as { role?: string }).role ?? "user";
   const name = (session.user as { name?: string }).name ?? session.user.email ?? "";
 
-  if (role === "user") {
+  if (role === "user" || role === "guest") {
     return (
       <AppLayout>
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">

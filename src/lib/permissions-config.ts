@@ -12,7 +12,7 @@ export const PERM_SECTIONS = [
   { id: "container-timeline",  group: "Planning",    nameKo: "컨테이너 타임라인",    nameEn: "Container Timeline" },
   { id: "parts",               group: "Planning",    nameKo: "부품",              nameEn: "Parts" },
   // Production
-  { id: "seat-cover-sizes",    group: "Production",  nameKo: "시트커버 부품",       nameEn: "Seat Cover Parts" },
+  { id: "seat-cover-parts",    group: "Production",  nameKo: "시트커버 부품",       nameEn: "Seat Cover Parts" },
   { id: "production-vehicles", group: "Production",  nameKo: "차종 관리",          nameEn: "Vehicles" },
   // Master Data
   { id: "factory",             group: "Master Data", nameKo: "공장",              nameEn: "Factory" },
@@ -43,9 +43,9 @@ export const PERM_ACTIONS = [
 export type PermSection = (typeof PERM_SECTIONS)[number]["id"];
 export type PermAction  = (typeof PERM_ACTIONS)[number]["id"];
 export type RolePermMatrix = Record<PermSection, Record<PermAction, boolean>>;
-export type ManagedRole = "admin" | "dev" | "planner" | "operation" | "production" | "user";
+export type ManagedRole = "admin" | "dev" | "planner" | "operation" | "production" | "user" | "guest";
 
-export const MANAGED_ROLES: ManagedRole[] = ["admin", "planner", "operation", "production", "user"];
+export const MANAGED_ROLES: ManagedRole[] = ["admin", "planner", "operation", "production", "user", "guest"];
 export const ROLE_LABEL: Record<ManagedRole, string> = {
   admin:      "Admin",
   dev:        "Dev",
@@ -53,6 +53,7 @@ export const ROLE_LABEL: Record<ManagedRole, string> = {
   operation:  "Operation",
   production: "Production",
   user:       "User",
+  guest:      "Guest",
 };
 
 const ALL_ON:    Record<PermAction, boolean> = { read: true,  create: true,  edit: true,  status: true,  delete: true  };
@@ -89,7 +90,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "sku-forecasts":       ALL_ON,
     "container-timeline":  ALL_ON,
     "parts":               ALL_ON,
-    "seat-cover-sizes":    ALL_ON,
+    "seat-cover-parts":    ALL_ON,
     "production-vehicles": ALL_ON,
     "factory":             ALL_ON,
     "warehouse":           ALL_ON,
@@ -109,7 +110,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "sku-forecasts":       ALL_ON,
     "container-timeline":  ALL_ON,
     "parts":               ALL_ON,
-    "seat-cover-sizes":    ALL_ON,
+    "seat-cover-parts":    ALL_ON,
     "production-vehicles": ALL_ON,
     "factory":             ALL_ON,
     "warehouse":           ALL_ON,
@@ -129,7 +130,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "sku-forecasts":       READ_ONLY,
     "container-timeline":  READ_ONLY,
     "parts":               READ_ONLY,
-    "seat-cover-sizes":    NONE,
+    "seat-cover-parts":    NONE,
     "production-vehicles": NONE,
     "factory":             READ_ONLY,
     "warehouse":           READ_ONLY,
@@ -142,7 +143,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "parts": READ_ONLY,
   }),
   production: makeMatrix({
-    "seat-cover-sizes":    READ_ONLY,
+    "seat-cover-parts":    READ_ONLY,
     "production-vehicles": READ_ONLY,
   }),
   user: makeMatrix({
@@ -156,6 +157,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "sku-forecasts":      READ_ONLY,
     "container-timeline": READ_ONLY,
   }),
+  guest: makeMatrix({}),
 };
 
 // Which actions are actually available per section (drives UI toggle visibility)
@@ -170,7 +172,7 @@ export const PERM_SECTION_ACTIONS: Record<PermSection, readonly PermAction[]> = 
   "sku-forecasts":       ["read"],
   "container-timeline":  ["read"],
   "parts":               ["read", "create", "edit", "delete"],
-  "seat-cover-sizes":    ["read", "create", "edit"],
+  "seat-cover-parts":    ["read", "create", "edit"],
   "production-vehicles": ["read", "create", "edit"],
   "factory":             ["read", "create", "edit"],
   "warehouse":           ["read", "create", "edit", "delete"],

@@ -159,7 +159,7 @@ export default function UserAccessPage() {
 
   const updateUserRole = async (
     userId: string,
-    nextRole: "user" | "admin" | "dev" | "planner" | "operation" | "production"
+    nextRole: "user" | "admin" | "dev" | "planner" | "operation" | "production" | "guest"
   ) => {
     setSavingUserId(userId);
     setError(null);
@@ -315,6 +315,7 @@ export default function UserAccessPage() {
                     <option value="planner">planner</option>
                     <option value="operation">operation</option>
                     <option value="production">production</option>
+                    <option value="guest">guest</option>
                   </select>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e2dfd8] pt-4 text-sm text-muted-foreground dark:border-slate-700">
@@ -435,7 +436,7 @@ export default function UserAccessPage() {
                           <Select
                             value={selectedUser.role}
                             disabled={savingUserId === selectedUser.id || session?.user?.id === selectedUser.id}
-                            onValueChange={(value: "user" | "admin" | "dev" | "planner" | "operation" | "production") => {
+                            onValueChange={(value: "user" | "admin" | "dev" | "planner" | "operation" | "production" | "guest") => {
                               void updateUserRole(selectedUser.id, value);
                             }}
                           >
@@ -449,6 +450,7 @@ export default function UserAccessPage() {
                               <SelectItem value="planner">planner</SelectItem>
                               <SelectItem value="operation">operation</SelectItem>
                               <SelectItem value="production">production</SelectItem>
+                              <SelectItem value="guest">guest</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

@@ -61,21 +61,25 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "third", label: "Third" },
 ];
 
-function buildColDefs(tab: Tab): ColDef[] {
+const GUEST_HIDDEN_FIELDS = new Set(["inventory", "confirmed", "ymm", "fitting_dp_detail", "added_date"]);
+
+function buildColDefs(tab: Tab, isGuest: boolean): ColDef[] {
+  const hide = (field: string) => isGuest && GUEST_HIDDEN_FIELDS.has(field);
+
   const base: ColDef[] = [
     { headerName: "Size",          field: "size",             pinned: "left", minWidth: 160, flex: 2 },
-    { headerName: "Inventory",     field: "inventory",        minWidth: 100, flex: 1 },
-    { headerName: "Confirmed",     field: "confirmed",        minWidth: 100, flex: 1 },
+    { headerName: "Inventory",     field: "inventory",        minWidth: 100, flex: 1, hide: hide("inventory") },
+    { headerName: "Confirmed",     field: "confirmed",        minWidth: 100, flex: 1, hide: hide("confirmed") },
     { headerName: "Blueprint",     field: "blueprint",        minWidth: 100, flex: 1 },
     { headerName: "Manual",        field: "manual",           minWidth: 100, flex: 1 },
-    { headerName: "YMM",           field: "ymm",              minWidth: 160, flex: 2 },
+    { headerName: "YMM",           field: "ymm",              minWidth: 160, flex: 2, hide: hide("ymm") },
   ];
 
   if (tab === "front" || tab === "rear") {
-    base.push({ headerName: "Fitting D/P Detail", field: "fitting_dp_detail", minWidth: 130, flex: 2 });
+    base.push({ headerName: "Fitting D/P Detail", field: "fitting_dp_detail", minWidth: 130, flex: 2, hide: hide("fitting_dp_detail") });
   }
   if (tab === "rear") {
-    base.push({ headerName: "Added Date", field: "added_date", minWidth: 110, flex: 1 });
+    base.push({ headerName: "Added Date", field: "added_date", minWidth: 110, flex: 1, hide: hide("added_date") });
   }
 
   base.push({ headerName: "Package", field: "package", minWidth: 100, flex: 1 });
@@ -146,7 +150,8 @@ function buildColDefs(tab: Tab): ColDef[] {
   return base;
 }
 
-export function SeatCoverPartsGrid() {
+export function SeatCoverPartsGrid({ role }: { role?: string }) {
+  const isGuest = role === "guest";
   const [activeTab, setActiveTab] = useState<Tab>("front");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +173,7 @@ export function SeatCoverPartsGrid() {
     loadRows(activeTab);
   }, [activeTab, loadRows]);
 
-  const colDefs = useMemo(() => buildColDefs(activeTab), [activeTab]);
+  const colDefs = useMemo(() => buildColDefs(activeTab, isGuest), [activeTab, isGuest]);
 
   const defaultColDef = useMemo<ColDef>(
     () => ({

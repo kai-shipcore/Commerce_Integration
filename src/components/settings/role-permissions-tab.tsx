@@ -71,6 +71,7 @@ const ROLE_BADGE: Record<ManagedRole, string> = {
   operation:  "bg-[#d1fae5] text-[#065f46]",
   production: "bg-[#fef3c7] text-[#92400e]",
   user:       "bg-[#f3f4f6] text-[#374151]",
+  guest:      "bg-[#f3f4f6] text-[#9ca3af]",
 };
 
 export function RolePermissionsTab() {

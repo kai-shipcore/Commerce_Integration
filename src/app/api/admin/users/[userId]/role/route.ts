@@ -9,7 +9,7 @@ import { z } from "zod";
 import { logAudit, getIp } from "@/lib/audit";
 
 const UpdateUserRoleSchema = z.object({
-  role: z.enum(["user", "admin", "dev", "planner", "operation", "production"]),
+  role: z.enum(["user", "admin", "dev", "planner", "operation", "production", "guest"]),
 });
 
 export async function PATCH(
