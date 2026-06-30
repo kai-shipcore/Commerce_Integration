@@ -9,18 +9,6 @@ export interface ParetoData {
   annotation: { sku_pct: number; demand_pct: number } | null;
 }
 
-export interface SegmentThreshold {
-  segment: string;
-  name: string;
-  start_pct: number;
-  end_pct: number;
-}
-
-const SEG_COLORS: Record<string, { fill: string; line: string; text: string }> = {
-  smooth_full:  { fill: "rgba(59,130,246,0.07)",  line: "#3b82f6", text: "#2563eb" },
-  smooth_short: { fill: "rgba(16,185,129,0.07)",  line: "#10b981", text: "#059669" },
-  intermittent: { fill: "rgba(239,68,68,0.07)",   line: "#ef4444", text: "#dc2626" },
-};
 
 const HEIGHT_RATIO = 0.44;
 const PL = 62, PR = 28, PT = 24, PB = 52;
@@ -29,10 +17,8 @@ const LABEL_W = 210, LABEL_H = 44;
 
 export function DemandConcentration({
   pareto,
-  thresholds,
 }: {
   pareto: ParetoData;
-  thresholds: SegmentThreshold[];
 }) {
   const { x, y, annotation: ann } = pareto;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -144,7 +130,6 @@ export function DemandConcentration({
         </p>
       </CardHeader>
       <CardContent className="pb-4 pt-1">
-        <div className="flex items-start gap-4">
         <div ref={containerRef} className="min-w-0 flex-1">
           <svg
             ref={svgRef}
@@ -155,21 +140,6 @@ export function DemandConcentration({
             onMouseLeave={handleMouseLeave}
             aria-hidden="true"
           >
-            {/* ── Segment region fills (behind everything) ── */}
-            {thresholds.map((seg) => {
-              const c = SEG_COLORS[seg.segment] ?? { fill: "rgba(0,0,0,0.04)", line: "#888", text: "#555" };
-              const rx = sx(seg.start_pct);
-              const rw = sx(seg.end_pct) - rx;
-              return (
-                <g key={seg.segment}>
-                  <rect x={rx} y={PT} width={rw} height={PH} fill={c.fill} />
-                  {/* Boundary line at start of each non-first region */}
-                  {seg.start_pct > 0 && (
-                    <line x1={rx} y1={PT} x2={rx} y2={PT + PH} stroke={c.line} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7" />
-                  )}
-                </g>
-              );
-            })}
 
             {/* Grid lines */}
             {TICKS.map((t) => (
@@ -254,21 +224,6 @@ export function DemandConcentration({
               % of demand
             </text>
           </svg>
-        </div>
-        {/* Legend */}
-        <div className="flex flex-col justify-center gap-3 py-4 pr-1">
-          {thresholds.map((seg) => {
-            const c = SEG_COLORS[seg.segment] ?? { line: "#888", text: "#555" };
-            return (
-              <div key={seg.segment} className="flex items-center gap-2">
-                <div className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: c.line }} />
-                <span className="text-xs font-medium whitespace-nowrap" style={{ color: c.text }}>
-                  {seg.name}
-                </span>
-              </div>
-            );
-          })}
-        </div>
         </div>
       </CardContent>
     </Card>

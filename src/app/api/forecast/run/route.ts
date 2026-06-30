@@ -2,16 +2,15 @@ import { NextResponse } from "next/server";
 
 const FORECAST_API = "http://localhost:8000";
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
   const { searchParams } = new URL(request.url);
-  const weeks = searchParams.get("weeks") ?? "10";
-  const productType = searchParams.get("product_type") ?? "All";
+  const horizon = searchParams.get("horizon") ?? "13";
 
   try {
-    const upstream = await fetch(
-      `${FORECAST_API}/segments?weeks=${weeks}&product_type=${encodeURIComponent(productType)}`,
-      { signal: AbortSignal.timeout(15_000) },
-    );
+    const upstream = await fetch(`${FORECAST_API}/run-forecast?horizon=${horizon}`, {
+      method: "POST",
+      signal: AbortSignal.timeout(10_000),
+    });
     const body = await upstream.text();
     if (!upstream.ok) {
       return NextResponse.json(
