@@ -45,7 +45,6 @@ export type PartOrderRow = {
   qty: number;
   orderRequest: string | null;
   partSku: string | null;
-  partSkuValue: string | null;
   note: string | null;
   orderStatus: string | null;
   shipheroOrder: string | null;
@@ -110,7 +109,6 @@ function exportToExcel(rows: PartOrderRow[], tabKey: string) {
     QTY: r.qty,
     "Order Request": r.orderRequest ?? "",
     "PART SKU": r.partSku ?? "",
-    "PART SKU(VALUE)": r.partSkuValue ?? "",
     Note: r.note ?? "",
     "Order Status": r.orderStatus ?? "",
     "Shiphero Order": r.shipheroOrder ?? "",
@@ -236,12 +234,6 @@ export function PartsGrid() {
         field: "partSku",
         flex: 2,
         minWidth: 110,
-      },
-      {
-        headerName: "PART SKU(VALUE)",
-        field: "partSkuValue",
-        flex: 2,
-        minWidth: 120,
       },
       {
         headerName: pick("메모", "Note"),

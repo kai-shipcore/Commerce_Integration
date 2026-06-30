@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notifySlack } from "@/lib/slack";
-import { getShipHeroOrder, createShipHeroOrder } from "@/lib/shiphero";
+import { getShipHeroOrder, createShipHeroOrder, getUserShipHeroToken } from "@/lib/shiphero";
 import { guardPermission } from "@/lib/permissions";
 
 export async function GET(req: Request) {
@@ -49,7 +49,6 @@ export async function POST(req: Request) {
       qty,
       orderRequest,
       partSku,
-      partSkuValue,
       note,
       orderStatus,
       shipheroOrder,
@@ -69,7 +68,7 @@ export async function POST(req: Request) {
     await prisma.$executeRaw`
       INSERT INTO shipcore.fc_replacement_parts
         ("requestReceivedAt", "orderNumber", "partNumber", "correspondingSku",
-         qty, "orderRequest", "partSku", "partSkuValue", note, "orderStatus",
+         qty, "orderRequest", "partSku", note, "orderStatus",
          "shipheroOrder", "shippingStatus", "createdAt", "updatedAt")
       VALUES (
         ${receivedAt},
@@ -79,7 +78,6 @@ export async function POST(req: Request) {
         ${Number(qty) || 0},
         ${orderRequest || null},
         ${partSku || null},
-        ${partSkuValue || null},
         ${note || null},
         ${orderStatus || null},
         ${shipheroOrder || null},
@@ -97,7 +95,11 @@ export async function POST(req: Request) {
       const qtyNum = parseInt(body.orderRequest ?? "0", 10);
       if (qtyNum >= 1) {
         try {
-          const orderInfo = await getShipHeroOrder(String(orderNumber));
+          const userToken = session?.user?.id ? await getUserShipHeroToken(session.user.id) : null;
+          if (!userToken) {
+            return NextResponse.json({ success: true, shipHeroError: "ShipHero 계정이 연결되어 있지 않습니다." }, { status: 201 });
+          }
+          const orderInfo = await getShipHeroOrder(String(orderNumber), userToken);
           if (!orderInfo) {
             return NextResponse.json({ success: true, shipHeroError: `Original ShipHero order not found: ${orderNumber}` }, { status: 201 });
           }
@@ -115,7 +117,7 @@ export async function POST(req: Request) {
               quantity_pending_fulfillment: qtyNum,
               partner_line_item_id:         `${String(shipheroOrder)}-1`,
             }],
-          });
+          }, userToken);
           if (!result) {
             return NextResponse.json({ success: true, shipHeroError: "ShipHero order creation failed" }, { status: 201 });
           }

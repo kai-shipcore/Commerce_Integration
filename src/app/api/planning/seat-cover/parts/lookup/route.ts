@@ -54,12 +54,16 @@ export async function GET(req: Request) {
          WHERE parent_kit_sku::text = $1`,
         [sku]
       );
-      const sizes = result.rows.flatMap((r) =>
+      let sizes = result.rows.flatMap((r) =>
         extractSizes(r.component_sku).map((size) => ({
           size,
           componentSku: r.component_sku,
         }))
       );
+      // Fallback: kit components 없으면 parent SKU 자체에서 size 추출
+      if (sizes.length === 0) {
+        sizes = extractSizes(sku).map((size) => ({ size, componentSku: sku }));
+      }
       return NextResponse.json({ success: true, sizes });
     }
 

@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
-import { getShipHeroInventory } from "@/lib/shiphero";
+import { auth } from "@/lib/auth";
+import { getShipHeroInventory, getUserShipHeroToken } from "@/lib/shiphero";
 
 export async function GET(req: Request) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+  const userToken = await getUserShipHeroToken(session.user.id);
+  if (!userToken) {
+    return NextResponse.json({ success: false, error: "ShipHero 계정이 연결되어 있지 않습니다." }, { status: 403 });
+  }
+
   const { searchParams } = new URL(req.url);
   const sku = searchParams.get("sku");
 
@@ -10,7 +20,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const warehouses = await getShipHeroInventory(sku);
+    const warehouses = await getShipHeroInventory(sku, userToken);
     return NextResponse.json({ success: true, warehouses });
   } catch (err) {
     console.error("[parts/inventory] error", err);

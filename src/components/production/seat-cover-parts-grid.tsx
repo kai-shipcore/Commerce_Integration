@@ -8,6 +8,7 @@ import {
   type ColDef,
   type ICellRendererParams,
 } from "ag-grid-community";
+import * as XLSX from "xlsx";
 import { apiPath } from "@/lib/api-path";
 import { SeatCoverPartsEditDialog } from "./seat-cover-parts-edit-dialog";
 
@@ -159,6 +160,21 @@ export function SeatCoverPartsGrid({ role }: { role?: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("edit");
   const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
+  function handleExport() {
+    const visibleCols = colDefs.filter((c) => !c.hide && c.field && c.headerName);
+    const sheetData = rows.map((row) => {
+      const out: Record<string, unknown> = {};
+      for (const col of visibleCols) {
+        out[col.headerName as string] = row[col.field as string] ?? "";
+      }
+      return out;
+    });
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, activeTab);
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `seat-cover-parts-${activeTab}-${today}.xlsx`);
+  }
 
   const loadRows = useCallback((tab: Tab) => {
     setLoading(true);
@@ -226,44 +242,63 @@ export function SeatCoverPartsGrid({ role }: { role?: string }) {
             {rows.length.toLocaleString()} rows
           </span>
           <button
-            onClick={() => {
-              setDialogMode("add");
-              setEditData(null);
-              setDialogOpen(true);
-            }}
+            onClick={handleExport}
             style={{
               fontSize: 13,
               fontWeight: 600,
-              color: "#fff",
-              background: "#2A2825",
-              border: "1px solid #2A2825",
+              color: "#1A1917",
+              background: "#F0EEE9",
+              border: "1px solid #D8D6CE",
               borderRadius: 6,
               padding: "5px 14px",
               cursor: "pointer",
             }}
           >
-            Add
+            Export
           </button>
-          <button
-            onClick={() => {
-              setDialogMode("edit");
-              setEditData(selectedRow);
-              setDialogOpen(true);
-            }}
-            disabled={!selectedRow}
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: selectedRow ? "#1A1917" : "#A8A49E",
-              background: selectedRow ? "#F0EEE9" : "#F7F6F3",
-              border: "1px solid #D8D6CE",
-              borderRadius: 6,
-              padding: "5px 14px",
-              cursor: selectedRow ? "pointer" : "not-allowed",
-            }}
-          >
-            Edit
-          </button>
+          {!isGuest && (
+            <>
+              <button
+                onClick={() => {
+                  setDialogMode("add");
+                  setEditData(null);
+                  setDialogOpen(true);
+                }}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#fff",
+                  background: "#2A2825",
+                  border: "1px solid #2A2825",
+                  borderRadius: 6,
+                  padding: "5px 14px",
+                  cursor: "pointer",
+                }}
+              >
+                Add
+              </button>
+              <button
+                onClick={() => {
+                  setDialogMode("edit");
+                  setEditData(selectedRow);
+                  setDialogOpen(true);
+                }}
+                disabled={!selectedRow}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: selectedRow ? "#1A1917" : "#A8A49E",
+                  background: selectedRow ? "#F0EEE9" : "#F7F6F3",
+                  border: "1px solid #D8D6CE",
+                  borderRadius: 6,
+                  padding: "5px 14px",
+                  cursor: selectedRow ? "pointer" : "not-allowed",
+                }}
+              >
+                Edit
+              </button>
+            </>
+          )}
         </div>
       </div>
 

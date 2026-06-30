@@ -85,55 +85,51 @@ function getPrefix(size: string): "F" | "B" | "E" | null {
 }
 
 const PART_COLUMN_MAP: Record<string, string> = {
-  "Front Headrest (Driver)":            "front_headrest_1",
-  "Front Headrest (Passenger)":         "front_headrest_2",
-  "Front Top Body (Driver)":            "front_top_body_part_1",
-  "Front Top Body (Passenger)":         "front_top_body_part_2",
-  "Front Bottom (Driver)":              "front_bottom_part_1",
-  "Front Bottom (Passenger)":           "front_bottom_part_2",
-  "Front Middle Headrest":              "front_middle_headrest",
-  "Front Middle Top Body":              "front_middle_top_body_part",
-  "Front Middle Bottom":                "front_middle_bottom_part",
-  "Front Arm (Driver)":                 "front_armrest_1",
-  "Front Arm (Passenger)":              "front_armrest_2",
-  "Rear Headrest (Driver)":             "rear_headrest_1",
-  "Rear Headrest (Passenger)":          "rear_headrest_2",
-  "Rear Top Body (Driver)":             "rear_top_body_part_1",
-  "Rear Top Body (Passenger)":          "rear_top_body_part_2",
-  "Rear Bottom (Driver)":               "rear_bottom_part_1",
-  "Rear Bottom (Passenger)":            "rear_bottom_part_2",
-  "Rear Middle Headrest":               "rear_middle_headrest",
-  "Rear Middle Top Body":               "rear_middle_top_body_part",
-  "Rear Middle Bottom":                 "rear_middle_bottom_part",
-  "Rear Console":                       "rear_console",
-  "Rear Back Storage (Driver)":         "rear_backrest_storage_1",
-  "Rear Back Storage (Passenger)":      "rear_backrest_storage_2",
-  "Rear Arm (Driver)":                  "rear_armrest_1",
-  "Rear Arm (Passenger)":               "rear_armrest_2",
-  "Rear Sub-part (Driver)":             "rear_subpart_1",
-  "Rear Sub-part (Passenger)":          "rear_subpart_2",
-  "Third Row Headrest (Driver)":        "third_row_headrest_1",
-  "Third Row Headrest (Passenger)":     "third_row_headrest_2",
-  "Third Row Top Body (Driver)":        "third_row_top_body_part_1",
-  "Third Row Top Body (Passenger)":     "third_row_top_body_part_2",
-  "Third Row Bottom (Driver)":          "third_row_bottom_part_1",
-  "Third Row Bottom (Passenger)":       "third_row_bottom_part_2",
-  "Third Row Middle Headrest":          "third_row_middle_headrest",
-  "Third Row Middle Top Body":          "third_row_middle_top_body_part",
-  "Third Row Middle Bottom":            "third_row_middle_bottom_part",
-  "Third Row Console":                  "third_row_console",
-  "Third Row Back Storage (Driver)":    "third_row_backrest_storage_1",
-  "Third Row Back Storage (Passenger)": "third_row_backrest_storage_2",
-  "Third Row Arm (Driver)":             "third_row_armrest_1",
-  "Third Row Arm (Passenger)":          "third_row_armrest_2",
-  "Third Row Sub-part (Driver)":        "third_row_subpart_1",
-  "Third Row Sub-part (Passenger)":     "third_row_subpart_2",
+  "Front Headrest (Driver)":            "headrest",
+  "Front Headrest (Passenger)":         "headrest2",
+  "Front Top Body (Driver)":            "top_body",
+  "Front Top Body (Passenger)":         "top_body2",
+  "Front Bottom (Driver)":              "bottom",
+  "Front Bottom (Passenger)":           "bottom2",
+  "Front Middle Headrest":              "middle_headrest",
+  "Front Middle Top Body":              "middle_top_body",
+  "Front Middle Bottom":                "middle_bottom",
+  "Front Arm (Driver)":                 "armrest",
+  "Front Arm (Passenger)":              "armrest2",
+  "Rear Headrest (Driver)":             "headrest",
+  "Rear Headrest (Passenger)":          "headrest2",
+  "Rear Top Body (Driver)":             "top_body",
+  "Rear Top Body (Passenger)":          "top_body2",
+  "Rear Bottom (Driver)":               "bottom",
+  "Rear Bottom (Passenger)":            "bottom2",
+  "Rear Middle Headrest":               "middle_headrest",
+  "Rear Middle Top Body":               "middle_top_body",
+  "Rear Middle Bottom":                 "middle_bottom",
+  "Rear Console":                       "console",
+  "Rear Back Storage (Driver)":         "backrest_storage",
+  "Rear Back Storage (Passenger)":      "backrest_storage2",
+  "Rear Arm (Driver)":                  "armrest",
+  "Rear Arm (Passenger)":               "armrest2",
+  "Rear Sub-part (Driver)":             "subpart",
+  "Rear Sub-part (Passenger)":          "subpart2",
+  "Third Row Headrest (Driver)":        "headrest",
+  "Third Row Headrest (Passenger)":     "headrest2",
+  "Third Row Top Body (Driver)":        "top_body",
+  "Third Row Top Body (Passenger)":     "top_body2",
+  "Third Row Bottom (Driver)":          "bottom",
+  "Third Row Bottom (Passenger)":       "bottom2",
+  "Third Row Middle Headrest":          "middle_headrest",
+  "Third Row Middle Top Body":          "middle_top_body",
+  "Third Row Middle Bottom":            "middle_bottom",
+  "Third Row Console":                  "console",
+  "Third Row Back Storage (Driver)":    "backrest_storage",
+  "Third Row Back Storage (Passenger)": "backrest_storage2",
+  "Third Row Arm (Driver)":             "armrest",
+  "Third Row Arm (Passenger)":          "armrest2",
+  "Third Row Sub-part (Driver)":        "subpart",
+  "Third Row Sub-part (Passenger)":     "subpart2",
 };
 
-function getFNumber(sku: string): string | null {
-  const matches = sku.match(/\d{5}/g);
-  return matches ? matches[matches.length - 1] : null;
-}
 
 const STITCH_COLORS = new Set(["BKRD", "BKWH"]);
 
@@ -152,7 +148,6 @@ interface FormData {
   qty: string;
   orderRequest: string;
   partSku: string;
-  partSkuValue: string;
   note: string;
   orderStatus: string;
   shipheroOrder: string;
@@ -167,7 +162,6 @@ const emptyForm: FormData = {
   qty: "0",
   orderRequest: "",
   partSku: "",
-  partSkuValue: "",
   note: "",
   orderStatus: "",
   shipheroOrder: "",
@@ -183,7 +177,6 @@ function rowToForm(row: PartOrderRow): FormData {
     qty: String(row.qty ?? 0),
     orderRequest: row.orderRequest ?? "",
     partSku: row.partSku ?? "",
-    partSkuValue: row.partSkuValue ?? "",
     note: row.note ?? "",
     orderStatus: row.orderStatus ?? "",
     shipheroOrder: row.shipheroOrder ?? "",
@@ -308,19 +301,11 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
         const newPartSku = value ? `CA-SC-PART-${value}${colorSuffix}` : "";
         if (prev.partSku === "" || prev.partSku === expectedPartSku) {
           next.partSku = newPartSku;
-          if (prev.partSkuValue === "" || prev.partSkuValue === prev.partSku || prev.partSkuValue === expectedPartSku) {
-            next.partSkuValue = newPartSku;
-          }
         }
       }
       if (name === "qty" && inventoryQueried && inventoryWarehouses !== null) {
         const totalInv = inventoryWarehouses.reduce((sum, w) => sum + w.available, 0);
         next.orderRequest = String(Math.max(0, (Number(value) || 0) - totalInv));
-      }
-      if (name === "partSku") {
-        if (prev.partSkuValue === "" || prev.partSkuValue === prev.partSku) {
-          next.partSkuValue = value;
-        }
       }
       return next;
     });
@@ -646,21 +631,20 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                                   onClick={async () => {
                                     setSelectedPart(part);
                                     setPartNotFound(false);
-                                    setFormData((prev) => ({ ...prev, partNumber: "", partSku: "", partSkuValue: "" }));
-                                    const fNumber = selectedOrderSku ? getFNumber(selectedOrderSku) : null;
+                                    setFormData((prev) => ({ ...prev, partNumber: "", partSku: "" }));
                                     const column = PART_COLUMN_MAP[part];
-                                    if (!fNumber || !column) return;
+                                    if (!selectedSize || !column) return;
                                     setPartLookupLoading(true);
                                     try {
                                       const res = await fetch(
-                                        apiPath(`/api/planning/seat-cover/parts/part-sku?f_number=${fNumber}&column=${encodeURIComponent(column)}`)
+                                        apiPath(`/api/planning/seat-cover/parts/part-sku?size=${encodeURIComponent(selectedSize)}&column=${encodeURIComponent(column)}`)
                                       );
                                       const json = await res.json();
                                       if (json.partNumber) {
                                         const pn = json.partNumber as string;
                                         const colorSuffix = selectedSize ? getColorSuffix(selectedSize) : "";
                                         const ps = `CA-SC-PART-${pn}${colorSuffix}`;
-                                        setFormData((prev) => ({ ...prev, partNumber: pn, partSku: ps, partSkuValue: ps }));
+                                        setFormData((prev) => ({ ...prev, partNumber: pn, partSku: ps }));
                                       } else {
                                         setPartNotFound(true);
                                       }
@@ -702,7 +686,6 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                 {field("QTY", "qty", "number")}
                 {field("Order Request", "orderRequest")}
                 {field("PART SKU", "partSku")}
-                {field("PART SKU (VALUE)", "partSkuValue")}
                 <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 4 }}>
                   <Label style={{ fontSize: 12, color: "#7A766F" }}>Shiphero Inventory</Label>
                   <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
@@ -806,7 +789,6 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
               {field("QTY", "qty", "number")}
               {field("Order Request", "orderRequest")}
               {field("PART SKU", "partSku")}
-              {field("PART SKU (VALUE)", "partSkuValue")}
               {field("Note", "note")}
               {field("Order Status", "orderStatus")}
               {field("Shiphero Order", "shipheroOrder")}

@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notifySlack } from "@/lib/slack";
-import { getShipHeroOrderLineItems, updateShipHeroLineItemSku } from "@/lib/shiphero";
 import { guardPermission } from "@/lib/permissions";
 
 export async function PATCH(
@@ -24,7 +23,6 @@ export async function PATCH(
       qty,
       orderRequest,
       partSku,
-      partSkuValue,
       note,
       orderStatus,
       shipheroOrder,
@@ -53,7 +51,6 @@ export async function PATCH(
         qty                 = ${Number(qty) || 0},
         "orderRequest"      = ${orderRequest || null},
         "partSku"           = ${partSku || null},
-        "partSkuValue"      = ${partSkuValue || null},
         note                = ${note || null},
         "orderStatus"       = ${orderStatus || null},
         "shipheroOrder"     = ${shipheroOrder || null},
@@ -67,16 +64,6 @@ export async function PATCH(
     const userName = session?.user?.name ?? session?.user?.email ?? "Unknown";
     notifySlack(`[Parts] ${userName} edited a row — Order #${orderNumber}`);
 
-    if (partSkuValue && shipheroOrderId && shipheroOrder) {
-      try {
-        const lineItems = await getShipHeroOrderLineItems(String(shipheroOrder));
-        if (lineItems.length > 0) {
-          await updateShipHeroLineItemSku(lineItems[0].id, String(partSkuValue));
-        }
-      } catch (err) {
-        console.error("[parts PATCH] ShipHero line_item_update error", err);
-      }
-    }
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

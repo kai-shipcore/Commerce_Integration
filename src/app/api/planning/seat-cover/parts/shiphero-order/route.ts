@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
-import { getShipHeroOrder, createShipHeroOrder } from "@/lib/shiphero";
+import { auth } from "@/lib/auth";
+import { getShipHeroOrder, createShipHeroOrder, getUserShipHeroToken } from "@/lib/shiphero";
 
 export async function POST(req: Request) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    const userToken = await getUserShipHeroToken(session.user.id);
+    if (!userToken) {
+      return NextResponse.json({ success: false, error: "ShipHero 계정이 연결되어 있지 않습니다." }, { status: 403 });
+    }
+
     const body = await req.json();
     const { orderNumber, shipheroOrderNumber, partSku, qty } = body ?? {};
 
@@ -13,7 +23,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const orderInfo = await getShipHeroOrder(orderNumber);
+    const orderInfo = await getShipHeroOrder(orderNumber, userToken);
     if (!orderInfo) {
       return NextResponse.json(
         { success: false, error: `Original ShipHero order not found: ${orderNumber}` },
@@ -35,7 +45,7 @@ export async function POST(req: Request) {
         quantity_pending_fulfillment: qty,
         partner_line_item_id:         `${shipheroOrderNumber}-1`,
       }],
-    });
+    }, userToken);
 
     if (!result) {
       return NextResponse.json(

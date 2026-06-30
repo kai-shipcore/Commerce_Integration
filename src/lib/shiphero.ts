@@ -1,4 +1,8 @@
+import { getPrimaryPool } from "@/lib/db/primary-db";
+import { decrypt } from "@/lib/encrypt";
+
 const REFRESH_URL = "https://public-api.shiphero.com/auth/refresh";
+const LOGIN_URL   = "https://public-api.shiphero.com/auth/token";
 const GQL_URL     = "https://public-api.shiphero.com/graphql";
 
 let cachedToken: string | null = process.env.SHIPHERO_API_TOKEN ?? null;
@@ -27,6 +31,90 @@ async function getToken(): Promise<string> {
   const token = await refreshToken();
   cachedToken = token;
   tokenExpiry = Date.now() + 23 * 60 * 60 * 1000;
+  return token;
+}
+
+// Returns the ShipHero access token for a specific user.
+// Checks fc_shiphero_credentials — if no row exists, returns null (no permission).
+// Refreshes via refresh_token if expired; falls back to email/password login.
+export async function getUserShipHeroToken(userId: string): Promise<string | null> {
+  const pool = getPrimaryPool();
+  let res;
+  try {
+    res = await pool.query<{
+      email: string;
+      password_enc: string;
+      access_token: string | null;
+      refresh_token: string | null;
+      token_expires_at: Date | null;
+    }>(
+      `SELECT email, password_enc, access_token, refresh_token, token_expires_at
+       FROM shipcore.fc_shiphero_credentials WHERE user_id = $1`,
+      [userId]
+    );
+  } catch (err) {
+    console.error("[getUserShipHeroToken] DB query failed:", err);
+    return null;
+  }
+  const row = res.rows[0];
+  if (!row) return null;
+
+  // Still valid (1-min buffer)
+  if (row.access_token && row.token_expires_at) {
+    if (row.token_expires_at.getTime() > Date.now() + 60_000) {
+      return row.access_token;
+    }
+  }
+
+  // Try refresh_token
+  if (row.refresh_token) {
+    try {
+      const r = await fetch(REFRESH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: row.refresh_token }),
+      });
+      if (r.ok) {
+        const json = await r.json();
+        const token: string | undefined = json?.token ?? json?.access_token ?? json?.data?.token;
+        if (token) {
+          const newRefresh: string = json?.refresh_token ?? json?.data?.refresh_token ?? row.refresh_token;
+          await pool.query(
+            `UPDATE shipcore.fc_shiphero_credentials
+             SET access_token = $1, refresh_token = $2,
+                 token_expires_at = NOW() + INTERVAL '23 hours', updated_at = NOW()
+             WHERE user_id = $3`,
+            [token, newRefresh, userId]
+          );
+          return token;
+        }
+      }
+    } catch {
+      // fall through to password login
+    }
+  }
+
+  // Login with email / password
+  const password = decrypt(row.password_enc);
+  const loginRes = await fetch(LOGIN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: row.email, password }),
+  });
+  if (!loginRes.ok) return null;
+
+  const loginJson = await loginRes.json();
+  const token: string | undefined = loginJson?.token ?? loginJson?.access_token ?? loginJson?.data?.token;
+  if (!token) return null;
+
+  const newRefresh: string | null = loginJson?.refresh_token ?? loginJson?.data?.refresh_token ?? null;
+  await pool.query(
+    `UPDATE shipcore.fc_shiphero_credentials
+     SET access_token = $1, refresh_token = $2,
+         token_expires_at = NOW() + INTERVAL '23 hours', updated_at = NOW()
+     WHERE user_id = $3`,
+    [token, newRefresh, userId]
+  );
   return token;
 }
 
@@ -87,9 +175,9 @@ export interface CreatedOrderResult {
   order_number: string;
 }
 
-export async function getShipHeroInventory(sku: string): Promise<WarehouseStock[] | null> {
+export async function getShipHeroInventory(sku: string, userToken?: string): Promise<WarehouseStock[] | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await getToken();
+    const token = userToken ?? await getToken();
 
     const res = await fetch(GQL_URL, {
       method: "POST",
@@ -113,6 +201,7 @@ export async function getShipHeroInventory(sku: string): Promise<WarehouseStock[
     });
 
     if (res.status === 401) {
+      if (userToken) return null;
       cachedToken = null;
       tokenExpiry = 0;
       continue;
@@ -135,10 +224,10 @@ export async function getShipHeroInventory(sku: string): Promise<WarehouseStock[
   return null;
 }
 
-export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrderInfo | null> {
+export async function getShipHeroOrder(orderNumber: string, userToken?: string): Promise<ShipHeroOrderInfo | null> {
   const cleanedNumber = orderNumber;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await getToken();
+    const token = userToken ?? await getToken();
 
     const res = await fetch(GQL_URL, {
       method: "POST",
@@ -169,6 +258,7 @@ export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrd
     });
 
     if (res.status === 401) {
+      if (userToken) return null;
       cachedToken = null;
       tokenExpiry = 0;
       continue;
@@ -192,10 +282,10 @@ export async function getShipHeroOrder(orderNumber: string): Promise<ShipHeroOrd
   return null;
 }
 
-export async function getShipHeroOrderLineItems(orderNumber: string): Promise<ShipHeroLineItem[]> {
+export async function getShipHeroOrderLineItems(orderNumber: string, userToken?: string): Promise<ShipHeroLineItem[]> {
   const cleanedNumber = orderNumber;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await getToken();
+    const token = userToken ?? await getToken();
 
     const res = await fetch(GQL_URL, {
       method: "POST",
@@ -224,6 +314,7 @@ export async function getShipHeroOrderLineItems(orderNumber: string): Promise<Sh
     });
 
     if (res.status === 401) {
+      if (userToken) return [];
       cachedToken = null;
       tokenExpiry = 0;
       continue;
@@ -260,10 +351,11 @@ function toGqlInput(obj: unknown): string {
 
 export async function updateShipHeroLineItemSku(
   lineItemId: string,
-  newSku: string
+  newSku: string,
+  userToken?: string
 ): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await getToken();
+    const token = userToken ?? await getToken();
 
     const res = await fetch(GQL_URL, {
       method: "POST",
@@ -282,6 +374,7 @@ export async function updateShipHeroLineItemSku(
     });
 
     if (res.status === 401) {
+      if (userToken) return false;
       cachedToken = null;
       tokenExpiry = 0;
       continue;
@@ -302,9 +395,9 @@ export async function updateShipHeroLineItemSku(
   return false;
 }
 
-export async function createShipHeroOrder(data: CreateOrderInput): Promise<CreatedOrderResult | null> {
+export async function createShipHeroOrder(data: CreateOrderInput, userToken?: string): Promise<CreatedOrderResult | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await getToken();
+    const token = userToken ?? await getToken();
 
     const res = await fetch(GQL_URL, {
       method: "POST",
@@ -326,6 +419,7 @@ export async function createShipHeroOrder(data: CreateOrderInput): Promise<Creat
     });
 
     if (res.status === 401) {
+      if (userToken) return null;
       cachedToken = null;
       tokenExpiry = 0;
       continue;
