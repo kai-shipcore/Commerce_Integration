@@ -12,7 +12,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v26";
+const CACHE_KEY = "home:planning-stats:v27";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -294,9 +294,9 @@ export async function GET(req: NextRequest) {
 
     // ── Replacement parts backorder adjustment (SC category) ──────────────────
     const partSkusResult = await pool.query<PartSkuRow>(`
-      SELECT DISTINCT "partSkuValue" AS sku
+      SELECT DISTINCT "partSku" AS sku
       FROM shipcore.fc_replacement_parts
-      WHERE "partSkuValue" IS NOT NULL
+      WHERE "partSku" IS NOT NULL
         AND "shippingStatus" = 'Not Ready'
         AND "deleteYN" = 'N'
         AND "orderRequest" ~ '^[0-9]+$'

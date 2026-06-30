@@ -56,6 +56,9 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
+const partSalesStatusSql = `(SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSku" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END)`;
+const salesStatusSql = `COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), ${partSalesStatusSql}, 'Original')`;
+
 function inferProduct(masterSku: string): {
   productKey: ProductKey;
   category: string;
@@ -197,7 +200,7 @@ export async function GET(request: NextRequest) {
 
     if (salesType !== "all") {
       params.push(salesType);
-      filters.push(`COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), (SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSkuValue" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END), 'Original') = $${params.length}`);
+      filters.push(`${salesStatusSql} = $${params.length}`);
     }
 
     const pool = getPrimaryPool();
@@ -211,7 +214,7 @@ export async function GET(request: NextRequest) {
            p.category,
            p.category_code,
            p.status::text AS status,
-           COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), (SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSkuValue" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END), 'Original') AS sales_status,
+           ${salesStatusSql} AS sales_status,
            p.moq,
            p.order_multiple,
            p.cbm_per_unit::text AS cbm_per_unit,
@@ -270,7 +273,7 @@ export async function GET(request: NextRequest) {
          p.category,
          p.category_code,
          p.status::text AS status,
-         COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), (SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSkuValue" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END), 'Original') AS sales_status,
+         ${salesStatusSql} AS sales_status,
          p.moq,
          p.order_multiple,
          p.cbm_per_unit::text AS cbm_per_unit,

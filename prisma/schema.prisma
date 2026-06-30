@@ -631,7 +631,6 @@ model PartOrder {
   qty               Int      @default(0)
   orderRequest      String?
   partSku           String?
-  partSkuValue      String?
   note              String?
   orderStatus       String?  @map("orderstatus")
   shipheroOrder     String?

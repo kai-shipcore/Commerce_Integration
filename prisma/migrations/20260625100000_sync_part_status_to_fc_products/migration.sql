@@ -5,7 +5,7 @@ SET sales_status = 'Part'
 WHERE p.sales_status IS NULL
   AND EXISTS (
     SELECT 1 FROM shipcore.fc_replacement_parts r
-    WHERE r."partSkuValue" = p.master_sku
+    WHERE r."partSku" = p.master_sku
       AND r."shippingStatus" = 'Not Ready'
       AND r."deleteYN" = 'N'
       AND r."orderRequest" ~ '^[0-9]+$'

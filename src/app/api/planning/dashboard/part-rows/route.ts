@@ -7,16 +7,16 @@ export async function GET() {
     // Step 1: Not Ready + orderRequest > 0 인 Part SKU 목록 + fc_products에서 cbm_per_unit (primary DB)
     const partSkus = await prisma.$queryRaw<{ sku: string; cbm_per_unit: number }[]>`
       SELECT DISTINCT
-        r."partSkuValue" AS sku,
+        r."partSku" AS sku,
         COALESCE(p.cbm_per_unit, 0)::float8 AS cbm_per_unit
       FROM shipcore.fc_replacement_parts r
-      LEFT JOIN shipcore.fc_products p ON p.master_sku = r."partSkuValue"
-      WHERE r."partSkuValue" IS NOT NULL
+      LEFT JOIN shipcore.fc_products p ON p.master_sku = r."partSku"
+      WHERE r."partSku" IS NOT NULL
         AND r."shippingStatus" = 'Not Ready'
         AND r."deleteYN" = 'N'
         AND r."orderRequest" ~ '^[0-9]+$'
         AND r."orderRequest"::int > 0
-      ORDER BY r."partSkuValue"
+      ORDER BY r."partSku"
     `;
 
     if (partSkus.length === 0) {

@@ -35,11 +35,12 @@ export async function POST(req: Request) {
 
       const receivedAt = new Date(row.requestReceivedAt);
       if (isNaN(receivedAt.getTime())) continue;
+      const partSku = row.partSku || row.partSkuValue || null;
 
       await prisma.$executeRaw`
         INSERT INTO shipcore.fc_replacement_parts
           ("requestReceivedAt", "orderNumber", "partNumber", "correspondingSku",
-           qty, "orderRequest", "partSku", "partSkuValue", note, "orderStatus",
+           qty, "orderRequest", "partSku", note, "orderStatus",
            "shipheroOrder", "shippingStatus", "deleteYN", "createdAt", "updatedAt")
         VALUES (
           ${receivedAt},
@@ -48,8 +49,7 @@ export async function POST(req: Request) {
           ${row.correspondingSku || null},
           ${Number(row.qty) || 0},
           ${row.orderRequest || null},
-          ${row.partSku || null},
-          ${row.partSkuValue || null},
+          ${partSku},
           ${row.note || null},
           ${row.orderStatus || null},
           ${row.shipheroOrder || null},
@@ -64,7 +64,6 @@ export async function POST(req: Request) {
           qty                = EXCLUDED.qty,
           "orderRequest"     = EXCLUDED."orderRequest",
           "partSku"          = EXCLUDED."partSku",
-          "partSkuValue"     = EXCLUDED."partSkuValue",
           note               = EXCLUDED.note,
           "orderStatus"      = EXCLUDED."orderStatus",
           "shipheroOrder"    = EXCLUDED."shipheroOrder",
