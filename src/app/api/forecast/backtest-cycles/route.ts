@@ -4,14 +4,11 @@ const FORECAST_API = "http://localhost:8000";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const weeks = searchParams.get("weeks") ?? "10";
-  const productType = searchParams.get("product_type") ?? "All";
-
+  const test = searchParams.get("test") === "true" ? "&test=true" : "";
   try {
-    const upstream = await fetch(
-      `${FORECAST_API}/segments?weeks=${weeks}&product_type=${encodeURIComponent(productType)}`,
-      { signal: AbortSignal.timeout(15_000) },
-    );
+    const upstream = await fetch(`${FORECAST_API}/backtest-cycles?_=1${test}`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     const body = await upstream.text();
     if (!upstream.ok) {
       return NextResponse.json(

@@ -33,7 +33,7 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 
 const navigationGroups = [
   { name: "Commerce", labelKey: "nav.commerce" as const, itemIds: ["inventory", "orders", "velocity"] },
-  { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "container-planning", "container-timeline", "available-stock"] },
+  { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "demand-forecast", "container-planning", "container-timeline", "available-stock"] },
   { name: "Production", labelKey: "nav.production" as const, itemIds: ["seat-cover-sizes", "production-vehicles"] },
   { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
   { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "audit-log", "user-access", "shiphero-credentials"] },

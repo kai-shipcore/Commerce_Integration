@@ -8,11 +8,17 @@ export async function GET(
 ) {
   const { segment } = await params;
   const { searchParams } = new URL(request.url);
-  const weeks = searchParams.get("weeks") ?? "10";
+  const weeks       = searchParams.get("weeks") ?? "10";
+  const productType = searchParams.get("product_type") ?? "All";
+  const mode        = searchParams.get("mode") ?? "forward";
+  const evalDate    = searchParams.get("eval_date") ?? "";
+
+  const test     = searchParams.get("test") === "true" ? "&test=true" : "";
+  const evalParam = evalDate ? `&eval_date=${encodeURIComponent(evalDate)}` : "";
 
   try {
     const upstream = await fetch(
-      `${FORECAST_API}/segment-detail/${encodeURIComponent(segment)}?weeks=${weeks}`,
+      `${FORECAST_API}/segment-detail/${encodeURIComponent(segment)}?weeks=${weeks}&product_type=${encodeURIComponent(productType)}&mode=${mode}${evalParam}${test}`,
       { signal: AbortSignal.timeout(15_000) },
     );
     const body = await upstream.text();

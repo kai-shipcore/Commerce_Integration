@@ -121,6 +121,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "demand-forecast",
+    name: "Demand Forecast",
+    href: "/planning/demand-forecast",
+    icon: BarChart3,
+    group: "Planning",
+    hideable: true,
+  },
+  {
     id: "container-planning",
     name: "Container Planning",
     href: "/planning/container-planning",
@@ -242,6 +250,7 @@ export const userDefaultVisibleMenuIds = [
   "velocity",
   "demand-planning",
   "sku-forecasts",
+  "demand-forecast",
   "container-planning",
   "container-timeline",
   "available-stock",

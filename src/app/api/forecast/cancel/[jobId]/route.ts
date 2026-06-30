@@ -2,16 +2,17 @@ import { NextResponse } from "next/server";
 
 const FORECAST_API = "http://localhost:8000";
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const weeks = searchParams.get("weeks") ?? "10";
-  const productType = searchParams.get("product_type") ?? "All";
+export async function POST(
+  _request: Request,
+  { params }: { params: Promise<{ jobId: string }> },
+) {
+  const { jobId } = await params;
 
   try {
-    const upstream = await fetch(
-      `${FORECAST_API}/segments?weeks=${weeks}&product_type=${encodeURIComponent(productType)}`,
-      { signal: AbortSignal.timeout(15_000) },
-    );
+    const upstream = await fetch(`${FORECAST_API}/cancel-forecast/${jobId}`, {
+      method: "POST",
+      signal: AbortSignal.timeout(5_000),
+    });
     const body = await upstream.text();
     if (!upstream.ok) {
       return NextResponse.json(
