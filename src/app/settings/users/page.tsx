@@ -94,6 +94,37 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
+function parseBrowserInfo(userAgent: string | null): string {
+  if (!userAgent) return "-";
+  const ua = userAgent;
+
+  let browser = "Unknown";
+  const edge = ua.match(/Edg\/([\d.]+)/);
+  const chrome = ua.match(/Chrome\/([\d.]+)/);
+  const firefox = ua.match(/Firefox\/([\d.]+)/);
+  const safari = ua.match(/Version\/([\d.]+).*Safari/);
+
+  if (edge) browser = `Edge ${majorVersion(edge[1])}`;
+  else if (chrome && !ua.includes("Chromium")) browser = `Chrome ${majorVersion(chrome[1])}`;
+  else if (firefox) browser = `Firefox ${majorVersion(firefox[1])}`;
+  else if (safari && !chrome) browser = `Safari ${majorVersion(safari[1])}`;
+
+  let os = "Unknown OS";
+  if (ua.includes("Windows NT 10.0")) os = "Windows 10/11";
+  else if (ua.includes("Windows NT")) os = "Windows";
+  else if (ua.includes("Mac OS X")) os = "macOS";
+  else if (ua.includes("iPhone")) os = "iPhone";
+  else if (ua.includes("iPad")) os = "iPad";
+  else if (ua.includes("Android")) os = "Android";
+  else if (ua.includes("Linux")) os = "Linux";
+
+  return `${browser} / ${os}`;
+}
+
+function majorVersion(version: string): string {
+  return version.split(".")[0] ?? version;
+}
+
 
 export default function UserAccessPage() {
   const { pick } = useI18n();
@@ -805,7 +836,7 @@ export default function UserAccessPage() {
                               {loginHistory.map((log, idx) => (
                                 <div
                                   key={log.id}
-                                  className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${
+                                  className={`grid grid-cols-[minmax(135px,1fr)_minmax(80px,0.7fr)_minmax(145px,1.2fr)] items-center gap-2 px-3 py-2 text-xs ${
                                     idx !== loginHistory.length - 1 ? "border-b border-[#e2dfd8] dark:border-slate-700" : ""
                                   }`}
                                 >
@@ -815,9 +846,15 @@ export default function UserAccessPage() {
                                       hour: "2-digit", minute: "2-digit",
                                     })}
                                   </span>
-                                  {log.ip && (
-                                    <span className="font-mono text-[10px] text-muted-foreground">{log.ip}</span>
-                                  )}
+                                  <span className="truncate font-mono text-[10px] text-muted-foreground">
+                                    {log.ip ?? "-"}
+                                  </span>
+                                  <span
+                                    className="truncate text-right text-[10px] text-muted-foreground"
+                                    title={log.userAgent ?? undefined}
+                                  >
+                                    {parseBrowserInfo(log.userAgent)}
+                                  </span>
                                 </div>
                               ))}
                             </div>
