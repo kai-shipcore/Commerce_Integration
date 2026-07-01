@@ -225,6 +225,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
   const [inventoryWarehouses, setInventoryWarehouses] = useState<WarehouseStock[] | null>(null);
   const [inventoryQueried, setInventoryQueried] = useState(false);
   const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
   const [createOrderLoading, setCreateOrderLoading] = useState(false);
   const [createOrderError, setCreateOrderError] = useState<string | null>(null);
   const [createOrderSuccess, setCreateOrderSuccess] = useState<string | null>(null);
@@ -244,6 +245,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
       setInventoryWarehouses(null);
       setInventoryQueried(false);
       setInventoryLoading(false);
+      setInventoryError(null);
       setCreateOrderLoading(false);
       setCreateOrderError(null);
       setCreateOrderSuccess(null);
@@ -699,6 +701,8 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                         <span style={{ color: "#A8A49E" }}>{pick("조회 중…", "Searching…")}</span>
                       ) : !inventoryQueried ? (
                         <span style={{ color: "#A8A49E" }}>—</span>
+                      ) : inventoryError ? (
+                        <span style={{ color: "#c0392b", fontWeight: 600 }}>{inventoryError}</span>
                       ) : inventoryWarehouses === null ? (
                         <span style={{ color: "#c0392b", fontWeight: 600 }}>{pick("찾을 수 없음", "Not found")}</span>
                       ) : (
@@ -720,11 +724,17 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                         setInventoryLoading(true);
                         setInventoryWarehouses(null);
                         setInventoryQueried(false);
+                        setInventoryError(null);
                         try {
                           const res = await fetch(
                             apiPath(`/api/planning/seat-cover/parts/inventory?sku=${encodeURIComponent(formData.partSku)}`)
                           );
                           const json = await res.json();
+                          if (!res.ok) {
+                            setInventoryError(json.error ?? pick("재고 조회 실패", "Inventory lookup failed"));
+                            setInventoryQueried(true);
+                            return;
+                          }
                           const warehouses: WarehouseStock[] | null = json.warehouses ?? null;
                           setInventoryWarehouses(warehouses);
                           setInventoryQueried(true);
@@ -737,7 +747,7 @@ export function PartDialog({ open, onOpenChange, onSuccess, editData }: PartDial
                             }));
                           }
                         } catch {
-                          setInventoryWarehouses(null);
+                          setInventoryError(pick("네트워크 오류", "Network error"));
                           setInventoryQueried(true);
                         } finally {
                           setInventoryLoading(false);

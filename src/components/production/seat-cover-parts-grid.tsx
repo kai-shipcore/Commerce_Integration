@@ -173,24 +173,31 @@ export function SeatCoverPartsGrid({ role }: { role?: string }) {
       setDeleting(false);
     }
   }
-  function flatLeafCols(defs: (ColDef | ColGroupDef)[]): ColDef[] {
-    const out: ColDef[] = [];
+  function flatLeafColsWithGroup(
+    defs: (ColDef | ColGroupDef)[],
+    prefix = "",
+  ): { col: ColDef; header: string }[] {
+    const out: { col: ColDef; header: string }[] = [];
     for (const c of defs) {
       if ("children" in c) {
-        out.push(...flatLeafCols(c.children as (ColDef | ColGroupDef)[]));
+        const groupName = (c as ColGroupDef).headerName ?? "";
+        const newPrefix = prefix ? `${prefix} - ${groupName}` : groupName;
+        out.push(...flatLeafColsWithGroup(c.children as (ColDef | ColGroupDef)[], newPrefix));
       } else {
-        out.push(c as ColDef);
+        const col = c as ColDef;
+        const header = prefix ? `${prefix} - ${col.headerName ?? ""}` : (col.headerName ?? "");
+        out.push({ col, header });
       }
     }
     return out;
   }
 
   function handleExport() {
-    const visibleCols = flatLeafCols(colDefs).filter((c) => !c.hide && c.field && c.headerName);
+    const visibleCols = flatLeafColsWithGroup(colDefs).filter(({ col }) => !col.hide && col.field);
     const sheetData = rows.map((row) => {
       const out: Record<string, unknown> = {};
-      for (const col of visibleCols) {
-        out[col.headerName as string] = row[col.field as string] ?? "";
+      for (const { col, header } of visibleCols) {
+        out[header] = row[col.field as string] ?? "";
       }
       return out;
     });

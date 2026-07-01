@@ -616,24 +616,26 @@ export async function PATCH(request: NextRequest) {
 
     await client.query("BEGIN");
 
-    const existingForUpdate = await client.query<{ id: string; sku_count: number; total_qty: number }>(
-      `SELECT c.id,
-              COUNT(i.id)::int AS sku_count,
-              COALESCE(SUM(i.qty), 0)::int AS total_qty
-       FROM shipcore.fc_containers c
-       LEFT JOIN shipcore.fc_container_items i ON i.container_id = c.id
-       WHERE c.id = $1::bigint
-       FOR UPDATE OF c`,
+    const lockResult = await client.query<{ id: string }>(
+      `SELECT id FROM shipcore.fc_containers WHERE id = $1::bigint FOR UPDATE`,
       [id],
     );
 
-    if (existingForUpdate.rowCount === 0) {
+    if (lockResult.rowCount === 0) {
       await client.query("ROLLBACK");
       return NextResponse.json(
         { success: false, error: "Container not found" },
         { status: 404 }
       );
     }
+
+    const existingForUpdate = await client.query<{ sku_count: number; total_qty: number }>(
+      `SELECT COUNT(id)::int AS sku_count,
+              COALESCE(SUM(qty), 0)::int AS total_qty
+       FROM shipcore.fc_container_items
+       WHERE container_id = $1::bigint`,
+      [id],
+    );
 
     const itemsBefore = { skuCount: existingForUpdate.rows[0]!.sku_count, totalQty: existingForUpdate.rows[0]!.total_qty };
 

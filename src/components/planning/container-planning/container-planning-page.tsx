@@ -907,35 +907,35 @@ export function ContainerPlanningPage() {
       return;
     }
 
-    const missingSkus = await validateContainerSkus(draftItems);
-    if (missingSkus.length > 0) {
-      setFormError(pick(`컨테이너를 저장할 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${missingSkus.join(", ")}`, `Cannot save container. SKU not found in SKU Master: ${missingSkus.join(", ")}`));
-      return;
-    }
-
-    const newContainer: MockContainer = {
-      id: editingContainerId ?? "",
-      number,
-      poNumbers: [],
-      eta,
-      estLoadingDate: form.estLoading || undefined,
-      etdNgbDate: form.etdNgb || undefined,
-      etaLaxLgbDate: form.etaLaxLgb || undefined,
-      status: form.status,
-      cbmCapacity,
-      factory: form.factory.trim() || "Unassigned Factory",
-      destination: form.destination,
-      note: form.note.trim(),
-      items: draftItems,
-    };
-
-    if (editingContainerId) {
-      if (!window.confirm(pick("컨테이너 상세 정보와 모든 SKU 정보를 저장하시겠습니까? 모든 SKU를 업데이트하므로 시간이 조금 더 걸릴 수 있습니다.", "Save Container Details and all SKU information? Updating every SKU may take a little longer."))) {
+    setSavingContainer(true);
+    try {
+      const missingSkus = await validateContainerSkus(draftItems);
+      if (missingSkus.length > 0) {
+        setFormError(pick(`컨테이너를 저장할 수 없습니다. SKU 마스터에서 찾을 수 없는 SKU: ${missingSkus.join(", ")}`, `Cannot save container. SKU not found in SKU Master: ${missingSkus.join(", ")}`));
         return;
       }
 
-      setSavingContainer(true);
-      try {
+      const newContainer: MockContainer = {
+        id: editingContainerId ?? "",
+        number,
+        poNumbers: [],
+        eta,
+        estLoadingDate: form.estLoading || undefined,
+        etdNgbDate: form.etdNgb || undefined,
+        etaLaxLgbDate: form.etaLaxLgb || undefined,
+        status: form.status,
+        cbmCapacity,
+        factory: form.factory.trim() || "Unassigned Factory",
+        destination: form.destination,
+        note: form.note.trim(),
+        items: draftItems,
+      };
+
+      if (editingContainerId) {
+        if (!window.confirm(pick("컨테이너 상세 정보와 모든 SKU 정보를 저장하시겠습니까? 모든 SKU를 업데이트하므로 시간이 조금 더 걸릴 수 있습니다.", "Save Container Details and all SKU information? Updating every SKU may take a little longer."))) {
+          return;
+        }
+
         const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(editingContainerId)}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -966,14 +966,9 @@ export function ContainerPlanningPage() {
         await fetchContainers();
         setExpandedId(editingContainerId);
         closeForm();
-      } finally {
-        setSavingContainer(false);
+        return;
       }
-      return;
-    }
 
-    setSavingContainer(true);
-    try {
       const response = await fetch(apiPath("/api/containers"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1005,7 +1000,7 @@ export function ContainerPlanningPage() {
       setExpandedId(String(json.data.id));
       closeForm();
     } catch {
-      setFormError(pick("컨테이너 생성에 실패했습니다.", "Failed to create container."));
+      setFormError(pick("컨테이너 저장에 실패했습니다.", "Failed to save container."));
     } finally {
       setSavingContainer(false);
     }
@@ -1302,12 +1297,10 @@ export function ContainerPlanningPage() {
     if (!draft) return;
 
     const container = containers.find((item) => item.id === containerId);
-    const originalItem = container?.items.find((item) => item.sku === originalSku);
-    const isQuantityOnly = false;
     const isLocked = container?.status === "packing-list-received";
     if (isLocked) return;
 
-    const nextSku = isQuantityOnly ? originalSku : draft.sku.trim().toUpperCase();
+    const nextSku = draft.sku.trim().toUpperCase();
     const qty = Number.parseInt(draft.qty, 10);
 
     if (!nextSku) {
@@ -1315,78 +1308,46 @@ export function ContainerPlanningPage() {
       return;
     }
 
-    const found = isQuantityOnly && originalItem
-      ? { masterSku: originalItem.sku, cbmPerUnit: originalItem.cbm }
-      : await lookupSkuMaster(nextSku);
-    if (!found) {
-      window.alert(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${nextSku}`, `SKU not found in SKU Master: ${nextSku}`));
-      return;
-    }
-
-    const cbm = isQuantityOnly && originalItem
-      ? originalItem.cbm
-      : draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
-
     if (!Number.isFinite(qty) || qty <= 0) {
       window.alert(pick("수량은 1 이상이어야 합니다.", "Quantity must be at least 1."));
       return;
     }
 
-    if (!Number.isFinite(cbm) || cbm <= 0) {
-      window.alert(pick("CBM은 0보다 커야 합니다.", "CBM must be greater than 0."));
-      return;
-    }
-
-    if (isQuantityOnly && originalItem?.id && /^\d+$/.test(originalItem.id)) {
-      const response = await fetch(apiPath(`/api/planning/containers/items/${encodeURIComponent(originalItem.id)}`), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qty, sku_memo: draft.skuMemo ?? null }),
-      });
-      const json = await response.json();
-
-      if (!response.ok || !json.success) {
-        toast.error(response.status === 403
-          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
-          : (json.error ?? pick("수량 수정에 실패했습니다.", "Failed to update quantity.")));
+    setSavingContainer(true);
+    try {
+      const found = await lookupSkuMaster(nextSku);
+      if (!found) {
+        window.alert(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${nextSku}`, `SKU not found in SKU Master: ${nextSku}`));
         return;
       }
 
-      setContainers((current) =>
-        current.map((currentContainer) =>
-          currentContainer.id === containerId
-            ? {
-                ...currentContainer,
-                items: currentContainer.items.map((item) =>
-                  item.sku === originalSku ? { ...item, qty, cbm } : item
-                ),
-              }
-            : currentContainer
-        )
-      );
-      cancelInlineEdit(containerId, originalSku);
-      return;
-    }
+      const cbm = draft.cbm ? Number.parseFloat(draft.cbm) : found.cbmPerUnit;
 
-    if (!isQuantityOnly) {
+      if (!Number.isFinite(cbm) || cbm <= 0) {
+        window.alert(pick("CBM은 0보다 커야 합니다.", "CBM must be greater than 0."));
+        return;
+      }
+
       const cbmUpdateError = await updateSkuMasterCbm(found.masterSku, cbm);
       if (cbmUpdateError) {
         window.alert(cbmUpdateError);
         return;
       }
+
+      const updatedContainer = container
+        ? {
+            ...container,
+            items: container.items.map((item) =>
+              item.sku === originalSku ? { ...item, sku: found.masterSku, qty, cbm, skuMemo: draft.skuMemo || undefined } : item
+            ),
+          }
+        : null;
+
+      if (updatedContainer && !(await persistContainer(updatedContainer))) return;
+      cancelInlineEdit(containerId, originalSku);
+    } finally {
+      setSavingContainer(false);
     }
-
-    const updatedContainer = container
-      ? {
-          ...container,
-          items: container.items.map((item) =>
-            item.sku === originalSku ? { ...item, sku: found.masterSku, qty, cbm, skuMemo: draft.skuMemo || undefined } : item
-          ),
-        }
-      : null;
-
-    if (updatedContainer && !(await persistContainer(updatedContainer))) return;
-    cancelInlineEdit(containerId, originalSku);
   }
 
   function getMergedContainer(container: MockContainer, itemsToMerge: ContainerItem[], mode: "add" | "replace" | "overwrite" = "add"): MockContainer {
@@ -2342,6 +2303,17 @@ export function ContainerPlanningPage() {
           onClose={() => setAvailableStockContainerId(null)}
         />
       ) : null}
+      {savingContainer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="flex flex-col items-center gap-3 rounded-xl bg-white px-10 py-8 shadow-xl">
+            <svg className="animate-spin h-8 w-8 text-[#1a5cdb]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm font-medium text-gray-700">저장 중...</span>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
