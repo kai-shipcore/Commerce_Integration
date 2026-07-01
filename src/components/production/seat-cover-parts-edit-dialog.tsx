@@ -128,9 +128,20 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ]);
 
+  const ALL_PAIRED = [...PAIRED_ALL, ...PAIRED_REAR_THIRD];
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const next: FormData = { ...prev, [name]: value };
+      // Driver 변경 시 D/P = "동일"이면 Passenger도 동기화
+      for (const [dKey, dpKey, pKey] of ALL_PAIRED) {
+        if (name === dKey && next[dpKey] === "동일") {
+          next[pKey] = value;
+        }
+      }
+      return next;
+    });
     if (errors.has(name)) setErrors((prev) => { const s = new Set(prev); s.delete(name); return s; });
   };
 
@@ -158,8 +169,9 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
 
   const pairedSection = (dKey: string, dpKey: string, pKey: string) => {
     const dpVal = formData[dpKey] ?? "";
+    const isDongil      = dpVal === "동일";
     const showDriver    = dpVal !== "Passenger 기준 대칭";
-    const showPassenger = dpVal === "Passenger 기준 대칭" || dpVal === "";
+    const showPassenger = dpVal !== "Driver 기준 대칭";
     return (
       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 16, alignItems: "flex-end" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -167,7 +179,14 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
           <select
             name={dpKey}
             value={dpVal}
-            onChange={(e) => setFormData((p) => ({ ...p, [dpKey]: e.target.value }))}
+            onChange={(e) => {
+              const newDp = e.target.value;
+              setFormData((p) => {
+                const next: FormData = { ...p, [dpKey]: newDp };
+                if (newDp === "동일") next[pKey] = p[dKey] ?? "";
+                return next;
+              });
+            }}
             style={{ height: 30, fontSize: 13, width: 180, border: "1px solid #D8D6CE", borderRadius: 6, padding: "0 8px", background: "#fff" }}
           >
             <option value="">—</option>
@@ -184,8 +203,16 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
         )}
         {showPassenger && (
           <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
-            <Label style={{ fontSize: 11, color: "#b45309" }}>Passenger</Label>
-            <Input name={pKey} value={formData[pKey] ?? ""} onChange={handleChange} style={{ fontSize: 13, height: 30 }} />
+            <Label style={{ fontSize: 11, color: isDongil ? "#7A766F" : "#b45309" }}>
+              Passenger{isDongil ? " (동일)" : ""}
+            </Label>
+            <Input
+              name={pKey}
+              value={isDongil ? (formData[dKey] ?? "") : (formData[pKey] ?? "")}
+              onChange={handleChange}
+              readOnly={isDongil}
+              style={{ fontSize: 13, height: 30, background: isDongil ? "#F5F4EF" : undefined }}
+            />
           </div>
         )}
       </div>
@@ -206,10 +233,18 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
 
       if (mode === "edit" && !editData?.id) return;
 
+      const allPaired = tab === "rear" || tab === "third"
+        ? [...PAIRED_ALL, ...PAIRED_REAR_THIRD]
+        : PAIRED_ALL;
+      const syncedData: FormData = { ...formData };
+      for (const [dKey, dpKey, pKey] of allPaired) {
+        if (syncedData[dpKey] === "동일") syncedData[pKey] = syncedData[dKey] ?? "";
+      }
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(syncedData),
       });
       const json = await res.json() as { success: boolean };
       if (json.success) {
