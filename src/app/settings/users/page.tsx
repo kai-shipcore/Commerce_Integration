@@ -588,7 +588,7 @@ export default function UserAccessPage() {
                             <TableCell className="w-6 px-3">
                               <span
                                 className={`block h-2 w-2 rounded-full ${user.isActive ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"}`}
-                                title={user.isActive ? pick("활성", "Active") : pick("비활성", "Inactive")}
+                                title={user.isActive ? pick("계정 활성화됨", "Account enabled") : pick("계정 비활성화됨", "Account disabled")}
                               />
                             </TableCell>
                             <TableCell className="max-w-[240px] truncate font-medium">{user.email}</TableCell>
@@ -948,7 +948,7 @@ function LoginActivityBadge({ lastLoginAt, pick }: { lastLoginAt: string | null;
   );
   if (status === "recent") return (
     <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
-      {pick("30일 이내", "Active")}
+      {pick("30일 이내", "Recent")}
     </span>
   );
   if (status === "inactive30") return (

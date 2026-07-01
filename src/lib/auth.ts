@@ -121,13 +121,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
         if (!existing.isActive) return false;
 
-        void recordLogin(existing.id);
+        await recordLogin(existing.id);
         return true;
       }
 
       // Credentials login — user.id is populated by authorize()
       if (user?.id) {
-        void recordLogin(user.id);
+        await recordLogin(user.id);
       }
 
       return true;
