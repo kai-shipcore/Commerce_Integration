@@ -6,6 +6,7 @@ import {
   AllCommunityModule,
   themeQuartz,
   type ColDef,
+  type ColGroupDef,
   type ICellRendererParams,
 } from "ag-grid-community";
 import * as XLSX from "xlsx";
@@ -33,6 +34,18 @@ function UrlCellRenderer({ value }: ICellRendererParams) {
       </a>
     );
   }
+  return <span>{str}</span>;
+}
+
+function DpDetailCellRenderer({ value }: ICellRendererParams) {
+  if (!value) return null;
+  const str = String(value);
+  if (str === "Driver 기준 대칭" || str.endsWith("-p"))
+    return <span style={{ color: "#1a5cdb", fontSize: 12, fontWeight: 500 }}>Driver 기준 대칭</span>;
+  if (str === "Passenger 기준 대칭" || str.endsWith("-d"))
+    return <span style={{ color: "#b45309", fontSize: 12, fontWeight: 500 }}>Passenger 기준 대칭</span>;
+  if (str === "동일")
+    return <span style={{ color: "#16a34a", fontSize: 12, fontWeight: 500 }}>동일</span>;
   return <span>{str}</span>;
 }
 
@@ -64,91 +77,69 @@ const TABS: { key: Tab; label: string }[] = [
 
 const GUEST_HIDDEN_FIELDS = new Set(["inventory", "confirmed", "ymm", "fitting_dp_detail", "added_date"]);
 
-function buildColDefs(tab: Tab, isGuest: boolean): ColDef[] {
-  const hide = (field: string) => isGuest && GUEST_HIDDEN_FIELDS.has(field);
+function buildColDefs(tab: Tab, isGuest: boolean): (ColDef | ColGroupDef)[] {
+  const hide = (f: string) => isGuest && GUEST_HIDDEN_FIELDS.has(f);
 
-  const base: ColDef[] = [
-    { headerName: "Size",          field: "size",             pinned: "left", minWidth: 160, flex: 2 },
-    { headerName: "Inventory",     field: "inventory",        minWidth: 100, flex: 1, hide: hide("inventory") },
-    { headerName: "Confirmed",     field: "confirmed",        minWidth: 100, flex: 1, hide: hide("confirmed") },
-    { headerName: "Blueprint",     field: "blueprint",        minWidth: 100, flex: 1 },
-    { headerName: "Manual",        field: "manual",           minWidth: 100, flex: 1 },
-    { headerName: "YMM",           field: "ymm",              minWidth: 160, flex: 2, hide: hide("ymm") },
+  function paired(headerName: string, driverField: string, dpField: string, passengerField: string): ColGroupDef {
+    return {
+      headerName,
+      children: [
+        { headerName: "Driver",    field: driverField,    minWidth: 130, flex: 2 },
+        { headerName: "Passenger", field: passengerField, minWidth: 130, flex: 2 },
+        { headerName: "D/P",       field: dpField,        minWidth: 140, flex: 2, cellRenderer: DpDetailCellRenderer },
+      ],
+    };
+  }
+
+  const cols: (ColDef | ColGroupDef)[] = [
+    { headerName: "Size",      field: "size",      pinned: "left", minWidth: 160, flex: 2 },
+    { headerName: "Inventory", field: "inventory", minWidth: 100,  flex: 1, hide: hide("inventory") },
+    { headerName: "Confirmed", field: "confirmed", minWidth: 100,  flex: 1, hide: hide("confirmed") },
+    { headerName: "Blueprint", field: "blueprint", minWidth: 100,  flex: 1 },
+    { headerName: "Manual",    field: "manual",    minWidth: 100,  flex: 1 },
+    { headerName: "YMM",       field: "ymm",       minWidth: 160,  flex: 2, hide: hide("ymm") },
   ];
 
   if (tab === "front" || tab === "rear") {
-    base.push({ headerName: "Fitting D/P Detail", field: "fitting_dp_detail", minWidth: 130, flex: 2, hide: hide("fitting_dp_detail") });
+    cols.push({ headerName: "Fitting D/P", field: "fitting_dp_detail", minWidth: 130, flex: 2, hide: hide("fitting_dp_detail"), cellRenderer: DpDetailCellRenderer });
   }
   if (tab === "rear") {
-    base.push({ headerName: "Added Date", field: "added_date", minWidth: 110, flex: 1, hide: hide("added_date") });
+    cols.push({ headerName: "Added Date", field: "added_date", minWidth: 110, flex: 1, hide: hide("added_date") });
   }
 
-  base.push({ headerName: "Package", field: "package", minWidth: 100, flex: 1 });
+  cols.push({ headerName: "Package", field: "package", minWidth: 840, flex: 12 });
 
-  const partGroups: [string, string, string, string][] = [
-    ["Headrest",              "headrest",        "headrest_dp_detail",     "headrest_qty"],
-    ["Headrest 2",            "headrest2",       "headrest2_dp_detail",    "headrest2_qty"],
-    ["Top / Body",            "top_body",        "top_body_dp_detail",     "top_body_qty"],
-    ["Top / Body 2",          "top_body2",       "top_body2_dp_detail",    "top_body2_qty"],
-    ["Bottom",                "bottom",          "bottom_dp_detail",       "bottom_qty"],
-    ["Bottom 2",              "bottom2",         "bottom2_dp_detail",      "bottom2_qty"],
-    ["Mid. Headrest",         "middle_headrest", "middle_headrest_detail", "middle_headrest_qty"],
-    ["Mid. Top / Body",       "middle_top_body", "middle_top_body_detail", "middle_top_body_qty"],
-    ["Mid. Bottom",           "middle_bottom",   "middle_bottom_detail",   "middle_bottom_qty"],
-  ];
+  cols.push(
+    paired("Headrest",   "headrest", "headrest_dp_detail", "headrest2"),
+    paired("Top / Body", "top_body", "top_body_dp_detail", "top_body2"),
+    paired("Bottom",     "bottom",   "bottom_dp_detail",   "bottom2"),
+  );
 
-  for (const [label, part, detail, qty] of partGroups) {
-    base.push(
-      { headerName: label,         field: part,   minWidth: 130, flex: 2 },
-      { headerName: "D/P Detail",  field: detail, minWidth: 130, flex: 2 },
-      { headerName: "Qty",         field: qty,    minWidth: 60,  flex: 1 },
+  cols.push({
+    headerName: "Middle",
+    children: [
+      { headerName: "Headrest",   field: "middle_headrest", minWidth: 130, flex: 2 },
+      { headerName: "Top / Body", field: "middle_top_body", minWidth: 130, flex: 2 },
+      { headerName: "Bottom",     field: "middle_bottom",   minWidth: 130, flex: 2 },
+    ],
+  });
+
+  if (tab === "rear" || tab === "third") {
+    cols.push(
+      { headerName: "Console", field: "console", minWidth: 130, flex: 2 },
+      paired("Backrest Storage", "backrest_storage", "backrest_storage_dp_detail", "backrest_storage2"),
     );
   }
 
-  if (tab === "rear" || tab === "third") {
-    const extraGroups: [string, string, string, string][] = [
-      ["Console",           "console",           "console_dp_detail",            "console_qty"],
-      ["Backrest Storage",  "backrest_storage",  "backrest_storage_dp_detail",   "backrest_storage_qty"],
-      ["Backrest Storage 2","backrest_storage2", "backrest_storage2_dp_detail",  "backrest_storage2_qty"],
-    ];
-    for (const [label, part, detail, qty] of extraGroups) {
-      base.push(
-        { headerName: label,        field: part,   minWidth: 140, flex: 2 },
-        { headerName: "D/P Detail", field: detail, minWidth: 130, flex: 2 },
-        { headerName: "Qty",        field: qty,    minWidth: 60,  flex: 1 },
-      );
-    }
-  }
-
-  const armGroups: [string, string, string, string][] = [
-    ["Armrest",   "armrest",  "armrest_detail",  "armrest_qty"],
-    ["Armrest 2", "armrest2", "armrest2_detail", "armrest2_qty"],
-  ];
-  for (const [label, part, detail, qty] of armGroups) {
-    base.push(
-      { headerName: label,        field: part,   minWidth: 110, flex: 2 },
-      { headerName: "D/P Detail", field: detail, minWidth: 130, flex: 2 },
-      { headerName: "Qty",        field: qty,    minWidth: 60,  flex: 1 },
-    );
-  }
+  cols.push(paired("Armrest", "armrest", "armrest_detail", "armrest2"));
 
   if (tab === "rear" || tab === "third") {
-    const subGroups: [string, string, string, string][] = [
-      ["Subpart",   "subpart",  "subpart_dp_detail",  "subpart_qty"],
-      ["Subpart 2", "subpart2", "subpart2_dp_detail", "subpart2_qty"],
-    ];
-    for (const [label, part, detail, qty] of subGroups) {
-      base.push(
-        { headerName: label,        field: part,   minWidth: 110, flex: 2 },
-        { headerName: "D/P Detail", field: detail, minWidth: 130, flex: 2 },
-        { headerName: "Qty",        field: qty,    minWidth: 60,  flex: 1 },
-      );
-    }
+    cols.push(paired("Subpart", "subpart", "subpart_dp_detail", "subpart2"));
   }
 
-  base.push({ headerName: "Note", field: "note", minWidth: 160, flex: 3 });
+  cols.push({ headerName: "Note", field: "note", minWidth: 160, flex: 3 });
 
-  return base;
+  return cols;
 }
 
 export function SeatCoverPartsGrid({ role }: { role?: string }) {
@@ -160,8 +151,42 @@ export function SeatCoverPartsGrid({ role }: { role?: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("edit");
   const [editData, setEditData] = useState<Record<string, unknown> | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!selectedRow?.id) return;
+    const size = selectedRow.size ?? selectedRow.id;
+    if (!window.confirm(`Delete "${size}"? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        apiPath(`/api/production/seat-cover-parts/${selectedRow.id}?tab=${activeTab}`),
+        { method: "DELETE" }
+      );
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? "Delete failed");
+      setSelectedRow(null);
+      loadRows(activeTab);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }
+  function flatLeafCols(defs: (ColDef | ColGroupDef)[]): ColDef[] {
+    const out: ColDef[] = [];
+    for (const c of defs) {
+      if ("children" in c) {
+        out.push(...flatLeafCols(c.children as (ColDef | ColGroupDef)[]));
+      } else {
+        out.push(c as ColDef);
+      }
+    }
+    return out;
+  }
+
   function handleExport() {
-    const visibleCols = colDefs.filter((c) => !c.hide && c.field && c.headerName);
+    const visibleCols = flatLeafCols(colDefs).filter((c) => !c.hide && c.field && c.headerName);
     const sheetData = rows.map((row) => {
       const out: Record<string, unknown> = {};
       for (const col of visibleCols) {
@@ -296,6 +321,22 @@ export function SeatCoverPartsGrid({ role }: { role?: string }) {
                 }}
               >
                 Edit
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={!selectedRow || deleting}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: selectedRow && !deleting ? "#fff" : "#A8A49E",
+                  background: selectedRow && !deleting ? "#C0392B" : "#F7F6F3",
+                  border: `1px solid ${selectedRow && !deleting ? "#C0392B" : "#D8D6CE"}`,
+                  borderRadius: 6,
+                  padding: "5px 14px",
+                  cursor: selectedRow && !deleting ? "pointer" : "not-allowed",
+                }}
+              >
+                {deleting ? "Deleting…" : "Delete"}
               </button>
             </>
           )}

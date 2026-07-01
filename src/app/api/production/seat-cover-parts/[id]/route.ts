@@ -1,5 +1,6 @@
-// Code Guide: PATCH endpoint for updating a single seat cover parts row.
-// PATCH /api/production/seat-cover-parts/{id}?tab=front|rear|third
+// Code Guide: PATCH and DELETE endpoints for a single seat cover parts row.
+// PATCH  /api/production/seat-cover-parts/{id}?tab=front|rear|third
+// DELETE /api/production/seat-cover-parts/{id}?tab=front|rear|third
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
@@ -28,52 +29,26 @@ const ALL_COLUMNS = [
   "package",
   "headrest",
   "headrest_dp_detail",
-  "headrest_qty",
   "headrest2",
-  "headrest2_dp_detail",
-  "headrest2_qty",
   "top_body",
   "top_body_dp_detail",
-  "top_body_qty",
   "top_body2",
-  "top_body2_dp_detail",
-  "top_body2_qty",
   "bottom",
   "bottom_dp_detail",
-  "bottom_qty",
   "bottom2",
-  "bottom2_dp_detail",
-  "bottom2_qty",
   "middle_headrest",
-  "middle_headrest_detail",
-  "middle_headrest_qty",
   "middle_top_body",
-  "middle_top_body_detail",
-  "middle_top_body_qty",
   "middle_bottom",
-  "middle_bottom_detail",
-  "middle_bottom_qty",
   "console",
-  "console_dp_detail",
-  "console_qty",
   "backrest_storage",
   "backrest_storage_dp_detail",
-  "backrest_storage_qty",
   "backrest_storage2",
-  "backrest_storage2_dp_detail",
-  "backrest_storage2_qty",
   "armrest",
   "armrest_detail",
-  "armrest_qty",
   "armrest2",
-  "armrest2_detail",
-  "armrest2_qty",
   "subpart",
   "subpart_dp_detail",
-  "subpart_qty",
   "subpart2",
-  "subpart2_dp_detail",
-  "subpart2_qty",
   "note",
 ] as const;
 
@@ -125,6 +100,37 @@ export async function PATCH(
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[seat-cover-parts PATCH]", err);
+    return NextResponse.json({ success: false, error: "DB error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const tab = (req.nextUrl.searchParams.get("tab") ?? "front") as Tab;
+
+  if (!ALLOWED_TABS.includes(tab)) {
+    return NextResponse.json({ success: false, error: "Invalid tab" }, { status: 400 });
+  }
+
+  try {
+    const result = await getPrimaryPool().query(
+      `DELETE FROM ${TABLE[tab]} WHERE id = $1 RETURNING id`,
+      [id]
+    );
+    if (result.rowCount === 0) {
+      return NextResponse.json({ success: false, error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[seat-cover-parts DELETE]", err);
     return NextResponse.json({ success: false, error: "DB error" }, { status: 500 });
   }
 }
