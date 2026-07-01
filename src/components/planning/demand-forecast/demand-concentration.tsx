@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export interface ParetoData {
   x: number[];
@@ -20,6 +21,7 @@ export function DemandConcentration({
 }: {
   pareto: ParetoData;
 }) {
+  const { pick } = useI18n();
   const { x, y, annotation: ann } = pareto;
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -112,10 +114,12 @@ export function DemandConcentration({
         <circle cx={px} cy={py} r="4.5" fill={dotFill} stroke="white" strokeWidth="2" />
         <rect x={rx} y={ry} width={LABEL_W} height={LABEL_H} rx="4" fill="white" stroke={border} strokeWidth="1" />
         <text x={rx + LABEL_W / 2} y={ry + 15} textAnchor="middle" fontSize="12.5" fontWeight="600" fill={titleFill}>
-          {isHover ? `Top ${sku_pct}% of SKUs` : "Forecasted SKUs"}
+          {isHover ? pick(`상위 ${sku_pct}% SKU`, `Top ${sku_pct}% of SKUs`) : pick("예측된 SKU", "Forecasted SKUs")}
         </text>
         <text x={rx + LABEL_W / 2} y={ry + 32} textAnchor="middle" fontSize="11.5" fill={subFill}>
-          {isHover ? `${demand_pct}% of demand` : `${sku_pct}% of SKUs → ${demand_pct}% of demand`}
+          {isHover
+            ? pick(`수요의 ${demand_pct}%`, `${demand_pct}% of demand`)
+            : pick(`SKU ${sku_pct}% → 수요 ${demand_pct}%`, `${sku_pct}% of SKUs → ${demand_pct}% of demand`)}
         </text>
       </g>
     );
@@ -124,9 +128,12 @@ export function DemandConcentration({
   return (
     <Card>
       <CardHeader className="pb-1 pt-4">
-        <CardTitle className="text-sm font-medium">Demand concentration</CardTitle>
+        <CardTitle className="text-sm font-medium">{pick("수요 집중도", "Demand concentration")}</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Cumulative share of demand as SKUs are added from highest to lowest volume. The gap above the diagonal shows how concentrated demand is.
+          {pick(
+            "SKU를 수량 기준 높은 순으로 추가할 때 수요의 누적 비율입니다. 대각선 위의 간격이 수요가 얼마나 집중되어 있는지를 나타냅니다.",
+            "Cumulative share of demand as SKUs are added from highest to lowest volume. The gap above the diagonal shows how concentrated demand is.",
+          )}
         </p>
       </CardHeader>
       <CardContent className="pb-4 pt-1">
@@ -173,7 +180,7 @@ export function DemandConcentration({
               textAnchor="middle" fontSize="9.5" fill="#9ca3af"
               transform={`rotate(-42, ${sx(38)}, ${sy(38) + 11})`}
             >
-              even distribution
+              {pick("균등 분포", "even distribution")}
             </text>
 
             {/* Pareto curve */}
@@ -210,7 +217,7 @@ export function DemandConcentration({
 
             {/* Axis titles */}
             <text x={sx(50)} y={h - 6} textAnchor="middle" fontSize="10.5" fill="#6b7280">
-              % of SKUs (sorted by demand, highest first)
+              {pick("% SKU (수요 기준 내림차순 정렬)", "% of SKUs (sorted by demand, highest first)")}
             </text>
             <text
               x={10}
@@ -221,7 +228,7 @@ export function DemandConcentration({
               fill="#6b7280"
               transform={`rotate(-90, 10, ${sy(50)})`}
             >
-              % of demand
+              {pick("% 수요", "% of demand")}
             </text>
           </svg>
         </div>

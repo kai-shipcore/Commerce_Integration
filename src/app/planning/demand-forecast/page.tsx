@@ -1,6 +1,7 @@
 import prisma from "@/lib/db/prisma";
-import { SegmentationOverview } from "@/components/planning/demand-forecast/segmentation-overview";
-import { RunForecast } from "@/components/planning/demand-forecast/run-forecast";
+import { DemandForecastContent } from "@/components/planning/demand-forecast/demand-forecast-content";
+import { SKUGlobalSearch } from "@/components/planning/demand-forecast/sku-global-search";
+import { DemandForecastPageHeader } from "@/components/planning/demand-forecast/page-headers";
 
 async function getLastRun(): Promise<{ run_date: string | null; horizon_weeks: number | null }> {
   try {
@@ -24,14 +25,11 @@ export default async function DemandForecastPage() {
   const lastRun = await getLastRun();
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-lg font-semibold">Demand Forecast</h1>
-        <p className="text-sm text-muted-foreground">
-          Segmentation overview across all active SKUs
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <DemandForecastPageHeader />
+        <SKUGlobalSearch />
       </div>
-      <RunForecast initialLastRun={lastRun} />
-      <SegmentationOverview />
+      <DemandForecastContent initialLastRun={lastRun} />
     </div>
   );
 }
