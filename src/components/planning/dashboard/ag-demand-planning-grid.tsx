@@ -339,33 +339,28 @@ function CopyableCellRenderer({
   label,
   badge,
   skuPlanningSku,
-  skuNote,
-  canEditSkuNote = false,
-  onSkuNoteChange,
+  memo: initialMemo,
+  onMemoSave,
 }: ICellRendererParams<DemandRow, CellContent> & {
   copyValue: string;
   label: string;
   badge?: string;
   skuPlanningSku?: string;
-  skuNote?: string;
-  canEditSkuNote?: boolean;
-  onSkuNoteChange?: (sku: string, note: string) => void;
+  memo?: string | null;
+  onMemoSave?: (memo: string) => Promise<void>;
 }) {
   const { pick } = useI18n();
   const [copied, setCopied] = useState(false);
-  const [noteDraft, setNoteDraft] = useState(skuNote ?? "");
+  const [noteDraft, setNoteDraft] = useState(initialMemo ?? "");
+  const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
   const noteResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
-      if (resetTimerRef.current !== null) {
-        window.clearTimeout(resetTimerRef.current);
-      }
-      if (noteResetTimerRef.current !== null) {
-        window.clearTimeout(noteResetTimerRef.current);
-      }
+      if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+      if (noteResetTimerRef.current !== null) window.clearTimeout(noteResetTimerRef.current);
     };
   }, []);
 
@@ -384,20 +379,22 @@ function CopyableCellRenderer({
     }
   };
 
-  const handleNoteSave = () => {
-    if (!skuPlanningSku || !canEditSkuNote || !onSkuNoteChange) return;
-    onSkuNoteChange(skuPlanningSku, noteDraft);
+  const handleNoteSave = async (overrideValue?: string) => {
+    if (!onMemoSave) return;
+    const valueToSave = overrideValue !== undefined ? overrideValue : noteDraft;
+    if (overrideValue === undefined && valueToSave === (initialMemo ?? "")) return;
+    setNoteSaving(true);
+    await onMemoSave(valueToSave);
+    setNoteSaving(false);
     setNoteSaved(true);
-    if (noteResetTimerRef.current !== null) {
-      window.clearTimeout(noteResetTimerRef.current);
-    }
+    if (noteResetTimerRef.current !== null) window.clearTimeout(noteResetTimerRef.current);
     noteResetTimerRef.current = window.setTimeout(() => setNoteSaved(false), 1200);
   };
 
   return (
     <Popover onOpenChange={(open) => {
       if (open) {
-        setNoteDraft(skuNote ?? "");
+        setNoteDraft(initialMemo ?? "");
         setNoteSaved(false);
       }
     }}>
@@ -409,7 +406,7 @@ function CopyableCellRenderer({
           className="flex h-full w-full min-w-0 items-center text-left"
         >
           <span className="min-w-0 flex-1 truncate">{renderCellValue(value)}</span>
-          {skuPlanningSku && skuNote?.trim() ? (
+          {skuPlanningSku && initialMemo?.trim() ? (
             <span
               aria-label={pick("메모 있음", "Has note")}
               title={pick("메모 있음", "Has note")}
@@ -462,12 +459,12 @@ function CopyableCellRenderer({
         <div className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-4 pb-4 text-base">
           {copyValue || "-"}
         </div>
-        {skuPlanningSku ? (
+        {onMemoSave && (
           <div className="border-t border-[#e2dfd8] px-4 py-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <span className="text-xs font-semibold text-muted-foreground">{pick("메모", "Note")}</span>
-              <span className={`text-[11px] ${noteSaved ? "text-emerald-600" : "text-muted-foreground"}`}>
-                {noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
+              <span className={`text-[11px] ${noteSaved ? "text-emerald-600" : noteSaving ? "text-slate-400" : "text-muted-foreground"}`}>
+                {noteSaving ? pick("저장 중...", "Saving...") : noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
               </span>
             </div>
             <textarea
@@ -476,33 +473,34 @@ function CopyableCellRenderer({
                 setNoteDraft(event.target.value);
                 setNoteSaved(false);
               }}
-              onBlur={canEditSkuNote ? handleNoteSave : undefined}
-              readOnly={!canEditSkuNote}
-              placeholder={canEditSkuNote ? pick("이 SKU에 대한 메모를 입력하세요", "Add a note for this SKU") : pick("공유 메모 없음", "No shared note")}
-              className={`min-h-[86px] w-full resize-y rounded-md border border-[#d8d6ce] px-3 py-2 text-sm leading-5 outline-none focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/15 ${canEditSkuNote ? "bg-white" : "bg-[#f6f5f1]"}`}
+              onBlur={() => void handleNoteSave()}
+              placeholder={pick("이 SKU에 대한 메모를 입력하세요", "Add a note for this SKU")}
+              className="min-h-[86px] w-full resize-y rounded-md border border-[#d8d6ce] px-3 py-2 text-sm leading-5 outline-none focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/15 bg-white"
             />
-            {canEditSkuNote && onSkuNoteChange ? (
-              <div className="mt-2 flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!noteDraft && !(skuNote?.trim())}
-                  onClick={() => {
-                    setNoteDraft("");
-                    if (skuPlanningSku) onSkuNoteChange(skuPlanningSku, "");
-                    setNoteSaved(true);
-                  }}
-                >
-                  {pick("삭제", "Clear")}
-                </Button>
-                <Button type="button" size="sm" onClick={handleNoteSave}>
-                  {pick("저장", "Save")}
-                </Button>
-              </div>
-            ) : null}
+            <div className="mt-2 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={noteSaving || (!noteDraft && !initialMemo?.trim())}
+                onClick={() => {
+                  setNoteDraft("");
+                  void handleNoteSave("");
+                }}
+              >
+                {pick("삭제", "Clear")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={noteSaving}
+                onClick={() => void handleNoteSave()}
+              >
+                {pick("저장", "Save")}
+              </Button>
+            </div>
           </div>
-        ) : null}
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -683,15 +681,23 @@ function StockModeCellRenderer({
   value,
   node,
   onToggle,
-}: ICellRendererParams<DemandRow, CellContent> & { onToggle: () => Promise<void> }) {
+  isLocked,
+}: ICellRendererParams<DemandRow, CellContent> & { onToggle: () => Promise<void>; isLocked: boolean }) {
   const [toggling, setToggling] = useState(false);
   const isAvailable = value === "available";
   return (
     <button
       type="button"
-      disabled={toggling}
-      title={isAvailable ? "Available stock — click for Onhand" : "Onhand stock — click for Available"}
+      disabled={toggling || isLocked}
+      title={
+        isLocked
+          ? "Transit stock 있음 — AV 고정"
+          : isAvailable
+            ? "Available stock — click for Onhand"
+            : "Onhand stock — click for Available"
+      }
       onClick={async (e) => {
+        if (isLocked) return;
         e.stopPropagation();
         node.setSelected(true, true);
         setToggling(true);
@@ -699,7 +705,11 @@ function StockModeCellRenderer({
         setToggling(false);
       }}
       className="h-full w-full border-0 bg-transparent text-[9px] font-bold"
-      style={{ color: isAvailable ? "#1A4FC0" : "#6B7280" }}
+      style={{
+        color: isAvailable ? "#1A4FC0" : "#6B7280",
+        cursor: isLocked ? "not-allowed" : "pointer",
+        opacity: isLocked ? 0.65 : 1,
+      }}
     >
       {toggling ? "…" : isAvailable ? "AV" : "OH"}
     </button>
@@ -1420,11 +1430,18 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
     const parts  = filtered.filter((r) => r.sales_status === "Part");
     const rest   = filtered.filter((r) => r.sales_status !== "Part");
-    return [...rest, ...parts].map((row) => ({
-      ...row,
-      ...(rowOverrides.get(row.sku) ?? {}),
-      ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
-    }));
+    return [...rest, ...parts].map((row) => {
+      const merged: DemandRow = {
+        ...row,
+        ...(rowOverrides.get(row.sku) ?? {}),
+        ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
+      };
+      // Transit stock >= 1이면 AV 모드 강제
+      if ((merged.transit_stock ?? 0) >= 1) {
+        merged.stock_mode = 'available';
+      }
+      return merged;
+    });
   }, [categoryFilter, cbmOverrides, conQtyFilter, data.rows, productFilter, qtyOverrides, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
 
   useEffect(() => {
@@ -1713,7 +1730,27 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       next.set(row.sku, { ...existing, transit_stock: nextVal, total_stock: newTotal });
       return next;
     });
+    // Transit 변경으로 effective stock_mode가 달라질 수 있으므로 chain 재계산
+    const effectiveMode: 'available' | 'onhand' = nextVal >= 1 ? 'available' : (row.stock_mode ?? 'onhand');
+    const updatedRow = { ...row, transit_stock: nextVal, stock_mode: effectiveMode };
+    setChainMap((cur) => new Map(cur).set(row.sku, computeContainerChain(updatedRow, containers, qtyOverrides, seasonalFactors)));
+    gridRef.current?.api.refreshCells({ force: true });
     return true;
+  }, [containers, qtyOverrides, seasonalFactors]);
+
+  const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
+    const res = await fetch(apiPath(`/api/planning/sku/${encodeURIComponent(row.sku)}/memo`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memo }),
+    });
+    if (!res.ok) return;
+    // rowOverrides만 업데이트 — refreshCells 호출 안 함 (팝업 열린 상태 유지)
+    setRowOverrides((cur) => {
+      const map = new Map(cur);
+      map.set(row.sku, { ...(cur.get(row.sku) ?? {}), memo });
+      return map;
+    });
   }, []);
 
   const autoFill = useCallback(async (
@@ -2029,6 +2066,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, [qtyOverrides]);
 
   const saveStockMode = useCallback(async (row: DemandRow): Promise<void> => {
+    if ((row.transit_stock ?? 0) >= 1) return;
     const next: 'onhand' | 'available' = (row.stock_mode ?? 'onhand') === 'onhand' ? 'available' : 'onhand';
     const res = await fetch(apiPath(`/api/planning/sku/${encodeURIComponent(row.sku)}/stock-mode`), {
       method: "PATCH",
@@ -2127,9 +2165,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
               : params.data?.containers_list ?? "",
             label: column.id === "sku" ? "Master SKU" : "Containers List",
             skuPlanningSku: column.id === "sku" ? (params.data?.sku ?? "") : undefined,
-            skuNote: column.id === "sku" && params.data?.sku ? skuCellNotes[params.data.sku] : undefined,
-            canEditSkuNote: column.id === "sku" ? canEditSkuNotes : false,
-            onSkuNoteChange: column.id === "sku" ? onSkuCellNoteChange : undefined,
+            memo: column.id === "sku" ? (params.data?.memo ?? null) : undefined,
+            onMemoSave: column.id === "sku" && params.data
+              ? (memo: string) => saveMemo(params.data!, memo)
+              : undefined,
           })
         : column.id === "cbm"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
@@ -2142,6 +2181,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         : column.id === "mode"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
               onToggle: () => params.data ? saveStockMode(params.data) : Promise.resolve(),
+              isLocked: (params.data?.transit_stock ?? 0) >= 1,
             })
         : undefined,
       headerStyle: headerStyleForColor(columnColors[column.id]?.header),

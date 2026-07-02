@@ -316,7 +316,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [isSkuFiltersOpen, setIsSkuFiltersOpen] = useState(true);
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
-  const [selectedColorColumn, setSelectedColorColumn] = useState(BASE_COLORABLE_COLUMNS[0]?.id ?? "");
+  const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>(
+    BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []
+  );
   const [transitImportOpen, setTransitImportOpen] = useState(false);
   const canEditSkuNotes = can("demand-planning", "edit");
 
@@ -347,7 +349,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     if (filter === categoryFilter) return;
     if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
 
-    setSelectedColorColumn((current) => current.startsWith("container:") ? (BASE_COLORABLE_COLUMNS[0]?.id ?? "") : current);
+    setSelectedColorColumns((current) => current.some((id) => id.startsWith("container:")) ? (BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []) : current);
     setIsCategoryLoading(true);
     const params = new URLSearchParams(searchParams.toString());
     params.set("product", filter);
@@ -607,10 +609,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
   }, []);
 
-  const handleColumnColorChange = useCallback((columnId: string, target: "cell" | "header", color: string) => {
+  const handleColumnColorChange = useCallback((columnIds: string[], target: "cell" | "header", color: string) => {
     setColumnColors((current) => {
-      const nextEntry = { ...(current[columnId] ?? {}), [target]: color };
-      const next = { ...current, [columnId]: nextEntry };
+      const next = { ...current };
+      for (const id of columnIds) {
+        next[id] = { ...(next[id] ?? {}), [target]: color };
+      }
       window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -619,7 +623,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const resetSelectedColumnColor = useCallback(() => {
     setColumnColors((current) => {
       const next = { ...current };
-      delete next[selectedColorColumn];
+      for (const id of selectedColorColumns) {
+        delete next[id];
+      }
       if (Object.keys(next).length) {
         window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
       } else {
@@ -627,7 +633,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       }
       return next;
     });
-  }, [selectedColorColumn]);
+  }, [selectedColorColumns]);
 
   const resetColumnColors = useCallback(() => {
     setColumnColors({});
@@ -824,7 +830,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     ],
     [categoryFilter, data.containers],
   );
-  const selectedColorColumnIsContainerHeader = selectedColorColumn.startsWith("container:");
+  const selectedColorColumnIsContainerHeader = selectedColorColumns.length > 0 &&
+    selectedColorColumns.every((id) => id.startsWith("container:"));
 
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1457,10 +1464,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   {isColorSettingsOpen ? (
                     <>
                   <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 9 }}>
+                    {selectedColorColumns.length > 1 && (
+                      <div style={{ fontSize: 11, color: "#64748B" }}>
+                        {pick(`${selectedColorColumns.length}개 선택됨`, `${selectedColorColumns.length} selected`)}
+                      </div>
+                    )}
                     <select
-                      value={selectedColorColumn}
-                      onChange={(event) => setSelectedColorColumn(event.target.value)}
-                      style={{ width: "100%", fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
+                      multiple
+                      size={6}
+                      value={selectedColorColumns}
+                      onChange={(event) =>
+                        setSelectedColorColumns(Array.from(event.target.selectedOptions, (o) => o.value))
+                      }
+                      style={{ width: "100%", fontSize: 12, padding: "2px 4px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B" }}
                     >
                       {colorableColumns.map((column) => (
                         <option key={column.id} value={column.id}>
@@ -1470,7 +1486,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </select>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                       {(["cell", "header"] as const).map((target) => {
-                        const current = columnColors[selectedColorColumn]?.[target] ?? (target === "cell" ? "#FFFFFF" : "#2A2825");
+                        const firstSelected = selectedColorColumns[0] ?? "";
+                        const current = columnColors[firstSelected]?.[target] ?? (target === "cell" ? "#FFFFFF" : "#2A2825");
                         return (
                           <label key={target} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
                             {target === "cell" ? pick("셀", "Cell") : pick("헤더", "Header")}
@@ -1478,7 +1495,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                               type="color"
                               disabled={target === "cell" && selectedColorColumnIsContainerHeader}
                               value={current}
-                              onChange={(event) => handleColumnColorChange(selectedColorColumn, target, event.target.value)}
+                              onChange={(event) => handleColumnColorChange(selectedColorColumns, target, event.target.value)}
                               style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: target === "cell" && selectedColorColumnIsContainerHeader ? "default" : "pointer", opacity: target === "cell" && selectedColorColumnIsContainerHeader ? 0.45 : 1 }}
                             />
                           </label>

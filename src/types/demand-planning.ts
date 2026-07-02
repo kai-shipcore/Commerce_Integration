@@ -99,6 +99,7 @@ export interface DemandRow {
   next_eta: string | null;
   sod: string | null;
   sod_days_raw?: number;
+  memo?: string | null;
   containers: Record<string, ContainerRowData>;
 }
 
