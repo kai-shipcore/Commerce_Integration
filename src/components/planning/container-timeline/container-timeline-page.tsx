@@ -1560,37 +1560,45 @@ function CalendarMonthView({
     <div className="rounded-xl border border-[#e2dfd8] bg-white shadow-sm overflow-hidden">
       {/* Calendar header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2dfd8] bg-[#f5f4f0]">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={goToday}
+            className="rounded-full border border-[#b8b3aa] bg-white px-4 py-1.5 text-[12px] font-semibold text-[#1a1917] hover:bg-[#f0eee9] transition-colors"
+          >
+            {pick("오늘", "Today")}
+          </button>
           <button
             type="button"
             onClick={prevMonth}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="min-w-[140px] text-center text-[14px] font-semibold text-[#1a1917]">
-            {pick(monthLabel, monthLabelEn)}
-          </span>
           <button
             type="button"
             onClick={nextMonth}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
+          <span className="ml-3 text-[20px] font-semibold tracking-tight text-[#1a1917]">
+            {pick(monthLabel, monthLabelEn)}
+          </span>
           {monthTotal > 0 && (
-            <span className="ml-1 rounded-full bg-[#1a5cdb] px-2.5 py-px text-[11px] font-bold text-white">
+            <span className="rounded-full bg-[#1a5cdb] px-2.5 py-px text-[11px] font-bold text-white">
               {monthTotal}
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={goToday}
-          className="rounded-md border border-[#d8d6ce] bg-white px-3 py-1 text-[11px] font-semibold text-[#1a1917] hover:bg-[#f0eee9] transition-colors"
-        >
-          {pick("오늘", "Today")}
-        </button>
+        <div className="hidden items-center gap-3 text-[11px] text-muted-foreground md:flex">
+          {STATUS_ORDER.map((status) => (
+            <span key={status} className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR[status] }} />
+              {STATUS_LABEL_FULL[status]}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Day-of-week header */}
@@ -1636,19 +1644,6 @@ function CalendarMonthView({
         </div>
       ))}
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 border-t border-[#e2dfd8] bg-[#fafaf7] px-4 py-2 flex-wrap">
-        {STATUS_ORDER.map((s) => (
-          <div key={s} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <div className="h-2.5 w-2.5 rounded-sm" style={{ background: STATUS_COLOR[s] }} />
-            {STATUS_LABEL_FULL[s]}
-          </div>
-        ))}
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground ml-auto">
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1a5cdb] text-[9px] font-bold text-white">1</div>
-          {pick("오늘", "Today")}
-        </div>
-      </div>
     </div>
   );
 }
