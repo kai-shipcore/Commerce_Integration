@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CalendarRange, ChevronDown, ExternalLink, FileDown, History, List, Plus, Search, X } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, FileDown, History, List, Plus, Search, X } from "lucide-react";
 import { ContainerHistoryTab } from "./container-history-tab";
 import * as XLSX from "xlsx";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -14,7 +14,7 @@ import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-f
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received" | "complete";
-type Period = "3M" | "6M" | "all";
+type Period = "3M" | "6M" | "all" | "monthly";
 type TimelineProductKey = "sc" | "cc" | "fm";
 type TimelineProductFilter = "all" | TimelineProductKey | "empty";
 
@@ -193,10 +193,11 @@ const STATUS_PILL: Record<ContainerStatus, string> = {
   complete: "bg-[#e6f7ee] text-[#166534]",
 };
 
-const PERIOD_OPTIONS: { value: Period; label: string; days: number | null }[] = [
-  { value: "3M", label: "3개월", days: 90 },
-  { value: "6M", label: "6개월", days: 180 },
-  { value: "all", label: "전체", days: null },
+const PERIOD_OPTIONS: { value: Period; label: string; labelEn: string; days: number | null }[] = [
+  { value: "3M",      label: "3개월",    labelEn: "3 Months",    days: 90 },
+  { value: "6M",      label: "6개월",    labelEn: "6 Months",    days: 180 },
+  { value: "all",     label: "전체",     labelEn: "All",          days: null },
+  { value: "monthly", label: "월별 보기", labelEn: "Month View",  days: null },
 ];
 
 const PRODUCT_OPTIONS: { value: TimelineProductFilter; label: string; shortLabel: string }[] = [
@@ -345,7 +346,17 @@ export function ContainerTimelinePage() {
     return new Set<ContainerStatus>(["packing-list-received", "final-list-sent", "draft"]);
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<ContainerStatus>>(() => new Set());
-  const [period, setPeriod] = useState<Period>("3M");
+  const [period, setPeriod] = useState<Period>(() => {
+    if (typeof window === "undefined") return "3M";
+    const saved = localStorage.getItem("container-timeline:period");
+    if (saved === "3M" || saved === "6M" || saved === "all" || saved === "monthly") return saved;
+    return "3M";
+  });
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [viewMode, setViewMode] = useState<"compact" | "detailed">(() => {
     if (typeof window === "undefined") return "compact";
     return (localStorage.getItem("container-timeline:viewMode") as "compact" | "detailed") ?? "compact";
@@ -827,22 +838,48 @@ export function ContainerTimelinePage() {
           {/* Separator */}
           <span className="w-px h-4 bg-[#d8d6ce]" />
 
-          {/* Period toggle */}
+          {/* Period dropdown */}
           <span className="text-[11px] font-semibold text-muted-foreground">{pick("기간", "Period")}</span>
-          <div className="flex bg-[#f0eee9] border border-[#d8d6ce] rounded-lg p-0.5 gap-0.5">
-            {PERIOD_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setPeriod(opt.value)}
-                className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-colors ${
-                  period === opt.value
-                    ? "bg-white text-[#1a1917] shadow-sm ring-1 ring-inset ring-[#d8d6ce]"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {opt.value === "3M" ? pick("3개월", "3M") : opt.value === "6M" ? pick("6개월", "6M") : pick("전체", "All")}
-              </button>
-            ))}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setPeriodOpen((o) => !o)}
+              className="flex items-center gap-1.5 h-[26px] rounded-lg border border-[#d8d6ce] bg-white px-2.5 text-[11px] font-semibold text-[#1a1917] hover:bg-[#f0eee9] transition-colors"
+            >
+              {pick(
+                PERIOD_OPTIONS.find((o) => o.value === period)?.label ?? period,
+                PERIOD_OPTIONS.find((o) => o.value === period)?.labelEn ?? period,
+              )}
+              <ChevronDown className="h-3 w-3 text-stone-400" />
+            </button>
+            {periodOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setPeriodOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-20 min-w-[120px] rounded-lg border border-[#e2dfd8] bg-white py-1 shadow-lg">
+                  {PERIOD_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setPeriod(opt.value);
+                        localStorage.setItem("container-timeline:period", opt.value);
+                        setPeriodOpen(false);
+                        if (opt.value === "monthly") {
+                          const d = new Date();
+                          setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+                        }
+                      }}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-[12px] hover:bg-[#f0eee9] transition-colors ${
+                        period === opt.value ? "font-semibold text-[#1a5cdb]" : "text-[#1a1917]"
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${period === opt.value ? "bg-[#1a5cdb]" : "bg-transparent"}`} />
+                      {pick(opt.label, opt.labelEn)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <span className="w-px h-4 bg-[#d8d6ce]" />
@@ -873,7 +910,22 @@ export function ContainerTimelinePage() {
           </span>
         </div>
 
+        {/* ── Monthly calendar view ────────────────────────────────────── */}
+        {period === "monthly" && (
+          <CalendarMonthView
+            containers={searchMatchedContainers}
+            activeStatuses={activeStatuses}
+            calendarMonth={calendarMonth}
+            setCalendarMonth={setCalendarMonth}
+            selected={selected}
+            setSelected={setSelected}
+            today={today}
+            pick={pick}
+          />
+        )}
+
         {/* ── Gantt table ──────────────────────────────────────────────── */}
+        {period !== "monthly" && (
         <div className="bg-white border border-[#e2dfd8] rounded-xl overflow-hidden shadow-sm">
           {/* Month header */}
           <div className="flex border-b border-[#e2dfd8] bg-[#f5f4f0]">
@@ -1111,8 +1163,10 @@ export function ContainerTimelinePage() {
             ))
           )}
         </div>
+        )} {/* end period !== "monthly" */}
 
         {/* Legend */}
+        {period !== "monthly" && (
         <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
           {STATUS_ORDER.map((s) => (
             <div key={s} className="flex items-center gap-1.5">
@@ -1137,6 +1191,7 @@ export function ContainerTimelinePage() {
             {pick("※ 바 너비 = 30일 Transit 기간 (발주일 컬럼 추가 시 실제 기간으로 전환 가능)", "※ Bar width = 30-day transit period (can switch to actual period when order date column is added)")}
           </span>
         </div>
+        )} {/* end legend */}
       </div>
 
       {/* ── Right overlay drawer ──────────────────────────────────────────────── */}
@@ -1151,6 +1206,343 @@ export function ContainerTimelinePage() {
         />
       )}
     </>
+  );
+}
+
+// ── Calendar day cell (manages its own overflow popup) ───────────────────────
+
+function CalendarDayCell({
+  date,
+  dateKey,
+  isCurrentMonth,
+  isToday,
+  isSat,
+  isSun,
+  dayCells,
+  selected,
+  setSelected,
+  pick,
+}: {
+  date: Date;
+  dateKey: string;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  isSat: boolean;
+  isSun: boolean;
+  dayCells: Container[];
+  selected: Container | null;
+  setSelected: (c: Container | null) => void;
+  pick: (ko: string, en: string) => string;
+}) {
+  const MAX_VISIBLE = 4;
+  const visible = dayCells.slice(0, MAX_VISIBLE);
+  const overflow = dayCells.length - MAX_VISIBLE;
+
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
+  const overflowRef = useRef<HTMLButtonElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }, []);
+
+  function openPopup() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    if (overflowRef.current) {
+      const rect = overflowRef.current.getBoundingClientRect();
+      const spaceRight = window.innerWidth - rect.left;
+      const x = spaceRight < 272 ? rect.right - 260 : rect.left;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const y = spaceBelow < 300 ? rect.top - 8 - Math.min(dayCells.length * 38 + 48, 300) : rect.bottom + 4;
+      setPopupPos({ x, y });
+    }
+    setPopupOpen(true);
+  }
+
+  function scheduleClose() {
+    closeTimer.current = setTimeout(() => setPopupOpen(false), 150);
+  }
+
+  function cancelClose() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  }
+
+  return (
+    <div
+      className={`border-r border-[#e2dfd8] last:border-r-0 overflow-hidden p-1.5 ${
+        !isCurrentMonth ? "bg-[#fafaf7]" : isToday ? "bg-blue-50/40" : "bg-white"
+      }`}
+    >
+      {/* Date number */}
+      <div className="flex justify-center mb-1">
+        <span
+          className={`flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold ${
+            isToday
+              ? "bg-[#1a5cdb] text-white"
+              : !isCurrentMonth
+                ? "text-stone-300"
+                : isSun
+                  ? "text-red-400"
+                  : isSat
+                    ? "text-blue-400"
+                    : "text-[#1a1917]"
+          }`}
+        >
+          {date.getDate()}
+        </span>
+      </div>
+
+      {/* Visible chips */}
+      <div className="flex flex-col gap-0.5">
+        {visible.map((c) => {
+          const isSelected = selected?.id === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setSelected(isSelected ? null : c)}
+              title={`${c.containerNumber} · ${STATUS_LABEL_FULL[c.status]}`}
+              className={`flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity hover:opacity-90 ${
+                isSelected ? "ring-2 ring-white ring-offset-1" : ""
+              }`}
+              style={{ backgroundColor: STATUS_COLOR[c.status] }}
+            >
+              <span className="min-w-0 flex-1 truncate">{c.containerNumber}</span>
+              {c.itemCount > 0 && (
+                <span className="shrink-0 rounded bg-black/20 px-1 py-px text-[9px] font-bold">
+                  {c.itemCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Overflow trigger */}
+        {overflow > 0 && (
+          <button
+            ref={overflowRef}
+            type="button"
+            onMouseEnter={openPopup}
+            onMouseLeave={scheduleClose}
+            className="px-1.5 text-left text-[10px] font-semibold text-[#1a5cdb] hover:underline"
+          >
+            +{overflow} {pick("개 더보기", "more")}
+          </button>
+        )}
+      </div>
+
+      {/* Overflow popup (fixed-positioned so it escapes the cell) */}
+      {popupOpen && popupPos && (
+        <div
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+          className="fixed z-50 w-64 overflow-hidden rounded-xl border border-[#e2dfd8] bg-white shadow-2xl"
+          style={{ left: popupPos.x, top: popupPos.y }}
+        >
+          {/* Popup header */}
+          <div className="border-b border-[#e2dfd8] bg-[#f5f4f0] px-3 py-2">
+            <span className="text-[12px] font-semibold text-[#1a1917]">
+              {date.toLocaleDateString(pick("ko-KR", "en-US"), { month: "long", day: "numeric" })}
+            </span>
+            <span className="ml-1.5 text-[11px] text-muted-foreground">
+              · {dayCells.length}{pick("개", " containers")}
+            </span>
+          </div>
+
+          {/* All containers list */}
+          <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto p-2">
+            {dayCells.map((c) => {
+              const isSelected = selected?.id === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setSelected(isSelected ? null : c);
+                    setPopupOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-white transition-opacity hover:opacity-90 ${
+                    isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-white" : ""
+                  }`}
+                  style={{ backgroundColor: STATUS_COLOR[c.status] }}
+                >
+                  <span className="flex-1 truncate text-[11px] font-bold">{c.containerNumber}</span>
+                  <span className="shrink-0 text-[9px] font-semibold opacity-80">
+                    {STATUS_LABEL_FULL[c.status]}
+                  </span>
+                  {c.itemCount > 0 && (
+                    <span className="shrink-0 rounded bg-black/15 px-1 py-px text-[9px] font-semibold">
+                      {c.itemCount} SKU
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Monthly Calendar View ─────────────────────────────────────────────────────
+
+const DAY_NAMES_KO = ["월", "화", "수", "목", "금", "토", "일"];
+const DAY_NAMES_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function CalendarMonthView({
+  containers,
+  activeStatuses,
+  calendarMonth,
+  setCalendarMonth,
+  selected,
+  setSelected,
+  today,
+  pick,
+}: {
+  containers: Container[];
+  activeStatuses: Set<ContainerStatus>;
+  calendarMonth: Date;
+  setCalendarMonth: (d: Date) => void;
+  selected: Container | null;
+  setSelected: (c: Container | null) => void;
+  today: Date;
+  pick: (ko: string, en: string) => string;
+}) {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+
+  // Mon-based grid: Mon=0 … Sun=6
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDOW = (firstDay.getDay() + 6) % 7; // Mon=0
+  const calStart = new Date(firstDay.getTime() - startDOW * 86_400_000);
+  const numWeeks = Math.ceil((startDOW + lastDay.getDate()) / 7);
+
+  const todayKey = today.toISOString().slice(0, 10);
+
+  // Build date-keyed map of containers (filtered by status)
+  const containersByDate = new Map<string, Container[]>();
+  let monthTotal = 0;
+  for (const c of containers) {
+    if (!activeStatuses.has(c.status)) continue;
+    const dateStr = c.status === "complete" && c.actualArrivalDate ? c.actualArrivalDate : c.etaDate;
+    if (!dateStr) continue;
+    const list = containersByDate.get(dateStr) ?? [];
+    list.push(c);
+    containersByDate.set(dateStr, list);
+    // Count only containers whose date falls in the displayed month
+    const d = new Date(dateStr + "T00:00:00");
+    if (d.getFullYear() === year && d.getMonth() === month) monthTotal++;
+  }
+
+  const monthLabel = calendarMonth.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
+  const monthLabelEn = calendarMonth.toLocaleDateString("en-US", { year: "numeric", month: "long" });
+
+  const prevMonth = () => setCalendarMonth(new Date(year, month - 1, 1));
+  const nextMonth = () => setCalendarMonth(new Date(year, month + 1, 1));
+  const goToday = () => {
+    const d = new Date();
+    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+  };
+
+  const dayNames = pick(DAY_NAMES_KO.join(","), DAY_NAMES_EN.join(",")).split(",");
+
+  return (
+    <div className="rounded-xl border border-[#e2dfd8] bg-white shadow-sm overflow-hidden">
+      {/* Calendar header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2dfd8] bg-[#f5f4f0]">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="min-w-[140px] text-center text-[14px] font-semibold text-[#1a1917]">
+            {pick(monthLabel, monthLabelEn)}
+          </span>
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          {monthTotal > 0 && (
+            <span className="ml-1 rounded-full bg-[#1a5cdb] px-2.5 py-px text-[11px] font-bold text-white">
+              {monthTotal}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={goToday}
+          className="rounded-md border border-[#d8d6ce] bg-white px-3 py-1 text-[11px] font-semibold text-[#1a1917] hover:bg-[#f0eee9] transition-colors"
+        >
+          {pick("오늘", "Today")}
+        </button>
+      </div>
+
+      {/* Day-of-week header */}
+      <div className="grid grid-cols-7 border-b border-[#e2dfd8] bg-[#fafaf7]">
+        {dayNames.map((name, i) => (
+          <div
+            key={i}
+            className={`py-2 text-center text-[11px] font-semibold tracking-wide ${
+              i === 6 ? "text-red-400" : i === 5 ? "text-blue-400" : "text-stone-400"
+            }`}
+          >
+            {name}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      {Array.from({ length: numWeeks }, (_, wi) => (
+        <div
+          key={wi}
+          className="grid grid-cols-7 border-b border-[#e2dfd8] last:border-b-0"
+          style={{ height: 148 }}
+        >
+          {Array.from({ length: 7 }, (_, di) => {
+            const date = new Date(calStart.getTime() + (wi * 7 + di) * 86_400_000);
+            const dateKey = date.toISOString().slice(0, 10);
+            return (
+              <CalendarDayCell
+                key={di}
+                date={date}
+                dateKey={dateKey}
+                isCurrentMonth={date.getMonth() === month}
+                isToday={dateKey === todayKey}
+                isSat={di === 5}
+                isSun={di === 6}
+                dayCells={containersByDate.get(dateKey) ?? []}
+                selected={selected}
+                setSelected={setSelected}
+                pick={pick}
+              />
+            );
+          })}
+        </div>
+      ))}
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 border-t border-[#e2dfd8] bg-[#fafaf7] px-4 py-2 flex-wrap">
+        {STATUS_ORDER.map((s) => (
+          <div key={s} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="h-2.5 w-2.5 rounded-sm" style={{ background: STATUS_COLOR[s] }} />
+            {STATUS_LABEL_FULL[s]}
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground ml-auto">
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1a5cdb] text-[9px] font-bold text-white">1</div>
+          {pick("오늘", "Today")}
+        </div>
+      </div>
+    </div>
   );
 }
 
