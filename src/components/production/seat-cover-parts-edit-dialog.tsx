@@ -130,18 +130,14 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
 
   const ALL_PAIRED = [...PAIRED_ALL, ...PAIRED_REAR_THIRD];
 
+  function stripDpSuffix(val: string): string {
+    // Remove trailing -D, -P, or bare - (partial delete)
+    return val.replace(/-(D|P)?$/i, "");
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => {
-      const next: FormData = { ...prev, [name]: value };
-      // Driver 변경 시 D/P = "동일"이면 Passenger도 동기화
-      for (const [dKey, dpKey, pKey] of ALL_PAIRED) {
-        if (name === dKey && next[dpKey] === "동일") {
-          next[pKey] = value;
-        }
-      }
-      return next;
-    });
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors.has(name)) setErrors((prev) => { const s = new Set(prev); s.delete(name); return s; });
   };
 
@@ -168,10 +164,29 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
   const partGroup = (label: string, partKey: string) => field(label, partKey);
 
   const pairedSection = (dKey: string, dpKey: string, pKey: string) => {
-    const dpVal = formData[dpKey] ?? "";
-    const isDongil      = dpVal === "동일";
-    const showDriver    = dpVal !== "Passenger 기준 대칭";
-    const showPassenger = dpVal !== "Driver 기준 대칭";
+    const dpVal      = formData[dpKey] ?? "";
+    const isDongil   = dpVal === "동일";
+    const isSymmetric = dpVal === "Driver 기준 대칭" || dpVal === "Passenger 기준 대칭";
+    const hasDpType  = isDongil || isSymmetric;
+
+    // Part = base value (no suffix); derived from Driver for display
+    const partVal = hasDpType ? stripDpSuffix(formData[dKey] ?? "") : "";
+
+    const handlePartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const base = e.target.value;
+      setFormData((prev) => {
+        const next: FormData = { ...prev };
+        if (isDongil) {
+          next[dKey] = base;
+          next[pKey] = base;
+        } else {
+          next[dKey] = base ? `${base}-D` : "";
+          next[pKey] = base ? `${base}-P` : "";
+        }
+        return next;
+      });
+    };
+
     return (
       <div style={{ gridColumn: "1 / -1", display: "flex", gap: 16, alignItems: "flex-end" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -183,7 +198,15 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
               const newDp = e.target.value;
               setFormData((p) => {
                 const next: FormData = { ...p, [dpKey]: newDp };
-                if (newDp === "동일") next[pKey] = p[dKey] ?? "";
+                if (newDp === "동일") {
+                  const base = stripDpSuffix(p[dKey] ?? p[pKey] ?? "");
+                  next[dKey] = base;
+                  next[pKey] = base;
+                } else if (newDp === "Driver 기준 대칭" || newDp === "Passenger 기준 대칭") {
+                  const base = stripDpSuffix(p[dKey] ?? p[pKey] ?? "");
+                  next[dKey] = base ? `${base}-D` : "";
+                  next[pKey] = base ? `${base}-P` : "";
+                }
                 return next;
               });
             }}
@@ -195,26 +218,39 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
             <option value="Passenger 기준 대칭">Passenger 기준 대칭</option>
           </select>
         </div>
-        {showDriver && (
+
+        {hasDpType ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
-            <Label style={{ fontSize: 11, color: "#1a5cdb" }}>Driver</Label>
-            <Input name={dKey} value={formData[dKey] ?? ""} onChange={handleChange} style={{ fontSize: 13, height: 30 }} />
-          </div>
-        )}
-        {showPassenger && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
-            <Label style={{ fontSize: 11, color: isDongil ? "#7A766F" : "#b45309" }}>
-              Passenger{isDongil ? " (동일)" : ""}
-            </Label>
+            <Label style={{ fontSize: 11, color: "#1a5cdb" }}>Part</Label>
             <Input
-              name={pKey}
-              value={isDongil ? (formData[dKey] ?? "") : (formData[pKey] ?? "")}
-              onChange={handleChange}
-              readOnly={isDongil}
-              style={{ fontSize: 13, height: 30, background: isDongil ? "#F5F4EF" : undefined }}
+              value={partVal}
+              onChange={handlePartChange}
+              style={{ fontSize: 13, height: 30 }}
             />
           </div>
-        )}
+        ) : null}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+          <Label style={{ fontSize: 11, color: "#7A766F" }}>Driver</Label>
+          <Input
+            name={dKey}
+            value={formData[dKey] ?? ""}
+            onChange={handleChange}
+            readOnly={hasDpType}
+            style={{ fontSize: 13, height: 30, background: hasDpType ? "#F5F4EF" : undefined }}
+          />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+          <Label style={{ fontSize: 11, color: "#7A766F" }}>Passenger</Label>
+          <Input
+            name={pKey}
+            value={isDongil ? (formData[dKey] ?? "") : (formData[pKey] ?? "")}
+            onChange={handleChange}
+            readOnly={hasDpType}
+            style={{ fontSize: 13, height: 30, background: hasDpType ? "#F5F4EF" : undefined }}
+          />
+        </div>
       </div>
     );
   };
@@ -238,7 +274,14 @@ export function SeatCoverPartsEditDialog({ open, onOpenChange, onSuccess, editDa
         : PAIRED_ALL;
       const syncedData: FormData = { ...formData };
       for (const [dKey, dpKey, pKey] of allPaired) {
-        if (syncedData[dpKey] === "동일") syncedData[pKey] = syncedData[dKey] ?? "";
+        const dp = syncedData[dpKey] ?? "";
+        if (dp === "동일") {
+          syncedData[pKey] = syncedData[dKey] ?? "";
+        } else if (dp === "Driver 기준 대칭" || dp === "Passenger 기준 대칭") {
+          const ref = dp === "Driver 기준 대칭" ? (syncedData[dKey] ?? "") : (syncedData[pKey] ?? "");
+          const base = stripDpSuffix(ref);
+          if (base) { syncedData[dKey] = `${base}-D`; syncedData[pKey] = `${base}-P`; }
+        }
       }
 
       const res = await fetch(url, {
