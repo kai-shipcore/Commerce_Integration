@@ -51,6 +51,7 @@ import {
 import type { CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 
 const AgDemandPlanningGrid = dynamic(
   () => import("./ag-demand-planning-grid").then((module) => module.AgDemandPlanningGrid),
@@ -284,6 +285,7 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
 
 export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "native" | "ag-grid" }) {
   const { pick } = useI18n();
+  const { can } = usePermissions();
   const router = useRouter();
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
   const [todayStr, setTodayStr] = useState("");
@@ -316,6 +318,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumn, setSelectedColorColumn] = useState(BASE_COLORABLE_COLUMNS[0]?.id ?? "");
   const [transitImportOpen, setTransitImportOpen] = useState(false);
+  const canEditSkuNotes = can("demand-planning", "edit");
 
   useEffect(() => {
     const today = planningLocalDateString();
@@ -405,6 +408,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [seasonalFactors, setSeasonalFactors] = useState<SeasonalFactors>(DEFAULT_SEASONAL_FACTORS);
   const [gradient, setGradient] = useState<GradientTier[]>(DEFAULT_GRADIENT);
   const [gradientSC, setGradientSC] = useState<GradientTier[]>(DEFAULT_GRADIENT_SC);
+  const [skuCellNotes, setSkuCellNotes] = useState<Record<string, string>>({});
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
@@ -451,6 +455,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setGradient(loadSavedGradient());
     setGradientSC(loadSavedGradientSC());
+  }, []);
+
+  useEffect(() => {
+    fetch(apiPath("/api/planning/sku-notes"), { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ success: boolean; data?: Record<string, string> }>)
+      .then((json) => {
+        if (json.success && json.data) setSkuCellNotes(json.data);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -684,6 +697,28 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const handleGradientSCChange = useCallback((next: GradientTier[]) => {
     setGradientSC(next);
     saveGradientSC(next);
+  }, []);
+
+  const handleSkuCellNoteChange = useCallback((sku: string, note: string) => {
+    const normalizedSku = sku.trim();
+    const normalizedNote = note.trim();
+    if (!normalizedSku) return;
+
+    setSkuCellNotes((current) => {
+      const next = { ...current };
+      if (normalizedNote) {
+        next[normalizedSku] = normalizedNote;
+      } else {
+        delete next[normalizedSku];
+      }
+      return next;
+    });
+
+    fetch(apiPath("/api/planning/sku-notes"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku: normalizedSku, note: normalizedNote }),
+    }).catch(() => {});
   }, []);
 
   const handleAllOn = useCallback(() => {
@@ -2010,6 +2045,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           gradientSC={gradientSC}
           columnColors={columnColors}
           cellColors={cellColors}
+          skuCellNotes={skuCellNotes}
+          onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
+          canEditSkuNotes={canEditSkuNotes}
           selectedCellKeys={selectedCellKeys}
           onAgCellSelected={(selection) => {
             setSelectedAgCell({ rowId: selection.rowId, columnId: selection.columnId, label: selection.label });
@@ -2050,6 +2088,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           seasonalFactors={seasonalFactors}
           columnColors={columnColors}
           cellColors={cellColors}
+          skuCellNotes={skuCellNotes}
+          onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
+          canEditSkuNotes={canEditSkuNotes}
           selectedCellKeys={selectedCellKeys}
         />}
       </div>

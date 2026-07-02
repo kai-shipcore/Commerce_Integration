@@ -64,6 +64,9 @@ export interface DemandPlanningGridProps {
   seasonalFactors: SeasonalFactors;
   columnColors?: ColumnColorSettings;
   cellColors?: CellColorSettings;
+  skuCellNotes?: Record<string, string>;
+  onSkuCellNoteChange?: (sku: string, note: string) => void;
+  canEditSkuNotes?: boolean;
   selectedCellKeys?: string[];
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
   onCellSelectionChange?: (keys: string[]) => void;

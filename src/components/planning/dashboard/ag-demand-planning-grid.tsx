@@ -339,20 +339,32 @@ function CopyableCellRenderer({
   label,
   badge,
   skuPlanningSku,
+  skuNote,
+  canEditSkuNote = false,
+  onSkuNoteChange,
 }: ICellRendererParams<DemandRow, CellContent> & {
   copyValue: string;
   label: string;
   badge?: string;
   skuPlanningSku?: string;
+  skuNote?: string;
+  canEditSkuNote?: boolean;
+  onSkuNoteChange?: (sku: string, note: string) => void;
 }) {
   const { pick } = useI18n();
   const [copied, setCopied] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(skuNote ?? "");
+  const [noteSaved, setNoteSaved] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
+  const noteResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (resetTimerRef.current !== null) {
         window.clearTimeout(resetTimerRef.current);
+      }
+      if (noteResetTimerRef.current !== null) {
+        window.clearTimeout(noteResetTimerRef.current);
       }
     };
   }, []);
@@ -372,8 +384,23 @@ function CopyableCellRenderer({
     }
   };
 
+  const handleNoteSave = () => {
+    if (!skuPlanningSku || !canEditSkuNote || !onSkuNoteChange) return;
+    onSkuNoteChange(skuPlanningSku, noteDraft);
+    setNoteSaved(true);
+    if (noteResetTimerRef.current !== null) {
+      window.clearTimeout(noteResetTimerRef.current);
+    }
+    noteResetTimerRef.current = window.setTimeout(() => setNoteSaved(false), 1200);
+  };
+
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => {
+      if (open) {
+        setNoteDraft(skuNote ?? "");
+        setNoteSaved(false);
+      }
+    }}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -382,6 +409,13 @@ function CopyableCellRenderer({
           className="flex h-full w-full min-w-0 items-center text-left"
         >
           <span className="min-w-0 flex-1 truncate">{renderCellValue(value)}</span>
+          {skuPlanningSku && skuNote?.trim() ? (
+            <span
+              aria-label={pick("메모 있음", "Has note")}
+              title={pick("메모 있음", "Has note")}
+              className="ml-1 h-0 w-0 shrink-0 border-l-[6px] border-t-[6px] border-l-transparent border-t-amber-500"
+            />
+          ) : null}
           {badge && (
             <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.03em", padding: "1px 4px", borderRadius: 3, background: "#F59E0B", color: "#fff", flexShrink: 0, marginLeft: 4 }}>
               {badge}
@@ -428,6 +462,47 @@ function CopyableCellRenderer({
         <div className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-4 pb-4 text-base">
           {copyValue || "-"}
         </div>
+        {skuPlanningSku ? (
+          <div className="border-t border-[#e2dfd8] px-4 py-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-muted-foreground">{pick("메모", "Note")}</span>
+              <span className={`text-[11px] ${noteSaved ? "text-emerald-600" : "text-muted-foreground"}`}>
+                {noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
+              </span>
+            </div>
+            <textarea
+              value={noteDraft}
+              onChange={(event) => {
+                setNoteDraft(event.target.value);
+                setNoteSaved(false);
+              }}
+              onBlur={canEditSkuNote ? handleNoteSave : undefined}
+              readOnly={!canEditSkuNote}
+              placeholder={canEditSkuNote ? pick("이 SKU에 대한 메모를 입력하세요", "Add a note for this SKU") : pick("공유 메모 없음", "No shared note")}
+              className={`min-h-[86px] w-full resize-y rounded-md border border-[#d8d6ce] px-3 py-2 text-sm leading-5 outline-none focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/15 ${canEditSkuNote ? "bg-white" : "bg-[#f6f5f1]"}`}
+            />
+            {canEditSkuNote && onSkuNoteChange ? (
+              <div className="mt-2 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!noteDraft && !(skuNote?.trim())}
+                  onClick={() => {
+                    setNoteDraft("");
+                    if (skuPlanningSku) onSkuNoteChange(skuPlanningSku, "");
+                    setNoteSaved(true);
+                  }}
+                >
+                  {pick("삭제", "Clear")}
+                </Button>
+                <Button type="button" size="sm" onClick={handleNoteSave}>
+                  {pick("저장", "Save")}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );
@@ -1253,6 +1328,9 @@ export function AgDemandPlanningGrid({
   seasonalFactors,
   columnColors = {},
   cellColors = {},
+  skuCellNotes = {},
+  canEditSkuNotes = false,
+  onSkuCellNoteChange,
   selectedCellKeys = [],
   onAgCellSelected,
   onCellSelectionChange,
@@ -2049,6 +2127,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
               : params.data?.containers_list ?? "",
             label: column.id === "sku" ? "Master SKU" : "Containers List",
             skuPlanningSku: column.id === "sku" ? (params.data?.sku ?? "") : undefined,
+            skuNote: column.id === "sku" && params.data?.sku ? skuCellNotes[params.data.sku] : undefined,
+            canEditSkuNote: column.id === "sku" ? canEditSkuNotes : false,
+            onSkuNoteChange: column.id === "sku" ? onSkuCellNoteChange : undefined,
           })
         : column.id === "cbm"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
@@ -2223,7 +2304,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [buildContainerSaveSummary, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, subColumns, updateEta]);
+  }, [buildContainerSaveSummary, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, skuCellNotes, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
