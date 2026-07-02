@@ -300,6 +300,13 @@
   <a class="nav-sub" href="#sp-inbound-history">입고 이력 탭</a>
   <a class="nav-sub" href="#sp-recommend">발주 추천 탭</a>
   <a class="nav-sub" href="#sp-forecast">수요 예측 탭</a>
+  <a class="nav-item" href="#demand-forecast-page"><span class="icon">📈</span> 수요 예측 페이지</a>
+  <a class="nav-sub" href="#dfp-run-forecast">예측 실행</a>
+  <a class="nav-sub" href="#dfp-overview">세그멘테이션 개요</a>
+  <a class="nav-sub" href="#dfp-concentration">수요 집중도</a>
+  <a class="nav-sub" href="#dfp-smooth-full">스무스 / 전체 이력</a>
+  <a class="nav-sub" href="#dfp-smooth-short">스무스 / 단기 이력</a>
+  <a class="nav-sub" href="#dfp-intermittent">비정기</a>
   <a class="nav-item" href="#container-planning"><span class="icon">🚢</span> 컨테이너 계획</a>
   <a class="nav-sub" href="#cp-create">컨테이너 등록</a>
   <a class="nav-sub" href="#cp-status">상태 관리</a>
@@ -1645,6 +1652,286 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════
+     수요 예측 페이지
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="demand-forecast-page">
+  <div class="section-header">
+    <div class="section-icon" style="background:#ede9fe;font-size:28px">📈</div>
+    <div>
+      <div class="menu-path">메뉴 › 계획 › 수요 예측</div>
+      <h2>수요 예측 페이지</h2>
+      <p class="subtitle">전체 활성 SKU를 세그먼트별로 분류하고 예측 모델 성과를 한눈에 파악하는 페이지입니다.</p>
+    </div>
+  </div>
+
+  <h3 id="dfp-overview">② 세그멘테이션 개요</h3>
+  <p>페이지 상단에는 전체 SKU가 세 가지 세그먼트로 나뉘어 요약됩니다. 예측 파이프라인이 실행될 때마다 각 SKU의 판매 이력을 분석해 세그먼트가 자동으로 재결정됩니다.</p>
+
+  <h3 class="sub">SKU 분류 기준</h3>
+  <p>파이프라인은 각 SKU의 이력 데이터에서 세 가지 지표를 계산합니다.</p>
+  <ul style="margin:8px 0 12px 20px;font-size:13.5px;line-height:2">
+    <li><b>제로 판매 비율:</b> 전체 주 중 판매가 없었던 주의 비율</li>
+    <li><b>주간 평균 수량:</b> 주당 평균 판매 수량</li>
+  </ul>
+  <table class="feat-table">
+    <tr><th style="width:320px">조건</th><th>세그먼트</th></tr>
+    <tr><td>제로 판매 비율 ≥ 30%, <em>또는</em> 주간 평균 &lt; 3</td><td class="label">비정기 (Intermittent)</td></tr>
+    <tr><td>나머지 — 안정적이고 규칙적인 수요</td><td class="label">스무스 (Smooth)</td></tr>
+  </table>
+  <p style="margin-top:10px">스무스 SKU는 이력 기간에 따라 추가 분류됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:320px">활성 이력</th><th>분류</th></tr>
+    <tr><td>52주 미만 — 연간 주기가 없음</td><td class="label">스무스 / 단기 이력</td></tr>
+    <tr><td>52주 이상 — 최소 1개 연간 주기 이상</td><td class="label">스무스 / 전체 이력</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">🔄</span>
+    <div><b>최근 활동 재조정:</b> 최근 13주 데이터를 별도로 평가합니다. 기존 비정기 SKU가 최근 13주 중 제로 비율 &lt;20%이고 평균 ≥2이면 <b>스무스 / 단기</b>로 승급됩니다. 반대로 스무스 SKU의 최근 13주 평균이 2 미만으로 하락하면 비정기로 강등됩니다.</div>
+  </div>
+
+  <h3 class="sub">지표 카드 (4개)</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">카드</th><th>설명</th></tr>
+    <tr><td class="label">전체 SKU</td><td>시스템에 등록된 활성 SKU 총 수</td></tr>
+    <tr><td class="label">예측된 SKU</td><td>현재 예측 모델이 적용된 SKU 수 및 전체 대비 비율</td></tr>
+    <tr><td class="label">수요 커버리지</td><td>예측 SKU가 차지하는 수요 비율 (%)</td></tr>
+    <tr><td class="label">N주 수요</td><td>선택한 조회 기간의 전체 판매 수량 및 날짜 범위</td></tr>
+  </table>
+
+  <h3 class="sub">필터 컨트롤</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">컨트롤</th><th>설명</th></tr>
+    <tr><td class="label">조회 기간</td><td>4W·8W·10W·13W·26W·52W 프리셋 또는 직접 입력(1–104주). 지표 카드와 세그먼트 테이블에 동시 반영됩니다.</td></tr>
+    <tr><td class="label">제품 유형</td><td>Car Cover / Seat Cover / Floor Mat 개별 토글 또는 전체 선택. 세그먼트 테이블과 집중도 그래프에 반영됩니다.</td></tr>
+  </table>
+
+  <h3 class="sub">세그먼트 테이블</h3>
+  <p>세 줄의 테이블로 각 세그먼트의 핵심 지표를 보여줍니다. 행을 클릭하면 해당 세그먼트 상세 페이지로 이동합니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">열</th><th>설명</th></tr>
+    <tr><td class="label">세그먼트</td><td>스무스 / 스무스 단기 / 비정기. <b>?</b> 아이콘에 마우스를 올리면 해당 세그먼트 설명이 표시됩니다.</td></tr>
+    <tr><td class="label">방법</td><td>각 세그먼트에 사용되는 예측 방법 배지 (StatsForecast · V1 · 재입고 정책). 배지를 클릭하면 모델 상세 설명 다이얼로그가 열립니다.</td></tr>
+    <tr><td class="label">SKU</td><td>해당 세그먼트의 SKU 수</td></tr>
+    <tr><td class="label">N주 수요</td><td>선택 기간의 세그먼트별 총 판매 수량</td></tr>
+    <tr><td class="label">수요 비율</td><td>전체 수요 대비 세그먼트 비율 (가로 막대로 표시)</td></tr>
+  </table>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08a-dfp-segmentation-overview.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>세그멘테이션 개요 — 지표 카드 및 세그먼트 테이블</p></div>'" alt="세그멘테이션 개요">
+    <div class="screenshot-caption">▲ 세그멘테이션 개요 — 상단 지표 카드 4개와 세그먼트별 SKU 수·수요 비율 테이블</div>
+  </div>
+
+  <h3 id="dfp-run-forecast">① 예측 실행</h3>
+  <p>페이지 최상단의 <b>예측 실행</b> 카드에서 전체 예측 파이프라인을 직접 트리거할 수 있습니다. 우측 상단에는 마지막 실행 일시와 예측 기간이 표시됩니다.</p>
+
+  <h3 class="sub">예측 기간 설정</h3>
+  <p>6개의 프리셋 버튼(4W · 8W · 10W · 13W · 26W · 52W) 또는 직접 입력(1–104주)으로 예측 기간을 설정한 뒤 <span class="btn-label">실행</span>을 클릭합니다.</p>
+
+  <h3 class="sub">실행 진행 상황</h3>
+  <p>실행 중에는 7단계 진행 막대가 표시됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:130px">단계</th><th>설명</th></tr>
+    <tr><td class="label">Ingest</td><td>외부 데이터 수집</td></tr>
+    <tr><td class="label">Load</td><td>데이터 로드</td></tr>
+    <tr><td class="label">Profile</td><td>SKU 세그먼트 분류</td></tr>
+    <tr><td class="label">Backtest</td><td>모델 교차 검증</td></tr>
+    <tr><td class="label">Select</td><td>SKU별 최적 모델 선택</td></tr>
+    <tr><td class="label">Forecast</td><td>전체 예측 계산</td></tr>
+    <tr><td class="label">Write</td><td>결과 DB 저장</td></tr>
+  </table>
+  <p style="margin-top:8px">하단의 <b>출력</b> 패널(접기/펼치기 가능)에서 실시간 로그를 확인할 수 있습니다. 실행 중 <span class="btn-label">취소</span> 버튼을 클릭하면 언제든 중단할 수 있으며, 취소된 경우 DB에 데이터가 저장되지 않습니다. 페이지를 이동해도 실행 중인 작업은 유지됩니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08-dfp-run-forecast.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>▶️</div><p>예측 실행 카드 — 진행 중 또는 완료 상태</p></div>'" alt="예측 실행 카드">
+    <div class="screenshot-caption">▲ 예측 실행 카드 — 7단계 진행 막대, 실시간 로그 출력, 완료 상태 표시</div>
+  </div>
+
+  <h3 id="dfp-concentration">③ 수요 집중도 그래프</h3>
+  <p>SKU를 수요 기준으로 높은 순서로 정렬했을 때 누적 수요 비율이 어떻게 쌓이는지를 보여주는 파레토 곡선입니다. 대각선(균등 분포)과의 간격이 클수록 수요가 소수의 SKU에 집중되어 있음을 의미합니다.</p>
+  <ul style="margin:12px 0 0 20px;font-size:13.5px;line-height:2">
+    <li><b>고정 주석:</b> 예측된 전체 SKU가 수요의 몇 %를 담당하는지 자동으로 표시됩니다.</li>
+    <li><b>호버 주석:</b> 그래프 위에 마우스를 올리면 해당 지점의 SKU % → 수요 % 값이 실시간으로 표시됩니다.</li>
+  </ul>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>수요 집중도가 높을수록(곡선이 대각선에서 많이 벗어날수록) 소수의 핵심 SKU 예측 정확도가 전체 성과에 미치는 영향이 큽니다.</div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08b-dfp-demand-concentration.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>수요 집중도 파레토 곡선</p></div>'" alt="수요 집중도 그래프">
+    <div class="screenshot-caption">▲ 수요 집중도 — SKU 누적 수요 파레토 곡선 및 예측 커버리지 주석</div>
+  </div>
+
+  <h3 id="dfp-smooth-full">④ 스무스 / 전체 이력 세그먼트 상세</h3>
+  <p>52주 이상의 이력을 가진 안정적인 수요 패턴의 SKU입니다. 파이프라인은 SKU별로 최적 모델을 자동으로 선택합니다.</p>
+
+  <h3 class="sub">모델 후보군 및 선택 방법</h3>
+  <p>다음 6개의 후보 모델이 각 SKU에 대해 평가됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">모델</th><th>특성</th></tr>
+    <tr><td class="label">AutoARIMA</td><td>자기회귀 + 이동평균. 트렌드와 주기적 패턴을 모두 포착합니다.</td></tr>
+    <tr><td class="label">AutoETS (damped)</td><td>지수평활법. 트렌드가 장기적으로 감소하는 경향을 반영하는 damped 옵션이 적용됩니다.</td></tr>
+    <tr><td class="label">AutoTheta</td><td>트렌드와 계절성을 분리해 처리하는 Theta 분해 기법입니다.</td></tr>
+    <tr><td class="label">Window Average (8주)</td><td>최근 8주 평균. 빠른 수요 변화에 적응하는 단순 기준선입니다.</td></tr>
+    <tr><td class="label">Naive</td><td>직전 값을 그대로 반복. 트렌드 없이 일정한 시리즈의 강력한 기준선입니다.</td></tr>
+    <tr><td class="label">Historic Average</td><td>전체 이력의 평균. 안정적이지만 변화를 반영하지 못합니다.</td></tr>
+  </table>
+  <p style="margin-top:10px">파이프라인은 <b>롤링 교차 검증(cross-validation)</b>을 통해 각 모델의 예측 오차(WAPE)를 여러 구간에서 평가하고, <b>SKU별로 WAPE가 가장 낮은 모델을 선택</b>합니다. 계절 조정이 활성화된 경우, 학습 전에 52주 주기의 계절 패턴을 분리한 뒤 모델을 학습하고, 예측 후 계절 패턴을 복원합니다.</p>
+
+  <h3 class="sub">신뢰도 산정 기준</h3>
+  <p>선택된 모델의 교차 검증 WAPE(학습 WAPE)를 기준으로 신뢰도가 부여됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">학습 WAPE</th><th>신뢰도</th></tr>
+    <tr><td>35% 이하</td><td class="label">standard (정상)</td></tr>
+    <tr><td>35% 초과</td><td class="label">low (낮음, 빨간 배지)</td></tr>
+  </table>
+
+  <h3 class="sub">모드 탭</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">모드</th><th>설명</th></tr>
+    <tr><td class="label">Forward</td><td>최신 예측 결과를 조회합니다. 향후 N주 예측값과 최근 실제 수요를 비교합니다.</td></tr>
+    <tr><td class="label">Backtest</td><td>과거 예측 실행을 선택해 예측값 vs 실제 수요를 평가합니다. 정확도 지표(WAPE·편향·P70 커버리지) 카드가 표시됩니다.</td></tr>
+    <tr><td class="label">테스트 데이터 사용</td><td>Backtest 주기 목록 위의 <b>테스트 데이터 사용</b> 체크박스를 켜면 실제 예측 실행 이력 대신 내장 샘플 데이터로 Backtest 기능을 미리 체험할 수 있습니다. 실제 예측이 아직 없는 환경에서 유용합니다.</td></tr>
+    <tr><td class="label">Simulation</td><td>특정 날짜를 기준으로 가상 예측을 직접 실행합니다. 커트오프 날짜·예측 주수·모델을 선택 후 실행합니다.</td></tr>
+  </table>
+
+  <h3 class="sub">테이블 열</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">열</th><th style="width:160px">표시 모드</th><th>설명</th></tr>
+    <tr><td class="label">SKU</td><td>전체</td><td>클릭 시 SKU 예측 상세 페이지로 이동합니다.</td></tr>
+    <tr><td class="label">모델</td><td>전체</td><td>해당 SKU에 선택된 예측 모델 이름</td></tr>
+    <tr><td class="label">신뢰도</td><td>Forward 전용</td><td><b>standard</b>(정상) 또는 <b>low</b>(낮음, 빨간색 배지). 열 헤더의 <b>?</b> 아이콘에 마우스를 올리면 신뢰도 기준 설명이 표시됩니다.</td></tr>
+    <tr><td class="label">학습 WAPE</td><td>Forward 전용</td><td>백테스트 기반 모델 학습 오차율(%). 신뢰도가 낮은 경우 빨간색으로 표시됩니다.</td></tr>
+    <tr><td class="label">이력 주 수</td><td>전체</td><td>해당 SKU의 판매 이력 기간(주)</td></tr>
+    <tr><td class="label">N주 수요 / 실제</td><td>전체</td><td>선택 기간의 실제 판매 수량</td></tr>
+    <tr><td class="label">N주 예측 / 예측</td><td>전체</td><td>예측 수량. 신뢰 구간이 있는 경우 호버 시 Low·Point·High 값이 툴팁으로 표시됩니다.</td></tr>
+    <tr><td class="label">WAPE</td><td>Backtest·Simulation</td><td>SKU별 예측 오차율(%)</td></tr>
+    <tr><td class="label">V1 WAPE</td><td>Backtest·Simulation (토글)</td><td>V1 공식 기준 SKU별 오차율(%). <span class="btn-label">열 표시</span>에서 활성화합니다.</td></tr>
+    <tr><td class="label">Diff (모델−V1)</td><td>Backtest·Simulation (토글)</td><td>모델 WAPE − V1 WAPE. 음수(초록)이면 모델 우수, 양수(빨강)이면 V1 우수. <span class="btn-label">열 표시</span>에서 활성화합니다.</td></tr>
+  </table>
+
+  <h3 class="sub">열 표시 설정 (Columns) — 스무스 / 전체 이력 전용</h3>
+  <p>테이블 우측 상단의 <span class="btn-label">열 표시</span> 버튼은 <b>스무스 / 전체 이력</b> 세그먼트에서만 나타납니다. 단기 이력 세그먼트에는 표시되지 않습니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">열</th><th style="width:80px">기본값</th><th style="width:180px">표시 조건</th><th>설명</th></tr>
+    <tr><td class="label">Low</td><td>꺼짐</td><td>전체 모드</td><td>예측 하한값 (P30 분위)</td></tr>
+    <tr><td class="label">Midpoint</td><td>켜짐</td><td>전체 모드</td><td>예측 중앙값 (점 예측). Low 또는 High와 함께 표시 시 툴팁 없이 수치만 표시됩니다.</td></tr>
+    <tr><td class="label">High</td><td>꺼짐</td><td>전체 모드</td><td>예측 상한값 (P70 분위)</td></tr>
+    <tr><td class="label">V1 WAPE</td><td>꺼짐</td><td>Backtest · Simulation</td><td>V1 공식 기반 SKU별 오차율(%). 활성화하면 상단에 V1 기준선 비교 카드도 함께 표시됩니다.</td></tr>
+    <tr><td class="label">Diff (모델−V1)</td><td>꺼짐</td><td>Backtest · Simulation</td><td>모델 WAPE − V1 WAPE. 음수면 모델 우수. 활성화하면 V1 비교 카드도 함께 표시됩니다.</td></tr>
+  </table>
+
+  <h3 class="sub">정렬 및 검색</h3>
+  <ul style="margin:12px 0 0 20px;font-size:13.5px;line-height:2">
+    <li>모든 열 헤더 클릭 시 해당 열 기준 정렬 (오름/내림 차순 전환)</li>
+    <li><b>Shift+클릭</b>으로 여러 열을 동시에 정렬할 수 있습니다. 정렬 우선순위가 숫자로 표시됩니다.</li>
+    <li>좌측 상단 검색창으로 SKU ID 실시간 필터링. 페이지당 50·100·200행 선택 가능.</li>
+    <li>열 헤더는 스크롤 시 상단에 고정됩니다.</li>
+  </ul>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08c-dfp-smooth-full.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>스무스 / 전체 이력 테이블 — Forward 모드</p></div>'" alt="스무스 전체 이력 테이블">
+    <div class="screenshot-caption">▲ 스무스 / 전체 이력 — Forward 모드 테이블 (모델·신뢰도·학습 WAPE·예측값 표시)</div>
+  </div>
+
+  <h3 class="sub">Backtest 모드 — 정확도 카드</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">지표</th><th>설명</th></tr>
+    <tr><td class="label">WAPE</td><td>가중 절대 오차. 초록(20% 미만) · 주황(20–40%) · 빨강(40% 이상)</td></tr>
+    <tr><td class="label">편향</td><td>과대/과소 예측 방향. 절대값 10% 미만이면 초록색으로 표시됩니다.</td></tr>
+    <tr><td class="label">P70 커버리지</td><td>실제 수요가 [Low, High] 구간 내에 포함된 SKU 비율. 65% 이상이면 초록색입니다.</td></tr>
+  </table>
+
+  <h3 class="sub">Backtest / Simulation — V1 기준선 비교 카드</h3>
+  <p><span class="btn-label">열 표시</span>에서 <b>V1 WAPE</b> 또는 <b>Diff</b> 열을 하나 이상 활성화하면, 정확도 카드 아래에 V1 기준선 비교 카드 3개가 나타납니다. V1 공식은 채널별(서부·동부·FBA) 가중 이동 평균에 계절 조정을 적용하는 규칙 기반 예측입니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">카드</th><th>설명</th></tr>
+    <tr><td class="label">V1 WAPE</td><td>V1 공식의 전체 수요 예측 오차율(%). 모델 WAPE와 같은 색상 기준 적용(초록 &lt;20%·주황 20–40%·빨강 ≥40%)</td></tr>
+    <tr><td class="label">MASE vs V1</td><td>모델 절대 오차 합계 ÷ V1 절대 오차 합계. 1 미만이면 모델이 V1보다 우수(초록), 1 초과이면 V1이 우수(빨강).</td></tr>
+    <tr><td class="label">WAPE 차이 (V1−모델)</td><td>V1 WAPE − 모델 WAPE(퍼센트포인트). 양수(초록)이면 모델이 V1보다 정확, 음수(빨강)이면 V1이 더 정확합니다.</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>V1 비교는 <b>스무스 / 전체 이력</b> 세그먼트에만 적용됩니다. V1 데이터가 없는 SKU는 비교 카드 계산에서 제외됩니다.</div>
+  </div>
+
+  <h3 class="sub">Simulation 모드</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">설정</th><th>설명</th></tr>
+    <tr><td class="label">커트오프 날짜</td><td>이 날짜까지의 데이터만 사용해 모델을 학습합니다. 기본값: 현재 기준 13주 전</td></tr>
+    <tr><td class="label">예측 주수</td><td>커트오프 이후 몇 주를 예측할지 설정합니다.</td></tr>
+    <tr><td class="label">모델</td><td>Auto(파이프라인 자동 선택) 또는 특정 모델(AutoETS·AutoARIMA·AutoTheta·Window Avg·Historic Avg·Seasonal Naïve·Naïve) 중 선택</td></tr>
+  </table>
+  <p style="margin-top:8px">실행 중에는 단계별 진행 상황(프로파일 → 필터링 → 수요 → 결측 보정 → 모델 학습 → 완료)이 표시되며, 실행 도중 취소할 수 있습니다. Simulation 완료 후 <span class="btn-label">열 표시</span>에서 V1 열을 활성화하면 Backtest와 동일한 V1 기준선 비교 카드가 Simulation 결과에도 표시됩니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08g-dfp-smooth-full-simulation.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🧪</div><p>스무스 / 전체 이력 — Simulation 모드</p></div>'" alt="스무스 전체 이력 Simulation 모드">
+    <div class="screenshot-caption">▲ Simulation 모드 — 커트오프 날짜·예측 주수·모델 설정 및 가상 예측 결과 테이블</div>
+  </div>
+
+  <h3 id="dfp-smooth-short">⑤ 스무스 / 단기 이력 세그먼트 상세</h3>
+  <p>스무스 수요 패턴이지만 이력이 52주 미만인 SKU입니다. 데이터가 1개 연간 주기에 미치지 못하므로 계절성 모델을 적용하면 노이즈를 학습하는 위험이 있습니다. 따라서 비계절성 후보 2개만 평가됩니다.</p>
+
+  <h3 class="sub">모델 후보군</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">모델</th><th>특성</th></tr>
+    <tr><td class="label">AutoETS (비계절)</td><td>수준 + 트렌드만 모델링. 계절 파라미터 없음(season_length=1).</td></tr>
+    <tr><td class="label">Window Average (12주)</td><td>최근 12주 평균. 이력이 짧은 경우 안정적인 기준선 역할을 합니다.</td></tr>
+  </table>
+  <p style="margin-top:10px">두 모델 중 교차 검증 WAPE가 낮은 모델이 선택됩니다. 데이터가 적어 불확실성이 높으므로, 측정된 WAPE 값에 관계없이 <b>이 세그먼트의 모든 SKU는 낮은 신뢰도로 간주</b>합니다. 이 때문에 신뢰도 배지와 학습 WAPE 열이 표시되지 않습니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">추가 열</th><th>설명</th></tr>
+    <tr><td class="label">전체 이력까지</td><td>스무스 / 전체 이력으로 재분류되기까지 남은 주 수. 8주 이하이면 초록색 강조 표시, 0주이면 <b>승급</b> 배지가 표시됩니다.</td></tr>
+  </table>
+  <p style="margin-top:8px">기본 정렬은 <b>전체 이력까지</b> 오름차순(승급이 가장 가까운 SKU 우선)입니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08d-dfp-smooth-short.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>스무스 / 단기 이력 테이블</p></div>'" alt="스무스 단기 이력 테이블">
+    <div class="screenshot-caption">▲ 스무스 / 단기 이력 — Forward 모드 테이블 (전체 이력까지 남은 주 수 강조 표시)</div>
+  </div>
+
+  <h3 class="sub">Backtest 모드</h3>
+  <p>단기 이력 세그먼트도 Backtest 모드를 지원합니다. 과거 예측 실행을 선택하면 예측값 vs 실제 수요 비교와 WAPE·편향·P70 커버리지 정확도 카드가 표시됩니다. 실제 예측 이력이 없는 경우 <b>테스트 데이터 사용</b> 체크박스를 활성화하면 스무스/단기 샘플 SKU로 기능을 확인할 수 있습니다.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08f-dfp-smooth-short-backtest.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>스무스 / 단기 이력 — Backtest 모드</p></div>'" alt="스무스 단기 이력 Backtest 모드">
+    <div class="screenshot-caption">▲ 단기 이력 Backtest 모드 — 정확도 카드(WAPE·편향·P70 커버리지)와 예측 vs 실제 비교 테이블</div>
+  </div>
+
+  <h3 id="dfp-intermittent">⑥ 비정기 세그먼트 상세</h3>
+  <p>제로 판매 비율 ≥30% 또는 주간 평균 &lt;3인 SKU입니다. 연속적인 수요 신호가 없어 일반 시계열 모델 대신, 희소 수요를 위해 설계된 전용 모델이 적용됩니다.</p>
+
+  <h3 class="sub">모델 방법론</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">모델</th><th>특성</th></tr>
+    <tr><td class="label">Croston Optimized</td><td>판매 발생 간격과 발생 시 수량을 별도 지수평활로 모델링합니다. "언제 팔릴 것인가"와 "얼마나 팔릴 것인가"를 분리해 추정합니다.</td></tr>
+    <tr><td class="label">IMAPA</td><td>Intermittent Multiple Aggregation Prediction Algorithm. 여러 시간 집계 단위(주, 월 등)에서 동시에 모델을 학습해 희소 수요의 패턴을 더 안정적으로 포착합니다.</td></tr>
+  </table>
+  <p style="margin-top:10px">판매 신호가 너무 희소해 의미 있는 교차 검증이 어렵기 때문에, 이 세그먼트는 신뢰도 점수 없이 <b>재입고 정책</b>으로 관리합니다. 테이블에는 수요 패턴보다 <b>재고 관리 판단에 필요한 현황 정보</b>(마지막 판매일, 판매 이력 희소도)가 표시됩니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">열</th><th>설명</th></tr>
+    <tr><td class="label">SKU</td><td>클릭 시 SKU 예측 상세 페이지로 이동합니다.</td></tr>
+    <tr><td class="label">N주 수량</td><td>선택 기간의 판매 수량</td></tr>
+    <tr><td class="label">마지막 판매일</td><td>가장 최근 판매가 발생한 주의 날짜</td></tr>
+    <tr><td class="label">마지막 판매 이후 주 수</td><td>마지막 판매 이후 경과 주 수. 13주 초과 시 주황색, 26주 초과 시 빨간색으로 표시됩니다.</td></tr>
+    <tr><td class="label">이벤트 횟수</td><td>전체 기간 중 판매가 발생한 주(이벤트)의 총 횟수</td></tr>
+    <tr><td class="label">이벤트당 평균 수량</td><td>판매 발생 주당 평균 판매 수량</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>마지막 업데이트:</b> 각 세그먼트 테이블 우측 하단에 데이터 기준 날짜(스무스: 마지막 예측 실행일, 비정기: 데이터 기준일)가 표시됩니다.</div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08e-dfp-intermittent.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📉</div><p>비정기 세그먼트 테이블</p></div>'" alt="비정기 세그먼트 테이블">
+    <div class="screenshot-caption">▲ 비정기 세그먼트 — 마지막 판매일·경과 주 수·이벤트 횟수·이벤트당 평균 수량</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════
      3. CONTAINER PLANNING
 ═══════════════════════════════════════════════ -->
 <section class="page-section" id="container-planning">
@@ -2606,6 +2893,13 @@
   <a class="nav-sub" href="#en-sp-inbound-history">Inbound History</a>
   <a class="nav-sub" href="#en-sp-recommend">Order Recommendation</a>
   <a class="nav-sub" href="#en-sp-forecast">Demand Forecast</a>
+  <a class="nav-item" href="#en-demand-forecast-page"><span class="icon">📈</span> Demand Forecast Page</a>
+  <a class="nav-sub" href="#en-dfp-run-forecast">Run Forecast</a>
+  <a class="nav-sub" href="#en-dfp-overview">Segmentation Overview</a>
+  <a class="nav-sub" href="#en-dfp-concentration">Demand Concentration</a>
+  <a class="nav-sub" href="#en-dfp-smooth-full">Smooth / Full History</a>
+  <a class="nav-sub" href="#en-dfp-smooth-short">Smooth / Short History</a>
+  <a class="nav-sub" href="#en-dfp-intermittent">Intermittent</a>
   <a class="nav-item" href="#en-container-planning"><span class="icon">🚢</span> Container Planning</a>
   <a class="nav-sub" href="#en-cp-create">Create Container</a>
   <a class="nav-sub" href="#en-cp-status">Status Management</a>
@@ -3717,6 +4011,284 @@
   <div class="callout warn">
     <span class="callout-icon">⚠️</span>
     <div><b>Forecast server required:</b> The Demand Forecast tab only works when the forecast server (FastAPI) is running. If no chart appears, contact your administrator.</div>
+  </div>
+</section>
+
+<!-- ═══ DEMAND FORECAST PAGE ═══ -->
+<section class="page-section" id="en-demand-forecast-page">
+  <div class="section-header">
+    <div class="section-icon" style="background:#ede9fe;font-size:28px">📈</div>
+    <div>
+      <div class="menu-path">Menu › Planning › Demand Forecast</div>
+      <h2>Demand Forecast Page</h2>
+      <p class="subtitle">A dedicated page that classifies all active SKUs by segment and gives a high-level view of forecast model coverage and performance.</p>
+    </div>
+  </div>
+
+  <h3 id="en-dfp-overview">② Segmentation Overview</h3>
+  <p>The top of the page summarises all active SKUs across three segments. Every time the forecast pipeline runs, each SKU's sales history is re-evaluated and its segment assignment is updated automatically.</p>
+
+  <h3 class="sub">How SKUs are classified</h3>
+  <p>The pipeline computes three metrics from each SKU's sales history:</p>
+  <ul style="margin:8px 0 12px 20px;font-size:13.5px;line-height:2">
+    <li><b>Zero-sale rate:</b> fraction of all historical weeks with zero units sold</li>
+    <li><b>Weekly mean:</b> average units sold per week</li>
+  </ul>
+  <table class="feat-table">
+    <tr><th style="width:340px">Condition</th><th>Segment</th></tr>
+    <tr><td>Zero-sale rate ≥ 30%, <em>or</em> weekly mean &lt; 3</td><td class="label">Intermittent</td></tr>
+    <tr><td>Everything else — consistent, low-variance demand</td><td class="label">Smooth</td></tr>
+  </table>
+  <p style="margin-top:10px">Smooth SKUs are then split by history length:</p>
+  <table class="feat-table">
+    <tr><th style="width:340px">Active history</th><th>Sub-segment</th></tr>
+    <tr><td>Under 52 weeks — less than one full annual cycle</td><td class="label">Smooth / Short History</td></tr>
+    <tr><td>52 weeks or more — at least one full annual cycle</td><td class="label">Smooth / Full History</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">🔄</span>
+    <div><b>Recent-activity override:</b> The last 13 weeks are evaluated separately. An Intermittent SKU that has been selling consistently recently (zero-sale rate &lt;20% <em>and</em> mean ≥ 2 units/week) is promoted to Smooth / Short History. Conversely, a Smooth SKU whose recent 13-week mean falls below 2 units/week is demoted to Intermittent.</div>
+  </div>
+
+  <h3 class="sub">Metric Cards (4)</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Card</th><th>Description</th></tr>
+    <tr><td class="label">Total SKUs</td><td>Total number of active SKUs registered in the system</td></tr>
+    <tr><td class="label">Forecasted SKUs</td><td>Number of SKUs with an active forecast model applied, and their share of the total</td></tr>
+    <tr><td class="label">Demand Coverage</td><td>Percentage of total demand accounted for by forecasted SKUs</td></tr>
+    <tr><td class="label">N-Week Demand</td><td>Total units sold in the selected lookback window, with the date range shown</td></tr>
+  </table>
+
+  <h3 class="sub">Filter Controls</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Control</th><th>Description</th></tr>
+    <tr><td class="label">Lookback window</td><td>Preset buttons (4W · 8W · 10W · 13W · 26W · 52W) or free-text custom input (1–104 weeks). Applies to metric cards and the segment table simultaneously.</td></tr>
+    <tr><td class="label">Product type</td><td>Toggle Car Cover / Seat Cover / Floor Mat individually or select All. Affects the segment table and concentration graph.</td></tr>
+  </table>
+
+  <h3 class="sub">Segment Table</h3>
+  <p>A three-row table showing the key metrics for each segment. Click any row to navigate to that segment's detail page.</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Column</th><th>Description</th></tr>
+    <tr><td class="label">Segment</td><td>Smooth / Smooth Short History / Intermittent. Hover the <b>?</b> icon for a description of each segment.</td></tr>
+    <tr><td class="label">Method</td><td>The forecasting method badge for each segment (StatsForecast · V1 · Restock policy). Click the badge to open a detailed model explanation dialog.</td></tr>
+    <tr><td class="label">SKU</td><td>Number of SKUs in this segment</td></tr>
+    <tr><td class="label">N-Week Demand</td><td>Total units sold in the selected window for this segment</td></tr>
+    <tr><td class="label">% of Demand</td><td>This segment's share of total demand, shown as a bar</td></tr>
+  </table>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08a-dfp-segmentation-overview-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>Segmentation Overview — metric cards and segment table</p></div>'" alt="Segmentation Overview">
+    <div class="screenshot-caption">▲ Segmentation Overview — four metric cards and the segment table showing SKU counts and demand share</div>
+  </div>
+
+  <h3 id="en-dfp-run-forecast">① Run Forecast</h3>
+  <p>The <b>Run Forecast</b> card at the top of the page lets you trigger the full forecast pipeline on demand. The card header shows the last run date/time and horizon.</p>
+
+  <h3 class="sub">Horizon setting</h3>
+  <p>Choose a preset (4W · 8W · 10W · 13W · 26W · 52W) or type a custom value (1–104 weeks), then click <span class="btn-label">Run</span>.</p>
+
+  <h3 class="sub">Progress and output</h3>
+  <p>While running, a 7-step progress bar tracks the pipeline:</p>
+  <table class="feat-table">
+    <tr><th style="width:120px">Step</th><th>What happens</th></tr>
+    <tr><td class="label">Ingest</td><td>Pull latest data from external sources</td></tr>
+    <tr><td class="label">Load</td><td>Load data into the pipeline</td></tr>
+    <tr><td class="label">Profile</td><td>Classify each SKU into its segment</td></tr>
+    <tr><td class="label">Backtest</td><td>Run cross-validation across all candidate models</td></tr>
+    <tr><td class="label">Select</td><td>Pick the best model per SKU by WAPE</td></tr>
+    <tr><td class="label">Forecast</td><td>Generate forward forecasts</td></tr>
+    <tr><td class="label">Write</td><td>Persist results to the database</td></tr>
+  </table>
+  <p style="margin-top:8px">A collapsible <b>Output</b> panel shows the live log stream. Click <span class="btn-label">Cancel</span> at any time to stop the run — no data is written on cancellation. If you navigate away mid-run, the job continues and re-attaches automatically when you return to the page.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08-dfp-run-forecast-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>▶️</div><p>Run Forecast card — in progress or completed state</p></div>'" alt="Run Forecast card">
+    <div class="screenshot-caption">▲ Run Forecast card — 7-step progress bar, live log output, and completion status</div>
+  </div>
+
+  <h3 id="en-dfp-concentration">③ Demand Concentration Graph</h3>
+  <p>A Pareto curve showing how cumulative demand builds as SKUs are ranked from highest to lowest volume. The further the curve bows above the diagonal (even distribution line), the more demand is concentrated in a small number of SKUs.</p>
+  <ul style="margin:12px 0 0 20px;font-size:13.5px;line-height:2">
+    <li><b>Fixed annotation:</b> Shows the overall share of demand covered by all forecasted SKUs.</li>
+    <li><b>Hover annotation:</b> Move your cursor over the chart to see the exact SKU% → demand% at any point on the curve.</li>
+  </ul>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>A highly concentrated curve means that forecast accuracy on a small number of top SKUs has an outsized impact on overall planning quality.</div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08b-dfp-demand-concentration-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📈</div><p>Demand Concentration Pareto curve</p></div>'" alt="Demand Concentration graph">
+    <div class="screenshot-caption">▲ Demand Concentration — cumulative SKU demand Pareto curve with forecasted coverage annotation</div>
+  </div>
+
+  <h3 id="en-dfp-smooth-full">④ Smooth / Full History Segment Detail</h3>
+  <p>SKUs with 52 or more weeks of stable, regular sales. The pipeline runs multiple candidate models and automatically selects the best one per SKU.</p>
+
+  <h3 class="sub">Candidate models and selection</h3>
+  <p>Six candidate models are evaluated for each SKU:</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">Model</th><th>Characteristics</th></tr>
+    <tr><td class="label">AutoARIMA</td><td>Autoregressive + moving-average. Captures both trend and cyclic patterns.</td></tr>
+    <tr><td class="label">AutoETS (damped)</td><td>Exponential smoothing with a damping factor so long-run trend growth is moderated.</td></tr>
+    <tr><td class="label">AutoTheta</td><td>Decomposes the series into trend and seasonality components and forecasts each separately.</td></tr>
+    <tr><td class="label">Window Average (8 weeks)</td><td>Rolling 8-week mean. Adapts quickly to recent demand shifts.</td></tr>
+    <tr><td class="label">Naive</td><td>Repeats the last observed value. A strong baseline for flat, trend-free series.</td></tr>
+    <tr><td class="label">Historic Average</td><td>Full-history mean. Stable but slow to respond to changes.</td></tr>
+  </table>
+  <p style="margin-top:10px">The pipeline runs a <b>rolling cross-validation</b> across each candidate model, evaluating forecast error (WAPE) over multiple held-out windows of history. The model with the <b>lowest horizon-aggregate WAPE is selected per SKU</b>. If seasonal adjustment is enabled, the 52-week seasonal pattern is decomposed out of the training data before fitting, and then restored to the forecast output — keeping model selection focused on trend and level rather than calendar seasonality.</p>
+
+  <h3 class="sub">Confidence scoring</h3>
+  <p>The selected model's cross-validation WAPE (shown as Train WAPE) determines the confidence label:</p>
+  <table class="feat-table">
+    <tr><th style="width:200px">Train WAPE</th><th>Confidence</th></tr>
+    <tr><td>≤ 35%</td><td class="label">standard</td></tr>
+    <tr><td>&gt; 35%</td><td class="label">low (red badge)</td></tr>
+  </table>
+
+  <h3 class="sub">Mode Tabs</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">Mode</th><th>Description</th></tr>
+    <tr><td class="label">Forward</td><td>Shows the latest forecast results. Compares upcoming N-week forecasts against recent actual demand.</td></tr>
+    <tr><td class="label">Backtest</td><td>Select a completed past forecast run and evaluate forecast vs. actual demand. Accuracy cards (WAPE, Bias, P70 Coverage) are shown above the table.</td></tr>
+    <tr><td class="label">Use test data</td><td>Enable the <b>Use test data</b> checkbox above the backtest cycle list to explore backtest functionality using built-in sample data instead of real forecast runs. Useful when no live forecast has been executed yet.</td></tr>
+    <tr><td class="label">Simulation</td><td>Run a what-if forecast directly from the UI. Choose a cutoff date, horizon, and model, then click Run.</td></tr>
+  </table>
+
+  <h3 class="sub">Table Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">Column</th><th style="width:180px">Shown in</th><th>Description</th></tr>
+    <tr><td class="label">SKU</td><td>All modes</td><td>Click to navigate to the SKU forecast detail page.</td></tr>
+    <tr><td class="label">Model</td><td>All modes</td><td>The forecast model selected for this SKU</td></tr>
+    <tr><td class="label">Confidence</td><td>Forward only</td><td><b>standard</b> or <b>low</b> (red badge). Hover the <b>?</b> icon in the column header to see what low confidence means.</td></tr>
+    <tr><td class="label">Train WAPE</td><td>Forward only</td><td>Model training error rate (%) derived from backtest cross-validation. Shown in red when confidence is low.</td></tr>
+    <tr><td class="label">Weeks of history</td><td>All modes</td><td>Length of available sales history for this SKU in weeks</td></tr>
+    <tr><td class="label">N-Week Demand / Actual</td><td>All modes</td><td>Actual units sold in the selected period</td></tr>
+    <tr><td class="label">N-Week Forecast / Forecast</td><td>All modes</td><td>Forecasted units. When a confidence interval is available, hover to see Low · Point · High values in a tooltip.</td></tr>
+    <tr><td class="label">WAPE</td><td>Backtest · Simulation</td><td>Per-SKU forecast error rate (%).</td></tr>
+    <tr><td class="label">V1 WAPE</td><td>Backtest · Simulation (toggle)</td><td>Per-SKU error rate using the V1 rule-based formula. Enable via the <span class="btn-label">Columns</span> button.</td></tr>
+    <tr><td class="label">Diff (model−V1)</td><td>Backtest · Simulation (toggle)</td><td>Model WAPE − V1 WAPE. Negative (green) means the model beats V1; positive (red) means V1 is better. Enable via <span class="btn-label">Columns</span>.</td></tr>
+  </table>
+
+  <h3 class="sub">Column Visibility (Columns button) — Smooth / Full History only</h3>
+  <p>The <span class="btn-label">Columns</span> button appears only for the <b>Smooth / Full History</b> segment. The short history segment does not have confidence intervals or V1 comparison, so the button is not shown there.</p>
+  <table class="feat-table">
+    <tr><th style="width:160px">Column</th><th style="width:80px">Default</th><th style="width:200px">Available in</th><th>Description</th></tr>
+    <tr><td class="label">Low</td><td>Off</td><td>All modes</td><td>Lower bound of the forecast interval (P30)</td></tr>
+    <tr><td class="label">Midpoint</td><td>On</td><td>All modes</td><td>Point forecast. When Low or High are also shown, the interval hover tooltip is hidden and only the number is displayed.</td></tr>
+    <tr><td class="label">High</td><td>Off</td><td>All modes</td><td>Upper bound of the forecast interval (P70)</td></tr>
+    <tr><td class="label">V1 WAPE</td><td>Off</td><td>Backtest · Simulation</td><td>Per-SKU error rate from the V1 formula. Enabling this also shows V1 Comparison Cards above the table.</td></tr>
+    <tr><td class="label">Diff (model−V1)</td><td>Off</td><td>Backtest · Simulation</td><td>Model WAPE minus V1 WAPE. Negative = model better. Enabling this also shows V1 Comparison Cards.</td></tr>
+  </table>
+
+  <h3 class="sub">Sorting and Search</h3>
+  <ul style="margin:12px 0 0 20px;font-size:13.5px;line-height:2">
+    <li>Click any column header to sort ascending / descending.</li>
+    <li><b>Shift+click</b> additional column headers to sort by multiple columns simultaneously. Priority numbers appear on each sort icon.</li>
+    <li>Use the search box to filter by SKU ID in real time. Page size options: 50 · 100 · 200 rows.</li>
+    <li>Column headers remain sticky at the top while scrolling.</li>
+  </ul>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08c-dfp-smooth-full-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Smooth / Full History table — Forward mode</p></div>'" alt="Smooth Full History table">
+    <div class="screenshot-caption">▲ Smooth / Full History — Forward mode table (model, confidence, Train WAPE, and forecast columns)</div>
+  </div>
+
+  <h3 class="sub">Backtest Mode — Accuracy Cards</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Metric</th><th>Description</th></tr>
+    <tr><td class="label">WAPE</td><td>Weighted absolute error across all SKUs with actual demand. Green &lt;20%, amber 20–40%, red ≥40%.</td></tr>
+    <tr><td class="label">Bias</td><td>Over- or under-forecast direction. Green when absolute bias is under 10%.</td></tr>
+    <tr><td class="label">P70 Coverage</td><td>Percentage of SKUs where actual demand fell within the [Low, High] interval. Green ≥65%.</td></tr>
+  </table>
+
+  <h3 class="sub">Backtest / Simulation — V1 Comparison Cards</h3>
+  <p>When at least one V1 column (<b>V1 WAPE</b> or <b>Diff</b>) is enabled via the <span class="btn-label">Columns</span> button, three V1 Comparison Cards appear below the accuracy cards. V1 is a rule-based forecast using a weighted blend of channel velocity windows (west/east/FBA) with a monthly seasonal modifier — it serves as a production baseline to benchmark the statistical model against.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">Card</th><th>Description</th></tr>
+    <tr><td class="label">V1 WAPE</td><td>Weighted absolute error for the V1 formula across all SKUs that have V1 data. Same color thresholds as model WAPE (green &lt;20%, amber 20–40%, red ≥40%).</td></tr>
+    <tr><td class="label">MASE vs V1</td><td>Sum of model absolute errors ÷ sum of V1 absolute errors. Below 1.0 (green) means the model beats V1; above 1.0 (red) means V1 is more accurate.</td></tr>
+    <tr><td class="label">WAPE Diff (V1 − Model)</td><td>V1 WAPE minus model WAPE in percentage points. Positive (green) means the model is more accurate than V1; negative (red) means V1 wins.</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>V1 comparison is available only for the <b>Smooth / Full History</b> segment. SKUs without V1 data are excluded from the card calculations.</div>
+  </div>
+
+  <h3 class="sub">Simulation Mode</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">Setting</th><th>Description</th></tr>
+    <tr><td class="label">Cutoff date</td><td>Only data up to this date is used to train the model. Default: 13 weeks before today.</td></tr>
+    <tr><td class="label">Horizon (weeks)</td><td>How many weeks to forecast forward from the cutoff date.</td></tr>
+    <tr><td class="label">Model</td><td>Auto (pipeline selection) or a specific model: AutoETS · AutoARIMA · AutoTheta · Window Avg · Historic Avg · Seasonal Naïve · Naïve</td></tr>
+  </table>
+  <p style="margin-top:8px">While running, a step progress bar shows the pipeline stages: Profiles → Filter → Demand → Zero-fill → Fit → Done. The run can be cancelled at any time. After the simulation completes, enable V1 columns in the <span class="btn-label">Columns</span> button to see the same V1 Comparison Cards against your simulation results.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08g-dfp-smooth-full-simulation-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🧪</div><p>Smooth / Full History — Simulation mode</p></div>'" alt="Smooth Full History Simulation mode">
+    <div class="screenshot-caption">▲ Simulation mode — cutoff date, horizon, and model controls with the resulting forecast table</div>
+  </div>
+
+  <h3 id="en-dfp-smooth-short">⑤ Smooth / Short History Segment Detail</h3>
+  <p>SKUs with a smooth demand pattern but fewer than 52 weeks of history. With less than one complete annual cycle of data, fitting a seasonal model would capture noise rather than a real pattern, so only two non-seasonal candidates are evaluated.</p>
+
+  <h3 class="sub">Candidate models</h3>
+  <table class="feat-table">
+    <tr><th style="width:240px">Model</th><th>Characteristics</th></tr>
+    <tr><td class="label">AutoETS (non-seasonal)</td><td>Models level and trend only — no seasonality component (season_length=1). Safe to apply when there is not enough history to distinguish seasonal signal from noise.</td></tr>
+    <tr><td class="label">Window Average (12 weeks)</td><td>12-week rolling mean. A wider window than the full-history set because ramp-up SKUs need more averaging to be stable.</td></tr>
+  </table>
+  <p style="margin-top:10px">The lower-WAPE model is chosen via cross-validation. Because the training set is small and uncertainty is high regardless of the measured error, <b>all short-history SKUs are treated as implicitly low confidence</b> — the Confidence badge and Train WAPE column are intentionally omitted.</p>
+  <table class="feat-table">
+    <tr><th style="width:240px">Additional Column</th><th>Description</th></tr>
+    <tr><td class="label">Weeks to full history</td><td>Weeks remaining until this SKU is reclassified into the Smooth / Full History segment. Highlighted green when ≤ 8 weeks away; shows a <b>Promoted</b> badge when already at the threshold.</td></tr>
+  </table>
+  <p style="margin-top:8px">Default sort is <b>Weeks to full history</b> ascending — SKUs closest to graduation appear first.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08d-dfp-smooth-short-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Smooth / Short History table</p></div>'" alt="Smooth Short History table">
+    <div class="screenshot-caption">▲ Smooth / Short History — Forward mode table with Weeks to full history column highlighted</div>
+  </div>
+
+  <h3 class="sub">Backtest Mode</h3>
+  <p>The short history segment also supports Backtest mode. Select a past forecast run to compare forecast vs. actual demand — the same WAPE, Bias, and P70 Coverage accuracy cards appear above the table. If no real forecast runs exist yet, enable the <b>Use test data</b> checkbox to try the feature with built-in smooth/short sample SKUs.</p>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08f-dfp-smooth-short-backtest-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>🔍</div><p>Smooth / Short History — Backtest mode</p></div>'" alt="Smooth Short History Backtest mode">
+    <div class="screenshot-caption">▲ Short History Backtest mode — accuracy cards (WAPE · Bias · P70 Coverage) and forecast vs. actual comparison table</div>
+  </div>
+
+  <h3 id="en-dfp-intermittent">⑥ Intermittent Segment Detail</h3>
+  <p>SKUs with a zero-sale rate ≥ 30% or a weekly mean under 3 units. Because there is no continuous demand signal, standard time-series models (ETS, ARIMA) are inappropriate — the pipeline instead uses methods specifically designed for sparse, lumpy demand.</p>
+
+  <h3 class="sub">Forecasting methodology</h3>
+  <table class="feat-table">
+    <tr><th style="width:240px">Model</th><th>How it works</th></tr>
+    <tr><td class="label">Croston Optimized</td><td>Treats demand as two separate processes: the <em>interval</em> between sales events and the <em>size</em> of each event. Each is smoothed independently with exponential smoothing, then combined into a rate forecast.</td></tr>
+    <tr><td class="label">IMAPA</td><td>Intermittent Multiple Aggregation Prediction Algorithm. Fits models at multiple temporal aggregation levels (weekly, bi-weekly, monthly, etc.) simultaneously, then averages them. More robust than Croston on highly irregular series.</td></tr>
+  </table>
+  <p style="margin-top:10px">Because demand is too sparse for reliable cross-validation, these SKUs carry no confidence score or WAPE estimate. The focus of the table is <b>inventory management signals</b> rather than forecast accuracy — last sale date, time since last sale, and event frequency help identify which SKUs may be stalling or dead.</p>
+  <table class="feat-table">
+    <tr><th style="width:240px">Column</th><th>Description</th></tr>
+    <tr><td class="label">SKU</td><td>Click to navigate to the SKU forecast detail page.</td></tr>
+    <tr><td class="label">N-Week Units</td><td>Units sold in the selected lookback window</td></tr>
+    <tr><td class="label">Last sale date</td><td>The week date of the most recent sale</td></tr>
+    <tr><td class="label">Weeks since last sale</td><td>Weeks elapsed since the last sale. Amber when &gt;13 weeks, red when &gt;26 weeks.</td></tr>
+    <tr><td class="label">Event count</td><td>Total number of weeks in which any sale occurred (across all history)</td></tr>
+    <tr><td class="label">Avg units / event</td><td>Average units sold per sale week</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Last updated timestamp:</b> Each segment table shows a small "Last forecast" or "Data through" date at the bottom right, so you can tell at a glance how fresh the data is.</div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/08e-dfp-intermittent-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📉</div><p>Intermittent segment table</p></div>'" alt="Intermittent segment table">
+    <div class="screenshot-caption">▲ Intermittent segment — last sale date, weeks since last sale, event count, and avg units per event</div>
   </div>
 </section>
 

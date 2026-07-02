@@ -37,6 +37,7 @@ interface SmoothRow {
   active_weeks: number | null;
   weeks_to_graduation: number | null;
   train_wape: number | null;
+  v1_yhat_total: number | null;
 }
 
 // ── Intermittent row ────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ interface BacktestCycle {
   sku_count: number;
 }
 
-type SmoothSortKey = "unique_id" | "selected_model" | "confidence" | "train_wape" | "yhat_total" | "demand_total" | "active_weeks" | "weeks_to_graduation" | "wape";
+type SmoothSortKey = "unique_id" | "selected_model" | "confidence" | "train_wape" | "yhat_total" | "demand_total" | "active_weeks" | "weeks_to_graduation" | "wape" | "v1_yhat_total" | "v1_wape" | "wape_diff";
 type IntermittentSortKey = "unique_id" | "units_recent" | "last_sale_week" | "weeks_since_last_sale" | "event_count" | "avg_units_per_event";
 type SortDir = "asc" | "desc";
 
@@ -377,7 +378,7 @@ function Pagination({
             value={String(pageSize)}
             onValueChange={(v) => { setPageSize(Number(v)); setPage(() => 0); }}
           >
-            <SelectTrigger className="h-7 w-16 text-xs">
+            <SelectTrigger className="h-7 w-20 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -658,6 +659,79 @@ function AccuracyCards({
   );
 }
 
+// ── V1 comparison cards ─────────────────────────────────────────────────────
+function V1ComparisonCards({ rows }: { rows: SmoothRow[] }) {
+  const { pick } = useI18n();
+
+  const withV1 = rows.filter((r) => r.v1_yhat_total != null && r.demand_total > 0);
+  if (withV1.length === 0) return null;
+
+  const totalDemand     = withV1.reduce((s, r) => s + r.demand_total, 0);
+  const totalV1AbsErr   = withV1.reduce((s, r) => s + Math.abs(r.v1_yhat_total! - r.demand_total), 0);
+  const totalModelAbsErr = withV1.reduce((s, r) => s + Math.abs(r.yhat_total - r.demand_total), 0);
+
+  const v1Wape   = totalDemand > 0 ? totalV1AbsErr / totalDemand : null;
+  const mase     = totalV1AbsErr > 0 ? totalModelAbsErr / totalV1AbsErr : null;
+  const wapeDiff = totalDemand > 0 ? (totalV1AbsErr - totalModelAbsErr) / totalDemand : null; // positive = model wins
+
+  const v1WapeColor =
+    v1Wape == null ? "text-muted-foreground"
+    : v1Wape < 0.20 ? "text-emerald-600"
+    : v1Wape < 0.40 ? "text-amber-600"
+    : "text-red-600";
+
+  const maseColor =
+    mase == null ? "text-muted-foreground"
+    : mase < 0.97 ? "text-emerald-600"
+    : mase > 1.03 ? "text-red-600"
+    : "text-amber-600";
+
+  const diffColor =
+    wapeDiff == null ? "text-muted-foreground"
+    : wapeDiff > 0.02 ? "text-emerald-600"
+    : wapeDiff < -0.02 ? "text-red-600"
+    : "text-amber-600";
+
+  const maseLabel =
+    mase == null ? pick("V1 대비 모델 오차 비율", "Model error relative to V1")
+    : mase < 0.97 ? pick("모델 > V1", "Model beats V1")
+    : mase > 1.03 ? pick("V1 > 모델", "V1 beats model")
+    : pick("V1과 동등", "On par with V1");
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">{pick("V1 기준선 비교", "V1 baseline comparison")}</p>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">V1 WAPE</p>
+          <p className={`text-2xl font-semibold tabular-nums ${v1WapeColor}`}>
+            {v1Wape != null ? `${(v1Wape * 100).toFixed(1)}%` : "—"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {pick(`${withV1.length}개 SKU 기준선 오차`, `Baseline error across ${withV1.length} SKUs`)}
+          </p>
+        </div>
+
+        <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">MASE vs V1</p>
+          <p className={`text-2xl font-semibold tabular-nums ${maseColor}`}>
+            {mase != null ? mase.toFixed(2) : "—"}
+          </p>
+          <p className="text-xs text-muted-foreground">{maseLabel}</p>
+        </div>
+
+        <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">{pick("WAPE 차이 (V1−모델)", "WAPE Diff (V1−Model)")}</p>
+          <p className={`text-2xl font-semibold tabular-nums ${diffColor}`}>
+            {wapeDiff != null ? `${wapeDiff >= 0 ? "+" : ""}${(wapeDiff * 100).toFixed(1)}%` : "—"}
+          </p>
+          <p className="text-xs text-muted-foreground">{pick("양수 = 모델이 V1보다 정확", "Positive = model more accurate than V1")}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConfidenceHeaderTip() {
   const { pick } = useI18n();
   const [open, setOpen] = useState(false);
@@ -691,6 +765,12 @@ function SmoothTable({
   mode,
   forecastRunDate,
   initialSku,
+  showV1Forecast,
+  setShowV1Forecast,
+  showV1Wape,
+  setShowV1Wape,
+  showV1Diff,
+  setShowV1Diff,
 }: {
   segment: string;
   rows: SmoothRow[];
@@ -698,6 +778,12 @@ function SmoothTable({
   mode: string;
   forecastRunDate?: string | null;
   initialSku?: string;
+  showV1Forecast: boolean;
+  setShowV1Forecast: (v: boolean) => void;
+  showV1Wape: boolean;
+  setShowV1Wape: (v: boolean) => void;
+  showV1Diff: boolean;
+  setShowV1Diff: (v: boolean) => void;
 }) {
   const router = useRouter();
   const { pick } = useI18n();
@@ -746,6 +832,13 @@ function SmoothTable({
       case "active_weeks":        return row.active_weeks ?? -1;
       case "weeks_to_graduation": return row.weeks_to_graduation ?? 9999;
       case "wape":                return row.demand_total > 0 ? Math.abs(row.yhat_total - row.demand_total) / row.demand_total : 9999;
+      case "v1_yhat_total":       return row.v1_yhat_total ?? -1;
+      case "v1_wape":             return (row.v1_yhat_total != null && row.demand_total > 0) ? Math.abs(row.v1_yhat_total - row.demand_total) / row.demand_total : 9999;
+      case "wape_diff": {
+        const mw = row.demand_total > 0 ? Math.abs(row.yhat_total - row.demand_total) / row.demand_total : null;
+        const vw = (row.v1_yhat_total != null && row.demand_total > 0) ? Math.abs(row.v1_yhat_total - row.demand_total) / row.demand_total : null;
+        return (mw != null && vw != null) ? mw - vw : 9999;
+      }
       default:                    return row.yhat_total;
     }
   }
@@ -795,13 +888,13 @@ function SmoothTable({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Popover open={colsOpen} onOpenChange={setColsOpen}>
+          {!isShortHistory && <Popover open={colsOpen} onOpenChange={setColsOpen}>
             <PopoverTrigger asChild>
               <button className="rounded border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                 {pick("열 표시", "Columns")}
               </button>
             </PopoverTrigger>
-            <PopoverContent side="bottom" align="end" className="w-44 p-2">
+            <PopoverContent side="bottom" align="end" className="w-48 p-2">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2 px-1">{pick("예측 범위", "Forecast range")}</p>
               {([
                 { key: "showLo" as const, label: pick("하한 (Low)", "Low"),      val: showLo, set: setShowLo },
@@ -813,8 +906,23 @@ function SmoothTable({
                   {label}
                 </label>
               ))}
+              {(mode === "backtest" || mode === "simulation") && (
+                <>
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2 mt-3 px-1">{pick("V1 비교", "V1 comparison")}</p>
+                  {([
+                    { key: "showV1Forecast" as const, label: pick("V1 예측", "V1 Forecast"),          val: showV1Forecast, set: setShowV1Forecast },
+                    { key: "showV1Wape"    as const, label: "V1 WAPE",                               val: showV1Wape,    set: setShowV1Wape },
+                    { key: "showV1Diff"    as const, label: pick("차이 (모델−V1)", "Diff (model−V1)"), val: showV1Diff,    set: setShowV1Diff },
+                  ]).map(({ key, label, val, set }) => (
+                    <label key={key} className="flex items-center gap-2 cursor-pointer rounded px-1 py-1 hover:bg-muted text-xs">
+                      <input type="checkbox" checked={val} onChange={(e) => set(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
+                      {label}
+                    </label>
+                  ))}
+                </>
+              )}
             </PopoverContent>
-          </Popover>
+          </Popover>}
           <ModelInfoButton method={isShortHistory ? "V1" : "StatsForecast"} />
         </div>
       </div>
@@ -845,7 +953,7 @@ function SmoothTable({
             <TableRow>
               <Th col="unique_id"      label="SKU" />
               {(!isShortHistory || mode === "simulation") && <Th col="selected_model" label={pick("모델", "Model")} />}
-              {!isShortHistory && mode !== "simulation" && (
+              {!isShortHistory && mode === "forward" && (
                 <Th col="confidence" label={
                   <span className="inline-flex items-center gap-1">
                     {pick("신뢰도", "Confidence")}
@@ -855,7 +963,7 @@ function SmoothTable({
                   </span>
                 } />
               )}
-              {!isShortHistory && mode !== "simulation" && (
+              {!isShortHistory && mode === "forward" && (
                 <Th col="train_wape" label={pick("학습 WAPE", "Train WAPE")} right />
               )}
               <Th col="active_weeks" label={pick("이력 주 수", "Weeks of history")} right />
@@ -864,7 +972,10 @@ function SmoothTable({
               {showLo && <Th col="yhat_total" label={pick("하한", "Low")} right />}
               {showPt && <Th col="yhat_total" label={(mode === "backtest" || mode === "simulation") ? pick("예측", "Forecast") : pick(`${weeks}주 예측`, `${weeks}W Forecast`)} right />}
               {showHi && <Th col="yhat_total" label={pick("상한", "High")} right />}
+              {(mode === "backtest" || mode === "simulation") && !isShortHistory && showV1Forecast && <Th col="v1_yhat_total" label={pick("V1 예측", "V1 Forecast")} right />}
               {(mode === "backtest" || mode === "simulation") && <Th col="wape" label="WAPE" right />}
+              {(mode === "backtest" || mode === "simulation") && showV1Wape && <Th col="v1_wape" label="V1 WAPE" right />}
+              {(mode === "backtest" || mode === "simulation") && showV1Diff && <Th col="wape_diff" label={pick("차이", "Diff")} right />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -882,14 +993,14 @@ function SmoothTable({
                     {row.selected_model}
                   </TableCell>
                 )}
-                {!isShortHistory && mode !== "simulation" && (
+                {!isShortHistory && mode === "forward" && (
                   <TableCell>
                     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${CONF_STYLES[row.confidence] ?? "bg-muted text-muted-foreground border"}`}>
                       {row.confidence}
                     </span>
                   </TableCell>
                 )}
-                {!isShortHistory && mode !== "simulation" && (
+                {!isShortHistory && mode === "forward" && (
                   <TableCell className="text-right tabular-nums text-xs">
                     {row.train_wape !== null
                       ? <span className={row.confidence === "low" ? "text-red-600 font-medium" : "text-foreground"}>
@@ -942,6 +1053,11 @@ function SmoothTable({
                     {row.yhat_hi_total !== null ? fmt.format(row.yhat_hi_total) : "—"}
                   </TableCell>
                 )}
+                {(mode === "backtest" || mode === "simulation") && !isShortHistory && showV1Forecast && (
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {row.v1_yhat_total !== null ? fmt.format(row.v1_yhat_total) : "—"}
+                  </TableCell>
+                )}
                 {(mode === "backtest" || mode === "simulation") && (
                   <TableCell className="text-right tabular-nums text-sm">
                     {row.demand_total > 0
@@ -949,6 +1065,23 @@ function SmoothTable({
                       : "—"}
                   </TableCell>
                 )}
+                {(mode === "backtest" || mode === "simulation") && showV1Wape && (
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {row.v1_yhat_total != null && row.demand_total > 0
+                      ? `${(Math.abs(row.v1_yhat_total - row.demand_total) / row.demand_total * 100).toFixed(0)}%`
+                      : "—"}
+                  </TableCell>
+                )}
+                {(mode === "backtest" || mode === "simulation") && showV1Diff && (() => {
+                  const mw = row.demand_total > 0 ? Math.abs(row.yhat_total - row.demand_total) / row.demand_total : null;
+                  const vw = row.v1_yhat_total != null && row.demand_total > 0 ? Math.abs(row.v1_yhat_total - row.demand_total) / row.demand_total : null;
+                  const diff = mw != null && vw != null ? mw - vw : null;
+                  return (
+                    <TableCell className={`text-right tabular-nums text-sm ${diff == null ? "" : diff < -0.02 ? "text-emerald-600 font-medium" : diff > 0.02 ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                      {diff != null ? `${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(0)}%` : "—"}
+                    </TableCell>
+                  );
+                })()}
               </TableRow>
             ))}
           </TableBody>
@@ -1169,6 +1302,9 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
   const [evalDate, setEvalDate]           = useState<string>("");
   const [testMode, setTestMode]           = useState(false);
   const testModeRef = React.useRef(testMode);
+  const [showV1Forecast, setShowV1Forecast] = useState(false);
+  const [showV1Wape, setShowV1Wape]         = useState(false);
+  const [showV1Diff, setShowV1Diff]         = useState(false);
   testModeRef.current = testMode;
   const [selectedTypes, setSelectedTypes] = useState<string[]>(initialTypes ?? [...PRODUCT_TYPES]);
   const [data, setData]                   = useState<DetailResponse | null>(null);
@@ -1277,19 +1413,21 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
       setData({ segment, weeks, mode, period_start: "", period_end: "", skus: [] });
       return;
     }
-    if (mode === "backtest" && !evalDate) return; // wait for cycle selection
+    if (mode === "backtest" && (!evalDate || cyclesLoading)) return; // wait for cycle load + selection
     const allSelected = selectedTypes.length === PRODUCT_TYPES.length;
     const productType = allSelected ? "All" : selectedTypes.join(",");
     const params = new URLSearchParams({ weeks: String(weeks), product_type: productType, mode });
     if (mode === "backtest" && evalDate) params.set("eval_date", evalDate);
-    if (testModeRef.current) params.set("test", "true");
-    fetch(apiPath(`/api/forecast/segment/${encodeURIComponent(segment)}?${params}`))
+    if (mode === "backtest" && testModeRef.current) params.set("test", "true");
+    const controller = new AbortController();
+    fetch(apiPath(`/api/forecast/segment/${encodeURIComponent(segment)}?${params}`), { signal: controller.signal })
       .then((r) => r.json())
       .then((json) => {
         if (json.error) throw new Error(json.error as string);
         setData(json as DetailResponse);
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => { if (err.name !== "AbortError") setError(err.message); });
+    return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segment, weeks, mode, evalDate, selectedTypes]);
 
@@ -1479,12 +1617,16 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
         />
       )}
 
+      {mode !== "simulation" && data && !isIntermittent && mode === "backtest" && !data.backtest_unavailable && segment !== "smooth_short" && (showV1Wape || showV1Diff) && (
+        <V1ComparisonCards rows={data.skus as SmoothRow[]} />
+      )}
+
       {mode !== "simulation" && data && isIntermittent && (
         <IntermittentTable rows={data.skus as IntermittentRow[]} weeks={data.weeks} forecastRunDate={data.forecast_run_date} initialSku={initialSku} />
       )}
 
       {mode !== "simulation" && data && !isIntermittent && (
-        <SmoothTable segment={segment} rows={data.skus as SmoothRow[]} weeks={data.weeks} mode={data.mode} forecastRunDate={data.forecast_run_date} initialSku={initialSku} />
+        <SmoothTable segment={segment} rows={data.skus as SmoothRow[]} weeks={data.weeks} mode={data.mode} forecastRunDate={data.forecast_run_date} initialSku={initialSku} showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
       )}
 
       {/* Simulation display */}
@@ -1516,7 +1658,10 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
             periodEnd={simData.period_end}
             weeks={simData.weeks}
           />
-          <SmoothTable segment={segment} rows={simData.skus as SmoothRow[]} weeks={simData.weeks} mode="simulation" />
+          {segment !== "smooth_short" && (showV1Wape || showV1Diff) && (
+            <V1ComparisonCards rows={simData.skus as SmoothRow[]} />
+          )}
+          <SmoothTable segment={segment} rows={simData.skus as SmoothRow[]} weeks={simData.weeks} mode="simulation" showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
         </>
       )}
     </div>
