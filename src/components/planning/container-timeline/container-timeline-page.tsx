@@ -14,7 +14,7 @@ import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-f
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received" | "complete";
-type Period = "3M" | "6M" | "all" | "monthly";
+type Period = "3M" | "6M" | "all" | "monthly" | "schedule";
 type TimelineProductKey = "sc" | "cc" | "fm";
 type TimelineProductFilter = "all" | TimelineProductKey | "empty";
 
@@ -100,6 +100,7 @@ interface MonthSegment {
 
 const TIMELINE_CACHE_KEY = "container-timeline:data:v2";
 const TIMELINE_CACHE_TTL_MS = 60_000;
+const TIMELINE_VIEW_PREFS_KEY = "container-timeline:view-preferences";
 let timelineMemoryCache: { containers: Container[]; cachedAt: number } | null = null;
 const planningRowsCache = new Map<string, Record<string, DemandRow>>();
 const planningRowsRequests = new Map<string, Promise<Record<string, DemandRow>>>();
@@ -198,7 +199,16 @@ const PERIOD_OPTIONS: { value: Period; label: string; labelEn: string; days: num
   { value: "6M",      label: "6개월",    labelEn: "6 Months",    days: 180 },
   { value: "all",     label: "전체",     labelEn: "All",          days: null },
   { value: "monthly", label: "월별 보기", labelEn: "Month View",  days: null },
+  { value: "schedule", label: "스케줄 보기", labelEn: "Schedule View", days: null },
 ];
+
+function isTimelinePeriod(value: unknown): value is Period {
+  return value === "3M" || value === "6M" || value === "all" || value === "monthly" || value === "schedule";
+}
+
+function isTimelineViewMode(value: unknown): value is "compact" | "detailed" {
+  return value === "compact" || value === "detailed";
+}
 
 const PRODUCT_OPTIONS: { value: TimelineProductFilter; label: string; shortLabel: string }[] = [
   { value: "all", label: "전체", shortLabel: "ALL" },
@@ -224,6 +234,13 @@ const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const fmtMonthYear = (d: Date) => d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+function containerScheduleDate(container: Container): string | null {
+  return container.status === "complete" && container.actualArrivalDate
+    ? container.actualArrivalDate
+    : container.etaDate;
+}
+
 function buildSkuImpact(item: ContainerItem, containerName: string, etaDate: string | null, row?: DemandRow): SkuImpact {
   if (!row) {
     return {
@@ -321,6 +338,7 @@ export function ContainerTimelinePage() {
   const searchParams = useSearchParams();
   const initialContainerName = searchParams.get("container");
   const didAutoSelect = useRef(false);
+  const prefSaveTimerRef = useRef<number | null>(null);
 
   const [containers, setContainers] = useState<Container[]>(() => timelineMemoryCache?.containers ?? []);
   const [planningRowsBySku, setPlanningRowsBySku] = useState<Record<string, DemandRow>>({});
@@ -349,7 +367,7 @@ export function ContainerTimelinePage() {
   const [period, setPeriod] = useState<Period>(() => {
     if (typeof window === "undefined") return "3M";
     const saved = localStorage.getItem("container-timeline:period");
-    if (saved === "3M" || saved === "6M" || saved === "all" || saved === "monthly") return saved;
+    if (isTimelinePeriod(saved)) return saved;
     return "3M";
   });
   const [periodOpen, setPeriodOpen] = useState(false);
@@ -359,8 +377,65 @@ export function ContainerTimelinePage() {
   });
   const [viewMode, setViewMode] = useState<"compact" | "detailed">(() => {
     if (typeof window === "undefined") return "compact";
-    return (localStorage.getItem("container-timeline:viewMode") as "compact" | "detailed") ?? "compact";
+    const saved = localStorage.getItem("container-timeline:viewMode");
+    return isTimelineViewMode(saved) ? saved : "compact";
   });
+  const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(apiPath("/api/user/preferences"), { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>)
+      .then((json) => {
+        if (cancelled || !json.success || !json.data) return;
+        const saved = json.data[TIMELINE_VIEW_PREFS_KEY];
+        if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+        const prefs = saved as Record<string, unknown>;
+        if (isTimelinePeriod(prefs.period)) {
+          setPeriod(prefs.period);
+          window.localStorage.setItem("container-timeline:period", prefs.period);
+          if (prefs.period === "monthly" || prefs.period === "schedule") {
+            const d = new Date();
+            setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+          }
+        }
+        if (isTimelineViewMode(prefs.viewMode)) {
+          setViewMode(prefs.viewMode);
+          window.localStorage.setItem("container-timeline:viewMode", prefs.viewMode);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setDbPrefsLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dbPrefsLoaded) return;
+    window.localStorage.setItem("container-timeline:period", period);
+    window.localStorage.setItem("container-timeline:viewMode", viewMode);
+    if (prefSaveTimerRef.current !== null) window.clearTimeout(prefSaveTimerRef.current);
+    prefSaveTimerRef.current = window.setTimeout(() => {
+      prefSaveTimerRef.current = null;
+      fetch(apiPath("/api/user/preferences"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preferences: {
+            [TIMELINE_VIEW_PREFS_KEY]: { period, viewMode },
+          },
+        }),
+      }).catch(() => {});
+    }, 800);
+  }, [dbPrefsLoaded, period, viewMode]);
+
+  useEffect(() => () => {
+    if (prefSaveTimerRef.current !== null) window.clearTimeout(prefSaveTimerRef.current);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -590,6 +665,18 @@ export function ContainerTimelinePage() {
     return counts;
   }, [grouped]);
 
+  const scheduleVisibleCount = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    return searchMatchedContainers.filter((container) => {
+      if (!activeStatuses.has(container.status)) return false;
+      const dateStr = containerScheduleDate(container);
+      if (!dateStr) return false;
+      const date = toDate(dateStr);
+      return date.getFullYear() === year && date.getMonth() === month;
+    }).length;
+  }, [activeStatuses, calendarMonth, searchMatchedContainers]);
+
   // ── Summary counts for filter pills ──────────────────────────────────────
   const countsByStatus = useMemo(() => {
     const counts: Partial<Record<ContainerStatus, number>> = {};
@@ -701,7 +788,9 @@ export function ContainerTimelinePage() {
   }
 
   const todayVisible = todayPct >= 0 && todayPct <= 100;
-  const totalVisible = grouped.reduce((sum, g) => sum + g.items.length, 0);
+  const totalVisible = period === "schedule"
+    ? scheduleVisibleCount
+    : grouped.reduce((sum, g) => sum + g.items.length, 0);
 
   return (
     <>
@@ -864,7 +953,7 @@ export function ContainerTimelinePage() {
                         setPeriod(opt.value);
                         localStorage.setItem("container-timeline:period", opt.value);
                         setPeriodOpen(false);
-                        if (opt.value === "monthly") {
+                        if (opt.value === "monthly" || opt.value === "schedule") {
                           const d = new Date();
                           setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
                         }
@@ -882,27 +971,31 @@ export function ContainerTimelinePage() {
             )}
           </div>
 
-          <span className="w-px h-4 bg-[#d8d6ce]" />
+          {period !== "monthly" && period !== "schedule" && (
+            <>
+              <span className="w-px h-4 bg-[#d8d6ce]" />
 
-          {/* View mode toggle */}
-          <div className="flex bg-[#f0eee9] border border-[#d8d6ce] rounded-lg p-0.5 gap-0.5">
-            {(["compact", "detailed"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => {
-                  setViewMode(mode);
-                  localStorage.setItem("container-timeline:viewMode", mode);
-                }}
-                className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-colors ${
-                  viewMode === mode
-                    ? "bg-white text-[#1a1917] shadow-sm ring-1 ring-inset ring-[#d8d6ce]"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {mode === "compact" ? pick("간략하게", "Compact") : pick("상세하게", "Detailed")}
-              </button>
-            ))}
-          </div>
+              {/* View mode toggle */}
+              <div className="flex bg-[#f0eee9] border border-[#d8d6ce] rounded-lg p-0.5 gap-0.5">
+                {(["compact", "detailed"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      setViewMode(mode);
+                      localStorage.setItem("container-timeline:viewMode", mode);
+                    }}
+                    className={`px-3 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                      viewMode === mode
+                        ? "bg-white text-[#1a1917] shadow-sm ring-1 ring-inset ring-[#d8d6ce]"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {mode === "compact" ? pick("간략하게", "Compact") : pick("상세하게", "Detailed")}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Result count */}
           <span className="ml-auto text-[11px] text-muted-foreground">
@@ -924,8 +1017,22 @@ export function ContainerTimelinePage() {
           />
         )}
 
+        {/* ── Schedule list view ──────────────────────────────────────── */}
+        {period === "schedule" && (
+          <ContainerScheduleView
+            containers={searchMatchedContainers}
+            activeStatuses={activeStatuses}
+            calendarMonth={calendarMonth}
+            setCalendarMonth={setCalendarMonth}
+            selected={selected}
+            setSelected={setSelected}
+            today={today}
+            pick={pick}
+          />
+        )}
+
         {/* ── Gantt table ──────────────────────────────────────────────── */}
-        {period !== "monthly" && (
+        {period !== "monthly" && period !== "schedule" && (
         <div className="bg-white border border-[#e2dfd8] rounded-xl overflow-hidden shadow-sm">
           {/* Month header */}
           <div className="flex border-b border-[#e2dfd8] bg-[#f5f4f0]">
@@ -1166,7 +1273,7 @@ export function ContainerTimelinePage() {
         )} {/* end period !== "monthly" */}
 
         {/* Legend */}
-        {period !== "monthly" && (
+        {period !== "monthly" && period !== "schedule" && (
         <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
           {STATUS_ORDER.map((s) => (
             <div key={s} className="flex items-center gap-1.5">
@@ -1427,7 +1534,7 @@ function CalendarMonthView({
   let monthTotal = 0;
   for (const c of containers) {
     if (!activeStatuses.has(c.status)) continue;
-    const dateStr = c.status === "complete" && c.actualArrivalDate ? c.actualArrivalDate : c.etaDate;
+    const dateStr = containerScheduleDate(c);
     if (!dateStr) continue;
     const list = containersByDate.get(dateStr) ?? [];
     list.push(c);
@@ -1542,6 +1649,194 @@ function CalendarMonthView({
           {pick("오늘", "Today")}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Schedule List View ───────────────────────────────────────────────────────
+
+function ContainerScheduleView({
+  containers,
+  activeStatuses,
+  calendarMonth,
+  setCalendarMonth,
+  selected,
+  setSelected,
+  today,
+  pick,
+}: {
+  containers: Container[];
+  activeStatuses: Set<ContainerStatus>;
+  calendarMonth: Date;
+  setCalendarMonth: (d: Date) => void;
+  selected: Container | null;
+  setSelected: (c: Container | null) => void;
+  today: Date;
+  pick: (ko: string, en: string) => string;
+}) {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const todayKey = today.toISOString().slice(0, 10);
+
+  const rowsByDate = new Map<string, Container[]>();
+  for (const container of containers) {
+    if (!activeStatuses.has(container.status)) continue;
+    const dateStr = containerScheduleDate(container);
+    if (!dateStr) continue;
+    const date = toDate(dateStr);
+    if (date.getFullYear() !== year || date.getMonth() !== month) continue;
+    const list = rowsByDate.get(dateStr) ?? [];
+    list.push(container);
+    rowsByDate.set(dateStr, list);
+  }
+
+  const dateKeys = Array.from(rowsByDate.keys()).sort();
+  for (const dateKey of dateKeys) {
+    rowsByDate.get(dateKey)?.sort((a, b) => {
+      const statusDiff = STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
+      if (statusDiff !== 0) return statusDiff;
+      return a.containerNumber.localeCompare(b.containerNumber);
+    });
+  }
+
+  const monthLabel = calendarMonth.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
+  const monthLabelEn = calendarMonth.toLocaleDateString("en-US", { year: "numeric", month: "long" });
+  const prevMonth = () => setCalendarMonth(new Date(year, month - 1, 1));
+  const nextMonth = () => setCalendarMonth(new Date(year, month + 1, 1));
+  const goToday = () => {
+    const d = new Date();
+    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+  };
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#e2dfd8] bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-[#e2dfd8] bg-[#f5f4f0] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={goToday}
+            className="rounded-full border border-[#b8b3aa] bg-white px-4 py-1.5 text-[12px] font-semibold text-[#1a1917] hover:bg-[#f0eee9] transition-colors"
+          >
+            {pick("오늘", "Today")}
+          </button>
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 hover:bg-[#e8e6e0] transition-colors"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <span className="ml-3 text-[20px] font-semibold tracking-tight text-[#1a1917]">
+            {pick(monthLabel, monthLabelEn)}
+          </span>
+          {dateKeys.length > 0 && (
+            <span className="rounded-full bg-[#1a5cdb] px-2.5 py-px text-[11px] font-bold text-white">
+              {Array.from(rowsByDate.values()).reduce((sum, list) => sum + list.length, 0)}
+            </span>
+          )}
+        </div>
+        <div className={`hidden items-center gap-3 text-[11px] text-muted-foreground md:flex ${selected ? "2xl:hidden" : ""}`}>
+          {STATUS_ORDER.map((status) => (
+            <span key={status} className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR[status] }} />
+              {STATUS_LABEL_FULL[status]}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {dateKeys.length === 0 ? (
+        <div className="py-20 text-center text-sm text-muted-foreground">
+          <div>{pick("표시할 스케줄이 없습니다", "No scheduled containers to display")}</div>
+          <div className="mt-1 text-[11px] text-stone-300">
+            {pick("월을 변경하거나 필터를 조정해보세요", "Try another month or adjust the filters")}
+          </div>
+        </div>
+      ) : (
+        <div className="divide-y divide-[#e2dfd8]">
+          {dateKeys.map((dateKey) => {
+            const date = toDate(dateKey);
+            const dayNumber = date.getDate();
+            const isToday = dateKey === todayKey;
+            const dateLabel = date.toLocaleDateString(pick("ko-KR", "en-US"), {
+              month: "short",
+              weekday: "short",
+            });
+            const rows = rowsByDate.get(dateKey) ?? [];
+
+            return (
+              <div
+                key={dateKey}
+                className={`grid ${selected ? "grid-cols-[72px_1fr] md:grid-cols-[118px_1fr]" : "grid-cols-[86px_1fr] md:grid-cols-[190px_1fr]"} ${isToday ? "bg-blue-50/35" : "bg-white"}`}
+              >
+                <div className={`flex items-start gap-3 border-r border-[#eef0f3] py-3.5 ${selected ? "px-2.5 md:px-3" : "px-4"}`}>
+                  <div
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[20px] font-bold ${
+                      isToday ? "bg-[#1a5cdb] text-white" : "text-[#1a1917]"
+                    }`}
+                  >
+                    {dayNumber}
+                  </div>
+                  <div className={`hidden min-w-0 pt-1 md:block ${selected ? "2xl:hidden" : ""}`}>
+                    <div className={`text-[12px] font-bold uppercase tracking-wide ${isToday ? "text-[#1a5cdb]" : "text-stone-500"}`}>
+                      {dateLabel}
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {rows.length}{pick("개 컨테이너", " containers")}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`grid grid-cols-1 gap-1.5 p-2.5 ${selected ? "2xl:grid-cols-1" : "lg:grid-cols-3 2xl:grid-cols-4"}`}>
+                  {rows.map((container) => {
+                    const isSelected = selected?.id === container.id;
+                    const cbmPct = container.cbmCapacity > 0
+                      ? Math.round((container.totalCbm / container.cbmCapacity) * 100)
+                      : null;
+
+                    return (
+                      <button
+                        key={container.id}
+                        type="button"
+                        onClick={() => setSelected(isSelected ? null : container)}
+                        className={`grid min-h-[56px] grid-cols-[14px_1fr] items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors hover:bg-[#f0eee9] ${
+                          isSelected ? "border-[#9db7f5] bg-[#ebf0fd] ring-1 ring-inset ring-[#9db7f5]" : "border-[#e2dfd8] bg-white"
+                        }`}
+                      >
+                        <span className="mt-1.5 h-2.5 w-2.5 rounded-full border border-black/10" style={{ background: STATUS_COLOR[container.status] }} />
+                        <span className="min-w-0">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate font-mono text-[13px] font-bold text-[#1a1917]">
+                              {container.containerNumber}
+                            </span>
+                            <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-semibold ${STATUS_PILL[container.status]}`}>
+                              {STATUS_LABEL_FULL[container.status]}
+                            </span>
+                          </span>
+                          <span className="mt-px flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0 text-[10px] text-muted-foreground">
+                            <span>{container.itemCount} SKUs</span>
+                            <span>{container.totalQty.toLocaleString()} units</span>
+                            <span>{container.totalCbm.toFixed(1)} CBM</span>
+                            {cbmPct !== null && <span>{cbmPct}%</span>}
+                            {container.destWarehouse && <span className="truncate">{container.destWarehouse}</span>}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

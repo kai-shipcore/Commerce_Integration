@@ -316,6 +316,8 @@
   <a class="nav-sub" href="#ct-overview">화면 구성</a>
   <a class="nav-sub" href="#ct-filters">필터 & 기간 설정</a>
   <a class="nav-sub" href="#ct-gantt">Gantt 바 읽기</a>
+  <a class="nav-sub" href="#ct-monthly">월별 달력 보기</a>
+  <a class="nav-sub" href="#ct-schedule">스케줄 보기</a>
   <a class="nav-sub" href="#ct-detail">상세 드로어</a>
   <a class="nav-item" href="#available-stock"><span class="icon">📦</span> 가용 재고</a>
   <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU 마스터</a>
@@ -376,7 +378,7 @@
     </a>
     <a class="toc-item" href="#container-timeline">
       <div class="toc-num" style="background:#e0f2fe;color:#0369a1">4</div>
-      <div><h3>컨테이너 일정</h3><p>ETA 기준 간트 보기 · 입고 일정 한눈에 보기</p></div>
+      <div><h3>컨테이너 일정</h3><p>Gantt · 월별 달력 · 스케줄 — 3가지 뷰로 입고 일정 한눈에 보기</p></div>
     </a>
     <a class="toc-item" href="#available-stock">
       <div class="toc-num" style="background:#ffe4e6;color:#9f1239">5</div>
@@ -2355,7 +2357,7 @@
     <div>
       <div class="menu-path">메뉴 › 계획 › 컨테이너 일정</div>
       <h2>컨테이너 일정</h2>
-      <p class="subtitle">입고 예정 컨테이너를 ETA(예상 도착일) 기준으로 Gantt 차트에 시각화합니다. 전체 입고 일정을 한눈에 파악하고, 컨테이너를 클릭해 SKU 상세 정보를 바로 확인할 수 있습니다.</p>
+      <p class="subtitle">입고 예정 컨테이너를 ETA 기준으로 시각화합니다. <strong>Gantt 뷰</strong>(3M / 6M / 전체), <strong>월별 달력 보기</strong>, <strong>스케줄 보기</strong> 3가지 뷰를 드롭다운으로 전환할 수 있으며, 컨테이너를 클릭하면 SKU 상세 정보를 바로 확인할 수 있습니다.</p>
     </div>
   </div>
 
@@ -2398,10 +2400,12 @@
     <tr><td class="label">상품 필터 pills<br><small>(단일 선택)</small></td><td>
       <strong>전체</strong> · <strong>FM</strong>(Floor Mat) · <strong>CC</strong>(Car Cover) · <strong>SC</strong>(Seat Cover) · <strong>SKU없음</strong> 중 하나를 선택합니다. 컨테이너 계획 페이지에서 선택한 상품 필터가 그대로 유지됩니다.
     </td></tr>
-    <tr><td class="label">기간 버튼 (3M / 6M / 전체)</td><td>
-      <strong>3M</strong> – 오늘부터 3개월 이내 ETA 컨테이너만 표시하고, X축도 3개월로 고정합니다. (기본값)<br>
-      <strong>6M</strong> – 6개월 이내 ETA 컨테이너와 X축 6개월.<br>
-      <strong>전체</strong> – 전체 기간의 ETA를 자동으로 계산해 모든 컨테이너를 표시합니다.
+    <tr><td class="label">보기 드롭다운<br><small>(기간 / 뷰 선택)</small></td><td>
+      <strong>3개월</strong> – 오늘부터 3개월 이내 ETA 컨테이너만 Gantt로 표시합니다. (기본값)<br>
+      <strong>6개월</strong> – 6개월 이내 ETA 컨테이너를 Gantt로 표시합니다.<br>
+      <strong>전체</strong> – 전체 기간을 자동 계산해 모든 컨테이너를 Gantt로 표시합니다.<br>
+      <strong>월별 보기</strong> – Google 캘린더 스타일의 월 달력으로 전환합니다. 날짜 칸에 해당 일자에 ETA인 컨테이너 칩이 표시됩니다.<br>
+      <strong>스케줄 보기</strong> – 월 단위의 날짜별 그룹 리스트 뷰로 전환합니다. ETA 날짜를 기준으로 컨테이너가 날짜별로 그룹화되어 시간순으로 나열됩니다.
     </td></tr>
   </table>
 
@@ -2426,7 +2430,36 @@
     <tr><td class="label">클릭</td><td>행 또는 Gantt 바를 클릭하면 우측 상세 드로어가 열립니다.</td></tr>
   </table>
 
-  <h3 id="ct-detail">④ 상세 드로어 (오른쪽 패널)</h3>
+  <h3 id="ct-monthly">④ 월별 달력 보기</h3>
+  <p>보기 드롭다운에서 <strong>월별 보기</strong>를 선택하면 Google 캘린더 스타일의 한 달 달력으로 전환됩니다. 각 날짜 칸에 해당 일자에 ETA가 해당하는 컨테이너 칩이 최대 4개까지 표시되며, 초과분은 <em>+N개 더보기</em> 버튼으로 확인할 수 있습니다.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/03c-container-timeline-monthly.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>월별 달력 보기</p></div>'" alt="컨테이너 일정 – 월별 달력 보기">
+    <div class="screenshot-caption">▲ 월별 달력 보기 — 날짜 칸에 ETA 컨테이너 칩이 표시되고, 헤더 오른쪽에 해당 월 전체 컨테이너 수가 표시됩니다.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">달력 헤더</td><td>월 이름 오른쪽 파란 배지에 해당 월의 전체 컨테이너 수가 표시됩니다. ‹ / › 버튼으로 이전·다음 달로 이동합니다.</td></tr>
+    <tr><td class="label">날짜 칸의 컨테이너 칩</td><td>ETA가 해당 날짜인 컨테이너의 컨테이너 번호와 SKU 수가 상태 색상 배경 칩으로 표시됩니다. 최대 4개까지 칸 안에 나타납니다.</td></tr>
+    <tr><td class="label">+N개 더보기</td><td>4개를 초과하면 <em>+N개 더보기</em> 버튼이 나타납니다. 버튼에 마우스를 올리면 해당 날짜의 모든 컨테이너 팝업이 펼쳐집니다.</td></tr>
+    <tr><td class="label">컨테이너 클릭</td><td>칩 또는 팝업에서 컨테이너를 클릭하면 우측에 상세 드로어가 열립니다.</td></tr>
+    <tr><td class="label">선택한 뷰 유지</td><td>목록 페이지로 이동했다가 돌아와도 마지막으로 선택한 뷰(월별 보기)가 그대로 유지됩니다.</td></tr>
+  </table>
+
+  <h3 id="ct-schedule">⑤ 스케줄 보기</h3>
+  <p>보기 드롭다운에서 <strong>스케줄 보기</strong>를 선택하면 월 단위의 날짜별 그룹 리스트 뷰로 전환됩니다. ETA를 기준으로 컨테이너가 날짜별로 묶여 시간순으로 나열되며, 각 컨테이너 행을 클릭하면 상세 드로어가 열립니다.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/03c-container-timeline-schedule.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>스케줄 보기</p></div>'" alt="컨테이너 일정 – 스케줄 보기">
+    <div class="screenshot-caption">▲ 스케줄 보기 — ETA 날짜별로 그룹화된 컨테이너 목록. 헤더 파란 배지에 해당 월 전체 컨테이너 수가 표시됩니다.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:200px">항목</th><th>설명</th></tr>
+    <tr><td class="label">월 헤더</td><td>월 이름 옆 파란 배지에 표시 중인 월의 전체 컨테이너 수, ‹ / › 버튼으로 월 이동, <em>오늘</em> 버튼으로 현재 월로 즉시 이동합니다.</td></tr>
+    <tr><td class="label">날짜 그룹</td><td>ETA 날짜를 기준으로 컨테이너가 날짜별로 묶여 시간순으로 표시됩니다. 날짜 그룹 헤더는 요일 정보도 함께 표시됩니다.</td></tr>
+    <tr><td class="label">컨테이너 행</td><td>컨테이너 번호, 상태 배지, 공장명, SKU 수, CBM 적재율이 한 줄로 표시됩니다. 행을 클릭하면 상세 드로어가 열립니다.</td></tr>
+    <tr><td class="label">빈 달 안내</td><td>해당 월에 표시할 컨테이너가 없으면 안내 메시지와 함께 월 변경 또는 필터 조정을 권장합니다.</td></tr>
+  </table>
+
+  <h3 id="ct-detail">⑥ 상세 드로어 (오른쪽 패널)</h3>
   <div class="screenshot-box">
     <img src="screenshots/03d-container-timeline-detail.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>컨테이너 상세 드로어</p></div>'" alt="Container Timeline 상세 드로어">
     <div class="screenshot-caption">▲ 175-CA-SEAT 컨테이너 선택 시 우측에 슬라이드로 열리는 상세 드로어 — 상단 탭으로 <b>SKU 목록</b>과 <b>변경 이력</b>을 전환할 수 있습니다.</div>
@@ -2909,6 +2942,8 @@
   <a class="nav-sub" href="#en-ct-overview">Screen Layout</a>
   <a class="nav-sub" href="#en-ct-filters">Filters &amp; Period</a>
   <a class="nav-sub" href="#en-ct-gantt">Reading Gantt Bars</a>
+  <a class="nav-sub" href="#en-ct-monthly">Month Calendar View</a>
+  <a class="nav-sub" href="#en-ct-schedule">Schedule View</a>
   <a class="nav-sub" href="#en-ct-detail">Detail Drawer</a>
   <a class="nav-item" href="#en-available-stock"><span class="icon">📦</span> Available Stock</a>
   <a class="nav-item" href="#en-sku-master"><span class="icon">🗂️</span> SKU Master</a>
@@ -2964,7 +2999,7 @@
     </a>
     <a class="toc-item" href="#en-container-timeline">
       <div class="toc-num" style="background:#e0f2fe;color:#0369a1">4</div>
-      <div><h3>Container Timeline</h3><p>ETA-based Gantt view · inbound schedule at a glance</p></div>
+      <div><h3>Container Timeline</h3><p>Gantt · Month Calendar · Schedule — 3 views for inbound planning</p></div>
     </a>
     <a class="toc-item" href="#en-available-stock">
       <div class="toc-num" style="background:#ffe4e6;color:#9f1239">5</div>
@@ -4649,7 +4684,7 @@
     <div>
       <div class="menu-path">Menu › Planning › Container Timeline</div>
       <h2>Container Timeline</h2>
-      <p class="subtitle">Visualizes inbound containers on a Gantt chart based on ETA (Estimated Time of Arrival). See the full inbound schedule at a glance, and click any container to view SKU details instantly.</p>
+      <p class="subtitle">Visualizes inbound containers by ETA across three switchable views: <strong>Gantt</strong> (3M / 6M / All), <strong>Month Calendar</strong>, and <strong>Schedule List</strong>. Select the view from the dropdown in the toolbar, and click any container to open its SKU detail drawer.</p>
     </div>
   </div>
 
@@ -4692,10 +4727,12 @@
     <tr><td class="label">Product filter pills<br><small>(single-select)</small></td><td>
       <strong>All</strong> · <strong>FM</strong> (Floor Mat) · <strong>CC</strong> (Car Cover) · <strong>SC</strong> (Seat Cover) · <strong>No SKU</strong>. Filter is preserved when navigating from Container Planning. Selecting <em>No SKU</em> shows only containers with no SKUs assigned.
     </td></tr>
-    <tr><td class="label">Period buttons (3M / 6M / All)</td><td>
-      <strong>3M</strong> – Show only containers with ETA within the next 3 months; fixes the X-axis to 3 months. (Default)<br>
-      <strong>6M</strong> – 6-month ETA window and X-axis.<br>
-      <strong>All</strong> – Auto-calculates the full date range from data and shows every container.
+    <tr><td class="label">View dropdown<br><small>(period / view selector)</small></td><td>
+      <strong>3 Months</strong> – Gantt showing only containers with ETA within the next 3 months. (Default)<br>
+      <strong>6 Months</strong> – Gantt for containers with ETA within 6 months.<br>
+      <strong>All</strong> – Gantt auto-calculates the full date range and shows every container.<br>
+      <strong>Month View</strong> – Switches to a Google Calendar-style monthly calendar. Each date cell shows chips for containers whose ETA falls on that day.<br>
+      <strong>Schedule View</strong> – Switches to a date-grouped list view for the selected month. Containers are grouped by ETA date in chronological order.
     </td></tr>
   </table>
 
@@ -4720,7 +4757,36 @@
     <tr><td class="label">Click</td><td>Click a row or Gantt bar to open the detail drawer on the right.</td></tr>
   </table>
 
-  <h3 id="en-ct-detail">④ Detail Drawer (Right Panel)</h3>
+  <h3 id="en-ct-monthly">④ Month Calendar View</h3>
+  <p>Select <strong>Month View</strong> from the view dropdown to switch to a Google Calendar-style monthly calendar. Each date cell displays up to four container chips whose ETA falls on that day. Overflow is collapsed into a <em>+N more</em> button.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/03c-container-timeline-monthly-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📅</div><p>Month Calendar View</p></div>'" alt="Container Timeline – Month Calendar View">
+    <div class="screenshot-caption">▲ Month Calendar View — ETA-based container chips appear in each date cell. The blue badge in the header shows the total container count for the month.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Calendar header</td><td>The blue badge next to the month name shows the total container count for that month. Use the ‹ / › buttons to navigate months.</td></tr>
+    <tr><td class="label">Container chips</td><td>Each chip displays the container number and SKU count on a status-colored background. Up to four chips are shown per cell.</td></tr>
+    <tr><td class="label">+N more button</td><td>When more than four containers share the same ETA date, a <em>+N more</em> button appears. Hover over it to expand a popup showing all containers for that day.</td></tr>
+    <tr><td class="label">Click a container</td><td>Click any chip or popup entry to open the detail drawer on the right.</td></tr>
+    <tr><td class="label">View persistence</td><td>The selected view (Month View) is saved and restored automatically when you navigate away and return.</td></tr>
+  </table>
+
+  <h3 id="en-ct-schedule">⑤ Schedule View</h3>
+  <p>Select <strong>Schedule View</strong> from the dropdown to switch to a date-grouped list view for the selected month. Containers are grouped by their ETA date in chronological order. Click any row to open the detail drawer.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/03c-container-timeline-schedule-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Schedule View</p></div>'" alt="Container Timeline – Schedule View">
+    <div class="screenshot-caption">▲ Schedule View — containers grouped by ETA date in a chronological list. The blue badge in the header shows the total container count for the month.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Month header</td><td>Shows the total container count for the displayed month, ‹ / › navigation buttons, and a <em>Today</em> button to jump back to the current month.</td></tr>
+    <tr><td class="label">Date groups</td><td>Containers are grouped by their ETA date, with each group header showing the date and day of week.</td></tr>
+    <tr><td class="label">Container rows</td><td>Each row shows the container number, status badge, factory name, SKU count, and CBM fill rate in a single line. Click a row to open the detail drawer.</td></tr>
+    <tr><td class="label">Empty-month notice</td><td>If no containers are scheduled for the selected month, a help message suggests changing the month or adjusting filters.</td></tr>
+  </table>
+
+  <h3 id="en-ct-detail">⑥ Detail Drawer (Right Panel)</h3>
   <div class="screenshot-box">
     <img src="screenshots/03d-container-timeline-detail-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📋</div><p>Container Detail Drawer</p></div>'" alt="Container Timeline Detail Drawer">
     <div class="screenshot-caption">▲ Detail drawer for 175-CA-SEAT — slides open on the right when a container is clicked. Use the tabs at the top to switch between <b>SKU List</b> and <b>Change History</b>.</div>
