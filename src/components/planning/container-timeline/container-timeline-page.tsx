@@ -52,6 +52,8 @@ interface Container {
   estLoadingDate: string | null;
   etdNgbDate: string | null;
   etaLaxLgbDate: string | null;
+  confirmedDate: string | null;
+  confirmedTime: string | null;
   status: ContainerStatus;
   cbmCapacity: number;
   factoryName: string | null;
@@ -80,6 +82,8 @@ interface ContainerApiRow {
   estLoadingDate?: unknown;
   etdNgbDate?: unknown;
   etaLaxLgbDate?: unknown;
+  confirmedDate?: unknown;
+  confirmedTime?: unknown;
   status?: unknown;
   cbmCapacity?: unknown;
   factoryName?: unknown;
@@ -114,6 +118,8 @@ function mapTimelineContainers(rows: ContainerApiRow[]): Container[] {
     estLoadingDate: row.estLoadingDate ? String(row.estLoadingDate) : null,
     etdNgbDate: row.etdNgbDate ? String(row.etdNgbDate) : null,
     etaLaxLgbDate: row.etaLaxLgbDate ? String(row.etaLaxLgbDate) : null,
+    confirmedDate: row.confirmedDate ? String(row.confirmedDate) : null,
+    confirmedTime: row.confirmedTime ? String(row.confirmedTime) : null,
     status: normalizeStatus(String(row.status ?? "")),
     cbmCapacity: Number(row.cbmCapacity ?? 0),
     factoryName: row.factoryName ? String(row.factoryName) : null,
@@ -236,9 +242,27 @@ const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day
 const fmtMonthYear = (d: Date) => d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
 function containerScheduleDate(container: Container): string | null {
-  return container.status === "complete" && container.actualArrivalDate
-    ? container.actualArrivalDate
-    : container.etaDate;
+  if (container.confirmedDate) return container.confirmedDate;
+  return container.etaLaxLgbDate;
+}
+
+function formatTime12h(time: string | null): string | null {
+  if (!time) return null;
+  const [hStr, mStr] = time.split(":");
+  let h = parseInt(hStr ?? "", 10);
+  const m = parseInt(mStr ?? "0", 10);
+  if (Number.isNaN(h)) return null;
+  const ampm = h >= 12 ? "pm" : "am";
+  h = h % 12;
+  if (h === 0) h = 12;
+  return m === 0 ? `${h}${ampm}` : `${h}:${String(m).padStart(2, "0")}${ampm}`;
+}
+
+function confirmedChipLabel(c: Container, pick: (ko: string, en: string) => string): string {
+  if (!c.confirmedDate) return c.containerNumber;
+  const timeLabel = formatTime12h(c.confirmedTime);
+  const suffix = `(${pick("확정", "Confirmed")}${timeLabel ? ` - ${timeLabel}` : ""})`;
+  return c.destWarehouse ? `${c.containerNumber}${suffix} ${c.destWarehouse}` : `${c.containerNumber}${suffix}`;
 }
 
 function buildSkuImpact(item: ContainerItem, containerName: string, etaDate: string | null, row?: DemandRow): SkuImpact {
@@ -584,7 +608,7 @@ export function ContainerTimelinePage() {
       e = endOfMonth(addDays(today, 180));
     } else {
       // "all" — auto-fit to data
-      const etaDates = containers.filter((c) => c.etaDate).map((c) => toDate(c.etaDate!));
+      const etaDates = containers.map((c) => containerScheduleDate(c)).filter((d): d is string => Boolean(d)).map((d) => toDate(d));
       if (etaDates.length === 0) {
         s = startOfMonth(today);
         e = endOfMonth(addDays(today, 90));
@@ -640,10 +664,11 @@ export function ContainerTimelinePage() {
       status,
       items: searchMatchedContainers.filter((c) => {
         if (!activeStatuses.has(c.status) || c.status !== status) return false;
-        // For fixed periods, hide containers whose ETA is outside the range
-        // (but keep containers with no ETA — they appear as "날짜 미정")
-        if (period !== "all" && c.etaDate) {
-          const eta = toDate(c.etaDate);
+        // For fixed periods, hide containers whose scheduled date is outside the range
+        // (but keep containers with no date — they appear as "날짜 미정")
+        const scheduleDate = containerScheduleDate(c);
+        if (period !== "all" && scheduleDate) {
+          const eta = toDate(scheduleDate);
           if (eta < rangeStart || eta > rangeEnd) return false;
         }
         return true;
@@ -656,8 +681,9 @@ export function ContainerTimelinePage() {
     const counts: Record<string, number> = {};
     for (const group of grouped) {
       for (const c of group.items) {
-        if (!c.etaDate) continue;
-        const eta = toDate(c.etaDate);
+        const scheduleDate = containerScheduleDate(c);
+        if (!scheduleDate) continue;
+        const eta = toDate(scheduleDate);
         const key = fmtMonthYear(new Date(eta.getFullYear(), eta.getMonth(), 1));
         counts[key] = (counts[key] ?? 0) + 1;
       }
@@ -741,8 +767,7 @@ export function ContainerTimelinePage() {
   }
 
   function barProps(c: Container): { left: number; width: number } | null {
-    const etaStr =
-      c.status === "complete" && c.actualArrivalDate ? c.actualArrivalDate : c.etaDate;
+    const etaStr = containerScheduleDate(c);
     if (!etaStr) return null;
     const etaDay = diffDays(toDate(etaStr), rangeStart);
     const transitDays = 30;
@@ -1120,10 +1145,7 @@ export function ContainerTimelinePage() {
                     c.cbmCapacity > 0
                       ? Math.round((c.totalCbm / c.cbmCapacity) * 100)
                       : 0;
-                  const displayDate =
-                    c.status === "complete" && c.actualArrivalDate
-                      ? c.actualArrivalDate
-                      : c.etaDate;
+                  const displayDate = containerScheduleDate(c);
 
                   return (
                     <div
@@ -1145,14 +1167,16 @@ export function ContainerTimelinePage() {
                             style={{ backgroundColor: STATUS_COLOR[c.status] }}
                           />
                           <span className="font-mono text-[11px] font-bold text-[#1a1917] truncate flex-1">
-                            {c.containerNumber}
+                            {confirmedChipLabel(c, pick)}
                           </span>
                           <span className="text-[10px] text-stone-400 shrink-0">
                             {c.itemCount} SKUs
                           </span>
-                          <span className="text-[10px] text-muted-foreground shrink-0">
-                            · {displayDate ?? "—"}
-                          </span>
+                          {!c.confirmedDate && (
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              · {displayDate ?? "—"}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <div
@@ -1169,7 +1193,7 @@ export function ContainerTimelinePage() {
                               }}
                             />
                             <span className="font-mono text-[12px] font-bold text-[#1a1917] truncate">
-                              {c.containerNumber}
+                              {confirmedChipLabel(c, pick)}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5 flex-wrap pl-4">
@@ -1193,7 +1217,7 @@ export function ContainerTimelinePage() {
                             )}
                           </div>
                           <div className="text-[10px] text-muted-foreground pl-4">
-                            ETA {displayDate ?? "—"} · {c.itemCount} SKUs · {c.totalQty.toLocaleString()} units
+                            {!c.confirmedDate && `ETA ${displayDate ?? "—"} · `}{c.itemCount} SKUs · {c.totalQty.toLocaleString()} units
                           </div>
                         </div>
                       )}
@@ -1243,9 +1267,9 @@ export function ContainerTimelinePage() {
                                 className="text-[11px] font-bold text-white truncate flex-1"
                                 style={{ textShadow: "0 1px 2px rgba(0,0,0,0.18)" }}
                               >
-                                {c.containerNumber}
+                                {confirmedChipLabel(c, pick)}
                               </span>
-                              {displayDate && (
+                              {!c.confirmedDate && displayDate && (
                                 <span className="text-[10px] text-white/80 shrink-0">
                                   {fmtDate(toDate(displayDate))}
                                 </span>
@@ -1409,13 +1433,13 @@ function CalendarDayCell({
               key={c.id}
               type="button"
               onClick={() => setSelected(isSelected ? null : c)}
-              title={`${c.containerNumber} · ${STATUS_LABEL_FULL[c.status]}`}
+              title={`${c.containerNumber} · ${STATUS_LABEL_FULL[c.status]}${c.confirmedDate ? ` · ${pick("확정", "Confirmed")} ${c.confirmedDate}${c.confirmedTime ? ` ${c.confirmedTime}` : ""}${c.destWarehouse ? ` · ${c.destWarehouse}` : ""}` : ""}`}
               className={`flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity hover:opacity-90 ${
                 isSelected ? "ring-2 ring-white ring-offset-1" : ""
               }`}
               style={{ backgroundColor: STATUS_COLOR[c.status] }}
             >
-              <span className="min-w-0 flex-1 truncate">{c.containerNumber}</span>
+              <span className="min-w-0 flex-1 truncate">{confirmedChipLabel(c, pick)}</span>
               {c.itemCount > 0 && (
                 <span className="shrink-0 rounded bg-black/20 px-1 py-px text-[9px] font-bold">
                   {c.itemCount}
@@ -1474,7 +1498,7 @@ function CalendarDayCell({
                   }`}
                   style={{ backgroundColor: STATUS_COLOR[c.status] }}
                 >
-                  <span className="flex-1 truncate text-[11px] font-bold">{c.containerNumber}</span>
+                  <span className="flex-1 truncate text-[11px] font-bold">{confirmedChipLabel(c, pick)}</span>
                   <span className="shrink-0 text-[9px] font-semibold opacity-80">
                     {STATUS_LABEL_FULL[c.status]}
                   </span>
@@ -1809,7 +1833,7 @@ function ContainerScheduleView({
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-1.5">
                             <span className="truncate font-mono text-[13px] font-bold text-[#1a1917]">
-                              {container.containerNumber}
+                              {confirmedChipLabel(container, pick)}
                             </span>
                             <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-semibold ${STATUS_PILL[container.status]}`}>
                               {STATUS_LABEL_FULL[container.status]}
@@ -1955,6 +1979,13 @@ function ContainerDetailDrawer({
       value: displayDate,
       accent: c.status === "complete",
     },
+    ...(c.confirmedDate
+      ? [{
+          label: pick("입고 확정", "Confirmed Delivery"),
+          value: [c.confirmedDate, c.confirmedTime, c.destWarehouse].filter(Boolean).join(" · "),
+          accent: true,
+        }]
+      : []),
   ];
 
   return (

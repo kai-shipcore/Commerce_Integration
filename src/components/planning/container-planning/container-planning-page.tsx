@@ -124,6 +124,8 @@ type ApiContainer = {
   estLoadingDate: string | null;
   etdNgbDate: string | null;
   etaLaxLgbDate: string | null;
+  confirmedDate: string | null;
+  confirmedTime: string | null;
   status: string;
   cbmCapacity: number;
   factoryName: string | null;
@@ -241,6 +243,8 @@ function mapApiContainer(container: ApiContainer): MockContainer {
     estLoadingDate: container.estLoadingDate ?? undefined,
     etdNgbDate: container.etdNgbDate ?? undefined,
     etaLaxLgbDate: container.etaLaxLgbDate ?? undefined,
+    confirmedDate: container.confirmedDate ?? null,
+    confirmedTime: container.confirmedTime ?? null,
     status: normalizeContainerStatus(container.status),
     cbmCapacity: container.cbmCapacity || 80,
     factory: container.factoryName ?? "",
@@ -1150,6 +1154,43 @@ export function ContainerPlanningPage() {
       setExpandedId(containerId);
     } catch {
       toast.error(pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
+    }
+  }
+
+  async function saveConfirmedDelivery(containerId: string, confirmedDate: string | null, confirmedTime: string | null) {
+    if (!can("container-planning", "edit")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
+
+    if (!/^\d+$/.test(containerId)) {
+      setContainers((current) =>
+        current.map((entry) => entry.id === containerId ? { ...entry, confirmedDate, confirmedTime } : entry)
+      );
+      setStatusModalContainerId(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}&confirmedOnly=true`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmedDate, confirmedTime }),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        toast.error(response.status === 403
+          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+          : (json.error ?? pick("입고 확정일 저장에 실패했습니다.", "Failed to save confirmed delivery.")));
+        return;
+      }
+
+      await fetchContainers();
+      setExpandedId(containerId);
+      setStatusModalContainerId(null);
+    } catch {
+      toast.error(pick("입고 확정일 저장에 실패했습니다.", "Failed to save confirmed delivery."));
     }
   }
 
@@ -2294,6 +2335,10 @@ export function ContainerPlanningPage() {
           onConfirm={(newStatus) => changeContainerStatus(statusModalContainerId, newStatus)}
           onClose={() => setStatusModalContainerId(null)}
           canRevert={session?.user?.role === "admin" || session?.user?.role === "planner"}
+          confirmedDate={containers.find((c) => c.id === statusModalContainerId)?.confirmedDate ?? null}
+          confirmedTime={containers.find((c) => c.id === statusModalContainerId)?.confirmedTime ?? null}
+          destWarehouseName={containers.find((c) => c.id === statusModalContainerId)?.destination ?? null}
+          onSaveConfirmed={(date, time) => saveConfirmedDelivery(statusModalContainerId, date, time)}
         />
       ) : null}
       {availableStockContainerId ? (
@@ -3136,6 +3181,17 @@ function ContainerCard({
                 <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{pick("창고 입고일", "Warehouse")}</div>
                 <div className="mt-0.5 font-mono text-xs font-semibold text-[#1a5cdb]">{container.eta || "—"}</div>
               </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">{pick("입고 확정", "Confirmed Delivery")}</div>
+                {container.confirmedDate ? (
+                  <div className="mt-0.5 font-mono text-xs font-semibold text-teal-600">
+                    {container.confirmedDate}{container.confirmedTime ? ` ${container.confirmedTime}` : ""}
+                    {container.destination ? <span className="ml-1 font-sans font-normal text-muted-foreground">· {container.destination}</span> : null}
+                  </div>
+                ) : (
+                  <div className="mt-0.5 font-mono text-xs text-muted-foreground">{pick("확정 안됨", "Not confirmed")}</div>
+                )}
+              </div>
             </div>
           </div>
           {container.note ? (
@@ -3260,15 +3316,15 @@ function ContainerCard({
               </button>
             ) : null}
             <div className="ml-auto flex items-center gap-2">
-              {(container.status !== "complete" || canRevertStatus) ? (
-                <button
-                  type="button"
-                  onClick={() => onChangeStatus(container.id)}
-                  className="shrink-0 whitespace-nowrap rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
-                >
-                  {pick("상태 변경", "Change Status")}
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => onChangeStatus(container.id)}
+                className="shrink-0 whitespace-nowrap rounded-lg border border-[#e2dfd8] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+              >
+                {container.status === "complete" && !canRevertStatus
+                  ? pick("입고 확정", "Confirm Delivery")
+                  : pick("상태 변경", "Change Status")}
+              </button>
               {canDeleteThisContainer ? (
                 <button
                   type="button"
@@ -4058,22 +4114,30 @@ function StatusChangeModal({
   onConfirm,
   onClose,
   canRevert = false,
+  confirmedDate = null,
+  confirmedTime = null,
+  destWarehouseName = null,
+  onSaveConfirmed,
 }: {
   currentStatus: ContainerStatus;
   onConfirm: (newStatus: ContainerStatus) => void;
   onClose: () => void;
   canRevert?: boolean;
+  confirmedDate?: string | null;
+  confirmedTime?: string | null;
+  destWarehouseName?: string | null;
+  onSaveConfirmed: (confirmedDate: string | null, confirmedTime: string | null) => void;
 }) {
   const { pick } = useI18n();
   const [revertConfirming, setRevertConfirming] = useState(false);
+  const [dateInput, setDateInput] = useState(confirmedDate ?? "");
+  const [timeInput, setTimeInput] = useState(confirmedTime ?? "");
   const currentIdx = STATUS_ORDER.indexOf(currentStatus);
   const nextStatus = STATUS_ORDER[currentIdx + 1];
   const prevStatus = STATUS_ORDER[currentIdx - 1];
   const showRevert = canRevert && prevStatus !== undefined;
 
-  if (!nextStatus && !showRevert) return null;
-
-  if ((!nextStatus && showRevert && prevStatus) || (revertConfirming && prevStatus)) {
+  if (revertConfirming && prevStatus) {
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -4095,7 +4159,7 @@ function StatusChangeModal({
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => nextStatus ? setRevertConfirming(false) : onClose()}
+              onClick={() => setRevertConfirming(false)}
               className="rounded-lg border border-[#cccac4] px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]"
             >
               {pick("취소", "Cancel")}
@@ -4119,16 +4183,20 @@ function StatusChangeModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-[#e2dfd8] bg-white p-6 shadow-xl"
+        className="w-full max-w-md rounded-2xl border border-[#e2dfd8] bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-5 text-base font-semibold">{pick("상태 변경", "Change Status")}</h2>
-        {nextStatus && (
+        {nextStatus ? (
           <div className="flex items-start justify-center gap-4 px-2">
             <StatusBadge status={currentStatus} />
             <span className="mt-1.5 text-lg text-muted-foreground">→</span>
             <StatusBadge status={nextStatus} />
           </div>
+        ) : (
+          <p className="text-center text-sm text-muted-foreground">
+            {pick("더 이상 변경할 상태가 없습니다.", "No further status changes available.")}
+          </p>
         )}
         <div className="mt-6 flex justify-end gap-2">
           <button
@@ -4156,6 +4224,62 @@ function StatusChangeModal({
               {pick("확인", "Confirm")}
             </button>
           )}
+        </div>
+
+        <div className="mt-6 border-t border-[#e2dfd8] pt-5">
+          <h3 className="mb-1 text-sm font-semibold">{pick("입고 확정 (Confirmed Delivery)", "Confirmed Delivery")}</h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {pick(
+              "트럭킹 확정 후 실제 창고 입고 예정일/시간을 입력하세요. 입력하면 타임라인에 ETA 대신 이 날짜가 표시됩니다.",
+              "Once trucking confirms delivery, enter the actual warehouse arrival date/time. When set, the timeline shows this instead of ETA."
+            )}
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="mb-1 block text-muted-foreground">{pick("확정 날짜", "Confirmed Date")}</span>
+              <input
+                type="date"
+                value={dateInput}
+                onChange={(e) => setDateInput(e.target.value)}
+                className="form-input w-full"
+              />
+            </label>
+            <label className="block text-xs">
+              <span className="mb-1 block text-muted-foreground">{pick("확정 시간", "Confirmed Time")}</span>
+              <input
+                type="time"
+                value={timeInput}
+                onChange={(e) => setTimeInput(e.target.value)}
+                className="form-input w-full"
+              />
+            </label>
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {pick("창고", "Warehouse")}: <span className="font-medium text-foreground">{destWarehouseName || "—"}</span>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            {(confirmedDate || dateInput) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDateInput("");
+                  setTimeInput("");
+                  onSaveConfirmed(null, null);
+                }}
+                className="rounded-lg border border-[#cccac4] px-4 py-2 text-sm font-medium hover:bg-[#f0eee9]"
+              >
+                {pick("확정 취소", "Clear")}
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={!dateInput}
+              onClick={() => onSaveConfirmed(dateInput, timeInput || null)}
+              className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pick("저장", "Save")}
+            </button>
+          </div>
         </div>
       </div>
     </div>

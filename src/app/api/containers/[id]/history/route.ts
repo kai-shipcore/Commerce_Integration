@@ -13,6 +13,7 @@ const ACTIONS = new Set([
   "status_change",
   "details_update",
   "eta_change",
+  "confirmed_change",
   "items_update",
   "note_added",
   "create",

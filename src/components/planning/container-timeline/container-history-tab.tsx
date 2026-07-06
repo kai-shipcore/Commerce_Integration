@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Calendar, Clock, MessageSquare, Package, Pencil, Plus, PlusCircle, Trash2 } from "lucide-react";
+import { Calendar, CheckCircle2, Clock, MessageSquare, Package, Pencil, Plus, PlusCircle, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath } from "@/lib/api-path";
 import type { ContainerAuditAction } from "@/lib/container-audit";
@@ -71,6 +71,7 @@ function EntryIcon({ action }: { action: ContainerAuditAction }) {
   const map: Record<ContainerAuditAction, IconEntry> = {
     status_change:  { Icon: Clock,          bg: "bg-blue-50",    color: "text-blue-500" },
     eta_change:     { Icon: Calendar,       bg: "bg-amber-50",   color: "text-amber-500" },
+    confirmed_change: { Icon: CheckCircle2, bg: "bg-teal-50",    color: "text-teal-600" },
     details_update: { Icon: Pencil,         bg: "bg-stone-100",  color: "text-stone-500" },
     items_update:   { Icon: Package,        bg: "bg-purple-50",  color: "text-purple-500" },
     note_added:     { Icon: MessageSquare,  bg: "bg-green-50",   color: "text-green-600" },
@@ -116,6 +117,23 @@ function BeforeAfter({ action, before, after }: Pick<AuditEntry, "action" | "bef
       </div>
     );
   }
+  if (action === "confirmed_change") {
+    const label = (v: Record<string, unknown> | null | undefined) =>
+      v?.confirmedDate ? `${String(v.confirmedDate)}${v.confirmedTime ? ` ${String(v.confirmedTime)}` : ""}` : "—";
+    return (
+      <div className="flex shrink-0 items-center gap-2 text-[12px]">
+        <div className="text-right">
+          <div className="mb-0.5 text-[9px] uppercase tracking-wide text-stone-400">Before</div>
+          <span className="font-medium text-stone-500">{label(before)}</span>
+        </div>
+        <span className="text-[10px] text-stone-300">→</span>
+        <div>
+          <div className="mb-0.5 text-[9px] uppercase tracking-wide text-stone-400">After</div>
+          <span className="font-semibold text-teal-600">{label(after)}</span>
+        </div>
+      </div>
+    );
+  }
   if (action === "items_update" && before && after) {
     return (
       <div className="flex shrink-0 items-center gap-2 text-[11px]">
@@ -146,6 +164,7 @@ function HistoryEntry({ entry }: { entry: AuditEntry }) {
     switch (entry.action) {
       case "status_change":  return pick("상태 변경", "Status changed");
       case "eta_change":     return pick("ETA 변경", "ETA changed");
+      case "confirmed_change": return pick("입고 확정일 변경", "Confirmed delivery changed");
       case "details_update": return pick("정보 수정", "Details updated");
       case "items_update": {
         const n = Number(entry.after?.skuCount ?? 0);
@@ -169,6 +188,11 @@ function HistoryEntry({ entry }: { entry: AuditEntry }) {
       }
       case "eta_change":
         return `${String(entry.before?.eta ?? "—")} → ${String(entry.after?.eta ?? "—")}`;
+      case "confirmed_change": {
+        const fmt = (v: Record<string, unknown> | null) =>
+          v?.confirmedDate ? `${String(v.confirmedDate)}${v.confirmedTime ? ` ${String(v.confirmedTime)}` : ""}` : pick("확정 안됨", "Not confirmed");
+        return `${fmt(entry.before)} → ${fmt(entry.after)}`;
+      }
       case "items_update":
         return pick("SKU 추가·삭제 또는 수량 변경", "Items added, removed, or quantity changed");
       case "details_update": {
@@ -318,6 +342,7 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
             <option value="all">{pick("모든 변경 유형", "All actions")}</option>
             <option value="status_change">{pick("상태 변경", "Status Change")}</option>
             <option value="eta_change">{pick("ETA 수정", "ETA Change")}</option>
+            <option value="confirmed_change">{pick("입고 확정일 변경", "Confirmed Delivery")}</option>
             <option value="details_update">{pick("정보 수정", "Details Update")}</option>
             <option value="items_update">{pick("수량/SKU 변경", "Item Change")}</option>
             <option value="note_added">{pick("메모", "Note")}</option>

@@ -30,6 +30,8 @@ export interface MockContainer {
   estLoadingDate?: string;
   etdNgbDate?: string;
   etaLaxLgbDate?: string;
+  confirmedDate?: string | null;
+  confirmedTime?: string | null;
   status: ContainerStatus;
   cbmCapacity: number;
   factory: string;

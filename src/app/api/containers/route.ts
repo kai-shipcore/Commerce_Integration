@@ -54,6 +54,16 @@ function serializeDate(value: unknown): string | null {
   return String(value).slice(0, 10);
 }
 
+function serializeTime(value: unknown): string | null {
+  if (!value) return null;
+  return String(value).slice(0, 5);
+}
+
+const ContainerConfirmedSchema = z.object({
+  confirmedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  confirmedTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+}).strict();
+
 function toDbStatus(status: z.infer<typeof ContainerStatusSchema>) {
   if (status === "final-list-sent") return "shipped";
   if (status === "packing-list-received") return "packing_received";
@@ -144,6 +154,8 @@ export async function GET(request: NextRequest) {
          c.est_loading_date,
          c.etd_ngb_date,
          c.eta_lax_lgb_date,
+         c.confirmed_date,
+         c.confirmed_time::text AS confirmed_time,
          COALESCE(item_summary.item_count, 0)::int AS item_count,
          COALESCE(item_summary.total_qty, 0)::int AS total_qty,
          COALESCE(item_summary.total_cbm, 0)::text AS total_cbm,
@@ -209,6 +221,8 @@ export async function GET(request: NextRequest) {
       estLoadingDate: serializeDate(row.est_loading_date),
       etdNgbDate: serializeDate(row.etd_ngb_date),
       etaLaxLgbDate: serializeDate(row.eta_lax_lgb_date),
+      confirmedDate: serializeDate(row.confirmed_date),
+      confirmedTime: serializeTime(row.confirmed_time),
       status: row.status as string,
       cbmCapacity: Number(row.cbm_capacity ?? 0),
       factoryName: row.factory_name as string | null,
@@ -418,6 +432,8 @@ export async function PATCH(request: NextRequest) {
       est_loading: string | null;
       etd_ngb: string | null;
       eta_lax_lgb: string | null;
+      confirmed_date: string | null;
+      confirmed_time: string | null;
     }>(
       `SELECT status::text AS status,
               container_number,
@@ -428,7 +444,9 @@ export async function PATCH(request: NextRequest) {
               note,
               est_loading_date::text AS est_loading,
               etd_ngb_date::text AS etd_ngb,
-              eta_lax_lgb_date::text AS eta_lax_lgb
+              eta_lax_lgb_date::text AS eta_lax_lgb,
+              confirmed_date::text AS confirmed_date,
+              confirmed_time::text AS confirmed_time
        FROM shipcore.fc_containers WHERE id = $1::bigint`,
       [id],
     );
@@ -474,6 +492,48 @@ export async function PATCH(request: NextRequest) {
           action: "status_change",
           before: { status: oldStatus },
           after: { status: statusOnly.data.status },
+          ip,
+        });
+      }
+
+      return NextResponse.json({ success: true, data: { id } });
+    }
+
+    const confirmedOnly = searchParams.get("confirmedOnly") === "true"
+      ? ContainerConfirmedSchema.safeParse(body)
+      : undefined;
+
+    if (confirmedOnly?.success) {
+      const result = await client.query(
+        `UPDATE shipcore.fc_containers
+         SET confirmed_date = $2::date,
+             confirmed_time = $3::time,
+             updated_at = NOW()
+         WHERE id = $1::bigint
+         RETURNING id`,
+        [id, confirmedOnly.data.confirmedDate, confirmedOnly.data.confirmedTime]
+      );
+
+      if (result.rowCount === 0) {
+        return NextResponse.json(
+          { success: false, error: "Container not found" },
+          { status: 404 }
+        );
+      }
+
+      await invalidatePlanningDashboardCache();
+
+      const oldConfirmedTime = existing.confirmed_time ? existing.confirmed_time.slice(0, 5) : null;
+      if (existing.confirmed_date !== confirmedOnly.data.confirmedDate || oldConfirmedTime !== confirmedOnly.data.confirmedTime) {
+        void logContainerAudit({
+          containerId: id,
+          containerNumber: existing.container_number,
+          userId: session?.user?.id ?? null,
+          userName: session?.user?.name ?? null,
+          userEmail: session?.user?.email ?? null,
+          action: "confirmed_change",
+          before: { confirmedDate: existing.confirmed_date, confirmedTime: oldConfirmedTime },
+          after: { confirmedDate: confirmedOnly.data.confirmedDate, confirmedTime: confirmedOnly.data.confirmedTime },
           ip,
         });
       }
