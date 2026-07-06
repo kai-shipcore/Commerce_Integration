@@ -39,6 +39,10 @@ import type {
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
+export interface AgDemandPlanningGridHandle {
+  bulkSetStockMode: (mode: 'onhand' | 'available') => Promise<void>;
+}
+
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
   categoryFilter: CategoryFilter;
@@ -75,6 +79,7 @@ export interface DemandPlanningGridProps {
   gradientSC?: import("@/lib/planning/order-optimizer").GradientTier[];
   hiddenContainers?: Set<string>;
   hiddenBases?: Set<string>;
+  imperativeRef?: React.Ref<AgDemandPlanningGridHandle>;
 }
 
 const ROW_HEIGHT = 28;

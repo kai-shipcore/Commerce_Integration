@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { CalendarDays, ChartColumn, ExternalLink } from "lucide-react";
 import {
@@ -46,7 +46,7 @@ import {
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
 import type { CellContent } from "./columns";
-import type { DemandPlanningGridProps } from "./demand-planning-grid";
+import type { AgDemandPlanningGridHandle, DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -1355,6 +1355,7 @@ export function AgDemandPlanningGrid({
   gradientSC = [],
   hiddenContainers = new Set<string>(),
   hiddenBases = new Set<string>(),
+  imperativeRef,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -2085,6 +2086,40 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     setChainMap((cur) => new Map(cur).set(row.sku, computeContainerChain(updatedRow, containers, qtyOverrides, seasonalFactors)));
     gridRef.current?.api.refreshCells({ force: true });
   }, [containers, qtyOverrides, seasonalFactors]);
+
+  const bulkSetStockMode = useCallback(async (mode: 'onhand' | 'available'): Promise<void> => {
+    const targetRows = visibleRows.filter((r) => (r.transit_stock ?? 0) < 1);
+    if (targetRows.length === 0) return;
+    const skus = targetRows.map((r) => r.sku);
+    const res = await fetch(apiPath(`/api/planning/sku/stock-mode`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ skus, stock_mode: mode }),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      console.error("[bulkSetStockMode] API error:", res.status, errBody);
+      return;
+    }
+    setRowOverrides((cur) => {
+      const map = new Map(cur);
+      for (const row of targetRows) {
+        map.set(row.sku, { ...(cur.get(row.sku) ?? {}), stock_mode: mode });
+      }
+      return map;
+    });
+    setChainMap((cur) => {
+      const next = new Map(cur);
+      for (const row of targetRows) {
+        const updated = { ...row, stock_mode: mode };
+        next.set(row.sku, computeContainerChain(updated, containers, qtyOverrides, seasonalFactors));
+      }
+      return next;
+    });
+    gridRef.current?.api.refreshCells({ force: true });
+  }, [visibleRows, containers, qtyOverrides, seasonalFactors]);
+
+  useImperativeHandle(imperativeRef as React.Ref<AgDemandPlanningGridHandle>, () => ({ bulkSetStockMode }), [bulkSetStockMode]);
 
   const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS

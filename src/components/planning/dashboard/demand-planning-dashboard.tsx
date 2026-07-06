@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
+import type { AgDemandPlanningGridHandle } from "./demand-planning-grid";
 import { ImportTransitStockDialog } from "./import-transit-stock-dialog";
 import { StatusBar } from "./status-bar";
 import {
@@ -417,6 +418,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const skuFiltersRef = useRef<HTMLDivElement>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
+  const gridImperativeRef = useRef<AgDemandPlanningGridHandle>(null);
 
   // Debounced save of all preferences to DB (1.5s delay to batch rapid changes)
   const savePrefsToDb = useCallback((prefs: Record<string, unknown>) => {
@@ -1901,6 +1903,45 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           >
             {gridMode === "ag-grid" ? "Excel" : "CSV"}
           </button>
+          {gridMode === "ag-grid" && (
+            <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
+              <button
+                type="button"
+                onClick={() => void gridImperativeRef.current?.bulkSetStockMode('available')}
+                title={pick("Lock되지 않은 전체 SKU를 AV로 변경", "Set all unlocked SKUs to AV")}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "5px 9px",
+                  border: "none",
+                  borderRight: "1px solid #C2BFB5",
+                  background: "#EFF6FF",
+                  color: "#1A4FC0",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                All AV
+              </button>
+              <button
+                type="button"
+                onClick={() => void gridImperativeRef.current?.bulkSetStockMode('onhand')}
+                title={pick("Lock되지 않은 전체 SKU를 OH로 변경", "Set all unlocked SKUs to OH")}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "5px 9px",
+                  border: "none",
+                  background: "#F8FAFC",
+                  color: "#64748B",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                All OH
+              </button>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setTransitImportOpen(true)}
@@ -2082,6 +2123,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onExportReady={handleAgGridExportReady}
           hiddenContainers={hiddenContainers}
           hiddenBases={hiddenBases}
+          imperativeRef={gridImperativeRef}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}
