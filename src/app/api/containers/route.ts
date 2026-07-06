@@ -671,6 +671,40 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, data: { id } });
     }
 
+    const etaLaxLgbOnly = z.object({ etaLaxLgbDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict().safeParse(body);
+
+    if (etaLaxLgbOnly.success) {
+      const result = await client.query(
+        `UPDATE shipcore.fc_containers
+         SET eta_lax_lgb_date = $2::date,
+             updated_at = NOW()
+         WHERE id = $1::bigint
+         RETURNING id`,
+        [id, etaLaxLgbOnly.data.etaLaxLgbDate]
+      );
+
+      if (result.rowCount === 0) {
+        return NextResponse.json(
+          { success: false, error: "Container not found" },
+          { status: 404 }
+        );
+      }
+
+      await invalidatePlanningDashboardCache();
+
+      if (existing.eta_lax_lgb !== etaLaxLgbOnly.data.etaLaxLgbDate) {
+        void logContainerAudit({
+          containerId: id, containerNumber: existing.container_number,
+          userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null,
+          action: "eta_lax_lgb_change",
+          before: { etaLaxLgbDate: existing.eta_lax_lgb }, after: { etaLaxLgbDate: etaLaxLgbOnly.data.etaLaxLgbDate },
+          ip,
+        });
+      }
+
+      return NextResponse.json({ success: true, data: { id } });
+    }
+
     const validated = ContainerSaveSchema.parse(body);
     const distinctSkus = [...new Set(validated.items.map((item) => item.sku.trim().toUpperCase()))];
 

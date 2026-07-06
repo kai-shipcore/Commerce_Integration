@@ -71,6 +71,7 @@ function EntryIcon({ action }: { action: ContainerAuditAction }) {
   const map: Record<ContainerAuditAction, IconEntry> = {
     status_change:  { Icon: Clock,          bg: "bg-blue-50",    color: "text-blue-500" },
     eta_change:     { Icon: Calendar,       bg: "bg-amber-50",   color: "text-amber-500" },
+    eta_lax_lgb_change: { Icon: Calendar,   bg: "bg-amber-50",   color: "text-amber-500" },
     confirmed_change: { Icon: CheckCircle2, bg: "bg-teal-50",    color: "text-teal-600" },
     details_update: { Icon: Pencil,         bg: "bg-stone-100",  color: "text-stone-500" },
     items_update:   { Icon: Package,        bg: "bg-purple-50",  color: "text-purple-500" },
@@ -113,6 +114,21 @@ function BeforeAfter({ action, before, after }: Pick<AuditEntry, "action" | "bef
         <div>
           <div className="mb-0.5 text-[9px] uppercase tracking-wide text-stone-400">After</div>
           <span className="font-semibold text-amber-600">{String(after?.eta ?? "—")}</span>
+        </div>
+      </div>
+    );
+  }
+  if (action === "eta_lax_lgb_change") {
+    return (
+      <div className="flex shrink-0 items-center gap-2 text-[12px]">
+        <div className="text-right">
+          <div className="mb-0.5 text-[9px] uppercase tracking-wide text-stone-400">Before</div>
+          <span className="font-medium text-stone-500">{String(before?.etaLaxLgbDate ?? "—")}</span>
+        </div>
+        <span className="text-[10px] text-stone-300">→</span>
+        <div>
+          <div className="mb-0.5 text-[9px] uppercase tracking-wide text-stone-400">After</div>
+          <span className="font-semibold text-amber-600">{String(after?.etaLaxLgbDate ?? "—")}</span>
         </div>
       </div>
     );
@@ -164,6 +180,7 @@ function HistoryEntry({ entry }: { entry: AuditEntry }) {
     switch (entry.action) {
       case "status_change":  return pick("상태 변경", "Status changed");
       case "eta_change":     return pick("ETA 변경", "ETA changed");
+      case "eta_lax_lgb_change": return pick("ETA LAX/LGB 변경", "ETA LAX/LGB changed");
       case "confirmed_change": return pick("입고 확정일 변경", "Confirmed delivery changed");
       case "details_update": return pick("정보 수정", "Details updated");
       case "items_update": {
@@ -188,6 +205,8 @@ function HistoryEntry({ entry }: { entry: AuditEntry }) {
       }
       case "eta_change":
         return `${String(entry.before?.eta ?? "—")} → ${String(entry.after?.eta ?? "—")}`;
+      case "eta_lax_lgb_change":
+        return `${String(entry.before?.etaLaxLgbDate ?? "—")} → ${String(entry.after?.etaLaxLgbDate ?? "—")}`;
       case "confirmed_change": {
         const fmt = (v: Record<string, unknown> | null) =>
           v?.confirmedDate ? `${String(v.confirmedDate)}${v.confirmedTime ? ` ${String(v.confirmedTime)}` : ""}` : pick("확정 안됨", "Not confirmed");
@@ -342,6 +361,7 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
             <option value="all">{pick("모든 변경 유형", "All actions")}</option>
             <option value="status_change">{pick("상태 변경", "Status Change")}</option>
             <option value="eta_change">{pick("ETA 수정", "ETA Change")}</option>
+            <option value="eta_lax_lgb_change">{pick("ETA LAX/LGB 변경", "ETA LAX/LGB Change")}</option>
             <option value="confirmed_change">{pick("입고 확정일 변경", "Confirmed Delivery")}</option>
             <option value="details_update">{pick("정보 수정", "Details Update")}</option>
             <option value="items_update">{pick("수량/SKU 변경", "Item Change")}</option>

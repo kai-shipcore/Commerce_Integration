@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import { CalendarRange, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, FileDown, History, List, Plus, Search, X } from "lucide-react";
 import { ContainerHistoryTab } from "./container-history-tab";
 import * as XLSX from "xlsx";
@@ -744,6 +745,52 @@ export function ContainerTimelinePage() {
     return `/planning/container-planning${qs ? `?${qs}` : ""}`;
   }, [searchQuery, productFilter, activeStatuses]);
 
+  async function moveContainerToDate(containerId: string, newDate: string) {
+    const container = containers.find((c) => c.id === containerId);
+    if (!container) return;
+    if (containerScheduleDate(container) === newDate) return;
+
+    const isConfirmed = Boolean(container.confirmedDate);
+    const previous = containers;
+    const optimistic = containers.map((c) => {
+      if (c.id !== containerId) return c;
+      return isConfirmed ? { ...c, confirmedDate: newDate } : { ...c, etaLaxLgbDate: newDate };
+    });
+    setContainers(optimistic);
+    setCachedTimelineContainers(optimistic);
+
+    const queryParam = isConfirmed ? "confirmedOnly" : "etaLaxLgbOnly";
+    const requestBody = isConfirmed
+      ? { confirmedDate: newDate, confirmedTime: container.confirmedTime ?? null }
+      : { etaLaxLgbDate: newDate };
+
+    try {
+      const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}&${queryParam}=true`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.success) {
+        setContainers(previous);
+        setCachedTimelineContainers(previous);
+        toast.error(response.status === 403
+          ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
+          : (json.error ?? pick("날짜 변경에 실패했습니다.", "Failed to update the date.")));
+        return;
+      }
+
+      toast.success(isConfirmed
+        ? pick("입고 확정일이 변경되었습니다.", "Confirmed delivery date updated.")
+        : pick("ETA LAX/LGB 날짜가 변경되었습니다.", "ETA LAX/LGB date updated."));
+    } catch {
+      setContainers(previous);
+      setCachedTimelineContainers(previous);
+      toast.error(pick("날짜 변경에 실패했습니다.", "Failed to update the date."));
+    }
+  }
+
   function exportToExcel() {
     const visibleContainers = grouped.flatMap((g) => g.items);
     const rows: (string | number)[][] = [
@@ -1039,6 +1086,7 @@ export function ContainerTimelinePage() {
             setSelected={setSelected}
             today={today}
             pick={pick}
+            onMoveContainer={moveContainerToDate}
           />
         )}
 
@@ -1141,10 +1189,6 @@ export function ContainerTimelinePage() {
                   const isSelected = selected?.id === c.id;
                   const containerProductKeys = productKeysByContainer.get(c.id) ?? [];
                   const isDraft = c.status === "draft";
-                  const cbmPct =
-                    c.cbmCapacity > 0
-                      ? Math.round((c.totalCbm / c.cbmCapacity) * 100)
-                      : 0;
                   const displayDate = containerScheduleDate(c);
 
                   return (
@@ -1264,19 +1308,15 @@ export function ContainerTimelinePage() {
                           >
                             <div className="flex items-center gap-1.5 px-2.5 overflow-hidden w-full">
                               <span
-                                className="text-[11px] font-bold text-white truncate flex-1"
+                                className="flex items-center gap-1 text-[11px] font-bold text-white truncate flex-1"
                                 style={{ textShadow: "0 1px 2px rgba(0,0,0,0.18)" }}
                               >
-                                {confirmedChipLabel(c, pick)}
+                                {c.confirmedDate && <span className="shrink-0">✓</span>}
+                                <span className="truncate">{c.containerNumber}</span>
                               </span>
-                              {!c.confirmedDate && displayDate && (
+                              {displayDate && (
                                 <span className="text-[10px] text-white/80 shrink-0">
                                   {fmtDate(toDate(displayDate))}
-                                </span>
-                              )}
-                              {c.cbmCapacity > 0 && (
-                                <span className="text-[10px] font-semibold text-white/90 shrink-0 bg-black/15 rounded px-1 py-px">
-                                  {cbmPct}%
                                 </span>
                               )}
                             </div>
@@ -1353,6 +1393,7 @@ function CalendarDayCell({
   selected,
   setSelected,
   pick,
+  onDropContainer,
 }: {
   date: Date;
   dateKey: string;
@@ -1364,6 +1405,7 @@ function CalendarDayCell({
   selected: Container | null;
   setSelected: (c: Container | null) => void;
   pick: (ko: string, en: string) => string;
+  onDropContainer: (containerId: string) => void;
 }) {
   const MAX_VISIBLE = 4;
   const visible = dayCells.slice(0, MAX_VISIBLE);
@@ -1371,8 +1413,34 @@ function CalendarDayCell({
 
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounter = useRef(0);
   const overflowRef = useRef<HTMLButtonElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }
+
+  function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragCounter.current += 1;
+    setDragOver(true);
+  }
+
+  function handleDragLeave() {
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setDragOver(false);
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragCounter.current = 0;
+    setDragOver(false);
+    const containerId = event.dataTransfer.getData("text/plain");
+    if (containerId) onDropContainer(containerId);
+  }
 
   useEffect(() => () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -1401,8 +1469,18 @@ function CalendarDayCell({
 
   return (
     <div
-      className={`border-r border-[#e2dfd8] last:border-r-0 overflow-hidden p-1.5 ${
-        !isCurrentMonth ? "bg-[#fafaf7]" : isToday ? "bg-blue-50/40" : "bg-white"
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`border-r border-[#e2dfd8] last:border-r-0 overflow-hidden p-1.5 transition-colors ${
+        dragOver
+          ? "bg-blue-100 ring-2 ring-inset ring-[#1a5cdb]"
+          : !isCurrentMonth
+            ? "bg-[#fafaf7]"
+            : isToday
+              ? "bg-blue-50/40"
+              : "bg-white"
       }`}
     >
       {/* Date number */}
@@ -1432,9 +1510,14 @@ function CalendarDayCell({
             <button
               key={c.id}
               type="button"
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData("text/plain", c.id);
+                event.dataTransfer.effectAllowed = "move";
+              }}
               onClick={() => setSelected(isSelected ? null : c)}
               title={`${c.containerNumber} · ${STATUS_LABEL_FULL[c.status]}${c.confirmedDate ? ` · ${pick("확정", "Confirmed")} ${c.confirmedDate}${c.confirmedTime ? ` ${c.confirmedTime}` : ""}${c.destWarehouse ? ` · ${c.destWarehouse}` : ""}` : ""}`}
-              className={`flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity hover:opacity-90 ${
+              className={`flex w-full cursor-grab items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity active:cursor-grabbing hover:opacity-90 ${
                 isSelected ? "ring-2 ring-white ring-offset-1" : ""
               }`}
               style={{ backgroundColor: STATUS_COLOR[c.status] }}
@@ -1489,11 +1572,17 @@ function CalendarDayCell({
                 <button
                   key={c.id}
                   type="button"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/plain", c.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    setPopupOpen(false);
+                  }}
                   onClick={() => {
                     setSelected(isSelected ? null : c);
                     setPopupOpen(false);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-white transition-opacity hover:opacity-90 ${
+                  className={`flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-2 text-left text-white transition-opacity active:cursor-grabbing hover:opacity-90 ${
                     isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-white" : ""
                   }`}
                   style={{ backgroundColor: STATUS_COLOR[c.status] }}
@@ -1531,6 +1620,7 @@ function CalendarMonthView({
   setSelected,
   today,
   pick,
+  onMoveContainer,
 }: {
   containers: Container[];
   activeStatuses: Set<ContainerStatus>;
@@ -1540,6 +1630,7 @@ function CalendarMonthView({
   setSelected: (c: Container | null) => void;
   today: Date;
   pick: (ko: string, en: string) => string;
+  onMoveContainer: (containerId: string, newDate: string) => void;
 }) {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
@@ -1662,6 +1753,7 @@ function CalendarMonthView({
                 selected={selected}
                 setSelected={setSelected}
                 pick={pick}
+                onDropContainer={(containerId) => onMoveContainer(containerId, dateKey)}
               />
             );
           })}
