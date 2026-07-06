@@ -705,10 +705,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     saveGradientSC(next);
   }, []);
 
-  const handleSkuCellNoteChange = useCallback((sku: string, note: string) => {
+  const handleSkuCellNoteChange = useCallback(async (sku: string, note: string) => {
     const normalizedSku = sku.trim();
     const normalizedNote = note.trim();
     if (!normalizedSku) return;
+
+    const response = await fetch(apiPath("/api/planning/sku-notes"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku: normalizedSku, note: normalizedNote }),
+    });
+    if (!response.ok) throw new Error("Failed to save SKU note");
 
     setSkuCellNotes((current) => {
       const next = { ...current };
@@ -719,12 +726,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       }
       return next;
     });
-
-    fetch(apiPath("/api/planning/sku-notes"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sku: normalizedSku, note: normalizedNote }),
-    }).catch(() => {});
   }, []);
 
   const handleAllOn = useCallback(() => {

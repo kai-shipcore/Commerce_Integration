@@ -354,13 +354,12 @@ function CopyableCellRenderer({
   const [noteDraft, setNoteDraft] = useState(initialMemo ?? "");
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
+  const [noteError, setNoteError] = useState(false);
   const resetTimerRef = useRef<number | null>(null);
-  const noteResetTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
-      if (noteResetTimerRef.current !== null) window.clearTimeout(noteResetTimerRef.current);
     };
   }, []);
 
@@ -384,11 +383,16 @@ function CopyableCellRenderer({
     const valueToSave = overrideValue !== undefined ? overrideValue : noteDraft;
     if (overrideValue === undefined && valueToSave === (initialMemo ?? "")) return;
     setNoteSaving(true);
-    await onMemoSave(valueToSave);
-    setNoteSaving(false);
-    setNoteSaved(true);
-    if (noteResetTimerRef.current !== null) window.clearTimeout(noteResetTimerRef.current);
-    noteResetTimerRef.current = window.setTimeout(() => setNoteSaved(false), 1200);
+    setNoteError(false);
+    try {
+      await onMemoSave(valueToSave);
+      setNoteSaved(true);
+    } catch {
+      setNoteSaved(false);
+      setNoteError(true);
+    } finally {
+      setNoteSaving(false);
+    }
   };
 
   return (
@@ -396,6 +400,7 @@ function CopyableCellRenderer({
       if (open) {
         setNoteDraft(initialMemo ?? "");
         setNoteSaved(false);
+        setNoteError(false);
       }
     }}>
       <PopoverTrigger asChild>
@@ -463,8 +468,8 @@ function CopyableCellRenderer({
           <div className="border-t border-[#e2dfd8] px-4 py-3">
             <div className="mb-2 flex items-center justify-between gap-3">
               <span className="text-xs font-semibold text-muted-foreground">{pick("메모", "Note")}</span>
-              <span className={`text-[11px] ${noteSaved ? "text-emerald-600" : noteSaving ? "text-slate-400" : "text-muted-foreground"}`}>
-                {noteSaving ? pick("저장 중...", "Saving...") : noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
+              <span className={`text-[11px] ${noteError ? "text-red-600" : noteSaved ? "text-emerald-600" : noteSaving ? "text-slate-400" : "text-muted-foreground"}`}>
+                {noteSaving ? pick("저장 중...", "Saving...") : noteError ? pick("저장 실패", "Save failed") : noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
               </span>
             </div>
             <textarea
@@ -472,6 +477,7 @@ function CopyableCellRenderer({
               onChange={(event) => {
                 setNoteDraft(event.target.value);
                 setNoteSaved(false);
+                setNoteError(false);
               }}
               onBlur={() => void handleNoteSave()}
               placeholder={pick("이 SKU에 대한 메모를 입력하세요", "Add a note for this SKU")}
@@ -1739,19 +1745,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, [containers, qtyOverrides, seasonalFactors]);
 
   const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
-    const res = await fetch(apiPath(`/api/planning/sku/${encodeURIComponent(row.sku)}/memo`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ memo }),
-    });
-    if (!res.ok) return;
+    if (!onSkuCellNoteChange) return;
+    await onSkuCellNoteChange(row.sku, memo);
     // rowOverrides만 업데이트 — refreshCells 호출 안 함 (팝업 열린 상태 유지)
     setRowOverrides((cur) => {
       const map = new Map(cur);
       map.set(row.sku, { ...(cur.get(row.sku) ?? {}), memo });
       return map;
     });
-  }, []);
+  }, [onSkuCellNoteChange]);
 
   const autoFill = useCallback(async (
     container: ContainerMeta,
@@ -2165,8 +2167,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
               : params.data?.containers_list ?? "",
             label: column.id === "sku" ? "Master SKU" : "Containers List",
             skuPlanningSku: column.id === "sku" ? (params.data?.sku ?? "") : undefined,
-            memo: column.id === "sku" ? (params.data?.memo ?? null) : undefined,
-            onMemoSave: column.id === "sku" && params.data
+            memo: column.id === "sku" && params.data ? (skuCellNotes[params.data.sku] ?? params.data.memo ?? null) : undefined,
+            onMemoSave: column.id === "sku" && params.data && onSkuCellNoteChange
               ? (memo: string) => saveMemo(params.data!, memo)
               : undefined,
           })

@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { guardPermission } from "@/lib/permissions";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 
 const bodySchema = z.object({
   memo: z.string().max(5000),
@@ -14,7 +15,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ sku: string }> },
 ) {
-  const denied = await guardPermission("available-stock", "edit");
+  const denied = await guardPermission("demand-planning", "edit");
   if (denied) return denied;
   try {
     const { sku } = await params;
@@ -32,6 +33,7 @@ export async function PATCH(
        ON CONFLICT (master_sku) DO UPDATE SET memo = $2, updated_at = NOW()`,
       [sku, memo || null],
     );
+    await invalidatePlanningDashboardCache();
 
     return NextResponse.json({ success: true });
   } catch (e) {
