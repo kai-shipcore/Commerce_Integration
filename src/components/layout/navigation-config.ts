@@ -202,6 +202,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "production-parts-codes",
+    name: "Parts & Codes",
+    href: "/production/parts-codes",
+    icon: Package,
+    group: "Production",
+    hideable: true,
+  },
+  {
     id: "invoice-price-control",
     name: "Invoice & Price Control",
     href: "/production/invoice-price-control",
@@ -291,6 +299,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "seat-cover-parts":    ["seat-cover-sizes"],
   "production-vehicles": ["production-vehicles"],
   "invoice-price-control": ["invoice-price-control"],
+  "parts-codes":         ["production-parts-codes"],
   "factory":             ["factories"],
   "warehouse":           ["warehouse-admin"],
   "integrations":        ["integrations"],

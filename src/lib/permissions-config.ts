@@ -16,6 +16,7 @@ export const PERM_SECTIONS = [
   // Production
   { id: "seat-cover-parts",    group: "Production",  nameKo: "시트커버 부품",       nameEn: "Seat Cover Parts" },
   { id: "production-vehicles", group: "Production",  nameKo: "차종 관리",          nameEn: "Vehicles" },
+  { id: "parts-codes",         group: "Production",  nameKo: "부품/코드/이니셜",     nameEn: "Parts / Codes / Initials" },
   // Master Data
   { id: "factory",             group: "Master Data", nameKo: "공장",              nameEn: "Factory" },
   { id: "warehouse",           group: "Master Data", nameKo: "창고",              nameEn: "Warehouse" },
@@ -95,6 +96,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "seat-cover-parts":    ALL_ON,
     "production-vehicles": ALL_ON,
     "invoice-price-control": ALL_ON,
+    "parts-codes":         ALL_ON,
     "factory":             ALL_ON,
     "warehouse":           ALL_ON,
     "transit-stock":       ALL_ON,
@@ -117,6 +119,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "seat-cover-parts":    ALL_ON,
     "production-vehicles": ALL_ON,
     "invoice-price-control": ALL_ON,
+    "parts-codes":         ALL_ON,
     "factory":             ALL_ON,
     "warehouse":           ALL_ON,
     "transit-stock":       ALL_ON,
@@ -154,6 +157,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "seat-cover-parts":    READ_ONLY,
     "production-vehicles": READ_ONLY,
     "invoice-price-control": READ_ONLY,
+    "parts-codes":         READ_ONLY,
   }),
   user: makeMatrix({
     "inventory":          READ_ONLY,
@@ -186,6 +190,7 @@ export const PERM_SECTION_ACTIONS: Record<PermSection, readonly PermAction[]> = 
   "seat-cover-parts":    ["read", "create", "edit"],
   "production-vehicles": ["read", "create", "edit"],
   "invoice-price-control": ["read", "create", "edit", "delete"],
+  "parts-codes":         ["read", "create", "edit", "delete"],
   "factory":             ["read", "create", "edit"],
   "warehouse":           ["read", "create", "edit", "delete"],
   "integrations":        ["read", "create", "edit", "delete"],

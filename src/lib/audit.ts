@@ -6,7 +6,10 @@ export type AuditEntityType =
   | "sku"
   | "user_permission"
   | "user_role"
-  | "integration";
+  | "integration"
+  | "production_part"
+  | "production_code"
+  | "designer_initial";
 
 export type AuditAction =
   | "create"
