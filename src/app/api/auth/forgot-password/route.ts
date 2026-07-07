@@ -28,13 +28,27 @@ export async function POST(request: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: data.email },
-      select: { email: true, passwordHash: true },
+      select: {
+        email: true,
+        passwordHash: true,
+        accounts: { select: { provider: true } },
+      },
     });
 
-    if (!user?.passwordHash) {
+    if (!user) {
       return NextResponse.json({
         success: true,
         message: GENERIC_SUCCESS_MESSAGE,
+      });
+    }
+
+    if (!user.passwordHash) {
+      const oauthProvider = user.accounts[0]?.provider ?? null;
+      return NextResponse.json({
+        success: true,
+        message: GENERIC_SUCCESS_MESSAGE,
+        accountType: "oauth",
+        oauthProvider,
       });
     }
 

@@ -19,6 +19,7 @@ export default function ForgotPasswordPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [resetUrl, setResetUrl] = useState<string | null>(null);
   const [emailDelivered, setEmailDelivered] = useState<boolean | null>(null);
+  const [oauthProvider, setOauthProvider] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -27,6 +28,7 @@ export default function ForgotPasswordPage() {
     setMessage(null);
     setResetUrl(null);
     setEmailDelivered(null);
+    setOauthProvider(null);
 
     try {
       const response = await fetch(apiPath("/api/auth/forgot-password"), {
@@ -43,6 +45,7 @@ export default function ForgotPasswordPage() {
       setMessage(result.message || pick("비밀번호 재설정 링크가 생성되었습니다.", "Password reset link generated"));
       setResetUrl(result.resetUrl || null);
       setEmailDelivered(Boolean(result.emailDelivered));
+      setOauthProvider(result.accountType === "oauth" ? result.oauthProvider || "oauth" : null);
     } catch (requestError: unknown) {
       setError(
         requestError instanceof Error
@@ -78,7 +81,22 @@ export default function ForgotPasswordPage() {
               {error}
             </div>
           ) : null}
-          {message ? (
+          {message && oauthProvider ? (
+            <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <p>
+                {pick(
+                  `이 계정은 ${oauthProvider === "google" ? "Google" : oauthProvider} 소셜 로그인으로 가입되어 있어 비밀번호가 설정되어 있지 않습니다.`,
+                  `This account was created via ${oauthProvider === "google" ? "Google" : oauthProvider} sign-in and has no password to reset.`
+                )}
+              </p>
+              <p>
+                {pick(
+                  "비밀번호 재설정 메일은 발송되지 않았습니다. 로그인 화면에서 소셜 로그인 버튼을 이용해주세요.",
+                  "No reset email was sent. Please sign in using the social login button on the sign-in page instead."
+                )}
+              </p>
+            </div>
+          ) : message ? (
             <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
               <p>{message}</p>
               {emailDelivered ? (
