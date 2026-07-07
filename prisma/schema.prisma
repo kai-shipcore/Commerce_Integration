@@ -475,6 +475,27 @@ model Warehouse {
 }
 
 // ============================================
+// TRANSIT RECORDS
+// ============================================
+
+model TransitRecord {
+  id                  BigInt   @id @default(autoincrement())
+  sourceWarehouseCode String   @map("source_warehouse_code")
+  destWarehouseCode   String   @map("dest_warehouse_code")
+  masterSku           String   @map("master_sku")
+  qty                 Int
+  status              String   @default("in_transit")
+  notes               String?
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([masterSku])
+  @@index([status])
+  @@map("fc_transit_records")
+  @@schema("shipcore")
+}
+
+// ============================================
 // USER MANAGEMENT
 // ============================================
 

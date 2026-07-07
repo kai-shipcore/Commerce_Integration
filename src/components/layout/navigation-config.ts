@@ -153,6 +153,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "transit-stock",
+    name: "Transit Stock",
+    href: "/planning/transit-stock",
+    icon: Ship,
+    group: "Planning",
+    hideable: true,
+  },
+  {
     id: "purchase-orders",
     name: "Purchase Orders",
     href: "/planning/purchase-orders",
@@ -263,6 +271,7 @@ export const userDefaultVisibleMenuIds = [
   "container-planning",
   "container-timeline",
   "available-stock",
+  "transit-stock",
   "inventory",
   "orders",
 ];
@@ -274,6 +283,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "demand-planning":     ["demand-planning"],
   "container-planning":  ["container-planning"],
   "available-stock":     ["available-stock"],
+  "transit-stock":       ["transit-stock"],
   "sku-master":          ["sku-master"],
   "sku-forecasts":       ["sku-forecasts"],
   "container-timeline":  ["container-timeline"],
