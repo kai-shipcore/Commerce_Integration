@@ -462,10 +462,13 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
       (r.customQtys ?? []).some((v) => (v ?? 0) > 0) ||
       (r.ttmQtys ?? []).some((v) => (v ?? 0) > 0);
 
-    const base = allRows.filter(hasAnyQty);
-    if (!search) return base;
+    if (!search) return allRows.filter(hasAnyQty);
+
+    // A search term should surface a matching master SKU even if it has zero
+    // quantity in the currently selected periods/mode (e.g. no recent sales),
+    // so search bypasses the hasAnyQty filter instead of narrowing it further.
     const q = search.toLowerCase();
-    return base.filter((r) => {
+    return allRows.filter((r) => {
       if (r.isTotal) return true;
       if (r.masterSku.toLowerCase().includes(q)) return true;
       if (selectedItem === "Car Cover") {
