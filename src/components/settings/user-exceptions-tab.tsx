@@ -8,6 +8,7 @@ import { usePermissions } from "@/lib/hooks/use-permissions";
 import {
   PERM_SECTIONS,
   PERM_ACTIONS,
+  PERM_SECTION_ACTIONS,
   DEFAULT_ROLE_PERMISSIONS,
   type PermSection,
   type PermAction,
@@ -34,6 +35,12 @@ const SECTION_LABEL_MAP = Object.fromEntries(
 const ACTION_LABEL_MAP = Object.fromEntries(
   PERM_ACTIONS.map((a) => [a.id, { ko: a.labelKo, en: a.labelEn }])
 );
+const DISPLAY_ACTIONS = PERM_ACTIONS.filter((action) => action.id !== "status");
+
+function getDisplayActionsForSection(section: string) {
+  const supported = PERM_SECTION_ACTIONS[section as PermSection] ?? [];
+  return DISPLAY_ACTIONS.filter((action) => supported.includes(action.id as PermAction));
+}
 
 function getEffective(
   role: string,
@@ -57,7 +64,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [formSection, setFormSection] = useState<string>(PERM_SECTIONS[0].id);
-  const [formAction, setFormAction] = useState<string>(PERM_ACTIONS[0].id);
+  const [formAction, setFormAction] = useState<string>(DISPLAY_ACTIONS[0].id);
   const [formAllowed, setFormAllowed] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(true);
@@ -134,7 +141,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
       });
       setShowAddForm(false);
       setFormSection(PERM_SECTIONS[0].id);
-      setFormAction(PERM_ACTIONS[0].id);
+      setFormAction(DISPLAY_ACTIONS[0].id);
       setFormAllowed(true);
       setToast(pick("예외 권한이 추가되었습니다", "Exception added"));
     } catch {
@@ -181,6 +188,10 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
     production: "bg-[#fef3c7] text-[#92400e]",
     user:       "bg-[#f3f4f6] text-[#374151]",
   };
+  const formActions = getDisplayActionsForSection(formSection);
+  const visibleOverrides = overrides.filter((override) =>
+    getDisplayActionsForSection(override.section).some((action) => action.id === override.action)
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -212,7 +223,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
             <p className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted-foreground">
               {pick("예외 권한", "Permission Exceptions")}
             </p>
-            {overrides.length === 0 && !loading && (
+            {visibleOverrides.length === 0 && !loading && (
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {pick(`모든 권한이 ${user.role} 역할 기본값을 따릅니다.`, `All permissions follow the ${user.role} role defaults.`)}
               </p>
@@ -246,7 +257,11 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#b8cffa] bg-[#e8eefb] p-3">
             <select
               value={formSection}
-              onChange={(e) => setFormSection(e.target.value)}
+              onChange={(e) => {
+                const nextSection = e.target.value;
+                setFormSection(nextSection);
+                setFormAction(getDisplayActionsForSection(nextSection)[0]?.id ?? DISPLAY_ACTIONS[0].id);
+              }}
               className="rounded-md border border-[#ccc7be] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#1a1917] outline-none focus:border-[#1a5cdb]"
             >
               {PERM_SECTIONS.map((s) => (
@@ -260,7 +275,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
               onChange={(e) => setFormAction(e.target.value)}
               className="rounded-md border border-[#ccc7be] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#1a1917] outline-none focus:border-[#1a5cdb]"
             >
-              {PERM_ACTIONS.map((a) => (
+              {formActions.map((a) => (
                 <option key={a.id} value={a.id}>
                   {pick(a.labelKo, a.labelEn)}
                 </option>
@@ -312,9 +327,9 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
         )}
 
         {/* Override list */}
-        {overrides.length > 0 && (
+        {visibleOverrides.length > 0 && (
           <div className="space-y-1.5">
-            {overrides.map((ov) => (
+            {visibleOverrides.map((ov) => (
               <div
                 key={`${ov.section}-${ov.action}`}
                 className="flex items-center gap-2 rounded-lg border border-[#e2dfd8] bg-[#fafaf7] px-3 py-2"
@@ -382,7 +397,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
                   <th className="px-3 py-2 text-left font-bold uppercase tracking-[0.07em] text-[#9b9189]">
                     {pick("섹션", "Section")}
                   </th>
-                  {PERM_ACTIONS.map((a) => (
+                  {DISPLAY_ACTIONS.map((a) => (
                     <th
                       key={a.id}
                       className="px-2 py-2 text-center font-bold uppercase tracking-[0.07em] text-[#9b9189] whitespace-nowrap"
@@ -401,7 +416,15 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
                     <td className="px-3 py-2 text-[11px] font-medium text-[#1a1917]">
                       {pick(sec.nameKo, sec.nameEn)}
                     </td>
-                    {PERM_ACTIONS.map((act) => {
+                    {DISPLAY_ACTIONS.map((act) => {
+                      const supported = PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id as PermAction);
+                      if (!supported) {
+                        return (
+                          <td key={act.id} className="px-2 py-2 text-center">
+                            <span className="text-[12px] text-[#d1c9be]">—</span>
+                          </td>
+                        );
+                      }
                       const { value, isOverride } = getEffective(
                         user.role,
                         sec.id,

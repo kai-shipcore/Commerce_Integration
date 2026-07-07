@@ -13,7 +13,6 @@ import {
   MANAGED_ROLES,
   ROLE_LABEL,
   DEFAULT_ROLE_PERMISSIONS,
-  blendRolePermissions,
   type ManagedRole,
   type RolePermMatrix,
   type PermSection,

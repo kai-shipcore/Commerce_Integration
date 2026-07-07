@@ -8,6 +8,7 @@ import type { ProductKey } from "@/features/planning/mock-data";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
+import { SkuPriceHistoryDrawer } from "@/components/production/sku-price-history-drawer";
 
 type SkuMasterRow = {
   masterSku: string;
@@ -161,7 +162,7 @@ function extractExcelCbmRows(workbook: XLSX.WorkBook): ExcelCbmImportRow[] {
 
 export function SkuMasterPage() {
   const { pick } = useI18n();
-  const { can } = usePermissions();
+  const { can, ready } = usePermissions();
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [query, setQuery] = useState("");
   const [product, setProduct] = useState<ProductKey | "all">("all");
@@ -178,6 +179,7 @@ export function SkuMasterPage() {
   const [summaryCollapsed, setSummaryCollapsed] = useState(true);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
+  const [selectedPriceSku, setSelectedPriceSku] = useState<SkuMasterRow | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
@@ -229,6 +231,8 @@ export function SkuMasterPage() {
     const productTypes = product === "all" ? Object.keys(productMeta).length : 1;
     return { missingCbm, averageCbm, productTypes };
   }, [product, rows]);
+
+  const canViewPriceHistory = ready && can("invoice-price-control", "read");
 
   function updateRow(
     masterSku: string,
@@ -430,6 +434,7 @@ export function SkuMasterPage() {
   }
 
   return (
+    <>
     <section className="sku-master-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
         <div className="flex items-start gap-2">
@@ -653,7 +658,10 @@ export function SkuMasterPage() {
         {visibleSkus.map((sku) => (
           <div
             key={sku.masterSku}
-            className="grid min-w-[1320px] grid-cols-[180px_290px_120px_120px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0"
+            onClick={() => {
+              if (canViewPriceHistory && editingSku !== sku.masterSku) setSelectedPriceSku(sku);
+            }}
+            className={`grid min-w-[1320px] grid-cols-[180px_290px_120px_120px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0 ${canViewPriceHistory && editingSku !== sku.masterSku ? "cursor-pointer hover:bg-[#faf8f2]" : ""}`}
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
@@ -699,15 +707,31 @@ export function SkuMasterPage() {
               {editingSku === sku.masterSku ? (
                 <button
                   type="button"
-                  onClick={cancelEditing}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    cancelEditing();
+                  }}
                   className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs hover:bg-[#f0eee9]"
                 >
                   {pick("취소", "Cancel")}
                 </button>
               ) : null}
+              {canViewPriceHistory && editingSku !== sku.masterSku ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedPriceSku(sku);
+                  }}
+                  className="whitespace-nowrap rounded-md border border-[#cccac4] bg-white px-2.5 py-1 text-xs font-medium text-[#1d3fb7] hover:bg-[#f0eee9]"
+                >
+                  {pick("가격 이력", "Price")}
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={async () => {
+                onClick={async (event) => {
+                  event.stopPropagation();
                   if (editingSku === sku.masterSku) {
                     const saved = await saveRow(sku);
                     if (saved) {
@@ -741,6 +765,13 @@ export function SkuMasterPage() {
         <div className="border-t border-[#e2dfd8] bg-white px-5 py-2 text-xs text-muted-foreground">{message}</div>
       ) : null}
     </section>
+    <SkuPriceHistoryDrawer
+      open={Boolean(selectedPriceSku)}
+      sku={selectedPriceSku?.masterSku ?? null}
+      productLabel={selectedPriceSku ? productMeta[selectedPriceSku.productKey].label : undefined}
+      onClose={() => setSelectedPriceSku(null)}
+    />
+    </>
   );
 }
 

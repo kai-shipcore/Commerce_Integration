@@ -194,6 +194,15 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "invoice-price-control",
+    name: "Invoice & Price Control",
+    href: "/production/invoice-price-control",
+    icon: FileSpreadsheet,
+    group: "Production",
+    hideable: true,
+    hidden: true,
+  },
+  {
     id: "factories",
     name: "Factories",
     href: "/planning/factories",
@@ -271,6 +280,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "parts":               ["seat-cover-parts"],
   "seat-cover-parts":    ["seat-cover-sizes"],
   "production-vehicles": ["production-vehicles"],
+  "invoice-price-control": ["invoice-price-control"],
   "factory":             ["factories"],
   "warehouse":           ["warehouse-admin"],
   "integrations":        ["integrations"],
