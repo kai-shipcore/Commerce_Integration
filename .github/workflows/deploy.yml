@@ -24,4 +24,5 @@ jobs:
             npx prisma migrate deploy
             npx prisma generate
             npm run build
-            pm2 restart demand-pilot || pm2 start npm --name demand-pilot -- start
+            pm2 restart demand-pilot --update-env || pm2 start npm --name demand-pilot -- start
+            pm2 restart app --update-env || true
