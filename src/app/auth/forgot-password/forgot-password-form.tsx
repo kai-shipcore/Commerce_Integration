@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageToggle } from "@/components/layout/language-toggle";
-import { apiPath, authPath } from "@/lib/api-path";
+import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
 interface ForgotPasswordResult {
@@ -150,7 +150,7 @@ export function ForgotPasswordForm() {
           </form>
 
           <p className="text-center text-sm text-muted-foreground">
-            <Link href={authPath("/auth/signin")} className="text-primary hover:underline">
+            <Link href="/auth/signin" className="text-primary hover:underline">
               {pick("로그인으로 돌아가기", "Back to sign in")}
             </Link>
           </p>
