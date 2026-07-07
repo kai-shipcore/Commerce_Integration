@@ -1,7 +1,7 @@
 // Code Guide: POST /api/planning/stats/refresh — Phase 2 stats refresh.
-// Step 1: inventory — reads ecommerce_data.coverland_inventory (lookup pool) and upserts
-//         west_stock, east_stock, total_stock, back into shipcore.fc_stats.
-//         Warehouse mapping: 'Fullerton' → west, 'TTM Group' → east.
+// Step 1: inventory — reads ecommerce_data.coverland_inventory_by_warehouse (lookup pool) and upserts
+//         west_stock, east_stock, total_stock, back, and per-warehouse stocks into shipcore.fc_stats.
+//         Warehouse mapping: Fullerton+Canary → west, TTM Group+TTM Group Jefferson → east.
 // Step 2: sales velocity — reads both snapshots; sales_status derived from is_custom column:
 //         is_custom = 'Y' → 'Custom', is_custom = 'N' → 'Original'
 //         fc_velocity_link_snapshot → fc_stats, fc_velocity_custom_snapshot → fc_stats_custom
@@ -66,7 +66,7 @@ export async function POST() {
       );
     }
 
-    // ── Step 1: Inventory from coverland_inventory ───────────────────────────
+    // ── Step 1: Inventory from coverland_inventory_by_warehouse ─────────────
     const invResult = await lookup.query<{
       master_sku:           string;
       west_stock:           number;
@@ -75,30 +75,54 @@ export async function POST() {
       back:                 number;
       west_available_stock: number;
       east_available_stock: number;
+      fullerton_stock:              number;
+      canary_stock:                 number;
+      ttm_stock:                    number;
+      ttm_jeff_stock:               number;
+      fullerton_available_stock:    number;
+      canary_available_stock:       number;
+      ttm_available_stock:          number;
+      ttm_jeff_available_stock:     number;
     }>(`
       SELECT
-        BTRIM(master_sku)                                                                       AS master_sku,
-        SUM(CASE WHEN warehouse = 'Fullerton' THEN COALESCE(on_hand,   0) ELSE 0 END)::int     AS west_stock,
-        SUM(CASE WHEN warehouse = 'TTM Group' THEN COALESCE(on_hand,   0) ELSE 0 END)::int     AS east_stock,
-        SUM(COALESCE(on_hand,   0))::int                                                        AS total_stock,
-        -SUM(COALESCE(backorder, 0))::int                                                       AS back,
-        SUM(CASE WHEN warehouse = 'Fullerton' THEN COALESCE(available, 0) ELSE 0 END)::int     AS west_available_stock,
-        SUM(CASE WHEN warehouse = 'TTM Group' THEN COALESCE(available, 0) ELSE 0 END)::int     AS east_available_stock
-      FROM ecommerce_data.coverland_inventory
+        BTRIM(master_sku)                                                                                                AS master_sku,
+        SUM(CASE WHEN warehouse IN ('Fullerton','Canary')                 THEN COALESCE(on_hand,   0) ELSE 0 END)::int  AS west_stock,
+        SUM(CASE WHEN warehouse IN ('TTM Group','TTM Group Jefferson')    THEN COALESCE(on_hand,   0) ELSE 0 END)::int  AS east_stock,
+        SUM(COALESCE(on_hand,   0))::int                                                                                AS total_stock,
+        -SUM(COALESCE(backorder, 0))::int                                                                               AS back,
+        SUM(CASE WHEN warehouse IN ('Fullerton','Canary')                 THEN COALESCE(available, 0) ELSE 0 END)::int  AS west_available_stock,
+        SUM(CASE WHEN warehouse IN ('TTM Group','TTM Group Jefferson')    THEN COALESCE(available, 0) ELSE 0 END)::int  AS east_available_stock,
+        SUM(CASE WHEN warehouse = 'Fullerton'           THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS fullerton_stock,
+        SUM(CASE WHEN warehouse = 'Canary'              THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS canary_stock,
+        SUM(CASE WHEN warehouse = 'TTM Group'           THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS ttm_stock,
+        SUM(CASE WHEN warehouse = 'TTM Group Jefferson' THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS ttm_jeff_stock,
+        SUM(CASE WHEN warehouse = 'Fullerton'           THEN COALESCE(available, 0) ELSE 0 END)::int                   AS fullerton_available_stock,
+        SUM(CASE WHEN warehouse = 'Canary'              THEN COALESCE(available, 0) ELSE 0 END)::int                   AS canary_available_stock,
+        SUM(CASE WHEN warehouse = 'TTM Group'           THEN COALESCE(available, 0) ELSE 0 END)::int                   AS ttm_available_stock,
+        SUM(CASE WHEN warehouse = 'TTM Group Jefferson' THEN COALESCE(available, 0) ELSE 0 END)::int                   AS ttm_jeff_available_stock
+      FROM ecommerce_data.coverland_inventory_by_warehouse
       WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
       GROUP BY BTRIM(master_sku)
     `);
 
     const invRows = invResult.rows as Record<string, unknown>[];
-    const invCols = ["master_sku", "west_stock", "east_stock", "total_stock", "back", "west_available_stock", "east_available_stock"];
-    const invUpdate = `west_stock            = EXCLUDED.west_stock,
-       east_stock            = EXCLUDED.east_stock,
-       total_stock           = EXCLUDED.total_stock,
-       back                  = EXCLUDED.back,
-       west_available_stock  = EXCLUDED.west_available_stock,
-       east_available_stock  = EXCLUDED.east_available_stock,
-       calculated_at         = NOW(),
-       updated_at            = NOW()`;
+    const invCols = ["master_sku", "west_stock", "east_stock", "total_stock", "back", "west_available_stock", "east_available_stock", "fullerton_stock", "canary_stock", "ttm_stock", "ttm_jeff_stock", "fullerton_available_stock", "canary_available_stock", "ttm_available_stock", "ttm_jeff_available_stock"];
+    const invUpdate = `west_stock                    = EXCLUDED.west_stock,
+       east_stock                    = EXCLUDED.east_stock,
+       total_stock                   = EXCLUDED.total_stock,
+       back                          = EXCLUDED.back,
+       west_available_stock          = EXCLUDED.west_available_stock,
+       east_available_stock          = EXCLUDED.east_available_stock,
+       fullerton_stock               = EXCLUDED.fullerton_stock,
+       canary_stock                  = EXCLUDED.canary_stock,
+       ttm_stock                     = EXCLUDED.ttm_stock,
+       ttm_jeff_stock                = EXCLUDED.ttm_jeff_stock,
+       fullerton_available_stock     = EXCLUDED.fullerton_available_stock,
+       canary_available_stock        = EXCLUDED.canary_available_stock,
+       ttm_available_stock           = EXCLUDED.ttm_available_stock,
+       ttm_jeff_available_stock      = EXCLUDED.ttm_jeff_available_stock,
+       calculated_at                 = NOW(),
+       updated_at                    = NOW()`;
     await Promise.all([
       batchUpsert(primary, "shipcore.fc_stats",        invRows, invCols, invUpdate),
       batchUpsert(primary, "shipcore.fc_stats_custom", invRows, invCols, invUpdate),

@@ -336,7 +336,7 @@ export async function POST() {
   try {
     const source = await lookupClient.query<{ master_sku: string }>(
       `SELECT DISTINCT btrim(master_sku) AS master_sku
-       FROM ecommerce_data.coverland_inventory
+       FROM ecommerce_data.coverland_inventory_by_warehouse
        WHERE master_sku IS NOT NULL AND btrim(master_sku) <> ''
        ORDER BY btrim(master_sku)`
     );

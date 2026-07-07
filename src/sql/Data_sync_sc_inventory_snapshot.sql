@@ -12,7 +12,7 @@ SELECT DISTINCT
     'Product ' || master_sku,
     'active',
     NOW()
-FROM ecommerce_data.coverland_inventory
+FROM ecommerce_data.coverland_inventory_by_warehouse
 ON CONFLICT (master_sku)
 DO UPDATE SET
     product_name = EXCLUDED.product_name,
@@ -35,7 +35,7 @@ SELECT DISTINCT
     '3PL',
     true,
     NOW()
-FROM ecommerce_data.coverland_inventory
+FROM ecommerce_data.coverland_inventory_by_warehouse
 ON CONFLICT (warehouse_code)
 DO UPDATE SET
     warehouse_name = EXCLUDED.warehouse_name,
@@ -71,4 +71,4 @@ SELECT
     COALESCE(available, 0),
     created_at,
     NOW()
-FROM ecommerce_data.coverland_inventory;
+FROM ecommerce_data.coverland_inventory_by_warehouse;

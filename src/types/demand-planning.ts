@@ -59,6 +59,14 @@ export interface DemandRow {
   west_available_stock?: number;
   east_available_stock?: number;
   transit_stock?: number;
+  fullerton_stock?: number;
+  canary_stock?: number;
+  ttm_stock?: number;
+  ttm_jeff_stock?: number;
+  fullerton_available_stock?: number;
+  canary_available_stock?: number;
+  ttm_available_stock?: number;
+  ttm_jeff_available_stock?: number;
   total_stock: number;
   stock_mode?: 'onhand' | 'available';
   west_90d: number;

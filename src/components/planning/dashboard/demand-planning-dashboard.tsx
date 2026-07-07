@@ -289,6 +289,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const { can } = usePermissions();
   const router = useRouter();
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
+  const [bulkStockMode, setBulkStockMode] = useState<'available' | 'onhand' | null>(null);
   const [todayStr, setTodayStr] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
@@ -1907,7 +1908,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
               <button
                 type="button"
-                onClick={() => void gridImperativeRef.current?.bulkSetStockMode('available')}
+                onClick={() => { void gridImperativeRef.current?.bulkSetStockMode('available'); setBulkStockMode('available'); }}
                 title={pick("Lock되지 않은 전체 SKU를 AV로 변경", "Set all unlocked SKUs to AV")}
                 style={{
                   fontSize: 11,
@@ -1915,8 +1916,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   padding: "5px 9px",
                   border: "none",
                   borderRight: "1px solid #C2BFB5",
-                  background: "#EFF6FF",
-                  color: "#1A4FC0",
+                  background: bulkStockMode === 'available' ? "#1A4FC0" : "#EFF6FF",
+                  color: bulkStockMode === 'available' ? "#fff" : "#1A4FC0",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
                 }}
@@ -1925,15 +1926,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               </button>
               <button
                 type="button"
-                onClick={() => void gridImperativeRef.current?.bulkSetStockMode('onhand')}
+                onClick={() => { void gridImperativeRef.current?.bulkSetStockMode('onhand'); setBulkStockMode('onhand'); }}
                 title={pick("Lock되지 않은 전체 SKU를 OH로 변경", "Set all unlocked SKUs to OH")}
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
                   padding: "5px 9px",
                   border: "none",
-                  background: "#F8FAFC",
-                  color: "#64748B",
+                  background: bulkStockMode === 'onhand' ? "#64748B" : "#F8FAFC",
+                  color: bulkStockMode === 'onhand' ? "#fff" : "#64748B",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
                 }}

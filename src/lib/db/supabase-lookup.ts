@@ -446,13 +446,13 @@ export async function getCoverlandInventory(
         COALESCE(SUM(allocated), 0)::text AS total_allocated,
         COALESCE(SUM(available), 0)::text AS total_available,
         COALESCE(SUM(backorder), 0)::text AS total_backorder
-      FROM ecommerce_data.coverland_inventory
+      FROM ecommerce_data.coverland_inventory_by_warehouse
       ${whereClause}`,
       params,
     ),
     pool.query<{ warehouse: string | null }>(
       `SELECT DISTINCT warehouse
-      FROM ecommerce_data.coverland_inventory
+      FROM ecommerce_data.coverland_inventory_by_warehouse
       WHERE warehouse IS NOT NULL AND warehouse <> ''
       ORDER BY warehouse ASC`,
     ),
@@ -474,7 +474,7 @@ export async function getCoverlandInventory(
             COALESCE(SUM(backorder), 0) AS backorder,
             COUNT(DISTINCT NULLIF(warehouse, ''))::text AS warehouse_count,
             MAX(created_at) AS created_at
-          FROM ecommerce_data.coverland_inventory
+          FROM ecommerce_data.coverland_inventory_by_warehouse
           ${whereClause}
           GROUP BY btrim(master_sku)
           ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
@@ -498,7 +498,7 @@ export async function getCoverlandInventory(
             backorder,
             warehouse,
             created_at
-          FROM ecommerce_data.coverland_inventory
+          FROM ecommerce_data.coverland_inventory_by_warehouse
           ${whereClause}
           ORDER BY ${sortBy} ${sortOrder}, master_sku ASC
           ${options.exportAll ? "" : `LIMIT $${paginationParams.length - 1} OFFSET $${paginationParams.length}`}`,

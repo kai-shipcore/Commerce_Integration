@@ -313,7 +313,7 @@ export async function GET(req: NextRequest) {
         `SELECT
            BTRIM(master_sku) AS sku,
            (-SUM(COALESCE(backorder, 0)))::int AS back
-         FROM ecommerce_data.coverland_inventory
+         FROM ecommerce_data.coverland_inventory_by_warehouse
          WHERE BTRIM(master_sku) = ANY($1)
          GROUP BY BTRIM(master_sku)`,
         [skuList],

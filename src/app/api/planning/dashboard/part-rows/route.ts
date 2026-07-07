@@ -38,13 +38,13 @@ export async function GET() {
         const result = await client.query<InvRow>(
           `SELECT
              BTRIM(master_sku) AS sku,
-             SUM(CASE WHEN warehouse = 'Fullerton'  THEN COALESCE(on_hand, 0) ELSE 0 END)::int AS west_stock,
-             SUM(CASE WHEN warehouse = 'TTM Group'  THEN COALESCE(on_hand, 0) ELSE 0 END)::int AS east_stock,
-             SUM(COALESCE(on_hand, 0))::int                                                       AS total_stock,
-             SUM(CASE WHEN warehouse = 'Fullerton'  THEN COALESCE(available, 0) ELSE 0 END)::int AS west_avail,
-             SUM(CASE WHEN warehouse = 'TTM Group'  THEN COALESCE(available, 0) ELSE 0 END)::int AS east_avail,
-             (-SUM(COALESCE(backorder, 0)))::int                                                  AS back
-           FROM ecommerce_data.coverland_inventory
+             SUM(CASE WHEN warehouse IN ('Fullerton','Canary')              THEN COALESCE(on_hand,   0) ELSE 0 END)::int AS west_stock,
+             SUM(CASE WHEN warehouse IN ('TTM Group','TTM Group Jefferson') THEN COALESCE(on_hand,   0) ELSE 0 END)::int AS east_stock,
+             SUM(COALESCE(on_hand, 0))::int                                                                               AS total_stock,
+             SUM(CASE WHEN warehouse IN ('Fullerton','Canary')              THEN COALESCE(available, 0) ELSE 0 END)::int AS west_avail,
+             SUM(CASE WHEN warehouse IN ('TTM Group','TTM Group Jefferson') THEN COALESCE(available, 0) ELSE 0 END)::int AS east_avail,
+             (-SUM(COALESCE(backorder, 0)))::int                                                                          AS back
+           FROM ecommerce_data.coverland_inventory_by_warehouse
            WHERE BTRIM(master_sku) = ANY($1)
            GROUP BY BTRIM(master_sku)`,
           [skuList],
