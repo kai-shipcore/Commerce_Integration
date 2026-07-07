@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Loader2, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Loader2, Play, Power, Square } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { apiPath } from "@/lib/api-path";
@@ -109,6 +109,8 @@ interface JobStatus {
 
 const SESSION_KEY = "forecastJobId";
 
+type ServerStatus = "unknown" | "running" | "stopped" | "starting";
+
 export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRun | null; onDone?: () => void }) {
   const { pick, locale } = useI18n();
   const [horizon, setHorizon] = useState(13);
@@ -118,6 +120,7 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
   const [lastRun, setLastRun] = useState<LastRun | null>(initialLastRun);
   const [logOpen, setLogOpen] = useState(true);
   const logRef = useRef<HTMLDivElement>(null);
+  const [serverStatus, setServerStatus] = useState<ServerStatus>("unknown");
 
   // Re-attach to a running job after navigation
   useEffect(() => {
@@ -169,6 +172,33 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
     }
   }, [job?.lines]);
 
+  // Poll server status on mount, then every 15s
+  useEffect(() => {
+    async function checkStatus() {
+      try {
+        const res = await fetch(apiPath("/api/forecast-server/status"));
+        const data = await res.json() as { running: boolean };
+        setServerStatus(data.running ? "running" : "stopped");
+      } catch {
+        setServerStatus("stopped");
+      }
+    }
+    checkStatus();
+    const id = setInterval(checkStatus, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleStartServer() {
+    setServerStatus("starting");
+    try {
+      const res = await fetch(apiPath("/api/forecast-server/start"), { method: "POST" });
+      const data = await res.json() as { ok: boolean; error?: string };
+      setServerStatus(data.ok ? "running" : "stopped");
+    } catch {
+      setServerStatus("stopped");
+    }
+  }
+
   async function handleRun() {
     setJob({ status: "running", lines: [], exit_code: null });
     setJobId(null);
@@ -198,6 +228,7 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
   }
 
   const isRunning = job?.status === "running";
+  const canRun = serverStatus === "running" && !isRunning;
 
   const formattedLastRun = lastRun?.run_date
     ? new Date(lastRun.run_date).toLocaleString(locale === "ko" ? "ko-KR" : "en-US", {
@@ -208,17 +239,44 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
       })
     : null;
 
+  const serverBadge =
+    serverStatus === "running" ? (
+      <span className="flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+        {pick("서버 실행 중", "Server running")}
+      </span>
+    ) : serverStatus === "starting" ? (
+      <span className="flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        {pick("시작 중…", "Starting…")}
+      </span>
+    ) : serverStatus === "stopped" ? (
+      <div className="flex items-center gap-2">
+        <span className="flex items-center gap-1.5 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+          {pick("서버 중지됨", "Server stopped")}
+        </span>
+        <Button size="sm" variant="outline" onClick={handleStartServer} className="h-6 gap-1 px-2 text-xs">
+          <Power className="h-3 w-3" />
+          {pick("시작", "Start")}
+        </Button>
+      </div>
+    ) : null;
+
   return (
     <Card>
       <CardHeader className="pb-3 pt-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium">{pick("예측 실행", "Run Forecast")}</CardTitle>
-          <span className="text-xs text-muted-foreground">
-            {pick("마지막 실행:", "Last run:")}{" "}
-            {formattedLastRun
-              ? `${formattedLastRun}${lastRun?.horizon_weeks ? ` · ${lastRun.horizon_weeks}${pick("주", "W")} ${pick("기간", "horizon")}` : ""}`
-              : "—"}
-          </span>
+          <div className="flex items-center gap-3">
+            {serverBadge}
+            <span className="text-xs text-muted-foreground">
+              {pick("마지막 실행:", "Last run:")}{" "}
+              {formattedLastRun
+                ? `${formattedLastRun}${lastRun?.horizon_weeks ? ` · ${lastRun.horizon_weeks}${pick("주", "W")} ${pick("기간", "horizon")}` : ""}`
+                : "—"}
+            </span>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -262,7 +320,7 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
             }}
             className="w-20 rounded border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-40"
           />
-          <Button size="sm" onClick={handleRun} disabled={isRunning} className="ml-2 gap-1.5">
+          <Button size="sm" onClick={handleRun} disabled={!canRun} className="ml-2 gap-1.5">
             {isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
             {isRunning ? pick("실행 중…", "Running…") : pick("실행", "Run")}
           </Button>

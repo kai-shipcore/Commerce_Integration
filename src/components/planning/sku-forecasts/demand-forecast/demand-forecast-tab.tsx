@@ -29,6 +29,16 @@ const BT_TRAIN_OPTIONS = [
 
 const BT_MIN_TRAIN_WEEKS = 20; // matches model_min for smooth SKUs in the FastAPI backtest endpoint
 
+const LEVEL_OPTIONS = [
+  { value: 40, label: "P70" },
+  { value: 60, label: "P80" },
+  { value: 70, label: "P85" },
+  { value: 80, label: "P90" },
+  { value: 90, label: "P95" },
+] as const;
+
+const levelLabel = (v: number) => LEVEL_OPTIONS.find((o) => o.value === v)?.label ?? "P85";
+
 const MODEL_OPTIONS = [
   { value: "Auto", label: "Auto" },
   { value: "AutoARIMA", label: "AutoARIMA" },
@@ -170,6 +180,7 @@ interface ForecastResponse {
   forecastDates: string[];
   forecastValues: number[];
   forecastUpper: number[] | null;
+  level?: number;
 }
 
 interface PlotlyFig {
@@ -192,6 +203,7 @@ interface BacktestResult {
   wape: number | null;
   mase: number | null;
   coverage: number | null;
+  level?: number;
   model_used: string;
   bucket: string;
   history_length: string;
@@ -234,6 +246,9 @@ function trimFig(fig: PlotlyFig, forecastDates: string[], n: number, viewStart?:
 export function DemandForecastTab({ sku, language, serverError }: { sku: DemandRow; language: SkuForecastLanguage; serverError?: string | null }) {
   // ── Mode ──────────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<"forward" | "backtest">("forward");
+
+  // ── Confidence level (smooth/full only) ───────────────────────────────────
+  const [level, setLevel] = useState(70);
 
   // ── Forward forecast state ────────────────────────────────────────────────
   const [forwardModel, setForwardModel] = useState("Auto");
@@ -298,7 +313,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     setNotFound(false);
     setLoading(true);
 
-    const params = new URLSearchParams({ weeks: "0" }); // always fetch full history; zoom is client-side
+    const params = new URLSearchParams({ weeks: "0", level: String(level) }); // always fetch full history; zoom is client-side
     if (forwardModel !== "Auto") params.set("model", forwardModel);
     if (extraHorizon > 0) params.set("horizon", String(extraHorizon));
     const isOverride = forwardModel !== "Auto" || extraHorizon > 0;
@@ -321,7 +336,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [sku.sku, forwardModel, extraHorizon]);
+  }, [sku.sku, forwardModel, extraHorizon, level]);
 
   // Reset forward and backtest state when SKU changes
   useEffect(() => {
@@ -387,7 +402,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     setBtError(null);
     setBtResult(null);
     const modelParam = btModel2 ? `Ensemble:${btModel}+${btModel2}` : btModel;
-    const params = new URLSearchParams({ cutoff: format(btCutoff, "yyyy-MM-dd"), horizon: String(btHorizon), model: modelParam });
+    const params = new URLSearchParams({ cutoff: format(btCutoff, "yyyy-MM-dd"), horizon: String(btHorizon), model: modelParam, level: String(level) });
     if (btTrainStart) {
       params.set("train_start", format(btTrainStart, "yyyy-MM-dd"));
     } else {
@@ -425,9 +440,10 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     if (!chartStr) return null;
     const parsed = JSON.parse(chartStr) as PlotlyFig;
     if (language === "ko") {
+      const curLabel = levelLabel(level);
       const nameMap: Record<string, string> = {
         "Actual demand": "실제 수요",
-        "P70 interval": "P70 구간",
+        [`${curLabel} interval`]: `${curLabel} 구간`,
         "Forecast": "예측",
       };
       parsed.data = (parsed.data as Record<string, unknown>[]).map((trace) =>
@@ -471,8 +487,9 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
     // Always include all actuals_context in the traces — the context picker only sets zoom.
     const allActuals = btResult.actuals_context;
-    const hasPi = predictions.some((p) => p.yhat_lo !== null);
+    const hasPi = predictions.some((p) => p.yhat_lo != null);
     const completedPreds = predictions.filter((p) => p.actual !== null);
+    const piLabel = levelLabel(btResult.level ?? 70);
 
     const actualsX = [
       ...allActuals.map((a) => a.ds),
@@ -503,7 +520,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
         fill: "toself",
         fillcolor: "rgba(221,132,82,0.18)",
         line: { color: "rgba(0,0,0,0)" },
-        name: "P70 interval",
+        name: `${piLabel} interval`,
         showlegend: true,
         hoverinfo: "skip",
       } as Plotly.Data);
@@ -512,10 +529,10 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
         x: predictions.map((p) => p.ds),
         y: predictions.map((p) => p.yhat_hi ?? 0),
         mode: "none",
-        name: "P70 interval",
+        name: `${piLabel} interval`,
         showlegend: false,
         customdata: predictions.map((p) => [p.yhat_lo ?? 0, p.yhat_hi ?? 0]),
-        hovertemplate: "P70 interval: [%{customdata[0]}, %{customdata[1]}]<extra></extra>",
+        hovertemplate: `${piLabel} interval: [%{customdata[0]}, %{customdata[1]}]<extra></extra>`,
       } as Plotly.Data);
     }
 
@@ -634,6 +651,11 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
   const isLowConfidence = meta?.confidence === "low";
   const btMaxCutoff = subWeeks(lastSalesWeek, 1);
 
+  // ── Smooth/full check: only show level selector for smooth/full SKUs ─────
+  const isSmoothFull =
+    (meta !== null && meta.bucket === "smooth" && meta.history_length !== "short") ||
+    (btResult !== null && btResult.bucket === "smooth" && btResult.history_length !== "short");
+
   // ── Mode toggle button classes ─────────────────────────────────────────────
   const modeBtn = (m: "forward" | "backtest") =>
     `px-3 py-1 text-xs ${mode === m ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"}`;
@@ -651,11 +673,34 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
       )}
 
       <div className="planning-panel rounded-lg border p-4">
-        {/* ── Header: mode toggle ── */}
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">
-            {pick(language, "수요 예측", "Demand Forecast")}
-          </span>
+        {/* ── Header: mode toggle + level selector ── */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-muted-foreground">
+              {pick(language, "수요 예측", "Demand Forecast")}
+            </span>
+            {isSmoothFull && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>{pick(language, "신뢰 수준", "Confidence")}</span>
+                <div className="flex rounded-md border text-xs">
+                  {LEVEL_OPTIONS.map((opt, i) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setLevel(opt.value)}
+                      className={`px-2.5 py-1 ${i === 0 ? "rounded-l-md" : ""} ${i === LEVEL_OPTIONS.length - 1 ? "rounded-r-md" : "border-r"} ${
+                        level === opt.value
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="flex rounded-md border text-xs">
             <button type="button" onClick={() => setMode("forward")} className={`${modeBtn("forward")} rounded-l-md`}>
               {pick(language, "순방향", "Forward")}
@@ -1004,7 +1049,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
             value={orderRange}
             tooltip={pick(
               language,
-              `향후 ${clampedWeeks}주 예측 수요 합계입니다. P70 구간이 제공될 경우, 범위의 상한선은 수요 불확실성을 위한 안전 재고 버퍼로 활용할 수 있습니다.`,
+              `향후 ${clampedWeeks}주 예측 수요 합계입니다. ${levelLabel(level)} 구간이 제공될 경우, 범위의 상한선은 수요 불확실성을 위한 안전 재고 버퍼로 활용할 수 있습니다.`,
               `Total forecasted demand over the next ${clampedWeeks} weeks. When a prediction interval is available, the upper bound provides a safety buffer for demand uncertainty — useful when sizing order quantities.`,
             )}
           />
@@ -1078,6 +1123,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
 
       {/* ── Backtest meta strip ── */}
       {mode === "backtest" && btResult && (() => {
+        const btLabel = levelLabel(btResult.level ?? 70);
         const completedPreds = btResult.predictions.filter((p) => p.actual !== null);
         const hasPi = completedPreds.some((p) => p.yhat_lo !== null);
         const actualTotal = completedPreds.reduce((s, p) => s + (p.actual ?? 0), 0);
@@ -1126,12 +1172,12 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
               </span>
             </MetaField>
             <MetaField
-              label={pick(language, "P70 적중률", "P70 coverage")}
+              label={pick(language, `${btLabel} 적중률`, `${btLabel} coverage`)}
               value={btResult.coverage != null ? `${btResult.coverage}%` : "—"}
               tooltip={pick(
                 language,
-                "실제 수요가 70% 예측 구간 내에 든 주차 비율입니다. 잘 보정된 모델은 70% 근처여야 합니다. 지속적으로 높으면 구간이 너무 넓은 것(과도하게 보수적), 낮으면 모델이 과신하는 것입니다.",
-                "Percentage of weeks where actual demand fell within the model's 70% prediction band. A well-calibrated model should score near 70%. Consistently above 70% means the intervals are too wide; below 70% means the model is overconfident.",
+                `실제 수요가 ${btLabel} 예측 구간 내에 든 주차 비율입니다. 잘 보정된 모델은 목표 수준 근처여야 합니다.`,
+                `Percentage of weeks where actual demand fell within the ${btLabel} forecast band. A well-calibrated model should score near the target level.`,
               )}
             />
             <MetaField
@@ -1169,8 +1215,8 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
               value={forecastLabel}
               tooltip={pick(
                 language,
-                "동일 평가 기간의 총 예측 단위 수입니다. P70 구간이 있으면 범위는 포인트 예측에서 상한선까지 표시됩니다. 실제 판매량과 비교하여 전반적인 편향을 확인하세요.",
-                "Total forecasted units for the same evaluation window. When a prediction interval is available, the range runs from the point forecast to the P70 upper bound. Compare with the horizon actual to assess overall forecast bias.",
+                `동일 평가 기간의 총 예측 단위 수입니다. ${btLabel} 구간이 있으면 범위는 포인트 예측에서 상한선까지 표시됩니다. 실제 판매량과 비교하여 전반적인 편향을 확인하세요.`,
+                `Total forecasted units for the same evaluation window. When a prediction interval is available, the range runs from the point forecast to the ${btLabel} upper bound. Compare with the horizon actual to assess overall forecast bias.`,
               )}
               className="sm:col-span-2"
             />
@@ -1193,8 +1239,8 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                   {hasPi && (
                     <span className={`text-[11px] ${withinInterval ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
                       {withinInterval
-                        ? pick(language, "P70 구간 내", "within P70 interval")
-                        : pick(language, "P70 구간 외", "outside P70 interval")}
+                        ? pick(language, `${btLabel} 구간 내`, `within ${btLabel} interval`)
+                        : pick(language, `${btLabel} 구간 외`, `outside ${btLabel} interval`)}
                     </span>
                   )}
                 </div>

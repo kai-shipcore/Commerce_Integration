@@ -14,7 +14,7 @@ function setChild(c: ChildProcess | null) {
   g._forecastChild = c;
 }
 
-async function isRunning(): Promise<boolean> {
+export async function isRunning(): Promise<boolean> {
   try {
     const res = await fetch(`${forecastApiBase()}/health`, {
       signal: AbortSignal.timeout(5_000),

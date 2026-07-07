@@ -1,280 +1,478 @@
 // import-containers-from-sheet.ts
-// Usage: npx tsx scripts/import-containers-from-sheet.ts <path/to/sheet.xlsx> [--dry-run]
+// Usage: npx tsx scripts/import-containers-from-sheet.ts <file.xlsx|google-sheets-url> [--tab "L- 7.2.2026"] [--dry-run]
 //
-// Reads container groups from row 3 of the first sheet tab.
-// Rows 1-2 are ignored. Data rows start at row 4.
+// Reads the specified tab (default: first sheet whose name starts with "L-").
+// Header row is row 3. Data rows start at row 4.
 //
-// Per container group (10-column blocks after the fixed columns):
-//   col+0 = CBM (cbm_unit per row)
-//   col+1 = Container name header → fc_containers.container_number
-//            row values → fc_container_items.qty
-//   col+5 = ETA date (header cell value) → fc_containers.eta_date
+// Columns read per row:
+//   B  (col 2)  = CBM per unit → updates fc_products.cbm_per_unit
+//   L  (col 12) = Master SKU
+//   Container columns (detected from row 3 by name pattern):
+//     col+0 = container name / qty per SKU in data rows
+//     col+5 = ETA date (header cell only)
+//     fill color of header cell → status (blue=shipped, orange=packing_received, purple/other=draft)
 //
-// Cell fill color of the container name header → status:
-//   Blue   → packing_received  (Packing List Received / Shipped)
-//   Orange → shipped           (Final List Sent to Factory)
-//   Pink / Purple / uncolored → draft
+// Container name pattern: digits-LETTERS[-LETTERS[-digits]] e.g. "178-CA-SEAT", "2026-SEAT-EXTRA-1"
 //
-// DB writes:
-//   fc_containers      — upsert on container_number (updates eta_date + status)
-//   fc_container_items — delete existing items for each container, then re-insert
+// DB writes (all inside one transaction):
+//   1. UPDATE fc_products SET cbm_per_unit = ... (only rows with a CBM value)
+//   2. DELETE all from fc_container_items
+//   3. DELETE all from fc_containers
+//   4. INSERT fc_containers (container_number, eta_date, status, cbm_capacity=80)
+//   5. INSERT fc_container_items (only for SKUs found in fc_products)
+//
+// File parsing: uses Python 3 stdlib (zipfile + re) to read xlsx without loading the
+// entire workbook into memory (ExcelJS OOMed on this 57MB file with 90MB+ sheets).
 
-import * as ExcelJS from "exceljs";
 import { getPrimaryPool } from "../src/lib/db/primary-db";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
+import { spawnSync, execSync } from "child_process";
 
-const filePath = process.argv[2];
+const input = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
+const tabArgIdx = process.argv.indexOf("--tab");
+const tabArg = tabArgIdx !== -1 ? process.argv[tabArgIdx + 1] : null;
+const skuColArgIdx = process.argv.indexOf("--sku-col");
+const skuColArg = skuColArgIdx !== -1 ? process.argv[skuColArgIdx + 1] : "L";
 
-if (!filePath) {
-  console.error("Usage: npx tsx scripts/import-containers-from-sheet.ts <file.xlsx> [--dry-run]");
+if (!input) {
+  console.error(
+    'Usage: npx tsx scripts/import-containers-from-sheet.ts <file.xlsx|google-sheets-url> [--tab "L- 7.2.2026"] [--dry-run]'
+  );
   process.exit(1);
 }
 
-// ─── Color → status ──────────────────────────────────────────────────────────
+const CBM_CAPACITY_DEFAULT = 80;
 
-function argbToStatus(argb: string | undefined, containerName: string): string {
-  if (!argb || argb.length < 6) return "draft";
+// ─── Python extraction script ─────────────────────────────────────────────────
+// Parses the xlsx as a zip (stdlib only), extracts only the target sheet,
+// and outputs JSON with containers + sku rows.
 
-  // ARGB is 8 hex chars (AARRGGBB) or sometimes 6 (RRGGBB)
-  const hex = argb.length === 8 ? argb.slice(2) : argb.slice(-6);
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
+const PYTHON_SCRIPT = `
+import sys, json, re, zipfile, datetime
 
-  const max = Math.max(r, g, b);
-  const isBlue   = b === max && b - r > 30 && b - g > 10;
-  const isOrange = r === max && g >= b && r - b > 60;
+xlsx_path    = sys.argv[1]
+tab_name_arg = sys.argv[2] if len(sys.argv) > 2 else ""
+sku_col_name = sys.argv[3].upper() if len(sys.argv) > 3 else "L"
 
-  const detected = isBlue ? "blue" : isOrange ? "orange" : "other";
-  const status = isBlue ? "packing_received" : isOrange ? "shipped" : "draft";
-  console.log(`  color(${containerName}): #${hex} → ${detected} → ${status}`);
-  return status;
+def col_name_to_num_simple(name):
+    n = 0
+    for ch in name.upper():
+        n = n * 26 + (ord(ch) - 64)
+    return n
+
+HEADER_ROW = 3
+DATA_START  = 4
+CBM_COL     = 2    # B
+SKU_COL     = col_name_to_num_simple(sku_col_name)
+ETA_OFFSET  = 5
+CONTAINER_RE = re.compile(r'^\\d{2,4}-[A-Z]{1,6}(-[A-Z\\d]+)*$')
+
+col_name_to_num = col_name_to_num_simple
+
+try:
+    zf = zipfile.ZipFile(xlsx_path)
+except Exception as e:
+    print(json.dumps({"error": f"Cannot open file: {e}"}))
+    sys.exit(1)
+
+# 1. Shared strings
+sst = []
+try:
+    xml = zf.read("xl/sharedStrings.xml").decode("utf-8", errors="replace")
+    for m in re.finditer(r'<si>(.*?)</si>', xml, re.DOTALL):
+        texts = re.findall(r'<t(?:\\s[^>]*)?>([^<]*)</t>', m.group(1))
+        sst.append("".join(texts))
+except Exception:
+    pass
+
+# 2. Styles → fill ARGB per xf index
+xf_to_argb = {}
+try:
+    xml = zf.read("xl/styles.xml").decode("utf-8", errors="replace")
+    fills = []
+    fills_sec = re.search(r'<fills[^>]*>(.*?)</fills>', xml, re.DOTALL)
+    if fills_sec:
+        for fill in re.finditer(r'<fill>(.*?)</fill>', fills_sec.group(1), re.DOTALL):
+            m = re.search(r'<fgColor\\s+rgb="([0-9A-Fa-f]{8})"', fill.group(1))
+            fills.append(m.group(1) if m else None)
+    xfs_sec = re.search(r'<cellXfs[^>]*>(.*?)</cellXfs>', xml, re.DOTALL)
+    if xfs_sec:
+        for i, xf in enumerate(re.finditer(r'<xf\\b[^>]*/?>|<xf\\b[^>]*>.*?</xf>', xfs_sec.group(1), re.DOTALL)):
+            m = re.search(r'\\bfillId="(\\d+)"', xf.group(0))
+            if m:
+                fid = int(m.group(1))
+                if 0 <= fid < len(fills) and fills[fid]:
+                    xf_to_argb[i] = fills[fid]
+except Exception:
+    pass
+
+# 3. Find target sheet
+wb_xml   = zf.read("xl/workbook.xml").decode("utf-8", errors="replace")
+rels_xml = zf.read("xl/_rels/workbook.xml.rels").decode("utf-8", errors="replace")
+
+sheets_info = re.findall(r'<sheet\\b[^>]*\\bname="([^"]*)"[^>]*\\br:id="([^"]*)"', wb_xml)
+rels_map    = dict(re.findall(r'\\bId="([^"]*)"[^>]*\\bTarget="([^"]*)"', rels_xml))
+tab_names   = [n for n, _ in sheets_info]
+
+target_file = None
+target_name = None
+for name, rid in sheets_info:
+    if tab_name_arg:
+        match = (name == tab_name_arg)
+    else:
+        match = name.startswith("L-") or name.startswith("L- ")
+    if match:
+        target_name = name
+        rel = rels_map.get(rid, "")
+        target_file = ("xl/" + rel) if not rel.startswith("/") else rel.lstrip("/")
+        break
+
+if not target_file or not target_file.endswith(".xml"):
+    print(json.dumps({"error": "Tab not found", "tabs": tab_names}))
+    sys.exit(1)
+
+# 4. Parse sheet XML
+sheet_xml = zf.read(target_file).decode("utf-8", errors="replace")
+
+EXCEL_EPOCH = datetime.date(1899, 12, 30)
+
+def serial_to_date(v):
+    try:
+        return (EXCEL_EPOCH + datetime.timedelta(days=int(v))).isoformat()
+    except Exception:
+        return None
+
+containers = []
+sku_rows   = []
+
+for row_m in re.finditer(r'<row\\b[^>]*\\br="(\\d+)"[^>]*>(.*?)</row>', sheet_xml, re.DOTALL):
+    rnum        = int(row_m.group(1))
+    row_content = row_m.group(2)
+    cells       = {}
+
+    # Negative lookbehind (?<!/) before > skips self-closing <c ... /> tags.
+    # Without it, greedy [^>]* consumes the / in />, making the regex treat the
+    # next cell's opening tag as content (swallowing it silently).
+    for cell_m in re.finditer(r'<c\\b([^>]*)(?<!/)>(.*?)</c>', row_content, re.DOTALL):
+        full_attrs = cell_m.group(1)
+        content    = cell_m.group(2)
+        r_m = re.search(r'\\br="([A-Z]+)(\\d+)"', full_attrs)
+        if not r_m: continue
+        col_name = r_m.group(1)
+        col_idx  = col_name_to_num(col_name)
+        t_m  = re.search(r'\\bt="([^"]*)"', full_attrs)
+        s_m  = re.search(r'\\bs="(\\d+)"', full_attrs)
+        typ  = t_m.group(1) if t_m else ""
+        s_idx = int(s_m.group(1)) if s_m else None
+        v_m     = re.search(r'<v>([^<]*)</v>', content)
+        raw_val = v_m.group(1) if v_m else None
+
+        display_val = None
+        if typ == "s" and raw_val is not None:
+            idx = int(raw_val)
+            display_val = sst[idx] if idx < len(sst) else ""
+        elif typ in ("str", "inlineStr") and raw_val is not None:
+            display_val = raw_val
+        elif raw_val is not None:
+            try:
+                display_val = float(raw_val)
+            except ValueError:
+                display_val = raw_val
+
+        argb = xf_to_argb.get(s_idx) if s_idx is not None else None
+        cells[col_idx] = {"val": display_val, "argb": argb}
+
+    if rnum == HEADER_ROW:
+        for col_idx, cell in cells.items():
+            v = cell["val"]
+            if isinstance(v, str) and CONTAINER_RE.match(v.strip()):
+                name = v.strip()
+                # ETA is col+5 (seat covers) or col-5 (car/floor covers); try both
+                eta_str = None
+                for offset in (ETA_OFFSET, -ETA_OFFSET):
+                    ec = cells.get(col_idx + offset)
+                    if ec:
+                        ev = ec["val"]
+                        if isinstance(ev, float) and ev > 40000:
+                            eta_str = serial_to_date(ev)
+                            break
+                containers.append({"colIdx": col_idx, "name": name, "etaDate": eta_str, "argb": cell["argb"]})
+
+    elif rnum >= DATA_START:
+        sku_cell = cells.get(SKU_COL)
+        if not sku_cell or not sku_cell["val"]:
+            continue
+        sku = str(sku_cell["val"]).strip().upper()
+        if not sku:
+            continue
+        cbm_cell = cells.get(CBM_COL)
+        cbm_val  = cbm_cell["val"] if cbm_cell else None
+        cbm      = float(cbm_val) if isinstance(cbm_val, (int, float)) and cbm_val > 0 else None
+        qtys     = {}
+        for cg in containers:
+            qty_cell = cells.get(cg["colIdx"])
+            if qty_cell:
+                qv = qty_cell["val"]
+                if isinstance(qv, (int, float)) and qv > 0:
+                    qtys[cg["name"]] = round(qv)
+        sku_rows.append({"masterSku": sku, "cbmUnit": cbm, "qtys": qtys})
+
+print(json.dumps({"tab": target_name, "containers": containers, "skuRows": sku_rows}))
+`;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ContainerInfo {
+  colIdx: number;
+  name: string;
+  etaDate: string | null;
+  argb: string | null;
 }
 
-function getCellFillArgb(cell: ExcelJS.Cell): string | undefined {
-  const fill = cell.fill as ExcelJS.Fill | undefined;
-  if (!fill || fill.type !== "pattern") return undefined;
-  const fg = (fill as ExcelJS.FillPattern).fgColor;
-  if (!fg || !fg.argb) return undefined;
-  return fg.argb;
+interface SkuRowRaw {
+  masterSku: string;
+  cbmUnit: number | null;
+  qtys: Record<string, number>;
 }
 
-// ─── Date helpers ─────────────────────────────────────────────────────────────
-
-function cellToDateString(value: ExcelJS.CellValue): string | null {
-  if (!value) return null;
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10);
-  }
-  if (typeof value === "number") {
-    // Excel serial date
-    const d = new Date(Math.round((value - 25569) * 86400 * 1000));
-    return d.toISOString().slice(0, 10);
-  }
-  const s = String(value).trim();
-  if (!s) return null;
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+interface ExtractionResult {
+  tab: string;
+  containers: ContainerInfo[];
+  skuRows: SkuRowRaw[];
+  error?: string;
+  tabs?: string[];
 }
-
-// ─── Cell text helper (handles rich text cells) ───────────────────────────────
-
-function cellText(cell: ExcelJS.Cell): string {
-  const v = cell.value;
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object" && "richText" in v) {
-    return (v as ExcelJS.CellRichTextValue).richText.map((r) => r.text).join("").trim();
-  }
-  if (typeof v === "object" && "formula" in v) {
-    const result = (v as ExcelJS.CellFormulaValue).result;
-    return result !== undefined && result !== null ? String(result).trim() : "";
-  }
-  return String(v).trim();
-}
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
 
 interface ContainerGroup {
-  nameColIdx: number; // 1-based column index of the container name column
   name: string;
   status: string;
   etaDate: string | null;
 }
 
-interface ItemRow {
-  masterSku: string;
-  containerName: string;
-  qty: number;
+// ─── Color → status ───────────────────────────────────────────────────────────
+
+function argbToStatus(argb: string | null, containerName: string): string {
+  if (!argb || argb.length < 6) return "draft";
+  const hex = argb.length === 8 ? argb.slice(2) : argb.slice(-6);
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const isBlue   = b > r && b > g && b - r > 50 && b - g > 10;
+  const isOrange = r > b && g >= b && r - b > 60;
+  const detected = isBlue ? "blue" : isOrange ? "orange" : "purple/other";
+  const status   = isBlue ? "shipped" : isOrange ? "packing_received" : "draft";
+  console.log(`  color(${containerName}): #${hex} → ${detected} → ${status}`);
+  return status;
 }
 
+// ─── Google Sheets download ───────────────────────────────────────────────────
+
+async function resolveLocalPath(): Promise<string> {
+  const isGoogleSheets =
+    input.includes("docs.google.com") || input.includes("spreadsheets");
+
+  if (!isGoogleSheets) {
+    const resolved = path.resolve(input);
+    if (!fs.existsSync(resolved)) {
+      console.error("File not found:", resolved);
+      process.exit(1);
+    }
+    return resolved;
+  }
+
+  const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!m) {
+    console.error("Could not extract sheet ID from:", input);
+    process.exit(1);
+  }
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=xlsx`;
+  console.log(`Downloading Google Sheet: ${exportUrl}`);
+  const res = await fetch(exportUrl, { redirect: "follow" });
+  if (!res.ok) {
+    console.error(`Download failed: ${res.status} ${res.statusText}`);
+    console.error("Make sure the sheet is shared as 'Anyone with the link can view'.");
+    process.exit(1);
+  }
+  const tmp = path.join(os.tmpdir(), `sheet-import-${Date.now()}.xlsx`);
+  fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
+  console.log(`Saved to temp: ${tmp}`);
+  return tmp;
+}
+
+// ─── Parse xlsx via Python subprocess ────────────────────────────────────────
+
+function parseXlsx(xlsxPath: string): ExtractionResult {
+  const scriptPath = path.join(os.tmpdir(), `_extract_containers_${Date.now()}.py`);
+  fs.writeFileSync(scriptPath, PYTHON_SCRIPT);
+
+  const args = [scriptPath, xlsxPath];
+  args.push(tabArg ?? "");
+  args.push(skuColArg);
+
+  console.log("Parsing xlsx via Python (avoids ExcelJS memory limits)...");
+  const result = spawnSync("python3", args, { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+
+  fs.unlinkSync(scriptPath);
+
+  if (result.error) {
+    console.error("Failed to spawn python3:", result.error.message);
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error("Python extraction failed:\n", result.stderr);
+    process.exit(1);
+  }
+
+  const stdout = result.stdout.trim();
+  const lastLine = stdout.split("\n").filter(Boolean).pop() ?? "";
+  try {
+    return JSON.parse(lastLine) as ExtractionResult;
+  } catch {
+    console.error("Could not parse Python output:\n", stdout);
+    process.exit(1);
+  }
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
-  console.log(`Reading: ${path.resolve(filePath)}`);
-  if (dryRun) console.log("DRY RUN — no DB writes");
+  if (dryRun) console.log("DRY RUN — no DB writes\n");
 
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
+  const xlsxPath = await resolveLocalPath();
+  const extracted = parseXlsx(xlsxPath);
 
-  const sheet = workbook.worksheets[0];
-  if (!sheet) {
-    console.error("No worksheets found in the file.");
+  if (extracted.error) {
+    console.error(`Extraction error: ${extracted.error}`);
+    if (extracted.tabs) console.error("Available tabs:", extracted.tabs);
     process.exit(1);
   }
 
-  console.log(`\nSheet: "${sheet.name}"`);
+  console.log(`\nSheet: "${extracted.tab}"`);
 
-  // Row 3 = header row
-  const headerRow = sheet.getRow(3);
+  // ── Resolve container statuses from fill colors ───────────────────────────
+  const containers: ContainerGroup[] = extracted.containers.map((c) => ({
+    name: c.name,
+    status: argbToStatus(c.argb, c.name),
+    etaDate: c.etaDate,
+  }));
 
-  let skuColIdx = -1;
-  const containerGroups: ContainerGroup[] = [];
-
-  // Scan every cell in the header row
-  const lastCol = sheet.columnCount;
-  for (let c = 1; c <= lastCol; c++) {
-    const cell = headerRow.getCell(c);
-    const text = cellText(cell);
-
-    if (text === "Master SKU") {
-      skuColIdx = c;
-      continue;
-    }
-
-    // Container name pattern: e.g. "166-CA-SEAT", "166-CA", "166-CA-FLOOR"
-    if (/^\d{2,4}-[A-Z]{1,4}(-[A-Z]+)?$/.test(text)) {
-      const etaCell = headerRow.getCell(c + 5);
-      const etaDate = cellToDateString(etaCell.value);
-      const argb = getCellFillArgb(cell);
-      const status = argbToStatus(argb, text);
-
-      containerGroups.push({
-        nameColIdx: c,
-        name: text,
-        status,
-        etaDate,
-      });
-    }
-  }
-
-  if (skuColIdx === -1) {
-    console.error('\nCould not find "Master SKU" column in row 3. Check that row 3 is the header row.');
+  if (containers.length === 0) {
+    console.error("\nNo container columns found in row 3. Check the tab name and header layout.");
     process.exit(1);
   }
 
-  if (containerGroups.length === 0) {
-    console.error("\nNo container name columns detected in row 3.");
-    console.error('Expected pattern: digits-LETTERS[-LETTERS] (e.g. "166-CA", "166-CA-SEAT", "166-CA-FLOOR").');
-    process.exit(1);
+  console.log(`\nFound ${containers.length} container(s):`);
+  for (const cg of containers) {
+    console.log(`  ${cg.name} | status=${cg.status} | eta=${cg.etaDate ?? "(none)"}`);
   }
 
-  console.log(`\nFound ${containerGroups.length} container(s):`);
-  for (const cg of containerGroups) {
-    console.log(`  ${cg.name} | status=${cg.status} | eta=${cg.etaDate ?? "(none)"} | col=${cg.nameColIdx}`);
-  }
-
-  // Collect item rows (row 4+)
-  const items: ItemRow[] = [];
-  const lastRow = sheet.lastRow?.number ?? 0;
-
-  for (let rowNum = 4; rowNum <= lastRow; rowNum++) {
-    const row = sheet.getRow(rowNum);
-    const skuRaw = cellText(row.getCell(skuColIdx));
-    if (!skuRaw) continue;
-    const masterSku = skuRaw.toUpperCase();
-
-    for (const cg of containerGroups) {
-      const qtyCell = row.getCell(cg.nameColIdx);
-      const qtyRaw = qtyCell.value;
-      const qty = typeof qtyRaw === "number" ? Math.round(qtyRaw) : parseInt(String(qtyRaw ?? ""), 10);
-
-      if (!qty || qty <= 0 || isNaN(qty)) continue;
-
-      items.push({
-        masterSku,
-        containerName: cg.name,
-        qty,
-      });
-    }
-  }
-
-  console.log(`\nCollected ${items.length} SKU-container entries across ${containerGroups.length} container(s).`);
+  const skuRows = extracted.skuRows;
+  const totalItems = skuRows.reduce((sum, r) => sum + Object.keys(r.qtys).length, 0);
+  console.log(
+    `\nParsed ${skuRows.length} SKU rows | ${totalItems} container-item entries | ${skuRows.filter((r) => r.cbmUnit !== null).length} CBM updates`
+  );
 
   if (dryRun) {
-    console.log("\nDry-run preview (first 20 items):");
-    for (const item of items.slice(0, 20)) {
-      console.log(`  ${item.masterSku} → ${item.containerName} qty=${item.qty}`);
+    console.log("\nDry-run preview (first 15 SKUs):");
+    for (const r of skuRows.slice(0, 15)) {
+      const qtyStr = Object.entries(r.qtys)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(", ");
+      console.log(`  ${r.masterSku} | cbm=${r.cbmUnit ?? "-"} | ${qtyStr || "(no qtys)"}`);
+    }
+    console.log("\nContainers:");
+    for (const cg of containers) {
+      console.log(`  ${cg.name} | status=${cg.status} | eta=${cg.etaDate ?? "(none)"}`);
     }
     return;
   }
 
-  // ─── DB writes ────────────────────────────────────────────────────────────
-
+  // ── DB writes ─────────────────────────────────────────────────────────────
   const pool = getPrimaryPool();
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
 
-    // 1. Upsert containers
-    const containerIds = new Map<string, string>();
-    for (const cg of containerGroups) {
-      const result = await client.query<{ id: string }>(
-        `INSERT INTO shipcore.fc_containers
-           (container_number, eta_date, status, cbm_capacity, created_at, updated_at)
-         VALUES ($1, $2::date, $3::shipcore.fc_container_status, 67.5, NOW(), NOW())
-         ON CONFLICT (container_number) DO UPDATE SET
-           eta_date   = EXCLUDED.eta_date,
-           status     = EXCLUDED.status,
-           updated_at = NOW()
-         RETURNING id::text`,
-        [cg.name, cg.etaDate, cg.status]
+    // 1. Update cbm_per_unit on fc_products for every SKU with a CBM value
+    let cbmUpdated = 0;
+    for (const r of skuRows) {
+      if (r.cbmUnit === null) continue;
+      const res = await client.query(
+        `UPDATE shipcore.fc_products SET cbm_per_unit = $1, updated_at = NOW() WHERE master_sku = $2`,
+        [r.cbmUnit, r.masterSku]
       );
-      containerIds.set(cg.name, result.rows[0].id);
-      console.log(`  Upserted container: ${cg.name} (id=${result.rows[0].id})`);
+      if ((res.rowCount ?? 0) > 0) cbmUpdated++;
     }
+    console.log(`\nUpdated cbm_per_unit for ${cbmUpdated} SKUs in fc_products.`);
 
-    // 2. Check which SKUs exist in fc_products; fetch cbm_per_unit as the source of truth
-    const allSkus = [...new Set(items.map((i) => i.masterSku))];
-    const skuResult = await client.query<{ master_sku: string; cbm_per_unit: string | null }>(
-      `SELECT master_sku, cbm_per_unit::text FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
+    // 2. Validate SKUs — only insert items for SKUs that exist in fc_products
+    const allSkus = [...new Set(skuRows.map((r) => r.masterSku))];
+    const skuResult = await client.query<{ master_sku: string }>(
+      `SELECT master_sku FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
       [allSkus]
     );
     const validSkus = new Set(skuResult.rows.map((r) => r.master_sku));
-    const cbmBySkuMap = new Map<string, number | null>(
-      skuResult.rows.map((r) => [r.master_sku, r.cbm_per_unit ? parseFloat(r.cbm_per_unit) : null])
-    );
     const skippedSkus = allSkus.filter((s) => !validSkus.has(s));
     if (skippedSkus.length > 0) {
-      console.log(`\nSkipping ${skippedSkus.length} SKU(s) not in fc_products: ${skippedSkus.join(", ")}`);
+      console.log(`Skipping ${skippedSkus.length} SKU(s) not in fc_products: ${skippedSkus.join(", ")}`);
     }
 
-    // 3. Delete existing items for all containers being imported
-    for (const entry of Array.from(containerIds.entries())) {
-      await client.query(
-        `DELETE FROM shipcore.fc_container_items WHERE container_id = $1::bigint`,
-        [entry[1]]
+    // 3. Upsert containers by container_number; collect their IDs
+    const containerIds = new Map<string, string>();
+    let insertedContainers = 0;
+    let updatedContainers = 0;
+    for (const cg of containers) {
+      const res = await client.query<{ id: string; existed: boolean }>(
+        `INSERT INTO shipcore.fc_containers
+           (container_number, eta_date, status, cbm_capacity, created_at, updated_at)
+         VALUES ($1, $2::date, $3::shipcore.fc_container_status, $4, NOW(), NOW())
+         ON CONFLICT (container_number) DO UPDATE
+           SET eta_date     = EXCLUDED.eta_date,
+               status       = EXCLUDED.status,
+               cbm_capacity = EXCLUDED.cbm_capacity,
+               updated_at   = NOW()
+         RETURNING id::text, (xmax <> 0) AS existed`,
+        [cg.name, cg.etaDate, cg.status, CBM_CAPACITY_DEFAULT]
       );
+      const { id, existed } = res.rows[0];
+      containerIds.set(cg.name, id);
+      if (existed) updatedContainers++; else insertedContainers++;
     }
+    console.log(`\nContainers: ${insertedContainers} inserted, ${updatedContainers} updated.`);
 
-    // 4. Insert items (only valid SKUs)
+    // 4. Replace items only for containers in this sheet (leave other containers untouched)
+    const containerIdList = [...containerIds.values()];
+    const deletedItems = await client.query(
+      `DELETE FROM shipcore.fc_container_items WHERE container_id = ANY($1::bigint[])`,
+      [containerIdList]
+    );
+    console.log(`Cleared ${deletedItems.rowCount ?? 0} old items for these containers.`);
+
+    // 5. Insert container items
     let inserted = 0;
-    for (const item of items) {
-      if (!validSkus.has(item.masterSku)) continue;
-      const containerId = containerIds.get(item.containerName);
-      if (!containerId) continue;
-
-      const cbmUnit = cbmBySkuMap.get(item.masterSku) ?? null;
-      await client.query(
-        `INSERT INTO shipcore.fc_container_items
-           (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-         VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
-        [containerId, item.masterSku, item.qty, cbmUnit]
-      );
-      inserted++;
+    for (const r of skuRows) {
+      if (!validSkus.has(r.masterSku)) continue;
+      for (const [containerName, qty] of Object.entries(r.qtys)) {
+        const containerId = containerIds.get(containerName);
+        if (!containerId) continue;
+        await client.query(
+          `INSERT INTO shipcore.fc_container_items
+             (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
+           VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
+          [containerId, r.masterSku, qty, r.cbmUnit]
+        );
+        inserted++;
+      }
     }
 
     await client.query("COMMIT");
-    console.log(`\nDone. Inserted ${inserted} items across ${containerGroups.length} container(s).`);
+    console.log(
+      `\nDone. ${insertedContainers} containers inserted, ${updatedContainers} updated, ${inserted} items inserted, ${cbmUpdated} CBM values updated.`
+    );
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("\nImport failed — rolled back.");

@@ -81,12 +81,12 @@ V1's rate estimate is a weighted blend across six look-back windows:
 |---|---|---|
 | 7 days | 0.15 | Last week only |
 | 15 days | 0.20 | Last two weeks |
-| **30 days** | **0.30** | **Last month ← dominant** |
+| **30 days (sales)** | **0.30** | **Last month ← dominant** |
 | 60 days | 0.15 | Last two months |
 | 90 days | 0.10 | Last quarter |
-| 30 days (preorder) | 0.10 | Pre-orders |
+| **30 days (preorder)** | **0.10** | **Pre-orders, same window** |
 
-**50% of V1's signal comes from the last 30 days.** The effective weighted look-back is ≈ 34 calendar days. At cutoff 2026-03-30, that means V1 is essentially forecasting from late-February/March velocity.
+The 30-day window (sales + preorder combined) carries **40% of V1's total weight** — by far the single largest contribution. The effective weighted look-back across all windows is ≈ 34 calendar days. At cutoff 2026-03-30, V1 is anchored primarily to March velocity.
 
 The statistical models (AutoETS, AutoARIMA, WindowAverage) minimize historical loss across the full training window. Even after the final refit at 2026-03-30, an AutoETS state-space model carries inertia from Q4 2025 levels. WindowAverage(8) does average the last 8 weeks but weights them equally, so older weeks (Feb) carry the same weight as March.
 

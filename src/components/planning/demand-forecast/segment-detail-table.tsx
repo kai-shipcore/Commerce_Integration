@@ -103,6 +103,16 @@ const PAGE_SIZE_OPTIONS = [50, 100, 200];
 const WEEK_OPTIONS = [4, 8, 10, 13, 26, 52];
 const PRODUCT_TYPES = ["Car Cover", "Seat Cover", "Floor Mat"] as const;
 
+// DB conformal level → display label (upper bound of the interval)
+const LEVEL_OPTIONS: { value: number; label: string }[] = [
+  { value: 40, label: "P70" },
+  { value: 60, label: "P80" },
+  { value: 70, label: "P85" },
+  { value: 80, label: "P90" },
+  { value: 90, label: "P95" },
+];
+const levelLabel = (level: number) => LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? `P?`;
+
 function ToggleBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -569,11 +579,13 @@ function AccuracyCards({
   periodStart,
   periodEnd,
   weeks,
+  intervalLabel,
 }: {
   rows: SmoothRow[];
   periodStart: string;
   periodEnd: string;
   weeks: number;
+  intervalLabel: string;
 }) {
   const withDemand  = rows.filter((r) => r.demand_total > 0);
   const totalDemand = withDemand.reduce((s, r) => s + r.demand_total, 0);
@@ -645,7 +657,7 @@ function AccuracyCards({
 
         {withPI.length > 0 && (
           <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">{pick("P70 커버리지", "P70 Coverage")}</p>
+            <p className="text-xs font-medium text-muted-foreground">{pick(`${intervalLabel} 커버리지`, `${intervalLabel} Coverage`)}</p>
             <p className={`text-2xl font-semibold tabular-nums ${coverageColor}`}>
               {coverage !== null ? `${Math.round(coverage * 100)}%` : "—"}
             </p>
@@ -732,6 +744,58 @@ function V1ComparisonCards({ rows }: { rows: SmoothRow[] }) {
   );
 }
 
+function ConfidenceLevelTip() {
+  const { pick } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className="inline-flex items-center text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          tabIndex={-1}
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="start" className="w-80 p-3 text-xs leading-relaxed space-y-2">
+        <p className="font-medium text-foreground">{pick("신뢰 수준이란?", "What is the confidence level?")}</p>
+        <p className="text-muted-foreground">
+          {pick(
+            "예측 구간의 상한을 기준으로 실제 수요가 그 범위 안에 들어올 확률입니다. 예를 들어 P85는 실제 수요가 상한값 이하일 확률이 85%임을 의미합니다.",
+            "The probability that actual demand falls at or below the upper bound. P85 means there is an 85% chance actual demand is at or below the High value.",
+          )}
+        </p>
+        <table className="w-full border-collapse text-[11px]">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="pb-1 text-left font-medium text-muted-foreground">{pick("수준", "Level")}</th>
+              <th className="pb-1 text-left font-medium text-muted-foreground">{pick("구간 폭", "Interval width")}</th>
+              <th className="pb-1 text-left font-medium text-muted-foreground">{pick("상한 확률", "P(demand ≤ High)")}</th>
+            </tr>
+          </thead>
+          <tbody className="text-muted-foreground">
+            {LEVEL_OPTIONS.map((opt) => (
+              <tr key={opt.value} className="border-b border-border/40 last:border-0">
+                <td className="py-0.5 font-mono font-medium text-foreground">{opt.label}</td>
+                <td className="py-0.5">{pick(`중간 ${opt.value}%`, `Central ${opt.value}%`)}</td>
+                <td className="py-0.5">{opt.label.replace("P", "")}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-muted-foreground/70">
+          {pick(
+            "높을수록 구간이 넓어지고 보수적인 계획에 적합합니다.",
+            "Higher levels produce wider intervals and are better suited for conservative planning.",
+          )}
+        </p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ConfidenceHeaderTip() {
   const { pick } = useI18n();
   const [open, setOpen] = useState(false);
@@ -765,12 +829,12 @@ function SmoothTable({
   mode,
   forecastRunDate,
   initialSku,
-  showV1Forecast,
-  setShowV1Forecast,
-  showV1Wape,
-  setShowV1Wape,
-  showV1Diff,
-  setShowV1Diff,
+  showLo, setShowLo,
+  showPt, setShowPt,
+  showHi, setShowHi,
+  showV1Forecast, setShowV1Forecast,
+  showV1Wape, setShowV1Wape,
+  showV1Diff, setShowV1Diff,
 }: {
   segment: string;
   rows: SmoothRow[];
@@ -778,12 +842,12 @@ function SmoothTable({
   mode: string;
   forecastRunDate?: string | null;
   initialSku?: string;
-  showV1Forecast: boolean;
-  setShowV1Forecast: (v: boolean) => void;
-  showV1Wape: boolean;
-  setShowV1Wape: (v: boolean) => void;
-  showV1Diff: boolean;
-  setShowV1Diff: (v: boolean) => void;
+  showLo: boolean; setShowLo: (v: boolean) => void;
+  showPt: boolean; setShowPt: (v: boolean) => void;
+  showHi: boolean; setShowHi: (v: boolean) => void;
+  showV1Forecast: boolean; setShowV1Forecast: (v: boolean) => void;
+  showV1Wape: boolean;     setShowV1Wape: (v: boolean) => void;
+  showV1Diff: boolean;     setShowV1Diff: (v: boolean) => void;
 }) {
   const router = useRouter();
   const { pick } = useI18n();
@@ -796,9 +860,6 @@ function SmoothTable({
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage]         = useState(0);
   const [skuSearch, setSkuSearch] = useState(initialSku ?? "");
-  const [showLo, setShowLo]       = useState(false);
-  const [showPt, setShowPt]       = useState(true);
-  const [showHi, setShowHi]       = useState(false);
   const [colsOpen, setColsOpen]   = useState(false);
 
   useEffect(() => {
@@ -1296,12 +1357,16 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
 
   const [weeks, setWeeks]                 = useState(isIntermittent ? 13 : 10);
   const [customInput, setCustomInput]     = useState("");
+  const [level, setLevel]                 = useState(70); // DB conformal level; display label via levelLabel()
   const [mode, setMode]                   = useState<"forward" | "backtest" | "simulation">("forward");
   const [cycles, setCycles]               = useState<BacktestCycle[]>([]);
   const [cyclesLoading, setCyclesLoading] = useState(false);
   const [evalDate, setEvalDate]           = useState<string>("");
   const [testMode, setTestMode]           = useState(false);
   const testModeRef = React.useRef(testMode);
+  const [showLo, setShowLo]                 = useState(false);
+  const [showPt, setShowPt]                 = useState(true);
+  const [showHi, setShowHi]                 = useState(false);
   const [showV1Forecast, setShowV1Forecast] = useState(false);
   const [showV1Wape, setShowV1Wape]         = useState(false);
   const [showV1Diff, setShowV1Diff]         = useState(false);
@@ -1416,7 +1481,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
     if (mode === "backtest" && (!evalDate || cyclesLoading)) return; // wait for cycle load + selection
     const allSelected = selectedTypes.length === PRODUCT_TYPES.length;
     const productType = allSelected ? "All" : selectedTypes.join(",");
-    const params = new URLSearchParams({ weeks: String(weeks), product_type: productType, mode });
+    const params = new URLSearchParams({ weeks: String(weeks), product_type: productType, mode, level: String(level) });
     if (mode === "backtest" && evalDate) params.set("eval_date", evalDate);
     if (mode === "backtest" && testModeRef.current) params.set("test", "true");
     const controller = new AbortController();
@@ -1429,7 +1494,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
       .catch((err: Error) => { if (err.name !== "AbortError") setError(err.message); });
     return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segment, weeks, mode, evalDate, selectedTypes]);
+  }, [segment, weeks, mode, evalDate, selectedTypes, level]);
 
   return (
     <div className="space-y-3">
@@ -1552,6 +1617,31 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
           </div>
         )}
 
+        {/* Confidence level selector — smooth segments only */}
+        {!isIntermittent && (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+              {pick("신뢰 수준:", "Confidence level:")}
+              <ConfidenceLevelTip />
+            </span>
+            <div className="flex gap-1">
+              {LEVEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setLevel(opt.value)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                    level === opt.value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Product type filters */}
         <div className="flex items-center gap-2">
           <span className="w-28 shrink-0 text-sm text-muted-foreground">{pick("제품 유형:", "Product type:")}</span>
@@ -1614,6 +1704,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
           periodStart={data.period_start}
           periodEnd={data.period_end}
           weeks={data.weeks}
+          intervalLabel={levelLabel(level)}
         />
       )}
 
@@ -1626,7 +1717,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
       )}
 
       {mode !== "simulation" && data && !isIntermittent && (
-        <SmoothTable segment={segment} rows={data.skus as SmoothRow[]} weeks={data.weeks} mode={data.mode} forecastRunDate={data.forecast_run_date} initialSku={initialSku} showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
+        <SmoothTable segment={segment} rows={data.skus as SmoothRow[]} weeks={data.weeks} mode={data.mode} forecastRunDate={data.forecast_run_date} initialSku={initialSku} showLo={showLo} setShowLo={setShowLo} showPt={showPt} setShowPt={setShowPt} showHi={showHi} setShowHi={setShowHi} showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
       )}
 
       {/* Simulation display */}
@@ -1657,11 +1748,12 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
             periodStart={simData.period_start}
             periodEnd={simData.period_end}
             weeks={simData.weeks}
+            intervalLabel={levelLabel(level)}
           />
           {segment !== "smooth_short" && (showV1Wape || showV1Diff) && (
             <V1ComparisonCards rows={simData.skus as SmoothRow[]} />
           )}
-          <SmoothTable segment={segment} rows={simData.skus as SmoothRow[]} weeks={simData.weeks} mode="simulation" showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
+          <SmoothTable segment={segment} rows={simData.skus as SmoothRow[]} weeks={simData.weeks} mode="simulation" showLo={showLo} setShowLo={setShowLo} showPt={showPt} setShowPt={setShowPt} showHi={showHi} setShowHi={setShowHi} showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
         </>
       )}
     </div>
