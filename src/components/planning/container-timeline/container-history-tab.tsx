@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Calendar, CheckCircle2, Clock, MessageSquare, Package, Pencil, Plus, PlusCircle, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath } from "@/lib/api-path";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 import type { ContainerAuditAction } from "@/lib/container-audit";
 
 interface AuditEntry {
@@ -16,6 +17,8 @@ interface AuditEntry {
   after: Record<string, unknown> | null;
   note: string | null;
   createdAt: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
 }
 
 function dateInputValue(date: Date): string {
@@ -170,11 +173,38 @@ function BeforeAfter({ action, before, after }: Pick<AuditEntry, "action" | "bef
   return null;
 }
 
-function HistoryEntry({ entry }: { entry: AuditEntry }) {
+interface HistoryEntryProps {
+  entry: AuditEntry;
+  canManageNotes: boolean;
+  editingNoteId: string | null;
+  editNoteText: string;
+  savingNoteId: string | null;
+  onStartEdit: (entry: AuditEntry) => void;
+  onCancelEdit: () => void;
+  onEditTextChange: (value: string) => void;
+  onSaveNote: (noteId: string) => void;
+  onDeleteNote: (noteId: string) => void;
+}
+
+function HistoryEntry({
+  entry,
+  canManageNotes,
+  editingNoteId,
+  editNoteText,
+  savingNoteId,
+  onStartEdit,
+  onCancelEdit,
+  onEditTextChange,
+  onSaveNote,
+  onDeleteNote,
+}: HistoryEntryProps) {
   const { pick } = useI18n();
   const { date, time } = formatTs(entry.createdAt);
   const userLabel = entry.userName ?? entry.userEmail ?? pick("알 수 없음", "Unknown");
   const userInitials = initials(entry.userName, entry.userEmail);
+  const isManualNote = entry.action === "note_added";
+  const isEditing = isManualNote && editingNoteId === entry.id;
+  const isSavingThisNote = savingNoteId === entry.id;
 
   const actionLabel = (() => {
     switch (entry.action) {
@@ -246,10 +276,43 @@ function HistoryEntry({ entry }: { entry: AuditEntry }) {
           <span className="text-[10px] text-stone-400">{date} · {time}</span>
           <span className="text-[12px] font-semibold text-[#1a1917]">{actionLabel}</span>
         </div>
-        {subLabel && (
+        {isEditing ? (
+          <div className="mt-2">
+            <textarea
+              value={editNoteText}
+              onChange={(e) => onEditTextChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onSaveNote(entry.id); }}
+              rows={3}
+              className="w-full resize-none rounded-md border border-[#d1c9be] bg-white px-3 py-2 text-[12px] leading-relaxed outline-none placeholder:text-stone-400 focus:border-[#1a5cdb] focus:ring-1 focus:ring-[#1a5cdb]/20"
+            />
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                disabled={isSavingThisNote}
+                className="px-3 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              >
+                {pick("취소", "Cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSaveNote(entry.id)}
+                disabled={!editNoteText.trim() || isSavingThisNote}
+                className="rounded-md bg-[#1a5cdb] px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#1650c4] disabled:opacity-50"
+              >
+                {isSavingThisNote ? pick("저장 중...", "Saving...") : pick("저장", "Save")}
+              </button>
+            </div>
+          </div>
+        ) : subLabel && (
           <div className="mt-0.5 text-[11px] leading-relaxed text-stone-500">
-            {entry.action === "note_added" ? (
-              <span className="italic">"{subLabel}"</span>
+            {isManualNote ? (
+              <>
+                <span className="italic">&quot;{subLabel}&quot;</span>
+                {entry.updatedAt && (
+                  <span className="ml-2 text-[10px] text-stone-400">{pick("수정됨", "Edited")}</span>
+                )}
+              </>
             ) : (
               subLabel
             )}
@@ -259,17 +322,53 @@ function HistoryEntry({ entry }: { entry: AuditEntry }) {
 
       {/* Before / After */}
       {beAfter && <div className="shrink-0 pl-2">{beAfter}</div>}
+
+      {isManualNote && canManageNotes && !isEditing && (
+        <div className="flex shrink-0 items-center gap-1 pl-2">
+          <button
+            type="button"
+            onClick={() => onStartEdit(entry)}
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-stone-500 transition-colors hover:border-[#d1c9be] hover:bg-[#f5f4f0] hover:text-[#1a1917]"
+            aria-label={pick("메모 수정", "Edit note")}
+            title={pick("메모 수정", "Edit note")}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDeleteNote(entry.id)}
+            disabled={isSavingThisNote}
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-stone-500 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            aria-label={pick("메모 삭제", "Delete note")}
+            title={pick("메모 삭제", "Delete note")}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 export function ContainerHistoryTab({ containerId }: { containerId: string }) {
   const { pick } = useI18n();
+  const { can, ready: permissionsReady } = usePermissions();
+  const canManageNotes = permissionsReady && (
+    can("container-planning", "edit") ||
+    can("container-timeline", "edit")
+  );
+  const canAddNotes = permissionsReady && (
+    can("container-planning", "create") ||
+    can("container-timeline", "create")
+  );
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNote, setShowNote] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteText, setEditNoteText] = useState("");
+  const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState("");
   const [startDate, setStartDate] = useState(defaultHistoryStartDate);
   const [endDate, setEndDate] = useState(() => dateInputValue(new Date()));
@@ -294,6 +393,7 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setEntries([]);
     fetchEntries();
@@ -321,6 +421,58 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  function handleStartEdit(entry: AuditEntry) {
+    setEditingNoteId(entry.id);
+    setEditNoteText(entry.note ?? "");
+  }
+
+  function handleCancelEdit() {
+    setEditingNoteId(null);
+    setEditNoteText("");
+  }
+
+  async function handleUpdateNote(noteId: string) {
+    const note = editNoteText.trim();
+    if (!note || savingNoteId) return;
+
+    setSavingNoteId(noteId);
+    try {
+      const res = await fetch(apiPath(`/api/containers/${containerId}/history`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noteId, note }),
+      });
+      if (!res.ok) throw new Error("Failed to update note");
+      handleCancelEdit();
+      setLoading(true);
+      fetchEntries();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingNoteId(null);
+    }
+  }
+
+  async function handleDeleteNote(noteId: string) {
+    if (savingNoteId) return;
+    if (!window.confirm(pick("메모를 삭제하시겠습니까?", "Delete this note?"))) return;
+
+    setSavingNoteId(noteId);
+    try {
+      const res = await fetch(apiPath(`/api/containers/${containerId}/history?noteId=${encodeURIComponent(noteId)}`), {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete note");
+      if (editingNoteId === noteId) handleCancelEdit();
+      setLoading(true);
+      fetchEntries();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingNoteId(null);
     }
   }
 
@@ -370,18 +522,20 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
             <option value="delete">{pick("삭제", "Delete")}</option>
           </select>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowNote((v) => !v)}
-          className="flex items-center gap-1 rounded-md border border-[#d1c9be] px-2.5 py-1 text-[11px] font-semibold text-[#4a3f33] transition-colors hover:bg-[#f5f4f0]"
-        >
-          <Plus className="h-3 w-3" />
-          {pick("메모 추가", "Add note")}
-        </button>
+        {canAddNotes && (
+          <button
+            type="button"
+            onClick={() => setShowNote((v) => !v)}
+            className="flex items-center gap-1 rounded-md border border-[#d1c9be] px-2.5 py-1 text-[11px] font-semibold text-[#4a3f33] transition-colors hover:bg-[#f5f4f0]"
+          >
+            <Plus className="h-3 w-3" />
+            {pick("메모 추가", "Add note")}
+          </button>
+        )}
       </div>
 
       {/* Note textarea */}
-      {showNote && (
+      {showNote && canAddNotes && (
         <div className="shrink-0 border-b border-[#e2dfd8] bg-[#fafaf7] px-6 py-3">
           <textarea
             ref={textareaRef}
@@ -428,7 +582,19 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
         ) : (
           <div className="divide-y divide-[#f0ede7]">
             {entries.map((entry) => (
-              <HistoryEntry key={entry.id} entry={entry} />
+              <HistoryEntry
+                key={entry.id}
+                entry={entry}
+                canManageNotes={canManageNotes}
+                editingNoteId={editingNoteId}
+                editNoteText={editNoteText}
+                savingNoteId={savingNoteId}
+                onStartEdit={handleStartEdit}
+                onCancelEdit={handleCancelEdit}
+                onEditTextChange={setEditNoteText}
+                onSaveNote={(noteId) => void handleUpdateNote(noteId)}
+                onDeleteNote={(noteId) => void handleDeleteNote(noteId)}
+              />
             ))}
           </div>
         )}

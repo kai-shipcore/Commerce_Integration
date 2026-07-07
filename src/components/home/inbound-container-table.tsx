@@ -8,8 +8,9 @@ const DASHBOARD_LIST_ROW_HEIGHT = "h-9";
 
 export interface InboundContainer {
   name: string;
-  estLoading: string | null;
   eta: string | null;
+  confirmedDate: string | null;
+  confirmedTime: string | null;
   qty: number;
   status: string;
   skuCount: number;
@@ -28,6 +29,11 @@ function formatDate(value: string | null) {
   return value
     ? new Date(value).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" })
     : "—";
+}
+
+function formatConfirmed(date: string | null, time: string | null) {
+  if (!date) return "—";
+  return `${formatDate(date)}${time ? ` ${time}` : ""}`;
 }
 
 export function InboundContainerTable({ items, loading }: Props) {
@@ -55,9 +61,9 @@ export function InboundContainerTable({ items, loading }: Props) {
         <thead>
           <tr className="border-b text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             <th className="pb-2 text-left">{pick("컨테이너", "Container")}</th>
-            <th className="pb-2 text-center">Est.Loading</th>
-            <th className="pb-2 text-center">ETA</th>
             <th className="pb-2 text-right">SKU</th>
+            <th className="pb-2 text-center">ETA</th>
+            <th className="pb-2 text-center">{pick("입고 확정", "Confirmed")}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#f0eee9] dark:divide-zinc-700/50">
@@ -73,14 +79,14 @@ export function InboundContainerTable({ items, loading }: Props) {
                     {item.name}
                   </Link>
                 </td>
-                <td className="py-2 text-center tabular-nums text-muted-foreground">
-                  {formatDate(item.estLoading)}
+                <td className="py-2 text-right tabular-nums text-muted-foreground">
+                  {item.skuCount}
                 </td>
                 <td className={`py-2 text-center tabular-nums ${isPast ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
                   {formatDate(item.eta)}
                 </td>
-                <td className="py-2 text-right tabular-nums text-muted-foreground">
-                  {item.skuCount}
+                <td className="py-2 text-center tabular-nums text-muted-foreground">
+                  {formatConfirmed(item.confirmedDate, item.confirmedTime)}
                 </td>
               </tr>
             );

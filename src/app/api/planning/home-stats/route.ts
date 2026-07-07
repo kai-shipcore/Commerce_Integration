@@ -12,7 +12,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
-const CACHE_KEY = "home:planning-stats:v27";
+const CACHE_KEY = "home:planning-stats:v28";
 const CACHE_TTL = 10 * 60; // 10 minutes
 
 function getErrorMessage(e: unknown) {
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
 
     // ── Row types ──────────────────────────────────────────────────────────────
     type SyncRow       = { last_sync: string | null };
-    type ContainerRow  = { name: string; est_loading: string | null; eta: string | null; total_qty: string; status: string; cbm_capacity: string | null; used_cbm: string; sku_count: string };
+    type ContainerRow  = { name: string; eta: string | null; confirmed_date: string | null; confirmed_time: string | null; total_qty: string; status: string; cbm_capacity: string | null; used_cbm: string; sku_count: string };
     type SalesRow      = { qty: string; revenue: string };
     type PartSkuRow    = { sku: string };
     type PartBackRow   = { sku: string; back: number };
@@ -154,8 +154,9 @@ export async function GET(req: NextRequest) {
       pool.query<ContainerRow>(`
         SELECT
           c.container_number                                    AS name,
-          c.est_loading_date::text                              AS est_loading,
           c.eta_date::text                                      AS eta,
+          c.confirmed_date::text                                AS confirmed_date,
+          c.confirmed_time::text                                AS confirmed_time,
           c.status,
           COALESCE(c.cbm_capacity, 0)::text                    AS cbm_capacity,
           COALESCE(SUM(ci.qty), 0)::text                       AS total_qty,
@@ -165,7 +166,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN shipcore.fc_container_items ci ON ci.container_id = c.id
         WHERE c.status NOT IN ('complete')
           AND (c.eta_date IS NULL OR c.eta_date >= CURRENT_DATE - INTERVAL '14 days')
-        GROUP BY c.id, c.container_number, c.est_loading_date, c.eta_date, c.status, c.cbm_capacity
+        GROUP BY c.id, c.container_number, c.eta_date, c.confirmed_date, c.confirmed_time, c.status, c.cbm_capacity
         ORDER BY c.eta_date ASC NULLS LAST
         LIMIT 10
       `),
@@ -453,8 +454,9 @@ export async function GET(req: NextRequest) {
     // ── inboundContainers ─────────────────────────────────────────────────────
     const containers = containersResult.rows.map((r) => ({
       name:        r.name,
-      estLoading:  r.est_loading ?? null,
       eta:         r.eta ?? null,
+      confirmedDate: r.confirmed_date ?? null,
+      confirmedTime: r.confirmed_time ? r.confirmed_time.slice(0, 5) : null,
       qty:         parseInt(r.total_qty     ?? "0", 10),
       status:      r.status,
       cbmCapacity: parseFloat(r.cbm_capacity ?? "0"),

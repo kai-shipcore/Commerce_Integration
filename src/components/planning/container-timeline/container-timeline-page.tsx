@@ -9,6 +9,7 @@ import { ContainerHistoryTab } from "./container-history-tab";
 import * as XLSX from "xlsx";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath, withBasePath } from "@/lib/api-path";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 import type { DemandPlanningData, DemandRow } from "@/types/demand-planning";
 import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-forecasts/types";
 
@@ -244,7 +245,8 @@ const fmtMonthYear = (d: Date) => d.toLocaleDateString("en-US", { month: "long",
 
 function containerScheduleDate(container: Container): string | null {
   if (container.confirmedDate) return container.confirmedDate;
-  return container.etaLaxLgbDate;
+  if (container.etaLaxLgbDate) return container.etaLaxLgbDate;
+  return container.etaDate;
 }
 
 function formatTime12h(time: string | null): string | null {
@@ -360,6 +362,7 @@ function buildMonths(rangeStart: Date, totalDays: number): MonthSegment[] {
 
 export function ContainerTimelinePage() {
   const { pick } = useI18n();
+  const { can, ready: permissionsReady } = usePermissions();
   const searchParams = useSearchParams();
   const initialContainerName = searchParams.get("container");
   const didAutoSelect = useRef(false);
@@ -406,6 +409,7 @@ export function ContainerTimelinePage() {
     return isTimelineViewMode(saved) ? saved : "compact";
   });
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
+  const canEditTimeline = permissionsReady && can("container-timeline", "edit");
 
   useEffect(() => {
     let cancelled = false;
@@ -437,7 +441,7 @@ export function ContainerTimelinePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pick]);
 
   useEffect(() => {
     if (!dbPrefsLoaded) return;
@@ -506,7 +510,7 @@ export function ContainerTimelinePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pick]);
 
   // Auto-select container from ?container=NAME URL param
   useEffect(() => {
@@ -515,6 +519,7 @@ export function ContainerTimelinePage() {
       (c) => c.containerNumber.toLowerCase() === initialContainerName.toLowerCase()
     );
     if (match) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelected(match);
       didAutoSelect.current = true;
     }
@@ -589,7 +594,7 @@ export function ContainerTimelinePage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedPlanningScope]);
+  }, [pick, selectedPlanningScope]);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -746,6 +751,10 @@ export function ContainerTimelinePage() {
   }, [searchQuery, productFilter, activeStatuses]);
 
   async function moveContainerToDate(containerId: string, newDate: string) {
+    if (!canEditTimeline) {
+      toast.error(pick("컨테이너 타임라인 수정 권한이 없습니다.", "Container Timeline edit access is required."));
+      return;
+    }
     const container = containers.find((c) => c.id === containerId);
     if (!container) return;
     if (containerScheduleDate(container) === newDate) return;
@@ -1086,6 +1095,7 @@ export function ContainerTimelinePage() {
             setSelected={setSelected}
             today={today}
             pick={pick}
+            canDragDrop={canEditTimeline}
             onMoveContainer={moveContainerToDate}
           />
         )}
@@ -1384,7 +1394,6 @@ export function ContainerTimelinePage() {
 
 function CalendarDayCell({
   date,
-  dateKey,
   isCurrentMonth,
   isToday,
   isSat,
@@ -1393,10 +1402,10 @@ function CalendarDayCell({
   selected,
   setSelected,
   pick,
+  canDragDrop,
   onDropContainer,
 }: {
   date: Date;
-  dateKey: string;
   isCurrentMonth: boolean;
   isToday: boolean;
   isSat: boolean;
@@ -1405,6 +1414,7 @@ function CalendarDayCell({
   selected: Container | null;
   setSelected: (c: Container | null) => void;
   pick: (ko: string, en: string) => string;
+  canDragDrop: boolean;
   onDropContainer: (containerId: string) => void;
 }) {
   const MAX_VISIBLE = 4;
@@ -1419,11 +1429,13 @@ function CalendarDayCell({
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    if (!canDragDrop) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
   }
 
   function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    if (!canDragDrop) return;
     event.preventDefault();
     dragCounter.current += 1;
     setDragOver(true);
@@ -1435,6 +1447,7 @@ function CalendarDayCell({
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
+    if (!canDragDrop) return;
     event.preventDefault();
     dragCounter.current = 0;
     setDragOver(false);
@@ -1510,14 +1523,15 @@ function CalendarDayCell({
             <button
               key={c.id}
               type="button"
-              draggable
+              draggable={canDragDrop}
               onDragStart={(event) => {
+                if (!canDragDrop) return;
                 event.dataTransfer.setData("text/plain", c.id);
                 event.dataTransfer.effectAllowed = "move";
               }}
               onClick={() => setSelected(isSelected ? null : c)}
               title={`${c.containerNumber} · ${STATUS_LABEL_FULL[c.status]}${c.confirmedDate ? ` · ${pick("확정", "Confirmed")} ${c.confirmedDate}${c.confirmedTime ? ` ${c.confirmedTime}` : ""}${c.destWarehouse ? ` · ${c.destWarehouse}` : ""}` : ""}`}
-              className={`flex w-full cursor-grab items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity active:cursor-grabbing hover:opacity-90 ${
+              className={`flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity hover:opacity-90 ${canDragDrop ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
                 isSelected ? "ring-2 ring-white ring-offset-1" : ""
               }`}
               style={{ backgroundColor: STATUS_COLOR[c.status] }}
@@ -1572,8 +1586,9 @@ function CalendarDayCell({
                 <button
                   key={c.id}
                   type="button"
-                  draggable
+                  draggable={canDragDrop}
                   onDragStart={(event) => {
+                    if (!canDragDrop) return;
                     event.dataTransfer.setData("text/plain", c.id);
                     event.dataTransfer.effectAllowed = "move";
                     setPopupOpen(false);
@@ -1582,7 +1597,7 @@ function CalendarDayCell({
                     setSelected(isSelected ? null : c);
                     setPopupOpen(false);
                   }}
-                  className={`flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-2 text-left text-white transition-opacity active:cursor-grabbing hover:opacity-90 ${
+                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-white transition-opacity hover:opacity-90 ${canDragDrop ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
                     isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-white" : ""
                   }`}
                   style={{ backgroundColor: STATUS_COLOR[c.status] }}
@@ -1620,6 +1635,7 @@ function CalendarMonthView({
   setSelected,
   today,
   pick,
+  canDragDrop,
   onMoveContainer,
 }: {
   containers: Container[];
@@ -1630,6 +1646,7 @@ function CalendarMonthView({
   setSelected: (c: Container | null) => void;
   today: Date;
   pick: (ko: string, en: string) => string;
+  canDragDrop: boolean;
   onMoveContainer: (containerId: string, newDate: string) => void;
 }) {
   const year = calendarMonth.getFullYear();
@@ -1744,7 +1761,6 @@ function CalendarMonthView({
               <CalendarDayCell
                 key={di}
                 date={date}
-                dateKey={dateKey}
                 isCurrentMonth={date.getMonth() === month}
                 isToday={dateKey === todayKey}
                 isSat={di === 5}
@@ -1753,6 +1769,7 @@ function CalendarMonthView({
                 selected={selected}
                 setSelected={setSelected}
                 pick={pick}
+                canDragDrop={canDragDrop}
                 onDropContainer={(containerId) => onMoveContainer(containerId, dateKey)}
               />
             );
@@ -1979,6 +1996,7 @@ function ContainerDetailDrawer({
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveTab("sku");
   }, [c.id]);
   const totalCbm = c.items.reduce((sum, item) => sum + item.qty * item.cbm, 0);

@@ -398,12 +398,20 @@ export async function PATCH(request: NextRequest) {
   const ip = getRequestIp(request);
 
   try {
-    if (session?.user?.id) {
-      const allowed = await canDo(session.user.id, (session.user.role as string) ?? "user", "container-planning", "edit");
-      if (!allowed) return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
-    }
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id")?.trim();
+    const isTimelineDatePatch =
+      searchParams.get("confirmedOnly") === "true" ||
+      searchParams.get("etaLaxLgbOnly") === "true";
+
+    if (session?.user?.id) {
+      const role = (session.user.role as string) ?? "user";
+      const allowed = isTimelineDatePatch
+        ? (await canDo(session.user.id, role, "container-timeline", "edit")) ||
+          (await canDo(session.user.id, role, "container-planning", "edit"))
+        : await canDo(session.user.id, role, "container-planning", "edit");
+      if (!allowed) return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
+    }
 
     if (!id) {
       return NextResponse.json(
