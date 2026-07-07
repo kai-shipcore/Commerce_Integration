@@ -313,6 +313,7 @@ export function ContainerPlanningPage() {
   const { pick } = useI18n();
   const { data: session } = useSession();
   const { can } = usePermissions();
+  const canEditContainers = can("container-planning", "edit");
   const canDeleteContainers = can("container-planning", "delete");
   const searchParams = useSearchParams();
   const targetContainerId = searchParams.get("containerId");
@@ -329,6 +330,7 @@ export function ContainerPlanningPage() {
   const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
   const [savingContainer, setSavingContainer] = useState(false);
   const [statusModalContainerId, setStatusModalContainerId] = useState<string | null>(null);
+  const [bulkStatusModalOpen, setBulkStatusModalOpen] = useState(false);
   const [availableStockContainerId, setAvailableStockContainerId] = useState<string | null>(null);
   const [form, setForm] = useState<ContainerFormState>(defaultFormState);
   const [draftItems, setDraftItems] = useState<ContainerItem[]>([]);
@@ -1118,7 +1120,7 @@ export function ContainerPlanningPage() {
   }
 
   async function changeContainerStatus(containerId: string, newStatus: ContainerStatus) {
-    if (!can("container-planning", "status")) {
+    if (!canEditContainers) {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       setStatusModalContainerId(null);
       return;
@@ -1154,6 +1156,83 @@ export function ContainerPlanningPage() {
       setExpandedId(containerId);
     } catch {
       toast.error(pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
+    }
+  }
+
+  async function changeSelectedContainerStatus(newStatus: ContainerStatus) {
+    if (!canEditContainers) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      setBulkStatusModalOpen(false);
+      return;
+    }
+
+    const targetContainers = selectedExportContainers.filter((container) => container.status !== newStatus);
+    setBulkStatusModalOpen(false);
+
+    if (targetContainers.length === 0) {
+      toast.info(pick("선택한 컨테이너가 이미 해당 상태입니다.", "Selected containers already have that status."));
+      return;
+    }
+
+    setSavingContainer(true);
+    try {
+      const results: Array<{ ok: boolean; id: string; error?: string }> = [];
+
+      for (const container of targetContainers) {
+        if (!/^\d+$/.test(container.id)) {
+          results.push({ ok: true, id: container.id });
+          continue;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+
+        try {
+          const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(container.id)}`), {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus }),
+            signal: controller.signal,
+          });
+          const json = await response.json().catch(() => null) as { success?: boolean; error?: string } | null;
+          results.push({ ok: response.ok && Boolean(json?.success), id: container.id, error: json?.error });
+        } catch (error) {
+          results.push({
+            ok: false,
+            id: container.id,
+            error: error instanceof DOMException && error.name === "AbortError" ? "Request timed out" : undefined,
+          });
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      }
+
+      const successCount = results.filter((result) => result.ok).length;
+      const failedCount = results.length - successCount;
+
+      await fetchContainers();
+      if (successCount > 0) {
+        setExportContainerIds([]);
+      }
+      setExpandedId((current) =>
+        current && targetContainers.some((container) => container.id === current)
+          ? current
+          : targetContainers[0]?.id ?? current
+      );
+
+      if (failedCount === 0) {
+        toast.success(pick(
+          `${successCount}개 컨테이너 상태를 변경했습니다.`,
+          `Updated ${successCount} container status${successCount === 1 ? "" : "es"}.`
+        ));
+      } else {
+        toast.error(pick(
+          `${successCount}개 변경 완료, ${failedCount}개 실패했습니다.`,
+          `Updated ${successCount}, failed ${failedCount}.`
+        ));
+      }
+    } finally {
+      setSavingContainer(false);
     }
   }
 
@@ -1944,6 +2023,15 @@ export function ContainerPlanningPage() {
           >
             {pick("Excel 내보내기", "Excel Export")}{selectedExportContainers.length > 0 ? ` (${selectedExportContainers.length})` : ""}
           </button>
+          <button
+            type="button"
+            onClick={() => setBulkStatusModalOpen(true)}
+            disabled={selectedExportContainers.length === 0 || !canEditContainers || savingContainer}
+            title={!canEditContainers ? pick("컨테이너 수정 권한이 필요합니다.", "Container edit permission is required.") : undefined}
+            className="rounded-md border border-[#cccac4] bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-[#f0eee9] disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-900"
+          >
+            {pick("상태 일괄 변경", "Bulk Status")}{selectedExportContainers.length > 0 ? ` (${selectedExportContainers.length})` : ""}
+          </button>
         </div>
       </header>
 
@@ -2303,7 +2391,7 @@ export function ContainerPlanningPage() {
                 onRemoveAvailableAllocation={removeAvailableStockAllocation}
                 onRemoveAvailableAllocations={removeAvailableStockAllocations}
                 canDeleteContainers={canDeleteContainers}
-                canRevertStatus={can("container-planning", "status")}
+                canRevertStatus={canEditContainers}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
@@ -2339,6 +2427,14 @@ export function ContainerPlanningPage() {
           confirmedTime={containers.find((c) => c.id === statusModalContainerId)?.confirmedTime ?? null}
           destWarehouseName={containers.find((c) => c.id === statusModalContainerId)?.destination ?? null}
           onSaveConfirmed={(date, time) => saveConfirmedDelivery(statusModalContainerId, date, time)}
+        />
+      ) : null}
+      {bulkStatusModalOpen ? (
+        <BulkStatusChangeModal
+          containers={selectedExportContainers}
+          saving={savingContainer}
+          onConfirm={(newStatus) => void changeSelectedContainerStatus(newStatus)}
+          onClose={() => setBulkStatusModalOpen(false)}
         />
       ) : null}
       {availableStockContainerId ? (
@@ -4105,6 +4201,106 @@ function StatusBadge({ status }: { status: ContainerStatus }) {
       <span className="text-center text-xs font-medium text-foreground">
         {statusWorkflowLabels[status]}
       </span>
+    </div>
+  );
+}
+
+function BulkStatusChangeModal({
+  containers,
+  saving,
+  onConfirm,
+  onClose,
+}: {
+  containers: MockContainer[];
+  saving: boolean;
+  onConfirm: (newStatus: ContainerStatus) => void;
+  onClose: () => void;
+}) {
+  const { pick } = useI18n();
+  const statusCounts = useMemo(() => {
+    const counts = new Map<ContainerStatus, number>();
+    for (const option of statusOptions) counts.set(option.value, 0);
+    for (const container of containers) {
+      counts.set(container.status, (counts.get(container.status) ?? 0) + 1);
+    }
+    return counts;
+  }, [containers]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={saving ? undefined : onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl border border-[#e2dfd8] bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-950"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold">{pick("상태 일괄 변경", "Bulk Status Change")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {pick(`${containers.length}개 컨테이너의 상태를 한 번에 변경합니다.`, `Change the status for ${containers.length} selected container(s).`)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-md border border-[#cccac4] px-2 py-1 text-xs font-medium hover:bg-[#f0eee9] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-900"
+          >
+            {pick("닫기", "Close")}
+          </button>
+        </div>
+
+        <div className="mb-5 rounded-lg border border-[#e2dfd8] bg-[#f5f4f0] p-3 dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-2 text-xs font-semibold text-muted-foreground">
+            {pick("현재 상태 분포", "Current Status")}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {statusOptions.map((status) => (
+              <div
+                key={status.value}
+                className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md bg-white px-3 py-2 text-xs dark:bg-slate-950"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: statusColors[status.value] }} />
+                  <span className="truncate font-medium">{containerStatusLabels[status.value]}</span>
+                </div>
+                <div className="min-w-8 text-right font-mono text-sm font-semibold">{statusCounts.get(status.value) ?? 0}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-muted-foreground">
+            {pick("변경할 상태 선택", "Select Target Status")}
+          </div>
+          {statusOptions.map((status) => {
+            const sameStatusCount = statusCounts.get(status.value) ?? 0;
+            const allSelectedAlreadyMatch = sameStatusCount === containers.length;
+            return (
+              <button
+                key={status.value}
+                type="button"
+                disabled={saving || allSelectedAlreadyMatch}
+                onClick={() => onConfirm(status.value)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-[#e2dfd8] bg-white px-4 py-3 text-left text-sm transition-colors hover:border-[#1a5cdb] hover:bg-[#ebf0fd] disabled:cursor-not-allowed disabled:bg-[#f5f4f0] disabled:text-muted-foreground disabled:opacity-70 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-900"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: statusColors[status.value] }} />
+                  <span className="font-semibold">{containerStatusLabels[status.value]}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {allSelectedAlreadyMatch
+                    ? pick("이미 적용됨", "Already applied")
+                    : pick(`${containers.length - sameStatusCount}개 변경`, `${containers.length - sameStatusCount} to update`)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
