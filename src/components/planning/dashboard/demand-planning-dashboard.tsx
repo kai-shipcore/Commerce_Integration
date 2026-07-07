@@ -6,7 +6,6 @@ import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import type { AgDemandPlanningGridHandle } from "./demand-planning-grid";
-import { ImportTransitStockDialog } from "./import-transit-stock-dialog";
 import { StatusBar } from "./status-bar";
 import {
   ALL_COLS,
@@ -321,7 +320,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>(
     BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []
   );
-  const [transitImportOpen, setTransitImportOpen] = useState(false);
   const canEditSkuNotes = can("demand-planning", "edit");
 
   useEffect(() => {
@@ -1943,25 +1941,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               </button>
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => setTransitImportOpen(true)}
-            title="Import Transit Stock from Excel"
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              padding: "5px 10px",
-              borderRadius: 4,
-              border: "1px solid #C2BFB5",
-              background: "#fff",
-              cursor: "pointer",
-              color: "#1A1917",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Import
-          </button>
-          <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
+<div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
             {(["link", "custom"] as VelocityMode[]).map((m) => (
               <button
                 key={m}
@@ -2155,11 +2135,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           selectedCellKeys={selectedCellKeys}
         />}
       </div>
-      <ImportTransitStockDialog
-        open={transitImportOpen}
-        onOpenChange={setTransitImportOpen}
-        onSuccess={reload}
-      />
     </div>
   );
 }
