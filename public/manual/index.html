@@ -319,6 +319,10 @@
   <a class="nav-sub" href="#ct-monthly">월별 달력 보기</a>
   <a class="nav-sub" href="#ct-schedule">스케줄 보기</a>
   <a class="nav-sub" href="#ct-detail">상세 드로어</a>
+  <a class="nav-item" href="#transit-stock"><span class="icon">🚢</span> 재고 이동</a>
+  <a class="nav-sub" href="#ts-add">이동 추가</a>
+  <a class="nav-sub" href="#ts-import">엑셀 업로드</a>
+  <a class="nav-sub" href="#ts-status">상태 관리</a>
   <a class="nav-item" href="#available-stock"><span class="icon">📦</span> 가용 재고</a>
   <a class="nav-item" href="#sku-master"><span class="icon">🗂️</span> SKU 마스터</a>
   <div class="nav-section" style="margin-top:12px">기준 · 운영</div>
@@ -2502,6 +2506,77 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════
+     TRANSIT STOCK
+═══════════════════════════════════════════════ -->
+<section class="page-section" id="transit-stock">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff;font-size:28px">🚢</div>
+    <div>
+      <h2>재고 이동 (Transit Stock)</h2>
+      <p class="subtitle">창고 간 이동 중인 SKU와 수량을 기록·추적하고, 수요 계획 그리드에 반영합니다.</p>
+    </div>
+  </div>
+
+  <p>재고 이동 페이지는 <b>한 창고에서 다른 창고로 이동 중인 재고</b>를 관리하는 운영 로그입니다. 등록된 <b>이동 중(In Transit)</b> 레코드의 수량 합계가 수요 계획 그리드의 <b>Transit Stock</b> 컬럼에 자동 반영됩니다.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div><b>Transit Stock과 수요 계획:</b> 레코드를 추가·삭제·도착 완료 처리하면 즉시 <code>fc_stats.transit_stock</code>이 재계산되어 수요 계획 그리드에 반영됩니다. 별도 Refresh 불필요.</div>
+  </div>
+
+  <h3 class="sub" id="ts-add">이동 추가 (단건)</h3>
+  <p>우측 상단 <b>+ 이동 추가</b> 버튼을 클릭하면 모달이 열립니다.</p>
+  <table class="ref-table">
+    <tr><td class="label">출발 창고 *</td><td>재고가 출발하는 창고를 선택합니다.</td></tr>
+    <tr><td class="label">도착 창고 *</td><td>재고가 도착할 창고를 선택합니다. 출발 창고와 달라야 합니다.</td></tr>
+    <tr><td class="label">Master SKU *</td><td>이동할 SKU를 입력합니다. 저장 시 자동으로 대문자로 변환됩니다.</td></tr>
+    <tr><td class="label">수량 *</td><td>이동 수량 (1 이상 정수).</td></tr>
+    <tr><td class="label">메모</td><td>컨테이너 번호, 사유 등 자유 입력. 선택 사항.</td></tr>
+  </table>
+  <p>저장하면 레코드가 <b>이동 중</b> 상태로 생성되며, 해당 SKU의 Transit Stock이 즉시 업데이트됩니다.</p>
+
+  <h3 class="sub" id="ts-import">엑셀 일괄 업로드</h3>
+  <p>동일한 출발 창고 → 도착 창고 조합으로 여러 SKU를 한 번에 등록할 때 사용합니다.</p>
+  <ol>
+    <li><b>엑셀 업로드</b> 버튼 클릭 → 출발·도착 창고 선택 후 다음 단계로 이동합니다.</li>
+    <li><b>템플릿 다운로드</b>로 양식을 받거나, 아래 컬럼 구조를 직접 작성합니다.</li>
+    <li>파일을 업로드하면 미리보기(최대 50행)가 표시됩니다. 확인 후 <b>Import</b>를 클릭합니다.</li>
+  </ol>
+  <table class="ref-table">
+    <tr><td class="label">Master SKU</td><td>필수. 컬럼명 변형 허용: <code>sku</code>, <code>master</code>.</td></tr>
+    <tr><td class="label">Qty</td><td>필수 (1 이상 정수). 컬럼명 변형 허용: <code>quantity</code>, <code>수량</code>.</td></tr>
+    <tr><td class="label">Notes</td><td>선택. 컬럼명 변형 허용: <code>note</code>, <code>memo</code>, <code>비고</code>, <code>메모</code>.</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>한 번에 최대 <b>2,000행</b>까지 업로드 가능합니다. 행이 초과되면 서버에서 오류를 반환합니다.</div>
+  </div>
+
+  <h3 class="sub" id="ts-status">상태 관리 및 탭 필터</h3>
+  <p>페이지 상단 탭으로 상태별 필터링이 가능합니다.</p>
+  <table class="ref-table">
+    <tr>
+      <td class="label" style="color:#1A4FC0;background:#EFF6FF">이동 중</td>
+      <td>현재 운송 중인 레코드. 이 상태의 수량 합계만 수요 계획 Transit Stock에 반영됩니다.</td>
+    </tr>
+    <tr>
+      <td class="label" style="color:#065F46;background:#ECFDF5">도착 완료</td>
+      <td>창고에 입고된 레코드. Transit Stock 집계에서 제외되며 수정 불가.</td>
+    </tr>
+    <tr>
+      <td class="label" style="color:#64748B;background:#F1F5F9">취소</td>
+      <td>취소된 레코드. Transit Stock 집계에서 제외됩니다.</td>
+    </tr>
+  </table>
+
+  <h4 style="font-size:13px;font-weight:700;margin:18px 0 8px">액션 버튼</h4>
+  <table class="ref-table">
+    <tr><td class="label">✓ 도착</td><td><b>이동 중</b> 레코드에만 표시됩니다. 클릭하면 <b>도착 완료</b>로 상태가 변경되고 Transit Stock에서 즉시 차감됩니다.</td></tr>
+    <tr><td class="label">삭제</td><td>모든 상태의 레코드를 삭제할 수 있습니다. 삭제 후 Transit Stock이 재계산됩니다.</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════
      5. AVAILABLE STOCK
 ═══════════════════════════════════════════════ -->
 <section class="page-section" id="available-stock">
@@ -2951,6 +3026,10 @@
   <a class="nav-sub" href="#en-ct-monthly">Month Calendar View</a>
   <a class="nav-sub" href="#en-ct-schedule">Schedule View</a>
   <a class="nav-sub" href="#en-ct-detail">Detail Drawer</a>
+  <a class="nav-item" href="#en-transit-stock"><span class="icon">🚢</span> Transit Stock</a>
+  <a class="nav-sub" href="#en-ts-add">Add Record</a>
+  <a class="nav-sub" href="#en-ts-import">Excel Import</a>
+  <a class="nav-sub" href="#en-ts-status">Status Management</a>
   <a class="nav-item" href="#en-available-stock"><span class="icon">📦</span> Available Stock</a>
   <a class="nav-item" href="#en-sku-master"><span class="icon">🗂️</span> SKU Master</a>
   <div class="nav-section" style="margin-top:12px">Reference &amp; Ops</div>
@@ -4832,6 +4911,75 @@
     <span class="callout-icon">✏️</span>
     <div><b>Editing goes in Container Planning:</b> Container Timeline is a read-only view by default — the only exception is <b>dragging a chip to a new date in Month View</b>. To edit container info or change SKU quantities, use the <b>"Open in Container Planning"</b> link at the top of the drawer.</div>
   </div>
+</section>
+
+<!-- ═══ TRANSIT STOCK ═══ -->
+<section class="page-section" id="en-transit-stock">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff;font-size:28px">🚢</div>
+    <div>
+      <h2>Transit Stock</h2>
+      <p class="subtitle">Record and track SKUs moving between warehouses, and reflect them in the Demand Planning grid.</p>
+    </div>
+  </div>
+
+  <p>The Transit Stock page is an operational log for <b>inventory currently in transit between warehouses</b>. The total quantity of all <b>In Transit</b> records for a given SKU is automatically reflected in the <b>Transit Stock</b> column of the Demand Planning grid.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div><b>Transit Stock &amp; Demand Planning:</b> Adding, deleting, or marking a record as Arrived immediately recalculates <code>fc_stats.transit_stock</code> and updates the Demand Planning grid. No manual Refresh required.</div>
+  </div>
+
+  <h3 class="sub" id="en-ts-add">Add a Single Record</h3>
+  <p>Click <b>+ Add Record</b> in the top-right to open the form.</p>
+  <table class="ref-table">
+    <tr><td class="label">Source Warehouse *</td><td>The warehouse the stock is departing from.</td></tr>
+    <tr><td class="label">Destination Warehouse *</td><td>The warehouse the stock is arriving at. Must differ from Source.</td></tr>
+    <tr><td class="label">Master SKU *</td><td>The SKU being moved. Automatically converted to uppercase on save.</td></tr>
+    <tr><td class="label">Qty *</td><td>Quantity in transit (integer, minimum 1).</td></tr>
+    <tr><td class="label">Notes</td><td>Optional. Container number, reason, or any free-text note.</td></tr>
+  </table>
+  <p>The record is created with <b>In Transit</b> status and the SKU's Transit Stock is updated immediately.</p>
+
+  <h3 class="sub" id="en-ts-import">Bulk Excel Import</h3>
+  <p>Use this when you need to register multiple SKUs at once under the same source → destination warehouse pair.</p>
+  <ol>
+    <li>Click <b>Import Excel</b> → select source and destination warehouses, then proceed to the next step.</li>
+    <li>Download the <b>template</b> or prepare a file with the columns below.</li>
+    <li>Upload the file — a preview of up to 50 rows is shown. Confirm to import.</li>
+  </ol>
+  <table class="ref-table">
+    <tr><td class="label">Master SKU</td><td>Required. Accepted column name variants: <code>sku</code>, <code>master</code>.</td></tr>
+    <tr><td class="label">Qty</td><td>Required (integer ≥ 1). Accepted variants: <code>quantity</code>, <code>수량</code>.</td></tr>
+    <tr><td class="label">Notes</td><td>Optional. Accepted variants: <code>note</code>, <code>memo</code>, <code>비고</code>, <code>메모</code>.</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>Maximum <b>2,000 rows</b> per import. The server returns an error if this limit is exceeded.</div>
+  </div>
+
+  <h3 class="sub" id="en-ts-status">Status Management &amp; Tab Filters</h3>
+  <p>The tabs at the top of the page filter records by status.</p>
+  <table class="ref-table">
+    <tr>
+      <td class="label" style="color:#1A4FC0;background:#EFF6FF">In Transit</td>
+      <td>Currently moving. Only the quantity of In Transit records is summed into Transit Stock in Demand Planning.</td>
+    </tr>
+    <tr>
+      <td class="label" style="color:#065F46;background:#ECFDF5">Arrived</td>
+      <td>Stock has been received at the destination. Excluded from the Transit Stock total; no further edits allowed.</td>
+    </tr>
+    <tr>
+      <td class="label" style="color:#64748B;background:#F1F5F9">Cancelled</td>
+      <td>Movement was cancelled. Excluded from the Transit Stock total.</td>
+    </tr>
+  </table>
+
+  <h4 style="font-size:13px;font-weight:700;margin:18px 0 8px">Action Buttons</h4>
+  <table class="ref-table">
+    <tr><td class="label">✓ Arrived</td><td>Only visible on <b>In Transit</b> rows. Marks the record as Arrived and immediately deducts it from Transit Stock.</td></tr>
+    <tr><td class="label">Delete</td><td>Available on all records regardless of status. Transit Stock is recalculated after deletion.</td></tr>
+  </table>
 </section>
 
 <!-- ═══ 5. AVAILABLE STOCK ═══ -->

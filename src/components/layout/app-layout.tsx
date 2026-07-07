@@ -48,6 +48,7 @@ const manualSectionByNavigationId: Record<string, string> = {
   "sku-forecasts": "sku-planning",
   "container-planning": "container-planning",
   "container-timeline": "container-timeline",
+  "transit-stock": "transit-stock",
   "available-stock": "available-stock",
   "sku-master": "sku-master",
   "seat-cover-parts": "parts",
