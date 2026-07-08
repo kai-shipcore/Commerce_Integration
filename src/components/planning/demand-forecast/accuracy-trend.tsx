@@ -145,13 +145,13 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
       data: traces,
       layout: {
         autosize: true,
-        height: 280,
+        height: 440,
         margin: { t: 30, r: 20, b: 50, l: 50 },
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
         font: { size: 11 },
         xaxis: { showgrid: true, gridcolor: "#F0F0F0", title: { text: pick("예측 시작 주", "Forecast start week") } },
-        yaxis: { showgrid: true, gridcolor: "#F0F0F0", rangemode: "tozero", ticksuffix: "%" },
+        yaxis: { showgrid: true, gridcolor: "#F0F0F0", range: [0, 100], ticksuffix: "%" },
         legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1 },
         hovermode: "x unified",
       } as Partial<Plotly.Layout>,
@@ -209,13 +209,13 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
       </CardHeader>
       <CardContent>
         {loading && (
-          <div className="flex h-[280px] items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div className="flex h-[440px] items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             {pick("정확도 이력 불러오는 중...", "Loading accuracy history...")}
           </div>
         )}
         {!loading && error && (
-          <div className="flex h-[280px] flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div className="flex h-[440px] flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
             <p>{pick("정확도 이력을 불러올 수 없습니다:", "Could not load accuracy history:")} {error}</p>
             <button
               onClick={() => setRetryCount((c) => c + 1)}
@@ -226,18 +226,18 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
           </div>
         )}
         {!loading && !error && !fig && (
-          <div className="flex h-[280px] flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
+          <div className="flex h-[440px] flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
             <p>{pick("아직 평가 가능한 예측 실행이 없습니다.", "No forecast runs with completed weeks yet.")}</p>
             <p className="text-xs">{pick("예측 첫 주가 완료되면 자동으로 표시됩니다.", "Points appear automatically once a run's first forecast week completes.")}</p>
           </div>
         )}
         {!loading && !error && fig && (
-          <div className="h-[280px] overflow-hidden">
+          <div className="h-[440px] overflow-hidden">
             <Plot
               data={fig.data}
               layout={fig.layout}
               config={{ responsive: true, displayModeBar: false }}
-              style={{ width: "100%", height: "280px" }}
+              style={{ width: "100%", height: "440px" }}
               useResizeHandler
             />
           </div>
