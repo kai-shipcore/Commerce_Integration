@@ -1718,7 +1718,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
         />
       )}
 
-      {mode !== "simulation" && data && !isIntermittent && mode === "backtest" && !data.backtest_unavailable && (showV1Wape || showV1Diff) && (
+      {mode !== "simulation" && data && !isIntermittent && mode === "backtest" && !data.backtest_unavailable && (showV1Forecast || showV1Wape || showV1Diff) && (
         <V1ComparisonCards rows={data.skus as SmoothRow[]} />
       )}
 
@@ -1760,7 +1760,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
             weeks={simData.weeks}
             intervalLabel={levelLabel(level)}
           />
-          {(showV1Wape || showV1Diff) && (
+          {(showV1Forecast || showV1Wape || showV1Diff) && (
             <V1ComparisonCards rows={simData.skus as SmoothRow[]} />
           )}
           <SmoothTable segment={segment} rows={simData.skus as SmoothRow[]} weeks={simData.weeks} mode="simulation" showLo={showLo} setShowLo={setShowLo} showPt={showPt} setShowPt={setShowPt} showHi={showHi} setShowHi={setShowHi} showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
