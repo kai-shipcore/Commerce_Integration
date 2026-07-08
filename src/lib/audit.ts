@@ -6,6 +6,7 @@ export type AuditEntityType =
   | "sku"
   | "user_permission"
   | "user_role"
+  | "user_name"
   | "integration"
   | "production_part"
   | "production_code"

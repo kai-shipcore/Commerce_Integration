@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Pencil, Search, ShieldAlert, ShieldCheck } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { RolePermissionsTab } from "@/components/settings/role-permissions-tab";
@@ -144,6 +144,8 @@ export default function UserAccessPage() {
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
   const [showRoleConfirm, setShowRoleConfirm] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("role");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +176,8 @@ export default function UserAccessPage() {
     const timer = window.setTimeout(() => {
       setPendingRole(null);
       setLoginHistory([]);
+      setEditingName(false);
+      setNameDraft("");
     }, 0);
     return () => window.clearTimeout(timer);
   }, [selectedUserId]);
@@ -310,6 +314,38 @@ export default function UserAccessPage() {
       );
     } catch (err: unknown) {
       setError(getErrorMessage(err));
+      await refreshUsers();
+    } finally {
+      setSavingUserId(null);
+    }
+  };
+
+  const updateUserName = async (userId: string, nextName: string) => {
+    setSavingUserId(userId);
+    setError(null);
+    setUsers((current) =>
+      current.map((user) => (user.id === userId ? { ...user, name: nextName } : user))
+    );
+    try {
+      const response = await fetch(apiPath(`/api/admin/users/${userId}/name`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || pick("이름 수정에 실패했습니다.", "Failed to update name"));
+      }
+      setUsers((current) =>
+        current.map((user) =>
+          user.id === userId
+            ? { ...user, name: result.data?.name ?? user.name, updatedAt: result.data?.updatedAt ?? user.updatedAt }
+            : user
+        )
+      );
+      setEditingName(false);
+    } catch (saveError: unknown) {
+      setError(getErrorMessage(saveError));
       await refreshUsers();
     } finally {
       setSavingUserId(null);
@@ -755,7 +791,49 @@ export default function UserAccessPage() {
                           </div>
                           <div>
                             <p className="font-medium">{pick("이름", "Name")}</p>
-                            <p className="text-muted-foreground">{selectedUser.name?.trim() || "-"}</p>
+                            {editingName ? (
+                              <div className="mt-1 flex items-center gap-1.5">
+                                <Input
+                                  value={nameDraft}
+                                  onChange={(event) => setNameDraft(event.target.value)}
+                                  className="h-7 text-xs"
+                                  autoFocus
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  disabled={savingUserId === selectedUser.id || !nameDraft.trim()}
+                                  onClick={() => void updateUserName(selectedUser.id, nameDraft.trim())}
+                                >
+                                  {pick("저장", "Save")}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  onClick={() => setEditingName(false)}
+                                >
+                                  {pick("취소", "Cancel")}
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-muted-foreground">{selectedUser.name?.trim() || "-"}</p>
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground"
+                                  onClick={() => {
+                                    setNameDraft(selectedUser.name ?? "");
+                                    setEditingName(true);
+                                  }}
+                                  aria-label={pick("이름 편집", "Edit name")}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <div>
                             <p className="font-medium">{pick("인증", "Auth")}</p>
