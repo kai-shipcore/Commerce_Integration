@@ -225,6 +225,9 @@ function trimFig(fig: PlotlyFig, forecastDates: string[], n: number, viewStart?:
   // All data remains in the traces so the user can pan left freely.
   const firstDataX = ((fig.data[0] as Record<string, unknown>)?.x as string[] | undefined)?.[0];
   const rangeStart = viewStart ?? firstDataX;
+  // minallowed must be ≤ rangeStart so selected history windows (26w, 52w) always
+  // honour the full range even when actual data starts later (empty space is fine).
+  const minAllowed = rangeStart && firstDataX && rangeStart < firstDataX ? rangeStart : firstDataX;
   return {
     ...fig,
     layout: {
@@ -236,7 +239,7 @@ function trimFig(fig: PlotlyFig, forecastDates: string[], n: number, viewStart?:
           rangeStart ? shiftDate(rangeStart, -4) : rangeStart,
           shiftDate(endX, 4),
         ],
-        minallowed: firstDataX,
+        minallowed: minAllowed,
         maxallowed: shiftDate(lastForecastX, 4),
       },
     },

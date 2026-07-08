@@ -95,12 +95,12 @@ const BATCH_SIZE = 2000;
 const SYNC_LOOKBACK_DAYS = 120;
 const primaryPool = () => getPrimaryPool();
 
-async function upsertLink(rows: LinkRow[], syncedAt: Date): Promise<number> {
+async function upsertLink(rows: LinkRow[], syncedAt: Date, table = "shipcore.fc_velocity_link_snapshot"): Promise<number> {
   let upserted = 0;
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
     await primaryPool().query(
-      `INSERT INTO shipcore.fc_velocity_link_snapshot
+      `INSERT INTO ${table}
          (order_date, order_date_la, item_category, channel, order_type, link_master_sku, link_qty, synced_at, is_custom)
        SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
               UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[]),
@@ -209,21 +209,9 @@ export async function POST(req: NextRequest) {
     }
     lockAcquired = true;
 
-    const [linkRes, customRes] = await Promise.all([
-      lookupPool.query<LinkRow>(
-        `SELECT
-           (l.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
-           (l.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
-           ${CHANNEL_CASE("l")}       AS channel,
-           ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
-           ${ORDER_TYPE_CASE("l")}    AS order_type,
-           ${MASTER_SKU_REMAP_CASE("l.master_sku")} AS link_master_sku,
-           SUM(l.quantity)::int AS link_qty,
-           l.is_custom                AS is_custom
-         FROM ecommerce_data.vw_sales_order_items_link_new l
-         WHERE l.master_sku  IS NOT NULL
+    const LINK_WHERE = `
+           WHERE l.master_sku  IS NOT NULL
            AND NOT (l.platform_source::text NOT IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND (l.master_sku LIKE '%NEW%' OR l.master_sku LIKE '%INV%'))
-           ${dateFilter}
            AND (
              (l.fulfilled_quantity > 0
               AND (
@@ -235,23 +223,11 @@ export async function POST(req: NextRequest) {
              OR (COALESCE(l.is_preorder::boolean, false) AND LOWER(l.item_status) != 'cancelled')
            )
            AND NOT (l.platform_source::text = 'SHOPIFY_ICARCOVER' AND l.tags IS NOT NULL AND (l.tags ILIKE '%ebay%' OR l.tags ILIKE '%influencer%'))
-           AND NOT (l.tags IS NOT NULL AND l.tags ILIKE '%Test%')
-         GROUP BY 1, 2, 3, 4, 5, 6, 8`,
-      ),
-      lookupPool.query<CustomRow>(
-        `SELECT
-           (c.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
-           (c.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
-           ${CHANNEL_CASE("c")}       AS channel,
-           ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
-           ${ORDER_TYPE_CASE("c")}    AS order_type,
-           ${MASTER_SKU_REMAP_CASE("c.master_sku")} AS custom_master_sku,
-           SUM(c.quantity)::int AS custom_qty,
-           c.is_custom                AS is_custom
-         FROM ecommerce_data.vw_sales_order_items_custom_new c
-         WHERE c.master_sku  IS NOT NULL
+           AND NOT (l.tags IS NOT NULL AND l.tags ILIKE '%Test%')`;
+
+    const CUSTOM_WHERE = `
+           WHERE c.master_sku  IS NOT NULL
            AND NOT (c.platform_source::text NOT IN ('SHOPIFY_COVERLAND', 'SHOPIFY_ICARCOVER') AND (c.master_sku LIKE '%NEW%' OR c.master_sku LIKE '%INV%'))
-           ${dateFilterC}
            AND (
              (c.fulfilled_quantity > 0
               AND (
@@ -263,8 +239,41 @@ export async function POST(req: NextRequest) {
              OR (COALESCE(c.is_preorder::boolean, false) AND LOWER(c.item_status) != 'cancelled')
            )
            AND NOT (c.platform_source::text = 'SHOPIFY_ICARCOVER' AND c.tags IS NOT NULL AND (c.tags ILIKE '%ebay%' OR c.tags ILIKE '%influencer%'))
-           AND NOT (c.tags IS NOT NULL AND c.tags ILIKE '%Test%')
-         GROUP BY 1, 2, 3, 4, 5, 6, 8`,
+           AND NOT (c.tags IS NOT NULL AND c.tags ILIKE '%Test%')`;
+
+    const LINK_SELECT = `
+        SELECT
+           (l.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
+           (l.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
+           ${CHANNEL_CASE("l")}       AS channel,
+           ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
+           ${ORDER_TYPE_CASE("l")}    AS order_type,
+           ${MASTER_SKU_REMAP_CASE("l.master_sku")} AS link_master_sku,
+           SUM(l.quantity)::int AS link_qty,
+           l.is_custom                AS is_custom
+         FROM ecommerce_data.vw_sales_order_items_link_new l`;
+
+    const CUSTOM_SELECT = `
+        SELECT
+           (c.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
+           (c.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
+           ${CHANNEL_CASE("c")}       AS channel,
+           ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
+           ${ORDER_TYPE_CASE("c")}    AS order_type,
+           ${MASTER_SKU_REMAP_CASE("c.master_sku")} AS custom_master_sku,
+           SUM(c.quantity)::int AS custom_qty,
+           c.is_custom                AS is_custom
+         FROM ecommerce_data.vw_sales_order_items_custom_new c`;
+
+    const [linkRes, customRes, linkForecastRes] = await Promise.all([
+      lookupPool.query<LinkRow>(
+        `${LINK_SELECT} ${LINK_WHERE} ${dateFilter} GROUP BY 1, 2, 3, 4, 5, 6, 8`,
+      ),
+      lookupPool.query<CustomRow>(
+        `${CUSTOM_SELECT} ${CUSTOM_WHERE} ${dateFilterC} GROUP BY 1, 2, 3, 4, 5, 6, 8`,
+      ),
+      lookupPool.query<LinkRow>(
+        `${LINK_SELECT} ${LINK_WHERE} GROUP BY 1, 2, 3, 4, 5, 6, 8`,
       ),
     ]);
 
@@ -272,6 +281,7 @@ export async function POST(req: NextRequest) {
     const [linkUpserted, customUpserted] = await Promise.all([
       upsertLink(linkRes.rows, syncedAt),
       upsertCustom(customRes.rows, syncedAt),
+      upsertLink(linkForecastRes.rows, syncedAt, "shipcore.fc_velocity_link_snapshot_forecast"),
     ]);
 
     const [linkDeleteRes, customDeleteRes] = await Promise.all([
@@ -285,6 +295,10 @@ export async function POST(req: NextRequest) {
         full
           ? `DELETE FROM shipcore.fc_velocity_custom_snapshot WHERE synced_at < $1`
           : `DELETE FROM shipcore.fc_velocity_custom_snapshot WHERE order_date >= NOW() - INTERVAL '${SYNC_LOOKBACK_DAYS} days' AND synced_at < $1`,
+        [syncedAt],
+      ),
+      primaryPool().query(
+        `DELETE FROM shipcore.fc_velocity_link_snapshot_forecast WHERE synced_at < $1`,
         [syncedAt],
       ),
     ]);

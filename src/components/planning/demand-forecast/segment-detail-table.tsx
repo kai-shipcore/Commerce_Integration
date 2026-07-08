@@ -640,11 +640,11 @@ function AccuracyCards({
 
       <div className={`grid gap-3 ${withPI.length > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
         <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">WAPE</p>
+          <p className="text-xs font-medium text-muted-foreground">{pick("모델 WAPE (전체)", "Model WAPE (all SKUs)")}</p>
           <p className={`text-2xl font-semibold tabular-nums ${wapeColor}`}>
             {wape !== null ? `${(wape * 100).toFixed(1)}%` : "—"}
           </p>
-          <p className="text-xs text-muted-foreground">{pick(`${withDemand.length}개 SKU의 가중 절대 오차`, `Weighted absolute error across ${withDemand.length} SKUs`)}</p>
+          <p className="text-xs text-muted-foreground">{pick(`${withDemand.length}개 SKU 기준 (V1 없는 SKU 포함)`, `${withDemand.length} SKUs incl. those without V1`)}</p>
         </div>
 
         <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
@@ -678,18 +678,20 @@ function V1ComparisonCards({ rows }: { rows: SmoothRow[] }) {
   const withV1 = rows.filter((r) => r.v1_yhat_total != null && r.demand_total > 0);
   if (withV1.length === 0) return null;
 
-  const totalDemand     = withV1.reduce((s, r) => s + r.demand_total, 0);
-  const totalV1AbsErr   = withV1.reduce((s, r) => s + Math.abs(r.v1_yhat_total! - r.demand_total), 0);
+  const totalDemand      = withV1.reduce((s, r) => s + r.demand_total, 0);
+  const totalV1AbsErr    = withV1.reduce((s, r) => s + Math.abs(r.v1_yhat_total! - r.demand_total), 0);
   const totalModelAbsErr = withV1.reduce((s, r) => s + Math.abs(r.yhat_total - r.demand_total), 0);
 
-  const v1Wape   = totalDemand > 0 ? totalV1AbsErr / totalDemand : null;
-  const mase     = totalV1AbsErr > 0 ? totalModelAbsErr / totalV1AbsErr : null;
-  const wapeDiff = totalDemand > 0 ? (totalV1AbsErr - totalModelAbsErr) / totalDemand : null; // positive = model wins
+  // All three metrics use the same withV1 SKU set so they are directly comparable.
+  const modelWape = totalDemand > 0 ? totalModelAbsErr / totalDemand : null;
+  const v1Wape    = totalDemand > 0 ? totalV1AbsErr   / totalDemand : null;
+  const mase      = totalV1AbsErr > 0 ? totalModelAbsErr / totalV1AbsErr : null;
+  const wapeDiff  = totalDemand > 0 ? (totalV1AbsErr - totalModelAbsErr) / totalDemand : null; // positive = model wins
 
-  const v1WapeColor =
-    v1Wape == null ? "text-muted-foreground"
-    : v1Wape < 0.20 ? "text-emerald-600"
-    : v1Wape < 0.40 ? "text-amber-600"
+  const wapeColorFor = (w: number | null) =>
+    w == null ? "text-muted-foreground"
+    : w < 0.20 ? "text-emerald-600"
+    : w < 0.40 ? "text-amber-600"
     : "text-red-600";
 
   const maseColor =
@@ -710,18 +712,26 @@ function V1ComparisonCards({ rows }: { rows: SmoothRow[] }) {
     : mase > 1.03 ? pick("V1 > 모델", "V1 beats model")
     : pick("V1과 동등", "On par with V1");
 
+  const skuNote = pick(`${withV1.length}개 SKU 기준 (V1 데이터 있는 SKU만)`, `${withV1.length} SKUs with V1 data`);
+
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">{pick("V1 기준선 비교", "V1 baseline comparison")}</p>
-      <div className="grid grid-cols-3 gap-3">
+      <p className="text-xs font-medium text-muted-foreground">{pick("V1 기준선 비교 (동일 SKU 집합)", "V1 baseline comparison — same SKU set")}</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">{pick("모델 WAPE", "Model WAPE")}</p>
+          <p className={`text-2xl font-semibold tabular-nums ${wapeColorFor(modelWape)}`}>
+            {modelWape != null ? `${(modelWape * 100).toFixed(1)}%` : "—"}
+          </p>
+          <p className="text-xs text-muted-foreground">{skuNote}</p>
+        </div>
+
         <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
           <p className="text-xs font-medium text-muted-foreground">V1 WAPE</p>
-          <p className={`text-2xl font-semibold tabular-nums ${v1WapeColor}`}>
+          <p className={`text-2xl font-semibold tabular-nums ${wapeColorFor(v1Wape)}`}>
             {v1Wape != null ? `${(v1Wape * 100).toFixed(1)}%` : "—"}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {pick(`${withV1.length}개 SKU 기준선 오차`, `Baseline error across ${withV1.length} SKUs`)}
-          </p>
+          <p className="text-xs text-muted-foreground">{skuNote}</p>
         </div>
 
         <div className="rounded-lg border bg-card px-4 py-3 space-y-1">
@@ -748,7 +758,7 @@ function ConfidenceLevelTip() {
   const { pick } = useI18n();
   const [open, setOpen] = useState(false);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={() => {}}>
       <PopoverTrigger asChild>
         <button
           className="inline-flex items-center text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"
@@ -800,7 +810,7 @@ function ConfidenceHeaderTip() {
   const { pick } = useI18n();
   const [open, setOpen] = useState(false);
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={() => {}}>
       <PopoverTrigger asChild>
         <button
           className="inline-flex items-center text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"

@@ -49,6 +49,7 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   analytics: "nav.analytics",
   velocity: "nav.velocity",
   "demand-planning": "nav.demandPlanning",
+  "demand-forecast": "nav.demandForecast",
   "sku-forecasts": "nav.skuPlanning",
   "container-planning": "nav.containerPlanning",
   "container-timeline": "nav.containerTimeline",
