@@ -1627,8 +1627,8 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
           </div>
         )}
 
-        {/* Confidence level selector — smooth segments only */}
-        {!isIntermittent && (
+        {/* Confidence level selector — smooth/full only */}
+        {!isIntermittent && segment !== "smooth_short" && (
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
               {pick("신뢰 수준:", "Confidence level:")}
