@@ -214,7 +214,7 @@ export const navigationItems: NavigationItem[] = [
     name: "Invoice & Price Control",
     href: "/production/invoice-price-control",
     icon: FileSpreadsheet,
-    group: "Production",
+    group: "Admin",
     hideable: true,
   },
   {

@@ -10,6 +10,7 @@ export interface NewInvoiceItemInput {
   sku: string;
   qty: number;
   unitPrice: number;
+  sourceFileId?: string | null;
 }
 
 export interface InsertedInvoiceItem {
@@ -43,23 +44,23 @@ export async function insertInvoiceItemWithComparison(
      INSERT INTO shipcore.fc_invoice_items (
        invoice_id, sku, qty, invoice_unit_price,
        expected_unit_price, expected_effective_date, price_history_id,
-       diff_unit_price, result, created_at, updated_at
+       diff_unit_price, result, source_file_id, created_at, updated_at
      )
      SELECT
        $1::bigint, UPPER($2), $3::int, $4::numeric,
        e.expected_unit_price, e.expected_effective_date, e.price_history_id,
-       CASE WHEN e.expected_unit_price IS NULL THEN NULL ELSE $4::numeric - e.expected_unit_price END,
+       CASE WHEN e.expected_unit_price IS NULL THEN NULL ELSE ROUND(($4::numeric - e.expected_unit_price)::numeric, 2) END,
        (CASE
           WHEN e.expected_unit_price IS NULL THEN 'no_price_history'
-          WHEN $4::numeric = e.expected_unit_price THEN 'match'
-          WHEN $4::numeric < e.expected_unit_price THEN 'price_error'
+          WHEN ROUND(($4::numeric - e.expected_unit_price)::numeric, 2) = 0 THEN 'match'
+          WHEN ROUND(($4::numeric - e.expected_unit_price)::numeric, 2) < 0 THEN 'price_error'
           ELSE 'overcharged'
         END)::shipcore.fc_invoice_item_result,
-       NOW(), NOW()
+       $7::bigint, NOW(), NOW()
      FROM (VALUES (1)) AS seed(x)
      LEFT JOIN expected e ON TRUE
      RETURNING id::text AS id, expected_unit_price, diff_unit_price, result`,
-    [invoiceId, item.sku, item.qty, item.unitPrice, factoryId, invoiceDate],
+    [invoiceId, item.sku, item.qty, item.unitPrice, factoryId, invoiceDate, item.sourceFileId ?? null],
   );
 
   const row = result.rows[0];
@@ -111,17 +112,17 @@ export async function recompareInvoiceItems(client: PoolClient, invoiceId: strin
          expected_effective_date = e.expected_effective_date,
          price_history_id        = e.price_history_id,
          diff_unit_price = CASE WHEN e.expected_unit_price IS NULL THEN NULL
-                                ELSE e.invoice_unit_price - e.expected_unit_price END,
+                                ELSE ROUND((e.invoice_unit_price - e.expected_unit_price)::numeric, 2) END,
          result = (CASE
              WHEN e.expected_unit_price IS NULL THEN 'no_price_history'
-             WHEN e.invoice_unit_price = e.expected_unit_price THEN 'match'
-             WHEN e.invoice_unit_price < e.expected_unit_price THEN 'price_error'
+             WHEN ROUND((e.invoice_unit_price - e.expected_unit_price)::numeric, 2) = 0 THEN 'match'
+             WHEN ROUND((e.invoice_unit_price - e.expected_unit_price)::numeric, 2) < 0 THEN 'price_error'
              ELSE 'overcharged'
            END)::shipcore.fc_invoice_item_result,
          credit_amount = CASE
              WHEN e.credit_status IS NOT NULL THEN i.credit_amount
-             WHEN e.expected_unit_price IS NOT NULL AND e.invoice_unit_price > e.expected_unit_price
-               THEN (e.invoice_unit_price - e.expected_unit_price) * e.qty
+             WHEN e.expected_unit_price IS NOT NULL AND ROUND((e.invoice_unit_price - e.expected_unit_price)::numeric, 2) > 0
+               THEN ROUND((e.invoice_unit_price - e.expected_unit_price)::numeric, 2) * e.qty
              ELSE NULL
            END,
          updated_at = NOW()
@@ -143,11 +144,10 @@ export type InvoiceStatus =
 const AUTO_MANAGED_STATUSES: InvoiceStatus[] = ["received", "price_review", "discrepancy_found"];
 
 /**
- * Advances an invoice between received/price_review/discrepancy_found based
- * on whether any line item currently has a discrepancy. Once a human has
- * manually pushed the invoice past discrepancy_found (factory_confirmation
- * or later), adding/recomparing items no longer touches invoice status --
- * status changes past that point are always an explicit user action.
+ * Keeps newly imported/recompared invoices in the simple "pending review"
+ * bucket. Price discrepancies are shown as calculated amounts, not as a
+ * forced workflow status. Once a human moves the invoice to hold/reviewed,
+ * automated comparison no longer changes the invoice status.
  */
 export async function recalculateInvoiceStatus(client: PoolClient, invoiceId: string): Promise<void> {
   const current = await client.query<{ status: InvoiceStatus }>(
@@ -157,12 +157,7 @@ export async function recalculateInvoiceStatus(client: PoolClient, invoiceId: st
   const currentStatus = current.rows[0]?.status;
   if (!currentStatus || !AUTO_MANAGED_STATUSES.includes(currentStatus)) return;
 
-  const counts = await client.query<{ discrepancies: string }>(
-    `SELECT COUNT(*) FILTER (WHERE result IN ('price_error', 'overcharged')) AS discrepancies
-     FROM shipcore.fc_invoice_items WHERE invoice_id = $1::bigint`,
-    [invoiceId],
-  );
-  const nextStatus: InvoiceStatus = Number(counts.rows[0]?.discrepancies ?? 0) > 0 ? "discrepancy_found" : "price_review";
+  const nextStatus: InvoiceStatus = "price_review";
 
   if (nextStatus !== currentStatus) {
     await client.query(

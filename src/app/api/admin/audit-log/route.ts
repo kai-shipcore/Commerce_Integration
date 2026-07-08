@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 
-// All valid action values across both audit tables
+// All valid action values across all audit tables
 const ACTIONS = new Set([
   // Container audit actions
   "status_change",
@@ -10,6 +10,11 @@ const ACTIONS = new Set([
   "eta_change",
   "items_update",
   "note_added",
+  // Invoice audit actions
+  "recompare",
+  "credit_update",
+  "factory_confirm_update",
+  "attachment_update",
   // General audit actions
   "create",
   "update",
@@ -22,6 +27,7 @@ const ACTIONS = new Set([
 
 const ENTITY_TYPES = new Set([
   "container",
+  "invoice",
   "factory",
   "warehouse",
   "sku",
@@ -49,6 +55,7 @@ export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const user = clean(searchParams.get("user"));
   const entity = clean(searchParams.get("entity"));
+  const entityId = clean(searchParams.get("entityId"));
   const entityType = clean(searchParams.get("entityType"));
   const action = clean(searchParams.get("action"));
   const startDate = clean(searchParams.get("startDate"));
@@ -81,6 +88,11 @@ export async function GET(req: NextRequest) {
     idx++;
   }
 
+  if (entityId) {
+    values.push(entityId);
+    filters.push(`entity_id = $${idx++}`);
+  }
+
   if (entityType && ENTITY_TYPES.has(entityType)) {
     values.push(entityType);
     filters.push(`entity_type = $${idx++}`);
@@ -103,7 +115,7 @@ export async function GET(req: NextRequest) {
 
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
-  // UNION of container-specific table and general audit table
+  // UNION of container-specific table, invoice-specific table, and general audit table
   const unionSql = `
     SELECT
       'c:' || id::text      AS id,
@@ -113,6 +125,17 @@ export async function GET(req: NextRequest) {
       user_id, user_name, user_email,
       action, before, after, note, ip, created_at
     FROM shipcore.fc_container_audit_log
+
+    UNION ALL
+
+    SELECT
+      'i:' || id::text      AS id,
+      'invoice'             AS entity_type,
+      invoice_id::text      AS entity_id,
+      COALESCE(invoice_number, invoice_id::text) AS entity_label,
+      user_id, user_name, user_email,
+      action, before, after, note, ip, created_at
+    FROM shipcore.fc_invoice_audit_log
 
     UNION ALL
 

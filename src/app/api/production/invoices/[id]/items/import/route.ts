@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const session = await auth();
 
     const invoiceResult = await getPrimaryPool().query(
-      `SELECT invoice_number, factory_id::text AS factory_id, invoice_date::text AS invoice_date, attachment_file_id
+      `SELECT invoice_number, factory_id::text AS factory_id, invoice_date::text AS invoice_date
        FROM shipcore.fc_invoices WHERE id = $1::bigint`,
       [id],
     );
@@ -71,26 +71,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       parsedRows.push({ sku, qty, unitPrice });
     });
 
-    let sourceFileId: string | null = invoice.attachment_file_id;
+    let sourceFileId: string | null = null;
 
     await withInvoiceTransaction(async (client) => {
-      if (!sourceFileId) {
-        const fileResult = await client.query(
-          `INSERT INTO shipcore.fc_price_list_files
-             (original_name, mime_type, size_bytes, file_data, uploaded_by, created_at)
-           VALUES ($1, $2, $3, $4, $5, NOW())
-           RETURNING id::text AS id`,
-          [file.name, file.type || null, buffer.byteLength, buffer, session?.user?.id ?? null],
-        );
-        sourceFileId = fileResult.rows[0].id;
-        await client.query(
-          `UPDATE shipcore.fc_invoices SET attachment_file_id = $2::bigint, updated_at = NOW() WHERE id = $1::bigint`,
-          [id, sourceFileId],
-        );
-      }
+      const fileResult = await client.query(
+        `INSERT INTO shipcore.fc_price_list_files
+           (original_name, mime_type, size_bytes, file_data, uploaded_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         RETURNING id::text AS id`,
+        [file.name, file.type || null, buffer.byteLength, buffer, session?.user?.id ?? null],
+      );
+      sourceFileId = fileResult.rows[0].id;
+      await client.query(
+        `UPDATE shipcore.fc_invoices SET attachment_file_id = $2::bigint, updated_at = NOW() WHERE id = $1::bigint`,
+        [id, sourceFileId],
+      );
 
       for (const parsedRow of parsedRows) {
-        await insertInvoiceItemWithComparison(client, id, invoice.factory_id, invoice.invoice_date, parsedRow);
+        await insertInvoiceItemWithComparison(client, id, invoice.factory_id, invoice.invoice_date, {
+          ...parsedRow,
+          sourceFileId,
+        });
       }
       await recalculateInvoiceStatus(client, id);
     });
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,
       action: "items_update",
-      after: { imported: parsedRows.length, errors },
+      after: { imported: parsedRows.length, errors, sourceFileId },
     });
 
     return NextResponse.json({

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
-import { Download, FileUp, Pencil, RefreshCcw, Save, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, RefreshCcw, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
@@ -84,26 +83,39 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
   const canCreate = ready && can("invoice-price-control", "create");
   const canEdit = ready && can("invoice-price-control", "edit");
   const canDelete = ready && can("invoice-price-control", "delete");
-  const fileRef = useRef<HTMLInputElement>(null);
   const [factories, setFactories] = useState<Factory[]>([]);
   const [factoryId, setFactoryId] = useState("");
   const [rows, setRows] = useState<PriceRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [asOfDate, setAsOfDate] = useState(today());
   const [form, setForm] = useState<PriceForm>(emptyForm());
+  const [effectiveSort, setEffectiveSort] = useState<"asc" | "desc">("desc");
 
-  const sortedRows = useMemo(
+  const chronologicalRows = useMemo(
     () => [...rows].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate)),
     [rows]
   );
 
-  const latestRow = useMemo(() => sortedRows[sortedRows.length - 1] ?? null, [sortedRows]);
+  const sortedRows = useMemo(
+    () => (effectiveSort === "asc" ? chronologicalRows : [...chronologicalRows].reverse()),
+    [chronologicalRows, effectiveSort]
+  );
+
+  const latestRow = useMemo(() => chronologicalRows[chronologicalRows.length - 1] ?? null, [chronologicalRows]);
 
   const asOfRow = useMemo(() => {
     if (!asOfDate) return null;
-    return [...sortedRows].reverse().find((row) => row.effectiveDate <= asOfDate) ?? null;
-  }, [asOfDate, sortedRows]);
+    return [...chronologicalRows].reverse().find((row) => row.effectiveDate <= asOfDate) ?? null;
+  }, [asOfDate, chronologicalRows]);
+
+  useEffect(() => {
+    if (!open) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [open]);
 
   async function loadFactories() {
     try {
@@ -157,7 +169,7 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
       factoryId: row.factoryId,
       effectiveDate: row.effectiveDate,
       unitPrice: String(row.unitPrice),
-      currency: row.currency,
+      currency: "USD",
       reason: row.reason ?? "",
     });
   }
@@ -180,7 +192,7 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
         sku: normalizedSku,
         effectiveDate: form.effectiveDate,
         unitPrice,
-        currency: form.currency,
+        currency: "USD",
         reason: form.reason,
       }),
     });
@@ -207,74 +219,12 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
     await loadRows();
   }
 
-  async function uploadFile(file: File) {
-    if (!canCreate) return toast.error(pick("Price List를 업로드할 권한이 없습니다.", "No permission to upload price lists"));
-    if (!factoryId) return toast.error(pick("업로드 전에 공장을 선택하세요.", "Select a factory before upload"));
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("factoryId", factoryId);
-      formData.append("currency", "USD");
-      const res = await fetch(apiPath("/api/production/price-history"), { method: "PATCH", body: formData });
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error || pick("업로드에 실패했습니다.", "Upload failed"));
-      const errors = json.data?.errors ?? [];
-      toast.success(pick(
-        `${json.data?.imported ?? 0}개 행을 가져왔습니다${errors.length ? `, ${errors.length}개 건너뜀` : ""}`,
-        `Imported ${json.data?.imported ?? 0} rows${errors.length ? `, ${errors.length} skipped` : ""}`
-      ));
-      if (errors.length) console.warn("Price list import errors", errors);
-      await loadRows();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : pick("업로드에 실패했습니다.", "Upload failed"));
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  function exportRows() {
-    const data = sortedRows.map((row) => ({
-      Factory: row.factoryName,
-      SKU: row.sku,
-      "Effective Date": row.effectiveDate,
-      "Unit Price": row.unitPrice,
-      Currency: row.currency,
-      "Previous Price": row.previousPrice ?? "",
-      Change: row.changeAmount ?? "",
-      "Change Rate %": row.changeRate ?? "",
-      Reason: row.reason ?? "",
-      "Source File": row.sourceFileName ?? "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Price History");
-    XLSX.writeFile(wb, `price-history-${normalizedSku || "sku"}-${today()}.xlsx`);
-  }
-
-  function downloadTemplate() {
-    const ws = XLSX.utils.json_to_sheet([
-      {
-        factory_id: factoryId || "1",
-        sku: normalizedSku || "CN15D",
-        effective_date: today(),
-        unit_price: 32.1,
-        currency: "USD",
-        reason: "Base price",
-      },
-    ]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Template");
-    XLSX.writeFile(wb, `price-list-template-${normalizedSku || "sku"}.xlsx`);
-  }
-
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end overflow-hidden bg-black/30" onClick={onClose}>
       <aside
-        className="flex h-full w-full max-w-[760px] flex-col overflow-hidden border-l border-[#dedbd2] bg-white shadow-2xl"
+        className="flex h-dvh max-h-dvh w-full max-w-[760px] flex-col overflow-hidden border-l border-[#dedbd2] bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-[#e6e1d8] px-5 py-5">
@@ -292,8 +242,8 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
         {!canRead ? (
           <div className="p-6 text-sm text-muted-foreground">{pick("SKU 가격 이력을 볼 권한이 없습니다.", "You do not have permission to view SKU price history.")}</div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-[#f7f6f2]">
-            <div className="flex flex-wrap items-center gap-2 border-b border-[#e6e1d8] bg-white px-5 py-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-[#f7f6f2] pb-6">
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e6e1d8] bg-white px-5 py-3">
               <select
                 value={factoryId}
                 onChange={(event) => setFactoryId(event.target.value)}
@@ -305,32 +255,6 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={downloadTemplate} className="inline-flex h-9 items-center gap-1 rounded-md border px-2 text-xs hover:bg-slate-50">
-                <Download className="h-3.5 w-3.5" /> {pick("양식", "Template")}
-              </button>
-              <button type="button" onClick={exportRows} className="inline-flex h-9 items-center gap-1 rounded-md border px-2 text-xs hover:bg-slate-50">
-                <Download className="h-3.5 w-3.5" /> {pick("내보내기", "Export")}
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".xlsx,.xls,.csv,.pdf"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void uploadFile(file);
-                }}
-              />
-              {canCreate ? (
-                <button
-                  type="button"
-                  disabled={uploading}
-                  onClick={() => fileRef.current?.click()}
-                  className="inline-flex h-9 items-center gap-1 rounded-md bg-[#1a5cdb] px-2 text-xs font-medium text-white disabled:opacity-50"
-                >
-                  <FileUp className="h-3.5 w-3.5" /> {uploading ? pick("업로드 중", "Uploading") : pick("업로드", "Upload")}
-                </button>
-              ) : null}
               <button
                 type="button"
                 onClick={() => void loadRows()}
@@ -343,15 +267,27 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
               </button>
             </div>
 
-            <section className="m-4 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
-              <div className="border-b border-[#e6e1d8] bg-[#fbfaf7] px-5 py-3">
+            <section className="m-4 shrink-0 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e6e1d8] bg-[#fbfaf7] px-5 py-3">
                 <div className="text-sm font-semibold text-[#111827]">{pick("가격 변경 이력", "Price Change History")}</div>
+                <div className="text-xs text-muted-foreground">
+                  {pick("Invoice 검수 시 Invoice Date 이하의 가장 최근 Effective Date 가격을 적용합니다.", "Invoice validation uses the latest effective date that is less than or equal to the invoice date.")}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[680px] text-left text-sm">
                   <thead className="bg-[#f8f7f3] text-[11px] uppercase text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-2">{pick("적용일", "Effective")}</th>
+                      <th className="px-4 py-2">
+                        <button
+                          type="button"
+                          onClick={() => setEffectiveSort((current) => (current === "desc" ? "asc" : "desc"))}
+                          className="inline-flex items-center gap-1 font-semibold hover:text-[#1a5cdb]"
+                        >
+                          {pick("적용일", "Effective")}
+                          <span aria-hidden="true">{effectiveSort === "desc" ? "↓" : "↑"}</span>
+                        </button>
+                      </th>
                       <th className="px-4 py-2 text-right">{pick("가격", "Price")}</th>
                       <th className="px-4 py-2 text-right">{pick("변동액", "Change")}</th>
                       <th className="px-4 py-2 text-right">{pick("변동률", "Rate")}</th>
@@ -361,14 +297,14 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
                   <tbody>
                     {sortedRows.map((row) => (
                       <tr key={row.id} className="border-t border-[#eee9df] hover:bg-[#f8f7f3]">
-                        <td className="px-4 py-3 font-mono text-xs font-semibold">{row.effectiveDate}</td>
-                        <td className="px-4 py-3 text-right font-semibold">{money(row.unitPrice, row.currency)}</td>
-                        <td className={`px-4 py-3 text-right ${row.changeAmount && row.changeAmount > 0 ? "text-red-700" : row.changeAmount && row.changeAmount < 0 ? "text-emerald-700" : ""}`}>
+                        <td className="px-4 py-2 font-mono text-xs font-semibold">{row.effectiveDate}</td>
+                        <td className="px-4 py-2 text-right font-semibold">{money(row.unitPrice, row.currency)}</td>
+                        <td className={`px-4 py-2 text-right ${row.changeAmount && row.changeAmount > 0 ? "text-red-700" : row.changeAmount && row.changeAmount < 0 ? "text-emerald-700" : ""}`}>
                           {signedMoney(row.changeAmount, row.currency)}
                         </td>
-                        <td className="px-4 py-3 text-right">{pct(row.changeRate)}</td>
+                        <td className="px-4 py-2 text-right">{pct(row.changeRate)}</td>
                         {canEdit || canDelete ? (
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-2">
                             <div className="flex items-center gap-1">
                               {canEdit ? (
                                 <button type="button" onClick={() => editRow(row)} className="rounded border p-1.5 hover:bg-white" aria-label={pick("수정", "Edit")}>
@@ -395,12 +331,9 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
                   </tbody>
                 </table>
               </div>
-              <p className="px-5 py-3 text-xs text-muted-foreground">
-                {pick("Invoice 검수 시 Invoice Date 이하의 가장 최근 Effective Date 가격을 적용합니다.", "Invoice validation uses the latest effective date that is less than or equal to the invoice date.")}
-              </p>
             </section>
 
-            <section className="mx-4 mb-4 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
+            <section className="mx-4 mb-4 shrink-0 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
               <div className="border-b border-[#e6e1d8] bg-[#fbfaf7] px-5 py-3">
                 <div className="text-sm font-semibold text-[#111827]">{pick("특정 날짜 가격 조회", "Lookup Price By Date")}</div>
               </div>
@@ -408,12 +341,12 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
               <input type="date" value={asOfDate} onChange={(event) => setAsOfDate(event.target.value)} className="h-9 rounded-md border px-2 text-sm" />
               <div className="mt-3 rounded-lg border border-[#e0d8ca] bg-[#fffdf8] px-3 py-3 text-sm">
                 {asOfRow ? (
-                  <>
+                  <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
                     <span className="font-mono font-semibold">{asOfDate}</span> {pick("기준 적용 가격:", "applicable price:")}{" "}
                     <span className="font-bold">{money(asOfRow.unitPrice, asOfRow.currency)}</span>
                     <span className="text-muted-foreground"> {pick("적용 시작일", "since")} {asOfRow.effectiveDate}</span>
-                    {asOfRow.reason ? <div className="mt-1 text-xs text-muted-foreground">{asOfRow.reason}</div> : null}
-                  </>
+                    {asOfRow.reason ? <span className="min-w-0 truncate text-xs text-muted-foreground">· {asOfRow.reason}</span> : null}
+                  </div>
                 ) : (
                   <span className="text-muted-foreground">{pick("이 날짜에 적용되는 가격이 없습니다.", "No effective price exists on this date.")}</span>
                 )}
@@ -422,37 +355,33 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
             </section>
 
             {canCreate || (canEdit && form.id) ? (
-            <section className="mx-4 mb-6 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
+            <section className="mx-4 mb-6 shrink-0 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
               <div className="border-b border-[#e6e1d8] bg-[#fbfaf7] px-5 py-3">
                 <div className="text-sm font-semibold text-[#111827]">{form.id ? pick("가격 수정", "Edit Price") : pick("가격 추가", "Add Price")}</div>
               </div>
               <div className="px-5 py-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <label className="block text-xs font-medium">
                   {pick("적용 시작일", "Effective Date")}
                   <input type="date" value={form.effectiveDate} onChange={(event) => setForm((current) => ({ ...current, effectiveDate: event.target.value }))} className="mt-1 h-9 w-full rounded-md border px-2" />
                 </label>
                 <label className="block text-xs font-medium">
-                  {pick("통화", "Currency")}
-                  <input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} className="mt-1 h-9 w-full rounded-md border px-2" />
-                </label>
-                <label className="col-span-2 block text-xs font-medium">
-                  {pick("단가", "Unit Price")}
+                  {pick("단가 ($)", "Unit Price ($)")}
                   <input type="number" step="0.0001" value={form.unitPrice} onChange={(event) => setForm((current) => ({ ...current, unitPrice: event.target.value }))} className="mt-1 h-9 w-full rounded-md border px-2" />
                 </label>
-                <label className="col-span-2 block text-xs font-medium">
+                <label className="block text-xs font-medium md:col-span-2">
                   {pick("변경 사유", "Reason")}
                   <textarea value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} className="mt-1 min-h-16 w-full rounded-md border px-2 py-2" />
                 </label>
               </div>
-              <div className="mt-3 flex justify-end gap-2">
+              </div>
+              <div className="flex justify-end gap-2 px-5 pb-5 pt-1">
                 <button type="button" onClick={() => setForm(emptyForm(factoryId))} className="rounded-md border px-3 py-2 text-sm">
                   {pick("초기화", "Clear")}
                 </button>
                 <button type="button" disabled={form.id ? !canEdit : !canCreate} onClick={() => void saveForm()} className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                   <Save className="h-4 w-4" /> {pick("저장", "Save")}
                 </button>
-              </div>
               </div>
             </section>
             ) : null}

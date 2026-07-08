@@ -10,12 +10,9 @@ import { guardPermission } from "@/lib/permissions";
 import { logInvoiceAudit } from "@/lib/invoice-audit";
 
 const STATUS_BUCKETS: Record<string, string[]> = {
-  pending_review: ["received", "price_review"],
-  issue_found: ["discrepancy_found"],
-  waiting_factory: ["factory_confirmation"],
-  approved: ["approved"],
-  signed: ["signed"],
-  sent: ["sent_to_factory"],
+  pending_review: ["received", "price_review", "discrepancy_found"],
+  hold: ["factory_confirmation"],
+  reviewed: ["approved", "signed", "sent_to_factory"],
 };
 
 const InvoiceCreateSchema = z.object({
@@ -62,7 +59,7 @@ export async function GET(request: NextRequest) {
     }
     if (statuses.length > 0) {
       params.push(statuses);
-      filters.push(`i.status = ANY($${params.length}::text[])`);
+      filters.push(`i.status::text = ANY($${params.length}::text[])`);
     }
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
@@ -126,7 +123,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+    console.error("Failed to load invoices", error);
+    return NextResponse.json({ success: false, error: "Invoice 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요." }, { status: 500 });
   }
 }
 
@@ -142,7 +140,7 @@ export async function POST(request: NextRequest) {
     const result = await getPrimaryPool().query(
       `INSERT INTO shipcore.fc_invoices
          (invoice_number, factory_id, container_id, container_number, invoice_date, status, created_by, created_at, updated_at)
-       VALUES ($1, $2::bigint, $3::bigint, $4, $5::date, 'received', $6, NOW(), NOW())
+       VALUES ($1, $2::bigint, $3::bigint, $4, $5::date, 'price_review', $6, NOW(), NOW())
        RETURNING id::text AS id`,
       [
         parsed.invoiceNumber,

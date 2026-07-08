@@ -52,6 +52,24 @@ function rowToPrice(row: Record<string, unknown>) {
   };
 }
 
+function rowToSourceFile(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    originalName: row.original_name as string,
+    mimeType: row.mime_type as string | null,
+    sizeBytes: Number(row.size_bytes ?? 0),
+    uploadedBy: row.uploaded_by_display as string | null,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    rowCount: Number(row.row_count ?? 0),
+    factoryCount: Number(row.factory_count ?? 0),
+    skuCount: Number(row.sku_count ?? 0),
+    factoryIds: row.factory_ids ? String(row.factory_ids).split(",").filter(Boolean) : [],
+    factoryNames: row.factory_names as string | null,
+    firstEffectiveDate: serializeDate(row.first_effective_date),
+    lastEffectiveDate: serializeDate(row.last_effective_date),
+  };
+}
+
 function pickValue(row: Record<string, unknown>, names: string[]) {
   const entries = Object.entries(row);
   for (const name of names) {
@@ -60,30 +78,6 @@ function pickValue(row: Record<string, unknown>, names: string[]) {
     if (found) return found[1];
   }
   return undefined;
-}
-
-function parseExcelDate(value: unknown): string | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
-  if (typeof value === "number") {
-    const parsed = XLSX.SSF.parse_date_code(value);
-    if (parsed) {
-      return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
-    }
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    const date = new Date(trimmed);
-    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
-    const match = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-    if (match) {
-      const month = Number(match[1]);
-      const day = Number(match[2]);
-      const rawYear = Number(match[3]);
-      const year = rawYear < 100 ? 2000 + rawYear : rawYear;
-      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    }
-  }
-  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -114,10 +108,52 @@ export async function GET(request: NextRequest) {
         })),
       });
     }
+    if (mode === "files") {
+      const factoryIdForFiles = searchParams.get("factoryId")?.trim() ?? "";
+      const fileFilters: string[] = [];
+      const fileParams: unknown[] = [];
+      if (factoryIdForFiles) {
+        fileParams.push(factoryIdForFiles);
+        fileFilters.push(`EXISTS (
+          SELECT 1
+          FROM shipcore.fc_sku_price_history h_filter
+          WHERE h_filter.source_file_id = f.id
+            AND h_filter.factory_id = $${fileParams.length}::bigint
+        )`);
+      }
+      const fileWhere = fileFilters.length ? `WHERE ${fileFilters.join(" AND ")}` : "";
+      const result = await getPrimaryPool().query(
+        `SELECT
+           f.id,
+           f.original_name,
+           f.mime_type,
+           f.size_bytes,
+           COALESCE(u.name, u.email, f.uploaded_by) AS uploaded_by_display,
+           f.created_at,
+           COUNT(h.id)::int AS row_count,
+           COUNT(DISTINCT h.factory_id)::int AS factory_count,
+           COUNT(DISTINCT h.sku)::int AS sku_count,
+           STRING_AGG(DISTINCT h.factory_id::text, ',' ORDER BY h.factory_id::text) AS factory_ids,
+           STRING_AGG(DISTINCT ff.factory_name, ', ' ORDER BY ff.factory_name) AS factory_names,
+           MIN(h.effective_date)::text AS first_effective_date,
+           MAX(h.effective_date)::text AS last_effective_date
+         FROM shipcore.fc_price_list_files f
+         LEFT JOIN shipcore.fc_sku_price_history h ON h.source_file_id = f.id
+         LEFT JOIN shipcore.fc_factories ff ON ff.id = h.factory_id
+         LEFT JOIN shipcore.fc_user u ON u.id = f.uploaded_by
+         ${fileWhere}
+         GROUP BY f.id, u.name, u.email
+         ORDER BY f.created_at DESC
+         LIMIT 100`,
+        fileParams,
+      );
+      return NextResponse.json({ success: true, data: result.rows.map(rowToSourceFile) });
+    }
 
     const factoryId = searchParams.get("factoryId")?.trim() ?? "";
     const sku = searchParams.get("sku")?.trim() ?? "";
     const asOfDate = searchParams.get("asOfDate")?.trim() ?? "";
+    const sourceFileId = searchParams.get("sourceFileId")?.trim() ?? "";
     const currentOnly = searchParams.get("currentOnly") === "true";
 
     const filters: string[] = [];
@@ -134,6 +170,10 @@ export async function GET(request: NextRequest) {
     if (asOfDate) {
       params.push(asOfDate);
       filters.push(`h.effective_date <= $${params.length}::date`);
+    }
+    if (sourceFileId) {
+      params.push(sourceFileId);
+      filters.push(`h.source_file_id = $${params.length}::bigint`);
     }
 
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
@@ -240,6 +280,39 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
+    const sourceFileId = searchParams.get("sourceFileId")?.trim();
+    if (sourceFileId) {
+      const client = await getPrimaryPool().connect();
+      try {
+        await client.query("BEGIN");
+        const deletedRows = await client.query(
+          `DELETE FROM shipcore.fc_sku_price_history WHERE source_file_id = $1::bigint`,
+          [sourceFileId],
+        );
+        const deletedFile = await client.query(
+          `DELETE FROM shipcore.fc_price_list_files WHERE id = $1::bigint`,
+          [sourceFileId],
+        );
+        await client.query("COMMIT");
+        if (deletedFile.rowCount === 0) return NextResponse.json({ success: false, error: "Source file not found" }, { status: 404 });
+        return NextResponse.json({ success: true, data: { deletedRows: deletedRows.rowCount ?? 0 } });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    const ids = searchParams.get("ids")?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
+    if (ids.length > 0) {
+      const result = await getPrimaryPool().query(
+        `DELETE FROM shipcore.fc_sku_price_history WHERE id = ANY($1::bigint[])`,
+        [ids],
+      );
+      return NextResponse.json({ success: true, data: { deletedRows: result.rowCount ?? 0 } });
+    }
+
     const id = searchParams.get("id")?.trim();
     if (!id) return NextResponse.json({ success: false, error: "id is required" }, { status: 400 });
 
@@ -263,11 +336,15 @@ export async function PATCH(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get("file");
     const fallbackFactoryId = String(formData.get("factoryId") ?? "").trim();
+    const fallbackEffectiveDate = String(formData.get("effectiveDate") ?? "").trim();
     const fallbackReason = String(formData.get("reason") ?? "").trim();
-    const fallbackCurrency = String(formData.get("currency") ?? "USD").trim().toUpperCase() || "USD";
+    const currency = "USD";
 
     if (!(file instanceof File)) {
       return NextResponse.json({ success: false, error: "file is required" }, { status: 400 });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fallbackEffectiveDate)) {
+      return NextResponse.json({ success: false, error: "effectiveDate is required" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -293,23 +370,32 @@ export async function PATCH(request: NextRequest) {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
       const errors: string[] = [];
-      let imported = 0;
+      let created = 0;
+      let updated = 0;
 
       for (const [index, row] of rows.entries()) {
         const rowNo = index + 2;
         const sku = String(pickValue(row, ["sku", "master_sku", "master sku", "item"]) ?? "").trim().toUpperCase();
-        const effectiveDate = parseExcelDate(pickValue(row, ["effective_date", "effective date", "date", "price date"]));
+        const effectiveDate = fallbackEffectiveDate;
         const rawPrice = pickValue(row, ["unit_price", "unit price", "price", "cost"]);
         const unitPrice = Number(String(rawPrice ?? "").replace(/[$,]/g, ""));
-        const factoryId = String(pickValue(row, ["factory_id", "factory id"]) ?? fallbackFactoryId).trim();
-        const currency = String(pickValue(row, ["currency"]) ?? fallbackCurrency).trim().toUpperCase() || "USD";
+        const factoryId = fallbackFactoryId;
         const reason = String(pickValue(row, ["reason", "note", "memo"]) ?? fallbackReason).trim();
 
         if (!sku || !effectiveDate || !Number.isFinite(unitPrice) || unitPrice < 0 || !factoryId) {
-          errors.push(`Row ${rowNo}: sku, effective_date, unit_price, factory_id are required`);
+          errors.push(`Row ${rowNo}: sku, selected effective date, unit_price, selected factory are required`);
           continue;
         }
 
+        const existing = await client.query(
+          `SELECT id
+           FROM shipcore.fc_sku_price_history
+           WHERE factory_id = $1::bigint
+             AND sku = $2
+             AND effective_date = $3::date
+           LIMIT 1`,
+          [factoryId, sku, effectiveDate],
+        );
         await client.query(
           `INSERT INTO shipcore.fc_sku_price_history
              (factory_id, sku, effective_date, unit_price, currency, reason, source_file_id, created_by, created_at, updated_at)
@@ -322,11 +408,12 @@ export async function PATCH(request: NextRequest) {
              updated_at = NOW()`,
           [factoryId, sku, effectiveDate, unitPrice, currency, reason || null, sourceFileId, session?.user?.id ?? null],
         );
-        imported += 1;
+        if ((existing.rowCount ?? 0) > 0) updated += 1;
+        else created += 1;
       }
 
       await client.query("COMMIT");
-      return NextResponse.json({ success: true, data: { sourceFileId, imported, errors } });
+      return NextResponse.json({ success: true, data: { sourceFileId, imported: created + updated, created, updated, skipped: errors.length, errors } });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

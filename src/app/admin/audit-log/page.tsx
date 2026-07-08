@@ -39,10 +39,14 @@ const ACTION_OPTIONS = [
   { value: "update", ko: "정보 수정", en: "Update" },
   { value: "delete", ko: "삭제", en: "Delete" },
   { value: "status_change", ko: "상태 변경", en: "Status Change" },
-  { value: "details_update", ko: "컨테이너 정보 수정", en: "Container Details Update" },
+  { value: "details_update", ko: "정보 수정", en: "Details Update" },
   { value: "eta_change", ko: "ETA 수정", en: "ETA Change" },
   { value: "items_update", ko: "수량/SKU 변경", en: "Item Change" },
   { value: "note_added", ko: "메모", en: "Note" },
+  { value: "recompare", ko: "재검수", en: "Recompare" },
+  { value: "credit_update", ko: "Credit 상태 변경", en: "Credit Status Change" },
+  { value: "factory_confirm_update", ko: "공장 확인 상태 변경", en: "Factory Confirmation Change" },
+  { value: "attachment_update", ko: "첨부파일 변경", en: "Attachment Update" },
   { value: "permission_grant", ko: "권한 부여", en: "Permission Grant" },
   { value: "permission_revoke", ko: "권한 취소", en: "Permission Revoke" },
   { value: "role_change", ko: "역할 변경", en: "Role Change" },
@@ -52,6 +56,7 @@ const ACTION_OPTIONS = [
 const ENTITY_TYPE_OPTIONS = [
   { value: "all", ko: "모든 유형", en: "All types" },
   { value: "container", ko: "컨테이너", en: "Container" },
+  { value: "invoice", ko: "Invoice", en: "Invoice" },
   { value: "factory", ko: "공장", en: "Factory" },
   { value: "warehouse", ko: "창고", en: "Warehouse" },
   { value: "sku", ko: "SKU 기준정보", en: "SKU Master" },
@@ -66,6 +71,10 @@ const ACTION_CLASS: Record<string, string> = {
   details_update: "bg-blue-100 text-blue-700",
   items_update: "bg-violet-100 text-violet-700",
   note_added: "bg-stone-100 text-stone-700",
+  recompare: "bg-sky-100 text-sky-700",
+  credit_update: "bg-fuchsia-100 text-fuchsia-700",
+  factory_confirm_update: "bg-amber-100 text-amber-700",
+  attachment_update: "bg-stone-100 text-stone-700",
   create: "bg-cyan-100 text-cyan-700",
   update: "bg-blue-100 text-blue-700",
   delete: "bg-red-100 text-red-700",
@@ -77,6 +86,7 @@ const ACTION_CLASS: Record<string, string> = {
 
 const ENTITY_TYPE_CLASS: Record<string, string> = {
   container: "bg-slate-100 text-slate-600",
+  invoice: "bg-amber-50 text-amber-700",
   factory: "bg-orange-50 text-orange-700",
   warehouse: "bg-teal-50 text-teal-700",
   sku: "bg-purple-50 text-purple-700",
@@ -87,6 +97,7 @@ const ENTITY_TYPE_CLASS: Record<string, string> = {
 
 const ENTITY_TYPE_LABEL_KO: Record<string, string> = {
   container: "컨테이너",
+  invoice: "Invoice",
   factory: "공장",
   warehouse: "창고",
   sku: "SKU",
@@ -97,6 +108,7 @@ const ENTITY_TYPE_LABEL_KO: Record<string, string> = {
 
 const ENTITY_TYPE_LABEL_EN: Record<string, string> = {
   container: "Container",
+  invoice: "Invoice",
   factory: "Factory",
   warehouse: "Warehouse",
   sku: "SKU",
@@ -169,6 +181,43 @@ function summarizeChange(entry: AuditEntry): { before: string; after: string } {
     }
     if (entry.action === "delete") {
       return { before: valueText(entry.before?.status), after: "Deleted" };
+    }
+    return { before: "-", after: "-" };
+  }
+
+  // Invoice-specific actions
+  if (entry.entityType === "invoice") {
+    if (entry.action === "status_change") {
+      return { before: valueText(entry.before?.status), after: valueText(entry.after?.status) };
+    }
+    if (entry.action === "details_update" || entry.action === "items_update") {
+      const keys = Object.keys(entry.after ?? {}).filter(
+        (key) => key !== "itemId" && valueText(entry.before?.[key]) !== valueText(entry.after?.[key]),
+      );
+      const first = keys[0];
+      if (!first) return { before: "-", after: "-" };
+      return {
+        before: `${first}: ${valueText(entry.before?.[first])}`,
+        after: `${first}: ${valueText(entry.after?.[first])}`,
+      };
+    }
+    if (entry.action === "recompare") {
+      return { before: "-", after: "재검수 완료" };
+    }
+    if (entry.action === "credit_update") {
+      return { before: "-", after: `Credit: ${valueText(entry.after?.creditStatus)}` };
+    }
+    if (entry.action === "factory_confirm_update") {
+      return { before: "-", after: `공장 확인: ${valueText(entry.after?.action)}` };
+    }
+    if (entry.action === "attachment_update") {
+      return { before: "-", after: entry.after?.signed ? "서명본 첨부" : "원본 첨부" };
+    }
+    if (entry.action === "create") {
+      return { before: "-", after: entry.entityLabel || "생성됨" };
+    }
+    if (entry.action === "delete") {
+      return { before: entry.entityLabel || "-", after: "Deleted" };
     }
     return { before: "-", after: "-" };
   }
