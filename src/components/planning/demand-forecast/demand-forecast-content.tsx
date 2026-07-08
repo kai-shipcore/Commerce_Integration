@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { RunForecast } from "./run-forecast";
 import { SegmentationOverview } from "./segmentation-overview";
+import { AccuracyTrend } from "./accuracy-trend";
 
 interface LastRun {
   run_date: string | null;
@@ -15,6 +16,7 @@ export function DemandForecastContent({ initialLastRun }: { initialLastRun: Last
     <>
       <RunForecast initialLastRun={initialLastRun} onDone={() => setRefreshKey((k) => k + 1)} />
       <SegmentationOverview refreshKey={refreshKey} />
+      <AccuracyTrend refreshKey={refreshKey} />
     </>
   );
 }
