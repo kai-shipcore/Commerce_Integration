@@ -170,7 +170,7 @@ function segmentLabel(bucket: string, historyLength: string): string {
 
 function segmentMethod(bucket: string, historyLength: string): string {
   if (bucket !== "smooth") return "Restock policy";
-  if (historyLength === "short") return "V1";
+  if (historyLength === "short") return "WindowAverage";
   return "StatsForecast";
 }
 
@@ -1078,8 +1078,8 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
             value={segmentLabel(meta.bucket, meta.history_length)}
             tooltip={pick(
               language,
-              "이 SKU의 예측 방법 분류입니다. Smooth: StatsForecast 앙상블 모델 사용. Smooth / Short history: 이력이 짧아 단순화된 V1 모델 사용. Intermittent: 간헐적 수요 전용 Restock policy 모델 사용.",
-              "The forecasting method assigned to this SKU. Smooth: StatsForecast ensemble. Smooth / Short history: simplified V1 model for SKUs with limited history. Intermittent: Restock policy model for sporadic demand.",
+              "이 SKU의 예측 방법 분류입니다. Smooth: StatsForecast 앙상블 모델 사용. Smooth / Short history: 이력이 짧아 최근 8주 평균(Window Average) 사용. Intermittent: 간헐적 수요 전용 Restock policy 모델 사용.",
+              "The forecasting method assigned to this SKU. Smooth: StatsForecast ensemble. Smooth / Short history: 8-week Window Average for SKUs with limited history. Intermittent: Restock policy model for sporadic demand.",
             )}
           />
           <MetaField

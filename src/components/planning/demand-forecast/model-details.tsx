@@ -101,6 +101,53 @@ export function V1Detail() {
   );
 }
 
+export function WindowAverageDetail() {
+  const { pick } = useI18n();
+  return (
+    <div className="space-y-4 text-sm">
+      <p className="text-muted-foreground">
+        {pick(
+          "Window Average는 최근 8주 판매량의 평균을 계산하여 예측 기간의 매주에 동일하게 적용하는 단순한 모델입니다. 이력이 짧은 SKU에 사용됩니다.",
+          "Window Average is a simple model that averages the last 8 weeks of sales and repeats that value for every week of the forecast horizon. It is used for SKUs with short sales history.",
+        )}
+      </p>
+
+      <div className="space-y-1.5">
+        <p className="font-medium">{pick("작동 방식", "How it works")}</p>
+        <div className="rounded-md bg-muted/40 px-3 py-2 font-mono text-xs">
+          <p>forecast (per week) = mean(weekly sales, last 8 weeks)</p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {pick(
+            "추세나 계절성을 추정하지 않습니다 — 최근 판매 수준을 그대로 이어간다고 가정합니다.",
+            "No trend or seasonality is estimated — it assumes the recent sales level simply continues.",
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="font-medium">{pick("이력이 짧은 SKU에 사용하는 이유", "Why it's used for short-history SKUs")}</p>
+        <p className="text-muted-foreground">
+          {pick(
+            "이력이 1년 미만인 SKU는 완전한 연간 주기가 없어 계절성 모델을 신뢰성 있게 학습할 수 없고, 교차 검증을 수행할 데이터도 부족합니다. 이 구간에서는 단순하고 강건한 평균이 복잡한 모델보다 안정적입니다. 백테스트에서 V1 공식보다 더 정확한 것으로 확인되어 채택되었습니다.",
+            "SKUs with under a year of history have no complete annual cycle, so seasonal models can't be fit reliably and there isn't enough data for cross-validation. In this range a simple, robust average is more stable than a complex model. It was adopted after backtesting showed it outperformed the V1 formula on these SKUs.",
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="font-medium">{pick("졸업", "Graduation")}</p>
+        <p className="text-muted-foreground">
+          {pick(
+            "SKU가 교차 검증에 충분한 이력을 쌓으면 자동으로 StatsForecast 모델 선택 대상으로 승급됩니다. 테이블의 '전체 이력까지' 열은 남은 주 수를 보여줍니다.",
+            "Once a SKU accumulates enough history for cross-validation, it automatically graduates to StatsForecast model selection. The 'Weeks to full history' column in the table shows the remaining weeks.",
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function StatsForecastDetail() {
   const { pick } = useI18n();
   return (
@@ -175,19 +222,24 @@ export function StatsForecastDetail() {
 }
 
 export const MODEL_DETAIL_CONFIG: Record<string, { title: string; content: React.ReactNode }> = {
-  StatsForecast: { title: "StatsForecast — How it works", content: <StatsForecastDetail /> },
-  V1:            { title: "V1 Formula — How it works",    content: <V1Detail /> },
+  StatsForecast: { title: "StatsForecast — How it works",  content: <StatsForecastDetail /> },
+  V1:            { title: "V1 Formula — How it works",     content: <V1Detail /> },
+  WindowAverage: { title: "Window Average — How it works", content: <WindowAverageDetail /> },
 };
 
-export function ModelInfoButton({ method }: { method: "StatsForecast" | "V1" }) {
+export function ModelInfoButton({ method }: { method: "StatsForecast" | "V1" | "WindowAverage" }) {
   const { pick } = useI18n();
   const [open, setOpen] = React.useState(false);
   const config = MODEL_DETAIL_CONFIG[method];
   const title = method === "StatsForecast"
     ? pick("StatsForecast — 작동 원리", "StatsForecast — How it works")
+    : method === "WindowAverage"
+    ? pick("Window Average — 작동 원리", "Window Average — How it works")
     : pick("V1 공식 — 작동 원리", "V1 Formula — How it works");
   const label = method === "StatsForecast"
     ? pick("StatsForecast 작동 원리", "How StatsForecast works")
+    : method === "WindowAverage"
+    ? pick("Window Average 작동 원리", "How Window Average works")
     : pick("V1 작동 원리", "How V1 works");
   return (
     <>

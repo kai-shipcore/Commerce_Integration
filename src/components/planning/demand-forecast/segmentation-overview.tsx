@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { DemandConcentration, type ParetoData } from "./demand-concentration";
 import { apiPath } from "@/lib/api-path";
-import { V1Detail, StatsForecastDetail } from "./model-details";
+import { V1Detail, StatsForecastDetail, WindowAverageDetail } from "./model-details";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const fmt = new Intl.NumberFormat("en-US");
@@ -28,11 +28,13 @@ const SEGMENT_TIPS_KO: Record<string, string> = {
 const METHOD_TIPS_EN: Record<string, string> = {
   "StatsForecast": "A library of statistical time series models (ETS, ARIMA, Theta, etc.). The best-fitting model is selected per SKU through cross-validation, then refit on all available data to produce the forward forecast.",
   "V1":            "A simpler fallback model used when a SKU doesn't have enough history to run full cross-validation. It produces a reasonable baseline forecast that gets replaced by a StatsForecast model once enough data accumulates.",
+  "WindowAverage": "Averages the last 8 weeks of sales and repeats that value for each forecast week. Used when a SKU doesn't have enough history to run full cross-validation; replaced by a StatsForecast model once enough data accumulates.",
   "Restock policy": "No time series forecast is generated. Instead, stock is replenished reactively — typically when on-hand inventory drops below a set threshold. Suitable for slow-moving or unpredictable items where a forecast would be unreliable.",
 };
 const METHOD_TIPS_KO: Record<string, string> = {
   "StatsForecast": "통계적 시계열 모델 라이브러리(ETS, ARIMA, Theta 등)입니다. 교차 검증을 통해 SKU별 최적 모델을 선택한 후, 전체 데이터로 재학습하여 포워드 예측을 생성합니다.",
   "V1":            "SKU의 이력이 충분하지 않아 전체 교차 검증을 수행하기 어려울 때 사용하는 간단한 기준 모델입니다. 데이터가 충분히 쌓이면 StatsForecast 모델로 자동으로 교체됩니다.",
+  "WindowAverage": "최근 8주 판매량의 평균을 계산하여 예측 기간의 매주에 동일하게 적용합니다. SKU의 이력이 부족해 전체 교차 검증을 수행하기 어려울 때 사용하며, 데이터가 충분히 쌓이면 StatsForecast 모델로 자동으로 교체됩니다.",
   "Restock policy": "시계열 예측을 생성하지 않습니다. 대신 현재고가 특정 임계값 이하로 떨어지면 재입고하는 반응적 방식으로 관리됩니다. 느리게 움직이거나 수요가 예측 불가능한 제품에 적합합니다.",
 };
 
@@ -48,8 +50,9 @@ function InfoTooltip({ text, onClick }: { text: string; onClick?: (e: React.Mous
 }
 
 const METHOD_DETAILS: Record<string, { title: string; content: React.ReactNode }> = {
-  "StatsForecast": { title: "StatsForecast — How it works", content: <StatsForecastDetail /> },
-  "V1":            { title: "V1 Formula — How it works",    content: <V1Detail /> },
+  "StatsForecast": { title: "StatsForecast — How it works",  content: <StatsForecastDetail /> },
+  "V1":            { title: "V1 Formula — How it works",     content: <V1Detail /> },
+  "WindowAverage": { title: "Window Average — How it works", content: <WindowAverageDetail /> },
 };
 
 function MethodBadge({ method }: { method: string }) {
@@ -61,6 +64,8 @@ function MethodBadge({ method }: { method: string }) {
     ? pick("StatsForecast — 작동 원리", "StatsForecast — How it works")
     : method === "V1"
     ? pick("V1 공식 — 작동 원리", "V1 Formula — How it works")
+    : method === "WindowAverage"
+    ? pick("Window Average — 작동 원리", "Window Average — How it works")
     : method;
   const methodLabel = method === "Restock policy" ? pick("재입고 정책", "Restock policy") : method;
 
@@ -120,6 +125,7 @@ interface SegmentationData {
 const METHOD_STYLES: Record<string, string> = {
   StatsForecast:    "bg-blue-50 text-blue-700 border border-blue-200",
   V1:               "bg-violet-50 text-violet-700 border border-violet-200",
+  WindowAverage:    "bg-violet-50 text-violet-700 border border-violet-200",
   "Restock policy": "bg-amber-50 text-amber-700 border border-amber-200",
 };
 
@@ -147,7 +153,7 @@ function zeroedData(weeks: number): SegmentationData {
     weeks, period_start: "", period_end: "",
     segments: [
       { segment: "smooth_full",  name: "Smooth",                  method: "StatsForecast",  sku_count: 0, demand: 0, demand_pct: 0 },
-      { segment: "smooth_short", name: "Smooth / Short history",  method: "V1",             sku_count: 0, demand: 0, demand_pct: 0 },
+      { segment: "smooth_short", name: "Smooth / Short history",  method: "WindowAverage",  sku_count: 0, demand: 0, demand_pct: 0 },
       { segment: "intermittent", name: "Intermittent",            method: "Restock policy", sku_count: 0, demand: 0, demand_pct: 0 },
     ],
     pareto: { x: [], y: [], annotation: null },

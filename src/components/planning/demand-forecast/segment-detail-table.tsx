@@ -994,7 +994,7 @@ function SmoothTable({
               )}
             </PopoverContent>
           </Popover>}
-          <ModelInfoButton method={isShortHistory ? "V1" : "StatsForecast"} />
+          <ModelInfoButton method={isShortHistory ? "WindowAverage" : "StatsForecast"} />
         </div>
       </div>
 
