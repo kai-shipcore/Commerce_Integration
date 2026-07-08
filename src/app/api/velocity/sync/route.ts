@@ -36,6 +36,7 @@ const CHANNEL_CASE = (alias: string) => `
 
 const ITEM_CATEGORY_CASE = (skuExpr: string) => `
   CASE
+    WHEN ${skuExpr} LIKE '%SWC%'                                        THEN 'SWC'
     WHEN ${skuExpr} = 'C-SJ-GR-7' OR ${skuExpr} LIKE 'CC%'             THEN 'Car Cover'
     WHEN ${skuExpr} LIKE 'CA-SC%' OR ${skuExpr} LIKE 'CL-SC%'          THEN 'Seat Cover'
     WHEN ${skuExpr} LIKE 'CA-FM%'                                       THEN 'Floor Mat'
