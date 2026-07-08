@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Barcode,
   Boxes,
   Building2,
   CalendarRange,
@@ -210,6 +211,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "part-sku-generator",
+    name: "Part SKU Generator",
+    href: "/production/part-sku-generator",
+    icon: Barcode,
+    group: "Production",
+    hideable: true,
+  },
+  {
     id: "invoice-price-control",
     name: "Invoice & Price Control",
     href: "/production/invoice-price-control",
@@ -299,6 +308,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "production-vehicles": ["production-vehicles"],
   "invoice-price-control": ["invoice-price-control"],
   "parts-codes":         ["production-parts-codes"],
+  "part-sku-generator":  ["part-sku-generator"],
   "factory":             ["factories"],
   "warehouse":           ["warehouse-admin"],
   "integrations":        ["integrations"],

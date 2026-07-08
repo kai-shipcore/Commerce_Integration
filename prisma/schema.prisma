@@ -520,6 +520,44 @@ model DesignerInitial {
   @@schema("shipcore")
 }
 
+model PartSku {
+  id          BigInt   @id @default(autoincrement())
+  sku         String   @unique
+  partName    String   @map("part_name")
+  make        String
+  makeAbbr    String   @map("make_abbr")
+  model       String
+  modelAbbr   String   @map("model_abbr")
+  code        String
+  initial     String
+  side        String
+  createdByName String? @map("created_by_name")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  checklistItems PartSkuChecklistItem[]
+
+  @@index([isActive])
+  @@map("fc_part_skus")
+  @@schema("shipcore")
+}
+
+model PartSkuChecklistItem {
+  id          BigInt   @id @default(autoincrement())
+  partSkuId   BigInt   @map("part_sku_id")
+  description String
+  status      String   @default("Pending")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  partSku PartSku @relation(fields: [partSkuId], references: [id], onDelete: Cascade)
+
+  @@index([partSkuId])
+  @@map("fc_part_sku_checklist_items")
+  @@schema("shipcore")
+}
+
 // ============================================
 // TRANSIT RECORDS
 // ============================================

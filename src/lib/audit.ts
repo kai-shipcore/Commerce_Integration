@@ -10,7 +10,8 @@ export type AuditEntityType =
   | "integration"
   | "production_part"
   | "production_code"
-  | "designer_initial";
+  | "designer_initial"
+  | "part_sku";
 
 export type AuditAction =
   | "create"
