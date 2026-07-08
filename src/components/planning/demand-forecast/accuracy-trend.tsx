@@ -23,9 +23,11 @@ interface AccuracyPoint {
   k: number;
   n_skus: number;
   demand_total: number;
+  model_total: number;
   model_wape: number | null;
   n_v1: number;
   demand_total_v1: number;
+  v1_total: number;
   model_wape_v1: number | null;
   v1_wape: number | null;
 }
@@ -122,10 +124,10 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
         name: pick("모델 WAPE", "Model WAPE"),
         line: { color: "#4C72B0", width: 2 },
         marker: { size: 7 },
-        customdata: points.map((p) => [p.n_skus, p.demand_total, p.forecast_date]),
+        customdata: points.map((p) => [p.n_skus, p.demand_total, p.model_total]),
         hovertemplate:
-          "Model WAPE: %{y:.1f}%<br>SKUs: %{customdata[0]}<br>" +
-          "Actual demand: %{customdata[1]:,}<br>Run: %{customdata[2]}<extra></extra>",
+          "Model WAPE: %{y:.1f}%<br>Model forecast: %{customdata[2]:,}<br>" +
+          "Actual demand: %{customdata[1]:,}<br>SKUs: %{customdata[0]}<extra></extra>",
       } as Plotly.Data,
     ];
     if (points.some((p) => p.v1_wape != null)) {
@@ -137,8 +139,8 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
         name: "V1 WAPE",
         line: { color: "#DD8452", width: 2, dash: "dash" },
         marker: { size: 7 },
-        customdata: points.map((p) => [p.n_v1]),
-        hovertemplate: "V1 WAPE: %{y:.1f}%<br>SKUs with V1: %{customdata[0]}<extra></extra>",
+        customdata: points.map((p) => [p.v1_total]),
+        hovertemplate: "V1 WAPE: %{y:.1f}%<br>V1 forecast: %{customdata[0]:,}<extra></extra>",
       } as Plotly.Data);
     }
     return {
