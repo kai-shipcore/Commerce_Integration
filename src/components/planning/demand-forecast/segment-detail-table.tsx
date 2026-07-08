@@ -959,7 +959,7 @@ function SmoothTable({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!isShortHistory && <Popover open={colsOpen} onOpenChange={setColsOpen}>
+          {<Popover open={colsOpen} onOpenChange={setColsOpen}>
             <PopoverTrigger asChild>
               <button className="rounded border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                 {pick("열 표시", "Columns")}
@@ -1043,7 +1043,7 @@ function SmoothTable({
               {showLo && <Th col="yhat_total" label={pick("하한", "Low")} right />}
               {showPt && <Th col="yhat_total" label={(mode === "backtest" || mode === "simulation") ? pick("예측", "Forecast") : pick(`${weeks}주 예측`, `${weeks}W Forecast`)} right />}
               {showHi && <Th col="yhat_total" label={pick("상한", "High")} right />}
-              {(mode === "backtest" || mode === "simulation") && !isShortHistory && showV1Forecast && <Th col="v1_yhat_total" label={pick("V1 예측", "V1 Forecast")} right />}
+              {(mode === "backtest" || mode === "simulation") && showV1Forecast && <Th col="v1_yhat_total" label={pick("V1 예측", "V1 Forecast")} right />}
               {(mode === "backtest" || mode === "simulation") && <Th col="wape" label="WAPE" right />}
               {(mode === "backtest" || mode === "simulation") && showV1Wape && <Th col="v1_wape" label="V1 WAPE" right />}
               {(mode === "backtest" || mode === "simulation") && showV1Diff && <Th col="wape_diff" label={pick("차이", "Diff")} right />}
@@ -1115,7 +1115,7 @@ function SmoothTable({
                           lo={row.yhat_lo_total ?? null}
                           hi={row.yhat_hi_total ?? null}
                           demand={row.demand_total}
-                          showDemand={(mode === "backtest" || mode === "simulation") && !isShortHistory}
+                          showDemand={(mode === "backtest" || mode === "simulation")}
                         />}
                   </TableCell>
                 )}
@@ -1124,7 +1124,7 @@ function SmoothTable({
                     {row.yhat_hi_total !== null ? fmt.format(row.yhat_hi_total) : "—"}
                   </TableCell>
                 )}
-                {(mode === "backtest" || mode === "simulation") && !isShortHistory && showV1Forecast && (
+                {(mode === "backtest" || mode === "simulation") && showV1Forecast && (
                   <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                     {row.v1_yhat_total !== null ? fmt.format(row.v1_yhat_total) : "—"}
                   </TableCell>
@@ -1718,7 +1718,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
         />
       )}
 
-      {mode !== "simulation" && data && !isIntermittent && mode === "backtest" && !data.backtest_unavailable && segment !== "smooth_short" && (showV1Wape || showV1Diff) && (
+      {mode !== "simulation" && data && !isIntermittent && mode === "backtest" && !data.backtest_unavailable && (showV1Wape || showV1Diff) && (
         <V1ComparisonCards rows={data.skus as SmoothRow[]} />
       )}
 
@@ -1760,7 +1760,7 @@ export function SegmentDetailTable({ segment, initialTypes, initialSku }: { segm
             weeks={simData.weeks}
             intervalLabel={levelLabel(level)}
           />
-          {segment !== "smooth_short" && (showV1Wape || showV1Diff) && (
+          {(showV1Wape || showV1Diff) && (
             <V1ComparisonCards rows={simData.skus as SmoothRow[]} />
           )}
           <SmoothTable segment={segment} rows={simData.skus as SmoothRow[]} weeks={simData.weeks} mode="simulation" showLo={showLo} setShowLo={setShowLo} showPt={showPt} setShowPt={setShowPt} showHi={showHi} setShowHi={setShowHi} showV1Forecast={showV1Forecast} setShowV1Forecast={setShowV1Forecast} showV1Wape={showV1Wape} setShowV1Wape={setShowV1Wape} showV1Diff={showV1Diff} setShowV1Diff={setShowV1Diff} />
