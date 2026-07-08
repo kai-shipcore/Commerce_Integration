@@ -10,6 +10,7 @@ import {
   PERM_ACTIONS,
   PERM_SECTION_GROUP_LABELS,
   PERM_SECTION_ACTIONS,
+  PERM_SECTION_HINTS,
   MANAGED_ROLES,
   ROLE_LABEL,
   DEFAULT_ROLE_PERMISSIONS,
@@ -340,6 +341,11 @@ export function RolePermissionsTab() {
                         <div className="text-[12px] font-semibold text-[#1a1917]">
                           {pick(sec.nameKo, sec.nameEn)}
                         </div>
+                        {PERM_SECTION_HINTS[sec.id as PermSection] ? (
+                          <div className="mt-0.5 text-[10.5px] font-medium leading-snug text-[#1a5cdb]">
+                            {pick(PERM_SECTION_HINTS[sec.id as PermSection]!.ko, PERM_SECTION_HINTS[sec.id as PermSection]!.en)}
+                          </div>
+                        ) : null}
                       </td>
                       {DISPLAY_ACTIONS.map((act) => {
                         const supported = PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id);

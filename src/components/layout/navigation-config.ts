@@ -216,7 +216,6 @@ export const navigationItems: NavigationItem[] = [
     icon: FileSpreadsheet,
     group: "Production",
     hideable: true,
-    hidden: true,
   },
   {
     id: "factories",

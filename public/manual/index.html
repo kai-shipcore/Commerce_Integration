@@ -313,6 +313,7 @@
   <a class="nav-sub" href="#cp-status">상태 관리</a>
   <a class="nav-sub" href="#cp-complete">입고 완료와 수요 계획</a>
   <a class="nav-sub" href="#cp-export">엑셀 Export</a>
+  <a class="nav-sub" href="#cp-bulk-status">상태 일괄 변경</a>
   <a class="nav-item" href="#container-timeline"><span class="icon">📅</span> 컨테이너 일정</a>
   <a class="nav-sub" href="#ct-overview">화면 구성</a>
   <a class="nav-sub" href="#ct-filters">필터 & 기간 설정</a>
@@ -1996,7 +1997,7 @@
     </div>
     <div class="card">
       <h4>📋 컨테이너 목록</h4>
-      <p>Active(진행 중)와 Completed(완료) 탭으로 구분됩니다. 각 컨테이너를 클릭하면 오른쪽 상세 패널이 열립니다. 하단 체크박스로 여러 컨테이너를 선택해 Excel Export할 수 있습니다.</p>
+      <p>Active(진행 중)와 Completed(완료) 탭으로 구분됩니다. 각 컨테이너를 클릭하면 오른쪽 상세 패널이 열립니다. 하단 체크박스로 여러 컨테이너를 선택해 Excel Export 또는 상태 일괄 변경을 할 수 있습니다.</p>
     </div>
     <div class="card">
       <h4>📅 일정 보기 이동</h4>
@@ -2363,6 +2364,63 @@
     <tr><td>Total CBM</td><td>Qty × CBM / Unit</td></tr>
     <tr><td>Total 행</td><td>전체 합계 수량 및 CBM 합계</td></tr>
   </table>
+
+  <!-- 상태 일괄 변경 -->
+  <h3 id="cp-bulk-status">⑦ 상태 일괄 변경 (Bulk Status Change)</h3>
+  <p>여러 컨테이너를 한 번에 선택해 상태를 일괄로 변경할 수 있습니다. 예를 들어 공장에 발주서를 동시에 발송한 여러 컨테이너를 한 번의 조작으로 <span class="status final">Final List Sent</span>로 전환할 때 유용합니다.</p>
+
+  <div class="steps" style="margin:16px 0">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div>
+        <h4>컨테이너 선택</h4>
+        <p>컨테이너 목록 좌측의 <b>체크박스</b>를 클릭해 상태를 변경할 컨테이너를 선택합니다. Excel Export와 동일한 선택 영역을 공유하므로, 이미 Export용으로 선택해 둔 컨테이너에 바로 이어서 상태를 변경할 수 있습니다.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">목록 하단의 <span class="btn-label">Select visible</span> 체크박스로 현재 필터에 맞는 컨테이너 전체를 한 번에 선택할 수 있습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div>
+        <h4>상태 일괄 변경 버튼 클릭</h4>
+        <p>상단 헤더의 <span class="btn-label">상태 일괄 변경 (N)</span> 버튼을 클릭합니다. N은 현재 선택된 컨테이너 수입니다.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">컨테이너가 0개 선택되었거나 <b>컨테이너 수정 권한</b>이 없으면 버튼이 비활성화됩니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div>
+        <h4>현재 상태 분포 확인</h4>
+        <p>모달 상단에 선택된 컨테이너들이 <span class="status draft">Draft</span> · <span class="status final">Final</span> · <span class="status packing">Shipped</span> · <span class="status complete">Complete</span> 중 어떤 상태에 몇 개씩 속해 있는지 표시됩니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div>
+        <h4>변경할 상태 클릭</h4>
+        <p>목표 상태 버튼을 클릭하면 <strong>별도 확인 창 없이 즉시</strong> 적용됩니다. 각 버튼 오른쪽에는 실제로 변경될 컨테이너 수(예: "3개 변경")가 표시되며, 선택한 컨테이너가 이미 모두 해당 상태라면 "이미 적용됨"으로 표시되고 버튼이 비활성화됩니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div>
+        <h4>처리 결과 확인</h4>
+        <p>변경이 완료되면 성공/실패 개수가 토스트 메시지로 안내됩니다(예: "3개 컨테이너 상태를 변경했습니다."). 성공적으로 변경된 컨테이너는 선택이 자동으로 해제됩니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th style="width:220px">항목</th><th>설명</th></tr>
+    <tr><td class="label">대상 필터링</td><td>선택한 컨테이너 중 <strong>목표 상태와 이미 동일한 컨테이너는 자동 제외</strong>되고, 상태가 다른 컨테이너에만 변경이 적용됩니다.</td></tr>
+    <tr><td class="label">순서 제한 없음</td><td>단일 컨테이너 상태 변경과 달리 다음 단계로만 진행하거나 이전 단계로 "되돌리기" 확인을 거치는 절차가 없습니다. <strong>4가지 상태 중 어떤 상태로든 바로 전환</strong>할 수 있습니다(예: 여러 컨테이너를 한 번에 Draft로 되돌리는 것도 가능).</td></tr>
+    <tr><td class="label">권한</td><td><strong>컨테이너 수정 권한</strong>이 있는 사용자만 사용할 수 있습니다. 권한이 없으면 버튼이 비활성화되고, 버튼에 마우스를 올리면 안내 문구가 표시됩니다.</td></tr>
+    <tr><td class="label">일부 실패 처리</td><td>여러 컨테이너를 순차적으로 처리하는 중 일부가 실패해도(예: 네트워크 오류) 성공한 컨테이너의 변경 사항은 그대로 반영되며, 성공/실패 개수가 각각 안내됩니다.</td></tr>
+  </table>
+
+  <div class="callout warn" style="margin-top:16px">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Complete로 일괄 변경 시 주의:</b> 여러 컨테이너를 한 번에 <span class="status complete">Complete</span>로 변경하면 해당 컨테이너들이 Demand Planning에서 동시에 제외됩니다. 아직 실제 입고가 확인되지 않은 컨테이너가 포함되어 있지 않은지 확인한 후 실행하세요. 자세한 내용은 <a href="#cp-complete" style="color:var(--brand)">⑤ Complete 상태와 Demand Planning 표시 규칙</a>을 참고하세요.</div>
+  </div>
 </section>
 
 <!-- ═══════════════════════════════════════════════
@@ -3036,6 +3094,7 @@
   <a class="nav-sub" href="#en-cp-status">Status Management</a>
   <a class="nav-sub" href="#en-cp-complete">Complete &amp; Demand Planning</a>
   <a class="nav-sub" href="#en-cp-export">Excel Export</a>
+  <a class="nav-sub" href="#en-cp-bulk-status">Bulk Status Change</a>
   <a class="nav-item" href="#en-container-timeline"><span class="icon">📅</span> Container Timeline</a>
   <a class="nav-sub" href="#en-ct-overview">Screen Layout</a>
   <a class="nav-sub" href="#en-ct-filters">Filters &amp; Period</a>
@@ -4485,7 +4544,7 @@
     </div>
     <div class="card">
       <h4>📋 Container List</h4>
-      <p>Split into Active and Completed tabs. Click any container to open the detail panel on the right. Use the bottom checkboxes to select multiple containers for Excel Export.</p>
+      <p>Split into Active and Completed tabs. Click any container to open the detail panel on the right. Use the bottom checkboxes to select multiple containers for Excel Export or Bulk Status Change.</p>
     </div>
     <div class="card">
       <h4>📅 Timeline View</h4>
@@ -4792,6 +4851,63 @@
     <tr><td>Total CBM</td><td>Qty × CBM / Unit</td></tr>
     <tr><td>Total row</td><td>Total quantity and CBM sum</td></tr>
   </table>
+
+  <!-- Bulk Status Change -->
+  <h3 id="en-cp-bulk-status">⑦ Bulk Status Change</h3>
+  <p>Select multiple containers at once and change their status in a single action. Useful, for example, when several containers whose factory orders were just sent should all move to <span class="status final">Final List Sent</span> together.</p>
+
+  <div class="steps" style="margin:16px 0">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div>
+        <h4>Select Containers</h4>
+        <p>Click the <b>checkboxes</b> on the left of the container list to select the containers whose status you want to change. This shares the same selection as Excel Export, so you can change status right after selecting containers for export.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">Use the <span class="btn-label">Select visible</span> checkbox to select all containers matching the current filter at once.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div>
+        <h4>Click Bulk Status</h4>
+        <p>Click the <span class="btn-label">Bulk Status (N)</span> button in the top header. N is the number of currently selected containers.</p>
+        <p style="margin-top:6px;font-size:13px;color:#6b7280">The button is disabled when 0 containers are selected or when you lack <b>container edit permission</b>.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div>
+        <h4>Review Current Status Distribution</h4>
+        <p>The top of the modal shows how many of the selected containers currently fall into each of <span class="status draft">Draft</span> · <span class="status final">Final</span> · <span class="status packing">Shipped</span> · <span class="status complete">Complete</span>.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div>
+        <h4>Click the Target Status</h4>
+        <p>Clicking a target status button applies it <strong>immediately, with no additional confirmation dialog</strong>. Each button shows how many containers will actually be changed (e.g., "3 to update"); if every selected container already has that status, the button shows "Already applied" and is disabled.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <div>
+        <h4>Check the Result</h4>
+        <p>Once processing finishes, a toast message reports the success/failure counts (e.g., "Updated 3 container statuses."). Successfully updated containers are automatically deselected.</p>
+      </div>
+    </div>
+  </div>
+
+  <table class="feat-table" style="margin-top:12px">
+    <tr><th style="width:220px">Item</th><th>Description</th></tr>
+    <tr><td class="label">Target filtering</td><td>Among the selected containers, any that <strong>already match the target status are automatically skipped</strong> — only containers with a different status are updated.</td></tr>
+    <tr><td class="label">No order restriction</td><td>Unlike single-container status changes, there is no step-by-step "next only" flow or revert confirmation. You can jump <strong>directly to any of the 4 statuses</strong> (e.g., reverting several containers back to Draft in one action is allowed).</td></tr>
+    <tr><td class="label">Permission</td><td>Only users with <strong>container edit permission</strong> can use this feature. Without it, the button is disabled and a tooltip explains why.</td></tr>
+    <tr><td class="label">Partial failure handling</td><td>Containers are processed one by one; if some fail (e.g., a network error) while others succeed, the successful changes are still applied, and success/failure counts are reported separately.</td></tr>
+  </table>
+
+  <div class="callout warn" style="margin-top:16px">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Caution when bulk-changing to Complete:</b> Setting multiple containers to <span class="status complete">Complete</span> at once removes all of them from Demand Planning simultaneously. Make sure none of the selected containers are still awaiting actual receipt before proceeding. See <a href="#en-cp-complete" style="color:var(--brand)">⑤ Complete Status and Demand Planning Display Rules</a> for details.</div>
+  </div>
 </section>
 
 <!-- ═══ 4. CONTAINER TIMELINE ═══ -->

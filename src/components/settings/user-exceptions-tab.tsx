@@ -9,6 +9,7 @@ import {
   PERM_SECTIONS,
   PERM_ACTIONS,
   PERM_SECTION_ACTIONS,
+  PERM_SECTION_HINTS,
   DEFAULT_ROLE_PERMISSIONS,
   type PermSection,
   type PermAction,
@@ -56,7 +57,13 @@ function getEffective(
   return { value: val, isOverride: false };
 }
 
-export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
+export function UserExceptionsTab({
+  user,
+  onOverridesChange,
+}: {
+  user: UserSummary | null;
+  onOverridesChange?: () => void;
+}) {
   const { pick } = useI18n();
   const { can, ready: permissionsReady } = usePermissions();
   const [overrides, setOverrides] = useState<PermOverride[]>([]);
@@ -144,6 +151,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
       setFormAction(DISPLAY_ACTIONS[0].id);
       setFormAllowed(true);
       setToast(pick("예외 권한이 추가되었습니다", "Exception added"));
+      onOverridesChange?.();
     } catch {
       setToast(pick("저장에 실패했습니다", "Failed to save"));
     } finally {
@@ -167,6 +175,7 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
       if (!res.ok || !json.success) throw new Error("Failed");
       setOverrides((prev) => prev.filter((o) => !(o.section === section && o.action === action)));
       setToast(pick("예외 권한이 삭제되었습니다", "Exception removed"));
+      onOverridesChange?.();
     } catch {
       setToast(pick("삭제에 실패했습니다", "Failed to remove"));
     }
@@ -325,6 +334,13 @@ export function UserExceptionsTab({ user }: { user: UserSummary | null }) {
             </button>
           </div>
         )}
+
+        {showAddForm && PERM_SECTION_HINTS[formSection as PermSection] ? (
+          <div className="mt-2 flex items-start gap-2 rounded-md border border-[#b8cffa] border-l-[3px] border-l-[#1a5cdb] bg-white px-3 py-2 text-[11.5px] leading-snug text-[#1a1917]">
+            <span className="mt-0.5 text-[#1a5cdb]">ⓘ</span>
+            <span>{pick(PERM_SECTION_HINTS[formSection as PermSection]!.ko, PERM_SECTION_HINTS[formSection as PermSection]!.en)}</span>
+          </div>
+        ) : null}
 
         {/* Override list */}
         {visibleOverrides.length > 0 && (

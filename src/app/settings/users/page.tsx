@@ -869,7 +869,7 @@ export default function UserAccessPage() {
 
               {/* Tab 3: User Exceptions */}
               {activeTab === "exceptions" && (
-                <UserExceptionsTab user={selectedUser} />
+                <UserExceptionsTab user={selectedUser} onOverridesChange={() => void refreshUsers()} />
               )}
             </div>
           </div>

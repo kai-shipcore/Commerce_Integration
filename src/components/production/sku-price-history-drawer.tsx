@@ -292,8 +292,8 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
         {!canRead ? (
           <div className="p-6 text-sm text-muted-foreground">{pick("SKU 가격 이력을 볼 권한이 없습니다.", "You do not have permission to view SKU price history.")}</div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-            <div className="flex flex-wrap items-center gap-2 border-b border-[#e6e1d8] px-5 py-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-[#f7f6f2]">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#e6e1d8] bg-white px-5 py-3">
               <select
                 value={factoryId}
                 onChange={(event) => setFactoryId(event.target.value)}
@@ -331,13 +331,22 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
                   <FileUp className="h-3.5 w-3.5" /> {uploading ? pick("업로드 중", "Uploading") : pick("업로드", "Upload")}
                 </button>
               ) : null}
-              <button type="button" onClick={() => void loadRows()} className="ml-auto rounded-md border p-2 hover:bg-slate-50" aria-label={pick("새로고침", "Refresh")}>
+              <button
+                type="button"
+                onClick={() => void loadRows()}
+                disabled={loading}
+                title={pick("선택한 공장의 가격 이력을 다시 불러옵니다.", "Reload price history for the selected factory.")}
+                className="ml-auto rounded-md border bg-white p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={pick("새로고침", "Refresh")}
+              >
                 <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               </button>
             </div>
 
-            <section className="border-b border-[#e6e1d8]">
-              <div className="px-5 py-3 text-sm font-semibold">{pick("가격 변경 이력", "Price Change History")}</div>
+            <section className="m-4 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
+              <div className="border-b border-[#e6e1d8] bg-[#fbfaf7] px-5 py-3">
+                <div className="text-sm font-semibold text-[#111827]">{pick("가격 변경 이력", "Price Change History")}</div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[680px] text-left text-sm">
                   <thead className="bg-[#f8f7f3] text-[11px] uppercase text-muted-foreground">
@@ -391,10 +400,13 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
               </p>
             </section>
 
-            <section className="border-b border-[#e6e1d8] px-5 py-4">
-              <div className="mb-3 text-sm font-semibold">{pick("특정 날짜 가격 조회", "Lookup Price By Date")}</div>
+            <section className="mx-4 mb-4 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
+              <div className="border-b border-[#e6e1d8] bg-[#fbfaf7] px-5 py-3">
+                <div className="text-sm font-semibold text-[#111827]">{pick("특정 날짜 가격 조회", "Lookup Price By Date")}</div>
+              </div>
+              <div className="px-5 py-4">
               <input type="date" value={asOfDate} onChange={(event) => setAsOfDate(event.target.value)} className="h-9 rounded-md border px-2 text-sm" />
-              <div className="mt-3 rounded-md border border-[#e0d8ca] bg-[#fffdf8] px-3 py-3 text-sm">
+              <div className="mt-3 rounded-lg border border-[#e0d8ca] bg-[#fffdf8] px-3 py-3 text-sm">
                 {asOfRow ? (
                   <>
                     <span className="font-mono font-semibold">{asOfDate}</span> {pick("기준 적용 가격:", "applicable price:")}{" "}
@@ -406,11 +418,15 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
                   <span className="text-muted-foreground">{pick("이 날짜에 적용되는 가격이 없습니다.", "No effective price exists on this date.")}</span>
                 )}
               </div>
+              </div>
             </section>
 
             {canCreate || (canEdit && form.id) ? (
-            <section className="px-5 py-4">
-              <div className="mb-3 text-sm font-semibold">{form.id ? pick("가격 수정", "Edit Price") : pick("가격 추가", "Add Price")}</div>
+            <section className="mx-4 mb-6 overflow-hidden rounded-xl border border-[#d8d2c6] bg-white shadow-sm">
+              <div className="border-b border-[#e6e1d8] bg-[#fbfaf7] px-5 py-3">
+                <div className="text-sm font-semibold text-[#111827]">{form.id ? pick("가격 수정", "Edit Price") : pick("가격 추가", "Add Price")}</div>
+              </div>
+              <div className="px-5 py-4">
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-xs font-medium">
                   {pick("적용 시작일", "Effective Date")}
@@ -436,6 +452,7 @@ export function SkuPriceHistoryDrawer({ open, sku, productLabel, onClose }: SkuP
                 <button type="button" disabled={form.id ? !canEdit : !canCreate} onClick={() => void saveForm()} className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                   <Save className="h-4 w-4" /> {pick("저장", "Save")}
                 </button>
+              </div>
               </div>
             </section>
             ) : null}

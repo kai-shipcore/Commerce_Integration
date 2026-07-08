@@ -45,6 +45,15 @@ export const PERM_ACTIONS = [
 
 export type PermSection = (typeof PERM_SECTIONS)[number]["id"];
 export type PermAction  = (typeof PERM_ACTIONS)[number]["id"];
+
+// Cross-references a permission section to another feature it also gates, so admin screens
+// can surface the connection inline instead of relying on the manual.
+export const PERM_SECTION_HINTS: Partial<Record<PermSection, { ko: string; en: string }>> = {
+  "invoice-price-control": {
+    ko: "SKU 기준정보 화면의 \"가격 이력\" 버튼도 이 권한으로 켜고 끕니다",
+    en: "Also controls the \"Price History\" button on the SKU Master screen",
+  },
+};
 export type RolePermMatrix = Record<PermSection, Record<PermAction, boolean>>;
 export type ManagedRole = "admin" | "dev" | "planner" | "operation" | "production" | "user" | "guest";
 

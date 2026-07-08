@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { canDo } from "@/lib/permissions";
-import { PriceHistoryPage } from "@/components/production/price-history-page";
+import { InvoicePriceControlTabs } from "@/components/production/invoice-price-control-tabs";
 
 export default async function Page() {
   const session = await auth();
@@ -10,6 +10,6 @@ export default async function Page() {
   const allowed = await canDo(session.user.id, session.user.role as string, "invoice-price-control", "read");
   if (!allowed) redirect("/");
 
-  return <PriceHistoryPage />;
+  return <InvoicePriceControlTabs />;
 }
 
