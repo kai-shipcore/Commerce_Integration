@@ -45,6 +45,7 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
   const [error, setError] = useState<string | null>(null);
   const [segment, setSegment] = useState<"all" | "smooth_full" | "smooth_short">("all");
   const [k, setK] = useState<number | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +53,26 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
       setLoading(true);
       setError(null);
       try {
+        // Wait for the forecast server (started by the layout) to be ready,
+        // same pattern as SegmentationOverview.
+        let ready = false;
+        for (let attempt = 0; attempt < 20 && !cancelled; attempt++) {
+          try {
+            const res = await fetch(apiPath("/api/forecast-server/start"), { method: "POST" });
+            if (res.ok) { ready = true; break; }
+            const json = await res.json().catch(() => ({})) as { error?: string };
+            throw new Error(json.error ?? `Forecast server error ${res.status}`);
+          } catch (err) {
+            if (err instanceof TypeError) {
+              await new Promise((r) => setTimeout(r, 500));
+              continue;
+            }
+            throw err;
+          }
+        }
+        if (cancelled) return;
+        if (!ready) throw new Error("Forecast server did not start in time");
+
         const res = await fetch(apiPath("/api/forecast/accuracy-history"), { signal: AbortSignal.timeout(30_000) });
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error ?? `Server error ${res.status}`);
@@ -64,7 +85,7 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
     };
     void load();
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, retryCount]);
 
   // Runs available at each K (counted on the "all" segment)
   const runsPerK = useMemo(() => {
@@ -193,8 +214,14 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
           </div>
         )}
         {!loading && error && (
-          <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-            {pick("정확도 이력을 불러올 수 없습니다:", "Could not load accuracy history:")} {error}
+          <div className="flex h-64 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <p>{pick("정확도 이력을 불러올 수 없습니다:", "Could not load accuracy history:")} {error}</p>
+            <button
+              onClick={() => setRetryCount((c) => c + 1)}
+              className="rounded border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+            >
+              {pick("다시 시도", "Retry")}
+            </button>
           </div>
         )}
         {!loading && !error && !fig && (
