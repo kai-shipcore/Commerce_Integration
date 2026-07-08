@@ -32,7 +32,7 @@ interface AccuracyPoint {
   v1_wape: number | null;
 }
 
-const K_PRESETS = [1, 2, 4, 8, 13];
+const K_PRESETS = [1, 2, 4, 8, 10, 13];
 
 const SEGMENT_OPTIONS = [
   { value: "all" as const,          ko: "전체",        en: "All smooth" },
