@@ -19,6 +19,9 @@ function serialize(p: object): object {
 const ProductionPartUpdateSchema = z.object({
   partName: z.string().min(1).optional(),
   description: z.string().optional(),
+  seatRow: z.enum(["Front", "Rear", "Third Row"]).optional(),
+  position: z.enum(["Driver", "Passenger", "Middle", "Universal"]).optional(),
+  category: z.enum(["Headrest", "Top Body", "Bottom", "Arm", "Console", "Back Storage", "Sub-part"]).optional(),
   isActive: z.boolean().optional(),
 });
 

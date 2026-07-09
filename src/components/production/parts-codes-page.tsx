@@ -4,64 +4,44 @@ import { useState } from "react";
 import { Package } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { MasterDataTab, type MasterDataTabConfig } from "@/components/production/master-data-tab";
+import { PartRegistrationTab } from "@/components/production/part-registration-tab";
 
-const TABS: { key: string; labelKo: string; labelEn: string; config: MasterDataTabConfig }[] = [
-  {
-    key: "parts",
-    labelKo: "Part",
-    labelEn: "Part",
-    config: {
-      apiPath: "/api/production/parts",
-      permissionSection: "parts-codes",
-      codeField: "partName",
-      hasDescription: true,
-      uppercaseCode: false,
-      icon: "🔩",
-      codeLabel: { ko: "Part 명칭 (Part Name)", en: "Part Name" },
-      codePlaceholder: "Seat Cover Hook",
-      entityLabel: { ko: "Part", en: "Part" },
-    },
-  },
-  {
-    key: "codes",
-    labelKo: "Code",
-    labelEn: "Code",
-    config: {
-      apiPath: "/api/production/codes",
-      permissionSection: "parts-codes",
-      codeField: "code",
-      hasDescription: true,
-      uppercaseCode: true,
-      icon: "🏷️",
-      codeLabel: { ko: "Code", en: "Code" },
-      codePlaceholder: "CODE-001",
-      entityLabel: { ko: "Code", en: "Code" },
-    },
-  },
-  {
-    key: "designer-initials",
-    labelKo: "Designer Initial",
-    labelEn: "Designer Initial",
-    config: {
-      apiPath: "/api/production/designer-initials",
-      permissionSection: "parts-codes",
-      codeField: "initial",
-      nameField: "designerName",
-      hasDescription: false,
-      uppercaseCode: true,
-      icon: "🖊️",
-      codeLabel: { ko: "Initial", en: "Initial" },
-      namePlaceholder: { ko: "디자이너 이름 (Designer Name)", en: "Designer Name" },
-      codePlaceholder: "TK",
-      entityLabel: { ko: "Designer Initial", en: "Designer Initial" },
-    },
-  },
+const TABS: { key: string; labelKo: string; labelEn: string }[] = [
+  { key: "parts", labelKo: "Part", labelEn: "Part" },
+  { key: "codes", labelKo: "Code", labelEn: "Code" },
+  { key: "designer-initials", labelKo: "Designer Initial", labelEn: "Designer Initial" },
 ];
+
+const MASTER_DATA_CONFIGS: Record<string, MasterDataTabConfig> = {
+  codes: {
+    apiPath: "/api/production/codes",
+    permissionSection: "parts-codes",
+    codeField: "code",
+    hasDescription: true,
+    uppercaseCode: true,
+    icon: "🏷️",
+    codeLabel: { ko: "Code", en: "Code" },
+    codePlaceholder: "CODE-001",
+    entityLabel: { ko: "Code", en: "Code" },
+  },
+  "designer-initials": {
+    apiPath: "/api/production/designer-initials",
+    permissionSection: "parts-codes",
+    codeField: "initial",
+    nameField: "designerName",
+    hasDescription: false,
+    uppercaseCode: true,
+    icon: "🖊️",
+    codeLabel: { ko: "Initial", en: "Initial" },
+    namePlaceholder: { ko: "디자이너 이름 (Designer Name)", en: "Designer Name" },
+    codePlaceholder: "TK",
+    entityLabel: { ko: "Designer Initial", en: "Designer Initial" },
+  },
+};
 
 export function PartsCodesPage() {
   const { pick } = useI18n();
   const [activeTab, setActiveTab] = useState(TABS[0].key);
-  const activeConfig = TABS.find((tab) => tab.key === activeTab)?.config ?? TABS[0].config;
 
   return (
     <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
@@ -94,7 +74,11 @@ export function PartsCodesPage() {
         ))}
       </div>
 
-      <MasterDataTab key={activeTab} config={activeConfig} />
+      {activeTab === "parts" ? (
+        <PartRegistrationTab key={activeTab} />
+      ) : (
+        <MasterDataTab key={activeTab} config={MASTER_DATA_CONFIGS[activeTab]} />
+      )}
     </section>
   );
 }
