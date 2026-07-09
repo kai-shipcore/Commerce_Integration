@@ -29,6 +29,7 @@ interface AllSkuRow {
   trend_pct: number | null;
   recent_4w: number;
   prior_4w: number;
+  yoy_4w: number;
   forecast_total: number | null;
 }
 
@@ -156,6 +157,28 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
     });
   }, [data, segFilter, search, sortCriteria]);
 
+  // Aggregate stats over the filtered set — noise cancels at this level, and
+  // the YoY comparison handles seasonality that the per-SKU 4w trend can't.
+  const stats = useMemo(() => {
+    const rows = filteredRows;
+    const demandTotal = rows.reduce((s, r) => s + r.demand_total, 0);
+    const recent = rows.reduce((s, r) => s + r.recent_4w, 0);
+    const prior  = rows.reduce((s, r) => s + r.prior_4w, 0);
+    const yoy    = rows.reduce((s, r) => s + r.yoy_4w, 0);
+    return {
+      skuCount:  rows.length,
+      soldCount: rows.filter((r) => r.demand_total > 0).length,
+      demandTotal,
+      recent,
+      prior,
+      yoy,
+      momPct: prior > 0 ? (recent - prior) / prior * 100 : null,
+      yoyPct: yoy > 0 ? (recent - yoy) / yoy * 100 : null,
+      rising:  rows.filter((r) => r.trend_pct != null && r.trend_pct > 5).length,
+      falling: rows.filter((r) => r.trend_pct != null && r.trend_pct < -5).length,
+    };
+  }, [filteredRows]);
+
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const clampedPage = Math.min(page, totalPages);
   const pageRows = filteredRows.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
@@ -179,10 +202,10 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
 
   const exportCsv = () => {
     if (!data) return;
-    const header = ["SKU", "Segment", "Model", "Weeks of history", `${data.weeks}W demand`, "Avg/week", "4W trend %", "Recent 4W", "Prior 4W", "Last sale week", `Next ${data.forecast_horizon_weeks}W forecast`];
+    const header = ["SKU", "Segment", "Model", "Weeks of history", `${data.weeks}W demand`, "Avg/week", "4W trend %", "Recent 4W", "Prior 4W", "Same 4W last year", "Last sale week", `Next ${data.forecast_horizon_weeks}W forecast`];
     const lines = filteredRows.map((r) => [
       r.unique_id, r.segment, r.model ?? "", r.active_weeks, r.demand_total, r.avg_weekly,
-      r.trend_pct ?? "", r.recent_4w, r.prior_4w, r.last_sale_week ?? "", r.forecast_total ?? "",
+      r.trend_pct ?? "", r.recent_4w, r.prior_4w, r.yoy_4w, r.last_sale_week ?? "", r.forecast_total ?? "",
     ].join(","));
     const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -310,6 +333,54 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
           </button>
         </div>
       </div>
+
+      {/* ── Summary cards (reflect active filters) ── */}
+      {(() => {
+        const pctColor = (p: number | null) =>
+          p == null ? "text-muted-foreground"
+          : p > 2 ? "text-emerald-600"
+          : p < -2 ? "text-red-600"
+          : "text-foreground";
+        const fmtPct = (p: number | null) => p == null ? "—" : `${p >= 0 ? "+" : ""}${p.toFixed(1)}%`;
+        return (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border px-4 py-3">
+              <p className="text-xs text-muted-foreground">SKU</p>
+              <p className="text-2xl font-semibold tabular-nums">{fmt.format(stats.skuCount)}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {pick(`기간 내 판매 ${fmt.format(stats.soldCount)}개`, `${fmt.format(stats.soldCount)} sold in window`)}
+              </p>
+            </div>
+            <div className="rounded-lg border px-4 py-3">
+              <p className="text-xs text-muted-foreground">{pick(`${data.weeks}주 수요`, `${data.weeks}W Demand`)}</p>
+              <p className="text-2xl font-semibold tabular-nums">{fmt.format(stats.demandTotal)}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {pick(`주 평균 ${fmt.format(Math.round(stats.demandTotal / data.weeks))}`, `avg ${fmt.format(Math.round(stats.demandTotal / data.weeks))}/week`)}
+              </p>
+            </div>
+            <div className="rounded-lg border px-4 py-3">
+              <p className="text-xs text-muted-foreground">{pick("4주 모멘텀", "4W Momentum")}</p>
+              <p className={`text-2xl font-semibold tabular-nums ${pctColor(stats.momPct)}`}>{fmtPct(stats.momPct)}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {pick(
+                  `${fmt.format(stats.recent)} vs ${fmt.format(stats.prior)} · ▲${fmt.format(stats.rising)} ▼${fmt.format(stats.falling)} SKU`,
+                  `${fmt.format(stats.recent)} vs ${fmt.format(stats.prior)} · ▲${fmt.format(stats.rising)} ▼${fmt.format(stats.falling)} SKUs`,
+                )}
+              </p>
+            </div>
+            <div className="rounded-lg border px-4 py-3">
+              <p className="text-xs text-muted-foreground">{pick("전년 대비 (동일 4주)", "vs Last Year (same 4w)")}</p>
+              <p className={`text-2xl font-semibold tabular-nums ${pctColor(stats.yoyPct)}`}>{fmtPct(stats.yoyPct)}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {pick(
+                  `최근 4주 ${fmt.format(stats.recent)} vs 작년 ${fmt.format(stats.yoy)}`,
+                  `recent 4w ${fmt.format(stats.recent)} vs ${fmt.format(stats.yoy)} last year`,
+                )}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="flex items-center gap-2">
