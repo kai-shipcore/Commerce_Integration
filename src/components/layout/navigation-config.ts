@@ -212,7 +212,7 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     id: "part-sku-generator",
-    name: "Part SKU Generator",
+    name: "Part SKU",
     href: "/production/part-sku-generator",
     icon: Barcode,
     group: "Production",

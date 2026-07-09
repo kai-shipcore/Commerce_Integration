@@ -30,6 +30,46 @@ export const FRONT_SEAT_ZONES: SeatZone[] = [
   { id: "front-middle-bottom", seatRow: "Front", position: "Middle", category: "Bottom", label: { ko: "중앙석 방석", en: "Middle Bottom" } },
 ];
 
+export const REAR_SEAT_ZONES: SeatZone[] = [
+  { id: "rear-driver-headrest", seatRow: "Rear", position: "Driver", category: "Headrest", label: { ko: "운전석 헤드레스트", en: "Driver Headrest" } },
+  { id: "rear-driver-top-body", seatRow: "Rear", position: "Driver", category: "Top Body", label: { ko: "운전석 등받이", en: "Driver Top/Body" } },
+  { id: "rear-driver-bottom", seatRow: "Rear", position: "Driver", category: "Bottom", label: { ko: "운전석 방석", en: "Driver Bottom" } },
+  { id: "rear-driver-arm", seatRow: "Rear", position: "Driver", category: "Arm", label: { ko: "운전석 팔걸이", en: "Driver Arm" } },
+  { id: "rear-driver-back-storage", seatRow: "Rear", position: "Driver", category: "Back Storage", label: { ko: "운전석 등받이 수납", en: "Driver Back Storage" } },
+  { id: "rear-driver-sub-part", seatRow: "Rear", position: "Driver", category: "Sub-part", label: { ko: "운전석 기타 부품", en: "Driver Sub-part" } },
+  { id: "rear-passenger-headrest", seatRow: "Rear", position: "Passenger", category: "Headrest", label: { ko: "조수석 헤드레스트", en: "Passenger Headrest" } },
+  { id: "rear-passenger-top-body", seatRow: "Rear", position: "Passenger", category: "Top Body", label: { ko: "조수석 등받이", en: "Passenger Top/Body" } },
+  { id: "rear-passenger-bottom", seatRow: "Rear", position: "Passenger", category: "Bottom", label: { ko: "조수석 방석", en: "Passenger Bottom" } },
+  { id: "rear-passenger-arm", seatRow: "Rear", position: "Passenger", category: "Arm", label: { ko: "조수석 팔걸이", en: "Passenger Arm" } },
+  { id: "rear-passenger-back-storage", seatRow: "Rear", position: "Passenger", category: "Back Storage", label: { ko: "조수석 등받이 수납", en: "Passenger Back Storage" } },
+  { id: "rear-passenger-sub-part", seatRow: "Rear", position: "Passenger", category: "Sub-part", label: { ko: "조수석 기타 부품", en: "Passenger Sub-part" } },
+  { id: "rear-middle-headrest", seatRow: "Rear", position: "Middle", category: "Headrest", label: { ko: "중앙석 헤드레스트", en: "Middle Headrest" } },
+  { id: "rear-middle-top-body", seatRow: "Rear", position: "Middle", category: "Top Body", label: { ko: "중앙석 등받이", en: "Middle Top/Body" } },
+  { id: "rear-middle-bottom", seatRow: "Rear", position: "Middle", category: "Bottom", label: { ko: "중앙석 방석", en: "Middle Bottom" } },
+  { id: "rear-middle-console", seatRow: "Rear", position: "Middle", category: "Console", label: { ko: "중앙석 콘솔", en: "Middle Console" } },
+];
+
+export const THIRD_ROW_SEAT_ZONES: SeatZone[] = [
+  { id: "third-row-driver-headrest", seatRow: "Third Row", position: "Driver", category: "Headrest", label: { ko: "운전석 헤드레스트", en: "Driver Headrest" } },
+  { id: "third-row-driver-top-body", seatRow: "Third Row", position: "Driver", category: "Top Body", label: { ko: "운전석 등받이", en: "Driver Top/Body" } },
+  { id: "third-row-driver-bottom", seatRow: "Third Row", position: "Driver", category: "Bottom", label: { ko: "운전석 방석", en: "Driver Bottom" } },
+  { id: "third-row-driver-arm", seatRow: "Third Row", position: "Driver", category: "Arm", label: { ko: "운전석 팔걸이", en: "Driver Arm" } },
+  { id: "third-row-driver-back-storage", seatRow: "Third Row", position: "Driver", category: "Back Storage", label: { ko: "운전석 등받이 수납", en: "Driver Back Storage" } },
+  { id: "third-row-driver-sub-part", seatRow: "Third Row", position: "Driver", category: "Sub-part", label: { ko: "운전석 기타 부품", en: "Driver Sub-part" } },
+  { id: "third-row-passenger-headrest", seatRow: "Third Row", position: "Passenger", category: "Headrest", label: { ko: "조수석 헤드레스트", en: "Passenger Headrest" } },
+  { id: "third-row-passenger-top-body", seatRow: "Third Row", position: "Passenger", category: "Top Body", label: { ko: "조수석 등받이", en: "Passenger Top/Body" } },
+  { id: "third-row-passenger-bottom", seatRow: "Third Row", position: "Passenger", category: "Bottom", label: { ko: "조수석 방석", en: "Passenger Bottom" } },
+  { id: "third-row-passenger-arm", seatRow: "Third Row", position: "Passenger", category: "Arm", label: { ko: "조수석 팔걸이", en: "Passenger Arm" } },
+  { id: "third-row-passenger-back-storage", seatRow: "Third Row", position: "Passenger", category: "Back Storage", label: { ko: "조수석 등받이 수납", en: "Passenger Back Storage" } },
+  { id: "third-row-passenger-sub-part", seatRow: "Third Row", position: "Passenger", category: "Sub-part", label: { ko: "조수석 기타 부품", en: "Passenger Sub-part" } },
+  { id: "third-row-middle-headrest", seatRow: "Third Row", position: "Middle", category: "Headrest", label: { ko: "중앙석 헤드레스트", en: "Middle Headrest" } },
+  { id: "third-row-middle-top-body", seatRow: "Third Row", position: "Middle", category: "Top Body", label: { ko: "중앙석 등받이", en: "Middle Top/Body" } },
+  { id: "third-row-middle-bottom", seatRow: "Third Row", position: "Middle", category: "Bottom", label: { ko: "중앙석 방석", en: "Middle Bottom" } },
+  { id: "third-row-middle-console", seatRow: "Third Row", position: "Middle", category: "Console", label: { ko: "중앙석 콘솔", en: "Middle Console" } },
+];
+
+export const ALL_SEAT_ZONES: SeatZone[] = [...FRONT_SEAT_ZONES, ...REAR_SEAT_ZONES, ...THIRD_ROW_SEAT_ZONES];
+
 type RectGeo = { x: number; y: number; width: number; height: number; rx: number };
 
 type SeatGeometry = {
@@ -38,14 +78,26 @@ type SeatGeometry = {
   cushion: RectGeo;
   shadow: { cx: number; cy: number; rx: number; ry: number };
   arm?: RectGeo;
+  backStorage?: RectGeo;
+  subPart?: RectGeo;
+  console?: RectGeo;
 };
 
 // One local template (seat centered at x=0, scale=1) is translated/scaled into place for
 // Driver, Passenger, and the smaller Middle jump seat, so all three share identical
 // proportions. Each piece slightly overlaps the next (headrest into backrest, backrest into
 // cushion) and is drawn cushion-first so the wider piece underneath reads as a continuous
-// silhouette instead of three separate floating blocks.
-function buildSeatGeometry(centerX: number, scale: number, topOffset: number, armSide?: -1 | 1): SeatGeometry {
+// silhouette instead of three separate floating blocks. armSide/includeConsole add the extra
+// Rear-only zones (Back Storage + Sub-part stacked on the outer edge, a Console flap
+// straddling the Middle seat's backrest/cushion seam) — harmless no-ops for Front, which never
+// references these fields.
+function buildSeatGeometry(
+  centerX: number,
+  scale: number,
+  topOffset: number,
+  armSide?: -1 | 1,
+  includeConsole?: boolean
+): SeatGeometry {
   const r = (localX: number, localY: number, w: number, h: number, rx: number): RectGeo => ({
     x: centerX + localX * scale,
     y: topOffset + localY * scale,
@@ -62,13 +114,18 @@ function buildSeatGeometry(centerX: number, scale: number, topOffset: number, ar
   if (armSide) {
     const armX = armSide < 0 ? -71 : 45;
     geometry.arm = r(armX, 57, 26, 60, 9);
+    geometry.backStorage = r(armX, 18, 26, 32, 8);
+    geometry.subPart = r(-20, 186, 40, 22, 10);
+  }
+  if (includeConsole) {
+    geometry.console = r(-38, 112, 76, 30, 10);
   }
   return geometry;
 }
 
-const DRIVER_GEOMETRY = buildSeatGeometry(115, 1, 10, -1);
-const PASSENGER_GEOMETRY = buildSeatGeometry(365, 1, 10, 1);
-const MIDDLE_GEOMETRY = buildSeatGeometry(240, 0.7, 72);
+const DRIVER_GEOMETRY = buildSeatGeometry(96, 1, 10, -1);
+const PASSENGER_GEOMETRY = buildSeatGeometry(384, 1, 10, 1);
+const MIDDLE_GEOMETRY = buildSeatGeometry(240, 1, 10, undefined, true);
 
 const SEAT_GEOMETRY_BY_POSITION: Record<"Driver" | "Passenger" | "Middle", SeatGeometry> = {
   Driver: DRIVER_GEOMETRY,
@@ -83,6 +140,9 @@ function zoneRect(zone: SeatZone): RectGeo | undefined {
   if (zone.category === "Top Body") return geometry.backrest;
   if (zone.category === "Bottom") return geometry.cushion;
   if (zone.category === "Arm") return geometry.arm;
+  if (zone.category === "Back Storage") return geometry.backStorage;
+  if (zone.category === "Sub-part") return geometry.subPart;
+  if (zone.category === "Console") return geometry.console;
   return undefined;
 }
 
@@ -133,6 +193,11 @@ const HEADREST_POSITION_LETTER: Partial<Record<SeatCoverPartPosition, string>> =
   Passenger: "P",
 };
 
+// Draw order matters: cushion first, then backrest, then console (straddles that seam), then
+// the outer-edge extras, then headrest last — each later piece's rounded edge overlaps the
+// previous piece's seam so the pieces read as one continuous seat instead of stacked blocks.
+const DRAW_ORDER: SeatCoverPartCategory[] = ["Bottom", "Top Body", "Console", "Back Storage", "Sub-part", "Arm", "Headrest"];
+
 type SeatDiagramPickerProps = {
   row: SeatCoverPartRow;
   onRowChange: (row: SeatCoverPartRow) => void;
@@ -156,18 +221,125 @@ function SeatShadow({ geometry }: { geometry: SeatGeometry }) {
   );
 }
 
+type SeatRowDiagramProps = {
+  zones: SeatZone[];
+  selectedZoneId: string | null;
+  hoveredZoneId: string | null;
+  onHover: (zoneId: string | null) => void;
+  onZoneSelect: (zoneId: string) => void;
+  zoneCounts: Record<string, number>;
+  pick: (ko: string, en: string) => string;
+};
+
+function SeatRowDiagram({ zones, selectedZoneId, hoveredZoneId, onHover, onZoneSelect, zoneCounts, pick }: SeatRowDiagramProps) {
+  return (
+    <svg viewBox="0 0 480 250" className="mx-auto h-auto w-full max-h-[480px]">
+      <defs>
+        <filter id="seat-shadow-blur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" />
+        </filter>
+        <filter id="zone-selected-glow" x="-60%" y="-60%" width="220%" height="220%">
+          <feDropShadow dx="0" dy="0" stdDeviation="3.5" floodColor={ACCENT} floodOpacity="0.55" />
+        </filter>
+        {(Object.keys(CATEGORY_GRADIENT) as SeatCoverPartCategory[]).map((category) => (
+          <linearGradient key={category} id={`seat-grad-${categorySlug(category)}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CATEGORY_GRADIENT[category].from} />
+            <stop offset="100%" stopColor={CATEGORY_GRADIENT[category].to} />
+          </linearGradient>
+        ))}
+      </defs>
+
+      <SeatShadow geometry={DRIVER_GEOMETRY} />
+      <SeatShadow geometry={PASSENGER_GEOMETRY} />
+      <SeatShadow geometry={MIDDLE_GEOMETRY} />
+
+      {DRAW_ORDER.flatMap((category) =>
+        zones
+          .filter((zone) => zone.category === category)
+          .map((zone) => {
+            const geometry = zoneRect(zone);
+            if (!geometry) return null;
+            const isSelected = selectedZoneId === zone.id;
+            const isHovered = hoveredZoneId === zone.id;
+            const count = zoneCounts[zone.id] ?? 0;
+            const isVertical = zone.category === "Arm" || zone.category === "Back Storage";
+            const centerX = geometry.x + geometry.width / 2;
+            const centerY = geometry.y + geometry.height / 2;
+            const headrestLetter = zone.category === "Headrest" ? HEADREST_POSITION_LETTER[zone.position] : undefined;
+            const stroke = CATEGORY_STROKE[zone.category];
+            const textTransform = isVertical ? `rotate(-90 ${centerX} ${centerY})` : undefined;
+
+            return (
+              <g
+                key={zone.id}
+                role="button"
+                tabIndex={0}
+                aria-label={pick(zone.label.ko, zone.label.en)}
+                className="cursor-pointer outline-none"
+                filter={isSelected ? "url(#zone-selected-glow)" : undefined}
+                onClick={() => onZoneSelect(zone.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onZoneSelect(zone.id);
+                  }
+                }}
+                onMouseEnter={() => onHover(zone.id)}
+                onMouseLeave={() => onHover(null)}
+              >
+                <rect
+                  x={geometry.x}
+                  y={geometry.y}
+                  width={geometry.width}
+                  height={geometry.height}
+                  rx={geometry.rx}
+                  fill={`url(#seat-grad-${categorySlug(zone.category)})`}
+                  fillOpacity={count === 0 ? 0.55 : 1}
+                  stroke={isSelected ? ACCENT : stroke}
+                  strokeWidth={isSelected ? 2.2 : isHovered ? 1.8 : 1.1}
+                />
+                <title>{pick(zone.label.ko, zone.label.en)}</title>
+                {headrestLetter ? (
+                  <>
+                    <text x={centerX} y={centerY - 3} textAnchor="middle" fontSize={22} fontWeight={800} fill={stroke}>
+                      {headrestLetter}
+                    </text>
+                    <text x={centerX} y={centerY + 15} textAnchor="middle" fontSize={9} fontWeight={600} fill={stroke} opacity={0.85}>
+                      {pick(CATEGORY_LABEL[zone.category].ko, CATEGORY_LABEL[zone.category].en)}
+                    </text>
+                  </>
+                ) : (
+                  <text
+                    x={centerX}
+                    y={centerY + 4}
+                    textAnchor="middle"
+                    fontSize={zone.category === "Arm" ? 10 : zone.category === "Back Storage" ? 8 : zone.category === "Sub-part" ? 8 : 12}
+                    fontWeight={700}
+                    fill={stroke}
+                    transform={textTransform}
+                  >
+                    {pick(CATEGORY_LABEL[zone.category].ko, CATEGORY_LABEL[zone.category].en)}
+                  </text>
+                )}
+              </g>
+            );
+          })
+      )}
+    </svg>
+  );
+}
+
 export function SeatDiagramPicker({ row, onRowChange, selectedZoneId, onZoneSelect, zoneCounts }: SeatDiagramPickerProps) {
   const { pick } = useI18n();
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
 
-  // Draw order matters: cushion first, then backrest, then arm, then headrest last —
-  // each later piece's rounded edge overlaps the previous piece's seam so the three
-  // pieces read as one continuous seat instead of stacked blocks.
-  const drawOrder: SeatCoverPartCategory[] = ["Bottom", "Top Body", "Arm", "Headrest"];
+  const activeZones =
+    row === "Front" ? FRONT_SEAT_ZONES : row === "Rear" ? REAR_SEAT_ZONES : row === "Third Row" ? THIRD_ROW_SEAT_ZONES : [];
+  const selectedZone = activeZones.find((z) => z.id === selectedZoneId) ?? null;
 
   return (
-    <div className="border-b border-[#e2dfd8] bg-white px-6 py-4">
-      <div className="mb-3 flex items-center justify-between">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           {pick("부위 선택 (다이어그램)", "Select Part by Diagram")}
         </span>
@@ -177,7 +349,7 @@ export function SeatDiagramPicker({ row, onRowChange, selectedZoneId, onZoneSele
               key={tab.key}
               type="button"
               onClick={() => onRowChange(tab.key)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                 row === tab.key
                   ? "bg-[#1a5cdb] text-white"
                   : "border border-[#cccac4] bg-white text-muted-foreground hover:bg-[#f0eee9]"
@@ -189,117 +361,29 @@ export function SeatDiagramPicker({ row, onRowChange, selectedZoneId, onZoneSele
         </div>
       </div>
 
-      {row === "Front" ? (
-        <svg viewBox="0 0 480 235" className="mx-auto h-56 w-full max-w-xl">
-          <defs>
-            <filter id="seat-shadow-blur" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="3" />
-            </filter>
-            <filter id="zone-selected-glow" x="-60%" y="-60%" width="220%" height="220%">
-              <feDropShadow dx="0" dy="0" stdDeviation="3.5" floodColor={ACCENT} floodOpacity="0.55" />
-            </filter>
-            {(Object.keys(CATEGORY_GRADIENT) as SeatCoverPartCategory[]).map((category) => (
-              <linearGradient key={category} id={`seat-grad-${categorySlug(category)}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={CATEGORY_GRADIENT[category].from} />
-                <stop offset="100%" stopColor={CATEGORY_GRADIENT[category].to} />
-              </linearGradient>
-            ))}
-          </defs>
-
-          <SeatShadow geometry={DRIVER_GEOMETRY} />
-          <SeatShadow geometry={PASSENGER_GEOMETRY} />
-          <SeatShadow geometry={MIDDLE_GEOMETRY} />
-
-          {drawOrder.flatMap((category) =>
-            FRONT_SEAT_ZONES.filter((zone) => zone.category === category).map((zone) => {
-              const geometry = zoneRect(zone);
-              if (!geometry) return null;
-              const isSelected = selectedZoneId === zone.id;
-              const isHovered = hoveredZoneId === zone.id;
-              const count = zoneCounts[zone.id] ?? 0;
-              const isMiddle = zone.position === "Middle";
-              const isArm = zone.category === "Arm";
-              const centerX = geometry.x + geometry.width / 2;
-              const centerY = geometry.y + geometry.height / 2;
-              const headrestLetter = zone.category === "Headrest" ? HEADREST_POSITION_LETTER[zone.position] : undefined;
-              const stroke = CATEGORY_STROKE[zone.category];
-              const textTransform = isArm ? `rotate(-90 ${centerX} ${centerY})` : undefined;
-
-              return (
-                <g
-                  key={zone.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={pick(zone.label.ko, zone.label.en)}
-                  className="cursor-pointer outline-none"
-                  filter={isSelected ? "url(#zone-selected-glow)" : undefined}
-                  onClick={() => onZoneSelect(zone.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onZoneSelect(zone.id);
-                    }
-                  }}
-                  onMouseEnter={() => setHoveredZoneId(zone.id)}
-                  onMouseLeave={() => setHoveredZoneId((current) => (current === zone.id ? null : current))}
-                >
-                  <rect
-                    x={geometry.x}
-                    y={geometry.y}
-                    width={geometry.width}
-                    height={geometry.height}
-                    rx={geometry.rx}
-                    fill={`url(#seat-grad-${categorySlug(zone.category)})`}
-                    fillOpacity={count === 0 ? 0.55 : 1}
-                    stroke={isSelected ? ACCENT : stroke}
-                    strokeWidth={isSelected ? 2.2 : isHovered ? 1.8 : 1.1}
-                  />
-                  <title>{pick(zone.label.ko, zone.label.en)}</title>
-                  {headrestLetter ? (
-                    <>
-                      <text x={centerX} y={centerY - (isMiddle ? 1 : 3)} textAnchor="middle" fontSize={isMiddle ? 14 : 22} fontWeight={800} fill={stroke}>
-                        {headrestLetter}
-                      </text>
-                      <text x={centerX} y={centerY + (isMiddle ? 9 : 15)} textAnchor="middle" fontSize={isMiddle ? 7 : 9} fontWeight={600} fill={stroke} opacity={0.85}>
-                        {pick(CATEGORY_LABEL[zone.category].ko, CATEGORY_LABEL[zone.category].en)}
-                      </text>
-                    </>
-                  ) : (
-                    <text
-                      x={centerX}
-                      y={centerY + (isMiddle ? 2.5 : 4)}
-                      textAnchor="middle"
-                      fontSize={isArm ? 10 : isMiddle ? 8 : 12}
-                      fontWeight={700}
-                      fill={stroke}
-                      transform={textTransform}
-                    >
-                      {pick(CATEGORY_LABEL[zone.category].ko, CATEGORY_LABEL[zone.category].en)}
-                    </text>
-                  )}
-                </g>
-              );
-            })
-          )}
-        </svg>
+      {activeZones.length > 0 ? (
+        <SeatRowDiagram
+          zones={activeZones}
+          selectedZoneId={selectedZoneId}
+          hoveredZoneId={hoveredZoneId}
+          onHover={setHoveredZoneId}
+          onZoneSelect={onZoneSelect}
+          zoneCounts={zoneCounts}
+          pick={pick}
+        />
       ) : (
-        <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-[#cccac4] bg-[#f5f4f0] text-xs text-muted-foreground">
+        <div className="flex h-60 items-center justify-center rounded-lg border border-dashed border-[#cccac4] bg-[#f5f4f0] text-xs text-muted-foreground">
           {pick("해당 열의 다이어그램은 추후 추가 예정입니다.", "The diagram for this row is coming soon.")}
         </div>
       )}
 
-      {selectedZoneId && row === "Front" ? (
-        <div className="mt-2 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+      {selectedZone ? (
+        <div className="mt-2 flex items-center justify-center gap-2 text-base text-muted-foreground">
           <span>
             {pick("선택된 부위: ", "Selected zone: ")}
-            <strong className="text-foreground">
-              {pick(
-                FRONT_SEAT_ZONES.find((z) => z.id === selectedZoneId)?.label.ko ?? "",
-                FRONT_SEAT_ZONES.find((z) => z.id === selectedZoneId)?.label.en ?? ""
-              )}
-            </strong>
+            <strong className="text-foreground">{pick(selectedZone.label.ko, selectedZone.label.en)}</strong>
           </span>
-          <button type="button" onClick={() => onZoneSelect(selectedZoneId)} className="text-[#1a5cdb] underline hover:text-[#1650c4]">
+          <button type="button" onClick={() => onZoneSelect(selectedZone.id)} className="text-[#1a5cdb] underline hover:text-[#1650c4]">
             {pick("필터 해제", "Clear filter")}
           </button>
         </div>

@@ -17,7 +17,7 @@ export const PERM_SECTIONS = [
   { id: "seat-cover-parts",    group: "Production",  nameKo: "시트커버 부품",       nameEn: "Seat Cover Parts" },
   { id: "production-vehicles", group: "Production",  nameKo: "차종 관리",          nameEn: "Vehicles" },
   { id: "parts-codes",         group: "Production",  nameKo: "부품/코드/이니셜",     nameEn: "Parts / Codes / Initials" },
-  { id: "part-sku-generator",  group: "Production",  nameKo: "Part SKU 생성",       nameEn: "Part SKU Generator" },
+  { id: "part-sku-generator",  group: "Production",  nameKo: "Part SKU",           nameEn: "Part SKU" },
   // Master Data
   { id: "factory",             group: "Master Data", nameKo: "공장",              nameEn: "Factory" },
   { id: "warehouse",           group: "Master Data", nameKo: "창고",              nameEn: "Warehouse" },
