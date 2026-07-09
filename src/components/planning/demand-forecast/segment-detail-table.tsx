@@ -928,10 +928,10 @@ function SmoothTable({
   const totalPages = Math.ceil(sorted.length / pageSize);
   const pageRows   = sorted.slice(page * pageSize, (page + 1) * pageSize);
 
-  function Th({ col, label, right }: { col: SmoothSortKey; label: React.ReactNode; right?: boolean }) {
+  function Th({ col, label, right, width }: { col: SmoothSortKey; label: React.ReactNode; right?: boolean; width?: string }) {
     return (
       <TableHead
-        className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""}`}
+        className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""} ${width ?? ""}`}
         onClick={(e) => handleSort(col, e.shiftKey)}
       >
         {label}
@@ -1019,13 +1019,14 @@ function SmoothTable({
       </div>
 
       <div className="rounded-md border">
-        <Table>
+        {/* table-fixed + explicit widths so columns don't reflow between pages/sorts */}
+        <Table className="table-fixed">
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
               <Th col="unique_id"      label="SKU" />
-              {(!isShortHistory || mode === "simulation") && <Th col="selected_model" label={pick("모델", "Model")} />}
+              {(!isShortHistory || mode === "simulation") && <Th col="selected_model" label={pick("모델", "Model")} width="w-32" />}
               {!isShortHistory && mode === "forward" && (
-                <Th col="confidence" label={
+                <Th col="confidence" width="w-32" label={
                   <span className="inline-flex items-center gap-1">
                     {pick("신뢰도", "Confidence")}
                     <span onClick={(e) => e.stopPropagation()}>
@@ -1035,18 +1036,18 @@ function SmoothTable({
                 } />
               )}
               {!isShortHistory && mode === "forward" && (
-                <Th col="train_wape" label={pick("학습 WAPE", "Train WAPE")} right />
+                <Th col="train_wape" label={pick("학습 WAPE", "Train WAPE")} right width="w-28" />
               )}
-              <Th col="active_weeks" label={pick("이력 주 수", "Weeks of history")} right />
-              {isShortHistory && <Th col="weeks_to_graduation" label={pick("전체 이력까지", "Weeks to full history")} right />}
-              <Th col="demand_total" label={(mode === "backtest" || mode === "simulation") ? pick("실제", "Actual") : pick(`${weeks}주 수요`, `${weeks}W Demand`)}   right />
-              {showLo && <Th col="yhat_total" label={pick("하한", "Low")} right />}
-              {showPt && <Th col="yhat_total" label={(mode === "backtest" || mode === "simulation") ? pick("예측", "Forecast") : pick(`${weeks}주 예측`, `${weeks}W Forecast`)} right />}
-              {showHi && <Th col="yhat_total" label={pick("상한", "High")} right />}
-              {(mode === "backtest" || mode === "simulation") && showV1Forecast && <Th col="v1_yhat_total" label={pick("V1 예측", "V1 Forecast")} right />}
-              {(mode === "backtest" || mode === "simulation") && <Th col="wape" label="WAPE" right />}
-              {(mode === "backtest" || mode === "simulation") && showV1Wape && <Th col="v1_wape" label="V1 WAPE" right />}
-              {(mode === "backtest" || mode === "simulation") && showV1Diff && <Th col="wape_diff" label={pick("차이", "Diff")} right />}
+              <Th col="active_weeks" label={pick("이력 주 수", "Weeks of history")} right width="w-36" />
+              {isShortHistory && <Th col="weeks_to_graduation" label={pick("전체 이력까지", "Weeks to full history")} right width="w-44" />}
+              <Th col="demand_total" label={(mode === "backtest" || mode === "simulation") ? pick("실제", "Actual") : pick(`${weeks}주 수요`, `${weeks}W Demand`)}   right width="w-28" />
+              {showLo && <Th col="yhat_total" label={pick("하한", "Low")} right width="w-24" />}
+              {showPt && <Th col="yhat_total" label={(mode === "backtest" || mode === "simulation") ? pick("예측", "Forecast") : pick(`${weeks}주 예측`, `${weeks}W Forecast`)} right width="w-32" />}
+              {showHi && <Th col="yhat_total" label={pick("상한", "High")} right width="w-24" />}
+              {(mode === "backtest" || mode === "simulation") && showV1Forecast && <Th col="v1_yhat_total" label={pick("V1 예측", "V1 Forecast")} right width="w-28" />}
+              {(mode === "backtest" || mode === "simulation") && <Th col="wape" label="WAPE" right width="w-24" />}
+              {(mode === "backtest" || mode === "simulation") && showV1Wape && <Th col="v1_wape" label="V1 WAPE" right width="w-28" />}
+              {(mode === "backtest" || mode === "simulation") && showV1Diff && <Th col="wape_diff" label={pick("차이", "Diff")} right width="w-24" />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1056,7 +1057,7 @@ function SmoothTable({
                 className="cursor-pointer"
                 onClick={() => router.push(`/planning/sku-forecasts?sku=${encodeURIComponent(row.unique_id)}`)}
               >
-                <TableCell className="font-mono text-xs text-primary">
+                <TableCell className="truncate font-mono text-xs text-primary">
                   {row.unique_id}
                 </TableCell>
                 {(!isShortHistory || mode === "simulation") && (
@@ -1241,10 +1242,10 @@ function IntermittentTable({
   const totalPages = Math.ceil(sorted.length / pageSize);
   const pageRows   = sorted.slice(page * pageSize, (page + 1) * pageSize);
 
-  function Th({ col, label, right }: { col: IntermittentSortKey; label: string; right?: boolean }) {
+  function Th({ col, label, right, width }: { col: IntermittentSortKey; label: string; right?: boolean; width?: string }) {
     return (
       <TableHead
-        className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""}`}
+        className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""} ${width ?? ""}`}
         onClick={(e) => handleSort(col, e.shiftKey)}
       >
         {label}
@@ -1292,15 +1293,16 @@ function IntermittentTable({
       </div>
 
       <div className="rounded-md border">
-        <Table>
+        {/* table-fixed + explicit widths so columns don't reflow between pages/sorts */}
+        <Table className="table-fixed">
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
               <Th col="unique_id"             label="SKU" />
-              <Th col="units_recent"          label={pick(`${weeks}주 수량`, `${weeks}W Units`)} right />
-              <Th col="last_sale_week"        label={pick("마지막 판매일", "Last sale date")} right />
-              <Th col="weeks_since_last_sale" label={pick("마지막 판매 이후 주 수", "Weeks since last sale")} right />
-              <Th col="event_count"           label={pick("이벤트 횟수", "Event count")} right />
-              <Th col="avg_units_per_event"   label={pick("이벤트당 평균 수량", "Avg units / event")} right />
+              <Th col="units_recent"          label={pick(`${weeks}주 수량`, `${weeks}W Units`)} right width="w-28" />
+              <Th col="last_sale_week"        label={pick("마지막 판매일", "Last sale date")} right width="w-36" />
+              <Th col="weeks_since_last_sale" label={pick("마지막 판매 이후 주 수", "Weeks since last sale")} right width="w-48" />
+              <Th col="event_count"           label={pick("이벤트 횟수", "Event count")} right width="w-32" />
+              <Th col="avg_units_per_event"   label={pick("이벤트당 평균 수량", "Avg units / event")} right width="w-40" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1310,7 +1312,7 @@ function IntermittentTable({
                 className="cursor-pointer"
                 onClick={() => router.push(`/planning/sku-forecasts?sku=${encodeURIComponent(row.unique_id)}`)}
               >
-                <TableCell className="font-mono text-xs text-primary">
+                <TableCell className="truncate font-mono text-xs text-primary">
                   {row.unique_id}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-sm">

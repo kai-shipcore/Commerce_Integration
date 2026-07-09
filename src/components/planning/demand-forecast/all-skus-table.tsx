@@ -249,8 +249,8 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
 
   return (
     <div className="space-y-3">
-      {/* ── Controls ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* ── Controls: filters on the first row, actions on the second ── */}
+      <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">{pick("조회 기간", "Window")}</span>
@@ -282,7 +282,7 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
