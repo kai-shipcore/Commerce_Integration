@@ -544,7 +544,14 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
           minallowed: viewStart < first ? viewStart : first,
           maxallowed: shiftDate(last, 4),
         },
-        yaxis: { showgrid: true, gridcolor: "#F0F0F0", rangemode: "tozero" },
+        // Units are integers — force dtick 1 for low-volume SKUs where Plotly
+        // would otherwise pick fractional tick steps (0.2, 0.4, …)
+        yaxis: {
+          showgrid: true,
+          gridcolor: "#F0F0F0",
+          rangemode: "tozero",
+          ...(Math.max(...history.values) <= 8 ? { dtick: 1 } : {}),
+        },
         hovermode: "x unified",
       } as Partial<Plotly.Layout>,
     };
