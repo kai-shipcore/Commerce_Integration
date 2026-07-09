@@ -6,11 +6,12 @@
  * over the first K completed weeks of each run's horizon. Data comes from
  * /api/forecast/accuracy-history (all K values in one response, so switching
  * the window is instant). One run per training week.
+ *
+ * Rendered as a tab body inside ForecastPerformance (no Card wrapper here).
  */
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
@@ -34,18 +35,29 @@ interface AccuracyPoint {
 
 const K_PRESETS = [1, 2, 4, 8, 10, 13];
 
-const SEGMENT_OPTIONS = [
+export const TREND_SEGMENT_OPTIONS = [
   { value: "all" as const,          ko: "전체",        en: "All smooth" },
   { value: "smooth_full" as const,  ko: "Smooth",      en: "Smooth" },
   { value: "smooth_short" as const, ko: "짧은 이력",   en: "Short history" },
 ];
 
-export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
+export type TrendSegment = "all" | "smooth_full" | "smooth_short";
+
+export const trendPillClass = (active: boolean, disabled = false) =>
+  `rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+    disabled
+      ? "cursor-not-allowed bg-muted/40 text-muted-foreground/40"
+      : active
+        ? "bg-primary text-primary-foreground"
+        : "bg-muted text-muted-foreground hover:bg-muted/80"
+  }`;
+
+export function AccuracyTrendContent({ refreshKey }: { refreshKey: number }) {
   const { pick } = useI18n();
   const [series, setSeries] = useState<AccuracyPoint[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [segment, setSegment] = useState<"all" | "smooth_full" | "smooth_short">("all");
+  const [segment, setSegment] = useState<TrendSegment>("all");
   const [k, setK] = useState<number | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -160,56 +172,40 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
     };
   }, [points, pick]);
 
-  const pillClass = (active: boolean, disabled = false) =>
-    `rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-      disabled
-        ? "cursor-not-allowed bg-muted/40 text-muted-foreground/40"
-        : active
-          ? "bg-primary text-primary-foreground"
-          : "bg-muted text-muted-foreground hover:bg-muted/80"
-    }`;
-
   return (
-    <Card className="gap-2 py-5">
-      <CardHeader className="pb-0">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {pick("예측 정확도 추이", "Forecast accuracy over time")}
-          </CardTitle>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-1">
-              {SEGMENT_OPTIONS.map((opt) => (
-                <button key={opt.value} onClick={() => setSegment(opt.value)} className={pillClass(segment === opt.value)}>
-                  {pick(opt.ko, opt.en)}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-muted-foreground">{pick("평가 기간", "Window")}</span>
-              {K_PRESETS.map((preset) => {
-                const available = (runsPerK.get(preset) ?? 0) > 0;
-                return (
-                  <button
-                    key={preset}
-                    onClick={() => available && setK(preset)}
-                    disabled={!available}
-                    className={pillClass(effectiveK === preset, !available)}
-                  >
-                    {preset}{pick("주", "w")}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1">
+          {TREND_SEGMENT_OPTIONS.map((opt) => (
+            <button key={opt.value} onClick={() => setSegment(opt.value)} className={trendPillClass(segment === opt.value)}>
+              {pick(opt.ko, opt.en)}
+            </button>
+          ))}
         </div>
-        <p className="text-xs text-muted-foreground/70">
-          {pick(
-            `각 지점은 해당 예측 실행의 첫 ${effectiveK ?? "K"}주(완료된 주 기준)에 대한 통합 WAPE입니다. 낮을수록 정확합니다.`,
-            `Each point is the pooled WAPE over the first ${effectiveK ?? "K"} completed week${effectiveK === 1 ? "" : "s"} of that run's horizon. Lower is better.`,
-          )}
-        </p>
-      </CardHeader>
-      <CardContent>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">{pick("평가 기간", "Window")}</span>
+          {K_PRESETS.map((preset) => {
+            const available = (runsPerK.get(preset) ?? 0) > 0;
+            return (
+              <button
+                key={preset}
+                onClick={() => available && setK(preset)}
+                disabled={!available}
+                className={trendPillClass(effectiveK === preset, !available)}
+              >
+                {preset}{pick("주", "w")}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground/70">
+        {pick(
+          `각 지점은 해당 예측 실행의 첫 ${effectiveK ?? "K"}주(완료된 주 기준)에 대한 통합 WAPE입니다. 낮을수록 정확합니다.`,
+          `Each point is the pooled WAPE over the first ${effectiveK ?? "K"} completed week${effectiveK === 1 ? "" : "s"} of that run's horizon. Lower is better.`,
+        )}
+      </p>
+      <div className="mt-2">
         {loading && (
           <div className="flex h-[680px] items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -244,7 +240,7 @@ export function AccuracyTrend({ refreshKey }: { refreshKey: number }) {
             />
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </>
   );
 }
