@@ -7,14 +7,19 @@ import { usePermissions } from "@/lib/hooks/use-permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { PriceHistoryPage } from "@/components/production/price-history-page";
 import { InvoiceReviewPage } from "@/components/production/invoice-review-page";
+import { CreditNotesPage } from "@/components/production/credit-notes-page";
 
-type Tab = "invoice-review" | "price-history";
+type Tab = "invoice-review" | "price-history" | "credit-notes";
 
 export function InvoicePriceControlTabs() {
   const { pick } = useI18n();
   const { can, ready } = usePermissions();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>(() => (searchParams.get("tab") === "price-history" ? "price-history" : "invoice-review"));
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get("tab");
+    if (requested === "price-history" || requested === "credit-notes") return requested;
+    return "invoice-review";
+  });
   const [invoiceCreateOpen, setInvoiceCreateOpen] = useState(false);
   const initialSku = searchParams.get("sku") ?? undefined;
   const initialCurrentOnly = searchParams.get("currentOnly") === "false" ? false : undefined;
@@ -22,6 +27,7 @@ export function InvoicePriceControlTabs() {
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "invoice-review", label: pick("Invoice 검수", "Invoice Review") },
     { id: "price-history", label: "Price History" },
+    { id: "credit-notes", label: pick("Credit 관리", "Credit Notes") },
   ];
 
   return (
@@ -71,8 +77,10 @@ export function InvoicePriceControlTabs() {
       <div className="min-h-0 flex-1 overflow-hidden">
         {tab === "invoice-review" ? (
           <InvoiceReviewPage createFormOpen={invoiceCreateOpen} onCreateFormOpenChange={setInvoiceCreateOpen} />
-        ) : (
+        ) : tab === "price-history" ? (
           <PriceHistoryPage initialSku={initialSku} initialCurrentOnly={initialCurrentOnly} />
+        ) : (
+          <CreditNotesPage />
         )}
       </div>
     </section>

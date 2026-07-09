@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Download, Loader2, ScrollText, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2, ScrollText, Search, X } from "lucide-react";
 import { AppLayout } from "@/components/layout/app-layout";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -47,6 +47,8 @@ const ACTION_OPTIONS = [
   { value: "credit_update", ko: "Credit 상태 변경", en: "Credit Status Change" },
   { value: "factory_confirm_update", ko: "공장 확인 상태 변경", en: "Factory Confirmation Change" },
   { value: "attachment_update", ko: "첨부파일 변경", en: "Attachment Update" },
+  { value: "credit_note_create", ko: "Credit 생성", en: "Credit Note Created" },
+  { value: "credit_note_status_change", ko: "Credit 상태 변경", en: "Credit Note Status Change" },
   { value: "permission_grant", ko: "권한 부여", en: "Permission Grant" },
   { value: "permission_revoke", ko: "권한 취소", en: "Permission Revoke" },
   { value: "role_change", ko: "역할 변경", en: "Role Change" },
@@ -75,6 +77,8 @@ const ACTION_CLASS: Record<string, string> = {
   credit_update: "bg-fuchsia-100 text-fuchsia-700",
   factory_confirm_update: "bg-amber-100 text-amber-700",
   attachment_update: "bg-stone-100 text-stone-700",
+  credit_note_create: "bg-fuchsia-100 text-fuchsia-700",
+  credit_note_status_change: "bg-fuchsia-100 text-fuchsia-700",
   create: "bg-cyan-100 text-cyan-700",
   update: "bg-blue-100 text-blue-700",
   delete: "bg-red-100 text-red-700",
@@ -212,6 +216,13 @@ function summarizeChange(entry: AuditEntry): { before: string; after: string } {
     }
     if (entry.action === "attachment_update") {
       return { before: "-", after: entry.after?.signed ? "서명본 첨부" : "원본 첨부" };
+    }
+    if (entry.action === "credit_note_create") {
+      return { before: "-", after: `${valueText(entry.after?.sku)} · ${valueText(entry.after?.creditAmount)}` };
+    }
+    if (entry.action === "credit_note_status_change") {
+      if (entry.after?.deleted) return { before: valueText(entry.before?.status), after: "Credit 삭제됨" };
+      return { before: valueText(entry.before?.status), after: valueText(entry.after?.status) };
     }
     if (entry.action === "create") {
       return { before: "-", after: entry.entityLabel || "생성됨" };
@@ -396,18 +407,42 @@ export default function AuditLogPage() {
           <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-slate-950">
             <section className="border-b border-[#e2dfd8] px-5 py-4 dark:border-slate-700">
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  className="h-10 min-w-[160px] flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-[#1a5cdb] dark:border-slate-700 dark:bg-slate-950"
-                  placeholder={pick("사용자 검색...", "Search user...")}
-                  value={userSearch}
-                  onChange={(event) => setUserSearch(event.target.value)}
-                />
-                <input
-                  className="h-10 min-w-[160px] flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-[#1a5cdb] dark:border-slate-700 dark:bg-slate-950"
-                  placeholder={pick("엔티티 검색 (이름/ID)...", "Entity name or ID...")}
-                  value={entitySearch}
-                  onChange={(event) => setEntitySearch(event.target.value)}
-                />
+                <div className="relative min-w-[160px] flex-1">
+                  <input
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 pr-9 text-sm outline-none focus:border-[#1a5cdb] dark:border-slate-700 dark:bg-slate-950"
+                    placeholder={pick("사용자 검색...", "Search user...")}
+                    value={userSearch}
+                    onChange={(event) => setUserSearch(event.target.value)}
+                  />
+                  {userSearch ? (
+                    <button
+                      type="button"
+                      aria-label={pick("사용자 검색어 초기화", "Clear user search")}
+                      onClick={() => setUserSearch("")}
+                      className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100 hover:text-foreground dark:hover:bg-slate-800"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="relative min-w-[260px] flex-1">
+                  <input
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 pr-9 text-sm outline-none focus:border-[#1a5cdb] dark:border-slate-700 dark:bg-slate-950"
+                    placeholder={pick("대상 검색(이름, ID, 컨테이너 번호, 인보이스 번호)...", "Entity (name, ID, container number)...")}
+                    value={entitySearch}
+                    onChange={(event) => setEntitySearch(event.target.value)}
+                  />
+                  {entitySearch ? (
+                    <button
+                      type="button"
+                      aria-label={pick("대상 검색어 초기화", "Clear target search")}
+                      onClick={() => setEntitySearch("")}
+                      className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100 hover:text-foreground dark:hover:bg-slate-800"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
+                </div>
                 <select
                   className="h-10 min-w-[140px] rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-[#1a5cdb] dark:border-slate-700 dark:bg-slate-950"
                   value={entityTypeFilter}

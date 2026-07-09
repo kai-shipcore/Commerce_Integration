@@ -139,8 +139,8 @@ export async function POST(request: NextRequest) {
 
     const result = await getPrimaryPool().query(
       `INSERT INTO shipcore.fc_invoices
-         (invoice_number, factory_id, container_id, container_number, invoice_date, status, created_by, created_at, updated_at)
-       VALUES ($1, $2::bigint, $3::bigint, $4, $5::date, 'price_review', $6, NOW(), NOW())
+         (invoice_number, factory_id, container_id, container_number, invoice_date, status, note, created_by, created_at, updated_at)
+       VALUES ($1, $2::bigint, $3::bigint, $4, $5::date, 'price_review', $6, $7, NOW(), NOW())
        RETURNING id::text AS id`,
       [
         parsed.invoiceNumber,
@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
         parsed.containerId || null,
         parsed.containerNumber || null,
         parsed.invoiceDate,
+        parsed.note || null,
         session?.user?.id ?? null,
       ],
     );

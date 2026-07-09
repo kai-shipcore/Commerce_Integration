@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>생산(Production) 모듈 – 관리자 가이드</title>
+<style>
+  :root {
+    --brand: #1a56db;
+    --brand-dark: #1239a0;
+    --green: #16a34a;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --yellow: #ca8a04;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --radius: 10px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.09);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--gray-900);
+    color: #e2e8f0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0 40px;
+  }
+  .sidebar-logo { padding: 0 22px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; }
+  .sidebar-logo h1 { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .sidebar-logo p { font-size: 11px; color: var(--gray-400); margin-top: 4px; }
+  .admin-pill {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 10px;
+    background: rgba(220,38,38,0.18); color: #fca5a5; border: 1px solid rgba(220,38,38,0.35);
+    border-radius: 999px; padding: 3px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
+  }
+  .nav-section { padding: 14px 22px 4px; font-size: 10px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; }
+  .nav-item {
+    display: block; padding: 7px 22px; text-decoration: none;
+    color: #cbd5e1; font-size: 13px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
+  .nav-item.top { font-weight: 600; color: #e2e8f0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-section {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 48px 48px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .page-section:last-child { border-bottom: none; }
+
+  .cover {
+    background: linear-gradient(135deg, #111827 0%, #1e3a5f 55%, #1a56db 100%);
+    color: #fff;
+    padding: 64px 48px;
+  }
+  .cover-inner { max-width: 980px; margin: 0 auto; }
+  .cover h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 14px; }
+  .cover h1 span { color: #60a5fa; }
+  .cover p { font-size: 16px; color: #94a3b8; max-width: 620px; margin-bottom: 28px; }
+  .cover-badges { display: flex; gap: 10px; flex-wrap: wrap; }
+  .badge {
+    padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: rgba(255,255,255,0.12); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2);
+  }
+  .badge.warn { background: rgba(220,38,38,0.22); border-color: rgba(248,113,113,0.4); color: #fecaca; }
+
+  .section-header {
+    display: flex; align-items: flex-start; gap: 16px;
+    margin-bottom: 28px; padding-bottom: 20px; border-bottom: 2px solid var(--gray-200);
+  }
+  .section-icon {
+    width: 50px; height: 50px; border-radius: 13px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 24px;
+  }
+  .section-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.4px; }
+  .section-header .subtitle { font-size: 13.5px; color: var(--gray-600); margin-top: 4px; }
+  .menu-path {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: 6px;
+    padding: 3px 9px; font-size: 11.5px; color: var(--gray-600); margin-bottom: 8px;
+  }
+
+  .screenshot-box {
+    width: 100%; border-radius: var(--radius); overflow: hidden;
+    border: 1px solid var(--gray-200); box-shadow: var(--shadow);
+    margin: 22px 0; position: relative; background: var(--gray-100);
+  }
+  .screenshot-box img { width: 100%; display: block; }
+  .screenshot-placeholder {
+    height: 300px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    background: linear-gradient(135deg, #e0e7ff 0%, #dbeafe 100%);
+  }
+  .screenshot-placeholder .ph-icon { font-size: 36px; opacity: 0.5; }
+  .screenshot-placeholder p { color: var(--gray-600); font-size: 13px; }
+  .screenshot-caption {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--gray-800); color: #e2e8f0;
+    padding: 7px 16px; font-size: 12px;
+  }
+
+  .card-grid { display: grid; gap: 16px; margin: 18px 0; }
+  .card-grid.col2 { grid-template-columns: 1fr 1fr; }
+  .card-grid.col3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card-grid.col4 { grid-template-columns: repeat(4, 1fr); }
+  .card {
+    background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius);
+    padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .card h4 { font-size: 13.5px; font-weight: 700; color: var(--gray-800); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .card p { font-size: 13px; color: var(--gray-600); line-height: 1.6; }
+  .card ul { padding-left: 16px; font-size: 13px; color: var(--gray-600); line-height: 1.8; }
+
+  .steps { display: flex; flex-direction: column; gap: 0; }
+  .step { display: flex; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--gray-200); }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+  }
+  .step h4 { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 5px; }
+  .step p { font-size: 13px; color: var(--gray-600); }
+
+  .callout { display: flex; gap: 12px; padding: 14px 16px; border-radius: 8px; margin: 18px 0; font-size: 13px; }
+  .callout.tip { background: #eff6ff; border-left: 4px solid var(--brand); color: #1e40af; }
+  .callout.warn { background: #fef2f2; border-left: 4px solid var(--red); color: #991b1b; }
+  .callout.info { background: #f0fdf4; border-left: 4px solid var(--green); color: #14532d; }
+  .callout-icon { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+  .callout b { font-weight: 700; }
+
+  .ui-label {
+    display: inline-block; background: var(--gray-800); color: #e2e8f0;
+    border-radius: 4px; padding: 1px 7px; font-size: 12px; font-family: monospace;
+    vertical-align: middle;
+  }
+  .btn-label {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--gray-100); border: 1px solid var(--gray-300);
+    border-radius: 5px; padding: 2px 9px; font-size: 12px; color: var(--gray-700);
+    vertical-align: middle;
+  }
+
+  .feat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 18px 0; }
+  .feat-table th { background: var(--gray-800); color: #e2e8f0; text-align: left; padding: 9px 14px; font-weight: 600; font-size: 11.5px; }
+  .feat-table td { padding: 9px 14px; border-bottom: 1px solid var(--gray-200); vertical-align: top; }
+  .feat-table tr:last-child td { border-bottom: none; }
+  .feat-table tr:hover td { background: var(--gray-50); }
+  .feat-table .label { font-weight: 600; color: var(--gray-800); white-space: nowrap; }
+
+  .status { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .status.on { background: #dcfce7; color: #15803d; }
+  .status.off { background: #f0eee9; color: #6b6359; }
+
+  h3 { font-size: 17px; font-weight: 700; color: var(--gray-800); margin: 28px 0 12px; }
+  h3.sub { font-size: 14.5px; font-weight: 700; margin: 20px 0 10px; color: var(--gray-700); border-left: 3px solid var(--brand); padding-left: 10px; }
+  p { margin-bottom: 10px; }
+  ul, ol { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; font-size: 13.5px; color: var(--gray-700); }
+  .divider { height: 1px; background: var(--gray-200); margin: 28px 0; }
+  code.inline { background: var(--gray-100); border-radius: 4px; padding: 1px 6px; font-size: 12.5px; font-family: monospace; color: var(--gray-800); }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .page-section { padding: 28px 20px; }
+    .card-grid.col2, .card-grid.col3, .card-grid.col4 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>생산(Production) 모듈</h1>
+    <p>관리자 가이드</p>
+    <span class="admin-pill">🔒 관리자 전용</span>
+  </div>
+  <div class="nav-section">개요</div>
+  <a class="nav-item top" href="#overview">전체 그림</a>
+  <a class="nav-item" href="#permissions">권한 &amp; 접근</a>
+
+  <div class="nav-section">시트 커버 부품</div>
+  <a class="nav-item" href="#seat-cover-parts">사이즈별 부품 관리</a>
+
+  <div class="nav-section">Vehicles</div>
+  <a class="nav-item" href="#vehicles">차량 마스터 관리</a>
+
+  <div class="nav-section">Parts &amp; Codes</div>
+  <a class="nav-item" href="#parts-codes">Part / Code / Initial 사전</a>
+
+  <div class="nav-section">Part SKU Generator</div>
+  <a class="nav-item" href="#part-sku-generator">SKU 조합 &amp; 생성</a>
+
+  <div class="nav-section">참고</div>
+  <a class="nav-item" href="#troubleshoot">자주 겪는 문제</a>
+</nav>
+
+<main class="main">
+
+<div class="cover">
+  <div class="cover-inner">
+    <h1>생산(<span>Production</span>) 모듈 관리자 가이드</h1>
+    <p>시트 커버 부품, 차량(Vehicles), 부품/코드 사전(Parts &amp; Codes), Part SKU 생성기 — 상단 "생산" 메뉴 아래 4개 화면을 다룹니다.</p>
+    <div class="cover-badges">
+      <span class="badge">🧵 시트 커버 부품</span>
+      <span class="badge">🚗 Vehicles</span>
+      <span class="badge">🔤 Parts &amp; Codes</span>
+      <span class="badge">🏷️ Part SKU Generator</span>
+      <span class="badge warn">🔒 관리자 전용</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 개요 ═══════════ -->
+<section class="page-section" id="overview">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">🧭</div>
+    <div>
+      <div class="menu-path">상단 메뉴 › 생산</div>
+      <h2>전체 그림</h2>
+      <p class="subtitle">4개 화면이 서로 어떻게 연결되는지 먼저 이해하면 헷갈리지 않습니다.</p>
+    </div>
+  </div>
+
+  <p><strong>Vehicles</strong>(차종)와 <strong>Parts &amp; Codes</strong>(부품/코드/이니셜 사전)는 각각 독립된 마스터 데이터입니다. <strong>Part SKU Generator</strong>가 이 둘을 조합해서 하나의 SKU 문자열을 만듭니다.</p>
+
+  <div class="card-grid col4">
+    <div class="card">
+      <h4>🚗 Vehicles</h4>
+      <p>Make / Model 등 차종 정보. Part SKU Generator의 차종 선택 목록으로 쓰입니다.</p>
+    </div>
+    <div class="card">
+      <h4>🔤 Parts &amp; Codes</h4>
+      <p>부품명 / 코드 / 디자이너 이니셜 사전. SKU 조합의 재료입니다.</p>
+    </div>
+    <div class="card">
+      <h4>🏷️ Part SKU Generator</h4>
+      <p>위 둘을 조합해 SKU를 만들고 저장·관리합니다.</p>
+    </div>
+    <div class="card">
+      <h4>🧵 시트 커버 부품</h4>
+      <p>완전히 별도 기능입니다. 사이즈별 시트 커버 부품 구성(BOM)만 관리하며, 나머지 3개와 데이터로 연결되지 않습니다.</p>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>SKU를 새로 만들려면 순서가 있습니다: <b>① Vehicles에 차종 등록 → ② Parts &amp; Codes에 부품/코드/이니셜 등록 → ③ Part SKU Generator에서 조합</b>. 순서를 지키면 드롭다운에 원하는 값이 바로 나타납니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ 권한 ═══════════ -->
+<section class="page-section" id="permissions">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef2f2">🔒</div>
+    <div>
+      <div class="menu-path">권한</div>
+      <h2>권한 &amp; 접근</h2>
+      <p class="subtitle">화면마다 별도의 권한 섹션으로 관리됩니다.</p>
+    </div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">화면</th><th>권한 섹션</th></tr>
+    <tr><td class="label">시트 커버 부품</td><td><code class="inline">seat-cover-parts</code></td></tr>
+    <tr><td class="label">Vehicles</td><td><code class="inline">production-vehicles</code></td></tr>
+    <tr><td class="label">Parts &amp; Codes</td><td><code class="inline">parts-codes</code></td></tr>
+    <tr><td class="label">Part SKU Generator</td><td><code class="inline">part-sku-generator</code> (read / create / edit / delete / status)</td></tr>
+  </table>
+  <p>버튼이 비활성화되어 있으면 현재 계정에 해당 액션 권한이 없다는 뜻입니다. <span class="ui-label">설정 → 사용자 권한</span>에서 역할별로 조정합니다.</p>
+</section>
+
+<!-- ═══════════ 시트 커버 부품 ═══════════ -->
+<section class="page-section" id="seat-cover-parts">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🧵</div>
+    <div>
+      <div class="menu-path">생산 › 시트 커버 부품</div>
+      <h2>시트 커버 부품</h2>
+      <p class="subtitle">시트 커버 사이즈별 부품 구성(BOM)을 Front/Rear/Third 좌석 위치별로 관리합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/prod-01-seat-cover-parts.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>🧵</div><p>시트 커버 부품 그리드</p></div>'" alt="시트 커버 부품 그리드">
+    <div class="screenshot-caption">▲ Front / Rear / Third 탭 + 부품 그리드</div>
+  </div>
+
+  <p>하나의 <strong>Size</strong>(시트 사이즈 코드)마다 Headrest · Top/Body · Bottom · Middle · Armrest 등 부품 정보를 Driver/Passenger 구분과 함께 등록합니다. Rear/Third 탭에는 Console · Backrest Storage · Subpart 항목이 추가로 있습니다.</p>
+
+  <h3 class="sub">사용법</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>Front / Rear / Third 탭 선택</h4><p>좌석 위치별로 별도 그리드가 열립니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>행 선택 후 추가 / 수정 / 삭제</h4><p>Driver/Passenger 드롭다운("동일" / "Driver 기준 대칭" / "Passenger 기준 대칭")을 고르면 좌우 필드가 자동으로 채워집니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>저장</h4><p>입력한 부품 값들을 조합한 <strong>Package</strong> 요약 텍스트가 자동으로 함께 저장됩니다.</p></div>
+    </div>
+  </div>
+
+  <p>각 컬럼 헤더의 검색창으로 필터링할 수 있고, 현재 탭에 보이는 데이터만 엑셀로 내보낼 수 있습니다.</p>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>이 화면은 <strong>Vehicles·Parts &amp; Codes·Part SKU Generator와 데이터로 연결되어 있지 않은 완전히 별도의 마스터</strong>입니다. Size 값은 여기서만 의미를 가집니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ Vehicles ═══════════ -->
+<section class="page-section" id="vehicles">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">🚗</div>
+    <div>
+      <div class="menu-path">생산 › Vehicles</div>
+      <h2>Vehicles</h2>
+      <p class="subtitle">차종(Make/Model) 마스터를 조회·등록·수정하고, 외부 시스템과 동기화합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/prod-02-vehicles.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>🚗</div><p>Vehicles 그리드</p></div>'" alt="Vehicles 그리드">
+    <div class="screenshot-caption">▲ F Number · Make · Model · Submodel 1~6 · Add/Edit/Sync</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:150px">컬럼</th><th>의미</th></tr>
+    <tr><td class="label">F Number</td><td>차량 고유 식별자 (등록 후 수정 불가)</td></tr>
+    <tr><td class="label">Year/Generation</td><td>연식·세대 정보</td></tr>
+    <tr><td class="label">Make / Model / Model 2</td><td>제조사 · 모델명</td></tr>
+    <tr><td class="label">Submodel 1~6</td><td>트림 등 세부 구분 (라벨+값 쌍, 최대 6개)</td></tr>
+  </table>
+
+  <h3 class="sub">Sync (동기화)</h3>
+  <p><span class="btn-label">Sync</span> 버튼을 누르면 외부 차량 데이터 소스에서 최신 목록을 가져와 <strong>전체 upsert + 소스에서 사라진 항목은 삭제</strong>하는 방식으로 동기화합니다. 동기화 후 "upserted: n, deleted: m" 결과가 표시됩니다.</p>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>개별 행 삭제 버튼은 없습니다. 특정 차량을 지우려면 원천 데이터에서 제거한 뒤 <b>Sync</b>를 실행해야 합니다.</div>
+  </div>
+
+  <p>여기 등록된 Make/Model은 <strong>Part SKU Generator</strong>의 차종 드롭다운에 그대로 나타납니다.</p>
+</section>
+
+<!-- ═══════════ Parts & Codes ═══════════ -->
+<section class="page-section" id="parts-codes">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8">🔤</div>
+    <div>
+      <div class="menu-path">생산 › Parts &amp; Codes</div>
+      <h2>Parts &amp; Codes</h2>
+      <p class="subtitle">Part(부품명) · Code(코드) · Designer Initial(디자이너 이니셜) 3종의 사전 데이터를 관리합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/prod-03-parts-codes.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>🔤</div><p>Parts &amp; Codes 탭 화면</p></div>'" alt="Parts &amp; Codes 화면">
+    <div class="screenshot-caption">▲ Part / Code / Designer Initial 탭 — 검색 + 목록/상세</div>
+  </div>
+
+  <p>이 화면 자체는 업무 트랜잭션을 만들지 않습니다. <strong>Part SKU Generator가 SKU를 조합할 때 참조하는 "허용 값 사전"</strong>입니다.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:160px">탭</th><th>내용</th></tr>
+    <tr><td class="label">Part</td><td>부품명 + 설명. 부품명 자체가 고유 식별자입니다.</td></tr>
+    <tr><td class="label">Code</td><td>코드 + 설명. 저장 시 자동으로 대문자로 정규화됩니다.</td></tr>
+    <tr><td class="label">Designer Initial</td><td>이니셜 + 담당 디자이너 이름. 저장 시 자동으로 대문자로 정규화됩니다.</td></tr>
+  </table>
+
+  <h3 class="sub">사용법</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>탭 선택 (Part / Code / Designer Initial)</h4><p>세 탭 모두 같은 방식(검색 → 목록 → 상세 → 추가/수정/삭제)으로 동작합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>추가·수정 시 활성(active) 여부 설정</h4><p>비활성 처리된 항목은 Part SKU Generator의 선택 목록에 더 이상 나타나지 않습니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>"비활성 포함" 체크박스로 과거 항목도 조회</h4><p>삭제는 실제 삭제가 아니라 비활성 처리이므로 언제든 다시 활성화할 수 있습니다.</p></div>
+    </div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:100px">상태</th><th>의미</th></tr>
+    <tr><td><span class="status on">활성</span></td><td>Part SKU Generator 드롭다운에 노출됨</td></tr>
+    <tr><td><span class="status off">비활성</span></td><td>드롭다운에서 숨겨지지만 데이터는 보존됨</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════ Part SKU Generator ═══════════ -->
+<section class="page-section" id="part-sku-generator">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🏷️</div>
+    <div>
+      <div class="menu-path">생산 › Part SKU Generator</div>
+      <h2>Part SKU Generator</h2>
+      <p class="subtitle">차종·부품·코드·이니셜·좌우 구분을 조합해 표준 SKU를 생성하고 관리합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/prod-04-part-sku-generator.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>🏷️</div><p>Part SKU Generator — 좌석 다이어그램</p></div>'" alt="Part SKU Generator 화면">
+    <div class="screenshot-caption">▲ "생성기" 탭 — 1열(Front)/2열(Rear)/3열(Third Row) 좌석 다이어그램에서 부위를 클릭</div>
+  </div>
+
+  <p>화면 상단에 <strong>생성기</strong> / <strong>목록</strong> 탭이 있습니다. 기본으로 열리는 "생성기" 탭은 좌석 다이어그램을 클릭해 부품을 찾는 방식으로 동작합니다.</p>
+
+  <h3 class="sub">SKU 조합 규칙</h3>
+  <p style="text-align:center"><code class="inline">{부품명}-{Make 약어}-{Model 약어}-{코드}-{이니셜}[-{좌우구분}]</code></p>
+  <p>좌우 구분(Side)이 <strong>Universal</strong>이면 SKU 마지막 구분 세그먼트는 생략됩니다.</p>
+
+  <h3 class="sub">사용법 — 다이어그램에서 부위를 클릭해 Part를 찾고, 세션으로 SKU를 완성</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>1열/2열/3열 토글 후 다이어그램에서 부위 클릭</h4><p>각 좌석은 헤드레스트 · 등받이 · 방석 · 팔걸이로 구성되고, 2열/3열에는 등받이 수납·서브파트·콘솔이 추가됩니다. 부위를 클릭하면(다시 클릭하면 선택 해제) 그 부위 조건에 맞는 Part 목록이 아래에 나타납니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>목록에서 실제 Part 클릭</h4><p>부위는 검색 필터일 뿐이고, 이 단계에서 고른 Part가 SKU의 부품명이 됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>우측 패널에서 세션 설정: Make → Model → Make Abbr → Model Abbr → Initial</h4><p>Make를 고르면 Model 목록이 그 Make 기준으로 다시 채워집니다. <strong>Make Abbr / Model Abbr는 자유 입력 텍스트</strong>(예: "HY", "PA")입니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div><h4>Code / Side 선택 → SKU 미리보기 확인 → "+ 생성"</h4><p>세션이 준비되면 Code·Side가 활성화되고, 값이 모두 채워지면 SKU 미리보기가 실시간으로 나타납니다. 저장하면 Part/Code/Side만 초기화되고 <strong>Make/Model/Initial 세션은 유지</strong>된 채 "목록" 탭으로 자동 전환되어 방금 만든 SKU가 선택됩니다.</p></div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>Make Abbr / Model Abbr는 사전 정의된 목록이 아니라 <strong>자유 입력</strong>입니다. 같은 차종에 다른 약어(예: "HY" vs "Hyundai")를 입력하면 SKU 표기가 일관되지 않으니, 팀 내에서 약어 표기를 미리 통일해두는 것이 좋습니다.</div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">🧩</span>
+    <div>다이어그램의 부위 이름(헤드레스트·등받이·방석·팔걸이·콘솔·등받이 수납·서브파트)은 <strong>시트 커버 부품</strong> 화면과 같은 분류 체계를 재사용한 것일 뿐, 실제 데이터는 서로 다른 곳(이 화면은 Parts &amp; Codes의 Part 데이터, 시트 커버 부품은 별도 사이즈별 마스터)에 저장됩니다. 이름이 비슷하다고 같은 데이터는 아닙니다.</div>
+  </div>
+
+  <h3 class="sub">목록 탭 — 생성 후 관리</h3>
+  <ul>
+    <li>좌측 목록에서 SKU/부품명으로 검색, "비활성 포함" 체크로 지난 항목도 조회</li>
+    <li>우측 상세에는 구성 요소(좌석 위치/Part/Make/Model/Code/Initial/Side/생성자) breakdown과 <strong>체크리스트</strong>(진행 항목 추가·Pending/In Progress/Done 상태 변경·삭제)</li>
+    <li>삭제 버튼은 실제 삭제가 아니라 <strong>비활성 처리(soft delete)</strong> — 완전히 지워지지 않고 "비활성 포함" 조회로 다시 볼 수 있습니다</li>
+  </ul>
+</section>
+
+<!-- ═══════════ 트러블슈팅 ═══════════ -->
+<section class="page-section" id="troubleshoot">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef2f2">🛠️</div>
+    <div>
+      <div class="menu-path">참고</div>
+      <h2>자주 겪는 문제</h2>
+      <p class="subtitle">헷갈리기 쉬운 동작을 미리 정리했습니다.</p>
+    </div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:260px">증상</th><th>원인 / 해결</th></tr>
+    <tr>
+      <td class="label">Part SKU Generator 드롭다운에 원하는 차종/부품이 안 보임</td>
+      <td>Vehicles 또는 Parts &amp; Codes에 해당 값이 등록·활성화되어 있는지 확인하세요. 비활성(off) 상태면 목록에 나타나지 않습니다.</td>
+    </tr>
+    <tr>
+      <td class="label">같은 SKU를 다시 만들었는데 중복으로 안 걸림</td>
+      <td>중복 체크는 SKU 문자열이 완전히 같을 때만 걸립니다. Make Abbr 표기가 다르면(예: "HY" vs "Hyundai") 다른 SKU로 인식됩니다 — 약어 표기를 통일해서 사용하세요.</td>
+    </tr>
+    <tr>
+      <td class="label">Vehicles에서 특정 차량만 지우고 싶음</td>
+      <td>개별 삭제 기능이 없습니다. 원천 데이터에서 제거한 뒤 <span class="btn-label">Sync</span>를 실행하면 함께 정리됩니다.</td>
+    </tr>
+    <tr>
+      <td class="label">비활성 처리한 Part/Code/SKU를 되돌리고 싶음</td>
+      <td>모두 소프트 삭제라 데이터가 남아있습니다. "비활성 포함" 체크박스로 찾아서 다시 활성화하세요.</td>
+    </tr>
+  </table>
+</section>
+
+</main>
+</div>
+</body>
+</html>

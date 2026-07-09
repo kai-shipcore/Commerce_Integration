@@ -15,6 +15,8 @@ const ACTIONS = new Set([
   "credit_update",
   "factory_confirm_update",
   "attachment_update",
+  "credit_note_create",
+  "credit_note_status_change",
   // General audit actions
   "create",
   "update",

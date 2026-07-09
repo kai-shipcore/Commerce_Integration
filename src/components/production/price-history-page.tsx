@@ -2,11 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, FileUp, Plus, RefreshCcw, Save, Search, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, FileUp, FolderCog, History, Pencil, Plus, RefreshCcw, Save, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type Factory = {
   id: string;
@@ -28,6 +34,8 @@ type PriceRow = {
   previousPrice: number | null;
   changeAmount: number | null;
   changeRate: number | null;
+  invoiceReferenceCount: number;
+  invoiceReferenceInvoiceCount: number;
 };
 
 type SourceFileRow = {
@@ -126,6 +134,7 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
   const [sourceFiles, setSourceFiles] = useState<SourceFileRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingSelectedSkuHistory, setLoadingSelectedSkuHistory] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState(initialSku ?? "");
   const [factoryId, setFactoryId] = useState("");
@@ -146,6 +155,7 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
   const [uploadHistoryPage, setUploadHistoryPage] = useState(1);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [selectedSkuHistory, setSelectedSkuHistory] = useState<PriceRow[]>([]);
 
   async function loadFactories() {
     const res = await fetch(apiPath("/api/production/price-history?mode=factories&active=true"), { cache: "no-store" });
@@ -192,6 +202,27 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
     }
   }
 
+  async function loadSelectedSkuHistory(skuValue = form.sku, selectedFactoryId = form.factoryId || factoryId) {
+    const sku = skuValue.trim().toUpperCase();
+    if (!sku) {
+      setSelectedSkuHistory([]);
+      return;
+    }
+    setLoadingSelectedSkuHistory(true);
+    try {
+      const params = new URLSearchParams({ sku });
+      if (selectedFactoryId) params.set("factoryId", selectedFactoryId);
+      const res = await fetch(apiPath(`/api/production/price-history?${params.toString()}`), { cache: "no-store" });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || pick("선택 SKU 이력을 불러오지 못했습니다.", "Failed to load selected SKU history"));
+      setSelectedSkuHistory((json.data ?? []).filter((row: PriceRow) => row.sku.toUpperCase() === sku));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("선택 SKU 이력을 불러오지 못했습니다.", "Failed to load selected SKU history"));
+    } finally {
+      setLoadingSelectedSkuHistory(false);
+    }
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadFactories();
@@ -213,11 +244,14 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  const selectedSkuHistory = useMemo(() => {
-    if (!form.sku.trim()) return [];
-    const sku = form.sku.trim().toUpperCase();
-    return rows.filter((row) => row.sku.toUpperCase() === sku);
-  }, [form.sku, rows]);
+  useEffect(() => {
+    if (!ready) return;
+    const timer = window.setTimeout(() => {
+      void loadSelectedSkuHistory();
+    }, 200);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, form.sku, form.factoryId, factoryId]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const pagedRows = useMemo(
@@ -243,6 +277,14 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
     () => filteredSourceFiles.slice((uploadHistoryPage - 1) * uploadHistoryPageSize, uploadHistoryPage * uploadHistoryPageSize),
     [filteredSourceFiles, uploadHistoryPage]
   );
+  const deleteImpactInvoiceRefs = useMemo(() => {
+    const rows = deleteImpact?.rows ?? [];
+    const referencedRows = rows.filter((row) => (row.invoiceReferenceCount ?? 0) > 0);
+    return {
+      rowCount: referencedRows.length,
+      itemCount: referencedRows.reduce((sum, row) => sum + (row.invoiceReferenceCount ?? 0), 0),
+    };
+  }, [deleteImpact]);
 
   async function saveForm() {
     if (!canCreate && !form.id) return toast.error(pick("가격 이력을 추가할 권한이 없습니다.", "No permission to create price history"));
@@ -253,18 +295,19 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
       return;
     }
     const method = form.id ? "PUT" : "POST";
+    const payload = {
+      factoryId: form.factoryId,
+      sku: form.sku,
+      effectiveDate: form.effectiveDate,
+      unitPrice,
+      currency: "USD",
+      reason: form.reason,
+      ...(form.id ? { id: form.id } : {}),
+    };
     const res = await fetch(apiPath("/api/production/price-history"), {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: form.id,
-        factoryId: form.factoryId,
-        sku: form.sku,
-        effectiveDate: form.effectiveDate,
-        unitPrice,
-        currency: "USD",
-        reason: form.reason,
-      }),
+      body: JSON.stringify(payload),
     });
     const json = await res.json();
     if (!res.ok || !json.success) {
@@ -273,7 +316,16 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
     }
     toast.success(pick("가격 이력이 저장되었습니다.", "Price history saved"));
     setForm({ ...emptyForm, factoryId: form.factoryId });
-    await loadRows();
+    await Promise.all([loadRows(), loadSelectedSkuHistory()]);
+  }
+
+  function clearForm() {
+    setForm({
+      ...emptyForm,
+      id: null,
+      factoryId: form.factoryId || factoryId,
+      effectiveDate: new Date().toISOString().slice(0, 10),
+    });
   }
 
   async function deleteRow(id: string) {
@@ -286,7 +338,7 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
       return;
     }
     toast.success(pick("가격 이력이 삭제되었습니다.", "Price history deleted"));
-    await Promise.all([loadRows(), loadSourceFiles()]);
+    await Promise.all([loadRows(), loadSourceFiles(), loadSelectedSkuHistory()]);
   }
 
   async function previewUploadFile(file: File) {
@@ -343,7 +395,7 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
         `Imported ${json.data?.imported ?? 0} rows${errors.length ? `, ${errors.length} skipped` : ""}`
       ));
       if (errors.length) console.warn("Price list import errors", errors);
-      await Promise.all([loadRows(), loadSourceFiles()]);
+      await Promise.all([loadRows(), loadSourceFiles(), loadSelectedSkuHistory()]);
       setUploadPreview(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : pick("업로드에 실패했습니다.", "Upload failed"));
@@ -367,9 +419,18 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
 
   async function deleteSourceFile(file: SourceFileRow, skipConfirm = false) {
     if (!canDelete) return toast.error(pick("업로드 파일을 삭제할 권한이 없습니다.", "No permission to delete uploaded files"));
+    const currentImpactRows = deleteImpact?.file.id === file.id ? deleteImpact.rows : [];
+    const referencedItemCount = currentImpactRows.reduce((sum, row) => sum + (row.invoiceReferenceCount ?? 0), 0);
+    const referencedPriceRowCount = currentImpactRows.filter((row) => (row.invoiceReferenceCount ?? 0) > 0).length;
+    const referenceWarning = referencedItemCount > 0
+      ? pick(
+          `\n\n주의: 삭제 대상 가격 이력 ${referencedPriceRowCount}개가 Invoice 검수 line ${referencedItemCount}건에서 이미 참조 중입니다.\n삭제 후 변경된 가격을 적용하려면 해당 Invoice에서 재검수를 실행해야 합니다.`,
+          `\n\nWarning: ${referencedPriceRowCount} price history row(s) are already referenced by ${referencedItemCount} invoice review line(s).\nAfter deletion, run Recompare on the affected invoices to apply updated prices.`
+        )
+      : "";
     const message = pick(
-      `${file.originalName} 업로드분을 삭제할까요?\n\n연결된 가격 이력 ${file.rowCount}개가 함께 삭제됩니다.`,
-      `Delete upload ${file.originalName}?\n\n${file.rowCount} linked price history row(s) will also be deleted.`
+      `${file.originalName} 업로드분을 삭제할까요?\n\n연결된 가격 이력 ${file.rowCount}개가 함께 삭제됩니다.${referenceWarning}`,
+      `Delete upload ${file.originalName}?\n\n${file.rowCount} linked price history row(s) will also be deleted.${referenceWarning}`
     );
     if (!skipConfirm && !window.confirm(message)) return;
 
@@ -384,7 +445,7 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
       `Deleted ${json.data?.deletedRows ?? 0} price history row(s).`
     ));
     setDeleteImpact(null);
-    await Promise.all([loadRows(), loadSourceFiles()]);
+    await Promise.all([loadRows(), loadSourceFiles(), loadSelectedSkuHistory()]);
   }
 
   function formatFileSize(bytes: number) {
@@ -438,6 +499,16 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
     });
   }
 
+  function showFullSelectedSkuHistory() {
+    const sku = form.sku.trim().toUpperCase();
+    if (!sku) return;
+    setSearch(sku);
+    setFactoryId(form.factoryId || factoryId);
+    setAsOfDate("");
+    setCurrentOnly(false);
+    setPage(1);
+  }
+
   return (
     <div className="flex h-full min-h-0 bg-[#f6f7f9] px-5 py-5 text-[#1a1917]">
       <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-4">
@@ -449,9 +520,19 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
                 <option key={factory.id} value={factory.id}>{factory.factoryName}</option>
               ))}
             </select>
-            <div className="flex h-9 min-w-[180px] max-w-[260px] flex-1 items-center rounded-md border bg-white px-2">
+            <div className="flex h-9 min-w-[260px] max-w-[360px] flex-1 items-center rounded-md border bg-white px-2">
               <Search className="mr-2 h-4 w-4 text-muted-foreground" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full outline-none" placeholder={pick("SKU 검색", "SKU Search")} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} className="min-w-0 flex-1 outline-none" placeholder={pick("SKU 검색", "SKU Search")} />
+              {search ? (
+                <button
+                  type="button"
+                  aria-label={pick("SKU 검색어 초기화", "Clear SKU search")}
+                  onClick={() => setSearch("")}
+                  className="ml-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
             <label className="flex h-9 shrink-0 items-center gap-1.5 text-sm font-medium">
               <span className="whitespace-nowrap">{pick("기준 날짜", "As Of Date")}</span>
@@ -463,23 +544,32 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
             </label>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={downloadTemplate} className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">
-              <Download className="h-4 w-4" /> {pick("양식", "Template")}
-            </button>
-            <button type="button" onClick={exportRows} className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">
-              <Download className="h-4 w-4" /> {pick("내보내기", "Export")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowUploadHistory(true);
-                setUploadHistoryPage(1);
-                void loadSourceFiles();
-              }}
-              className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
-            >
-              {pick("업로드 이력", "Upload History")}
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="inline-flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50">
+                  <FolderCog className="h-4 w-4" />
+                  {pick("파일 관리", "File Management")}
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={downloadTemplate}>
+                  <Download className="h-4 w-4" /> {pick("양식 다운로드", "Download Template")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={exportRows}>
+                  <Download className="h-4 w-4" /> {pick("내보내기", "Export")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setShowUploadHistory(true);
+                    setUploadHistoryPage(1);
+                    void loadSourceFiles();
+                  }}
+                >
+                  <History className="h-4 w-4" /> {pick("업로드 이력", "Upload History")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <label className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm font-medium">
               <span className="text-xs text-muted-foreground">{pick("적용일", "Effective")}</span>
               <input
@@ -513,7 +603,8 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
         <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
           <div className="min-h-0 overflow-auto rounded-lg border bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-              <Plus className="h-4 w-4" /> {pick("가격 입력", "Price Entry")}
+              {form.id ? <Pencil className="h-4 w-4 text-[#1a5cdb]" /> : <Plus className="h-4 w-4" />}
+              {form.id ? pick(`가격 수정 - ${form.sku}`, `Edit Price - ${form.sku}`) : pick("가격 입력", "Price Entry")}
             </div>
             <div className="space-y-3">
               <label className="block text-xs font-medium">
@@ -544,7 +635,7 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
                 <textarea value={form.reason} onChange={(e) => setForm((cur) => ({ ...cur, reason: e.target.value }))} className="mt-1 min-h-20 w-full rounded-md border px-2 py-2" />
               </label>
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setForm({ ...emptyForm, factoryId: form.factoryId || factoryId })} className="rounded-md border px-3 py-2 text-sm">{pick("초기화", "Clear")}</button>
+                <button type="button" onClick={clearForm} className="rounded-md border px-3 py-2 text-sm">{pick("초기화", "Clear")}</button>
                 <button type="button" onClick={() => void saveForm()} className="inline-flex items-center gap-2 rounded-md bg-[#111827] px-3 py-2 text-sm font-medium text-white">
                   <Save className="h-4 w-4" /> {pick("저장", "Save")}
                 </button>
@@ -563,7 +654,22 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
                     <div className="mt-1 text-muted-foreground">{row.reason || pick("사유 없음", "No reason")}</div>
                   </div>
                 ))}
-                {!selectedSkuHistory.length && <div className="text-xs text-muted-foreground">{pick("SKU를 입력하거나 선택하면 이력을 볼 수 있습니다.", "Enter or select a SKU to view history.")}</div>}
+                {selectedSkuHistory.length > 6 ? (
+                  <button
+                    type="button"
+                    onClick={showFullSelectedSkuHistory}
+                    className="w-full rounded-md border border-dashed px-3 py-2 text-left text-xs font-semibold text-[#1a5cdb] hover:bg-blue-50"
+                  >
+                    {pick(
+                      `오른쪽 가격 이력 그리드에서 ${selectedSkuHistory.length - 6}건 더 보기`,
+                      `View ${selectedSkuHistory.length - 6} more in the price history grid`
+                    )}
+                  </button>
+                ) : null}
+                {loadingSelectedSkuHistory ? (
+                  <div className="text-xs text-muted-foreground">{pick("선택 SKU 이력을 불러오는 중입니다.", "Loading selected SKU history.")}</div>
+                ) : null}
+                {!loadingSelectedSkuHistory && !selectedSkuHistory.length && <div className="text-xs text-muted-foreground">{pick("SKU를 입력하거나 선택하면 이력을 볼 수 있습니다.", "Enter or select a SKU to view history.")}</div>}
               </div>
             </div>
           </div>
@@ -951,13 +1057,30 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
                   : pick("이 업로드분으로 생성 또는 업데이트된 가격 이력 row입니다.", "These price history rows were created or updated by this upload.")}
                 {" "}({deleteImpact.rows.length})
               </div>
-              <table className="w-full min-w-[720px] text-left text-sm">
+              {deleteImpact.mode === "delete" && deleteImpactInvoiceRefs.itemCount > 0 ? (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="font-semibold">
+                    {pick(
+                      `Invoice 검수가 이미 참조 중인 가격 이력 ${deleteImpactInvoiceRefs.rowCount}개가 포함되어 있습니다.`,
+                      `${deleteImpactInvoiceRefs.rowCount} price history row(s) are already referenced by invoice reviews.`
+                    )}
+                  </div>
+                  <div className="mt-1">
+                    {pick(
+                      `총 Invoice line ${deleteImpactInvoiceRefs.itemCount}건이 영향을 받을 수 있습니다. 삭제 후 변경된 가격을 적용하려면 해당 Invoice에서 재검수를 실행해야 합니다.`,
+                      `${deleteImpactInvoiceRefs.itemCount} invoice line(s) may be affected. After deletion, run Recompare on the affected invoices to apply updated prices.`
+                    )}
+                  </div>
+                </div>
+              ) : null}
+              <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2">SKU</th>
                     <th className="px-3 py-2">{pick("공장", "Factory")}</th>
                     <th className="px-3 py-2">{pick("적용일", "Effective")}</th>
                     <th className="px-3 py-2 text-right">{pick("가격", "Price")}</th>
+                    <th className="px-3 py-2 text-right">{pick("Invoice 참조", "Invoice Refs")}</th>
                     <th className="px-3 py-2">{pick("변경 사유", "Reason")}</th>
                   </tr>
                 </thead>
@@ -968,6 +1091,9 @@ export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistor
                       <td className="px-3 py-2">{row.factoryName}</td>
                       <td className="px-3 py-2 font-mono">{row.effectiveDate}</td>
                       <td className="px-3 py-2 text-right">{money(row.unitPrice, row.currency)}</td>
+                      <td className={`px-3 py-2 text-right font-semibold ${(row.invoiceReferenceCount ?? 0) > 0 ? "text-amber-700" : "text-muted-foreground"}`}>
+                        {row.invoiceReferenceCount ?? 0}
+                      </td>
                       <td className="max-w-64 truncate px-3 py-2">{row.reason || "-"}</td>
                     </tr>
                   ))}

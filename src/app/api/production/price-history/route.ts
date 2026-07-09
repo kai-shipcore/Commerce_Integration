@@ -49,6 +49,8 @@ function rowToPrice(row: Record<string, unknown>) {
     previousPrice,
     changeAmount,
     changeRate,
+    invoiceReferenceCount: Number(row.invoice_reference_count ?? 0),
+    invoiceReferenceInvoiceCount: Number(row.invoice_reference_invoice_count ?? 0),
   };
 }
 
@@ -185,11 +187,23 @@ export async function GET(request: NextRequest) {
            h.*,
            f.factory_name,
            sf.original_name AS source_file_name,
+           COALESCE(invoice_refs.item_count, 0)::int AS invoice_reference_count,
+           COALESCE(invoice_refs.invoice_count, 0)::int AS invoice_reference_invoice_count,
            LAG(h.unit_price) OVER (PARTITION BY h.factory_id, h.sku ORDER BY h.effective_date, h.id) AS previous_price,
            ROW_NUMBER() OVER (PARTITION BY h.factory_id, h.sku ORDER BY h.effective_date DESC, h.id DESC) AS current_rank
          FROM shipcore.fc_sku_price_history h
          JOIN shipcore.fc_factories f ON f.id = h.factory_id
          LEFT JOIN shipcore.fc_price_list_files sf ON sf.id = h.source_file_id
+         LEFT JOIN LATERAL (
+           SELECT
+             COUNT(ii.id)::int AS item_count,
+             COUNT(DISTINCT ii.invoice_id)::int AS invoice_count
+           FROM shipcore.fc_invoice_items ii
+           JOIN shipcore.fc_invoices inv ON inv.id = ii.invoice_id
+           WHERE inv.factory_id = h.factory_id
+             AND ii.sku = h.sku
+             AND ii.expected_effective_date = h.effective_date
+         ) invoice_refs ON TRUE
          ${where}
        )
        SELECT * FROM base ranked
@@ -218,11 +232,7 @@ export async function POST(request: NextRequest) {
       `INSERT INTO shipcore.fc_sku_price_history
          (factory_id, sku, effective_date, unit_price, currency, reason, created_by, created_at, updated_at)
        VALUES ($1::bigint, UPPER($2), $3::date, $4::numeric, UPPER($5), $6, $7, NOW(), NOW())
-       ON CONFLICT (factory_id, sku, effective_date) DO UPDATE SET
-         unit_price = EXCLUDED.unit_price,
-         currency = EXCLUDED.currency,
-         reason = EXCLUDED.reason,
-         updated_at = NOW()
+       ON CONFLICT (factory_id, sku, effective_date) DO NOTHING
        RETURNING id`,
       [
         parsed.factoryId,
@@ -234,6 +244,13 @@ export async function POST(request: NextRequest) {
         session?.user?.id ?? null,
       ],
     );
+
+    if (result.rowCount === 0) {
+      return NextResponse.json(
+        { success: false, error: "같은 공장, SKU, 적용일의 가격 이력이 이미 있습니다. 기존 row를 선택해서 수정하거나 적용일을 다르게 입력하세요." },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({ success: true, data: { id: String(result.rows[0].id) } }, { status: 201 });
   } catch (error) {

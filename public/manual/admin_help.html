@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice & Price Control – 관리자 가이드</title>
+<style>
+  :root {
+    --brand: #1a56db;
+    --brand-dark: #1239a0;
+    --green: #16a34a;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --yellow: #ca8a04;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --radius: 10px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.09);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    background: var(--gray-50);
+    color: var(--gray-800);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--gray-900);
+    color: #e2e8f0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0 40px;
+  }
+  .sidebar-logo { padding: 0 22px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px; }
+  .sidebar-logo h1 { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .sidebar-logo p { font-size: 11px; color: var(--gray-400); margin-top: 4px; }
+  .admin-pill {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 10px;
+    background: rgba(220,38,38,0.18); color: #fca5a5; border: 1px solid rgba(220,38,38,0.35);
+    border-radius: 999px; padding: 3px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
+  }
+  .nav-section { padding: 14px 22px 4px; font-size: 10px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; }
+  .nav-item {
+    display: block; padding: 7px 22px; text-decoration: none;
+    color: #cbd5e1; font-size: 13px; border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
+  .nav-item.top { font-weight: 600; color: #e2e8f0; }
+
+  .main { flex: 1; min-width: 0; }
+  .page-section {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 48px 48px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .page-section:last-child { border-bottom: none; }
+
+  .cover {
+    background: linear-gradient(135deg, #111827 0%, #1e3a5f 55%, #1a56db 100%);
+    color: #fff;
+    padding: 64px 48px;
+  }
+  .cover-inner { max-width: 980px; margin: 0 auto; }
+  .cover h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 14px; }
+  .cover h1 span { color: #60a5fa; }
+  .cover p { font-size: 16px; color: #94a3b8; max-width: 620px; margin-bottom: 28px; }
+  .cover-badges { display: flex; gap: 10px; flex-wrap: wrap; }
+  .badge {
+    padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: rgba(255,255,255,0.12); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2);
+  }
+  .badge.warn { background: rgba(220,38,38,0.22); border-color: rgba(248,113,113,0.4); color: #fecaca; }
+
+  .section-header {
+    display: flex; align-items: flex-start; gap: 16px;
+    margin-bottom: 28px; padding-bottom: 20px; border-bottom: 2px solid var(--gray-200);
+  }
+  .section-icon {
+    width: 50px; height: 50px; border-radius: 13px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 24px;
+  }
+  .section-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.4px; }
+  .section-header .subtitle { font-size: 13.5px; color: var(--gray-600); margin-top: 4px; }
+  .menu-path {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: 6px;
+    padding: 3px 9px; font-size: 11.5px; color: var(--gray-600); margin-bottom: 8px;
+  }
+
+  .screenshot-box {
+    width: 100%; border-radius: var(--radius); overflow: hidden;
+    border: 1px solid var(--gray-200); box-shadow: var(--shadow);
+    margin: 22px 0; position: relative; background: var(--gray-100);
+  }
+  .screenshot-box img { width: 100%; display: block; }
+  .screenshot-placeholder {
+    height: 300px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    background: linear-gradient(135deg, #e0e7ff 0%, #dbeafe 100%);
+  }
+  .screenshot-placeholder .ph-icon { font-size: 36px; opacity: 0.5; }
+  .screenshot-placeholder p { color: var(--gray-600); font-size: 13px; }
+  .screenshot-caption {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--gray-800); color: #e2e8f0;
+    padding: 7px 16px; font-size: 12px;
+  }
+
+  .card-grid { display: grid; gap: 16px; margin: 18px 0; }
+  .card-grid.col2 { grid-template-columns: 1fr 1fr; }
+  .card-grid.col3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card {
+    background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius);
+    padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .card h4 { font-size: 13.5px; font-weight: 700; color: var(--gray-800); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .card p { font-size: 13px; color: var(--gray-600); line-height: 1.6; }
+  .card ul { padding-left: 16px; font-size: 13px; color: var(--gray-600); line-height: 1.8; }
+
+  .steps { display: flex; flex-direction: column; gap: 0; }
+  .step { display: flex; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--gray-200); }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    background: var(--brand); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+  }
+  .step h4 { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 5px; }
+  .step p { font-size: 13px; color: var(--gray-600); }
+
+  .callout { display: flex; gap: 12px; padding: 14px 16px; border-radius: 8px; margin: 18px 0; font-size: 13px; }
+  .callout.tip { background: #eff6ff; border-left: 4px solid var(--brand); color: #1e40af; }
+  .callout.warn { background: #fef2f2; border-left: 4px solid var(--red); color: #991b1b; }
+  .callout.info { background: #f0fdf4; border-left: 4px solid var(--green); color: #14532d; }
+  .callout-icon { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+  .callout b { font-weight: 700; }
+
+  .ui-label {
+    display: inline-block; background: var(--gray-800); color: #e2e8f0;
+    border-radius: 4px; padding: 1px 7px; font-size: 12px; font-family: monospace;
+    vertical-align: middle;
+  }
+  .btn-label {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--gray-100); border: 1px solid var(--gray-300);
+    border-radius: 5px; padding: 2px 9px; font-size: 12px; color: var(--gray-700);
+    vertical-align: middle;
+  }
+
+  .feat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 18px 0; }
+  .feat-table th { background: var(--gray-800); color: #e2e8f0; text-align: left; padding: 9px 14px; font-weight: 600; font-size: 11.5px; }
+  .feat-table td { padding: 9px 14px; border-bottom: 1px solid var(--gray-200); vertical-align: top; }
+  .feat-table tr:last-child td { border-bottom: none; }
+  .feat-table tr:hover td { background: var(--gray-50); }
+  .feat-table .label { font-weight: 600; color: var(--gray-800); white-space: nowrap; }
+
+  .status { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .status.pending { background: #f0eee9; color: #57534a; }
+  .status.hold { background: #fef3e2; color: #8a5300; }
+  .status.done { background: #dcfce7; color: #15803d; }
+  .status.match { background: #e6f7ee; color: #166534; }
+  .status.error { background: #fef3e2; color: #8a5300; }
+  .status.over { background: #fff5f5; color: #c42b2b; }
+  .status.none { background: #f0eee9; color: #6b6359; }
+
+  h3 { font-size: 17px; font-weight: 700; color: var(--gray-800); margin: 28px 0 12px; }
+  h3.sub { font-size: 14.5px; font-weight: 700; margin: 20px 0 10px; color: var(--gray-700); border-left: 3px solid var(--brand); padding-left: 10px; }
+  p { margin-bottom: 10px; }
+  ul, ol { padding-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 4px; font-size: 13.5px; color: var(--gray-700); }
+  .divider { height: 1px; background: var(--gray-200); margin: 28px 0; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .page-section { padding: 28px 20px; }
+    .card-grid.col2, .card-grid.col3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>Invoice &amp; Price Control</h1>
+    <p>관리자 가이드</p>
+    <span class="admin-pill">🔒 관리자 전용</span>
+  </div>
+  <div class="nav-section">개요</div>
+  <a class="nav-item top" href="#overview">이 페이지는 무엇인가</a>
+  <a class="nav-item" href="#permissions">권한 &amp; 접근</a>
+
+  <div class="nav-section">Invoice 검수 탭</div>
+  <a class="nav-item" href="#invoice-list">Invoice 목록</a>
+  <a class="nav-item" href="#invoice-create">Invoice 등록</a>
+  <a class="nav-item" href="#invoice-detail">상세 화면 &amp; 툴바</a>
+  <a class="nav-item" href="#invoice-status">상태 관리 &amp; 재검수</a>
+  <a class="nav-item" href="#invoice-import">Excel Invoice 업로드</a>
+  <a class="nav-item" href="#sku-grid">SKU별 가격 검수 그리드</a>
+  <a class="nav-item" href="#bulk-export">공장 확인 / Credit 요청</a>
+  <a class="nav-item" href="#invoice-history">변경 이력 &amp; 첨부파일</a>
+
+  <div class="nav-section">Price History 탭</div>
+  <a class="nav-item" href="#price-entry">가격 수동 입력</a>
+  <a class="nav-item" href="#price-grid">가격 이력 그리드</a>
+  <a class="nav-item" href="#price-upload">Excel 업로드 &amp; 업로드 이력</a>
+
+  <div class="nav-section">참고</div>
+  <a class="nav-item" href="#glossary">용어 &amp; 결과 배지</a>
+  <a class="nav-item" href="#troubleshoot">자주 겪는 문제</a>
+</nav>
+
+<main class="main">
+
+<div class="cover">
+  <div class="cover-inner">
+    <h1>Invoice &amp; <span>Price Control</span> 관리자 가이드</h1>
+    <p>공장별 Invoice를 Price History 기준 단가와 대조해 검수하고, SKU별 가격 이력을 관리하는 화면입니다. 이 문서는 관리자 전용 기능이라 메인 사용자 매뉴얼과 별도로 제공됩니다.</p>
+    <div class="cover-badges">
+      <span class="badge">📄 /production/invoice-price-control</span>
+      <span class="badge warn">🔒 admin 전용 메뉴</span>
+      <span class="badge">🧾 Invoice 검수</span>
+      <span class="badge">💰 Price History</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 개요 ═══════════ -->
+<section class="page-section" id="overview">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">🧭</div>
+    <div>
+      <div class="menu-path">관리 › Invoice·가격 검수</div>
+      <h2>이 페이지는 무엇인가</h2>
+      <p class="subtitle">공장이 보낸 Invoice를 검수하고, 그 검수의 기준이 되는 SKU 가격 이력을 관리합니다.</p>
+    </div>
+  </div>
+
+  <p>공장에서 받은 Invoice의 SKU별 단가가 우리가 등록해 둔 <strong>Price History(가격 이력)</strong>와 일치하는지 자동으로 대조하고, 차이가 있으면 공장 확인이나 Credit 요청으로 이어가는 화면입니다. 상단 탭 2개로 구성됩니다.</p>
+
+  <div class="card-grid col2">
+    <div class="card">
+      <h4>🧾 Invoice 검수</h4>
+      <p>Invoice를 등록/업로드하고, 라인별 SKU 단가를 Price History와 자동 대조합니다. 결과가 안 맞는 라인은 공장 확인 요청이나 Credit 처리로 이어갑니다.</p>
+    </div>
+    <div class="card">
+      <h4>💰 Price History</h4>
+      <p>공장별 SKU 단가 이력을 수동 입력하거나 엑셀로 일괄 업로드해서 관리합니다. Invoice 검수가 참조하는 <strong>기준 데이터</strong>입니다.</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><b>Price History가 먼저입니다.</b> Invoice 검수 결과("가격 이력 없음", "가격 오류")는 전부 Price History에 등록된 단가를 기준으로 계산됩니다. 새 SKU나 신규 공장이라면 Invoice를 올리기 전에 Price History부터 등록하는 것이 좋습니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ 권한 ═══════════ -->
+<section class="page-section" id="permissions">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef2f2">🔒</div>
+    <div>
+      <div class="menu-path">권한 섹션: invoice-price-control</div>
+      <h2>권한 &amp; 접근</h2>
+      <p class="subtitle">이 메뉴는 기본적으로 admin 역할에만 노출됩니다.</p>
+    </div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:120px">액션</th><th>의미</th></tr>
+    <tr><td class="label">read</td><td>Invoice 목록·상세, Price History 그리드를 조회할 수 있습니다.</td></tr>
+    <tr><td class="label">create</td><td>Invoice 등록, Excel 업로드, 가격 이력 신규 입력.</td></tr>
+    <tr><td class="label">edit</td><td>Invoice 수정, 상태 변경, 재검수, 첨부파일 업로드, 가격 이력 수정.</td></tr>
+    <tr><td class="label">delete</td><td>Invoice·라인·가격 이력·업로드분 삭제 (모두 되돌릴 수 없습니다).</td></tr>
+  </table>
+
+  <p>버튼이 회색으로 비활성화되어 있다면 현재 로그인한 계정에 해당 액션 권한이 없다는 뜻입니다. 사용자·역할별 권한은 <span class="ui-label">설정 → 사용자 권한</span>에서 조정합니다.</p>
+</section>
+
+<!-- ═══════════ Invoice 목록 ═══════════ -->
+<section class="page-section" id="invoice-list">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">📋</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › 좌측 목록</div>
+      <h2>Invoice 목록</h2>
+      <p class="subtitle">등록된 Invoice를 검색·필터링하고, 클릭해서 오른쪽 상세를 확인합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-01-invoice-list.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>📋</div><p>Invoice 검수 탭 — 목록 + 상세</p></div>'" alt="Invoice 검수 탭 전체 화면">
+    <div class="screenshot-caption">▲ 좌측 카드형 목록(검색·상태 필터) + 우측 상세 패널</div>
+  </div>
+
+  <p>목록의 각 항목은 <strong>Invoice 번호 · 상태 배지</strong>를 첫 줄에, <strong>공장 · 컨테이너 · 날짜 · 금액</strong>을 둘째 줄에 보여주는 카드형입니다. 상단 검색창에 글자를 입력하면 Invoice 번호·공장명·컨테이너 번호를 대상으로 즉시(디바운스) 검색됩니다.</p>
+
+  <h3 class="sub">상태 필터 칩</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">칩</th><th>포함 상태</th></tr>
+    <tr><td><span class="status pending">미검수</span></td><td>수신 · 가격 검수 · 오류 발견 (아직 결론이 안 난 Invoice)</td></tr>
+    <tr><td><span class="status hold">보류</span></td><td>공장 확인 대기 중</td></tr>
+    <tr><td><span class="status done">검수완료</span></td><td>승인 · 서명 완료 · 공장 전달 완료</td></tr>
+  </table>
+  <p>목록을 새로 불러올 때 현재 선택된 Invoice가 필터에서 사라지면 자동으로 <strong>첫 번째 Invoice</strong>가 선택되어 오른쪽 상세가 비어 보이지 않도록 합니다.</p>
+</section>
+
+<!-- ═══════════ Invoice 등록 ═══════════ -->
+<section class="page-section" id="invoice-create">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">➕</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › Invoice 추가</div>
+      <h2>Invoice 등록</h2>
+      <p class="subtitle">공장·Invoice 번호·컨테이너 번호·Invoice 날짜를 입력해 새 Invoice를 만듭니다.</p>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>목록 상단의 <span class="btn-label">+ Invoice 추가</span> 클릭</h4><p>입력 폼이 목록 위에 펼쳐집니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>공장 / Invoice 번호 / 컨테이너 번호 / Invoice 날짜 입력</h4><p>공장과 Invoice 번호, 날짜는 필수입니다. 컨테이너 번호는 선택 사항입니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4><span class="btn-label">저장</span></h4><p>등록 직후 상태는 자동으로 "수신"이 되고, 방금 만든 Invoice가 바로 선택됩니다.</p></div>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>같은 Invoice 번호는 중복 등록할 수 없습니다. 이미 존재하면 저장 시 오류가 표시됩니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ 상세 툴바 ═══════════ -->
+<section class="page-section" id="invoice-detail">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8">🧰</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › 상세 화면</div>
+      <h2>상세 화면 &amp; 툴바</h2>
+      <p class="subtitle">Invoice 하나를 선택하면 오른쪽에 나타나는 화면입니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-02-invoice-toolbar.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>🧰</div><p>Invoice 상세 툴바</p></div>'" alt="Invoice 상세 툴바">
+    <div class="screenshot-caption">▲ Invoice 번호·공장·컨테이너·날짜 + 수정/삭제 + 상태 변경 + 액션 버튼</div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:170px">버튼</th><th>동작</th></tr>
+    <tr><td class="label">✏️ Invoice 수정</td><td>Invoice 번호 · 컨테이너 번호 · Invoice 날짜를 수정하는 폼이 펼쳐집니다. <strong>공장은 등록 후 변경할 수 없습니다.</strong></td></tr>
+    <tr><td class="label">🗑 Invoice 삭제</td><td>Invoice와 그에 속한 모든 SKU 라인을 함께 삭제합니다. 되돌릴 수 없어 확인창이 뜹니다.</td></tr>
+    <tr><td class="label">Invoice 업로드</td><td>Excel로 라인을 일괄 등록합니다 (강조 버튼). <a href="#invoice-import">자세히 보기 ↓</a></td></tr>
+    <tr><td class="label">재검수</td><td>모든 라인을 Price History와 다시 대조합니다 (강조 버튼). <a href="#invoice-status">자세히 보기 ↓</a></td></tr>
+    <tr><td class="label">파일 관리 ▾</td><td>양식 다운로드 · 파일 첨부 · 첨부파일/서명본 다운로드를 묶은 드롭다운.</td></tr>
+    <tr><td class="label">이력 보기 ▾</td><td>Invoice 업로드 이력 · 변경 이력(감사 로그)을 묶은 드롭다운.</td></tr>
+  </table>
+
+  <p><strong>Invoice 업로드</strong>와 <strong>재검수</strong>는 매일 반복하는 핵심 액션이라 파란색 강조 버튼으로 분리되어 있고, 나머지 파일/이력 관련 기능은 드롭다운 2개로 묶여 있습니다.</p>
+</section>
+
+<!-- ═══════════ 상태 & 재검수 ═══════════ -->
+<section class="page-section" id="invoice-status">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🔄</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › 상태 변경 / 재검수</div>
+      <h2>상태 관리 &amp; 재검수</h2>
+      <p class="subtitle">검수 진행 상태를 바꾸고, 가격 대조를 다시 실행합니다.</p>
+    </div>
+  </div>
+
+  <h3 class="sub">상태 변경</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">상태</th><th>의미</th></tr>
+    <tr><td><span class="status pending">미검수</span></td><td>아직 검수가 끝나지 않은 상태 (내부적으로 "가격 검수" 단계로 저장됩니다)</td></tr>
+    <tr><td><span class="status hold">보류</span></td><td>공장 확인을 기다리는 중 (내부적으로 "공장 확인 대기")</td></tr>
+    <tr><td><span class="status done">검수완료</span></td><td>검수가 끝나고 승인된 상태</td></tr>
+  </table>
+
+  <h3 class="sub">재검수</h3>
+  <p><span class="btn-label">↻ 재검수</span>는 이 Invoice의 <strong>모든 SKU 라인</strong>을 현재 시점의 Price History와 다시 대조해서 기대 가격 · 차액 · 결과를 전부 재계산합니다.</p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>공장이 Price List를 Invoice보다 늦게 보내는 경우가 많습니다. 처음엔 <span class="status none">가격 이력 없음</span>으로 뜬 라인도, Price History 탭에 해당 SKU 가격을 등록한 뒤 재검수를 누르면 정상 대조됩니다. Invoice를 다시 올릴 필요가 없습니다.</div>
+  </div>
+
+  <p>상세 화면 상단에 "최근 재검수: YYYY-MM-DD HH:MM" 형태로 마지막 재검수 시각이 표시됩니다.</p>
+</section>
+
+<!-- ═══════════ Excel 업로드 ═══════════ -->
+<section class="page-section" id="invoice-import">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">📤</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › Invoice 업로드</div>
+      <h2>Excel Invoice 업로드</h2>
+      <p class="subtitle">SKU·수량·단가 라인을 엑셀로 한 번에 등록합니다.</p>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>파일 관리 ▾ → 양식 다운로드</h4><p>sku / quantity / unit_price 컬럼을 가진 엑셀 양식을 받습니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Invoice 업로드 버튼으로 파일 선택</h4><p>업로드 전에 각 행의 SKU · 수량 · 단가가 미리보기로 표시되고, 형식이 잘못된 행은 오류로 표시됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>미리보기 확인 후 업로드 실행</h4><p>정상 행만 라인으로 등록되고, 업로드 직후 자동으로 Price History와 대조됩니다.</p></div>
+    </div>
+  </div>
+
+  <p>업로드 이력은 <span class="ui-label">이력 보기 ▾ → Invoice 업로드 이력</span>에서 확인합니다. 업로드 묶음(배치) 단위로 파일명·행 수·업로드일이 표시되며, <strong>잘못 올린 업로드 묶음은 통째로 삭제</strong>할 수 있습니다 (삭제 전 영향받는 라인 목록을 미리 보여줍니다).</p>
+</section>
+
+<!-- ═══════════ SKU 그리드 ═══════════ -->
+<section class="page-section" id="sku-grid">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef2f2">📊</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › SKU별 가격 검수</div>
+      <h2>SKU별 가격 검수 그리드</h2>
+      <p class="subtitle">Invoice의 각 SKU 라인이 Price History와 얼마나 차이 나는지 보여줍니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-03-sku-grid.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>📊</div><p>SKU별 가격 검수 그리드</p></div>'" alt="SKU별 가격 검수 그리드">
+    <div class="screenshot-caption">▲ 총 차액 / 과청구 / 미청구·낮은 단가 / 차이 SKU / 가격 이력 없음 요약 카드 + 라인별 그리드</div>
+  </div>
+
+  <p>그리드 위 5개 요약 카드는 이 Invoice 전체를 한눈에 보여줍니다. <strong>순차액(총 차액)</strong>은 과청구 합계에서 미청구·낮은 단가 합계를 뺀 금액입니다.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:120px">컬럼</th><th>의미</th></tr>
+    <tr><td class="label">Invoice 가격</td><td>공장이 청구한 단가</td></tr>
+    <tr><td class="label">기대 가격</td><td>Invoice Date 기준으로 Price History에서 찾은 유효 단가</td></tr>
+    <tr><td class="label">단가 차액 / 총 차액</td><td>Invoice 가격 − 기대 가격 (단가 기준 / 수량을 곱한 라인 전체 기준)</td></tr>
+    <tr><td class="label">결과</td><td><a href="#glossary">아래 용어 설명</a> 참고</td></tr>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">🖱️</span>
+    <div>라인을 <strong>클릭</strong>하면 해당 SKU의 가격 이력을 팝업으로 간단히 조회할 수 있고, 팝업 안의 링크로 <strong>Price History 탭에서 전체 이력 보기</strong>로 바로 이동할 수 있습니다.</div>
+  </div>
+
+  <p>라인 추가/삭제도 이 화면에서 가능합니다. 삭제는 라인 단위로 되돌릴 수 없으니 삭제 전 확인창에 영향 범위가 표시됩니다.</p>
+</section>
+
+<!-- ═══════════ 공장확인/Credit ═══════════ -->
+<section class="page-section" id="bulk-export">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">📮</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › 선택 항목 내보내기</div>
+      <h2>공장 확인 / Credit 요청 (일괄 내보내기)</h2>
+      <p class="subtitle">가격이 다른 SKU를 골라 공장에 보낼 자료를 한 번에 만듭니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-04-bulk-export.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>📮</div><p>차이 SKU 선택 + 내보내기 툴바</p></div>'" alt="차이 SKU 선택 + 내보내기 툴바">
+    <div class="screenshot-caption">▲ 체크박스로 선택한 SKU 개수와 "선택 항목 내보내기" 버튼</div>
+  </div>
+
+  <p><span class="status error">가격 오류</span> · <span class="status over">과청구</span> · <span class="status none">가격 이력 없음</span> 라인에만 체크박스가 나타납니다. 헤더 체크박스로 <strong>차이가 있는 SKU 전체</strong>를 한 번에 선택할 수 있습니다.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>차이가 있는 SKU 체크</h4><p>개별 선택 또는 헤더 체크박스로 전체 선택.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4><span class="btn-label">선택 항목 내보내기</span> 클릭</h4><p>선택된 라인(SKU·수량·Invoice 가격·기대 가격·차액·결과)이 엑셀 파일로 즉시 다운로드됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>공장에 파일 전달</h4><p>다운로드된 엑셀을 공장에 이메일 등으로 보내 확인을 요청합니다.</p></div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>이 기능은 파일을 <strong>내보내기만</strong> 합니다. 공장에 자동으로 이메일이 발송되지는 않으므로, 다운로드한 파일을 직접 전달해야 합니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ 변경 이력 / 첨부파일 ═══════════ -->
+<section class="page-section" id="invoice-history">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8">🕘</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › 이력 보기 / 파일 관리</div>
+      <h2>변경 이력 &amp; 첨부파일</h2>
+      <p class="subtitle">이 Invoice에 어떤 변경이 있었는지, 어떤 파일이 첨부됐는지 확인합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-05-audit-history.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>🕘</div><p>변경 이력 모달</p></div>'" alt="변경 이력 모달">
+    <div class="screenshot-caption">▲ 일시 · 사용자 · 변경 유형 · 내용이 정리된 감사 로그</div>
+  </div>
+
+  <p><span class="ui-label">이력 보기 ▾ → 변경 이력</span>은 이 Invoice에 대해 상태 변경, 라인 수정, 재검수, Credit/공장 확인, 첨부파일 변경 등 모든 조작을 시간순으로 보여줍니다. 같은 데이터는 <span class="ui-label">관리 → 감사 로그</span> 전역 화면에서도 Invoice 단위로 필터링해 확인할 수 있습니다.</p>
+
+  <h3 class="sub">파일 첨부</h3>
+  <p><span class="ui-label">파일 관리 ▾ → 파일 첨부</span>로 원본 Invoice 파일을 올립니다. Invoice 상태가 <strong>서명 완료</strong> 이후라면 자동으로 "서명본"으로 구분되어 저장되고, 각각 별도로 다운로드할 수 있습니다.</p>
+</section>
+
+<!-- ═══════════ 가격 입력 ═══════════ -->
+<section class="page-section" id="price-entry">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">✏️</div>
+    <div>
+      <div class="menu-path">Price History › 가격 입력</div>
+      <h2>가격 수동 입력</h2>
+      <p class="subtitle">공장 하나·SKU 하나의 단가를 직접 등록/수정합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-06-price-history-grid.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>💰</div><p>Price History 탭 — 가격 입력 + 그리드</p></div>'" alt="Price History 탭">
+    <div class="screenshot-caption">▲ 좌측 가격 입력 폼 + 우측 가격 이력 그리드</div>
+  </div>
+
+  <p>공장 · SKU · 적용 시작일 · 단가($)를 입력하고 저장합니다. 같은 공장·SKU·적용일 조합이 이미 있으면 <strong>덮어쓰기(수정)</strong>로 처리됩니다. 우측 그리드에서 행을 클릭하면 이 폼이 해당 값으로 채워지며 "수정" 모드로 전환됩니다.</p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>적용 시작일은 "이 날짜부터 이 가격이 유효하다"는 뜻입니다. Invoice 검수는 <strong>Invoice Date 이하의 가장 최근 적용일</strong> 가격을 기대 가격으로 사용합니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ 가격 그리드 ═══════════ -->
+<section class="page-section" id="price-grid">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">📈</div>
+    <div>
+      <div class="menu-path">Price History › 가격 이력 그리드</div>
+      <h2>가격 이력 그리드</h2>
+      <p class="subtitle">전체 공장·SKU의 가격 변동을 검색·조회합니다.</p>
+    </div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:150px">컨트롤</th><th>설명</th></tr>
+    <tr><td class="label">공장 선택</td><td>공장별로 필터링 (전체 공장 선택도 가능)</td></tr>
+    <tr><td class="label">SKU 검색</td><td>입력하는 즉시 필터링됩니다 (엔터 불필요)</td></tr>
+    <tr><td class="label">기준 날짜</td><td>특정 날짜에 유효했던 가격만 조회</td></tr>
+    <tr><td class="label">현재 가격만</td><td>SKU별 가장 최근 가격 1건만 표시 (기본 체크됨)</td></tr>
+    <tr><td class="label">행 · 페이지</td><td>25 / 50 / 100건씩 페이지 단위로 조회</td></tr>
+  </table>
+
+  <p>행을 클릭하면 그 값이 좌측 "가격 입력" 폼에 채워지며 바로 수정할 수 있습니다. 삭제는 행 단위로 가능하며 되돌릴 수 없습니다.</p>
+</section>
+
+<!-- ═══════════ 업로드 이력 ═══════════ -->
+<section class="page-section" id="price-upload">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef2f2">📁</div>
+    <div>
+      <div class="menu-path">Price History › Price List 업로드</div>
+      <h2>Excel 업로드 &amp; 업로드 이력</h2>
+      <p class="subtitle">공장의 Price List 엑셀을 통째로 등록하고, 업로드 묶음 단위로 관리합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-07-upload-history.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>📁</div><p>업로드 파일 관리 목록</p></div>'" alt="업로드 파일 관리 목록">
+    <div class="screenshot-caption">▲ 업로드 파일 목록 — 파일명 · 행 수 · 업로드일 · 삭제</div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>공장 선택 후 <span class="btn-label">Price List 업로드</span></h4><p>업로드 대상 공장을 먼저 선택해야 합니다 — 이 공장이 업로드된 모든 행에 적용됩니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>업로드 전 미리보기 확인</h4><p>SKU · 적용일 · 단가가 올바른지, 오류 행이 있는지 확인 후 업로드를 실행합니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>업로드 이력에서 관리</h4><p>파일명을 클릭하면 원본을 다운로드할 수 있고, 잘못 올린 업로드분은 <strong>영향받는 가격 이력 행을 미리 확인한 뒤</strong> 통째로 삭제할 수 있습니다.</p></div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>업로드 대상 공장 선택창은 그리드 필터와 같은 값을 공유합니다. 특정 공장으로 필터링해서 보던 중이라면, 업로드 버튼을 누르기 전에 <strong>업로드하려는 공장이 맞는지 다시 확인</strong>하세요.</div>
+  </div>
+</section>
+
+<!-- ═══════════ 용어 ═══════════ -->
+<section class="page-section" id="glossary">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f9fafb">📖</div>
+    <div>
+      <div class="menu-path">참고</div>
+      <h2>용어 &amp; 결과 배지</h2>
+      <p class="subtitle">그리드에 나오는 결과 배지의 정확한 의미입니다.</p>
+    </div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:150px">배지</th><th>의미</th></tr>
+    <tr><td><span class="status match">일치</span></td><td>Invoice 가격 = 기대 가격 (차액 0)</td></tr>
+    <tr><td><span class="status error">가격 오류</span></td><td>Invoice 가격이 기대 가격보다 <strong>낮음</strong> — 우리가 과소 청구된 게 아니라, 공장이 우리 기준가보다 싸게 청구한 상태입니다.</td></tr>
+    <tr><td><span class="status over">과청구</span></td><td>Invoice 가격이 기대 가격보다 <strong>높음</strong> — 공장이 우리 기준가보다 비싸게 청구해서 Credit 요청 대상입니다.</td></tr>
+    <tr><td><span class="status none">가격 이력 없음</span></td><td>이 공장·SKU·Invoice Date 조합으로 조회되는 Price History 행이 없음 — Price History 등록 후 재검수가 필요합니다.</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════ 트러블슈팅 ═══════════ -->
+<section class="page-section" id="troubleshoot">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fef2f2">🛠️</div>
+    <div>
+      <div class="menu-path">참고</div>
+      <h2>자주 겪는 문제</h2>
+      <p class="subtitle">헷갈리기 쉬운 동작을 미리 정리했습니다.</p>
+    </div>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:260px">증상</th><th>원인 / 해결</th></tr>
+    <tr>
+      <td class="label">모든 라인이 "가격 이력 없음"</td>
+      <td>Price History 탭에 해당 공장·SKU 가격이 등록되어 있는지, 적용 시작일이 Invoice Date보다 이전인지 확인하세요. 등록 후 Invoice 검수 탭에서 <span class="btn-label">재검수</span>를 눌러야 반영됩니다.</td>
+    </tr>
+    <tr>
+      <td class="label">저장했는데 기존 가격이 사라짐</td>
+      <td>같은 공장·SKU·적용일 조합으로 다시 저장하면 새 값으로 <strong>덮어쓰기</strong>됩니다. 이력을 남기고 싶다면 적용일을 다르게 등록하세요.</td>
+    </tr>
+    <tr>
+      <td class="label">업로드했는데 엉뚱한 공장에 등록됨</td>
+      <td>Price History 업로드는 화면 상단의 "공장 선택"이 그대로 업로드 대상이 됩니다. 업로드 전 선택된 공장을 반드시 확인하세요.</td>
+    </tr>
+    <tr>
+      <td class="label">체크박스가 안 보임</td>
+      <td>일치하는 라인에는 선택 체크박스가 나타나지 않습니다 — 공장 확인/Credit 요청이 필요한 라인(가격 오류·과청구·가격 이력 없음)에만 표시됩니다.</td>
+    </tr>
+  </table>
+</section>
+
+</main>
+</div>
+</body>
+</html>

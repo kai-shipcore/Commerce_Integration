@@ -2,12 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Download, FileUp, History, Pencil, Plus, RefreshCcw, ScrollText, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, ChevronDown, Download, FileSpreadsheet, FileUp, FolderCog, History, Pencil, Plus, RefreshCcw, ScrollText, Trash2, Upload, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { InvoiceStepper, type InvoiceStatus } from "@/components/production/invoice-stepper";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Factory = { id: string; factoryName: string; factoryCode: string | null };
 
@@ -73,6 +90,20 @@ type InvoiceItemRow = {
   factoryConfirmConfirmedAt: string | null;
 };
 
+type AppliedCreditRow = {
+  id: string;
+  sourceInvoiceId: string | null;
+  sourceInvoiceNumber: string | null;
+  containerNumber: string | null;
+  sku: string;
+  expectedUnitPrice: number | null;
+  invoiceUnitPrice: number | null;
+  qty: number;
+  creditAmount: number;
+  appliedDate: string | null;
+  note: string | null;
+};
+
 type InvoiceDetail = {
   id: string;
   invoiceNumber: string;
@@ -89,6 +120,7 @@ type InvoiceDetail = {
   lastComparedAt: string | null;
   note: string | null;
   items: InvoiceItemRow[];
+  appliedCredits: AppliedCreditRow[];
 };
 
 type InvoiceImportBatch = {
@@ -168,6 +200,15 @@ const emptyNewInvoice: NewInvoiceForm = {
 
 type NewLineForm = { sku: string; qty: string; unitPrice: string };
 const emptyNewLine: NewLineForm = { sku: "", qty: "1", unitPrice: "" };
+
+type ConfirmDialogState = {
+  title: string;
+  description: string;
+  targetLabel: string;
+  impacts: string[];
+  confirmLabel: string;
+  onConfirm: () => void | Promise<void>;
+};
 
 function money(value: number | null | undefined, currency = "USD") {
   if (value == null || Number.isNaN(value)) return "-";
@@ -305,6 +346,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
   const [importBatches, setImportBatches] = useState<InvoiceImportBatch[]>([]);
   const [importImpact, setImportImpact] = useState<InvoiceImportImpact | null>(null);
   const [deletingImportBatch, setDeletingImportBatch] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [invoiceImportPreview, setInvoiceImportPreview] = useState<InvoiceImportPreview | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [showAuditHistory, setShowAuditHistory] = useState(false);
@@ -424,8 +466,12 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     if (expandedId) await loadDetail(expandedId);
   }
 
+  function requestConfirm(dialog: ConfirmDialogState) {
+    setConfirmDialog(dialog);
+  }
+
   async function createInvoice() {
-    if (!canCreate) return toast.error(pick("Invoice를 등록할 권한이 없습니다.", "No permission to create invoices"));
+    if (!canCreate) { toast.error(pick("Invoice를 등록할 권한이 없습니다.", "No permission to create invoices")); return; }
     if (!newInvoice.factoryId || !newInvoice.invoiceNumber.trim() || !newInvoice.invoiceDate) {
       toast.error(pick("공장, Invoice 번호, Invoice 날짜는 필수입니다.", "Factory, invoice number, and invoice date are required"));
       return;
@@ -454,7 +500,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
 
   async function addLine() {
     if (!detail) return;
-    if (!canCreate) return toast.error(pick("라인을 추가할 권한이 없습니다.", "No permission to add lines"));
+    if (!canCreate) { toast.error(pick("라인을 추가할 권한이 없습니다.", "No permission to add lines")); return; }
     const qty = Number.parseInt(newLine.qty, 10);
     const unitPrice = Number(newLine.unitPrice);
     if (!newLine.sku.trim() || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
@@ -477,10 +523,24 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     await refreshBoth();
   }
 
+  function confirmDeleteLine(item: InvoiceItemRow) {
+    if (!detail) return;
+    requestConfirm({
+      title: pick("Invoice 라인 삭제", "Delete Invoice Line"),
+      description: pick("선택한 SKU 라인을 삭제합니다. 이 작업은 되돌릴 수 없습니다.", "Delete the selected SKU line. This action cannot be undone."),
+      targetLabel: `${item.sku} · ${pick("수량", "Qty")} ${item.qty}`,
+      impacts: [
+        pick("삭제 대상: Invoice SKU 라인 1개", "Delete target: 1 invoice SKU line"),
+        pick(`Invoice: ${detail.invoiceNumber}`, `Invoice: ${detail.invoiceNumber}`),
+      ],
+      confirmLabel: pick("삭제", "Delete"),
+      onConfirm: () => deleteLine(item.id),
+    });
+  }
+
   async function deleteLine(itemId: string) {
     if (!detail) return;
-    if (!canDelete) return toast.error(pick("라인을 삭제할 권한이 없습니다.", "No permission to delete lines"));
-    if (!window.confirm(pick("이 라인을 삭제할까요?", "Delete this line?"))) return;
+    if (!canDelete) { toast.error(pick("라인을 삭제할 권한이 없습니다.", "No permission to delete lines")); return; }
     const res = await fetch(apiPath(`/api/production/invoices/${detail.id}/items/${itemId}`), { method: "DELETE" });
     const json = await res.json();
     if (!res.ok || !json.success) {
@@ -490,10 +550,25 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     await refreshBoth();
   }
 
+  function confirmDeleteInvoice() {
+    if (!detail) return;
+    requestConfirm({
+      title: pick("Invoice 삭제", "Delete Invoice"),
+      description: pick("선택한 Invoice와 연결된 SKU 라인을 모두 삭제합니다. 이 작업은 되돌릴 수 없습니다.", "Delete the selected invoice and all linked SKU lines. This action cannot be undone."),
+      targetLabel: detail.invoiceNumber,
+      impacts: [
+        pick(`삭제 대상: Invoice 1개`, "Delete target: 1 invoice"),
+        pick(`연결된 SKU 라인: ${detail.items.length}개`, `Linked SKU lines: ${detail.items.length}`),
+        detail.containerNumber ? pick(`컨테이너: ${detail.containerNumber}`, `Container: ${detail.containerNumber}`) : pick("컨테이너: 없음", "Container: none"),
+      ],
+      confirmLabel: pick("삭제", "Delete"),
+      onConfirm: deleteInvoice,
+    });
+  }
+
   async function deleteInvoice() {
     if (!detail) return;
-    if (!canDelete) return toast.error(pick("Invoice를 삭제할 권한이 없습니다.", "No permission to delete invoices"));
-    if (!window.confirm(pick(`${detail.invoiceNumber} Invoice를 삭제할까요? 등록된 라인도 함께 삭제됩니다.`, `Delete invoice ${detail.invoiceNumber}? Its line items will also be deleted.`))) return;
+    if (!canDelete) { toast.error(pick("Invoice를 삭제할 권한이 없습니다.", "No permission to delete invoices")); return; }
     const res = await fetch(apiPath(`/api/production/invoices/${detail.id}`), { method: "DELETE" });
     const json = await res.json();
     if (!res.ok || !json.success) {
@@ -519,7 +594,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
 
   async function updateInvoiceDetails() {
     if (!detail) return;
-    if (!canEdit) return toast.error(pick("Invoice를 수정할 권한이 없습니다.", "No permission to edit invoices"));
+    if (!canEdit) { toast.error(pick("Invoice를 수정할 권한이 없습니다.", "No permission to edit invoices")); return; }
     if (!editInvoice.invoiceNumber.trim() || !editInvoice.invoiceDate) {
       toast.error(pick("Invoice 번호와 Invoice 날짜는 필수입니다.", "Invoice number and invoice date are required"));
       return;
@@ -546,7 +621,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
 
   async function changeStatus(status: InvoiceStatus) {
     if (!detail) return;
-    if (!canEdit) return toast.error(pick("상태를 변경할 권한이 없습니다.", "No permission to change status"));
+    if (!canEdit) { toast.error(pick("상태를 변경할 권한이 없습니다.", "No permission to change status")); return; }
     const res = await fetch(apiPath(`/api/production/invoices/${detail.id}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -563,7 +638,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
 
   async function recompare() {
     if (!detail) return;
-    if (!canEdit) return toast.error(pick("재검수할 권한이 없습니다.", "No permission to recompare"));
+    if (!canEdit) { toast.error(pick("재검수할 권한이 없습니다.", "No permission to recompare")); return; }
     setRecomparing(true);
     try {
       const res = await fetch(apiPath(`/api/production/invoices/${detail.id}/recompare`), { method: "POST" });
@@ -671,7 +746,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     }
   }
 
-  function exportSelectedItems() {
+  async function exportSelectedItems() {
     if (!detail) return;
     const selected = detail.items.filter((item) => selectedItemIds.has(item.id) && isExportableDifference(item));
     if (selected.length === 0) {
@@ -699,6 +774,26 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     XLSX.utils.book_append_sheet(workbook, worksheet, "Selected SKU Differences");
     XLSX.writeFile(workbook, `invoice-${detail.invoiceNumber}-selected-skus-${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success(pick(`${selected.length}개 SKU를 내보냈습니다.`, `Exported ${selected.length} SKU row(s).`));
+
+    const overcharged = selected.filter((item) => item.result === "overcharged");
+    if (overcharged.length > 0) {
+      try {
+        const res = await fetch(apiPath("/api/production/credit-notes/bulk"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemIds: overcharged.map((item) => item.id) }),
+        });
+        const json = await res.json();
+        if (res.ok && json.success && json.data.created > 0) {
+          toast.success(pick(
+            `Credit 관리 탭에 ${json.data.created}건이 Pending으로 등록됐습니다.`,
+            `Registered ${json.data.created} pending credit note(s) in Credit Notes.`
+          ));
+        }
+      } catch {
+        // Export already succeeded; credit-note registration is best-effort here.
+      }
+    }
   }
 
   async function loadImportBatches(invoiceId = detail?.id) {
@@ -757,16 +852,25 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     }
   }
 
+  function confirmDeleteImportBatch() {
+    if (!detail || !importImpact) return;
+    requestConfirm({
+      title: pick("Invoice 업로드분 삭제", "Delete Invoice Import"),
+      description: pick("이 업로드 파일로 생성된 Invoice 라인을 삭제합니다. 원본 업로드 묶음 기준으로 삭제됩니다.", "Delete invoice lines created by this uploaded file. Deletion is scoped to this import batch."),
+      targetLabel: importImpact.originalName,
+      impacts: [
+        pick(`삭제 대상: 업로드 묶음 1개`, "Delete target: 1 import batch"),
+        pick(`연결된 Invoice 라인: ${importImpact.items.length}개`, `Linked invoice lines: ${importImpact.items.length}`),
+        pick(`Invoice: ${detail.invoiceNumber}`, `Invoice: ${detail.invoiceNumber}`),
+      ],
+      confirmLabel: pick("삭제", "Delete"),
+      onConfirm: deleteImportBatch,
+    });
+  }
+
   async function deleteImportBatch() {
     if (!detail || !importImpact) return;
-    if (!canDelete) return toast.error(pick("업로드분을 삭제할 권한이 없습니다.", "No permission to delete import batches"));
-    const confirmed = window.confirm(
-      pick(
-        `${importImpact.originalName} 업로드분을 삭제할까요?\n\n연결된 Invoice 라인 ${importImpact.items.length}개가 함께 삭제됩니다.`,
-        `Delete import ${importImpact.originalName}?\n\n${importImpact.items.length} linked invoice line(s) will also be deleted.`,
-      ),
-    );
-    if (!confirmed) return;
+    if (!canDelete) { toast.error(pick("업로드분을 삭제할 권한이 없습니다.", "No permission to delete import batches")); return; }
     setDeletingImportBatch(true);
     try {
       const res = await fetch(apiPath(`/api/production/invoices/${detail.id}/items/imports/${importImpact.sourceFileId}`), { method: "DELETE" });
@@ -802,9 +906,36 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     XLSX.writeFile(workbook, "invoice-line-import-template.xlsx");
   }
 
+  async function downloadGeneratedInvoice() {
+    if (!detail) return;
+    try {
+      const res = await fetch(apiPath(`/api/production/invoices/${detail.id}/generated-invoice`), { cache: "no-store" });
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const json = await res.json();
+          throw new Error(json.error || pick("Invoice 생성에 실패했습니다.", "Failed to generate invoice"));
+        }
+        throw new Error(pick("Invoice 생성에 실패했습니다.", "Failed to generate invoice"));
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${detail.invoiceNumber || "invoice"} commercial invoice.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(pick("Invoice 파일을 생성했습니다.", "Invoice file generated"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("Invoice 생성에 실패했습니다.", "Failed to generate invoice"));
+    }
+  }
+
   async function uploadAttachment(file: File, signed: boolean) {
     if (!detail) return;
-    if (!canEdit) return toast.error(pick("첨부 권한이 없습니다.", "No permission to attach files"));
+    if (!canEdit) { toast.error(pick("첨부 권한이 없습니다.", "No permission to attach files")); return; }
     setUploadingAttachment(true);
     try {
       const formData = new FormData();
@@ -832,12 +963,14 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
         netDiff: 0,
         overchargedTotal: 0,
         underchargedTotal: 0,
+        appliedCreditTotal: 0,
+        balanceDue: 0,
         mismatchCount: 0,
         noPriceCount: 0,
         matchCount: 0,
       };
     }
-    return detail.items.reduce(
+    const lineTotals = detail.items.reduce(
       (acc, item) => {
         acc.skuCount += 1;
         acc.qtyTotal += item.qty;
@@ -867,6 +1000,12 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
         matchCount: 0,
       },
     );
+    const appliedCreditTotal = (detail.appliedCredits ?? []).reduce((sum, credit) => sum + credit.creditAmount, 0);
+    return {
+      ...lineTotals,
+      appliedCreditTotal,
+      balanceDue: lineTotals.invoiceTotal - appliedCreditTotal,
+    };
   }, [detail]);
   const sortedPopupPriceRows = useMemo(() => {
     const rows = priceHistoryPopup?.rows ?? [];
@@ -938,12 +1077,24 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
           {/* Left: invoice list */}
           <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white shadow-sm">
             <div className="border-b p-3">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={pick("Invoice, 공장, 컨테이너 검색", "Search invoice, factory, container")}
-                className="h-9 w-full rounded-md border px-3 text-sm"
-              />
+              <div className="relative">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={pick("Invoice, 공장, 컨테이너 검색", "Search invoice, factory, container")}
+                  className="h-9 w-full rounded-md border px-3 pr-9 text-sm"
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    aria-label={pick("검색어 초기화", "Clear search")}
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 <button
                   type="button"
@@ -1057,7 +1208,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                     <button
                       type="button"
                       disabled={!canDelete}
-                      onClick={() => void deleteInvoice()}
+                      onClick={confirmDeleteInvoice}
                       className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Trash2 className="h-3.5 w-3.5" /> {pick("Invoice 삭제", "Delete Invoice")}
@@ -1152,38 +1303,17 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                     />
                     <button
                       type="button"
-                      onClick={downloadInvoiceImportTemplate}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50"
-                    >
-                      <Download className="h-3.5 w-3.5" /> {pick("양식", "Template")}
-                    </button>
-                    <button
-                      type="button"
                       disabled={uploadingImport || !canCreate}
                       onClick={() => importFileRef.current?.click()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1a5cdb] px-2.5 text-xs font-semibold text-white hover:bg-[#174fbf] disabled:opacity-50"
                     >
                       <FileUp className="h-3.5 w-3.5" /> {uploadingImport ? pick("업로드 중...", "Uploading...") : pick("Invoice 업로드", "Invoice Upload")}
                     </button>
                     <button
                       type="button"
-                      onClick={() => void openImportHistory()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50"
-                    >
-                      <History className="h-3.5 w-3.5" /> {pick("Invoice 업로드 이력", "Invoice Imports")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void openAuditHistory()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50"
-                    >
-                      <ScrollText className="h-3.5 w-3.5" /> {pick("변경 이력", "Change History")}
-                    </button>
-                    <button
-                      type="button"
                       disabled={recomparing}
                       onClick={() => void recompare()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1a5cdb] px-2.5 text-xs font-semibold text-white hover:bg-[#174fbf] disabled:opacity-50"
                     >
                       <RefreshCcw className={`h-3.5 w-3.5 ${recomparing ? "animate-spin" : ""}`} /> {pick("재검수", "Recompare")}
                     </button>
@@ -1194,31 +1324,127 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                       className="hidden"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadAttachment(f, detail.status === "signed" || detail.status === "sent_to_factory"); }}
                     />
-                    <button
-                      type="button"
-                      disabled={uploadingAttachment || !canEdit}
-                      onClick={() => attachmentFileRef.current?.click()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      <Upload className="h-3.5 w-3.5" /> {pick("파일 첨부", "Attach File")}
-                    </button>
-                    {detail.attachmentFileId ? (
-                      <a
-                        className="text-xs text-[#1a5cdb] hover:underline"
-                        href={apiPath(`/api/production/price-history/files/${detail.attachmentFileId}`)}
-                      >
-                        {pick("첨부파일 다운로드", "Download attachment")}
-                      </a>
-                    ) : null}
-                    {detail.signedAttachmentFileId ? (
-                      <a
-                        className="text-xs text-[#1a5cdb] hover:underline"
-                        href={apiPath(`/api/production/price-history/files/${detail.signedAttachmentFileId}`)}
-                      >
-                        {pick("서명본 다운로드", "Download signed")}
-                      </a>
-                    ) : null}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50"
+                        >
+                          <FolderCog className="h-3.5 w-3.5" /> {pick("파일 관리", "Files")} <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={downloadInvoiceImportTemplate}>
+                          <Download className="h-3.5 w-3.5" /> {pick("양식 다운로드", "Download template")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void downloadGeneratedInvoice()}>
+                          <FileSpreadsheet className="h-3.5 w-3.5" /> {pick("Invoice 생성", "Generate Invoice")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={uploadingAttachment || !canEdit}
+                          onSelect={(e) => { e.preventDefault(); attachmentFileRef.current?.click(); }}
+                        >
+                          <Upload className="h-3.5 w-3.5" /> {pick("파일 첨부", "Attach File")}
+                        </DropdownMenuItem>
+                        {detail.attachmentFileId ? (
+                          <DropdownMenuItem asChild>
+                            <a href={apiPath(`/api/production/price-history/files/${detail.attachmentFileId}`)}>
+                              <Download className="h-3.5 w-3.5" /> {pick("첨부파일 다운로드", "Download attachment")}
+                            </a>
+                          </DropdownMenuItem>
+                        ) : null}
+                        {detail.signedAttachmentFileId ? (
+                          <DropdownMenuItem asChild>
+                            <a href={apiPath(`/api/production/price-history/files/${detail.signedAttachmentFileId}`)}>
+                              <Download className="h-3.5 w-3.5" /> {pick("서명본 다운로드", "Download signed")}
+                            </a>
+                          </DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50"
+                        >
+                          <History className="h-3.5 w-3.5" /> {pick("이력 보기", "History")} <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => void openImportHistory()}>
+                          <History className="h-3.5 w-3.5" /> {pick("Invoice 업로드 이력", "Invoice Imports")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void openAuditHistory()}>
+                          <ScrollText className="h-3.5 w-3.5" /> {pick("변경 이력", "Change History")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
+                </div>
+
+                <div className="rounded-lg border bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                    <div>
+                      <div className="text-sm font-semibold">{pick("Invoice 정산 요약", "Invoice Balance Summary")}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {pick("이 Invoice에 적용된 Credit 차감 후 지급 Balance를 확인합니다.", "Review applied credits and the final balance due for this invoice.")}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full bg-[#f0eee9] px-2.5 py-1 font-semibold text-[#57534a]">
+                        {pick(`Credit ${detail.appliedCredits?.length ?? 0}건`, `${detail.appliedCredits?.length ?? 0} credit(s)`)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 border-b bg-[#fafaf7] p-4 md:grid-cols-3">
+                    <div className="rounded-md border bg-white p-3">
+                      <div className="text-[11px] font-semibold uppercase text-muted-foreground">{pick("총 청구 금액", "Invoice Total")}</div>
+                      <div className="mt-1 text-lg font-bold">{money(totals.invoiceTotal)}</div>
+                    </div>
+                    <div className="rounded-md border bg-white p-3">
+                      <div className="text-[11px] font-semibold uppercase text-muted-foreground">{pick("Credit 적용 합계", "Applied Credit")}</div>
+                      <div className="mt-1 text-lg font-bold text-[#0f8a5f]">{totals.appliedCreditTotal > 0 ? `-${money(totals.appliedCreditTotal)}` : money(0)}</div>
+                    </div>
+                    <div className="rounded-md border bg-white p-3">
+                      <div className="text-[11px] font-semibold uppercase text-muted-foreground">{pick("최종 Balance", "Final Balance")}</div>
+                      <div className="mt-1 text-lg font-bold text-[#111827]">{money(totals.balanceDue)}</div>
+                    </div>
+                  </div>
+                  {(detail.appliedCredits?.length ?? 0) > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-[#f7f6f2] text-xs uppercase text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 text-left">{pick("원본 Invoice", "Source Invoice")}</th>
+                            <th className="px-3 py-2 text-left">SKU</th>
+                            <th className="px-3 py-2 text-right">Qty</th>
+                            <th className="px-3 py-2 text-right">{pick("Invoice 가격", "Invoice Price")}</th>
+                            <th className="px-3 py-2 text-right">{pick("기준 가격", "Expected Price")}</th>
+                            <th className="px-3 py-2 text-right">Credit</th>
+                            <th className="px-3 py-2 text-left">{pick("적용일", "Applied Date")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.appliedCredits.map((credit) => (
+                            <tr key={credit.id} className="border-t">
+                              <td className="px-3 py-2 font-medium">{credit.sourceInvoiceNumber || "-"}</td>
+                              <td className="px-3 py-2">{credit.sku}</td>
+                              <td className="px-3 py-2 text-right">{credit.qty}</td>
+                              <td className="px-3 py-2 text-right">{credit.invoiceUnitPrice == null ? "-" : money(credit.invoiceUnitPrice)}</td>
+                              <td className="px-3 py-2 text-right">{credit.expectedUnitPrice == null ? "-" : money(credit.expectedUnitPrice)}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-[#0f8a5f]">-{money(credit.creditAmount)}</td>
+                              <td className="px-3 py-2">{credit.appliedDate || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="px-4 py-4 text-sm text-muted-foreground">
+                      {pick("이 Invoice에 적용된 Credit이 없습니다.", "No credits have been applied to this invoice.")}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-lg border">
@@ -1276,7 +1502,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                       </span>
                       <button
                         type="button"
-                        onClick={exportSelectedItems}
+                        onClick={() => void exportSelectedItems()}
                         className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1a5cdb] px-2.5 text-xs font-semibold text-white hover:bg-[#174fbf]"
                       >
                         <Download className="h-3.5 w-3.5" /> {pick("선택 항목 내보내기", "Export Selected")}
@@ -1348,17 +1574,11 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                         {detail.items.map((item) => (
                           <tr
                             key={item.id}
-                            title={pick("클릭하여 가격 이력 간단 조회, 더블클릭하여 Price History 탭 열기", "Click for a quick price history view, double-click to open the Price History tab")}
+                            title={pick("행을 클릭하면 가격 이력을 팝업으로 간단 조회합니다.", "Click the row for a quick price history popup.")}
                             onClick={() => void openSkuPriceHistoryPopup(item.sku)}
-                            onDoubleClick={() =>
-                              window.open(
-                                withBasePath(`/production/invoice-price-control?tab=price-history&sku=${encodeURIComponent(item.sku)}&currentOnly=false`),
-                                "_blank"
-                              )
-                            }
                             className="cursor-pointer border-t hover:bg-[#faf8f2]"
                           >
-                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                               {isExportableDifference(item) ? (
                                 <input
                                   type="checkbox"
@@ -1394,12 +1614,27 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                                 {item.result === "no_price_history" && pick("가격 이력 없음", "No Price History")}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                            <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
+                                  title={pick("Price History 탭에서 전체 이력 보기", "Open full history in the Price History tab")}
+                                  aria-label={pick(`${item.sku} 가격 이력 보기`, `Open price history for ${item.sku}`)}
+                                  onClick={() =>
+                                    window.open(
+                                      withBasePath(`/production/invoice-price-control?tab=price-history&sku=${encodeURIComponent(item.sku)}&currentOnly=false`),
+                                      "_blank"
+                                    )
+                                  }
+                                  className="rounded border px-1.5 py-1 text-[#1a5cdb] hover:bg-blue-50"
+                                >
+                                  <History className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
                                   disabled={!canDelete}
-                                  onClick={() => void deleteLine(item.id)}
+                                  title={pick("라인 삭제", "Delete line")}
+                                  onClick={() => confirmDeleteLine(item)}
                                   className="rounded border px-1.5 py-1 text-red-600 disabled:opacity-40"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -1734,7 +1969,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                       <button
                         type="button"
                         disabled={!canDelete || deletingImportBatch}
-                        onClick={() => void deleteImportBatch()}
+                        onClick={confirmDeleteImportBatch}
                         className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                       >
                         {deletingImportBatch ? pick("삭제 중...", "Deleting...") : pick("이 업로드분 삭제", "Delete This Import")}
@@ -1825,6 +2060,53 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
           </div>
         </div>
       ) : null}
+      <AlertDialog open={confirmDialog != null} onOpenChange={(open) => { if (!open) setConfirmDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-red-50 text-red-600">
+              <AlertTriangle className="h-8 w-8" />
+            </AlertDialogMedia>
+            <AlertDialogTitle>{confirmDialog?.title}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>{confirmDialog?.description}</p>
+                {confirmDialog ? (
+                  <div className="rounded-lg border bg-[#fafaf7] p-3 text-sm text-foreground">
+                    <div className="text-xs font-semibold uppercase text-muted-foreground">{pick("삭제 대상", "Delete Target")}</div>
+                    <div className="mt-1 break-words font-semibold">{confirmDialog.targetLabel}</div>
+                  </div>
+                ) : null}
+                {confirmDialog?.impacts.length ? (
+                  <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-900">
+                    <div className="text-xs font-semibold uppercase text-red-700">{pick("영향 범위", "Impact")}</div>
+                    <ul className="mt-2 space-y-1">
+                      {confirmDialog.impacts.map((impact) => (
+                        <li key={impact} className="flex gap-2">
+                          <span aria-hidden="true">-</span>
+                          <span>{impact}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{pick("취소", "Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                const action = confirmDialog?.onConfirm;
+                setConfirmDialog(null);
+                if (action) void action();
+              }}
+            >
+              {confirmDialog?.confirmLabel ?? pick("삭제", "Delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

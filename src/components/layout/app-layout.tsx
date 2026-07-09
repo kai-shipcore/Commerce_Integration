@@ -161,6 +161,18 @@ export function AppLayout({ children }: AppLayoutProps) {
       .sort((left, right) => right.href.length - left.href.length)[0] ?? null;
   }, [appPathname]);
   const manualHref = useMemo(() => {
+    if (matchedItem?.id === "invoice-price-control") {
+      return withBasePath("/manual/admin_help.html");
+    }
+    if (
+      matchedItem?.id === "seat-cover-sizes" ||
+      matchedItem?.id === "production-vehicles" ||
+      matchedItem?.id === "production-parts-codes" ||
+      matchedItem?.id === "part-sku-generator"
+    ) {
+      return withBasePath("/manual/production_help.html");
+    }
+
     let section = DEFAULT_MANUAL_SECTION;
     if (matchedItem?.id === "sku-forecasts") {
       section = skuForecastManualSectionByTab[searchParams.get("tab") ?? "sales"] ?? manualSectionByNavigationId["sku-forecasts"];

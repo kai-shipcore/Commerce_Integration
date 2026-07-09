@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Pencil, Search, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Pencil, Search, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { RolePermissionsTab } from "@/components/settings/role-permissions-tab";
@@ -497,8 +497,21 @@ export default function UserAccessPage() {
                       value={searchTerm}
                       onChange={(event) => setSearchTerm(event.target.value)}
                       placeholder={pick("이메일 또는 이름 검색", "Search by email or name")}
-                      className="pl-9"
+                      className="pl-9 pr-9"
                     />
+                    {searchTerm ? (
+                      <button
+                        type="button"
+                        aria-label={pick("검색어 초기화", "Clear search")}
+                        onClick={() => {
+                          setSearchTerm("");
+                          setPagination((current) => ({ ...current, page: 1 }));
+                        }}
+                        className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100 hover:text-foreground dark:hover:bg-slate-800"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
                   </div>
                   <Select
                     value={roleFilter || "all"}

@@ -61,9 +61,25 @@ function rowToItem(row: Record<string, unknown>) {
   };
 }
 
+function rowToAppliedCredit(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    sourceInvoiceId: row.source_invoice_id == null ? null : String(row.source_invoice_id),
+    sourceInvoiceNumber: row.source_invoice_number as string | null,
+    containerNumber: row.container_number as string | null,
+    sku: row.sku as string,
+    expectedUnitPrice: row.expected_unit_price == null ? null : Number(row.expected_unit_price),
+    invoiceUnitPrice: row.invoice_unit_price == null ? null : Number(row.invoice_unit_price),
+    qty: Number(row.qty),
+    creditAmount: Number(row.credit_amount),
+    appliedDate: serializeDate(row.applied_date),
+    note: row.note as string | null,
+  };
+}
+
 async function loadInvoiceDetail(id: string) {
   const pool = getPrimaryPool();
-  const [headerResult, itemsResult] = await Promise.all([
+  const [headerResult, itemsResult, appliedCreditsResult] = await Promise.all([
     pool.query(
       `SELECT
          i.id::text AS id,
@@ -89,6 +105,26 @@ async function loadInvoiceDetail(id: string) {
       `SELECT * FROM shipcore.fc_invoice_items WHERE invoice_id = $1::bigint ORDER BY id ASC`,
       [id],
     ),
+    pool.query(
+      `SELECT
+         cn.id::text AS id,
+         cn.source_invoice_id::text AS source_invoice_id,
+         source.invoice_number AS source_invoice_number,
+         cn.container_number,
+         cn.sku,
+         cn.expected_unit_price,
+         cn.invoice_unit_price,
+         cn.qty,
+         cn.credit_amount,
+         cn.applied_date::text AS applied_date,
+         cn.note
+       FROM shipcore.fc_credit_notes cn
+       LEFT JOIN shipcore.fc_invoices source ON source.id = cn.source_invoice_id
+       WHERE cn.applied_invoice_id = $1::bigint
+         AND cn.status = 'applied'
+       ORDER BY cn.applied_date DESC NULLS LAST, cn.id DESC`,
+      [id],
+    ),
   ]);
 
   if (headerResult.rowCount === 0) return null;
@@ -110,6 +146,7 @@ async function loadInvoiceDetail(id: string) {
     lastComparedAt: header.last_compared_at ? new Date(header.last_compared_at as string).toISOString() : null,
     note: header.note as string | null,
     items: itemsResult.rows.map(rowToItem),
+    appliedCredits: appliedCreditsResult.rows.map(rowToAppliedCredit),
   };
 }
 
