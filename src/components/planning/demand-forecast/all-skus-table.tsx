@@ -414,9 +414,9 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
         <Table className="table-fixed">
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
-              {renderTh("unique_id", "SKU")}
-              {renderTh("segment", pick("세그먼트", "Segment"), false, "w-32")}
-              {renderTh("model", pick("모델", "Model"), false, "w-32")}
+              {renderTh("unique_id", "SKU", false, "w-52")}
+              {renderTh("segment", pick("세그먼트", "Segment"), false, "w-28")}
+              {renderTh("model", pick("모델", "Model"))}
               {renderTh("active_weeks", pick("이력 주 수", "Weeks of history"), true, "w-32")}
               {renderTh("demand_total", pick(`${data.weeks}주 수요`, `${data.weeks}W Demand`), true, "w-28")}
               <TableHead className="w-20 whitespace-nowrap text-right text-xs">{pick("주 평균", "Avg/wk")}</TableHead>
