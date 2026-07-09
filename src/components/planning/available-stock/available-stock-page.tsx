@@ -461,16 +461,16 @@ export function AvailableStockPage() {
         </div>
       </header>
 
-      <div className="flex border-b border-[#e2dfd8] px-6 pt-3">
+      <div className="flex border-b border-[#e2dfd8] bg-white px-5">
         {(["remaining", "mistake"] as StockSourceType[]).map((type) => (
           <button
             key={type}
             type="button"
             onClick={() => switchTab(type)}
-            className={`mr-2 rounded-t-lg border px-5 py-2 text-sm font-semibold ${
+            className={`border-b-2 px-5 py-3 text-[12px] font-semibold transition-colors ${
               sourceType === type
-                ? "border-[#1a5cdb] border-b-white bg-white text-[#1a5cdb]"
-                : "border-[#e2dfd8] bg-[#f0eee9] text-muted-foreground"
+                ? "border-[#1a5cdb] text-[#1a5cdb]"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {type === "remaining" ? pick("잔여 재고 목록", "Remaining List") : pick("오주문 목록", "Mistake Order List")}

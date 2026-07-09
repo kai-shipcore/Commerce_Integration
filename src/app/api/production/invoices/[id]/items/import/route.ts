@@ -82,10 +82,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         [file.name, file.type || null, buffer.byteLength, buffer, session?.user?.id ?? null],
       );
       sourceFileId = fileResult.rows[0].id;
-      await client.query(
-        `UPDATE shipcore.fc_invoices SET attachment_file_id = $2::bigint, updated_at = NOW() WHERE id = $1::bigint`,
-        [id, sourceFileId],
-      );
 
       for (const parsedRow of parsedRows) {
         await insertInvoiceItemWithComparison(client, id, invoice.factory_id, invoice.invoice_date, {

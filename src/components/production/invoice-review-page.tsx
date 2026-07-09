@@ -113,6 +113,32 @@ type InvoiceImportImpact = {
   items: InvoiceItemRow[];
 };
 
+type InvoiceImportPreviewRow = {
+  rowNo: number;
+  sku: string;
+  qty: number | null;
+  unitPrice: number | null;
+  error: string | null;
+};
+
+type InvoiceImportPreview = {
+  file: File;
+  rows: InvoiceImportPreviewRow[];
+  errors: string[];
+};
+
+type SkuPriceHistoryRow = {
+  id: string;
+  sku: string;
+  effectiveDate: string;
+  unitPrice: number;
+  currency: string;
+  reason: string | null;
+  previousPrice: number | null;
+  changeAmount: number | null;
+  changeRate: number | null;
+};
+
 type InvoiceAuditEntry = {
   id: string;
   action: string;
@@ -129,6 +155,7 @@ type NewInvoiceForm = {
   containerNumber: string;
   invoiceNumber: string;
   invoiceDate: string;
+  note: string;
 };
 
 const emptyNewInvoice: NewInvoiceForm = {
@@ -136,19 +163,25 @@ const emptyNewInvoice: NewInvoiceForm = {
   containerNumber: "",
   invoiceNumber: "",
   invoiceDate: new Date().toISOString().slice(0, 10),
+  note: "",
 };
 
 type NewLineForm = { sku: string; qty: string; unitPrice: string };
 const emptyNewLine: NewLineForm = { sku: "", qty: "1", unitPrice: "" };
 
-function money(value: number | null | undefined) {
+function money(value: number | null | undefined, currency = "USD") {
   if (value == null || Number.isNaN(value)) return "-";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(value);
 }
 
-function signedMoney(value: number | null | undefined) {
+function signedMoney(value: number | null | undefined, currency = "USD") {
   if (value == null || Number.isNaN(value)) return "-";
-  return `${value >= 0 ? "+" : ""}${money(value)}`;
+  return `${value >= 0 ? "+" : ""}${money(value, currency)}`;
+}
+
+function pct(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) return "-";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
 function formatBytes(bytes: number) {
@@ -161,6 +194,20 @@ function formatBytes(bytes: number) {
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "-";
   return value.slice(0, 16).replace("T", " ");
+}
+
+function pickImportValue(row: Record<string, unknown>, names: string[]) {
+  const entries = Object.entries(row);
+  for (const name of names) {
+    const normalized = name.toLowerCase().replace(/[\s_-]/g, "");
+    const found = entries.find(([key]) => key.toLowerCase().replace(/[\s_-]/g, "") === normalized);
+    if (found) return found[1];
+  }
+  return undefined;
+}
+
+function parseMoneyValue(value: unknown) {
+  return Number(String(value ?? "").replace(/[$,]/g, ""));
 }
 
 const RESULT_BADGE: Record<InvoiceItemRow["result"], string> = {
@@ -221,7 +268,12 @@ function summarizeAuditEntry(entry: InvoiceAuditEntry) {
   }
 }
 
-export function InvoiceReviewPage() {
+type InvoiceReviewPageProps = {
+  createFormOpen?: boolean;
+  onCreateFormOpenChange?: (open: boolean) => void;
+};
+
+export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: InvoiceReviewPageProps = {}) {
   const { pick } = useI18n();
   const { can, ready } = usePermissions();
   const canCreate = ready && can("invoice-price-control", "create");
@@ -253,13 +305,19 @@ export function InvoiceReviewPage() {
   const [importBatches, setImportBatches] = useState<InvoiceImportBatch[]>([]);
   const [importImpact, setImportImpact] = useState<InvoiceImportImpact | null>(null);
   const [deletingImportBatch, setDeletingImportBatch] = useState(false);
+  const [invoiceImportPreview, setInvoiceImportPreview] = useState<InvoiceImportPreview | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [showAuditHistory, setShowAuditHistory] = useState(false);
   const [loadingAuditHistory, setLoadingAuditHistory] = useState(false);
   const [auditEntries, setAuditEntries] = useState<InvoiceAuditEntry[]>([]);
+  const [priceHistoryPopup, setPriceHistoryPopup] = useState<{ sku: string; rows: SkuPriceHistoryRow[] } | null>(null);
+  const [loadingPriceHistoryPopup, setLoadingPriceHistoryPopup] = useState(false);
+  const [priceHistorySortDirection, setPriceHistorySortDirection] = useState<"asc" | "desc">("desc");
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const attachmentFileRef = useRef<HTMLInputElement>(null);
+  const isCreateFormOpen = createFormOpen ?? showCreateForm;
+  const setCreateFormOpen = onCreateFormOpenChange ?? setShowCreateForm;
 
   async function loadFactories() {
     const res = await fetch(apiPath("/api/production/price-history?mode=factories&active=true"), { cache: "no-store" });
@@ -316,10 +374,12 @@ export function InvoiceReviewPage() {
 
   useEffect(() => {
     if (!ready) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadInvoices();
+    const timer = window.setTimeout(() => {
+      void loadInvoices();
+    }, 200);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, bucketFilter]);
+  }, [ready, bucketFilter, search]);
 
   useEffect(() => {
     if (expandedId) {
@@ -386,7 +446,7 @@ export function InvoiceReviewPage() {
       return;
     }
     toast.success(pick("Invoice가 등록되었습니다.", "Invoice created"));
-    setShowCreateForm(false);
+    setCreateFormOpen(false);
     setNewInvoice({ ...emptyNewInvoice, factoryId: newInvoice.factoryId });
     await loadInvoices();
     setExpandedId(json.data.id);
@@ -452,6 +512,7 @@ export function InvoiceReviewPage() {
       containerNumber: detail.containerNumber ?? "",
       invoiceNumber: detail.invoiceNumber,
       invoiceDate: detail.invoiceDate ?? new Date().toISOString().slice(0, 10),
+      note: detail.note ?? "",
     });
     setShowEditForm(true);
   }
@@ -470,6 +531,7 @@ export function InvoiceReviewPage() {
         invoiceNumber: editInvoice.invoiceNumber.trim(),
         invoiceDate: editInvoice.invoiceDate,
         containerNumber: editInvoice.containerNumber.trim() || undefined,
+        note: editInvoice.note.trim() || undefined,
       }),
     });
     const json = await res.json();
@@ -516,9 +578,49 @@ export function InvoiceReviewPage() {
     }
   }
 
-  async function importExcel(file: File) {
+  async function previewInvoiceImport(file: File) {
     if (!detail) return;
-    if (!canCreate) return toast.error(pick("가져오기 권한이 없습니다.", "No permission to import"));
+    if (!canCreate) {
+      toast.error(pick("가져오기 권한이 없습니다.", "No permission to import"));
+      return;
+    }
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error(pick("읽을 수 있는 시트가 없습니다.", "No readable sheet found."));
+      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+      const errors: string[] = [];
+      const rows = rawRows.map((row, index) => {
+        const rowNo = index + 2;
+        const sku = String(pickImportValue(row, ["sku", "master_sku", "master sku", "item"]) ?? "").trim().toUpperCase();
+        const qty = Number(pickImportValue(row, ["qty", "quantity"]));
+        const unitPrice = parseMoneyValue(pickImportValue(row, ["unit_price", "unit price", "price", "cost", "invoice_price", "invoice price"]));
+        let error: string | null = null;
+        if (!sku || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+          error = pick("sku, qty, unit_price가 필요합니다.", "sku, qty, unit_price are required");
+          errors.push(`Row ${rowNo}: ${error}`);
+        }
+        return {
+          rowNo,
+          sku,
+          qty: Number.isFinite(qty) ? qty : null,
+          unitPrice: Number.isFinite(unitPrice) ? unitPrice : null,
+          error,
+        };
+      });
+      setInvoiceImportPreview({ file, rows, errors });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("Excel 파일을 읽지 못했습니다.", "Failed to read Excel file"));
+      if (importFileRef.current) importFileRef.current.value = "";
+    }
+  }
+
+  async function importExcel(file: File) {
+    if (!detail) return false;
+    if (!canCreate) {
+      toast.error(pick("가져오기 권한이 없습니다.", "No permission to import"));
+      return false;
+    }
     setUploadingImport(true);
     try {
       const formData = new FormData();
@@ -534,11 +636,38 @@ export function InvoiceReviewPage() {
       if (errors.length) console.warn("Invoice import errors", errors);
       await refreshBoth();
       if (showImportHistory) await loadImportBatches(detail.id);
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : pick("가져오기에 실패했습니다.", "Import failed"));
+      return false;
     } finally {
       setUploadingImport(false);
       if (importFileRef.current) importFileRef.current.value = "";
+    }
+  }
+
+  async function uploadInvoiceImportPreview() {
+    if (!invoiceImportPreview) return;
+    const ok = await importExcel(invoiceImportPreview.file);
+    if (ok) setInvoiceImportPreview(null);
+  }
+
+  async function openSkuPriceHistoryPopup(sku: string) {
+    if (!detail) return;
+    setPriceHistoryPopup({ sku, rows: [] });
+    setPriceHistorySortDirection("desc");
+    setLoadingPriceHistoryPopup(true);
+    try {
+      const params = new URLSearchParams({ factoryId: detail.factoryId, sku });
+      const res = await fetch(apiPath(`/api/production/price-history?${params.toString()}`), { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || pick("가격 이력을 불러오지 못했습니다.", "Failed to load price history"));
+      const rows = (json.data ?? []).filter((row: SkuPriceHistoryRow) => row.sku === sku);
+      setPriceHistoryPopup({ sku, rows });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("가격 이력을 불러오지 못했습니다.", "Failed to load price history"));
+    } finally {
+      setLoadingPriceHistoryPopup(false);
     }
   }
 
@@ -696,6 +825,8 @@ export function InvoiceReviewPage() {
   const totals = useMemo(() => {
     if (!detail) {
       return {
+        skuCount: 0,
+        qtyTotal: 0,
         invoiceTotal: 0,
         expectedTotal: 0,
         netDiff: 0,
@@ -708,6 +839,8 @@ export function InvoiceReviewPage() {
     }
     return detail.items.reduce(
       (acc, item) => {
+        acc.skuCount += 1;
+        acc.qtyTotal += item.qty;
         acc.invoiceTotal += item.qty * item.invoiceUnitPrice;
         if (item.expectedUnitPrice != null) acc.expectedTotal += item.qty * item.expectedUnitPrice;
         if (item.diffUnitPrice != null) {
@@ -722,6 +855,8 @@ export function InvoiceReviewPage() {
         return acc;
       },
       {
+        skuCount: 0,
+        qtyTotal: 0,
         invoiceTotal: 0,
         expectedTotal: 0,
         netDiff: 0,
@@ -733,31 +868,18 @@ export function InvoiceReviewPage() {
       },
     );
   }, [detail]);
+  const sortedPopupPriceRows = useMemo(() => {
+    const rows = priceHistoryPopup?.rows ?? [];
+    return [...rows].sort((left, right) => {
+      const compared = left.effectiveDate.localeCompare(right.effectiveDate);
+      return priceHistorySortDirection === "asc" ? compared : -compared;
+    });
+  }, [priceHistoryPopup, priceHistorySortDirection]);
 
   return (
     <div className="flex h-full min-h-0 bg-[#f6f7f9] px-5 py-5 text-[#1a1917]">
       <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold">{pick("Invoices", "Invoices")}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {pick(
-                "Invoice의 SKU별 가격을 적용 시점의 기준 단가와 비교하여 검수하고 관리합니다.",
-                "Review and manage invoice SKU prices by comparing them with the standard unit price effective at the applicable date.",
-              )}
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={!canCreate}
-            onClick={() => setShowCreateForm((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-md bg-[#1a5cdb] px-3 py-2 text-sm font-medium text-white hover:bg-[#174fbf] disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" /> {pick("Invoice 추가", "Add Invoice")}
-          </button>
-        </div>
-
-        {showCreateForm ? (
+        {isCreateFormOpen ? (
           <div className="rounded-lg border bg-white p-4 shadow-sm">
             <div className="grid gap-3 md:grid-cols-5">
               <label className="block text-xs font-medium md:col-span-1">
@@ -804,7 +926,7 @@ export function InvoiceReviewPage() {
                 <button type="button" onClick={() => void createInvoice()} className="h-9 rounded-md bg-[#111827] px-3 text-sm font-medium text-white">
                   {pick("저장", "Save")}
                 </button>
-                <button type="button" onClick={() => setShowCreateForm(false)} className="h-9 rounded-md border px-3 text-sm">
+                <button type="button" onClick={() => setCreateFormOpen(false)} className="h-9 rounded-md border px-3 text-sm">
                   {pick("취소", "Cancel")}
                 </button>
               </div>
@@ -819,7 +941,6 @@ export function InvoiceReviewPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") void loadInvoices(); }}
                 placeholder={pick("Invoice, 공장, 컨테이너 검색", "Search invoice, factory, container")}
                 className="h-9 w-full rounded-md border px-3 text-sm"
               />
@@ -854,50 +975,45 @@ export function InvoiceReviewPage() {
               ) : invoices.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">{pick("Invoice가 없습니다.", "No invoices found.")}</div>
               ) : (
-                <table className="w-full min-w-[520px] text-left text-xs">
-                  <thead className="sticky top-0 bg-[#fafaf7] uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2">{pick("Invoice", "Invoice")}</th>
-                      <th className="px-3 py-2">{pick("공장", "Factory")}</th>
-                      <th className="whitespace-nowrap px-3 py-2">{pick("컨테이너", "Container")}</th>
-                      <th className="px-3 py-2">{pick("날짜", "Date")}</th>
-                      <th className="px-3 py-2">{pick("상태", "Status")}</th>
-                      <th className="px-3 py-2 text-center">{pick("오류", "Errors")}</th>
-                      <th className="px-3 py-2 text-right">{pick("금액", "Price")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoices.map((invoice) => {
-                      const bucket = STATUS_TO_BUCKET[normalizeReviewStatus(invoice.status)];
-                      const bucketLabel = BUCKETS.find((b) => b.key === bucket);
-                      return (
-                        <tr
-                          key={invoice.id}
-                          onClick={() => setExpandedId(invoice.id)}
-                          className={`cursor-pointer border-t hover:bg-[#faf8f2] ${expandedId === invoice.id ? "bg-[#ebf0fd]" : ""}`}
-                        >
-                          <td className="px-3 py-2 font-mono font-semibold">{invoice.invoiceNumber}</td>
-                          <td className="max-w-28 truncate px-3 py-2">{invoice.factoryName}</td>
-                          <td className="px-3 py-2 font-mono">{invoice.containerNumber || "-"}</td>
-                          <td className="px-3 py-2 font-mono">{invoice.invoiceDate}</td>
-                          <td className="px-3 py-2">
+                <div>
+                  {invoices.map((invoice) => {
+                    const bucket = STATUS_TO_BUCKET[normalizeReviewStatus(invoice.status)];
+                    const bucketLabel = BUCKETS.find((b) => b.key === bucket);
+                    return (
+                      <div
+                        key={invoice.id}
+                        onClick={() => setExpandedId(invoice.id)}
+                        className={`cursor-pointer border-t px-3 py-2.5 hover:bg-[#faf8f2] ${expandedId === invoice.id ? "bg-[#ebf0fd]" : ""}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate font-mono text-sm font-semibold">{invoice.invoiceNumber}</span>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {invoice.errorCount > 0 ? (
+                              <span className="inline-flex rounded-full bg-[#fff5f5] px-2 py-0.5 text-[10px] font-bold text-[#c42b2b]">
+                                {invoice.errorCount}{pick("건", "")}
+                              </span>
+                            ) : null}
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${BUCKET_BADGE_CLASS[bucket]}`}>
                               {bucketLabel ? pick(bucketLabel.ko, bucketLabel.en) : invoice.status}
                             </span>
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            {invoice.errorCount > 0 ? (
-                              <span className="inline-flex rounded-full bg-[#fff5f5] px-2 py-0.5 font-bold text-[#c42b2b]">{invoice.errorCount}건</span>
+                          </div>
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="min-w-0 flex-1 truncate">
+                            {invoice.factoryName} ·{" "}
+                            {invoice.containerNumber ? (
+                              <span className="font-semibold text-[#1a5cdb]">{invoice.containerNumber}</span>
                             ) : (
-                              <span className="text-muted-foreground">-</span>
+                              pick("컨테이너 없음", "No container")
                             )}
-                          </td>
-                          <td className="px-3 py-2 text-right font-semibold">{money(invoice.invoicePriceTotal)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </span>
+                          <span className="shrink-0 font-semibold text-[#1a5cdb]">{invoice.invoiceDate}</span>
+                          <span className="shrink-0 font-semibold text-foreground">{money(invoice.invoicePriceTotal)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
@@ -914,7 +1030,13 @@ export function InvoiceReviewPage() {
                   <div>
                     <h2 className="text-lg font-bold">{detail.invoiceNumber}</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {detail.factoryName} · {detail.containerNumber ? `Container ${detail.containerNumber}` : pick("컨테이너 없음", "No container")} · {pick("Invoice Date", "Invoice Date")} {detail.invoiceDate}
+                      {detail.factoryName} · {pick("Container", "Container")} :{" "}
+                      {detail.containerNumber ? (
+                        <span className="font-semibold text-[#1a5cdb]">{detail.containerNumber}</span>
+                      ) : (
+                        pick("없음", "None")
+                      )}{" "}
+                      · {pick("Invoice Date", "Invoice Date")} : <span className="font-semibold text-[#1a5cdb]">{detail.invoiceDate}</span>
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -989,6 +1111,15 @@ export function InvoiceReviewPage() {
                           {pick("취소", "Cancel")}
                         </button>
                       </div>
+                      <label className="block text-xs font-medium md:col-span-5">
+                        {pick("메모", "Memo")}
+                        <textarea
+                          value={editInvoice.note}
+                          onChange={(e) => setEditInvoice((cur) => ({ ...cur, note: e.target.value }))}
+                          className="mt-1 min-h-24 w-full resize-y rounded-md border px-3 py-2 text-sm"
+                          placeholder={pick("공장 확인 요청, credit 처리 예정, 승인 메모 등 내부 메모를 입력하세요.", "Enter internal notes such as factory confirmation, credit follow-up, or approval notes.")}
+                        />
+                      </label>
                     </div>
                   </div>
                 ) : null}
@@ -1017,7 +1148,7 @@ export function InvoiceReviewPage() {
                       type="file"
                       accept=".xlsx,.xls,.csv"
                       className="hidden"
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void importExcel(f); }}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void previewInvoiceImport(f); }}
                     />
                     <button
                       type="button"
@@ -1032,14 +1163,14 @@ export function InvoiceReviewPage() {
                       onClick={() => importFileRef.current?.click()}
                       className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
                     >
-                      <FileUp className="h-3.5 w-3.5" /> {uploadingImport ? pick("업로드 중...", "Uploading...") : pick("Excel 업로드", "Excel Upload")}
+                      <FileUp className="h-3.5 w-3.5" /> {uploadingImport ? pick("업로드 중...", "Uploading...") : pick("Invoice 업로드", "Invoice Upload")}
                     </button>
                     <button
                       type="button"
                       onClick={() => void openImportHistory()}
                       className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50"
                     >
-                      <History className="h-3.5 w-3.5" /> {pick("업로드 이력", "Import History")}
+                      <History className="h-3.5 w-3.5" /> {pick("Invoice 업로드 이력", "Invoice Imports")}
                     </button>
                     <button
                       type="button"
@@ -1076,7 +1207,7 @@ export function InvoiceReviewPage() {
                         className="text-xs text-[#1a5cdb] hover:underline"
                         href={apiPath(`/api/production/price-history/files/${detail.attachmentFileId}`)}
                       >
-                        {pick("원본 다운로드", "Download original")}
+                        {pick("첨부파일 다운로드", "Download attachment")}
                       </a>
                     ) : null}
                     {detail.signedAttachmentFileId ? (
@@ -1217,16 +1348,17 @@ export function InvoiceReviewPage() {
                         {detail.items.map((item) => (
                           <tr
                             key={item.id}
-                            title={pick("더블클릭하여 가격 이력 조회", "Double-click to view price history")}
+                            title={pick("클릭하여 가격 이력 간단 조회, 더블클릭하여 Price History 탭 열기", "Click for a quick price history view, double-click to open the Price History tab")}
+                            onClick={() => void openSkuPriceHistoryPopup(item.sku)}
                             onDoubleClick={() =>
                               window.open(
-                                withBasePath(`/production/invoice-price-control?tab=price-history&sku=${encodeURIComponent(item.sku)}`),
+                                withBasePath(`/production/invoice-price-control?tab=price-history&sku=${encodeURIComponent(item.sku)}&currentOnly=false`),
                                 "_blank"
                               )
                             }
                             className="cursor-pointer border-t hover:bg-[#faf8f2]"
                           >
-                            <td className="px-3 py-2" onDoubleClick={(e) => e.stopPropagation()}>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                               {isExportableDifference(item) ? (
                                 <input
                                   type="checkbox"
@@ -1262,7 +1394,7 @@ export function InvoiceReviewPage() {
                                 {item.result === "no_price_history" && pick("가격 이력 없음", "No Price History")}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-right" onDoubleClick={(e) => e.stopPropagation()}>
+                            <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
@@ -1279,7 +1411,7 @@ export function InvoiceReviewPage() {
                         {detail.items.length === 0 ? (
                           <tr>
                             <td colSpan={9} className="px-3 py-10 text-center text-muted-foreground">
-                              {pick("라인이 없습니다. 라인 추가 또는 Excel 업로드로 SKU를 등록하세요.", "No lines yet. Add a line or upload an Excel file.")}
+                              {pick("라인이 없습니다. 라인 추가 또는 Invoice 업로드로 SKU를 등록하세요.", "No lines yet. Add a line or upload an invoice file.")}
                             </td>
                           </tr>
                         ) : null}
@@ -1287,7 +1419,12 @@ export function InvoiceReviewPage() {
                       {detail.items.length > 0 ? (
                         <tfoot>
                           <tr className="border-t bg-[#fafaf7] font-semibold">
-                            <td className="px-3 py-2" colSpan={3}>{pick("합계", "Total")}</td>
+                            <td className="px-3 py-2" />
+                            <td className="whitespace-nowrap px-3 py-2">
+                              <span className="mr-3">{pick("합계", "Total")}</span>
+                              <span>{pick(`SKU ${totals.skuCount}개`, `${totals.skuCount} SKUs`)}</span>
+                            </td>
+                            <td className="px-3 py-2 text-right">{totals.qtyTotal}</td>
                             <td className="px-3 py-2 text-right">{money(totals.invoiceTotal)}</td>
                             <td className="px-3 py-2 text-right">{money(totals.expectedTotal)}</td>
                             <td />
@@ -1314,14 +1451,189 @@ export function InvoiceReviewPage() {
           </div>
         </div>
       </div>
+      {priceHistoryPopup ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6" onMouseDown={() => setPriceHistoryPopup(null)}>
+          <div className="flex max-h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+              <div>
+                <div className="text-lg font-semibold">{priceHistoryPopup.sku}</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {pick("SKU별 전체 가격 변경 이력을 빠르게 확인합니다.", "Quickly review the full SKU price history.")}
+                </div>
+              </div>
+              <button type="button" onClick={() => setPriceHistoryPopup(null)} className="rounded-md border px-3 py-1.5 text-sm">
+                {pick("닫기", "Close")}
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-5">
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="sticky top-0 bg-[#fafaf7] text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => setPriceHistorySortDirection((direction) => (direction === "asc" ? "desc" : "asc"))}
+                          className="inline-flex items-center gap-1 font-semibold hover:text-foreground"
+                        >
+                          {pick("적용일", "Effective")}
+                          <span>{priceHistorySortDirection === "asc" ? "↑" : "↓"}</span>
+                        </button>
+                      </th>
+                      <th className="px-3 py-2 text-right">{pick("가격", "Price")}</th>
+                      <th className="px-3 py-2 text-right">{pick("이전가격", "Previous Price")}</th>
+                      <th className="px-3 py-2 text-right">{pick("변동액", "Change")}</th>
+                      <th className="px-3 py-2 text-right">{pick("변동율", "Change Rate")}</th>
+                      <th className="px-3 py-2">{pick("변경사유", "Reason")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedPopupPriceRows.map((row) => (
+                      <tr key={row.id} className="border-t">
+                        <td className="px-3 py-2 font-mono">{row.effectiveDate}</td>
+                        <td className="px-3 py-2 text-right font-semibold">{money(row.unitPrice, row.currency)}</td>
+                        <td className="px-3 py-2 text-right">{money(row.previousPrice, row.currency)}</td>
+                        <td className={`px-3 py-2 text-right font-semibold ${row.changeAmount == null ? "text-muted-foreground" : row.changeAmount > 0 ? "text-[#c42b2b]" : row.changeAmount < 0 ? "text-[#0a8f5b]" : ""}`}>
+                          {row.changeAmount == null ? "-" : signedMoney(row.changeAmount)}
+                        </td>
+                        <td className={`px-3 py-2 text-right ${row.changeRate == null ? "text-muted-foreground" : row.changeRate > 0 ? "text-[#c42b2b]" : row.changeRate < 0 ? "text-[#0a8f5b]" : ""}`}>
+                          {pct(row.changeRate)}
+                        </td>
+                        <td className="max-w-72 truncate px-3 py-2" title={row.reason ?? ""}>{row.reason || "-"}</td>
+                      </tr>
+                    ))}
+                    {sortedPopupPriceRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">
+                          {loadingPriceHistoryPopup ? pick("가격 이력을 불러오는 중입니다.", "Loading price history.") : pick("가격 이력이 없습니다.", "No price history.")}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {invoiceImportPreview ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onMouseDown={() => {
+            setInvoiceImportPreview(null);
+            if (importFileRef.current) importFileRef.current.value = "";
+          }}
+        >
+          <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
+              <div className="min-w-0">
+                <div className="text-lg font-semibold">{pick("업로드 전 미리보기", "Upload Preview")}</div>
+                <div className="mt-1 space-y-0.5 text-sm text-muted-foreground">
+                  <div className="min-w-0">
+                    {pick("파일 이름", "File Name")}:{" "}
+                    <span className="break-words font-medium text-foreground">{invoiceImportPreview.file.name}</span>
+                  </div>
+                  <div className="min-w-0">
+                    {pick("Invoice:", "Invoice:")}{" "}
+                    <span className="font-bold text-[#1a5cdb]">{detail?.invoiceNumber ?? "-"}</span>
+                    {" · "}
+                    {pick("공장명:", "Factory:")}{" "}
+                    <span className="font-bold text-[#1a5cdb]">{detail?.factoryName ?? "-"}</span>
+                    {" · "}
+                    {pick("Invoice Date", "Invoice Date")}{" "}
+                    <span className="font-bold text-[#1a5cdb]">{detail?.invoiceDate ?? "-"}</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setInvoiceImportPreview(null);
+                  if (importFileRef.current) importFileRef.current.value = "";
+                }}
+                className="shrink-0 whitespace-nowrap rounded-md border px-3 py-1.5 text-sm"
+              >
+                {pick("닫기", "Close")}
+              </button>
+            </div>
+            <div className="max-h-[55vh] overflow-auto p-5">
+              <div className="mb-3 flex flex-wrap gap-2 text-sm">
+                <span className="rounded-full bg-slate-100 px-3 py-1">{pick("전체", "Total")} {invoiceImportPreview.rows.length}</span>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+                  {pick("업로드 가능", "Valid")} {invoiceImportPreview.rows.length - invoiceImportPreview.errors.length}
+                </span>
+                <span className="rounded-full bg-red-50 px-3 py-1 text-red-700">{pick("스킵 예정", "Will skip")} {invoiceImportPreview.errors.length}</span>
+              </div>
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Row</th>
+                    <th className="px-3 py-2">SKU</th>
+                    <th className="px-3 py-2 text-right">{pick("수량", "Qty")}</th>
+                    <th className="px-3 py-2 text-right">{pick("Invoice 단가", "Invoice Price")}</th>
+                    <th className="px-3 py-2">{pick("상태", "Status")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoiceImportPreview.rows.slice(0, 100).map((row) => (
+                    <tr key={row.rowNo} className="border-t">
+                      <td className="px-3 py-2 font-mono">{row.rowNo}</td>
+                      <td className="px-3 py-2 font-mono font-semibold">{row.sku || "-"}</td>
+                      <td className="px-3 py-2 text-right">{row.qty ?? "-"}</td>
+                      <td className="px-3 py-2 text-right">{row.unitPrice == null ? "-" : money(row.unitPrice)}</td>
+                      <td className={`px-3 py-2 ${row.error ? "text-red-600" : "text-emerald-700"}`}>{row.error ?? pick("가능", "Ready")}</td>
+                    </tr>
+                  ))}
+                  {invoiceImportPreview.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-10 text-center text-muted-foreground">
+                        {pick("미리보기할 행이 없습니다.", "No rows to preview.")}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+              {invoiceImportPreview.rows.length > 100 ? (
+                <div className="mt-3 text-xs text-muted-foreground">{pick("처음 100행만 미리보기로 표시합니다.", "Showing first 100 rows only.")}</div>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t px-5 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setInvoiceImportPreview(null);
+                  if (importFileRef.current) importFileRef.current.value = "";
+                }}
+                className="rounded-md border px-4 py-2 text-sm"
+              >
+                {pick("취소", "Cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={uploadingImport || invoiceImportPreview.rows.length - invoiceImportPreview.errors.length <= 0}
+                onClick={() => void uploadInvoiceImportPreview()}
+                className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {uploadingImport ? pick("업로드 중...", "Uploading...") : pick("업로드 실행", "Upload")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {showImportHistory ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
-          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6"
+          onMouseDown={() => {
+            setShowImportHistory(false);
+            setImportImpact(null);
+          }}
+        >
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <div className="text-lg font-semibold">{pick("Invoice Excel 업로드 이력", "Invoice Excel Import History")}</div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  {pick("원본 파일 기준으로 입력된 라인을 확인하고, 잘못 올린 업로드분을 삭제할 수 있습니다.", "Review line items by source file and delete a mistaken import batch.")}
+                  {pick("파일명을 클릭하면 업로드 원본을 다운로드할 수 있고, 잘못 올린 업로드분은 삭제할 수 있습니다.", "Click a file name to download the uploaded source file, or delete a mistaken import batch.")}
                 </div>
               </div>
               <button
@@ -1465,8 +1777,8 @@ export function InvoiceReviewPage() {
       ) : null}
 
       {showAuditHistory ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
-          <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6" onMouseDown={() => setShowAuditHistory(false)}>
+          <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <div className="text-lg font-semibold">{pick("Invoice 변경 이력", "Invoice Change History")}</div>

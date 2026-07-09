@@ -111,9 +111,10 @@ function pickExcelValue(row: Record<string, unknown>, names: string[]) {
 
 type PriceHistoryPageProps = {
   initialSku?: string;
+  initialCurrentOnly?: boolean;
 };
 
-export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
+export function PriceHistoryPage({ initialSku, initialCurrentOnly }: PriceHistoryPageProps = {}) {
   const { pick } = useI18n();
   const { can, ready } = usePermissions();
   const canCreate = ready && can("invoice-price-control", "create");
@@ -129,7 +130,7 @@ export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
   const [search, setSearch] = useState(initialSku ?? "");
   const [factoryId, setFactoryId] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
-  const [currentOnly, setCurrentOnly] = useState(true);
+  const [currentOnly, setCurrentOnly] = useState(initialCurrentOnly ?? true);
   const [form, setForm] = useState<PriceForm>(emptyForm);
   const [uploadEffectiveDate, setUploadEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
   const [uploadPreview, setUploadPreview] = useState<UploadPreview | null>(null);
@@ -697,8 +698,8 @@ export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
         </div>
       </div>
       {showUploadHistory ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="flex max-h-[88vh] w-[96vw] max-w-[1500px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onMouseDown={() => setShowUploadHistory(false)}>
+          <div className="flex max-h-[88vh] w-[96vw] max-w-[1500px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <div className="text-lg font-semibold">{pick("업로드 이력", "Upload History")}</div>
@@ -856,8 +857,14 @@ export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
       ) : null}
 
       {uploadPreview ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onMouseDown={() => {
+            setUploadPreview(null);
+            if (fileRef.current) fileRef.current.value = "";
+          }}
+        >
+          <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <div className="text-lg font-semibold">{pick("업로드 전 미리보기", "Upload Preview")}</div>
@@ -929,8 +936,8 @@ export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
       ) : null}
 
       {deleteImpact ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onMouseDown={() => setDeleteImpact(null)}>
+          <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
             <div className="border-b px-5 py-4">
               <div className="text-lg font-semibold">
                 {deleteImpact.mode === "delete" ? pick("삭제 전 영향 row 확인", "Review Rows Before Delete") : pick("업로드 영향 row", "Upload Rows")}
