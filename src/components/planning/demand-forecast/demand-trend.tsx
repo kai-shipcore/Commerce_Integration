@@ -154,7 +154,9 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
           const diffPct = actual != null && actual > 0 ? ((p.yhat - actual) / actual) * 100 : null;
           return [diffPct != null ? `${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}%` : "—", p.run_date, p.lead];
         }),
-        hovertemplate: "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]} (%{customdata[2]}w ahead)<extra></extra>",
+        hovertemplate: effectiveLead === "adaptive"
+          ? "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]} (%{customdata[2]}w ahead)<extra></extra>"
+          : "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]}<extra></extra>",
       } as Plotly.Data);
     }
 
@@ -264,7 +266,7 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
               onClick={() => setLead("adaptive")}
               className={trendPillClass(effectiveLead === "adaptive")}
             >
-              {pick("자동", "Adaptive")}
+              {pick("기본", "Default")}
             </button>
             {LEAD_PRESETS.map((preset) => {
               const available = availableLeads.has(preset);
