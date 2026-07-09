@@ -25,7 +25,7 @@ export function InvoicePriceControlTabs() {
         <div className="flex items-start gap-2">
           <ReceiptText className="mt-1 h-5 w-5" />
           <div>
-            <h1 className="text-lg font-semibold">{pick("Invoice & Price Control", "Invoice & Price Control")}</h1>
+            <h1 className="text-lg font-semibold">{pick("Invoice·가격 검수", "Invoice & Price Control")}</h1>
             <p className="mt-1 text-xs text-muted-foreground">
               {pick(
                 "Invoice 검수와 공장별 Price List 이력을 관리합니다.",

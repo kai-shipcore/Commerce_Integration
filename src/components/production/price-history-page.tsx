@@ -129,7 +129,7 @@ export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
   const [search, setSearch] = useState(initialSku ?? "");
   const [factoryId, setFactoryId] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
-  const [currentOnly, setCurrentOnly] = useState(false);
+  const [currentOnly, setCurrentOnly] = useState(true);
   const [form, setForm] = useState<PriceForm>(emptyForm);
   const [uploadEffectiveDate, setUploadEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
   const [uploadPreview, setUploadPreview] = useState<UploadPreview | null>(null);
@@ -144,7 +144,7 @@ export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
   const [uploadCreatedTo, setUploadCreatedTo] = useState("");
   const [uploadHistoryPage, setUploadHistoryPage] = useState(1);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(25);
 
   async function loadFactories() {
     const res = await fetch(apiPath("/api/production/price-history?mode=factories&active=true"), { cache: "no-store" });
@@ -584,7 +584,7 @@ export function PriceHistoryPage({ initialSku }: PriceHistoryPageProps = {}) {
                     }}
                     className="h-8 rounded-md border bg-white px-2 text-foreground"
                   >
-                    {[20, 50, 100].map((size) => (
+                    {[25, 50, 100].map((size) => (
                       <option key={size} value={size}>{size}</option>
                     ))}
                   </select>

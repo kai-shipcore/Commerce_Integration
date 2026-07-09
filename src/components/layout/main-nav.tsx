@@ -60,6 +60,7 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   "seat-cover-parts": "nav.parts",
   "seat-cover-sizes": "nav.seatCoverParts",
   factories: "nav.factories",
+  "invoice-price-control": "nav.invoicePriceControl",
   integrations: "nav.marketplaceApis",
   "audit-log": "nav.auditLog",
   "warehouse-admin": "nav.warehouse",
