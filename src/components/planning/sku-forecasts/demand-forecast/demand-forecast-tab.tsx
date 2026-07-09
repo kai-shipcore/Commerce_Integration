@@ -272,6 +272,10 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ── Sales-history-only fallback (intermittent SKUs, no forecast) ─────────
+  const [history, setHistory] = useState<{ dates: string[]; values: number[] } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   // ── Backtest state ────────────────────────────────────────────────────────
   const [btCutoff, setBtCutoff] = useState<Date>(defaultBtCutoff);
   const [btHorizon, setBtHorizon] = useState(13);
@@ -341,11 +345,32 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
       .finally(() => setLoading(false));
   }, [sku.sku, forwardModel, extraHorizon, level]);
 
+  // No forecast (intermittent SKU) → fetch plain sales history instead
+  useEffect(() => {
+    if (!notFound || !sku.sku) return;
+    let cancelled = false;
+    const load = async () => {
+      setHistoryLoading(true);
+      try {
+        const res = await fetch(apiPath(`${FORECAST_API_BASE}/${encodeURIComponent(sku.sku)}/history`), { signal: AbortSignal.timeout(10_000) });
+        const json = res.ok ? (await res.json() as { dates: string[]; values: number[] }) : null;
+        if (!cancelled) setHistory(json);
+      } catch {
+        if (!cancelled) setHistory(null);
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [notFound, sku.sku]);
+
   // Reset forward and backtest state when SKU changes
   useEffect(() => {
     setForwardWeeks(13);
     setInputWeeks("13");
     setExtraHorizon(0);
+    setHistory(null);
     setBtResult(null);
     setBtError(null);
     setBtCutoff(defaultBtCutoff());
@@ -482,6 +507,48 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     }
     return null;
   }, [sku.total_stock, forecastValues, forecastDates]);
+
+  // ── Sales-history-only figure (intermittent SKUs) ────────────────────────
+  const historyFig = useMemo(() => {
+    if (!history || history.dates.length === 0) return null;
+    const first = history.dates[0];
+    const last = history.dates[history.dates.length - 1];
+    const viewStart = historyStart
+      ? format(historyStart, "yyyy-MM-dd")
+      : historyWeeks > 0
+        ? format(subWeeks(lastSalesWeek, historyWeeks), "yyyy-MM-dd")
+        : first;
+    return {
+      data: [{
+        type: "scatter",
+        x: history.dates,
+        y: history.values,
+        mode: "lines+markers",
+        name: pick(language, "실제 수요", "Actual demand"),
+        line: { color: "#4C72B0", width: 2 },
+        marker: { size: 5 },
+        hovertemplate: "Actual: %{y:.0f}<extra></extra>",
+      } as Plotly.Data],
+      layout: {
+        autosize: true,
+        margin: { t: 40, r: 20, b: 60, l: 60 },
+        paper_bgcolor: "rgba(0,0,0,0)",
+        plot_bgcolor: "rgba(0,0,0,0)",
+        font: { size: 11 },
+        showlegend: false,
+        xaxis: {
+          showgrid: true,
+          gridcolor: "#F0F0F0",
+          autorange: false,
+          range: [shiftDate(viewStart, -4), shiftDate(last, 4)],
+          minallowed: viewStart < first ? viewStart : first,
+          maxallowed: shiftDate(last, 4),
+        },
+        yaxis: { showgrid: true, gridcolor: "#F0F0F0", rangemode: "tozero" },
+        hovermode: "x unified",
+      } as Partial<Plotly.Layout>,
+    };
+  }, [history, historyWeeks, historyStart, language]);
 
   // ── Backtest chart figure ─────────────────────────────────────────────────
   const btDisplayFig = useMemo(() => {
@@ -623,12 +690,84 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
     return (
       <div className="space-y-3">
         {sectionHeader}
-        <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
-          <p className="font-medium">{pick(language, "예측 없음", "No forecast available")}</p>
-          <p className="text-xs">
-            {pick(language, "이 SKU는 간헐적 수요 SKU이거나 아직 예측이 실행되지 않았습니다.", "This SKU is classified as intermittent demand or has not been forecasted yet.")}
-          </p>
-        </div>
+        {historyLoading && (
+          <div className="planning-panel flex h-64 items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {pick(language, "판매 이력 불러오는 중...", "Loading sales history...")}
+          </div>
+        )}
+        {!historyLoading && historyFig && (
+          <div className="planning-panel rounded-lg border p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-medium text-muted-foreground">{pick(language, "판매 이력", "Sales history")}</span>
+                <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
+                  {pick(language, "간헐적 SKU — 예측 없음", "Intermittent — no forecast")}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>{pick(language, "기간", "History")}</span>
+                <div className="flex rounded-md border text-xs">
+                  {HISTORY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setHistoryWeeks(opt.value); setHistoryStart(null); }}
+                      className={`px-2.5 py-1 first:rounded-l-md ${
+                        historyStart === null && historyWeeks === opt.value
+                          ? "bg-foreground text-background"
+                          : "text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  <Popover open={calOpen} onOpenChange={setCalOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className={`flex items-center gap-1 rounded-r-md border-l px-2.5 py-1 ${
+                          historyStart !== null ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <CalendarIcon className="h-3 w-3" />
+                        {historyStart ? format(historyStart, "MMM d") : pick(language, "날짜", "Date")}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={historyStart ?? undefined}
+                        onSelect={(date) => { if (date) { setHistoryStart(date); setCalOpen(false); } }}
+                        captionLayout="dropdown"
+                        disabled={(day) => day.getDay() !== 1 || day > lastSalesWeek || (historyFromDate !== null && day < historyFromDate)}
+                        startMonth={historyFromDate ?? undefined}
+                        endMonth={lastSalesWeek}
+                        fromDate={historyFromDate ?? undefined}
+                        toDate={lastSalesWeek}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            </div>
+            <Plot
+              data={historyFig.data}
+              layout={historyFig.layout}
+              config={{ responsive: true, displayModeBar: false }}
+              style={{ width: "100%", height: "380px" }}
+              useResizeHandler
+            />
+          </div>
+        )}
+        {!historyLoading && !historyFig && (
+          <div className="planning-panel flex h-64 flex-col items-center justify-center gap-2 rounded-lg border text-sm text-muted-foreground">
+            <p className="font-medium">{pick(language, "예측 없음", "No forecast available")}</p>
+            <p className="text-xs">
+              {pick(language, "이 SKU는 간헐적 수요 SKU이거나 아직 예측이 실행되지 않았습니다.", "This SKU is classified as intermittent demand or has not been forecasted yet.")}
+            </p>
+          </div>
+        )}
       </div>
     );
   }
