@@ -19,6 +19,17 @@ export async function middleware(req: NextRequest) {
     secureCookie: isSecureRequest,
   });
 
+  // Automation bypass: the weekly forecast cron triggers the velocity sync
+  // with a shared secret header instead of a session.
+  const syncToken = process.env.VELOCITY_SYNC_TOKEN;
+  if (
+    syncToken &&
+    pathStartsWithBaseAware(pathname, "/api/velocity/sync") &&
+    req.headers.get("x-sync-token") === syncToken
+  ) {
+    return NextResponse.next();
+  }
+
   // Public routes that don't require authentication
   const publicRoutes = ["/auth/signin", "/auth/signup", "/auth/forgot-password", "/auth/reset-password", "/auth/error", "/api/auth"];
   const isPublicRoute = publicRoutes.some((route) => pathStartsWithBaseAware(pathname, route));
