@@ -212,10 +212,10 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
     );
   };
 
-  const renderTh = (col: SortKey, label: string, right?: boolean) => (
+  const renderTh = (col: SortKey, label: string, right?: boolean, width?: string) => (
     <TableHead
       onClick={(e) => handleSort(col, e.shiftKey)}
-      className={`cursor-pointer select-none whitespace-nowrap text-xs ${right ? "text-right" : ""}`}
+      className={`cursor-pointer select-none whitespace-nowrap text-xs ${right ? "text-right" : ""} ${width ?? ""}`}
     >
       {label}
       {renderSortIcon(col)}
@@ -339,18 +339,19 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
 
       {/* ── Table ── */}
       <div className="rounded-md border">
-        <Table>
+        {/* table-fixed + explicit widths so columns don't reflow between pages/sorts */}
+        <Table className="table-fixed">
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
               {renderTh("unique_id", "SKU")}
-              {renderTh("segment", pick("세그먼트", "Segment"))}
-              {renderTh("model", pick("모델", "Model"))}
-              {renderTh("active_weeks", pick("이력 주 수", "Weeks of history"), true)}
-              {renderTh("demand_total", pick(`${data.weeks}주 수요`, `${data.weeks}W Demand`), true)}
-              <TableHead className="whitespace-nowrap text-right text-xs">{pick("주 평균", "Avg/wk")}</TableHead>
-              {renderTh("trend_pct", pick("4주 추세", "4W Trend"), true)}
-              {renderTh("last_sale_week", pick("마지막 판매", "Last sale"), true)}
-              {renderTh("forecast_total", pick(`${data.forecast_horizon_weeks}주 예측`, `${data.forecast_horizon_weeks}W Forecast`), true)}
+              {renderTh("segment", pick("세그먼트", "Segment"), false, "w-32")}
+              {renderTh("model", pick("모델", "Model"), false, "w-32")}
+              {renderTh("active_weeks", pick("이력 주 수", "Weeks of history"), true, "w-32")}
+              {renderTh("demand_total", pick(`${data.weeks}주 수요`, `${data.weeks}W Demand`), true, "w-28")}
+              <TableHead className="w-20 whitespace-nowrap text-right text-xs">{pick("주 평균", "Avg/wk")}</TableHead>
+              {renderTh("trend_pct", pick("4주 추세", "4W Trend"), true, "w-28")}
+              {renderTh("last_sale_week", pick("마지막 판매", "Last sale"), true, "w-40")}
+              {renderTh("forecast_total", pick(`${data.forecast_horizon_weeks}주 예측`, `${data.forecast_horizon_weeks}W Forecast`), true, "w-28")}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -362,7 +363,7 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
                   className="cursor-pointer"
                   onClick={() => router.push(`/planning/sku-forecasts?sku=${encodeURIComponent(row.unique_id)}`)}
                 >
-                  <TableCell className="font-mono text-xs text-primary">{row.unique_id}</TableCell>
+                  <TableCell className="truncate font-mono text-xs text-primary" title={row.unique_id}>{row.unique_id}</TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${badge.cls}`}>
                       {pick(badge.ko, badge.en)}
