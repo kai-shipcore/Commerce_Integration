@@ -441,6 +441,31 @@ export function SegmentationOverview({ refreshKey = 0 }: { refreshKey?: number }
                   </td>
                 </tr>
               ))}
+              <tr
+                className="hover:bg-muted/30 cursor-pointer border-t"
+                onClick={() => {
+                  const q = selectedTypes.length === PRODUCT_TYPES.length
+                    ? ""
+                    : `?types=${encodeURIComponent(selectedTypes.join(","))}`;
+                  router.push(`/planning/demand-forecast/all-skus${q}`);
+                }}
+              >
+                <td className="px-5 py-3 font-medium text-muted-foreground">
+                  {pick("전체 SKU", "All SKUs")} →
+                </td>
+                <td className="px-5 py-3" />
+                <td className="px-5 py-3 text-right tabular-nums text-muted-foreground">
+                  {fmt.format(data.total_skus)}
+                </td>
+                <td className="px-5 py-3 text-right tabular-nums text-muted-foreground">
+                  {fmt.format(data.total_demand)}
+                </td>
+                <td className="px-5 py-3">
+                  <span className="text-xs text-muted-foreground">
+                    {pick("세그먼트 전체 디렉토리 보기", "Cross-segment directory")}
+                  </span>
+                </td>
+              </tr>
             </tbody>
           </table>
         </CardContent>

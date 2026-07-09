@@ -21,8 +21,8 @@ const SEGMENT_META: Record<string, { ko: { name: string; desc: React.ReactNode }
     en: { name: "Smooth / Full history", desc: "StatsForecast model — sufficient history for statistical time series forecasting." },
   },
   smooth_short: {
-    ko: { name: "스무스 / 단기 이력", desc: <><strong>낮은 신뢰도.</strong> V1 모델 — 스무스 수요 패턴이지만 52주 미만의 이력입니다. 전체 이력 재분류까지 남은 주 수 기준 정렬됩니다.</> },
-    en: { name: "Smooth / Short history", desc: <><strong>Low confidence.</strong> V1 model — smooth demand pattern but fewer than 52 weeks of history. Sorted by weeks until reclassification to full history.</> },
+    ko: { name: "스무스 / 단기 이력", desc: <><strong>낮은 신뢰도.</strong> Window Average 모델 — 스무스 수요 패턴이지만 52주 미만의 이력입니다. 전체 이력 재분류까지 남은 주 수 기준 정렬됩니다.</> },
+    en: { name: "Smooth / Short history", desc: <><strong>Low confidence.</strong> Window Average model — smooth demand pattern but fewer than 52 weeks of history. Sorted by weeks until reclassification to full history.</> },
   },
   intermittent: {
     ko: { name: "비정기", desc: "재입고 정책 — 불규칙하거나 드문 수요입니다." },
@@ -39,6 +39,21 @@ export function SegmentDetailPageHeader({ segment }: { segment: string }) {
     <div>
       <h1 className="text-xl font-semibold">{name}</h1>
       {desc && <p className="mt-0.5 text-sm text-muted-foreground">{desc}</p>}
+    </div>
+  );
+}
+
+export function AllSkusPageHeader() {
+  const { pick } = useI18n();
+  return (
+    <div>
+      <h1 className="text-xl font-semibold">{pick("전체 SKU", "All SKUs")}</h1>
+      <p className="mt-0.5 text-sm text-muted-foreground">
+        {pick(
+          "세그먼트 전체를 아우르는 SKU 디렉토리 — 수요, 추세, 분류, 예측을 한눈에 봅니다.",
+          "Cross-segment SKU directory — demand, momentum, classification, and forecast in one view.",
+        )}
+      </p>
     </div>
   );
 }
