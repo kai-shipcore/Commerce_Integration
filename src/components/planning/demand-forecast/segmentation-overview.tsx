@@ -143,7 +143,7 @@ function MetricCard({ label, value, sub }: { label: string; value: string; sub?:
   );
 }
 
-const WEEK_OPTIONS = [4, 8, 10, 13, 26, 52];
+const WEEK_OPTIONS = [1, 2, 4, 8, 10, 13, 26, 52];
 const PRODUCT_TYPES = ["Car Cover", "Seat Cover", "Floor Mat"] as const;
 
 function zeroedData(weeks: number): SegmentationData {
