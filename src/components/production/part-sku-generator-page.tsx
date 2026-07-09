@@ -7,8 +7,18 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { SeatDiagramPicker, FRONT_SEAT_ZONES } from "@/components/production/seat-diagram-picker";
+import type { SeatCoverPartRow } from "@/lib/seat-cover-part-catalog";
 
-type ProductionPart = { id: string; partName: string; description: string | null; isActive: boolean };
+type ProductionPart = {
+  id: string;
+  partName: string;
+  description: string | null;
+  seatRow: string | null;
+  position: string | null;
+  category: string | null;
+  isActive: boolean;
+};
 type ProductionCode = { id: string; code: string; description: string | null; isActive: boolean };
 type DesignerInitialRecord = { id: string; initial: string; designerName: string; isActive: boolean };
 
@@ -38,6 +48,7 @@ const SIDE_OPTIONS = [
   { value: "P", labelKo: "조수석 (Passenger)", labelEn: "Passenger" },
   { value: "MD", labelKo: "운전석 대칭 (Mirror Driver)", labelEn: "Mirror Driver" },
   { value: "MP", labelKo: "조수석 대칭 (Mirror Passenger)", labelEn: "Mirror Passenger" },
+  { value: "Universal", labelKo: "유니버설 (Universal)", labelEn: "Universal" },
 ] as const;
 
 const STATUS_OPTIONS = ["Pending", "In Progress", "Done"] as const;
@@ -62,6 +73,8 @@ export function PartSkuGeneratorPage() {
   const [partName, setPartName] = useState("");
   const [side, setSide] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [diagramRow, setDiagramRow] = useState<SeatCoverPartRow>("Front");
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
   const [partSkus, setPartSkus] = useState<PartSkuRecord[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -159,11 +172,37 @@ export function PartSkuGeneratorPage() {
   );
 
   const skuPreview = sessionReady && partName && code && side
-    ? [partName, makeAbbr.trim(), modelAbbr.trim(), code, initial, side].join("-")
+    ? [partName, makeAbbr.trim(), modelAbbr.trim(), code, initial, ...(side === "Universal" ? [] : [side])].join("-")
     : "";
 
   const selectedPartDescription = parts.find((p) => p.partName === partName)?.description ?? "";
   const selectedCodeDescription = codes.find((c) => c.code === code)?.description ?? "";
+
+  function matchesZone(part: ProductionPart, zone: (typeof FRONT_SEAT_ZONES)[number]) {
+    if (part.seatRow !== zone.seatRow || part.category !== zone.category) return false;
+    if (part.position === zone.position) return true;
+    return zone.position !== "Middle" && part.position === "Universal";
+  }
+
+  const zoneCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const zone of FRONT_SEAT_ZONES) {
+      counts[zone.id] = parts.filter((p) => matchesZone(p, zone)).length;
+    }
+    return counts;
+  }, [parts]);
+
+  const partOptions = useMemo(() => {
+    if (!selectedZoneId) return parts.map((p) => p.partName);
+    const zone = FRONT_SEAT_ZONES.find((z) => z.id === selectedZoneId);
+    if (!zone) return parts.map((p) => p.partName);
+    return parts.filter((p) => matchesZone(p, zone)).map((p) => p.partName);
+  }, [parts, selectedZoneId]);
+
+  function handleZoneSelect(zoneId: string) {
+    setSelectedZoneId((current) => (current === zoneId ? null : zoneId));
+    setPartName("");
+  }
 
   const filteredPartSkus = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -386,12 +425,20 @@ export function PartSkuGeneratorPage() {
         </div>
       </div>
 
+      <SeatDiagramPicker
+        row={diagramRow}
+        onRowChange={setDiagramRow}
+        selectedZoneId={selectedZoneId}
+        onZoneSelect={handleZoneSelect}
+        zoneCounts={zoneCounts}
+      />
+
       <div className="border-b border-[#e2dfd8] bg-[#f0eee9] px-6 py-4">
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_2fr_auto]">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold text-muted-foreground">Part</span>
             <SearchableSelect
-              options={parts.map((p) => p.partName)}
+              options={partOptions}
               value={partName}
               onChange={setPartName}
               placeholder={pick("선택", "Select")}

@@ -25,7 +25,7 @@ const PartSkuCreateSchema = z.object({
   modelAbbr: z.string().min(1),
   code: z.string().min(1),
   initial: z.string().min(1),
-  side: z.enum(["D", "P", "MD", "MP"]),
+  side: z.enum(["D", "P", "MD", "MP", "Universal"]),
 });
 
 export async function GET(request: NextRequest) {
@@ -68,14 +68,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = PartSkuCreateSchema.parse(body);
 
-    const sku = [
+    const skuSegments = [
       validated.partName,
       validated.makeAbbr,
       validated.modelAbbr,
       validated.code,
       validated.initial,
-      validated.side,
-    ].join("-");
+    ];
+    if (validated.side !== "Universal") skuSegments.push(validated.side);
+    const sku = skuSegments.join("-");
 
     const existing = await prisma.partSku.findUnique({ where: { sku } });
     if (existing) {
