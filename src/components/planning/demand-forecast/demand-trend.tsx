@@ -19,7 +19,7 @@ import { TREND_SEGMENT_OPTIONS, trendPillClass, type TrendSegment } from "./accu
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 interface ActualPoint   { week: string; segment: TrendSegment; y: number }
-interface PredictedPoint { week: string; lead: number; segment: TrendSegment; yhat: number }
+interface PredictedPoint { week: string; lead: number; segment: TrendSegment; yhat: number; run_date: string }
 interface ForwardPoint  { week: string; segment: TrendSegment; yhat: number; lo: number; hi: number }
 
 interface DemandTrendData {
@@ -136,9 +136,9 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         customdata: predicted.map((p) => {
           const actual = actualByWeek.get(p.week);
           const diffPct = actual != null && actual > 0 ? ((p.yhat - actual) / actual) * 100 : null;
-          return [diffPct != null ? `${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}%` : "—"];
+          return [diffPct != null ? `${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}%` : "—", p.run_date];
         }),
-        hovertemplate: "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<extra></extra>",
+        hovertemplate: "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]}<extra></extra>",
       } as Plotly.Data);
     }
 
