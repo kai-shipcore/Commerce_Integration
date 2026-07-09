@@ -32,13 +32,15 @@ interface DemandTrendData {
 
 const LEAD_PRESETS = [1, 2, 4, 8, 13];
 
+type LeadChoice = number | "adaptive";
+
 export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
   const { pick } = useI18n();
   const [data, setData] = useState<DemandTrendData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [segment, setSegment] = useState<TrendSegment>("all");
-  const [lead, setLead] = useState<number | null>(null);
+  const [lead, setLead] = useState<LeadChoice>("adaptive");
   const [showV1, setShowV1] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -90,10 +92,9 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
     return s;
   }, [data]);
 
-  const effectiveLead = useMemo(() => {
-    if (lead !== null && availableLeads.has(lead)) return lead;
-    const first = LEAD_PRESETS.find((p) => availableLeads.has(p));
-    return first ?? null;
+  const effectiveLead: LeadChoice = useMemo(() => {
+    if (lead === "adaptive") return "adaptive";
+    return availableLeads.has(lead) ? lead : "adaptive";
   }, [lead, availableLeads]);
 
   const fig = useMemo(() => {
@@ -103,9 +104,21 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
     if (actuals.length === 0 && forward.length === 0) return null;
 
     const actualByWeek = new Map(actuals.map((a) => [a.week, a.y]));
-    const predicted = data.predicted
-      .filter((p) => p.segment === segment && p.lead === effectiveLead)
-      .sort((a, b) => a.week.localeCompare(b.week));
+    const predictedAll = data.predicted.filter((p) => p.segment === segment);
+    let predicted: PredictedPoint[];
+    if (effectiveLead === "adaptive") {
+      // Most recent forecast made for each week = the lowest lead available
+      const byWeek = new Map<string, PredictedPoint>();
+      for (const p of predictedAll) {
+        const cur = byWeek.get(p.week);
+        if (!cur || p.lead < cur.lead) byWeek.set(p.week, p);
+      }
+      predicted = [...byWeek.values()].sort((a, b) => a.week.localeCompare(b.week));
+    } else {
+      predicted = predictedAll
+        .filter((p) => p.lead === effectiveLead)
+        .sort((a, b) => a.week.localeCompare(b.week));
+    }
 
     const traces: Plotly.Data[] = [];
 
@@ -131,15 +144,17 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         x: predicted.map((p) => p.week),
         y: predicted.map((p) => p.yhat),
         mode: "lines+markers",
-        name: pick(`예측 (${effectiveLead}주 전 기준)`, `Predicted (${effectiveLead}w ahead)`),
+        name: effectiveLead === "adaptive"
+          ? pick("예측 (주별 최신 예측)", "Predicted (most recent run)")
+          : pick(`예측 (${effectiveLead}주 전 기준)`, `Predicted (${effectiveLead}w ahead)`),
         line: { color: "#DD8452", width: 2, dash: "dash" },
         marker: { size: 7 },
         customdata: predicted.map((p) => {
           const actual = actualByWeek.get(p.week);
           const diffPct = actual != null && actual > 0 ? ((p.yhat - actual) / actual) * 100 : null;
-          return [diffPct != null ? `${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}%` : "—", p.run_date];
+          return [diffPct != null ? `${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}%` : "—", p.run_date, p.lead];
         }),
-        hovertemplate: "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]}<extra></extra>",
+        hovertemplate: "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]} (%{customdata[2]}w ahead)<extra></extra>",
       } as Plotly.Data);
     }
 
@@ -168,7 +183,9 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
           x: predicted.map((p) => p.week),
           y: predicted.map((p) => p.v1),
           mode: "lines+markers",
-          name: pick(`V1 (${effectiveLead}주 전 기준)`, `V1 (${effectiveLead}w ahead)`),
+          name: effectiveLead === "adaptive"
+            ? pick("V1 (주별 최신 예측)", "V1 (most recent run)")
+            : pick(`V1 (${effectiveLead}주 전 기준)`, `V1 (${effectiveLead}w ahead)`),
           line: { color: "#8172B2", width: 2, dash: "dot" },
           marker: { size: 6 },
           customdata: predicted.map((p) => [p.run_date]),
@@ -243,6 +260,12 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">{pick("예측 시점", "Predicted")}</span>
+            <button
+              onClick={() => setLead("adaptive")}
+              className={trendPillClass(effectiveLead === "adaptive")}
+            >
+              {pick("자동", "Adaptive")}
+            </button>
             {LEAD_PRESETS.map((preset) => {
               const available = availableLeads.has(preset);
               return (
@@ -263,10 +286,15 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground/70">
-        {pick(
-          `실선은 주간 실제 수요, 점선은 각 주에 대해 ${effectiveLead ?? "N"}주 전에 예측한 값입니다. 마지막 완료 주 이후는 최신 실행의 향후 예측과 P85 구간입니다${data?.forward_run_date ? ` (실행일: ${data.forward_run_date})` : ""}.`,
-          `Solid line = actual weekly demand. Dashed points = what the forecast said each week would be, ${effectiveLead ?? "N"} week${effectiveLead === 1 ? "" : "s"} in advance. Beyond the marker, the latest run's forward forecast with its P85 band${data?.forward_run_date ? ` (run ${data.forward_run_date})` : ""}.`,
-        )}
+        {effectiveLead === "adaptive"
+          ? pick(
+              `실선은 주간 실제 수요, 점선은 각 주에 대해 가장 최근에 실행된 예측값입니다. 마지막 완료 주 이후는 최신 실행의 향후 예측과 P85 구간입니다${data?.forward_run_date ? ` (실행일: ${data.forward_run_date})` : ""}.`,
+              `Solid line = actual weekly demand. Dashed points = the most recent forecast made for each week. Beyond the marker, the latest run's forward forecast with its P85 band${data?.forward_run_date ? ` (run ${data.forward_run_date})` : ""}.`,
+            )
+          : pick(
+              `실선은 주간 실제 수요, 점선은 각 주에 대해 ${effectiveLead}주 전에 예측한 값입니다. 마지막 완료 주 이후는 최신 실행의 향후 예측과 P85 구간입니다${data?.forward_run_date ? ` (실행일: ${data.forward_run_date})` : ""}.`,
+              `Solid line = actual weekly demand. Dashed points = what the forecast said each week would be, ${effectiveLead} week${effectiveLead === 1 ? "" : "s"} in advance. Beyond the marker, the latest run's forward forecast with its P85 band${data?.forward_run_date ? ` (run ${data.forward_run_date})` : ""}.`,
+            )}
       </p>
       <div className="mt-2">
         {loading && (
