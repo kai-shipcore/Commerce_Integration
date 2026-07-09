@@ -19,8 +19,8 @@ import { TREND_SEGMENT_OPTIONS, trendPillClass, type TrendSegment } from "./accu
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 interface ActualPoint   { week: string; segment: TrendSegment; y: number }
-interface PredictedPoint { week: string; lead: number; segment: TrendSegment; yhat: number; run_date: string }
-interface ForwardPoint  { week: string; segment: TrendSegment; yhat: number; lo: number; hi: number }
+interface PredictedPoint { week: string; lead: number; segment: TrendSegment; yhat: number; v1: number | null; run_date: string }
+interface ForwardPoint  { week: string; segment: TrendSegment; yhat: number; lo: number; hi: number; v1: number | null }
 
 interface DemandTrendData {
   last_complete_week: string;
@@ -39,6 +39,7 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
   const [error, setError] = useState<string | null>(null);
   const [segment, setSegment] = useState<TrendSegment>("all");
   const [lead, setLead] = useState<number | null>(null);
+  const [showV1, setShowV1] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -159,6 +160,35 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
       } as Plotly.Data);
     }
 
+    // ── V1 reference (past predictions + latest run's forward, one visual line) ──
+    if (showV1) {
+      if (predicted.some((p) => p.v1 != null)) {
+        traces.push({
+          type: "scatter",
+          x: predicted.map((p) => p.week),
+          y: predicted.map((p) => p.v1),
+          mode: "lines+markers",
+          name: pick(`V1 (${effectiveLead}주 전 기준)`, `V1 (${effectiveLead}w ahead)`),
+          line: { color: "#8172B2", width: 2, dash: "dot" },
+          marker: { size: 6 },
+          customdata: predicted.map((p) => [p.run_date]),
+          hovertemplate: "V1: %{y:,}<br>Forecasted on: %{customdata[0]}<extra></extra>",
+        } as Plotly.Data);
+      }
+      if (forward.some((f) => f.v1 != null)) {
+        traces.push({
+          type: "scatter",
+          x: forward.map((f) => f.week),
+          y: forward.map((f) => f.v1),
+          mode: "lines+markers",
+          name: pick("V1 (최신 실행)", "V1 (latest run)"),
+          line: { color: "#8172B2", width: 2, dash: "dot" },
+          marker: { size: 4 },
+          hovertemplate: "V1: %{y:,}<extra></extra>",
+        } as Plotly.Data);
+      }
+    }
+
     // ── Actual demand ──
     traces.push({
       type: "scatter",
@@ -198,7 +228,7 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         }],
       } as Partial<Plotly.Layout>,
     };
-  }, [data, segment, effectiveLead, pick]);
+  }, [data, segment, effectiveLead, showV1, pick]);
 
   return (
     <>
@@ -210,21 +240,26 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground">{pick("예측 시점", "Predicted")}</span>
-          {LEAD_PRESETS.map((preset) => {
-            const available = availableLeads.has(preset);
-            return (
-              <button
-                key={preset}
-                onClick={() => available && setLead(preset)}
-                disabled={!available}
-                className={trendPillClass(effectiveLead === preset, !available)}
-              >
-                {preset}{pick("주 전", "w ahead")}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{pick("예측 시점", "Predicted")}</span>
+            {LEAD_PRESETS.map((preset) => {
+              const available = availableLeads.has(preset);
+              return (
+                <button
+                  key={preset}
+                  onClick={() => available && setLead(preset)}
+                  disabled={!available}
+                  className={trendPillClass(effectiveLead === preset, !available)}
+                >
+                  {preset}{pick("주 전", "w ahead")}
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => setShowV1((v) => !v)} className={trendPillClass(showV1)}>
+            V1
+          </button>
         </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground/70">
