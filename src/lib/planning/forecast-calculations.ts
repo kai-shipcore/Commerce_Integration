@@ -1,4 +1,5 @@
 import type { SeasonalFactors } from "./seasonal-factors";
+import { DEFAULT_SALES_WINDOW_WEIGHTS, type SalesWindowWeights } from "./sales-window-weights";
 
 const MONTH_KEYS_FC = [
   "jan", "feb", "mar", "apr", "may", "jun",
@@ -67,15 +68,16 @@ export function fbmThirtyDayAverage(
   preorder30d: number,
   sales15d: number,
   sales7d: number,
+  weights: SalesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
 ): number {
-  return Math.ceil((
-    sales90d / 90 * 30
-    + sales60d / 60 * 30
-    + sales30d
-    + preorder30d
-    + sales15d / 15 * 30
-    + sales7d / 7 * 30
-  ) / 5);
+  return Math.ceil(
+    sales90d / 90 * 30 * weights.d90
+    + sales60d / 60 * 30 * weights.d60
+    + sales30d * weights.d30
+    + preorder30d * weights.pre
+    + sales15d / 15 * 30 * weights.d15
+    + sales7d / 7 * 30 * weights.d7
+  );
 }
 
 export function inventoryLifeDays(carryover: number, dailyRate: number, seasonalFactor: number): number | null {

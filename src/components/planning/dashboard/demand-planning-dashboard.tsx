@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
-import type { AgDemandPlanningGridHandle } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
 import {
   ALL_COLS,
@@ -37,6 +36,14 @@ import {
   loadSavedSeasonalFactors,
   type SeasonalFactors,
 } from "@/lib/planning/seasonal-factors";
+import {
+  DEFAULT_SALES_WINDOW_WEIGHTS,
+  SALES_WINDOW_WEIGHTS_STORAGE_KEY,
+  labelWithSalesWindowWeight,
+  loadSavedSalesWindowWeights,
+  normalizeSalesWindowWeights,
+  type SalesWindowWeights,
+} from "@/lib/planning/sales-window-weights";
 import {
   DEFAULT_GRADIENT,
   DEFAULT_GRADIENT_SC,
@@ -288,7 +295,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const { can } = usePermissions();
   const router = useRouter();
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
-  const [bulkStockMode, setBulkStockMode] = useState<'available' | 'onhand' | null>(null);
   const [todayStr, setTodayStr] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
@@ -299,6 +305,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       ? productParam
       : "sc";
   });
+  const [salesWindowWeights, setSalesWindowWeights] = useState<SalesWindowWeights>(DEFAULT_SALES_WINDOW_WEIGHTS);
   const {
     data,
     loading,
@@ -307,7 +314,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     error: loadError,
     reload,
     loadContainerDetails,
-  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, false, categoryFilter);
+  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, false, categoryFilter, salesWindowWeights);
   const [isCategoryPending, startCategoryTransition] = useTransition();
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
@@ -417,7 +424,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const skuFiltersRef = useRef<HTMLDivElement>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
-  const gridImperativeRef = useRef<AgDemandPlanningGridHandle>(null);
 
   // Debounced save of all preferences to DB (1.5s delay to batch rapid changes)
   const savePrefsToDb = useCallback((prefs: Record<string, unknown>) => {
@@ -452,6 +458,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setSeasonalFactors(loadSavedSeasonalFactors());
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setSalesWindowWeights(loadSavedSalesWindowWeights());
   }, []);
 
   useEffect(() => {
@@ -549,6 +560,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setSeasonalFactors(sf as SeasonalFactors);
         }
 
+        // Sales window weights
+        const sw = d[SALES_WINDOW_WEIGHTS_STORAGE_KEY];
+        if (sw && typeof sw === "object" && !Array.isArray(sw)) {
+          const normalized = normalizeSalesWindowWeights(sw);
+          window.localStorage.setItem(SALES_WINDOW_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
+          setSalesWindowWeights(normalized);
+        }
+
         // Gradient tiers
         const gd = d[GRADIENT_STORAGE_KEY];
         if (Array.isArray(gd) && gd.length > 0) {
@@ -594,10 +613,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         hiddenBases: Array.from(hiddenBases).sort(),
       },
       [SEASONAL_FACTORS_STORAGE_KEY]: seasonalFactors,
+      [SALES_WINDOW_WEIGHTS_STORAGE_KEY]: salesWindowWeights,
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, hiddenContainers, hiddenBases, seasonalFactors, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -694,6 +714,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const handleSeasonalFactorsChange = useCallback((next: SeasonalFactors) => {
     setSeasonalFactors(next);
     window.localStorage.setItem(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const handleSalesWindowWeightsChange = useCallback((next: SalesWindowWeights) => {
+    const normalized = normalizeSalesWindowWeights(next);
+    setSalesWindowWeights(normalized);
+    window.localStorage.setItem(SALES_WINDOW_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
   }, []);
 
   const handleGradientChange = useCallback((next: GradientTier[]) => {
@@ -1664,10 +1690,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                     style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
                                   />
                                   <span
-                                    title={`${GROUP_LABELS[item.group] || GROUP_BTN_LABELS[item.group]} / ${item.label}`}
+                                    title={`${GROUP_LABELS[item.group] || GROUP_BTN_LABELS[item.group]} / ${labelWithSalesWindowWeight(item.id, item.label, salesWindowWeights)}`}
                                     style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 500, color: checked ? "#1E3A5F" : "#94A3B8" }}
                                   >
-                                    {item.label}
+                                    {labelWithSalesWindowWeight(item.id, item.label, salesWindowWeights)}
                                   </span>
                                 </label>
                               );
@@ -1832,6 +1858,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           inline
           seasonalFactors={seasonalFactors}
           onSeasonalFactorsChange={handleSeasonalFactorsChange}
+          salesWindowWeights={salesWindowWeights}
+          onSalesWindowWeightsChange={handleSalesWindowWeightsChange}
           gradient={gradient}
           gradientSC={gradientSC}
           onGradientChange={handleGradientChange}
@@ -1902,46 +1930,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           >
             {gridMode === "ag-grid" ? "Excel" : "CSV"}
           </button>
-          {gridMode === "ag-grid" && (
-            <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
-              <button
-                type="button"
-                onClick={() => { void gridImperativeRef.current?.bulkSetStockMode('available'); setBulkStockMode('available'); }}
-                title={pick("Lock되지 않은 전체 SKU를 AV로 변경", "Set all unlocked SKUs to AV")}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "5px 9px",
-                  border: "none",
-                  borderRight: "1px solid #C2BFB5",
-                  background: bulkStockMode === 'available' ? "#1A4FC0" : "#EFF6FF",
-                  color: bulkStockMode === 'available' ? "#fff" : "#1A4FC0",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                All AV
-              </button>
-              <button
-                type="button"
-                onClick={() => { void gridImperativeRef.current?.bulkSetStockMode('onhand'); setBulkStockMode('onhand'); }}
-                title={pick("Lock되지 않은 전체 SKU를 OH로 변경", "Set all unlocked SKUs to OH")}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "5px 9px",
-                  border: "none",
-                  background: bulkStockMode === 'onhand' ? "#64748B" : "#F8FAFC",
-                  color: bulkStockMode === 'onhand' ? "#fff" : "#64748B",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                All OH
-              </button>
-            </div>
-          )}
-<div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
+          <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
             {(["link", "custom"] as VelocityMode[]).map((m) => (
               <button
                 key={m}
@@ -2104,7 +2093,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onExportReady={handleAgGridExportReady}
           hiddenContainers={hiddenContainers}
           hiddenBases={hiddenBases}
-          imperativeRef={gridImperativeRef}
+          salesWindowWeights={salesWindowWeights}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}

@@ -25,6 +25,13 @@ import {
 import { pick, productLabel } from "../language";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import {
+  DEFAULT_SALES_WINDOW_WEIGHTS,
+  SALES_WINDOW_WEIGHTS_STORAGE_KEY,
+  loadSavedSalesWindowWeights,
+  normalizeSalesWindowWeights,
+  type SalesWindowWeights,
+} from "@/lib/planning/sales-window-weights";
 
 const TARGET_INVENTORY_DAYS_STORAGE_KEY = "sku-forecasts-target-inventory-days";
 const INCLUDE_DRAFT_CONTAINERS_STORAGE_KEY = "sku-forecasts-include-draft-containers";
@@ -94,6 +101,7 @@ export function SkuForecastsShell({
   const [targetInventoryDays, setTargetInventoryDays] = useState(DEFAULT_TARGET_INVENTORY_DAYS);
   const [includeDraftContainers, setIncludeDraftContainers] = useState(initialIncludeDraftContainers);
   const [salesOnly, setSalesOnly] = useState(!normalizedInitialSku);
+  const [salesWindowWeights, setSalesWindowWeights] = useState<SalesWindowWeights>(DEFAULT_SALES_WINDOW_WEIGHTS);
   const [masterBySku, setMasterBySku] = useState<Record<string, SkuMasterMeta>>({});
   const [loadedCounts, setLoadedCounts] = useState<Record<ProductKey, number | null>>({ sc: null, cc: null, fm: null });
   const masterLoadingRef = useRef<Set<string>>(new Set());
@@ -109,6 +117,20 @@ export function SkuForecastsShell({
     if (window.localStorage.getItem(SALES_ONLY_STORAGE_KEY) === "0") {
       queueMicrotask(() => setSalesOnly(false));
     }
+    queueMicrotask(() => setSalesWindowWeights(loadSavedSalesWindowWeights()));
+  }, []);
+
+  useEffect(() => {
+    fetch(apiPath("/api/user/preferences"), { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>)
+      .then((json) => {
+        const stored = json.data?.[SALES_WINDOW_WEIGHTS_STORAGE_KEY];
+        if (!json.success || !stored || typeof stored !== "object" || Array.isArray(stored)) return;
+        const normalized = normalizeSalesWindowWeights(stored);
+        window.localStorage.setItem(SALES_WINDOW_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
+        setSalesWindowWeights(normalized);
+      })
+      .catch(() => {});
   }, []);
 
   function changeTargetInventoryDays(nextValue: string) {
@@ -132,7 +154,7 @@ export function SkuForecastsShell({
     loading,
     error,
     reload,
-  } = useDemandPlanningData("link", undefined, includeDraftContainers, product);
+  } = useDemandPlanningData("link", undefined, includeDraftContainers, product, salesWindowWeights);
 
   const rowsByProduct = useMemo(() => {
     const grouped: Record<ProductKey, DemandRow[]> = { sc: [], cc: [], fm: [] };
@@ -332,7 +354,7 @@ export function SkuForecastsShell({
               <SkuForecastTabs
                 language={language}
                 defaultTab={initialTab}
-                sales={<SalesAnalysisTab sku={selectedRow} language={language} />}
+                sales={<SalesAnalysisTab sku={selectedRow} language={language} salesWindowWeights={salesWindowWeights} />}
                 inventory={<InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} highlightedContainerId={initialHighlightedContainerId} highlightedContainerName={initialHighlightedContainerName} />}
                 history={<InboundHistoryTab sku={selectedRow} language={language} />}
                 purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}

@@ -9,6 +9,12 @@ import {
   type SeasonalFactorKey,
   type SeasonalFactors,
 } from "@/lib/planning/seasonal-factors";
+import {
+  DEFAULT_SALES_WINDOW_WEIGHTS,
+  SALES_WINDOW_WEIGHT_FIELDS,
+  type SalesWindowWeightKey,
+  type SalesWindowWeights,
+} from "@/lib/planning/sales-window-weights";
 import type { GradientTier } from "@/lib/planning/gradient-config";
 import { urgStatus } from "./columns";
 import type { DemandRow } from "@/types/demand-planning";
@@ -18,13 +24,22 @@ interface StatusBarProps {
   inline?: boolean;
   seasonalFactors: SeasonalFactors;
   onSeasonalFactorsChange: (next: SeasonalFactors) => void;
+  salesWindowWeights: SalesWindowWeights;
+  onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
   gradient?: GradientTier[];
   gradientSC?: GradientTier[];
   onGradientChange?: (next: GradientTier[]) => void;
   onGradientSCChange?: (next: GradientTier[]) => void;
 }
 
-export function StatusBar({ rows, inline = false, seasonalFactors, onSeasonalFactorsChange }: StatusBarProps) {
+export function StatusBar({
+  rows,
+  inline = false,
+  seasonalFactors,
+  onSeasonalFactorsChange,
+  salesWindowWeights,
+  onSalesWindowWeightsChange,
+}: StatusBarProps) {
   const { pick } = useI18n();
   const crit  = rows.filter((r) => urgStatus(r) === "crit").length;
   const warn  = rows.filter((r) => urgStatus(r) === "warn").length;
@@ -59,6 +74,8 @@ export function StatusBar({ rows, inline = false, seasonalFactors, onSeasonalFac
       <SeasonalFactorSettings
         factors={seasonalFactors}
         onChange={onSeasonalFactorsChange}
+        salesWindowWeights={salesWindowWeights}
+        onSalesWindowWeightsChange={onSalesWindowWeightsChange}
       />
     </div>
   );
@@ -85,9 +102,13 @@ function SbItem({ label, value, color }: { label: string; value: string | number
 function SeasonalFactorSettings({
   factors,
   onChange,
+  salesWindowWeights,
+  onSalesWindowWeightsChange,
 }: {
   factors: SeasonalFactors;
   onChange: (next: SeasonalFactors) => void;
+  salesWindowWeights: SalesWindowWeights;
+  onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
 }) {
   const { pick } = useI18n();
   function updateFactor(key: SeasonalFactorKey, rawValue: string) {
@@ -95,6 +116,12 @@ function SeasonalFactorSettings({
     if (!Number.isFinite(value) || value < 0) return;
     onChange({ ...factors, [key]: value });
   }
+  function updateSalesWeight(key: SalesWindowWeightKey, rawValue: string) {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value < 0) return;
+    onSalesWindowWeightsChange({ ...salesWindowWeights, [key]: value / 100 });
+  }
+  const salesWeightTotal = SALES_WINDOW_WEIGHT_FIELDS.reduce((sum, { key }) => sum + salesWindowWeights[key], 0);
 
   return (
     <Popover>
@@ -120,7 +147,7 @@ function SeasonalFactorSettings({
           <Settings size={14} strokeWidth={2} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" style={{ width: "min(360px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
+      <PopoverContent align="end" style={{ width: "min(380px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>{pick("시즌지수 설정", "Planning Settings")}</div>
@@ -162,7 +189,7 @@ function SeasonalFactorSettings({
           </PopoverClose>
         </div>
 
-        <div>
+        <div style={{ maxHeight: "min(680px, calc(100vh - 96px))", overflowY: "auto" }}>
           {/* Seasonal Factors */}
           <div style={{ padding: "14px 16px" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>{pick("시즌 지수", "Seasonal Factors")}</div>
@@ -217,6 +244,64 @@ function SeasonalFactorSettings({
             </div>
           </div>
 
+          <div style={{ padding: "14px 16px", borderTop: "1px solid #E2E8F0" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{pick("판매 비중 기간별 가중치", "Sales Window Weights")}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: Math.abs(salesWeightTotal - 1) < 0.0001 ? "#047857" : "#B45309" }}>
+                {pick("합계", "Total")} {(salesWeightTotal * 100).toFixed(0)}%
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {SALES_WINDOW_WEIGHT_FIELDS.map(({ key, label }) => (
+                <label key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 38, fontSize: 12, fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{label}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={Number((salesWindowWeights[key] * 100).toFixed(2))}
+                    onChange={(event) => updateSalesWeight(key, event.target.value)}
+                    style={{
+                      width: 64,
+                      height: 28,
+                      boxSizing: "border-box",
+                      border: "1px solid #CBD5E1",
+                      borderRadius: 4,
+                      background: "#F8FAFC",
+                      color: "#1E293B",
+                      padding: "2px 6px",
+                      fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                      fontSize: 12,
+                    }}
+                  />
+                  <span style={{ fontSize: 12, color: "#64748B" }}>%</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => onSalesWindowWeightsChange(DEFAULT_SALES_WINDOW_WEIGHTS)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  border: "1px solid #CBD5E1",
+                  borderRadius: 4,
+                  background: "#fff",
+                  color: "#475569",
+                  cursor: "pointer",
+                  padding: "5px 10px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                <RotateCcw size={13} />
+                {pick("판매 비중 기본값 복원", "Restore Sales Defaults")}
+              </button>
+            </div>
+          </div>
         </div>
       </PopoverContent>
     </Popover>

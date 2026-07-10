@@ -18,6 +18,7 @@ import {
   inventoryLifeDays,
 } from "@/lib/planning/forecast-calculations";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
+import { parseSalesWindowWeightsParam } from "@/lib/planning/sales-window-weights";
 import type {
   ContainerMeta,
   ContainerRowData,
@@ -87,7 +88,9 @@ export async function GET(req: Request) {
     const asOfParam = searchParams.get("asOf");
     const todayStr = asOfParam && /^\d{4}-\d{2}-\d{2}$/.test(asOfParam) ? asOfParam : todayDefault;
     const isToday = todayStr === todayDefault;
-    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers);
+    const salesWindowWeights = parseSalesWindowWeightsParam(searchParams.get("salesWeights"));
+    const salesWeightsCacheKey = encodeURIComponent(JSON.stringify(salesWindowWeights));
+    const cached = await getPlanningDashboardCache(mode, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers, salesWeightsCacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         headers: { "x-planning-dashboard-cache": "HIT" },
@@ -180,8 +183,8 @@ export async function GET(req: Request) {
         COALESCE(s.canary_available_stock,    0)::int           AS canary_available_stock,
         COALESCE(s.ttm_available_stock,       0)::int           AS ttm_available_stock,
         COALESCE(s.ttm_jeff_available_stock,  0)::int           AS ttm_jeff_available_stock,
-        (COALESCE(s.west_stock, 0) + COALESCE(s.east_stock, 0) + COALESCE(s.transit_stock, 0))::int AS total_stock,
-        COALESCE(s.stock_mode, 'onhand')                      AS stock_mode,
+        (COALESCE(s.west_available_stock, 0) + COALESCE(s.east_available_stock, 0) + COALESCE(s.transit_stock, 0))::int AS total_stock,
+        'available'                                           AS stock_mode,
         COALESCE(s.west_90d,       0)::float8                AS west_90d,
         COALESCE(s.west_60d,       0)::float8                AS west_60d,
         COALESCE(s.west_30d,       0)::float8                AS west_30d,
@@ -545,9 +548,9 @@ export async function GET(req: Request) {
       const fba_avg_curr   = Math.max(0.01, vel ? vel._fba_curr      : r.fba_avg_curr   as number);
       const fba_30d        = vel ? vel.fba_30d        : r.fba_30d        as number;
       // Derived 30d/avg totals
-      const west_fbm_30d = vel ? fbmThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d) : r.west_fbm_30d as number;
-      const east_fbm_30d = vel ? fbmThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d) : r.east_fbm_30d as number;
-      const total_30d    = vel ? west_fbm_30d + east_fbm_30d + fba_30d : r.total_30d as number;
+      const west_fbm_30d = fbmThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d, salesWindowWeights);
+      const east_fbm_30d = fbmThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d, salesWindowWeights);
+      const total_30d    = west_fbm_30d + east_fbm_30d + fba_30d;
       const total_avg_prev = Math.max(0.03, vel ? avg_daily_prev + east_avg_prev + (vel.fba_avg_prev ?? 0) : r.total_avg_prev as number);
       const total_avg_real = Math.max(0.03, vel ? avg_daily_real + east_avg_real + fba_avg_real : r.total_avg_real as number);
       const total_avg_curr = Math.max(0.03, vel ? avg_daily_curr + east_avg_curr + fba_avg_curr : r.total_avg_curr as number);
@@ -681,7 +684,7 @@ export async function GET(req: Request) {
         ttm_available_stock:          r.ttm_available_stock,
         ttm_jeff_available_stock:     r.ttm_jeff_available_stock,
         total_stock:            r.total_stock,
-        stock_mode:             (r.stock_mode as 'onhand' | 'available') ?? 'onhand',
+        stock_mode:             "available",
         west_90d:          west_90d,
         west_60d:          west_60d,
         west_30d:          west_30d,
@@ -737,8 +740,8 @@ export async function GET(req: Request) {
       const eCurr    = currentDailyAverage(ePrev, eReal);
       const fbaReal  = Math.max(0.01, p.fba_30d / 30);
       const fbaCurr  = fbaReal;
-      const wFbm30   = fbmThirtyDayAverage(w90, w60, w30, wpre, w15, w7);
-      const eFbm30   = fbmThirtyDayAverage(e90, e60, e30, epre, e15, e7);
+      const wFbm30   = fbmThirtyDayAverage(w90, w60, w30, wpre, w15, w7, salesWindowWeights);
+      const eFbm30   = fbmThirtyDayAverage(e90, e60, e30, epre, e15, e7, salesWindowWeights);
       const total30  = wFbm30 + eFbm30 + p.fba_30d;
       const tAvgPrev = Math.max(0.03, avgPrev + ePrev);
       const tAvgReal = Math.max(0.03, avgReal + eReal + fbaReal);
@@ -767,7 +770,7 @@ export async function GET(req: Request) {
         east_available_stock: 0,
         transit_stock:    0,
         total_stock:      totalStk,
-        stock_mode:       "onhand",
+        stock_mode:       "available",
         west_90d: w90, west_60d: w60, west_30d: w30, west_15d: w15, west_7d: w7, west_30d_pre: wpre,
         east_90d: e90, east_60d: e60, east_30d: e30, east_15d: e15, east_7d: e7, east_30d_pre: epre,
         avg_daily_prev:   Math.round(avgPrev  * 100) / 100,
@@ -809,7 +812,7 @@ export async function GET(req: Request) {
     });
 
     const response: { success: true; data: DemandPlanningData } = { success: true, data: { containers, rows, pinned_rows, last_sync: lastSync } };
-    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers);
+    setPlanningDashboardCache(mode, response, includeContainers, isToday ? undefined : todayStr, includeDrafts, categoryCode ?? undefined, rawContainers, salesWeightsCacheKey);
     return NextResponse.json(response, {
       headers: { "x-planning-dashboard-cache": "MISS" },
     });

@@ -26,10 +26,10 @@ import type { CellColorSettings, CellContent, ColDef, ColumnColorSettings, Colum
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
+import type { SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import type {
   CategoryFilter,
   ColumnGroupKey,
-  ContainerMeta,
   DemandPlanningData,
   DemandRow,
   ProductFilter,
@@ -38,10 +38,6 @@ import type {
 } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-
-export interface AgDemandPlanningGridHandle {
-  bulkSetStockMode: (mode: 'onhand' | 'available') => Promise<void>;
-}
 
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
@@ -79,7 +75,7 @@ export interface DemandPlanningGridProps {
   gradientSC?: import("@/lib/planning/order-optimizer").GradientTier[];
   hiddenContainers?: Set<string>;
   hiddenBases?: Set<string>;
-  imperativeRef?: React.Ref<AgDemandPlanningGridHandle>;
+  salesWindowWeights?: SalesWindowWeights;
 }
 
 const ROW_HEIGHT = 28;

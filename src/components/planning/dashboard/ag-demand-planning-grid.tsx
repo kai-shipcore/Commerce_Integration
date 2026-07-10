@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { CalendarDays, ChartColumn, ExternalLink } from "lucide-react";
 import {
@@ -39,14 +39,17 @@ import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
+  DEFAULT_SALES_WINDOW_WEIGHTS,
+  labelWithSalesWindowWeight,
+} from "@/lib/planning/sales-window-weights";
+import {
   findOptimalBaseTarget,
   generateOrders,
   getTier,
-  type GradientTier,
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
 import type { CellContent } from "./columns";
-import type { AgDemandPlanningGridHandle, DemandPlanningGridProps } from "./demand-planning-grid";
+import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -208,9 +211,7 @@ function computeContainerChain(
   seasonalFactors: SeasonalFactors,
 ): Map<string, ChainDerived> {
   const result = new Map<string, ChainDerived>();
-  const effectiveTotal = row.stock_mode === 'available'
-    ? ((row.west_available_stock ?? 0) + (row.east_available_stock ?? 0) + (row.transit_stock ?? 0))
-    : (row.total_stock ?? 0);
+  const effectiveTotal = (row.west_available_stock ?? 0) + (row.east_available_stock ?? 0) + (row.transit_stock ?? 0);
   const availableQty = effectiveTotal + (row.back ?? 0);
   const dailyRate = row.total_avg_curr ?? 0;
   let previousCarryover = Math.max(0, availableQty);
@@ -601,45 +602,6 @@ function QtyCellRenderer({
   );
 }
 
-
-function StockModeCellRenderer({
-  value,
-  node,
-  onToggle,
-  isLocked,
-}: ICellRendererParams<DemandRow, CellContent> & { onToggle: () => Promise<void>; isLocked: boolean }) {
-  const [toggling, setToggling] = useState(false);
-  const isAvailable = value === "available";
-  return (
-    <button
-      type="button"
-      disabled={toggling || isLocked}
-      title={
-        isLocked
-          ? "Transit stock 있음 — AV 고정"
-          : isAvailable
-            ? "Available stock — click for Onhand"
-            : "Onhand stock — click for Available"
-      }
-      onClick={async (e) => {
-        if (isLocked) return;
-        e.stopPropagation();
-        node.setSelected(true, true);
-        setToggling(true);
-        await onToggle();
-        setToggling(false);
-      }}
-      className="h-full w-full border-0 bg-transparent text-[9px] font-bold"
-      style={{
-        color: isAvailable ? "#1A4FC0" : "#6B7280",
-        cursor: isLocked ? "not-allowed" : "pointer",
-        opacity: isLocked ? 0.65 : 1,
-      }}
-    >
-      {toggling ? "…" : isAvailable ? "AV" : "OH"}
-    </button>
-  );
-}
 
 function CbmCellRenderer({
   value,
@@ -1266,7 +1228,6 @@ export function AgDemandPlanningGrid({
   skuCellNotes = {},
   canEditSkuNotes = false,
   onSkuCellNoteChange,
-  selectedCellKeys = [],
   onAgCellSelected,
   onCellSelectionChange,
   onExportReady,
@@ -1274,7 +1235,7 @@ export function AgDemandPlanningGrid({
   gradientSC = [],
   hiddenContainers = new Set<string>(),
   hiddenBases = new Set<string>(),
-  imperativeRef,
+  salesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -1362,10 +1323,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         ...(rowOverrides.get(row.sku) ?? {}),
         ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
       };
-      // Transit stock >= 1이면 AV 모드 강제
-      if ((merged.transit_stock ?? 0) >= 1) {
-        merged.stock_mode = 'available';
-      }
+      merged.stock_mode = "available";
       return merged;
     });
   }, [categoryFilter, cbmOverrides, conQtyFilter, data.rows, productFilter, qtyOverrides, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
@@ -1965,59 +1923,6 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
   }, [qtyOverrides]);
 
-  const saveStockMode = useCallback(async (row: DemandRow): Promise<void> => {
-    if ((row.transit_stock ?? 0) >= 1) return;
-    const next: 'onhand' | 'available' = (row.stock_mode ?? 'onhand') === 'onhand' ? 'available' : 'onhand';
-    const res = await fetch(apiPath(`/api/planning/sku/${encodeURIComponent(row.sku)}/stock-mode`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stock_mode: next }),
-    });
-    if (!res.ok) return;
-    setRowOverrides((cur) => {
-      const map = new Map(cur);
-      map.set(row.sku, { ...(cur.get(row.sku) ?? {}), stock_mode: next });
-      return map;
-    });
-    const updatedRow = { ...row, stock_mode: next };
-    setChainMap((cur) => new Map(cur).set(row.sku, computeContainerChain(updatedRow, containers, qtyOverrides, seasonalFactors)));
-    gridRef.current?.api.refreshCells({ force: true });
-  }, [containers, qtyOverrides, seasonalFactors]);
-
-  const bulkSetStockMode = useCallback(async (mode: 'onhand' | 'available'): Promise<void> => {
-    const targetRows = visibleRows.filter((r) => (r.transit_stock ?? 0) < 1);
-    if (targetRows.length === 0) return;
-    const skus = targetRows.map((r) => r.sku);
-    const res = await fetch(apiPath(`/api/planning/sku/stock-mode`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ skus, stock_mode: mode }),
-    });
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      console.error("[bulkSetStockMode] API error:", res.status, errBody);
-      return;
-    }
-    setRowOverrides((cur) => {
-      const map = new Map(cur);
-      for (const row of targetRows) {
-        map.set(row.sku, { ...(cur.get(row.sku) ?? {}), stock_mode: mode });
-      }
-      return map;
-    });
-    setChainMap((cur) => {
-      const next = new Map(cur);
-      for (const row of targetRows) {
-        const updated = { ...row, stock_mode: mode };
-        next.set(row.sku, computeContainerChain(updated, containers, qtyOverrides, seasonalFactors));
-      }
-      return next;
-    });
-    gridRef.current?.api.refreshCells({ force: true });
-  }, [visibleRows, containers, qtyOverrides, seasonalFactors]);
-
-  useImperativeHandle(imperativeRef as React.Ref<AgDemandPlanningGridHandle>, () => ({ bulkSetStockMode }), [bulkSetStockMode]);
-
   const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS
       .filter((column) => column.grp === "fix" || groupVis[column.grp])
@@ -2071,7 +1976,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     columns.push({
       colId: column.id,
       headerName,
-        headerTooltip: column.label.replace("\n", " "),
+        headerTooltip: labelWithSalesWindowWeight(column.id, column.label.replace("\n", " "), salesWindowWeights),
         width,
         minWidth: Math.min(36, column.w),
         sortable: column.id !== "row_num",
@@ -2091,7 +1996,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         if (!params.data) return "";
         return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
       },
-      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : column.id === "mode" ? StockModeCellRenderer : CellRenderer,
+      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
         ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
             copyValue: column.id === "sku"
@@ -2107,11 +2012,6 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         : column.id === "cbm"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
               onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
-            })
-        : column.id === "mode"
-          ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
-              onToggle: () => params.data ? saveStockMode(params.data) : Promise.resolve(),
-              isLocked: (params.data?.transit_stock ?? 0) >= 1,
             })
         : undefined,
       headerStyle: headerStyleForColor(columnColors[column.id]?.header),
@@ -2274,7 +2174,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [buildContainerSaveSummary, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, saveCbm, saveQty, skuCellNotes, subColumns, updateEta]);
+  }, [buildContainerSaveSummary, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveQty, skuCellNotes, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;

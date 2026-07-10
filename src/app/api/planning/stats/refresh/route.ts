@@ -18,6 +18,7 @@ import {
   fbmThirtyDayAverage,
   forecastCategoryCodeForSku,
 } from "@/lib/planning/forecast-calculations";
+import { DEFAULT_SALES_WINDOW_WEIGHTS, normalizeSalesWindowWeights } from "@/lib/planning/sales-window-weights";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -54,10 +55,14 @@ async function batchUpsert(
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const lookup  = getLookupPool();
     const primary = getPrimaryPool();
+    const requestBody = await request.json().catch(() => null) as { salesWindowWeights?: unknown } | null;
+    const salesWindowWeights = requestBody?.salesWindowWeights
+      ? normalizeSalesWindowWeights(requestBody.salesWindowWeights)
+      : DEFAULT_SALES_WINDOW_WEIGHTS;
 
     if (!lookup) {
       return NextResponse.json(
@@ -352,8 +357,8 @@ export async function POST() {
       const e90 = Number(r.east_90d), e60 = Number(r.east_60d), e30 = Number(r.east_30d);
       const ePre = Number(r.east_30d_pre), e15 = Number(r.east_15d), e7 = Number(r.east_7d);
       // west windows already exclude FBA at the SQL level
-      r.west_fbm_30d = fbmThirtyDayAverage(w90, w60, w30, wPre, w15, w7);
-      r.east_fbm_30d = fbmThirtyDayAverage(e90, e60, e30, ePre, e15, e7);
+      r.west_fbm_30d = fbmThirtyDayAverage(w90, w60, w30, wPre, w15, w7, salesWindowWeights);
+      r.east_fbm_30d = fbmThirtyDayAverage(e90, e60, e30, ePre, e15, e7, salesWindowWeights);
       r.total_30d    = (r.west_fbm_30d as number) + (r.east_fbm_30d as number) + (r.fba_30d as number);
     }
 

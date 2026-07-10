@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import type { DemandRow } from "@/types/demand-planning";
 import { useSalesAnalysis, type SalesHistoryBucket } from "@/features/planning/sku-forecasts/hooks/use-sales-analysis";
+import type { SalesWindowWeightKey, SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import { formatNumber } from "../types";
 import { pick, type SkuForecastLanguage } from "../language";
 
@@ -23,7 +24,15 @@ type ChartType = "line" | "bar";
 type ViewMode = "summary" | "history";
 type SalesChartPoint = Record<string, string | number>;
 
-export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: SkuForecastLanguage }) {
+export function SalesAnalysisTab({
+  sku,
+  language,
+  salesWindowWeights,
+}: {
+  sku: DemandRow;
+  language: SkuForecastLanguage;
+  salesWindowWeights: SalesWindowWeights;
+}) {
   const [chartType, setChartType] = useState<ChartType>("line");
   const [viewMode, setViewMode] = useState<ViewMode>("summary");
   const [fromDate, setFromDate] = useState("2024-01-01");
@@ -40,11 +49,11 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
   });
 
   const totalSales = [
-    { label: "7D", value: sku.west_7d + sku.east_7d },
-    { label: "15D", value: sku.west_15d + sku.east_15d },
-    { label: "30D", value: sku.west_30d + sku.east_30d },
-    { label: "60D", value: sku.west_60d + sku.east_60d },
-    { label: "90D", value: sku.west_90d + sku.east_90d },
+    { label: weightLabel("7D", "d7", salesWindowWeights), value: sku.west_7d + sku.east_7d },
+    { label: weightLabel("15D", "d15", salesWindowWeights), value: sku.west_15d + sku.east_15d },
+    { label: weightLabel("30D", "d30", salesWindowWeights), value: sku.west_30d + sku.east_30d },
+    { label: weightLabel("60D", "d60", salesWindowWeights), value: sku.west_60d + sku.east_60d },
+    { label: weightLabel("90D", "d90", salesWindowWeights), value: sku.west_90d + sku.east_90d },
   ];
   const chartData: SalesChartPoint[] = viewMode === "history" ? history.data?.points ?? [] : totalSales;
 
@@ -194,24 +203,24 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
                 className="flex-1"
                 title={pick(language, "West 판매", "West Sales")}
                 rows={[
-                  ["7D", sku.west_7d],
-                  ["15D", sku.west_15d],
-                  ["30D", sku.west_30d],
-                  ["60D", sku.west_60d],
-                  ["90D", sku.west_90d],
-                  [pick(language, "선주문 30D", "Pre 30D"), sku.west_30d_pre],
+                  [weightLabel("7D", "d7", salesWindowWeights), sku.west_7d],
+                  [weightLabel("15D", "d15", salesWindowWeights), sku.west_15d],
+                  [weightLabel("30D", "d30", salesWindowWeights), sku.west_30d],
+                  [weightLabel("60D", "d60", salesWindowWeights), sku.west_60d],
+                  [weightLabel("90D", "d90", salesWindowWeights), sku.west_90d],
+                  [weightLabel(pick(language, "선주문 30D", "Pre 30D"), "pre", salesWindowWeights), sku.west_30d_pre],
                 ]}
               />
               <MetricTable
                 className="flex-1"
                 title={pick(language, "East 판매", "East Sales")}
                 rows={[
-                  ["7D", sku.east_7d],
-                  ["15D", sku.east_15d],
-                  ["30D", sku.east_30d],
-                  ["60D", sku.east_60d],
-                  ["90D", sku.east_90d],
-                  [pick(language, "선주문 30D", "Pre 30D"), sku.east_30d_pre],
+                  [weightLabel("7D", "d7", salesWindowWeights), sku.east_7d],
+                  [weightLabel("15D", "d15", salesWindowWeights), sku.east_15d],
+                  [weightLabel("30D", "d30", salesWindowWeights), sku.east_30d],
+                  [weightLabel("60D", "d60", salesWindowWeights), sku.east_60d],
+                  [weightLabel("90D", "d90", salesWindowWeights), sku.east_90d],
+                  [weightLabel(pick(language, "선주문 30D", "Pre 30D"), "pre", salesWindowWeights), sku.east_30d_pre],
                 ]}
               />
             </>
@@ -226,6 +235,15 @@ export function SalesAnalysisTab({ sku, language }: { sku: DemandRow; language: 
       </div>
     </div>
   );
+}
+
+function weightLabel(label: string, key: SalesWindowWeightKey, weights: SalesWindowWeights): string {
+  return `${label}(${formatWeightPercent(weights[key])})`;
+}
+
+function formatWeightPercent(value: number): string {
+  const percent = value * 100;
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(1)}%`;
 }
 
 function localDateString(date: Date): string {

@@ -22,12 +22,13 @@ const hasRedisEnv = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UP
 const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 
-export function planningDashboardCacheKey(mode: string, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false) {
+export function planningDashboardCacheKey(mode: string, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false, variant?: string) {
   const dateSuffix = asOfDate ? `:${asOfDate}` : "";
   const scopeSuffix = includeDrafts ? ":drafts" : "";
   const categorySuffix = category ? `:${category}` : "";
+  const variantSuffix = variant ? `:${variant}` : "";
   const detailMode = includeContainers ? (rawContainers ? "detail-raw" : "detail") : "summary";
-  return `planning:dashboard:v19:${mode}:${detailMode}${dateSuffix}${scopeSuffix}${categorySuffix}`;
+  return `planning:dashboard:v20:${mode}:${detailMode}${dateSuffix}${scopeSuffix}${categorySuffix}${variantSuffix}`;
 }
 
 async function withTimeout<T>(work: Promise<T>, fallback: T): Promise<T> {
@@ -50,11 +51,11 @@ async function withTimeoutMs<T>(work: Promise<T>, fallback: T, timeoutMs: number
   }
 }
 
-export async function getPlanningDashboardCache(mode: string, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false) {
+export async function getPlanningDashboardCache(mode: string, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false, variant?: string) {
   if (!hasRedisEnv) return null;
   const cached = await withTimeout(
     CacheManager.get<DashboardCachePayload | CompressedDashboardCachePayload | string>(
-      planningDashboardCacheKey(mode, includeContainers, asOfDate, includeDrafts, category, rawContainers),
+      planningDashboardCacheKey(mode, includeContainers, asOfDate, includeDrafts, category, rawContainers, variant),
     ),
     null,
   );
@@ -84,7 +85,7 @@ export async function getPlanningDashboardCache(mode: string, includeContainers 
   return parsed;
 }
 
-export function setPlanningDashboardCache(mode: string, payload: DashboardCachePayload, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false) {
+export function setPlanningDashboardCache(mode: string, payload: DashboardCachePayload, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false, variant?: string) {
   if (!hasRedisEnv) return;
   setTimeout(() => void (async () => {
     try {
@@ -95,7 +96,7 @@ export function setPlanningDashboardCache(mode: string, payload: DashboardCacheP
         body: compressed.toString("base64"),
       };
       void withTimeout(
-      CacheManager.set(planningDashboardCacheKey(mode, includeContainers, asOfDate, includeDrafts, category, rawContainers), cachePayload, DASHBOARD_CACHE_TTL_SECONDS),
+      CacheManager.set(planningDashboardCacheKey(mode, includeContainers, asOfDate, includeDrafts, category, rawContainers, variant), cachePayload, DASHBOARD_CACHE_TTL_SECONDS),
       false,
     );
     } catch {
