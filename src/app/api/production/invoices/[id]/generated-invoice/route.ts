@@ -21,8 +21,13 @@ type InvoiceLine = {
 };
 
 type AppliedCredit = {
+  sourceInvoiceNumber: string | null;
   sku: string;
+  qty: number;
+  invoiceUnitPrice: number | null;
+  expectedUnitPrice: number | null;
   creditAmount: number;
+  appliedDate: string | null;
 };
 
 function serializeDate(value: unknown) {
@@ -45,6 +50,10 @@ function safeSheetName(name: string) {
 
 function safeFileName(name: string) {
   return name.replace(/[\\/:*?"<>|]/g, "_");
+}
+
+function downloadStamp() {
+  return new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "");
 }
 
 function moneyNumber(value: number) {
@@ -74,11 +83,19 @@ async function loadInvoice(id: string) {
       [id],
     ),
     pool.query(
-      `SELECT sku, credit_amount
-       FROM shipcore.fc_credit_notes
-       WHERE applied_invoice_id = $1::bigint
-         AND status = 'applied'
-       ORDER BY id ASC`,
+      `SELECT
+         source.invoice_number AS source_invoice_number,
+         cn.sku,
+         cn.qty,
+         cn.invoice_unit_price,
+         cn.expected_unit_price,
+         cn.credit_amount,
+         cn.applied_date::text AS applied_date
+       FROM shipcore.fc_credit_notes cn
+       LEFT JOIN shipcore.fc_invoices source ON source.id = cn.source_invoice_id
+       WHERE cn.applied_invoice_id = $1::bigint
+         AND cn.status = 'applied'
+       ORDER BY cn.applied_date DESC NULLS LAST, cn.id ASC`,
       [id],
     ),
   ]);
@@ -99,8 +116,13 @@ async function loadInvoice(id: string) {
       unitPrice: Number(row.invoice_unit_price),
     })) satisfies InvoiceLine[],
     credits: creditsResult.rows.map((row) => ({
+      sourceInvoiceNumber: row.source_invoice_number as string | null,
       sku: row.sku as string,
+      qty: Number(row.qty),
+      invoiceUnitPrice: row.invoice_unit_price == null ? null : Number(row.invoice_unit_price),
+      expectedUnitPrice: row.expected_unit_price == null ? null : Number(row.expected_unit_price),
       creditAmount: Number(row.credit_amount),
+      appliedDate: serializeDate(row.applied_date),
     })) satisfies AppliedCredit[],
   };
 }
@@ -162,6 +184,65 @@ function borderRange(ws: ExcelJS.Worksheet, fromRow: number, toRow: number) {
   }
 }
 
+function styleCreditDetailTable(ws: ExcelJS.Worksheet, headerRow: number, lastRow: number) {
+  const border = { style: "thin" as const };
+  for (let row = headerRow; row <= lastRow; row += 1) {
+    for (let col = 1; col <= 9; col += 1) {
+      const cell = ws.getCell(row, col);
+      cell.border = { top: border, left: border, right: border, bottom: border };
+      cell.alignment = { vertical: "middle", wrapText: true };
+      if (row === headerRow) {
+        cell.font = { name: "Arial", size: 10, bold: true };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+      }
+    }
+  }
+}
+
+function fillCreditDetails(ws: ExcelJS.Worksheet, startRow: number, credits: AppliedCredit[]) {
+  ws.getCell(startRow, 1).value = "Credit Applied Details";
+  ws.getCell(startRow, 1).font = { name: "Arial", size: 11, bold: true };
+  ws.mergeCells(startRow, 1, startRow, 9);
+
+  const headerRow = startRow + 1;
+  const headers = ["원본 Invoice", "SKU", "Qty", "Invoice 가격", "기준 가격", "Credit", "적용일"];
+  ws.getCell(headerRow, 1).value = headers[0];
+  ws.getCell(headerRow, 3).value = headers[1];
+  ws.getCell(headerRow, 5).value = headers[2];
+  ws.getCell(headerRow, 6).value = headers[3];
+  ws.getCell(headerRow, 7).value = headers[4];
+  ws.getCell(headerRow, 8).value = headers[5];
+  ws.getCell(headerRow, 9).value = headers[6];
+
+  if (credits.length === 0) {
+    const emptyRow = headerRow + 1;
+    ws.getCell(emptyRow, 1).value = "No applied credits";
+    ws.mergeCells(emptyRow, 1, emptyRow, 9);
+    ws.getCell(emptyRow, 1).alignment = { vertical: "middle", horizontal: "center" };
+    ws.getCell(emptyRow, 1).font = { name: "Arial", size: 10, italic: true, color: { argb: "FF6B7280" } };
+    styleCreditDetailTable(ws, headerRow, emptyRow);
+    return emptyRow + 2;
+  }
+
+  credits.forEach((credit, index) => {
+    const row = headerRow + 1 + index;
+    ws.getCell(row, 1).value = credit.sourceInvoiceNumber ?? "-";
+    ws.getCell(row, 3).value = credit.sku;
+    ws.getCell(row, 5).value = credit.qty;
+    ws.getCell(row, 6).value = credit.invoiceUnitPrice == null ? "-" : moneyNumber(credit.invoiceUnitPrice);
+    ws.getCell(row, 7).value = credit.expectedUnitPrice == null ? "-" : moneyNumber(credit.expectedUnitPrice);
+    ws.getCell(row, 8).value = -moneyNumber(credit.creditAmount);
+    ws.getCell(row, 9).value = credit.appliedDate ?? "-";
+    for (const col of [6, 7, 8]) ws.getCell(row, col).numFmt = "$#,##0.00;-$#,##0.00";
+    ws.getCell(row, 1).font = { name: "Arial", size: 10, bold: true };
+    ws.getCell(row, 8).font = { name: "Arial", size: 10, bold: true, color: { argb: "FFB91C1C" } };
+  });
+
+  const lastRow = headerRow + credits.length;
+  styleCreditDetailTable(ws, headerRow, lastRow);
+  return lastRow + 2;
+}
+
 function fillHeader(ws: ExcelJS.Worksheet, header: InvoiceHeader) {
   ws.getCell("A2").value = "浙江天鸿汽车用品有限公司";
   ws.getCell("A3").value = "ZHEJIANG TIANHONG AUTO ACCESSORIES  CO.,LTD";
@@ -215,14 +296,14 @@ function fillBankDetails(ws: ExcelJS.Worksheet, startRow: number) {
   });
 }
 
-function addInvoiceSheet(workbook: ExcelJS.Workbook, name: string, header: InvoiceHeader, items: InvoiceLine[], credits: AppliedCredit[], useActualPrice: boolean) {
+function addInvoiceSheet(workbook: ExcelJS.Workbook, name: string, header: InvoiceHeader, items: InvoiceLine[], credits: AppliedCredit[]) {
   const ws = workbook.addWorksheet(safeSheetName(name), { views: [{ showGridLines: false }] });
   styleWorksheet(ws);
   fillHeader(ws, header);
 
   const startRow = 25;
   const totalRow = startRow + items.length;
-  ws.getCell("A24").value = useActualPrice ? "CAR COVER" : "";
+  ws.getCell("A24").value = "CAR COVER";
   ws.getCell("C24").value = productGroup(items);
 
   items.forEach((item, index) => {
@@ -230,7 +311,7 @@ function addInvoiceSheet(workbook: ExcelJS.Workbook, name: string, header: Invoi
     ws.getCell(row, 3).value = item.sku;
     ws.getCell(row, 5).value = item.qty;
     ws.getCell(row, 6).value = "PCS";
-    ws.getCell(row, 8).value = useActualPrice ? moneyNumber(item.unitPrice) : 1;
+    ws.getCell(row, 8).value = moneyNumber(item.unitPrice);
     ws.getCell(row, 9).value = { formula: `E${row}*H${row}` };
     ws.getCell(row, 8).numFmt = "$#,##0.00";
     ws.getCell(row, 9).numFmt = "$#,##0.00";
@@ -242,21 +323,19 @@ function addInvoiceSheet(workbook: ExcelJS.Workbook, name: string, header: Invoi
   ws.getCell(totalRow, 9).value = { formula: `SUM(I${startRow}:I${totalRow - 1})` };
   ws.getCell(totalRow, 9).numFmt = "$#,##0.00";
 
-  let footerStart = totalRow + 7;
-  if (useActualPrice) {
-    const depositRow = totalRow + 1;
-    const reduceRow = totalRow + 2;
-    const balanceRow = totalRow + 3;
-    const creditTotal = credits.reduce((sum, credit) => sum + credit.creditAmount, 0);
-    ws.getCell(depositRow, 8).value = "GOT DEPOSIT:";
-    ws.getCell(depositRow, 9).value = 0;
-    ws.getCell(reduceRow, 8).value = "REDUCE";
-    ws.getCell(reduceRow, 9).value = moneyNumber(creditTotal);
-    ws.getCell(balanceRow, 8).value = "Balance";
-    ws.getCell(balanceRow, 9).value = { formula: `I${totalRow}-I${depositRow}-I${reduceRow}` };
-    for (const row of [depositRow, reduceRow, balanceRow]) ws.getCell(row, 9).numFmt = "$#,##0.00";
-    footerStart = balanceRow + 4;
-  }
+  const depositRow = totalRow + 1;
+  const reduceRow = totalRow + 2;
+  const balanceRow = totalRow + 3;
+  const creditTotal = credits.reduce((sum, credit) => sum + credit.creditAmount, 0);
+  ws.getCell(depositRow, 8).value = "GOT DEPOSIT:";
+  ws.getCell(depositRow, 9).value = 0;
+  ws.getCell(reduceRow, 8).value = "REDUCE";
+  ws.getCell(reduceRow, 9).value = moneyNumber(creditTotal);
+  ws.getCell(balanceRow, 8).value = "Balance";
+  ws.getCell(balanceRow, 9).value = { formula: `I${totalRow}-I${depositRow}-I${reduceRow}` };
+  for (const row of [depositRow, reduceRow, balanceRow]) ws.getCell(row, 9).numFmt = "$#,##0.00";
+
+  const footerStart = fillCreditDetails(ws, balanceRow + 3, credits);
 
   borderRange(ws, 20, totalRow);
   fillBankDetails(ws, footerStart);
@@ -280,15 +359,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ShipCore";
   workbook.created = new Date();
-  const invoiceTotal = items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0);
-  const creditTotal = credits.reduce((sum, credit) => sum + credit.creditAmount, 0);
-  const balance = Math.max(0, invoiceTotal - creditTotal);
 
-  addInvoiceSheet(workbook, `$${Math.round(balance)} invoice`, header, items, credits, false);
-  addInvoiceSheet(workbook, "payment invoice", header, items, credits, true);
+  addInvoiceSheet(workbook, "payment invoice", header, items, credits);
+  for (const worksheet of [...workbook.worksheets]) {
+    if (worksheet.name !== "payment invoice") workbook.removeWorksheet(worksheet.id);
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const fileName = safeFileName(`${header.invoiceNumber || "invoice"} commercial invoice.xlsx`);
+  const fileName = safeFileName(`${header.invoiceNumber || "invoice"} payment invoice ${downloadStamp()}.xlsx`);
 
   return new NextResponse(buffer, {
     headers: {

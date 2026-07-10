@@ -909,7 +909,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
   async function downloadGeneratedInvoice() {
     if (!detail) return;
     try {
-      const res = await fetch(apiPath(`/api/production/invoices/${detail.id}/generated-invoice`), { cache: "no-store" });
+      const res = await fetch(apiPath(`/api/production/invoices/${detail.id}/generated-invoice?t=${Date.now()}`), { cache: "no-store" });
       if (!res.ok) {
         const contentType = res.headers.get("content-type") ?? "";
         if (contentType.includes("application/json")) {
@@ -922,7 +922,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${detail.invoiceNumber || "invoice"} commercial invoice.xlsx`;
+      link.download = `${detail.invoiceNumber || "invoice"} payment invoice ${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
