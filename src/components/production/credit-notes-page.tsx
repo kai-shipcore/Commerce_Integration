@@ -245,9 +245,8 @@ export function CreditNotesPage() {
     setApplyInvoiceLabel("");
     setNewApplyInvoice(emptyNewAppliedInvoice());
     setApplyDate(today());
-    const excludedInvoiceIds = new Set(notes.map((note) => note.sourceInvoiceId));
     const options = await loadInvoiceOptions(notes[0].factoryId);
-    setApplyInvoiceOptions(options.filter((option) => !excludedInvoiceIds.has(option.id)));
+    setApplyInvoiceOptions(options);
   }
 
   async function createAppliedInvoice(notes: CreditNote[]) {
@@ -882,7 +881,7 @@ export function CreditNotesPage() {
 
               {applyMode === "existing" ? (
                 <label className="block text-xs font-medium">
-                  {pick("적용할 Invoice (같은 공장)", "Invoice to apply against (same factory)")}
+                  {pick("적용할 Invoice (같은 공장, 원본 Invoice 포함)", "Invoice to apply against (same factory, including source invoice)")}
                   <SearchableSelect
                     options={applyInvoiceOptions.map(invoiceLabel)}
                     value={applyInvoiceLabel}

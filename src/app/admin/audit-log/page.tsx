@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Download, Loader2, ScrollText, Search, X } from "lucide-react";
@@ -24,6 +24,12 @@ type AuditEntry = {
   note: string | null;
   ip: string | null;
   createdAt: string;
+};
+
+type AuditDetailRow = {
+  key: string;
+  before: unknown;
+  after: unknown;
 };
 
 type Pagination = {
@@ -148,7 +154,100 @@ function getInitials(name: string | null, email: string | null): string {
 function valueText(value: unknown): string {
   if (value == null || value === "") return "-";
   if (typeof value === "number") return value.toLocaleString();
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length ? value.map(valueText).join(", ") : "-";
+  if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+const FIELD_LABELS: Record<string, { ko: string; en: string }> = {
+  action: { ko: "작업", en: "Action" },
+  added: { ko: "추가 항목", en: "Added item" },
+  allowed: { ko: "허용 여부", en: "Allowed" },
+  appliedDate: { ko: "적용일", en: "Applied date" },
+  appliedInvoiceNumber: { ko: "적용 Invoice", en: "Applied invoice" },
+  confirmed: { ko: "확인", en: "Confirmed" },
+  confirmedDate: { ko: "입고 확정일", en: "Confirmed date" },
+  confirmedTime: { ko: "입고 확정 시간", en: "Confirmed time" },
+  containerId: { ko: "컨테이너 ID", en: "Container ID" },
+  containerNumber: { ko: "컨테이너", en: "Container" },
+  creditAmount: { ko: "Credit 금액", en: "Credit amount" },
+  creditNoteId: { ko: "Credit 레코드", en: "Credit record" },
+  creditStatus: { ko: "Credit 상태", en: "Credit status" },
+  eta: { ko: "ETA", en: "ETA" },
+  etaLaxLgbDate: { ko: "ETA LAX/LGB", en: "ETA LAX/LGB" },
+  factoryConfirmAction: { ko: "공장 확인 작업", en: "Factory confirmation action" },
+  invoiceDate: { ko: "Invoice Date", en: "Invoice date" },
+  invoiceNumber: { ko: "Invoice 번호", en: "Invoice number" },
+  isActive: { ko: "활성 상태", en: "Active" },
+  itemId: { ko: "라인 ID", en: "Line ID" },
+  note: { ko: "메모", en: "Note" },
+  qty: { ko: "수량", en: "Qty" },
+  removedItemId: { ko: "삭제 라인 ID", en: "Removed line ID" },
+  reverted: { ko: "되돌림", en: "Reverted" },
+  role: { ko: "역할", en: "Role" },
+  section: { ko: "권한 섹션", en: "Permission section" },
+  signed: { ko: "서명본", en: "Signed file" },
+  sku: { ko: "SKU", en: "SKU" },
+  skuCount: { ko: "SKU 수", en: "SKU count" },
+  status: { ko: "상태", en: "Status" },
+  totalQty: { ko: "총 수량", en: "Total qty" },
+  unitPrice: { ko: "단가", en: "Unit price" },
+};
+
+function fieldLabel(key: string, pickText: (ko: string, en: string) => string): string {
+  return pickText(FIELD_LABELS[key]?.ko ?? key, FIELD_LABELS[key]?.en ?? key);
+}
+
+function comparableValue(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}
+
+function detailRows(entry: AuditEntry): AuditDetailRow[] {
+  const before = entry.before ?? {};
+  const after = entry.after ?? {};
+  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))
+    .filter((key) => comparableValue(before[key]) !== comparableValue(after[key]));
+
+  if (keys.length === 0 && entry.note) {
+    return [{ key: "note", before: null, after: entry.note }];
+  }
+
+  return keys.map((key) => ({
+    key,
+    before: Object.prototype.hasOwnProperty.call(before, key) ? before[key] : null,
+    after: Object.prototype.hasOwnProperty.call(after, key) ? after[key] : null,
+  }));
+}
+
+function detailText(row: AuditDetailRow, entry: AuditEntry, pickText: (ko: string, en: string) => string): string {
+  const label = fieldLabel(row.key, pickText);
+  const before = valueText(row.before);
+  const after = valueText(row.after);
+  if (row.key === "creditNoteId") {
+    const sku = valueText(entry.after?.sku ?? entry.before?.sku);
+    return sku === "-"
+      ? `${label} #${after}`
+      : `${pickText("Credit", "Credit")}: ${sku} (${label} #${after})`;
+  }
+  if (row.key === "appliedInvoiceNumber") return `${pickText("적용된 Invoice", "Applied invoice")}: ${after}`;
+  if (row.key === "itemId") return `${label} #${after}`;
+  if (row.key === "removedItemId") return `${label} #${after}`;
+  if (before === "-") return `${label}: ${after}`;
+  if (after === "-") return `${label}: ${before} -> -`;
+  return `${label}: ${before} -> ${after}`;
+}
+
+function isSummaryDuplicateDetail(row: AuditDetailRow, change: { before: string; after: string }): boolean {
+  return valueText(row.before) === change.before && valueText(row.after) === change.after;
+}
+
+function entityDisplayText(entry: AuditEntry, pickText: (ko: string, en: string) => string): string {
+  if (entry.entityLabel && entry.entityLabel !== entry.entityId) return entry.entityLabel;
+  const invoiceNumber = entry.after?.appliedInvoiceNumber ?? entry.before?.appliedInvoiceNumber;
+  if (entry.entityType === "invoice" && invoiceNumber) return String(invoiceNumber);
+  const type = pickText(ENTITY_TYPE_LABEL_KO[entry.entityType] ?? entry.entityType, ENTITY_TYPE_LABEL_EN[entry.entityType] ?? entry.entityType);
+  return `${type} ID ${entry.entityId}`;
 }
 
 function summarizeChange(entry: AuditEntry): { before: string; after: string } {
@@ -365,7 +464,7 @@ export default function AuditLogPage() {
           formatTimestamp(entry.createdAt),
           entry.userName || entry.userEmail || "System",
           entityTypeLabel(entry.entityType),
-          entry.entityLabel || entry.entityId,
+          entityDisplayText(entry, pick),
           actionLabel(entry.action),
           change.before,
           change.after,
@@ -567,48 +666,71 @@ export default function AuditLogPage() {
                       </tr>
                     ) : entries.map((entry) => {
                       const change = summarizeChange(entry);
+                      const rows = detailRows(entry).filter((row) => !isSummaryDuplicateDetail(row, change));
                       return (
-                        <tr key={entry.id} className="border-t border-[#f0ede7]">
-                          <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-muted-foreground">{formatTimestamp(entry.createdAt)}</td>
-                          <td className="px-4 py-2">
-                            <button
-                              type="button"
-                              disabled={!entry.userId || !canOpenUserManagement}
-                              onClick={() => openUserDetail(entry.userId)}
-                              className={`flex items-center gap-2 text-left ${
-                                entry.userId && canOpenUserManagement
-                                  ? "rounded-md hover:text-[#1a5cdb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a5cdb]"
-                                  : "cursor-default"
-                              }`}
-                              title={
-                                entry.userId && canOpenUserManagement
-                                  ? pick("사용자 관리에서 보기", "View in user management")
-                                  : undefined
-                              }
-                            >
-                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">
-                                {getInitials(entry.userName, entry.userEmail)}
+                        <Fragment key={entry.id}>
+                          <tr className="border-t border-[#f0ede7]">
+                            <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-muted-foreground">{formatTimestamp(entry.createdAt)}</td>
+                            <td className="px-4 py-2">
+                              <button
+                                type="button"
+                                disabled={!entry.userId || !canOpenUserManagement}
+                                onClick={() => openUserDetail(entry.userId)}
+                                className={`flex items-center gap-2 text-left ${
+                                  entry.userId && canOpenUserManagement
+                                    ? "rounded-md hover:text-[#1a5cdb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a5cdb]"
+                                    : "cursor-default"
+                                }`}
+                                title={
+                                  entry.userId && canOpenUserManagement
+                                    ? pick("사용자 관리에서 보기", "View in user management")
+                                    : undefined
+                                }
+                              >
+                                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">
+                                  {getInitials(entry.userName, entry.userEmail)}
+                                </span>
+                                <span className="font-medium">{entry.userName || entry.userEmail || "System"}</span>
+                              </button>
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ENTITY_TYPE_CLASS[entry.entityType] ?? "bg-stone-100 text-stone-600"}`}>
+                                {entityTypeLabel(entry.entityType)}
                               </span>
-                              <span className="font-medium">{entry.userName || entry.userEmail || "System"}</span>
-                            </button>
-                          </td>
-                          <td className="px-4 py-2">
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ENTITY_TYPE_CLASS[entry.entityType] ?? "bg-stone-100 text-stone-600"}`}>
-                              {entityTypeLabel(entry.entityType)}
-                            </span>
-                          </td>
-                          <td className="max-w-[160px] truncate px-4 py-2 font-mono text-xs font-semibold text-[#1a5cdb]">
-                            {entry.entityLabel || entry.entityId}
-                          </td>
-                          <td className="px-4 py-2">
-                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${ACTION_CLASS[entry.action] ?? "bg-stone-100 text-stone-700"}`}>
-                              {actionLabel(entry.action)}
-                            </span>
-                          </td>
-                          <td className="max-w-[200px] truncate px-4 py-2 text-muted-foreground line-through decoration-[#8d867c]">{change.before}</td>
-                          <td className="max-w-[200px] truncate px-4 py-2 font-semibold">{change.after}</td>
-                          <td className="max-w-[220px] truncate px-4 py-2 text-muted-foreground">{entry.note || "-"}</td>
-                        </tr>
+                            </td>
+                            <td className="max-w-[220px] truncate px-4 py-2 text-xs font-semibold text-[#1a5cdb]" title={entityDisplayText(entry, pick)}>
+                              {entityDisplayText(entry, pick)}
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${ACTION_CLASS[entry.action] ?? "bg-stone-100 text-stone-700"}`}>
+                                {actionLabel(entry.action)}
+                              </span>
+                            </td>
+                            <td className="max-w-[200px] truncate px-4 py-2 text-muted-foreground line-through decoration-[#8d867c]">{change.before}</td>
+                            <td className="max-w-[200px] truncate px-4 py-2 font-semibold">{change.after}</td>
+                            <td className="max-w-[220px] truncate px-4 py-2 text-muted-foreground">{entry.note || "-"}</td>
+                          </tr>
+                          {rows.length > 0 ? (
+                            <tr className="border-t border-[#f7f4ef] bg-[#fcfbf8]">
+                              <td colSpan={8} className="px-4 pb-3 pt-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                  <span className="mr-1 font-semibold text-muted-foreground">
+                                    {pick("상세", "Details")}
+                                  </span>
+                                  {rows.map((row) => (
+                                    <span
+                                      key={row.key}
+                                      className="inline-flex max-w-[520px] items-center rounded-full border border-[#e2dfd8] bg-white px-2.5 py-1 text-[#2f2a24]"
+                                      title={detailText(row, entry, pick)}
+                                    >
+                                      <span className="truncate">{detailText(row, entry, pick)}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>

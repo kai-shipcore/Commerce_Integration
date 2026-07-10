@@ -86,6 +86,9 @@ export async function GET(req: NextRequest) {
     filters.push(`(
       COALESCE(entity_label, '') ILIKE $${idx}
       OR COALESCE(entity_id, '') ILIKE $${idx}
+      OR COALESCE(before::text, '') ILIKE $${idx}
+      OR COALESCE(after::text, '') ILIKE $${idx}
+      OR COALESCE(note, '') ILIKE $${idx}
     )`);
     idx++;
   }
@@ -131,13 +134,14 @@ export async function GET(req: NextRequest) {
     UNION ALL
 
     SELECT
-      'i:' || id::text      AS id,
+      'i:' || ial.id::text  AS id,
       'invoice'             AS entity_type,
-      invoice_id::text      AS entity_id,
-      COALESCE(invoice_number, invoice_id::text) AS entity_label,
-      user_id, user_name, user_email,
-      action, before, after, note, ip, created_at
-    FROM shipcore.fc_invoice_audit_log
+      ial.invoice_id::text  AS entity_id,
+      COALESCE(ial.invoice_number, inv.invoice_number, ial.invoice_id::text) AS entity_label,
+      ial.user_id, ial.user_name, ial.user_email,
+      ial.action, ial.before, ial.after, ial.note, ial.ip, ial.created_at
+    FROM shipcore.fc_invoice_audit_log ial
+    LEFT JOIN shipcore.fc_invoices inv ON inv.id = ial.invoice_id
 
     UNION ALL
 

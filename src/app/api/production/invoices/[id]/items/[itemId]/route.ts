@@ -31,14 +31,31 @@ function errorMessage(error: unknown) {
 
 async function assertItemBelongsToInvoice(invoiceId: string, itemId: string) {
   const result = await getPrimaryPool().query(
-    `SELECT i.invoice_id::text AS invoice_id, inv.invoice_number
+    `SELECT
+       i.invoice_id::text AS invoice_id,
+       inv.invoice_number,
+       i.sku,
+       i.qty,
+       i.invoice_unit_price,
+       i.credit_status::text AS credit_status,
+       i.factory_confirm_requested_at,
+       i.factory_confirm_confirmed_at
      FROM shipcore.fc_invoice_items i
      JOIN shipcore.fc_invoices inv ON inv.id = i.invoice_id
      WHERE i.id = $1::bigint`,
     [itemId],
   );
   if (result.rowCount === 0 || result.rows[0].invoice_id !== invoiceId) return null;
-  return result.rows[0] as { invoice_id: string; invoice_number: string };
+  return result.rows[0] as {
+    invoice_id: string;
+    invoice_number: string;
+    sku: string;
+    qty: number;
+    invoice_unit_price: string | number;
+    credit_status: string | null;
+    factory_confirm_requested_at: Date | null;
+    factory_confirm_confirmed_at: Date | null;
+  };
 }
 
 export async function PATCH(
@@ -76,6 +93,12 @@ export async function PATCH(
         userName: session?.user?.name ?? null,
         userEmail: session?.user?.email ?? null,
         action: "items_update",
+        before: {
+          itemId,
+          sku: owner.sku,
+          qty: Number(owner.qty),
+          unitPrice: Number(owner.invoice_unit_price),
+        },
         after: { itemId, ...lineEdit.data },
       });
 
@@ -101,6 +124,7 @@ export async function PATCH(
         userName: session?.user?.name ?? null,
         userEmail: session?.user?.email ?? null,
         action: "credit_update",
+        before: { itemId, creditStatus: owner.credit_status },
         after: { itemId, creditStatus: creditEdit.data.creditStatus },
       });
 
@@ -128,6 +152,11 @@ export async function PATCH(
         userName: session?.user?.name ?? null,
         userEmail: session?.user?.email ?? null,
         action: "factory_confirm_update",
+        before: {
+          itemId,
+          requestedAt: owner.factory_confirm_requested_at?.toISOString() ?? null,
+          confirmedAt: owner.factory_confirm_confirmed_at?.toISOString() ?? null,
+        },
         after: { itemId, action: confirmEdit.data.factoryConfirmAction },
       });
 
@@ -165,6 +194,13 @@ export async function DELETE(
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,
       action: "items_update",
+      before: {
+        itemId,
+        sku: owner.sku,
+        qty: Number(owner.qty),
+        unitPrice: Number(owner.invoice_unit_price),
+        creditStatus: owner.credit_status,
+      },
       after: { removedItemId: itemId },
     });
 

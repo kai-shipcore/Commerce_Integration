@@ -175,7 +175,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body: unknown = await request.json();
 
     const existingResult = await getPrimaryPool().query(
-      `SELECT status::text AS status, invoice_number FROM shipcore.fc_invoices WHERE id = $1::bigint`,
+      `SELECT
+         status::text AS status,
+         invoice_number,
+         invoice_date::text AS invoice_date,
+         container_id::text AS container_id,
+         container_number,
+         note
+       FROM shipcore.fc_invoices
+       WHERE id = $1::bigint`,
       [id],
     );
     if (existingResult.rowCount === 0) {
@@ -243,6 +251,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,
       action: "details_update",
+      before: {
+        invoiceNumber: existing.invoice_number,
+        invoiceDate: existing.invoice_date,
+        containerId: existing.container_id,
+        containerNumber: existing.container_number,
+        note: existing.note,
+      },
       after: details,
       ip,
     });

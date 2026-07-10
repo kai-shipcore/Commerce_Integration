@@ -204,6 +204,7 @@
   </div>
   <div class="nav-section">개요</div>
   <a class="nav-item top" href="#overview">전체 그림</a>
+  <a class="nav-item" href="#scenarios">자주 하는 작업 (시나리오)</a>
   <a class="nav-item" href="#permissions">권한 &amp; 접근</a>
 
   <div class="nav-section">시트 커버 부품</div>
@@ -275,6 +276,62 @@
   <div class="callout tip">
     <span class="callout-icon">💡</span>
     <div>SKU를 새로 만들려면 순서가 있습니다: <b>① Vehicles에 차종 등록 → ② Parts &amp; Codes에 Part/Code/Initial 등록 → ③ Part SKU Generator에서 조합</b>. 순서를 지키면 드롭다운·목록에 원하는 값이 바로 나타납니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ 업무 시나리오 ═══════════ -->
+<section class="page-section" id="scenarios">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8">🗺️</div>
+    <div>
+      <div class="menu-path">실무 가이드</div>
+      <h2>자주 하는 작업, 처음부터 끝까지</h2>
+      <p class="subtitle">화면별 설명을 읽기 전에, 실제로 자주 반복하는 작업 흐름을 먼저 따라가 보세요.</p>
+    </div>
+  </div>
+
+  <h3 class="sub">시나리오 1 — 새 차종의 SKU를 처음 만들기</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4><a href="#vehicles">Vehicles</a>에서 차종 확인/등록</h4><p>원하는 Make/Model이 이미 목록에 있으면 건너뜁니다. 없으면 <span class="btn-label">+ 추가</span>로 F Number·Make·Model을 등록하세요 (나머지는 선택 입력).</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4><a href="#part-registration">Parts &amp; Codes › Part</a>에서 사용할 부품이 있는지 확인</h4><p>표준 카탈로그 분류로 이미 등록되어 있으면 그대로 쓰고, 없으면 새로 등록합니다. <a href="#parts-codes">Code</a>·<a href="#parts-codes">Designer Initial</a>도 필요하면 함께 확인하세요.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4><a href="#part-sku-generator">Part SKU Generator</a>에서 조합·생성</h4><p>다이어그램에서 부위를 클릭 → Part 선택 → 우측에서 Make → Make Abbr → Model → Model Abbr → Initial 순서로 세션을 채우고 → Code·Side 선택 → <span class="btn-label">+ 생성</span>.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div><h4>같은 차종으로 계속 생성</h4><p>세션(Make~Initial)은 저장 후에도 유지되므로, Part·Code·Side만 바꿔가며 여러 SKU를 연달아 만들 수 있습니다.</p></div>
+    </div>
+  </div>
+
+  <h3 class="sub">시나리오 2 — 지금까지 없던 새로운 부품(Part) 하나 추가하기</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4><a href="#part-registration">Parts &amp; Codes › Part</a> 탭에서 <span class="btn-label">+ 추가</span></h4><p>표준 카탈로그에서 가장 가까운 분류(좌석 위치 · Driver/Passenger/Middle/Universal · 부위 종류)를 고릅니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>실제 Part Name 입력</h4><p>카탈로그 분류명을 그대로 쓸 필요 없이, 우리 회사에서 실제로 부를 이름을 자유롭게 입력합니다. 이 이름이 SKU에 그대로 들어갑니다.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>저장 → 바로 Part SKU Generator에서 사용 가능</h4><p>분류(좌석 위치/구분/부위)는 나중에 수정할 수 없으니, 저장 전에 한 번 더 확인하세요.</p></div>
+    </div>
+  </div>
+
+  <h3 class="sub">시나리오 3 — 시트 커버 사이즈를 신규 등록하기</h3>
+  <p><a href="#seat-cover-parts">시트 커버 부품</a> 화면은 위 두 시나리오와 <strong>데이터가 전혀 연결되지 않는 독립 작업</strong>입니다. Front/Rear/Third 중 해당 탭에서 바로 <span class="btn-label">+ 추가</span>로 Size를 등록하고, Driver/Passenger 값과 D/P 옵션을 채우면 Package 요약이 자동으로 완성됩니다.</p>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>Vehicles의 <span class="btn-label">Sync</span> 버튼은 <strong>외부 차종 데이터 전체를 덮어쓰는 작업</strong>입니다. 시나리오 1의 1단계에서 수동으로 차종을 하나 추가한 직후에는 Sync를 누르지 마세요 — 외부 소스에 없는 값이면 곧바로 삭제될 수 있습니다.</div>
   </div>
 </section>
 

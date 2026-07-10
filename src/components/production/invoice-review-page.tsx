@@ -182,6 +182,12 @@ type InvoiceAuditEntry = {
   createdAt: string;
 };
 
+type InvoiceAuditDetailRow = {
+  key: string;
+  before: unknown;
+  after: unknown;
+};
+
 type NewInvoiceForm = {
   factoryId: string;
   containerNumber: string;
@@ -274,9 +280,81 @@ const AUDIT_ACTION_LABEL: Record<string, { ko: string; en: string }> = {
   attachment_update: { ko: "첨부파일 변경", en: "Attachment updated" },
 };
 
-function auditValueText(value: unknown) {
+function auditValueText(value: unknown): string {
   if (value == null || value === "") return "-";
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length ? value.map(auditValueText).join(", ") : "-";
+  if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+const AUDIT_FIELD_LABEL: Record<string, { ko: string; en: string }> = {
+  action: { ko: "작업", en: "Action" },
+  added: { ko: "추가 항목", en: "Added item" },
+  appliedDate: { ko: "적용일", en: "Applied date" },
+  appliedInvoiceNumber: { ko: "적용 Invoice", en: "Applied invoice" },
+  confirmed: { ko: "확인", en: "Confirmed" },
+  containerId: { ko: "컨테이너 ID", en: "Container ID" },
+  containerNumber: { ko: "컨테이너", en: "Container" },
+  creditAmount: { ko: "Credit 금액", en: "Credit amount" },
+  creditNoteId: { ko: "Credit 레코드", en: "Credit record" },
+  creditStatus: { ko: "Credit 상태", en: "Credit status" },
+  factoryConfirmAction: { ko: "공장 확인 작업", en: "Factory confirmation action" },
+  invoiceDate: { ko: "Invoice Date", en: "Invoice date" },
+  invoiceNumber: { ko: "Invoice 번호", en: "Invoice number" },
+  itemId: { ko: "라인 ID", en: "Line ID" },
+  note: { ko: "메모", en: "Note" },
+  qty: { ko: "수량", en: "Qty" },
+  removedItemId: { ko: "삭제 라인 ID", en: "Removed line ID" },
+  reverted: { ko: "되돌림", en: "Reverted" },
+  signed: { ko: "서명본", en: "Signed file" },
+  sku: { ko: "SKU", en: "SKU" },
+  status: { ko: "상태", en: "Status" },
+  unitPrice: { ko: "단가", en: "Unit price" },
+};
+
+function auditFieldLabel(key: string, pickText: (ko: string, en: string) => string) {
+  return pickText(AUDIT_FIELD_LABEL[key]?.ko ?? key, AUDIT_FIELD_LABEL[key]?.en ?? key);
+}
+
+function auditComparableValue(value: unknown) {
+  return JSON.stringify(value ?? null);
+}
+
+function auditDetailRows(entry: InvoiceAuditEntry): InvoiceAuditDetailRow[] {
+  const before = entry.before ?? {};
+  const after = entry.after ?? {};
+  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))
+    .filter((key) => auditComparableValue(before[key]) !== auditComparableValue(after[key]));
+
+  if (keys.length === 0 && entry.note) {
+    return [{ key: "note", before: null, after: entry.note }];
+  }
+
+  return keys.map((key) => ({
+    key,
+    before: Object.prototype.hasOwnProperty.call(before, key) ? before[key] : null,
+    after: Object.prototype.hasOwnProperty.call(after, key) ? after[key] : null,
+  }));
+}
+
+function auditDetailText(row: InvoiceAuditDetailRow, entry: InvoiceAuditEntry, pickText: (ko: string, en: string) => string): string {
+  const label = auditFieldLabel(row.key, pickText);
+  const before = auditValueText(row.before);
+  const after = auditValueText(row.after);
+  if (row.key === "creditNoteId") {
+    const sku = auditValueText(entry.after?.sku ?? entry.before?.sku);
+    return sku === "-"
+      ? `${label} #${after}`
+      : `${pickText("Credit", "Credit")}: ${sku} (${label} #${after})`;
+  }
+  if (row.key === "appliedInvoiceNumber") return `${pickText("적용된 Invoice", "Applied invoice")}: ${after}`;
+  if (row.key === "itemId") return `${label} #${after}`;
+  if (row.key === "removedItemId") return `${label} #${after}`;
+  if (before === "-") return `${label}: ${after}`;
+  if (after === "-") return `${label}: ${before} -> -`;
+  return `${label}: ${before} -> ${after}`;
 }
 
 function summarizeAuditEntry(entry: InvoiceAuditEntry) {
@@ -2013,7 +2091,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
 
       {showAuditHistory ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6" onMouseDown={() => setShowAuditHistory(false)}>
-          <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-white shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b px-5 py-4">
               <div>
                 <div className="text-lg font-semibold">{pick("Invoice 변경 이력", "Invoice Change History")}</div>
@@ -2041,18 +2119,39 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                     </tr>
                   </thead>
                   <tbody>
-                    {auditEntries.map((entry) => (
-                      <tr key={entry.id} className="border-t">
-                        <td className="px-3 py-2 font-mono text-xs">{formatDateTime(entry.createdAt)}</td>
-                        <td className="px-3 py-2">{entry.userName || entry.userEmail || "-"}</td>
-                        <td className="px-3 py-2">
-                          <span className="inline-flex rounded bg-[#f0eee9] px-2 py-0.5 text-[11px] font-semibold text-[#57534a]">
-                            {pick(AUDIT_ACTION_LABEL[entry.action]?.ko ?? entry.action, AUDIT_ACTION_LABEL[entry.action]?.en ?? entry.action)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-xs text-muted-foreground">{summarizeAuditEntry(entry)}</td>
-                      </tr>
-                    ))}
+                    {auditEntries.map((entry) => {
+                      const rows = auditDetailRows(entry);
+                      const summary = summarizeAuditEntry(entry);
+                      return (
+                        <tr key={entry.id} className="border-t align-top">
+                          <td className="px-3 py-2 font-mono text-xs">{formatDateTime(entry.createdAt)}</td>
+                          <td className="px-3 py-2">{entry.userName || entry.userEmail || "-"}</td>
+                          <td className="px-3 py-2">
+                            <span className="inline-flex rounded bg-[#f0eee9] px-2 py-0.5 text-[11px] font-semibold text-[#57534a]">
+                              {pick(AUDIT_ACTION_LABEL[entry.action]?.ko ?? entry.action, AUDIT_ACTION_LABEL[entry.action]?.en ?? entry.action)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {summary !== "-" ? <div className="font-medium text-foreground">{summary}</div> : null}
+                            {rows.length > 0 ? (
+                              <div className={`${summary !== "-" ? "mt-1.5" : ""} flex flex-wrap items-center gap-1.5`}>
+                                <span className="mr-1 font-semibold text-muted-foreground">{pick("상세", "Details")}</span>
+                                {rows.map((row) => (
+                                  <span
+                                    key={row.key}
+                                    className="inline-flex max-w-[420px] items-center rounded-full border border-[#e2dfd8] bg-white px-2.5 py-1 text-[#2f2a24]"
+                                    title={auditDetailText(row, entry, pick)}
+                                  >
+                                    <span className="truncate">{auditDetailText(row, entry, pick)}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                            {entry.note ? <div className="mt-1 text-[11px]">{pick("메모", "Note")}: {entry.note}</div> : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
