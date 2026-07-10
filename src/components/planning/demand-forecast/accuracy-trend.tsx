@@ -158,15 +158,20 @@ export function AccuracyTrendContent({ refreshKey }: { refreshKey: number }) {
         hovertemplate: "V1 WAPE: %{y:.1f}%<br>V1 forecast: %{customdata[0]:,}<extra></extra>",
       } as Plotly.Data);
     }
-    if (showCoverage && points.some((p) => p.coverage != null)) {
+    // Coverage lives in its own panel below the WAPE chart — it measures
+    // calibration (target 70%), not error, so sharing an axis with WAPE
+    // (lower = better) invites misreading.
+    const hasCoverage = showCoverage && points.some((p) => p.coverage != null);
+    if (hasCoverage) {
       traces.push({
         type: "scatter",
         x,
         y: points.map((p) => (p.coverage != null ? p.coverage * 100 : null)),
         mode: "lines+markers",
         name: pick("밴드 적중률", "Band coverage"),
-        line: { color: "#55A868", width: 2, dash: "dot" },
+        line: { color: "#55A868", width: 2 },
         marker: { size: 7 },
+        yaxis: "y2",
         customdata: points.map((p) => [p.n_band]),
         hovertemplate: "Band coverage: %{y:.1f}% (target 70%)<br>SKU-weeks: %{customdata[0]:,}<extra></extra>",
       } as Plotly.Data);
@@ -180,18 +185,34 @@ export function AccuracyTrendContent({ refreshKey }: { refreshKey: number }) {
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
         font: { size: 11 },
-        xaxis: { showgrid: true, gridcolor: "#F0F0F0", title: { text: pick("예측 시작 주", "Forecast start week") } },
-        yaxis: { showgrid: true, gridcolor: "#F0F0F0", range: [0, 100], ticksuffix: "%", dtick: 10 },
+        xaxis: {
+          showgrid: true,
+          gridcolor: "#F0F0F0",
+          title: { text: pick("예측 시작 주", "Forecast start week") },
+          ...(hasCoverage ? { anchor: "y2" } : {}),
+        },
+        yaxis: {
+          showgrid: true, gridcolor: "#F0F0F0", range: [0, 100], ticksuffix: "%", dtick: 10,
+          title: { text: "WAPE", font: { size: 11 } },
+          ...(hasCoverage ? { domain: [0.36, 1] } : {}),
+        },
+        ...(hasCoverage ? {
+          yaxis2: {
+            showgrid: true, gridcolor: "#F0F0F0", range: [0, 100], ticksuffix: "%", dtick: 25,
+            title: { text: pick("적중률", "Coverage"), font: { size: 11 } },
+            domain: [0, 0.28],
+          },
+        } : {}),
         legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1 },
         hovermode: "x unified",
         // Calibration target: the P85 band is a central 70% interval, so a
         // well-calibrated model should sit near the 70% line.
-        shapes: showCoverage && points.some((p) => p.coverage != null) ? [{
-          type: "line", x0: 0, x1: 1, xref: "paper", y0: 70, y1: 70,
+        shapes: hasCoverage ? [{
+          type: "line", x0: 0, x1: 1, xref: "paper", y0: 70, y1: 70, yref: "y2",
           line: { color: "#55A868", width: 1, dash: "dash" },
         }] : [],
-        annotations: showCoverage && points.some((p) => p.coverage != null) ? [{
-          x: 1, xref: "paper", y: 70, xanchor: "right", yanchor: "bottom",
+        annotations: hasCoverage ? [{
+          x: 1, xref: "paper", y: 70, yref: "y2", xanchor: "right", yanchor: "bottom",
           text: pick("적중률 목표 70%", "70% coverage target"),
           showarrow: false, font: { color: "#55A868", size: 10 },
         }] : [],
