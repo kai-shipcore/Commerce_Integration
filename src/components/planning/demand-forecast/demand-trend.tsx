@@ -19,7 +19,7 @@ import { TREND_SEGMENT_OPTIONS, trendPillClass, type TrendSegment } from "./accu
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 interface ActualPoint   { week: string; segment: TrendSegment; y: number }
-interface PredictedPoint { week: string; lead: number; segment: TrendSegment; yhat: number; v1: number | null; run_date: string }
+interface PredictedPoint { week: string; lead: number; segment: TrendSegment; yhat: number; lo: number; hi: number; v1: number | null; run_date: string }
 interface ForwardPoint  { week: string; segment: TrendSegment; yhat: number; lo: number; hi: number; v1: number | null }
 
 interface DemandTrendData {
@@ -31,6 +31,8 @@ interface DemandTrendData {
 }
 
 const LEAD_PRESETS = [1, 2, 4, 8, 13];
+
+const fmtInt = (n: number) => n.toLocaleString("en-US");
 
 type LeadChoice = number | "adaptive";
 
@@ -97,12 +99,11 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
     return availableLeads.has(lead) ? lead : "adaptive";
   }, [lead, availableLeads]);
 
-  const fig = useMemo(() => {
+  // Shared by the figure and the summary strip
+  const view = useMemo(() => {
     if (!data) return null;
     const actuals = data.actuals.filter((a) => a.segment === segment);
     const forward = data.forward.filter((f) => f.segment === segment);
-    if (actuals.length === 0 && forward.length === 0) return null;
-
     const actualByWeek = new Map(actuals.map((a) => [a.week, a.y]));
     const predictedAll = data.predicted.filter((p) => p.segment === segment);
     let predicted: PredictedPoint[];
@@ -119,6 +120,34 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         .filter((p) => p.lead === effectiveLead)
         .sort((a, b) => a.week.localeCompare(b.week));
     }
+    return { actuals, forward, actualByWeek, predicted };
+  }, [data, segment, effectiveLead]);
+
+  const stats = useMemo(() => {
+    if (!view) return null;
+    const withActual = view.predicted.filter((p) => view.actualByWeek.has(p.week));
+    if (withActual.length === 0 && view.forward.length === 0) return null;
+
+    const last = withActual[withActual.length - 1] ?? null;
+    const lastActual = last ? view.actualByWeek.get(last.week)! : null;
+    const sumF = withActual.reduce((s, p) => s + p.yhat, 0);
+    const sumA = withActual.reduce((s, p) => s + view.actualByWeek.get(p.week)!, 0);
+    const fwdTotal = view.forward.reduce((s, f) => s + f.yhat, 0);
+    const fwdHi = view.forward.reduce((s, f) => s + f.hi, 0);
+    return {
+      last, lastActual,
+      lastDiffPct: last && lastActual ? ((last.yhat - lastActual) / lastActual) * 100 : null,
+      nWeeks: withActual.length,
+      biasPct: sumA > 0 ? ((sumF - sumA) / sumA) * 100 : null,
+      fwdWeeks: view.forward.length,
+      fwdTotal, fwdHi,
+    };
+  }, [view]);
+
+  const fig = useMemo(() => {
+    if (!data || !view) return null;
+    const { actuals, forward, actualByWeek, predicted } = view;
+    if (actuals.length === 0 && forward.length === 0) return null;
 
     const traces: Plotly.Data[] = [];
 
@@ -133,6 +162,50 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         line: { color: "rgba(0,0,0,0)" },
         name: pick("P85 구간", "P85 interval"),
         showlegend: true,
+        hoverinfo: "skip",
+      } as Plotly.Data);
+    }
+
+    // ── P85 band around past predictions — the visual calibration check:
+    // the blue actual line escaping the band means the interval missed. ──
+    if (predicted.length > 1) {
+      traces.push({
+        type: "scatter",
+        x: [...predicted.map((p) => p.week), ...[...predicted].reverse().map((p) => p.week)],
+        y: [...predicted.map((p) => p.hi), ...[...predicted].reverse().map((p) => p.lo)],
+        fill: "toself",
+        fillcolor: "rgba(221,132,82,0.15)",
+        line: { color: "rgba(0,0,0,0)" },
+        name: pick("P85 구간", "P85 interval"),
+        showlegend: forward.length === 0,
+        hoverinfo: "skip",
+      } as Plotly.Data);
+    }
+
+    // ── Bridge the gap between the last past prediction and the first forward
+    // week: band segment + dotted connector, so the prediction series reads as
+    // one continuous corridor across the "today" marker. ──
+    const lastPred = predicted[predicted.length - 1];
+    const firstFwd = forward[0];
+    if (lastPred && firstFwd && lastPred.week < firstFwd.week) {
+      traces.push({
+        type: "scatter",
+        x: [lastPred.week, firstFwd.week, firstFwd.week, lastPred.week],
+        y: [lastPred.hi, firstFwd.hi, firstFwd.lo, lastPred.lo],
+        fill: "toself",
+        fillcolor: "rgba(221,132,82,0.15)",
+        line: { color: "rgba(0,0,0,0)" },
+        name: pick("P85 구간", "P85 interval"),
+        showlegend: false,
+        hoverinfo: "skip",
+      } as Plotly.Data);
+      traces.push({
+        type: "scatter",
+        x: [lastPred.week, firstFwd.week],
+        y: [lastPred.yhat, firstFwd.yhat],
+        mode: "lines",
+        line: { color: "#DD8452", width: 2, dash: "dash" },
+        showlegend: false,
         hoverinfo: "skip",
       } as Plotly.Data);
     }
@@ -152,11 +225,16 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         customdata: predicted.map((p) => {
           const actual = actualByWeek.get(p.week);
           const diffPct = actual != null && actual > 0 ? ((p.yhat - actual) / actual) * 100 : null;
-          return [diffPct != null ? `${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}%` : "—", p.run_date, p.lead];
+          return [
+            diffPct != null ? `${diffPct >= 0 ? "+" : ""}${diffPct.toFixed(0)}%` : "—",
+            p.run_date,
+            p.lead,
+            `${fmtInt(p.lo)} – ${fmtInt(p.hi)}`,
+          ];
         }),
         hovertemplate: effectiveLead === "adaptive"
-          ? "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]} (%{customdata[2]}w ahead)<extra></extra>"
-          : "Forecast: %{y:,}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]}<extra></extra>",
+          ? "Forecast: %{y:,}<br>P85: %{customdata[3]}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]} (%{customdata[2]}w ahead)<extra></extra>"
+          : "Forecast: %{y:,}<br>P85: %{customdata[3]}<br>vs actual: %{customdata[0]}<br>Forecasted on: %{customdata[1]}<extra></extra>",
       } as Plotly.Data);
     }
 
@@ -247,7 +325,7 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         }],
       } as Partial<Plotly.Layout>,
     };
-  }, [data, segment, effectiveLead, showV1, pick]);
+  }, [data, view, effectiveLead, showV1, pick]);
 
   return (
     <>
@@ -319,6 +397,39 @@ export function DemandTrendContent({ refreshKey }: { refreshKey: number }) {
         {!loading && !error && !fig && (
           <div className="flex h-[680px] items-center justify-center text-sm text-muted-foreground">
             {pick("표시할 예측 데이터가 없습니다.", "No forecast data to display yet.")}
+          </div>
+        )}
+        {!loading && !error && fig && stats && (
+          <div className="mb-2 flex flex-wrap items-baseline gap-y-1 rounded-md border bg-muted/20 px-3 py-2 text-xs [&>span]:flex-1 [&>span]:border-l [&>span]:border-border [&>span]:px-4 [&>span:first-child]:border-l-0 [&>span:first-child]:pl-0">
+            {stats.last && stats.lastActual != null && (
+              <span>
+                <span className="text-muted-foreground">{pick("지난주:", "Last week:")} </span>
+                <span className="font-medium tabular-nums">
+                  {fmtInt(stats.lastActual)} {pick("실제", "actual")} · {fmtInt(stats.last.yhat)} {pick("예측", "forecast")}
+                </span>
+                {stats.lastDiffPct != null && (
+                  <span className={`ml-1 tabular-nums ${Math.abs(stats.lastDiffPct) <= 10 ? "text-emerald-600" : "text-amber-600"}`}>
+                    ({stats.lastDiffPct >= 0 ? "+" : ""}{stats.lastDiffPct.toFixed(0)}%)
+                  </span>
+                )}
+              </span>
+            )}
+            {stats.nWeeks > 0 && (
+              <span>
+                <span className="text-muted-foreground">{pick("예측 편향:", "Forecast bias:")} </span>
+                <span className={`font-medium tabular-nums ${stats.biasPct == null ? "" : Math.abs(stats.biasPct) <= 5 ? "text-emerald-600" : stats.biasPct < 0 ? "text-amber-600" : "text-blue-600"}`}>
+                  {stats.biasPct != null ? `${stats.biasPct >= 0 ? "+" : ""}${stats.biasPct.toFixed(1)}%` : "—"}
+                </span>
+                <span className="ml-1 text-muted-foreground">{pick(`(${stats.nWeeks}주 기준)`, `(over ${stats.nWeeks}wk)`)}</span>
+              </span>
+            )}
+            {stats.fwdWeeks > 0 && (
+              <span>
+                <span className="text-muted-foreground">{pick(`향후 ${stats.fwdWeeks}주:`, `Next ${stats.fwdWeeks}w:`)} </span>
+                <span className="font-medium tabular-nums">{fmtInt(stats.fwdTotal)}</span>
+                <span className="ml-1 text-muted-foreground tabular-nums">(≤ {fmtInt(stats.fwdHi)} P85)</span>
+              </span>
+            )}
           </div>
         )}
         {!loading && !error && fig && (
