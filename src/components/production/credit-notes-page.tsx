@@ -97,6 +97,8 @@ export function CreditNotesPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [bulkReverting, setBulkReverting] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [applyTargets, setApplyTargets] = useState<CreditNote[]>([]);
   const [applyMode, setApplyMode] = useState<ApplyMode>("existing");
@@ -163,6 +165,13 @@ export function CreditNotesPage() {
     () => creditNotes.slice((page - 1) * pageSize, page * pageSize),
     [creditNotes, page, pageSize]
   );
+  const selectedNotes = useMemo(
+    () => creditNotes.filter((note) => selectedIds.has(note.id)),
+    [creditNotes, selectedIds],
+  );
+  const selectedAllPending = selectedNotes.length > 0 && selectedNotes.every((note) => note.status === "pending");
+  const selectedAllConfirmed = selectedNotes.length > 0 && selectedNotes.every((note) => note.status === "confirmed");
+  const selectedAllRevertible = selectedNotes.length > 0 && selectedNotes.every((note) => note.status === "confirmed" || note.status === "applied");
 
   function toggleStatusChip(status: CreditNoteStatus) {
     setSelectedIds(new Set());
@@ -331,9 +340,9 @@ export function CreditNotesPage() {
 
   async function bulkConfirmSelected() {
     if (!canStatus) return toast.error(pick("Credit 상태를 변경할 권한이 없습니다.", "No permission to update credit status"));
-    const targets = creditNotes.filter((note) => selectedIds.has(note.id) && note.status === "pending");
-    if (!targets.length) {
-      toast.error(pick("Pending 상태의 선택된 Credit이 없습니다.", "No selected credit notes are pending"));
+    const targets = selectedNotes;
+    if (!targets.length || !targets.every((note) => note.status === "pending")) {
+      toast.error(pick("Pending 상태의 Credit만 일괄 공장 확인할 수 있습니다.", "Only pending credit notes can be bulk confirmed"));
       return;
     }
     setBulkConfirming(true);
@@ -361,6 +370,79 @@ export function CreditNotesPage() {
       await loadCreditNotes();
     } finally {
       setBulkConfirming(false);
+    }
+  }
+
+  async function bulkRevertSelected() {
+    if (!canStatus) return toast.error(pick("Credit 상태를 변경할 권한이 없습니다.", "No permission to update credit status"));
+    const targets = selectedNotes;
+    if (!targets.length || !targets.every((note) => note.status === "confirmed" || note.status === "applied")) {
+      toast.error(pick("Confirmed 또는 Applied 상태만 일괄 되돌리기할 수 있습니다.", "Only confirmed or applied credit notes can be bulk reverted"));
+      return;
+    }
+    if (!window.confirm(pick(
+      `선택한 Credit ${targets.length}건을 이전 단계로 되돌릴까요? Applied 항목은 Invoice 연결이 해제됩니다.`,
+      `Revert ${targets.length} selected credit note(s)? Applied items will be unlinked from their invoices.`,
+    ))) return;
+
+    setBulkReverting(true);
+    try {
+      const results = await Promise.allSettled(
+        targets.map(async (target) => {
+          const res = await fetch(apiPath(`/api/production/credit-notes/${target.id}`), {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ revert: true }),
+          });
+          const json = await res.json();
+          if (!res.ok || !json.success) throw new Error(json.error || pick("되돌리기에 실패했습니다.", "Failed to revert status"));
+        }),
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (succeeded > 0) {
+        toast.success(pick(`${succeeded}건을 되돌렸습니다.`, `Reverted ${succeeded} item(s)`));
+      }
+      if (failed > 0) {
+        toast.error(pick(`${failed}건 되돌리기에 실패했습니다.`, `Failed to revert ${failed} item(s)`));
+      }
+      setSelectedIds(new Set());
+      await loadCreditNotes();
+    } finally {
+      setBulkReverting(false);
+    }
+  }
+
+  async function bulkDeleteSelected() {
+    if (!canDelete) return toast.error(pick("Credit을 삭제할 권한이 없습니다.", "No permission to delete credit notes"));
+    const targets = selectedNotes;
+    if (!targets.length) return;
+    if (!window.confirm(pick(
+      `선택한 Credit ${targets.length}건을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`,
+      `Delete ${targets.length} selected credit note(s)? This action cannot be undone.`,
+    ))) return;
+
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        targets.map(async (target) => {
+          const res = await fetch(apiPath(`/api/production/credit-notes/${target.id}`), { method: "DELETE" });
+          const json = await res.json();
+          if (!res.ok || !json.success) throw new Error(json.error || pick("삭제에 실패했습니다.", "Failed to delete"));
+        }),
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = results.length - failed;
+      if (succeeded > 0) {
+        toast.success(pick(`${succeeded}건을 삭제했습니다.`, `Deleted ${succeeded} item(s)`));
+      }
+      if (failed > 0) {
+        toast.error(pick(`${failed}건 삭제에 실패했습니다.`, `Failed to delete ${failed} item(s)`));
+      }
+      setSelectedIds(new Set());
+      await loadCreditNotes();
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -507,7 +589,7 @@ export function CreditNotesPage() {
               <span className="text-xs font-semibold text-[#1a4db0]">{pick(`${selectedIds.size}건 선택됨`, `${selectedIds.size} selected`)}</span>
               <button
                 type="button"
-                disabled={!canStatus || bulkConfirming}
+                disabled={!canStatus || bulkConfirming || !selectedAllPending}
                 onClick={() => void bulkConfirmSelected()}
                 className="inline-flex h-9 items-center rounded-md border bg-white px-2.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
               >
@@ -515,11 +597,27 @@ export function CreditNotesPage() {
               </button>
               <button
                 type="button"
-                disabled={!canStatus}
-                onClick={() => void openApplyModal(creditNotes.filter((note) => selectedIds.has(note.id) && note.status === "confirmed"))}
+                disabled={!canStatus || !selectedAllConfirmed}
+                onClick={() => void openApplyModal(selectedNotes)}
                 className="inline-flex h-9 items-center rounded-md bg-[#1a5cdb] px-2.5 text-xs font-medium text-white hover:bg-[#174fbf] disabled:opacity-40"
               >
                 {pick(`일괄 Invoice 적용 (${selectedIds.size})`, `Bulk Apply (${selectedIds.size})`)}
+              </button>
+              <button
+                type="button"
+                disabled={!canStatus || bulkReverting || !selectedAllRevertible}
+                onClick={() => void bulkRevertSelected()}
+                className="inline-flex h-9 items-center rounded-md border bg-white px-2.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40"
+              >
+                {bulkReverting ? pick("처리 중...", "Processing...") : pick(`일괄 되돌리기 (${selectedIds.size})`, `Bulk Revert (${selectedIds.size})`)}
+              </button>
+              <button
+                type="button"
+                disabled={!canDelete || bulkDeleting}
+                onClick={() => void bulkDeleteSelected()}
+                className="inline-flex h-9 items-center rounded-md border bg-white px-2.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+              >
+                {bulkDeleting ? pick("삭제 중...", "Deleting...") : pick(`일괄 삭제 (${selectedIds.size})`, `Bulk Delete (${selectedIds.size})`)}
               </button>
             </>
           ) : null}

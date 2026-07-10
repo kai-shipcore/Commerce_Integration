@@ -746,7 +746,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     }
   }
 
-  async function exportSelectedItems() {
+  async function applySelectedItemCredits() {
     if (!detail) return;
     const selected = detail.items.filter((item) => selectedItemIds.has(item.id) && isExportableDifference(item));
     if (selected.length === 0) {
@@ -1502,10 +1502,10 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                       </span>
                       <button
                         type="button"
-                        onClick={() => void exportSelectedItems()}
+                        onClick={() => void applySelectedItemCredits()}
                         className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1a5cdb] px-2.5 text-xs font-semibold text-white hover:bg-[#174fbf]"
                       >
-                        <Download className="h-3.5 w-3.5" /> {pick("선택 항목 내보내기", "Export Selected")}
+                        <Download className="h-3.5 w-3.5" /> {pick("선택 항목 크레딧 적용", "Apply Selected Credits")}
                       </button>
                     </div>
                   ) : null}
