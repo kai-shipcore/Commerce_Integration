@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
-const HORIZON_OPTIONS = [4, 8, 10, 13, 26, 52];
+// Minimum 13: each run replaces the stored forecast for its training week,
+// so a shorter run would clobber the full snapshot (matches the script's floor).
+const MIN_HORIZON = 13;
+const HORIZON_OPTIONS = [13, 26, 52];
 
 const STEPS_EN = [
   { label: "Ingest",   marker: "Step 0:" },
@@ -172,11 +175,16 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
     }
   }, [job?.lines]);
 
-  // Poll server status on mount, then every 15s
+  // Poll server status on mount, then every 15s. Also re-check the moment the
+  // tab becomes visible or refocused — a suspended tab's timers don't fire, so
+  // after sleep/overnight the indicator would otherwise show a stale state.
   useEffect(() => {
     async function checkStatus() {
       try {
-        const res = await fetch(apiPath("/api/forecast-server/status"));
+        const res = await fetch(apiPath("/api/forecast-server/status"), {
+          cache: "no-store",
+          signal: AbortSignal.timeout(8_000),
+        });
         const data = await res.json() as { running: boolean };
         setServerStatus(data.running ? "running" : "stopped");
       } catch {
@@ -185,7 +193,14 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
     }
     checkStatus();
     const id = setInterval(checkStatus, 15_000);
-    return () => clearInterval(id);
+    const onVisible = () => { if (!document.hidden) void checkStatus(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, []);
 
   async function handleStartServer() {
@@ -301,7 +316,7 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
           </div>
           <input
             type="number"
-            min={1}
+            min={MIN_HORIZON}
             max={104}
             placeholder={pick("직접 입력", "custom")}
             value={customInput}
@@ -310,12 +325,12 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 const v = parseInt(customInput);
-                if (!isNaN(v) && v >= 1 && v <= 104) setHorizon(v);
+                if (!isNaN(v) && v >= MIN_HORIZON && v <= 104) setHorizon(v);
               }
             }}
             onBlur={() => {
               const v = parseInt(customInput);
-              if (!isNaN(v) && v >= 1 && v <= 104) setHorizon(v);
+              if (!isNaN(v) && v >= MIN_HORIZON && v <= 104) setHorizon(v);
               else setCustomInput("");
             }}
             className="w-20 rounded border bg-background px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-40"
