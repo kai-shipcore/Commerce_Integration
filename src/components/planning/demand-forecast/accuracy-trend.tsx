@@ -31,6 +31,8 @@ interface AccuracyPoint {
   v1_total: number;
   model_wape_v1: number | null;
   v1_wape: number | null;
+  coverage: number | null;
+  n_band: number;
 }
 
 const K_PRESETS = [1, 2, 4, 8, 10, 13];
@@ -59,6 +61,7 @@ export function AccuracyTrendContent({ refreshKey }: { refreshKey: number }) {
   const [error, setError] = useState<string | null>(null);
   const [segment, setSegment] = useState<TrendSegment>("all");
   const [k, setK] = useState<number | null>(null);
+  const [showCoverage, setShowCoverage] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -155,6 +158,19 @@ export function AccuracyTrendContent({ refreshKey }: { refreshKey: number }) {
         hovertemplate: "V1 WAPE: %{y:.1f}%<br>V1 forecast: %{customdata[0]:,}<extra></extra>",
       } as Plotly.Data);
     }
+    if (showCoverage && points.some((p) => p.coverage != null)) {
+      traces.push({
+        type: "scatter",
+        x,
+        y: points.map((p) => (p.coverage != null ? p.coverage * 100 : null)),
+        mode: "lines+markers",
+        name: pick("밴드 적중률", "Band coverage"),
+        line: { color: "#55A868", width: 2, dash: "dot" },
+        marker: { size: 7 },
+        customdata: points.map((p) => [p.n_band]),
+        hovertemplate: "Band coverage: %{y:.1f}% (target 70%)<br>SKU-weeks: %{customdata[0]:,}<extra></extra>",
+      } as Plotly.Data);
+    }
     return {
       data: traces,
       layout: {
@@ -168,9 +184,20 @@ export function AccuracyTrendContent({ refreshKey }: { refreshKey: number }) {
         yaxis: { showgrid: true, gridcolor: "#F0F0F0", range: [0, 100], ticksuffix: "%", dtick: 10 },
         legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1 },
         hovermode: "x unified",
+        // Calibration target: the P85 band is a central 70% interval, so a
+        // well-calibrated model should sit near the 70% line.
+        shapes: showCoverage && points.some((p) => p.coverage != null) ? [{
+          type: "line", x0: 0, x1: 1, xref: "paper", y0: 70, y1: 70,
+          line: { color: "#55A868", width: 1, dash: "dash" },
+        }] : [],
+        annotations: showCoverage && points.some((p) => p.coverage != null) ? [{
+          x: 1, xref: "paper", y: 70, xanchor: "right", yanchor: "bottom",
+          text: pick("적중률 목표 70%", "70% coverage target"),
+          showarrow: false, font: { color: "#55A868", size: 10 },
+        }] : [],
       } as Partial<Plotly.Layout>,
     };
-  }, [points, pick]);
+  }, [points, showCoverage, pick]);
 
   return (
     <>
@@ -182,21 +209,26 @@ export function AccuracyTrendContent({ refreshKey }: { refreshKey: number }) {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground">{pick("평가 기간", "Window")}</span>
-          {K_PRESETS.map((preset) => {
-            const available = (runsPerK.get(preset) ?? 0) > 0;
-            return (
-              <button
-                key={preset}
-                onClick={() => available && setK(preset)}
-                disabled={!available}
-                className={trendPillClass(effectiveK === preset, !available)}
-              >
-                {preset}{pick("주", "w")}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground">{pick("평가 기간", "Window")}</span>
+            {K_PRESETS.map((preset) => {
+              const available = (runsPerK.get(preset) ?? 0) > 0;
+              return (
+                <button
+                  key={preset}
+                  onClick={() => available && setK(preset)}
+                  disabled={!available}
+                  className={trendPillClass(effectiveK === preset, !available)}
+                >
+                  {preset}{pick("주", "w")}
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => setShowCoverage((v) => !v)} className={trendPillClass(showCoverage)}>
+            {pick("적중률", "Coverage")}
+          </button>
         </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground/70">
