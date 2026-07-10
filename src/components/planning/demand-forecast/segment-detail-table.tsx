@@ -1023,8 +1023,8 @@ function SmoothTable({
         <Table className="table-fixed">
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
-              <Th col="unique_id"      label="SKU" />
-              {(!isShortHistory || mode === "simulation") && <Th col="selected_model" label={pick("모델", "Model")} width="w-32" />}
+              <Th col="unique_id"      label="SKU" width="w-52" />
+              {(!isShortHistory || mode === "simulation") && <Th col="selected_model" label={pick("모델", "Model")} />}
               {!isShortHistory && mode === "forward" && (
                 <Th col="confidence" width="w-32" label={
                   <span className="inline-flex items-center gap-1">
@@ -1297,7 +1297,7 @@ function IntermittentTable({
         <Table className="table-fixed">
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
-              <Th col="unique_id"             label="SKU" />
+              <Th col="unique_id"             label="SKU" width="w-52" />
               <Th col="units_recent"          label={pick(`${weeks}주 수량`, `${weeks}W Units`)} right width="w-28" />
               <Th col="last_sale_week"        label={pick("마지막 판매일", "Last sale date")} right width="w-36" />
               <Th col="weeks_since_last_sale" label={pick("마지막 판매 이후 주 수", "Weeks since last sale")} right width="w-48" />
