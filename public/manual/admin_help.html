@@ -37,7 +37,7 @@
   .layout { display: flex; min-height: 100vh; }
 
   .sidebar {
-    width: 260px;
+    width: 264px;
     flex-shrink: 0;
     background: var(--gray-900);
     color: #e2e8f0;
@@ -55,6 +55,11 @@
     background: rgba(220,38,38,0.18); color: #fca5a5; border: 1px solid rgba(220,38,38,0.35);
     border-radius: 999px; padding: 3px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
   }
+  .updated-pill {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; margin-left: 6px;
+    background: rgba(22,163,74,0.18); color: #86efac; border: 1px solid rgba(22,163,74,0.35);
+    border-radius: 999px; padding: 3px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
+  }
   .nav-section { padding: 14px 22px 4px; font-size: 10px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: 1px; }
   .nav-item {
     display: block; padding: 7px 22px; text-decoration: none;
@@ -63,6 +68,7 @@
   }
   .nav-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
   .nav-item.top { font-weight: 600; color: #e2e8f0; }
+  .nav-new::after { content: "NEW"; margin-left: 6px; font-size: 9px; font-weight: 800; color: #86efac; letter-spacing: 0.5px; }
 
   .main { flex: 1; min-width: 0; }
   .page-section {
@@ -88,6 +94,7 @@
     background: rgba(255,255,255,0.12); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2);
   }
   .badge.warn { background: rgba(220,38,38,0.22); border-color: rgba(248,113,113,0.4); color: #fecaca; }
+  .badge.new { background: rgba(22,163,74,0.22); border-color: rgba(74,222,128,0.4); color: #bbf7d0; }
 
   .section-header {
     display: flex; align-items: flex-start; gap: 16px;
@@ -97,12 +104,17 @@
     width: 50px; height: 50px; border-radius: 13px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center; font-size: 24px;
   }
-  .section-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.4px; }
+  .section-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.4px; display: flex; align-items: center; gap: 10px; }
   .section-header .subtitle { font-size: 13.5px; color: var(--gray-600); margin-top: 4px; }
   .menu-path {
     display: inline-flex; align-items: center; gap: 6px;
     background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: 6px;
     padding: 3px 9px; font-size: 11.5px; color: var(--gray-600); margin-bottom: 8px;
+  }
+  .new-tag {
+    display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 800;
+    color: #15803d; background: #dcfce7; border: 1px solid #86efac; border-radius: 999px;
+    padding: 2px 9px; letter-spacing: 0.3px;
   }
 
   .screenshot-box {
@@ -127,6 +139,7 @@
   .card-grid { display: grid; gap: 16px; margin: 18px 0; }
   .card-grid.col2 { grid-template-columns: 1fr 1fr; }
   .card-grid.col3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card-grid.col4 { grid-template-columns: repeat(4, 1fr); }
   .card {
     background: #fff; border: 1px solid var(--gray-200); border-radius: var(--radius);
     padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
@@ -134,6 +147,7 @@
   .card h4 { font-size: 13.5px; font-weight: 700; color: var(--gray-800); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
   .card p { font-size: 13px; color: var(--gray-600); line-height: 1.6; }
   .card ul { padding-left: 16px; font-size: 13px; color: var(--gray-600); line-height: 1.8; }
+  .card .stat { font-size: 20px; font-weight: 800; color: var(--gray-900); margin-top: 4px; }
 
   .steps { display: flex; flex-direction: column; gap: 0; }
   .step { display: flex; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--gray-200); }
@@ -146,6 +160,17 @@
   }
   .step h4 { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 5px; }
   .step p { font-size: 13px; color: var(--gray-600); }
+
+  /* 상태 흐름 (파이프라인) */
+  .pipeline { display: flex; align-items: center; gap: 8px; margin: 20px 0; flex-wrap: wrap; }
+  .pipeline .node {
+    display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--gray-200);
+    border-radius: 999px; padding: 8px 16px; font-size: 13px; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .pipeline .arrow { color: var(--gray-400); font-size: 16px; }
+  .pipeline .node.pending { color: #57534a; }
+  .pipeline .node.confirmed { color: #8a5300; }
+  .pipeline .node.applied { color: #15803d; }
 
   .callout { display: flex; gap: 12px; padding: 14px 16px; border-radius: 8px; margin: 18px 0; font-size: 13px; }
   .callout.tip { background: #eff6ff; border-left: 4px solid var(--brand); color: #1e40af; }
@@ -181,6 +206,8 @@
   .status.error { background: #fef3e2; color: #8a5300; }
   .status.over { background: #fff5f5; color: #c42b2b; }
   .status.none { background: #f0eee9; color: #6b6359; }
+  .status.confirmed { background: #fef3e2; color: #8a5300; }
+  .status.applied { background: #dcfce7; color: #15803d; }
 
   h3 { font-size: 17px; font-weight: 700; color: var(--gray-800); margin: 28px 0 12px; }
   h3.sub { font-size: 14.5px; font-weight: 700; margin: 20px 0 10px; color: var(--gray-700); border-left: 3px solid var(--brand); padding-left: 10px; }
@@ -192,7 +219,7 @@
   @media (max-width: 900px) {
     .sidebar { display: none; }
     .page-section { padding: 28px 20px; }
-    .card-grid.col2, .card-grid.col3 { grid-template-columns: 1fr; }
+    .card-grid.col2, .card-grid.col3, .card-grid.col4 { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -204,6 +231,7 @@
     <h1>Invoice &amp; Price Control</h1>
     <p>관리자 가이드</p>
     <span class="admin-pill">🔒 관리자 전용</span>
+    <span class="updated-pill">↻ 2026-07-10 업데이트</span>
   </div>
   <div class="nav-section">개요</div>
   <a class="nav-item top" href="#overview">이 페이지는 무엇인가</a>
@@ -216,8 +244,16 @@
   <a class="nav-item" href="#invoice-status">상태 관리 &amp; 재검수</a>
   <a class="nav-item" href="#invoice-import">Excel Invoice 업로드</a>
   <a class="nav-item" href="#sku-grid">SKU별 가격 검수 그리드</a>
-  <a class="nav-item" href="#bulk-export">공장 확인 / Credit 요청</a>
+  <a class="nav-item" href="#balance-summary">Invoice 정산 요약 <span class="nav-new"></span></a>
+  <a class="nav-item" href="#bulk-export">선택 항목 크레딧 적용 <span class="nav-new"></span></a>
   <a class="nav-item" href="#invoice-history">변경 이력 &amp; 첨부파일</a>
+
+  <div class="nav-section">Credit 관리 탭 <span class="nav-new"></span></div>
+  <a class="nav-item" href="#credit-notes-overview">Credit Notes란</a>
+  <a class="nav-item" href="#credit-notes-list">목록 &amp; 필터</a>
+  <a class="nav-item" href="#credit-notes-flow">상태 흐름 (Pending → Applied)</a>
+  <a class="nav-item" href="#credit-notes-apply">Invoice에 적용하기</a>
+  <a class="nav-item" href="#credit-notes-manual">Credit 수동 추가</a>
 
   <div class="nav-section">Price History 탭</div>
   <a class="nav-item" href="#price-entry">가격 수동 입력</a>
@@ -234,11 +270,12 @@
 <div class="cover">
   <div class="cover-inner">
     <h1>Invoice &amp; <span>Price Control</span> 관리자 가이드</h1>
-    <p>공장별 Invoice를 Price History 기준 단가와 대조해 검수하고, SKU별 가격 이력을 관리하는 화면입니다. 이 문서는 관리자 전용 기능이라 메인 사용자 매뉴얼과 별도로 제공됩니다.</p>
+    <p>공장별 Invoice를 Price History 기준 단가와 대조해 검수하고, 차액을 Credit으로 처리한 뒤 SKU별 가격 이력을 관리하는 화면입니다. 이 문서는 관리자 전용 기능이라 메인 사용자 매뉴얼과 별도로 제공됩니다.</p>
     <div class="cover-badges">
       <span class="badge">📄 /production/invoice-price-control</span>
       <span class="badge warn">🔒 admin 전용 메뉴</span>
       <span class="badge">🧾 Invoice 검수</span>
+      <span class="badge new">💳 Credit 관리 (신규)</span>
       <span class="badge">💰 Price History</span>
     </div>
   </div>
@@ -251,16 +288,20 @@
     <div>
       <div class="menu-path">관리 › Invoice·가격 검수</div>
       <h2>이 페이지는 무엇인가</h2>
-      <p class="subtitle">공장이 보낸 Invoice를 검수하고, 그 검수의 기준이 되는 SKU 가격 이력을 관리합니다.</p>
+      <p class="subtitle">공장이 보낸 Invoice를 검수하고, 차액은 Credit으로 정리하고, 검수 기준이 되는 SKU 가격 이력을 관리합니다.</p>
     </div>
   </div>
 
-  <p>공장에서 받은 Invoice의 SKU별 단가가 우리가 등록해 둔 <strong>Price History(가격 이력)</strong>와 일치하는지 자동으로 대조하고, 차이가 있으면 공장 확인이나 Credit 요청으로 이어가는 화면입니다. 상단 탭 2개로 구성됩니다.</p>
+  <p>공장에서 받은 Invoice의 SKU별 단가가 우리가 등록해 둔 <strong>Price History(가격 이력)</strong>와 일치하는지 자동으로 대조합니다. 차이가 있으면 <strong>Credit Note</strong>로 등록해서 공장 확인 → Invoice 차감까지 이어갑니다. 상단 탭 <strong>3개</strong>로 구성됩니다.</p>
 
-  <div class="card-grid col2">
+  <div class="card-grid col3">
     <div class="card">
       <h4>🧾 Invoice 검수</h4>
-      <p>Invoice를 등록/업로드하고, 라인별 SKU 단가를 Price History와 자동 대조합니다. 결과가 안 맞는 라인은 공장 확인 요청이나 Credit 처리로 이어갑니다.</p>
+      <p>Invoice를 등록/업로드하고, 라인별 SKU 단가를 Price History와 자동 대조합니다. 차이가 있는 라인을 선택해서 Credit Note로 넘깁니다.</p>
+    </div>
+    <div class="card">
+      <h4>💳 Credit 관리 <span class="new-tag">NEW</span></h4>
+      <p>Invoice 검수에서 넘어온(또는 수동 등록한) Credit을 Pending → Confirmed → Applied 순서로 처리해서 실제 Invoice 금액에서 차감합니다.</p>
     </div>
     <div class="card">
       <h4>💰 Price History</h4>
@@ -281,16 +322,17 @@
     <div>
       <div class="menu-path">권한 섹션: invoice-price-control</div>
       <h2>권한 &amp; 접근</h2>
-      <p class="subtitle">이 메뉴는 기본적으로 admin 역할에만 노출됩니다.</p>
+      <p class="subtitle">이 메뉴는 기본적으로 admin 역할에만 노출됩니다. 3개 탭 모두 같은 권한 섹션을 공유합니다.</p>
     </div>
   </div>
 
   <table class="feat-table">
     <tr><th style="width:120px">액션</th><th>의미</th></tr>
-    <tr><td class="label">read</td><td>Invoice 목록·상세, Price History 그리드를 조회할 수 있습니다.</td></tr>
-    <tr><td class="label">create</td><td>Invoice 등록, Excel 업로드, 가격 이력 신규 입력.</td></tr>
-    <tr><td class="label">edit</td><td>Invoice 수정, 상태 변경, 재검수, 첨부파일 업로드, 가격 이력 수정.</td></tr>
-    <tr><td class="label">delete</td><td>Invoice·라인·가격 이력·업로드분 삭제 (모두 되돌릴 수 없습니다).</td></tr>
+    <tr><td class="label">read</td><td>Invoice 목록·상세, Credit 목록, Price History 그리드를 조회할 수 있습니다.</td></tr>
+    <tr><td class="label">create</td><td>Invoice 등록, Excel 업로드, Credit 수동 추가·일괄 등록, 가격 이력 신규 입력.</td></tr>
+    <tr><td class="label">status</td><td>Credit의 공장 확인(confirm) / Invoice 적용(apply) / 되돌리기(revert) 처리.</td></tr>
+    <tr><td class="label">edit</td><td>Invoice 수정, 상태 변경, 재검수, 첨부파일 업로드, Credit 금액·메모 수정, 가격 이력 수정.</td></tr>
+    <tr><td class="label">delete</td><td>Invoice·라인·Credit Note·가격 이력·업로드분 삭제 (모두 되돌릴 수 없습니다).</td></tr>
   </table>
 
   <p>버튼이 회색으로 비활성화되어 있다면 현재 로그인한 계정에 해당 액션 권한이 없다는 뜻입니다. 사용자·역할별 권한은 <span class="ui-label">설정 → 사용자 권한</span>에서 조정합니다.</p>
@@ -376,9 +418,9 @@
     <tr><th style="width:170px">버튼</th><th>동작</th></tr>
     <tr><td class="label">✏️ Invoice 수정</td><td>Invoice 번호 · 컨테이너 번호 · Invoice 날짜를 수정하는 폼이 펼쳐집니다. <strong>공장은 등록 후 변경할 수 없습니다.</strong></td></tr>
     <tr><td class="label">🗑 Invoice 삭제</td><td>Invoice와 그에 속한 모든 SKU 라인을 함께 삭제합니다. 되돌릴 수 없어 확인창이 뜹니다.</td></tr>
-    <tr><td class="label">Invoice 업로드</td><td>Excel로 라인을 일괄 등록합니다 (강조 버튼). <a href="#invoice-import">자세히 보기 ↓</a></td></tr>
+    <tr><td class="label">Invoice 업로드</td><td>Excel로 라인을 일괄 등록합니다 (강조 버튼). 파일 선택 즉시 업로드되지 않고 <strong>업로드 전 미리보기</strong> 모달을 먼저 보여줍니다. <a href="#invoice-import">자세히 보기 ↓</a></td></tr>
     <tr><td class="label">재검수</td><td>모든 라인을 Price History와 다시 대조합니다 (강조 버튼). <a href="#invoice-status">자세히 보기 ↓</a></td></tr>
-    <tr><td class="label">파일 관리 ▾</td><td>양식 다운로드 · 파일 첨부 · 첨부파일/서명본 다운로드를 묶은 드롭다운.</td></tr>
+    <tr><td class="label">파일 관리 ▾</td><td>양식 다운로드 · <strong>Invoice 생성(라인 전체를 엑셀로 내보내기)</strong> · 파일 첨부 · 첨부파일/서명본 다운로드를 묶은 드롭다운.</td></tr>
     <tr><td class="label">이력 보기 ▾</td><td>Invoice 업로드 이력 · 변경 이력(감사 로그)을 묶은 드롭다운.</td></tr>
   </table>
 
@@ -433,15 +475,15 @@
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div><h4>Invoice 업로드 버튼으로 파일 선택</h4><p>업로드 전에 각 행의 SKU · 수량 · 단가가 미리보기로 표시되고, 형식이 잘못된 행은 오류로 표시됩니다.</p></div>
+      <div><h4>Invoice 업로드 버튼으로 파일 선택</h4><p><strong>업로드 전 미리보기</strong> 모달이 먼저 뜹니다 — 전체 · 업로드 가능 · 스킵 예정 건수가 배지로 표시되고, 각 행의 SKU · 수량 · 단가와 오류 여부를 확인할 수 있습니다 (최대 100행까지 미리보기).</p></div>
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div><h4>미리보기 확인 후 업로드 실행</h4><p>정상 행만 라인으로 등록되고, 업로드 직후 자동으로 Price History와 대조됩니다.</p></div>
+      <div><h4>미리보기 확인 후 <span class="btn-label">업로드 실행</span></h4><p>정상 행만 라인으로 등록되고, 업로드 직후 자동으로 Price History와 대조됩니다.</p></div>
     </div>
   </div>
 
-  <p>업로드 이력은 <span class="ui-label">이력 보기 ▾ → Invoice 업로드 이력</span>에서 확인합니다. 업로드 묶음(배치) 단위로 파일명·행 수·업로드일이 표시되며, <strong>잘못 올린 업로드 묶음은 통째로 삭제</strong>할 수 있습니다 (삭제 전 영향받는 라인 목록을 미리 보여줍니다).</p>
+  <p>업로드 이력은 <span class="ui-label">이력 보기 ▾ → Invoice 업로드 이력</span>에서 확인합니다. 업로드 묶음(배치) 단위로 파일명·행 수·업로드일이 표시되며, 각 행의 <span class="btn-label">영향 row 확인</span>으로 이 업로드분이 만든 라인 전체를 확인한 뒤 <strong>이 업로드분 삭제</strong>로 통째로 되돌릴 수 있습니다.</p>
 </section>
 
 <!-- ═══════════ SKU 그리드 ═══════════ -->
@@ -460,7 +502,7 @@
     <div class="screenshot-caption">▲ 총 차액 / 과청구 / 미청구·낮은 단가 / 차이 SKU / 가격 이력 없음 요약 카드 + 라인별 그리드</div>
   </div>
 
-  <p>그리드 위 5개 요약 카드는 이 Invoice 전체를 한눈에 보여줍니다. <strong>순차액(총 차액)</strong>은 과청구 합계에서 미청구·낮은 단가 합계를 뺀 금액입니다.</p>
+  <p>그리드 위 5개 요약 카드는 이 Invoice 전체를 한눈에 보여줍니다. <strong>총 차액(순차액)</strong>은 과청구 합계에서 미청구·낮은 단가 합계를 뺀 금액입니다.</p>
 
   <table class="feat-table">
     <tr><th style="width:120px">컬럼</th><th>의미</th></tr>
@@ -472,29 +514,60 @@
 
   <div class="callout info">
     <span class="callout-icon">🖱️</span>
-    <div>라인을 <strong>클릭</strong>하면 해당 SKU의 가격 이력을 팝업으로 간단히 조회할 수 있고, 팝업 안의 링크로 <strong>Price History 탭에서 전체 이력 보기</strong>로 바로 이동할 수 있습니다.</div>
+    <div>라인을 <strong>클릭</strong>하면 해당 SKU의 가격 이력을 팝업으로 간단히 조회할 수 있습니다(적용일 기준 정렬 방향 전환 가능). 팝업 안의 이력 아이콘 버튼으로 <strong>Price History 탭에서 전체 이력 보기</strong>로 바로 이동할 수 있습니다.</div>
   </div>
 
   <p>라인 추가/삭제도 이 화면에서 가능합니다. 삭제는 라인 단위로 되돌릴 수 없으니 삭제 전 확인창에 영향 범위가 표시됩니다.</p>
 </section>
 
-<!-- ═══════════ 공장확인/Credit ═══════════ -->
+<!-- ═══════════ Invoice 정산 요약 (NEW) ═══════════ -->
+<section class="page-section" id="balance-summary">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🧮</div>
+    <div>
+      <div class="menu-path">Invoice 검수 › Invoice 정산 요약</div>
+      <h2>Invoice 정산 요약 <span class="new-tag">NEW</span></h2>
+      <p class="subtitle">Credit이 실제로 적용된 뒤 최종 지급해야 할 금액(Balance)을 보여줍니다.</p>
+    </div>
+  </div>
+
+  <p>SKU 그리드 위쪽에 <strong>"Invoice 정산 요약"</strong> 카드가 있습니다("이 Invoice에 적용된 Credit 차감 후 지급 Balance를 확인합니다" · 우측에 "Credit N건" 배지).</p>
+
+  <div class="card-grid col3">
+    <div class="card">
+      <h4>총 청구 금액</h4>
+      <p>Invoice Total — 모든 라인의 Invoice 단가 × 수량 합계.</p>
+    </div>
+    <div class="card">
+      <h4>Credit 적용 합계</h4>
+      <p>이 Invoice에 <strong>Applied</strong> 상태로 연결된 Credit Note 금액 합계. 있으면 초록색 <code>-$…</code>로 표시됩니다.</p>
+    </div>
+    <div class="card">
+      <h4>최종 Balance</h4>
+      <p>총 청구 금액 − Credit 적용 합계 = 실제로 공장에 지급할 금액.</p>
+    </div>
+  </div>
+
+  <p>적용된 Credit이 있으면 그 아래 표에 <strong>원본 Invoice · SKU · Qty · Invoice 가격 · 기준 가격 · Credit · 적용일</strong>이 나열됩니다. 이 데이터는 <a href="#credit-notes-overview">Credit 관리 탭</a>의 Applied 레코드와 완전히 같은 원장(source of truth)입니다 — 즉 이 Invoice가 "다른 Invoice의 Credit을 받는 쪽"으로 지정된 경우에도 여기서 확인됩니다.</p>
+</section>
+
+<!-- ═══════════ 선택 항목 크레딧 적용 (재작성) ═══════════ -->
 <section class="page-section" id="bulk-export">
   <div class="section-header">
-    <div class="section-icon" style="background:#f0fdf4">📮</div>
+    <div class="section-icon" style="background:#fff5f5">📮</div>
     <div>
-      <div class="menu-path">Invoice 검수 › 선택 항목 내보내기</div>
-      <h2>공장 확인 / Credit 요청 (일괄 내보내기)</h2>
-      <p class="subtitle">가격이 다른 SKU를 골라 공장에 보낼 자료를 한 번에 만듭니다.</p>
+      <div class="menu-path">Invoice 검수 › 선택 항목 크레딧 적용</div>
+      <h2>선택 항목 크레딧 적용 <span class="new-tag">NEW</span></h2>
+      <p class="subtitle">가격이 다른 SKU를 골라 한 번에 내보내고, 과청구 건은 Credit Note로 자동 등록합니다.</p>
     </div>
   </div>
 
   <div class="screenshot-box">
-    <img src="screenshots/ipc-04-bulk-export.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>📮</div><p>차이 SKU 선택 + 내보내기 툴바</p></div>'" alt="차이 SKU 선택 + 내보내기 툴바">
-    <div class="screenshot-caption">▲ 체크박스로 선택한 SKU 개수와 "선택 항목 내보내기" 버튼</div>
+    <img src="screenshots/ipc-04-bulk-export.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>📮</div><p>차이 SKU 선택 + 크레딧 적용 툴바</p></div>'" alt="차이 SKU 선택 + 크레딧 적용 툴바">
+    <div class="screenshot-caption">▲ 체크박스로 선택한 SKU 개수와 "선택 항목 크레딧 적용" 버튼</div>
   </div>
 
-  <p><span class="status error">가격 오류</span> · <span class="status over">과청구</span> · <span class="status none">가격 이력 없음</span> 라인에만 체크박스가 나타납니다. 헤더 체크박스로 <strong>차이가 있는 SKU 전체</strong>를 한 번에 선택할 수 있습니다.</p>
+  <p><span class="status error">가격 오류</span> · <span class="status over">과청구</span> · <span class="status none">가격 이력 없음</span> 라인에만 체크박스가 나타납니다(<span class="status match">일치</span> 라인은 대상이 아닙니다). 헤더 체크박스로 <strong>차이가 있는 SKU 전체</strong>를 한 번에 선택할 수 있습니다.</p>
 
   <div class="steps">
     <div class="step">
@@ -503,17 +576,24 @@
     </div>
     <div class="step">
       <div class="step-num">2</div>
-      <div><h4><span class="btn-label">선택 항목 내보내기</span> 클릭</h4><p>선택된 라인(SKU·수량·Invoice 가격·기대 가격·차액·결과)이 엑셀 파일로 즉시 다운로드됩니다.</p></div>
+      <div><h4><span class="btn-label">선택 항목 크레딧 적용</span> 클릭</h4><p>버튼 하나로 두 가지가 동시에 일어납니다.</p></div>
     </div>
-    <div class="step">
-      <div class="step-num">3</div>
-      <div><h4>공장에 파일 전달</h4><p>다운로드된 엑셀을 공장에 이메일 등으로 보내 확인을 요청합니다.</p></div>
-    </div>
+  </div>
+
+  <table class="feat-table" style="margin-top:4px">
+    <tr><th style="width:90px">단계</th><th>동작</th></tr>
+    <tr><td class="label">① 내보내기</td><td>선택된 <strong>모든</strong> 차이 SKU(가격 오류·과청구·가격 이력 없음)를 엑셀로 즉시 다운로드합니다. 공장에 보낼 자료로 바로 쓸 수 있습니다.</td></tr>
+    <tr><td class="label">② Credit 등록</td><td>선택 항목 중 <strong><span class="status over">과청구</span>인 것만</strong> 골라 Credit 관리 탭에 <span class="status pending">Pending</span> 상태로 자동 등록됩니다. (가격 오류·가격 이력 없음은 엑셀로만 내보내지고 Credit이 생성되지는 않습니다 — 우리가 덜 낸 상황이라 청구가 아니라 확인이 먼저 필요하기 때문입니다.)</td></tr>
+  </table>
+
+  <div class="callout info">
+    <span class="callout-icon">➡️</span>
+    <div>등록된 Pending Credit은 이제부터 <a href="#credit-notes-overview"><strong>Credit 관리 탭</strong></a>에서 관리합니다. 이 화면에서 더 할 일은 없습니다 — 공장 확인, Invoice 적용은 전부 Credit 관리 탭에서 진행하세요.</div>
   </div>
 
   <div class="callout warn">
     <span class="callout-icon">⚠️</span>
-    <div>이 기능은 파일을 <strong>내보내기만</strong> 합니다. 공장에 자동으로 이메일이 발송되지는 않으므로, 다운로드한 파일을 직접 전달해야 합니다.</div>
+    <div>같은 SKU·라인으로 이미 Credit이 등록돼 있으면 중복 생성되지 않고 건너뜁니다. 파일은 항상 다운로드되지만, Credit 등록 결과 토스트("Credit 관리 탭에 N건이 Pending으로 등록됐습니다")의 숫자가 선택한 과청구 건수보다 적을 수 있습니다.</div>
   </div>
 </section>
 
@@ -533,10 +613,179 @@
     <div class="screenshot-caption">▲ 일시 · 사용자 · 변경 유형 · 내용이 정리된 감사 로그</div>
   </div>
 
-  <p><span class="ui-label">이력 보기 ▾ → 변경 이력</span>은 이 Invoice에 대해 상태 변경, 라인 수정, 재검수, Credit/공장 확인, 첨부파일 변경 등 모든 조작을 시간순으로 보여줍니다. 같은 데이터는 <span class="ui-label">관리 → 감사 로그</span> 전역 화면에서도 Invoice 단위로 필터링해 확인할 수 있습니다.</p>
+  <p><span class="ui-label">이력 보기 ▾ → 변경 이력</span>은 이 Invoice에 대해 <strong>생성 · 삭제 · 상태 변경 · 정보 수정 · 라인 수정 · 재검수 · Credit 상태 변경 · 공장 확인 상태 변경 · 첨부파일 변경</strong> 등 모든 조작을 시간순으로 보여줍니다. "내용" 칸은 요약 문구와 함께 "상세"를 누르면 필드별 변경 전/후 값을 볼 수 있습니다. 같은 데이터는 <span class="ui-label">관리 → 감사 로그</span> 전역 화면에서도 Invoice 단위로 필터링해 확인할 수 있습니다.</p>
 
   <h3 class="sub">파일 첨부</h3>
   <p><span class="ui-label">파일 관리 ▾ → 파일 첨부</span>로 원본 Invoice 파일을 올립니다. Invoice 상태가 <strong>서명 완료</strong> 이후라면 자동으로 "서명본"으로 구분되어 저장되고, 각각 별도로 다운로드할 수 있습니다.</p>
+</section>
+
+<!-- ═══════════ Credit 관리 탭: 개요 ═══════════ -->
+<section class="page-section" id="credit-notes-overview">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">💳</div>
+    <div>
+      <div class="menu-path">Credit 관리 <span class="new-tag">신규 탭</span></div>
+      <h2>Credit Notes란</h2>
+      <p class="subtitle">과청구된 금액을 공장 확인 → Invoice 차감까지 추적하는 전용 원장입니다.</p>
+    </div>
+  </div>
+
+  <p>Credit Note는 Invoice 라인 하나(또는 수동 등록)에서 시작되는 독립적인 레코드입니다. Invoice 라인의 상태 컬럼이 아니라 <strong>별도 원장 테이블</strong>이라서, 하나의 Invoice가 다른 Invoice의 Credit을 받아 상계 처리하는 것도 가능합니다.</p>
+
+  <div class="card-grid col3">
+    <div class="card">
+      <h4>생기는 경로</h4>
+      <ul>
+        <li>Invoice 검수 그리드에서 과청구 SKU를 선택해 <span class="btn-label">선택 항목 크레딧 적용</span> → 자동 등록</li>
+        <li>Credit 관리 탭에서 <span class="btn-label">Credit 추가</span>로 직접 등록</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>상태 3단계</h4>
+      <p><span class="status pending">Pending</span> → <span class="status confirmed">Confirmed</span> → <span class="status applied">Applied</span><br>자세한 흐름은 <a href="#credit-notes-flow">아래 참고</a>.</p>
+    </div>
+    <div class="card">
+      <h4>중복 방지</h4>
+      <p>같은 Invoice 라인에서는 Credit이 중복 생성되지 않습니다. 이미 등록된 라인을 다시 선택해도 무시됩니다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Credit 목록 & 필터 ═══════════ -->
+<section class="page-section" id="credit-notes-list">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">📋</div>
+    <div>
+      <div class="menu-path">Credit 관리 › 목록</div>
+      <h2>목록 &amp; 필터</h2>
+      <p class="subtitle">전체 Credit을 상태·공장별로 조회합니다.</p>
+    </div>
+  </div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/ipc-08-credit-notes.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>💳</div><p>Credit 관리 탭 — 요약 카드 + 목록</p></div>'" alt="Credit 관리 탭">
+    <div class="screenshot-caption">▲ Pending/Confirmed/Applied 요약 카드 + 상태·공장 필터 + Credit 목록</div>
+  </div>
+
+  <div class="card-grid col4">
+    <div class="card">
+      <h4>Pending 총액</h4>
+      <p>공장 확인 대기 중인 Credit 건수·금액</p>
+    </div>
+    <div class="card">
+      <h4>Confirmed 총액</h4>
+      <p>공장이 확인했고 Invoice 차감을 기다리는 중</p>
+    </div>
+    <div class="card">
+      <h4>Applied 총액</h4>
+      <p>실제로 Invoice에 차감 완료된 금액</p>
+    </div>
+    <div class="card">
+      <h4>전체 Credit</h4>
+      <p>전체 건수와 누적 금액</p>
+    </div>
+  </div>
+
+  <p>상단 필터: <strong>공장 선택</strong>(전체 공장 / 개별 공장), <strong>검색창</strong>("Invoice, Container, SKU 검색"), <strong>상태 칩</strong>("전체 N" / "Pending N" / "Confirmed N" / "Applied N" — 여러 개 동시 선택 가능).</p>
+
+  <table class="feat-table">
+    <tr><th style="width:130px">컬럼</th><th>의미</th></tr>
+    <tr><td class="label">Factory / Container / Invoice</td><td>이 Credit이 어느 공장·컨테이너·Invoice에서 나왔는지</td></tr>
+    <tr><td class="label">SKU / Expected / Invoice 가격 / Qty</td><td>차액이 발생한 라인의 원본 정보</td></tr>
+    <tr><td class="label">Credit</td><td>이 라인에서 발생한 Credit 금액</td></tr>
+    <tr><td class="label">Status</td><td>Pending / Confirmed / Applied</td></tr>
+    <tr><td class="label">Applied Invoice / Applied Date</td><td>Applied 상태일 때, 어느 Invoice에 언제 적용됐는지</td></tr>
+  </table>
+
+  <p>행을 체크하면(또는 헤더 체크박스로 전체 선택) 화면 우측에 "N건 선택됨"과 일괄 액션 버튼이 나타납니다.</p>
+</section>
+
+<!-- ═══════════ 상태 흐름 ═══════════ -->
+<section class="page-section" id="credit-notes-flow">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8">🔄</div>
+    <div>
+      <div class="menu-path">Credit 관리 › 상태 흐름</div>
+      <h2>상태 흐름 (Pending → Applied)</h2>
+      <p class="subtitle">개별 처리와 일괄 처리 둘 다 지원합니다.</p>
+    </div>
+  </div>
+
+  <div class="pipeline">
+    <span class="node pending">🟡 Pending</span>
+    <span class="arrow">→</span>
+    <span class="node confirmed">🟠 Confirmed</span>
+    <span class="arrow">→</span>
+    <span class="node applied">🟢 Applied</span>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">전환</th><th>버튼 / 방법</th></tr>
+    <tr><td class="label">Pending → Confirmed</td><td>행별 <span class="btn-label">공장 확인 완료</span> 버튼, 또는 여러 건 선택 후 <span class="btn-label">일괄 공장 확인 (N)</span> (선택 항목이 <strong>전부 Pending</strong>일 때만 활성화)</td></tr>
+    <tr><td class="label">Confirmed → Applied</td><td>행별 <span class="btn-label">Invoice에 적용</span> 버튼, 또는 <span class="btn-label">일괄 Invoice 적용 (N)</span> (선택 항목이 <strong>전부 Confirmed</strong>일 때만 활성화) → <a href="#credit-notes-apply">적용 모달</a></td></tr>
+    <tr><td class="label">되돌리기</td><td>Confirmed·Applied 상태에 <span class="btn-label">되돌리기</span> 버튼(각각 Pending·Confirmed로 되돌림, 확인창 표시), 여러 건은 <span class="btn-label">일괄 되돌리기 (N)</span></td></tr>
+    <tr><td class="label">삭제</td><td>모든 상태에서 개별 삭제 가능, 여러 건은 <span class="btn-label">일괄 삭제 (N)</span></td></tr>
+  </table>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div>일괄 처리 버튼은 <strong>선택한 항목의 상태가 전부 동일할 때만</strong> 활성화됩니다. 예를 들어 Pending과 Confirmed를 섞어서 선택하면 "일괄 공장 확인"과 "일괄 Invoice 적용" 둘 다 비활성 상태로 보입니다.</div>
+  </div>
+</section>
+
+<!-- ═══════════ Invoice 적용 ═══════════ -->
+<section class="page-section" id="credit-notes-apply">
+  <div class="section-header">
+    <div class="section-icon" style="background:#f0fdf4">🧾</div>
+    <div>
+      <div class="menu-path">Credit 관리 › Invoice에 적용</div>
+      <h2>Invoice에 적용하기</h2>
+      <p class="subtitle">Confirmed 상태의 Credit을 실제 Invoice 금액에서 차감합니다.</p>
+    </div>
+  </div>
+
+  <p>"Invoice에 적용" 모달에는 탭이 2개 있습니다.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:190px">탭</th><th>설명</th></tr>
+    <tr><td class="label">기존 Invoice 선택</td><td>"적용할 Invoice (같은 공장, 원본 Invoice 포함)" 검색 셀렉트로 골라서 그 Invoice의 Balance에서 바로 차감합니다. <strong>같은 공장</strong>의 Invoice만 선택할 수 있고, Credit이 발생한 원본 Invoice 자신도 선택지에 포함됩니다.</td></tr>
+    <tr><td class="label">새 Invoice 생성 후 적용</td><td>Invoice 번호 · Invoice Date · 컨테이너(선택) · 메모를 입력해 새 Invoice를 만들면서 동시에 이 Credit을 적용합니다. Invoice <strong>생성 권한</strong>이 없으면 이 탭은 비활성화됩니다.</td></tr>
+  </table>
+
+  <p>공통 입력: <strong>Applied Date</strong>(적용일). 하단 버튼은 기존 선택 모드에서는 <span class="btn-label">적용 완료</span>, 신규 생성 모드에서는 <span class="btn-label">생성 후 적용</span>입니다.</p>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div>여러 건을 선택해서 <span class="btn-label">일괄 Invoice 적용</span>을 눌러도 같은 모달이 뜹니다 — 선택한 모든 Credit이 같은 Invoice에 한 번에 적용됩니다. 단, 선택한 Credit들이 서로 다른 공장 소속이면 적용할 수 없습니다.</div>
+  </div>
+
+  <p>적용이 끝나면 해당 Invoice의 <a href="#balance-summary">Invoice 정산 요약</a>에 이 Credit이 즉시 반영되어 Balance가 줄어듭니다.</p>
+</section>
+
+<!-- ═══════════ Credit 수동 추가 ═══════════ -->
+<section class="page-section" id="credit-notes-manual">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eff6ff">➕</div>
+    <div>
+      <div class="menu-path">Credit 관리 › Credit 추가</div>
+      <h2>Credit 수동 추가</h2>
+      <p class="subtitle">Invoice 검수를 거치지 않고 Credit을 직접 등록해야 할 때 사용합니다.</p>
+    </div>
+  </div>
+
+  <p>목록 우측 상단의 <span class="btn-label">+ Credit 추가</span>를 누르면 "Credit 수동 추가" 폼이 열립니다.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:150px">필드</th><th>설명</th></tr>
+    <tr><td class="label">공장</td><td>이 Credit이 어느 공장 소속인지</td></tr>
+    <tr><td class="label">원본 Invoice</td><td>참고용으로 연결할 Invoice (선택 사항)</td></tr>
+    <tr><td class="label">SKU / 수량(Qty)</td><td>차액이 발생한 품목</td></tr>
+    <tr><td class="label">Expected Price / Invoice Price</td><td>기준 가격과 실제 청구 가격</td></tr>
+    <tr><td class="label">Credit Amount</td><td>위 값들로 <strong>자동 계산</strong>되지만 필요하면 직접 수정 가능</td></tr>
+    <tr><td class="label">메모</td><td>등록 사유 등 자유 텍스트</td></tr>
+  </table>
+
+  <p>저장하면 <span class="btn-label">Pending</span> 상태로 목록에 등록되고, 이후 흐름은 자동 등록된 Credit과 동일합니다.</p>
 </section>
 
 <!-- ═══════════ 가격 입력 ═══════════ -->
@@ -555,7 +804,9 @@
     <div class="screenshot-caption">▲ 좌측 가격 입력 폼 + 우측 가격 이력 그리드</div>
   </div>
 
-  <p>공장 · SKU · 적용 시작일 · 단가($)를 입력하고 저장합니다. 같은 공장·SKU·적용일 조합이 이미 있으면 <strong>덮어쓰기(수정)</strong>로 처리됩니다. 우측 그리드에서 행을 클릭하면 이 폼이 해당 값으로 채워지며 "수정" 모드로 전환됩니다.</p>
+  <p>공장 · SKU · 적용 시작일 · 단가($)를 입력하고 저장합니다. 같은 공장·SKU·적용일 조합이 이미 있으면 <strong>덮어쓰기(수정)</strong>로 처리됩니다. 우측 그리드에서 행을 클릭하면 이 폼이 해당 값으로 채워지며, 폼 제목도 <strong>"가격 수정 - {SKU}"</strong>로 바뀌어 지금 새로 입력하는 게 아니라 수정 중이라는 걸 알려줍니다.</p>
+
+  <p>폼 아래 <strong>"선택 SKU 이력"</strong>은 지금 입력 중인 SKU의 최근 이력을 최대 6건까지 서버에서 바로 불러와 보여줍니다. 6건보다 많으면 <strong>"오른쪽 가격 이력 그리드에서 N건 더 보기"</strong> 링크가 나타나서, 누르면 우측 그리드가 이 SKU로 자동 필터링됩니다.</p>
 
   <div class="callout tip">
     <span class="callout-icon">💡</span>
@@ -580,10 +831,15 @@
     <tr><td class="label">SKU 검색</td><td>입력하는 즉시 필터링됩니다 (엔터 불필요)</td></tr>
     <tr><td class="label">기준 날짜</td><td>특정 날짜에 유효했던 가격만 조회</td></tr>
     <tr><td class="label">현재 가격만</td><td>SKU별 가장 최근 가격 1건만 표시 (기본 체크됨)</td></tr>
-    <tr><td class="label">행 · 페이지</td><td>25 / 50 / 100건씩 페이지 단위로 조회</td></tr>
+    <tr><td class="label">행 · 페이지</td><td>25 / 50 / 100건씩 페이지 단위로 조회 (기본 25행)</td></tr>
   </table>
 
-  <p>행을 클릭하면 그 값이 좌측 "가격 입력" 폼에 채워지며 바로 수정할 수 있습니다. 삭제는 행 단위로 가능하며 되돌릴 수 없습니다.</p>
+  <p>행을 클릭하면 그 값이 좌측 "가격 입력" 폼에 채워지며 바로 수정할 수 있습니다.</p>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>삭제 전 참조 경고가 추가됐습니다.</strong> 삭제하려는 가격 이력 행이 이미 Invoice 검수 라인에서 참조 중이면, 삭제 확인창에 "Invoice 검수가 이미 참조 중인 가격 이력 N개가 포함되어 있습니다 · 총 Invoice line M건이 영향을 받을 수 있습니다"라는 경고가 표시됩니다. 삭제 후에는 해당 Invoice에서 <strong>재검수</strong>를 다시 실행해야 최신 상태가 반영됩니다.</div>
+  </div>
 </section>
 
 <!-- ═══════════ 업로드 이력 ═══════════ -->
@@ -591,7 +847,7 @@
   <div class="section-header">
     <div class="section-icon" style="background:#fef2f2">📁</div>
     <div>
-      <div class="menu-path">Price History › Price List 업로드</div>
+      <div class="menu-path">Price History › 파일 관리</div>
       <h2>Excel 업로드 &amp; 업로드 이력</h2>
       <p class="subtitle">공장의 Price List 엑셀을 통째로 등록하고, 업로드 묶음 단위로 관리합니다.</p>
     </div>
@@ -601,6 +857,8 @@
     <img src="screenshots/ipc-07-upload-history.png" onerror="this.parentElement.innerHTML='<div class=&quot;screenshot-placeholder&quot;><div class=&quot;ph-icon&quot;>📁</div><p>업로드 파일 관리 목록</p></div>'" alt="업로드 파일 관리 목록">
     <div class="screenshot-caption">▲ 업로드 파일 목록 — 파일명 · 행 수 · 업로드일 · 삭제</div>
   </div>
+
+  <p>양식 다운로드·내보내기·업로드 이력이 <span class="ui-label">파일 관리 ▾</span> 드롭다운 하나로 묶여 있습니다.</p>
 
   <div class="steps">
     <div class="step">
@@ -613,13 +871,13 @@
     </div>
     <div class="step">
       <div class="step-num">3</div>
-      <div><h4>업로드 이력에서 관리</h4><p>파일명을 클릭하면 원본을 다운로드할 수 있고, 잘못 올린 업로드분은 <strong>영향받는 가격 이력 행을 미리 확인한 뒤</strong> 통째로 삭제할 수 있습니다.</p></div>
+      <div><h4>업로드 이력에서 관리</h4><p>파일명 검색, 공장 필터, 적용일·업로드일 기간 필터를 지원합니다. 파일명을 클릭하면 원본을 다운로드할 수 있고, <span class="btn-label">영향 row 보기</span>로 이 업로드분이 만든 가격 이력을 미리 확인한 뒤(Invoice 참조 건수 포함) <span class="btn-label">이 업로드분 삭제</span>로 통째로 삭제할 수 있습니다.</p></div>
     </div>
   </div>
 
   <div class="callout warn">
     <span class="callout-icon">⚠️</span>
-    <div>업로드 대상 공장 선택창은 그리드 필터와 같은 값을 공유합니다. 특정 공장으로 필터링해서 보던 중이라면, 업로드 버튼을 누르기 전에 <strong>업로드하려는 공장이 맞는지 다시 확인</strong>하세요.</div>
+    <div>업로드 대상 공장 선택창은 그리드 필터와 같은 값을 공유합니다. 특정 공장으로 필터링해서 보던 중이라면, 업로드 버튼을 누르기 전에 <strong>업로드하려는 공장이 맞는지 다시 확인</strong>하세요. 삭제 시에도 대상 가격 이력이 Invoice 검수에서 참조 중이면 경고 문구가 함께 표시됩니다.</div>
   </div>
 </section>
 
@@ -630,16 +888,25 @@
     <div>
       <div class="menu-path">참고</div>
       <h2>용어 &amp; 결과 배지</h2>
-      <p class="subtitle">그리드에 나오는 결과 배지의 정확한 의미입니다.</p>
+      <p class="subtitle">그리드에 나오는 배지의 정확한 의미입니다.</p>
     </div>
   </div>
 
+  <h3 class="sub">SKU 검수 결과 (Invoice 검수 탭)</h3>
   <table class="feat-table">
     <tr><th style="width:150px">배지</th><th>의미</th></tr>
     <tr><td><span class="status match">일치</span></td><td>Invoice 가격 = 기대 가격 (차액 0)</td></tr>
-    <tr><td><span class="status error">가격 오류</span></td><td>Invoice 가격이 기대 가격보다 <strong>낮음</strong> — 우리가 과소 청구된 게 아니라, 공장이 우리 기준가보다 싸게 청구한 상태입니다.</td></tr>
-    <tr><td><span class="status over">과청구</span></td><td>Invoice 가격이 기대 가격보다 <strong>높음</strong> — 공장이 우리 기준가보다 비싸게 청구해서 Credit 요청 대상입니다.</td></tr>
+    <tr><td><span class="status error">가격 오류</span></td><td>Invoice 가격이 기대 가격보다 <strong>낮음</strong> — 공장이 우리 기준가보다 싸게 청구한 상태입니다.</td></tr>
+    <tr><td><span class="status over">과청구</span></td><td>Invoice 가격이 기대 가격보다 <strong>높음</strong> — 공장이 우리 기준가보다 비싸게 청구해서 Credit 대상입니다.</td></tr>
     <tr><td><span class="status none">가격 이력 없음</span></td><td>이 공장·SKU·Invoice Date 조합으로 조회되는 Price History 행이 없음 — Price History 등록 후 재검수가 필요합니다.</td></tr>
+  </table>
+
+  <h3 class="sub">Credit 상태 (Credit 관리 탭)</h3>
+  <table class="feat-table">
+    <tr><th style="width:150px">배지</th><th>의미</th></tr>
+    <tr><td><span class="status pending">Pending</span></td><td>등록됐지만 아직 공장 확인 전</td></tr>
+    <tr><td><span class="status confirmed">Confirmed</span></td><td>공장이 확인했고 Invoice 차감을 기다리는 중</td></tr>
+    <tr><td><span class="status applied">Applied</span></td><td>실제 Invoice 금액에서 차감 완료</td></tr>
   </table>
 </section>
 
@@ -670,7 +937,23 @@
     </tr>
     <tr>
       <td class="label">체크박스가 안 보임</td>
-      <td>일치하는 라인에는 선택 체크박스가 나타나지 않습니다 — 공장 확인/Credit 요청이 필요한 라인(가격 오류·과청구·가격 이력 없음)에만 표시됩니다.</td>
+      <td>일치하는 라인에는 선택 체크박스가 나타나지 않습니다 — Credit 적용이 필요한 라인(가격 오류·과청구·가격 이력 없음)에만 표시됩니다.</td>
+    </tr>
+    <tr>
+      <td class="label">"선택 항목 크레딧 적용"을 눌렀는데 Credit이 하나도 안 생김</td>
+      <td>선택한 항목이 전부 "가격 오류"나 "가격 이력 없음"이면 엑셀만 내보내지고 Credit은 생성되지 않습니다 — Credit은 <strong>과청구</strong> 항목에서만 자동 등록됩니다.</td>
+    </tr>
+    <tr>
+      <td class="label">Credit 관리 탭에서 일괄 처리 버튼이 안 눌림</td>
+      <td>선택한 Credit들의 상태가 섞여 있으면(Pending + Confirmed 등) 일괄 버튼이 비활성화됩니다. 같은 상태끼리만 선택하세요.</td>
+    </tr>
+    <tr>
+      <td class="label">Invoice에 Credit을 적용하려는데 대상 Invoice가 안 보임</td>
+      <td>"적용할 Invoice" 선택은 <strong>같은 공장</strong>의 Invoice만 목록에 나타납니다. 다른 공장 Invoice에는 적용할 수 없습니다.</td>
+    </tr>
+    <tr>
+      <td class="label">가격 이력을 삭제하려는데 경고가 뜸</td>
+      <td>이미 Invoice 검수가 참조 중인 가격 이력입니다. 삭제해도 되지만, 삭제 후에는 관련 Invoice에서 재검수를 다시 실행해야 최신 결과가 반영됩니다.</td>
     </tr>
   </table>
 </section>

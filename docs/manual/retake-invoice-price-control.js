@@ -6,10 +6,11 @@
  *   ipc-01-invoice-list.png           Invoice 검수 탭 — 좌측 카드형 목록 + 우측 상세
  *   ipc-02-invoice-toolbar.png        상세 화면 상단 툴바 (수정/삭제/상태변경/파일 관리/이력 보기)
  *   ipc-03-sku-grid.png               SKU별 가격 검수 그리드 + 요약 카드
- *   ipc-04-bulk-export.png            차이 SKU 체크박스 선택 + "선택 항목 내보내기" 툴바
+ *   ipc-04-bulk-export.png            차이 SKU 체크박스 선택 + "선택 항목 크레딧 적용" 툴바
  *   ipc-05-audit-history.png          변경 이력 모달
  *   ipc-06-price-history-grid.png     Price History 탭 — 가격 입력 폼 + 그리드
  *   ipc-07-upload-history.png         업로드 파일 관리 목록
+ *   ipc-08-credit-notes.png           Credit 관리 탭 — 요약 카드 + 목록
  *
  * 이 페이지는 admin 권한 계정으로만 정상적으로 캡처됩니다.
  */
@@ -20,6 +21,7 @@ const fs = require("fs");
 
 const BASE = "http://localhost:3000/forecast";
 const OUT = path.join(__dirname, "../../public/manual/screenshots");
+const TOTAL = 8;
 
 (async () => {
   const [, , email, password] = process.argv;
@@ -49,11 +51,11 @@ const OUT = path.join(__dirname, "../../public/manual/screenshots");
   await page.waitForTimeout(2000);
 
   // ── 1. Invoice 검수 탭 전체
-  console.log("📸 [1/7] Invoice 검수 탭 (목록 + 상세)...");
+  console.log(`📸 [1/${TOTAL}] Invoice 검수 탭 (목록 + 상세)...`);
   await page.screenshot({ path: path.join(OUT, "ipc-01-invoice-list.png"), fullPage: false });
 
   // ── 2. 상세 툴바 (첫 번째 Invoice 클릭)
-  console.log("📸 [2/7] Invoice 상세 툴바...");
+  console.log(`📸 [2/${TOTAL}] Invoice 상세 툴바...`);
   try {
     await page.click('.cursor-pointer >> nth=0', { timeout: 5000 });
     await page.waitForTimeout(1000);
@@ -62,12 +64,12 @@ const OUT = path.join(__dirname, "../../public/manual/screenshots");
   }
   await page.screenshot({ path: path.join(OUT, "ipc-02-invoice-toolbar.png"), fullPage: false });
 
-  // ── 3. SKU별 가격 검수 그리드 + 요약 카드
-  console.log("📸 [3/7] SKU별 가격 검수 그리드...");
+  // ── 3. SKU별 가격 검수 그리드 + 요약 카드 (Invoice 정산 요약 포함)
+  console.log(`📸 [3/${TOTAL}] SKU별 가격 검수 그리드...`);
   await page.screenshot({ path: path.join(OUT, "ipc-03-sku-grid.png"), fullPage: false });
 
-  // ── 4. 체크박스 선택 + 선택 항목 내보내기 툴바
-  console.log("📸 [4/7] 차이 SKU 선택 + 내보내기 툴바...");
+  // ── 4. 체크박스 선택 + 선택 항목 크레딧 적용 툴바
+  console.log(`📸 [4/${TOTAL}] 차이 SKU 선택 + 크레딧 적용 툴바...`);
   try {
     await page.click('input[type="checkbox"][aria-label="차이가 있는 SKU 전체 선택"]', { timeout: 5000 });
     await page.waitForTimeout(500);
@@ -77,7 +79,7 @@ const OUT = path.join(__dirname, "../../public/manual/screenshots");
   await page.screenshot({ path: path.join(OUT, "ipc-04-bulk-export.png"), fullPage: false });
 
   // ── 5. 변경 이력 모달
-  console.log("📸 [5/7] 변경 이력 모달...");
+  console.log(`📸 [5/${TOTAL}] 변경 이력 모달...`);
   try {
     await page.click('button:has-text("이력 보기")', { timeout: 5000 });
     await page.waitForTimeout(300);
@@ -92,20 +94,35 @@ const OUT = path.join(__dirname, "../../public/manual/screenshots");
   } catch (_) {}
 
   // ── 6. Price History 탭
-  console.log("📸 [6/7] Price History 탭...");
+  console.log(`📸 [6/${TOTAL}] Price History 탭...`);
   await page.click('text=Price History', { timeout: 5000 }).catch(() => {});
   await page.waitForTimeout(1500);
   await page.screenshot({ path: path.join(OUT, "ipc-06-price-history-grid.png"), fullPage: false });
 
   // ── 7. 업로드 파일 관리 목록 (모달)
-  console.log("📸 [7/7] 업로드 파일 관리...");
+  console.log(`📸 [7/${TOTAL}] 업로드 파일 관리...`);
   try {
-    await page.click('button:has-text("업로드 이력")', { timeout: 5000 });
+    await page.click('button:has-text("파일 관리")', { timeout: 5000 });
+    await page.waitForTimeout(300);
+    await page.click('text=업로드 이력', { timeout: 5000 });
     await page.waitForTimeout(1000);
   } catch (_) {
-    // 버튼을 못 찾으면 스킵
+    // 드롭다운 구조가 다르면 스킵
   }
   await page.screenshot({ path: path.join(OUT, "ipc-07-upload-history.png"), fullPage: false });
+  try {
+    await page.click('button:has-text("닫기")', { timeout: 3000 });
+  } catch (_) {}
+
+  // ── 8. Credit 관리 탭 (요약 카드 + 목록)
+  console.log(`📸 [8/${TOTAL}] Credit 관리 탭...`);
+  try {
+    await page.click('text=Credit 관리', { timeout: 5000 });
+    await page.waitForTimeout(1500);
+  } catch (_) {
+    // 탭을 못 찾으면 스킵
+  }
+  await page.screenshot({ path: path.join(OUT, "ipc-08-credit-notes.png"), fullPage: false });
 
   await browser.close();
   console.log("\n✅ 완료! public/manual/admin_help.html 을 브라우저로 열어보세요.");
