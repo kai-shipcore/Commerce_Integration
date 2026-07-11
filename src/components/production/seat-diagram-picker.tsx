@@ -14,6 +14,9 @@ export type SeatZone = {
   position: SeatCoverPartPosition;
   category: SeatCoverPartCategory;
   label: { ko: string; en: string };
+  // Overrides the category's shared diagram text for this zone only (e.g. Front Middle's
+  // Top/Body zone also covers the console, unlike every other Top/Body zone).
+  displayLabel?: { ko: string; en: string };
 };
 
 export const FRONT_SEAT_ZONES: SeatZone[] = [
@@ -26,8 +29,10 @@ export const FRONT_SEAT_ZONES: SeatZone[] = [
   { id: "front-passenger-bottom", seatRow: "Front", position: "Passenger", category: "Bottom", label: { ko: "조수석 방석", en: "Passenger Bottom" } },
   { id: "front-passenger-arm", seatRow: "Front", position: "Passenger", category: "Arm", label: { ko: "조수석 팔걸이", en: "Passenger Arm" } },
   { id: "front-middle-headrest", seatRow: "Front", position: "Middle", category: "Headrest", label: { ko: "중앙석 헤드레스트", en: "Middle Headrest" } },
-  { id: "front-middle-top-body", seatRow: "Front", position: "Middle", category: "Top Body", label: { ko: "중앙석 등받이 (콘솔/점프시트)", en: "Middle Top/Body (Console/Jump Seat)" } },
+  { id: "front-middle-top-body", seatRow: "Front", position: "Middle", category: "Top Body", label: { ko: "중앙석 등받이 (콘솔/점프시트)", en: "Middle Top/Body (Console/Jump Seat)" }, displayLabel: { ko: "등받이/콘솔", en: "Top/Body/Console" } },
   { id: "front-middle-bottom", seatRow: "Front", position: "Middle", category: "Bottom", label: { ko: "중앙석 방석", en: "Middle Bottom" } },
+  { id: "front-driver-leg-support", seatRow: "Front", position: "Driver", category: "Leg Support", label: { ko: "운전석 다리 지지대", en: "Driver Leg Support" } },
+  { id: "front-passenger-leg-support", seatRow: "Front", position: "Passenger", category: "Leg Support", label: { ko: "조수석 다리 지지대", en: "Passenger Leg Support" } },
 ];
 
 export const REAR_SEAT_ZONES: SeatZone[] = [
@@ -47,6 +52,10 @@ export const REAR_SEAT_ZONES: SeatZone[] = [
   { id: "rear-middle-top-body", seatRow: "Rear", position: "Middle", category: "Top Body", label: { ko: "중앙석 등받이", en: "Middle Top/Body" } },
   { id: "rear-middle-bottom", seatRow: "Rear", position: "Middle", category: "Bottom", label: { ko: "중앙석 방석", en: "Middle Bottom" } },
   { id: "rear-middle-console", seatRow: "Rear", position: "Middle", category: "Console", label: { ko: "중앙석 콘솔", en: "Middle Console" } },
+  { id: "rear-driver-leg-support", seatRow: "Rear", position: "Driver", category: "Leg Support", label: { ko: "운전석 다리 지지대", en: "Driver Leg Support" } },
+  { id: "rear-passenger-leg-support", seatRow: "Rear", position: "Passenger", category: "Leg Support", label: { ko: "조수석 다리 지지대", en: "Passenger Leg Support" } },
+  { id: "rear-driver-side-bolster", seatRow: "Rear", position: "Driver", category: "Side Bolster", label: { ko: "운전석 사이드 볼스터", en: "Driver Side Bolster" } },
+  { id: "rear-passenger-side-bolster", seatRow: "Rear", position: "Passenger", category: "Side Bolster", label: { ko: "조수석 사이드 볼스터", en: "Passenger Side Bolster" } },
 ];
 
 export const THIRD_ROW_SEAT_ZONES: SeatZone[] = [
@@ -66,6 +75,8 @@ export const THIRD_ROW_SEAT_ZONES: SeatZone[] = [
   { id: "third-row-middle-top-body", seatRow: "Third Row", position: "Middle", category: "Top Body", label: { ko: "중앙석 등받이", en: "Middle Top/Body" } },
   { id: "third-row-middle-bottom", seatRow: "Third Row", position: "Middle", category: "Bottom", label: { ko: "중앙석 방석", en: "Middle Bottom" } },
   { id: "third-row-middle-console", seatRow: "Third Row", position: "Middle", category: "Console", label: { ko: "중앙석 콘솔", en: "Middle Console" } },
+  { id: "third-row-driver-leg-support", seatRow: "Third Row", position: "Driver", category: "Leg Support", label: { ko: "운전석 다리 지지대", en: "Driver Leg Support" } },
+  { id: "third-row-passenger-leg-support", seatRow: "Third Row", position: "Passenger", category: "Leg Support", label: { ko: "조수석 다리 지지대", en: "Passenger Leg Support" } },
 ];
 
 export const ALL_SEAT_ZONES: SeatZone[] = [...FRONT_SEAT_ZONES, ...REAR_SEAT_ZONES, ...THIRD_ROW_SEAT_ZONES];
@@ -76,11 +87,13 @@ type SeatGeometry = {
   headrest: RectGeo;
   backrest: RectGeo;
   cushion: RectGeo;
+  legSupport: RectGeo;
   shadow: { cx: number; cy: number; rx: number; ry: number };
   arm?: RectGeo;
   backStorage?: RectGeo;
   subPart?: RectGeo;
   console?: RectGeo;
+  sideBolster?: RectGeo;
 };
 
 // One local template (seat centered at x=0, scale=1) is translated/scaled into place for
@@ -88,9 +101,10 @@ type SeatGeometry = {
 // proportions. Each piece slightly overlaps the next (headrest into backrest, backrest into
 // cushion) and is drawn cushion-first so the wider piece underneath reads as a continuous
 // silhouette instead of three separate floating blocks. armSide/includeConsole add the extra
-// Rear-only zones (Back Storage + Sub-part stacked on the outer edge, a Console flap
-// straddling the Middle seat's backrest/cushion seam) — harmless no-ops for Front, which never
-// references these fields.
+// Rear-only zones (Back Storage + Sub-part stacked on the inner edge, toward the Middle seat;
+// Side Bolster mirrored onto the opposite (outer/door-side) edge from Arm;
+// a Console flap straddling the Middle seat's backrest/cushion seam) — harmless no-ops for
+// Front, which never references these fields.
 function buildSeatGeometry(
   centerX: number,
   scale: number,
@@ -109,13 +123,16 @@ function buildSeatGeometry(
     headrest: r(-34, 0, 68, 48, 20),
     backrest: r(-45, 40, 90, 95, 16),
     cushion: r(-62, 118, 124, 62, 20),
-    shadow: { cx: centerX, cy: topOffset + 195 * scale, rx: 78 * scale, ry: 9 * scale },
+    legSupport: r(-55, 180, 110, 24, 10),
+    shadow: { cx: centerX, cy: topOffset + 213 * scale, rx: 78 * scale, ry: 9 * scale },
   };
   if (armSide) {
     const armX = armSide < 0 ? -71 : 45;
+    const sideBolsterX = armSide < 0 ? 45 : -71;
     geometry.arm = r(armX, 57, 26, 60, 9);
     geometry.backStorage = r(armX, 18, 26, 32, 8);
-    geometry.subPart = r(-20, 186, 40, 22, 10);
+    geometry.sideBolster = r(sideBolsterX, 57, 26, 60, 9);
+    geometry.subPart = r(-20, 204, 40, 22, 10);
   }
   if (includeConsole) {
     geometry.console = r(-38, 112, 76, 30, 10);
@@ -123,8 +140,8 @@ function buildSeatGeometry(
   return geometry;
 }
 
-const DRIVER_GEOMETRY = buildSeatGeometry(96, 1, 10, -1);
-const PASSENGER_GEOMETRY = buildSeatGeometry(384, 1, 10, 1);
+const DRIVER_GEOMETRY = buildSeatGeometry(384, 1, 10, -1);
+const PASSENGER_GEOMETRY = buildSeatGeometry(96, 1, 10, 1);
 const MIDDLE_GEOMETRY = buildSeatGeometry(240, 1, 10, undefined, true);
 
 const SEAT_GEOMETRY_BY_POSITION: Record<"Driver" | "Passenger" | "Middle", SeatGeometry> = {
@@ -143,6 +160,8 @@ function zoneRect(zone: SeatZone): RectGeo | undefined {
   if (zone.category === "Back Storage") return geometry.backStorage;
   if (zone.category === "Sub-part") return geometry.subPart;
   if (zone.category === "Console") return geometry.console;
+  if (zone.category === "Leg Support") return geometry.legSupport;
+  if (zone.category === "Side Bolster") return geometry.sideBolster;
   return undefined;
 }
 
@@ -158,6 +177,10 @@ const CATEGORY_GRADIENT: Record<SeatCoverPartCategory, { from: string; to: strin
   Console: { from: "#f9dad2", to: "#e0a89a" },
   "Back Storage": { from: "#ede7d9", to: "#c9bfa4" },
   "Sub-part": { from: "#e3eee8", to: "#b9cdc0" },
+  // Not yet drawn on the diagram (no SeatZone uses these categories) — placeholder values
+  // kept only so this Record stays exhaustive over SeatCoverPartCategory.
+  "Leg Support": { from: "#e6ece3", to: "#c3d0b8" },
+  "Side Bolster": { from: "#eee0f0", to: "#cfa9d6" },
 };
 
 const CATEGORY_STROKE: Record<SeatCoverPartCategory, string> = {
@@ -168,6 +191,8 @@ const CATEGORY_STROKE: Record<SeatCoverPartCategory, string> = {
   Console: "#a1402e",
   "Back Storage": "#6b5d3e",
   "Sub-part": "#47614f",
+  "Leg Support": "#5b7248",
+  "Side Bolster": "#7a3f82",
 };
 
 const CATEGORY_LABEL: Record<SeatCoverPartCategory, { ko: string; en: string }> = {
@@ -178,6 +203,8 @@ const CATEGORY_LABEL: Record<SeatCoverPartCategory, { ko: string; en: string }> 
   Console: { ko: "콘솔", en: "Console" },
   "Back Storage": { ko: "수납", en: "Storage" },
   "Sub-part": { ko: "서브", en: "Sub" },
+  "Leg Support": { ko: "다리 지지대", en: "Leg Support" },
+  "Side Bolster": { ko: "사이드 볼스터", en: "Side Bolster" },
 };
 
 const ROW_TABS: { key: SeatCoverPartRow; labelKo: string; labelEn: string }[] = [
@@ -196,7 +223,7 @@ const HEADREST_POSITION_LETTER: Partial<Record<SeatCoverPartPosition, string>> =
 // Draw order matters: cushion first, then backrest, then console (straddles that seam), then
 // the outer-edge extras, then headrest last — each later piece's rounded edge overlaps the
 // previous piece's seam so the pieces read as one continuous seat instead of stacked blocks.
-const DRAW_ORDER: SeatCoverPartCategory[] = ["Bottom", "Top Body", "Console", "Back Storage", "Sub-part", "Arm", "Headrest"];
+const DRAW_ORDER: SeatCoverPartCategory[] = ["Bottom", "Leg Support", "Top Body", "Console", "Back Storage", "Side Bolster", "Sub-part", "Arm", "Headrest"];
 
 type SeatDiagramPickerProps = {
   row: SeatCoverPartRow;
@@ -262,10 +289,11 @@ function SeatRowDiagram({ zones, selectedZoneId, hoveredZoneId, onHover, onZoneS
             const isSelected = selectedZoneId === zone.id;
             const isHovered = hoveredZoneId === zone.id;
             const count = zoneCounts[zone.id] ?? 0;
-            const isVertical = zone.category === "Arm" || zone.category === "Back Storage";
+            const isVertical = zone.category === "Arm" || zone.category === "Back Storage" || zone.category === "Side Bolster";
             const centerX = geometry.x + geometry.width / 2;
             const centerY = geometry.y + geometry.height / 2;
             const headrestLetter = zone.category === "Headrest" ? HEADREST_POSITION_LETTER[zone.position] : undefined;
+            const categoryLabel = zone.displayLabel ?? CATEGORY_LABEL[zone.category];
             const stroke = CATEGORY_STROKE[zone.category];
             const textTransform = isVertical ? `rotate(-90 ${centerX} ${centerY})` : undefined;
 
@@ -305,7 +333,7 @@ function SeatRowDiagram({ zones, selectedZoneId, hoveredZoneId, onHover, onZoneS
                       {headrestLetter}
                     </text>
                     <text x={centerX} y={centerY + 15} textAnchor="middle" fontSize={9} fontWeight={600} fill={stroke} opacity={0.85}>
-                      {pick(CATEGORY_LABEL[zone.category].ko, CATEGORY_LABEL[zone.category].en)}
+                      {pick(categoryLabel.ko, categoryLabel.en)}
                     </text>
                   </>
                 ) : (
@@ -313,12 +341,20 @@ function SeatRowDiagram({ zones, selectedZoneId, hoveredZoneId, onHover, onZoneS
                     x={centerX}
                     y={centerY + 4}
                     textAnchor="middle"
-                    fontSize={zone.category === "Arm" ? 10 : zone.category === "Back Storage" ? 8 : zone.category === "Sub-part" ? 8 : 12}
+                    fontSize={
+                      zone.category === "Arm" || zone.category === "Side Bolster"
+                        ? 10
+                        : zone.category === "Back Storage" || zone.category === "Sub-part" || zone.category === "Leg Support"
+                          ? 8
+                          : zone.displayLabel
+                            ? 8
+                            : 12
+                    }
                     fontWeight={700}
                     fill={stroke}
                     transform={textTransform}
                   >
-                    {pick(CATEGORY_LABEL[zone.category].ko, CATEGORY_LABEL[zone.category].en)}
+                    {pick(categoryLabel.ko, categoryLabel.en)}
                   </text>
                 )}
               </g>

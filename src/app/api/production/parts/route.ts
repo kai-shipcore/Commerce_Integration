@@ -1,4 +1,4 @@
-// Code Guide: CRUD API for fc_production_parts table. GET lists all parts with optional filters;
+// Code Guide: CRUD API for pd_production_parts table. GET lists all parts with optional filters;
 // POST creates a new part record.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -20,9 +20,9 @@ function serialize(p: object): object {
 const ProductionPartCreateSchema = z.object({
   partName: z.string().min(1),
   description: z.string().optional(),
-  seatRow: z.enum(["Front", "Rear", "Third Row"]).optional(),
+  seatRow: z.enum(["Front", "Rear", "Second Row", "Third Row"]).optional(),
   position: z.enum(["Driver", "Passenger", "Middle", "Universal"]).optional(),
-  category: z.enum(["Headrest", "Top Body", "Bottom", "Arm", "Console", "Back Storage", "Sub-part"]).optional(),
+  category: z.enum(["Headrest", "Top Body", "Bottom", "Arm", "Console", "Back Storage", "Sub-part", "Leg Support", "Side Bolster"]).optional(),
   isActive: z.boolean().default(true),
 });
 

@@ -23,6 +23,7 @@ const MASTER_DATA_CONFIGS: Record<string, MasterDataTabConfig> = {
     codeLabel: { ko: "Code", en: "Code" },
     codePlaceholder: "CODE-001",
     entityLabel: { ko: "Code", en: "Code" },
+    checkDuplicateOnType: true,
   },
   "designer-initials": {
     apiPath: "/api/production/designer-initials",

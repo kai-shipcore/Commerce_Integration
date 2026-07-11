@@ -1,4 +1,4 @@
-// Code Guide: CRUD API for a single fc_production_parts record by id.
+// Code Guide: CRUD API for a single pd_production_parts record by id.
 // PATCH updates any subset of fields; DELETE soft-deletes by marking the part inactive.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,9 +19,9 @@ function serialize(p: object): object {
 const ProductionPartUpdateSchema = z.object({
   partName: z.string().min(1).optional(),
   description: z.string().optional(),
-  seatRow: z.enum(["Front", "Rear", "Third Row"]).optional(),
+  seatRow: z.enum(["Front", "Rear", "Second Row", "Third Row"]).optional(),
   position: z.enum(["Driver", "Passenger", "Middle", "Universal"]).optional(),
-  category: z.enum(["Headrest", "Top Body", "Bottom", "Arm", "Console", "Back Storage", "Sub-part"]).optional(),
+  category: z.enum(["Headrest", "Top Body", "Bottom", "Arm", "Console", "Back Storage", "Sub-part", "Leg Support", "Side Bolster"]).optional(),
   isActive: z.boolean().optional(),
 });
 

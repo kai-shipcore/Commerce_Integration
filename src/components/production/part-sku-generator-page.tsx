@@ -37,12 +37,6 @@ type PartSkuRecord = {
   isActive: boolean;
 };
 
-type ChecklistItem = {
-  id: string;
-  description: string;
-  status: string;
-};
-
 const SIDE_OPTIONS = [
   { value: "D", labelKo: "운전석 (Driver)", labelEn: "Driver" },
   { value: "P", labelKo: "조수석 (Passenger)", labelEn: "Passenger" },
@@ -50,14 +44,6 @@ const SIDE_OPTIONS = [
   { value: "MP", labelKo: "조수석 대칭 (Mirror Passenger)", labelEn: "Mirror Passenger" },
   { value: "Universal", labelKo: "유니버설 (Universal)", labelEn: "Universal" },
 ] as const;
-
-const STATUS_OPTIONS = ["Pending", "In Progress", "Done"] as const;
-
-const STATUS_STYLES: Record<(typeof STATUS_OPTIONS)[number], string> = {
-  Pending: "border-[#cccac4] bg-[#f0eee9] text-muted-foreground",
-  "In Progress": "border-[#bcd3f7] bg-[#eaf1fd] text-[#1a4db0] dark:border-blue-800 dark:bg-blue-950/70 dark:text-blue-300",
-  Done: "border-[#bfe3d3] bg-[#e6f5f0] text-[#0a5e45] dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300",
-};
 
 const TABS: { key: "generator" | "list"; labelKo: string; labelEn: string }[] = [
   { key: "generator", labelKo: "생성기", labelEn: "Generator" },
@@ -94,12 +80,6 @@ export function PartSkuGeneratorPage() {
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
-  const [loadingChecklist, setLoadingChecklist] = useState(false);
-  const [newItemDescription, setNewItemDescription] = useState("");
-  const [newItemStatus, setNewItemStatus] = useState<string>("Pending");
-  const [savingChecklist, setSavingChecklist] = useState(false);
 
   async function fetchMakes() {
     const res = await fetch(apiPath("/api/production/vehicle-options"));
@@ -146,17 +126,6 @@ export function PartSkuGeneratorPage() {
     }
   }
 
-  async function fetchChecklist(partSkuId: string) {
-    setLoadingChecklist(true);
-    try {
-      const res = await fetch(apiPath(`/api/production/part-skus/${partSkuId}/checklist`));
-      const json = await res.json();
-      if (json.success) setChecklist(json.data);
-    } finally {
-      setLoadingChecklist(false);
-    }
-  }
-
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchMakes();
@@ -171,15 +140,6 @@ export function PartSkuGeneratorPage() {
     fetchModels(make);
   }, [make]);
 
-  useEffect(() => {
-    if (!selectedId) {
-      const timer = window.setTimeout(() => setChecklist([]), 0);
-      return () => window.clearTimeout(timer);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchChecklist(selectedId);
-  }, [selectedId]);
-
   const sessionReady = Boolean(
     make.trim() && makeAbbr.trim() && model.trim() && modelAbbr.trim() && initial.trim()
   );
@@ -190,8 +150,16 @@ export function PartSkuGeneratorPage() {
 
   const selectedCodeDescription = codes.find((c) => c.code === code)?.description ?? "";
 
+  // "Rear" and "Second Row" are the same physical row (2-row vs 3-row vehicle terminology) —
+  // a part classified under either seatRow matches the diagram's single "Rear" zone.
+  const REAR_ROW_ALIASES = ["Rear", "Second Row"];
+  function seatRowMatches(partSeatRow: string | null, zoneSeatRow: string): boolean {
+    if (partSeatRow === zoneSeatRow) return true;
+    return REAR_ROW_ALIASES.includes(zoneSeatRow) && REAR_ROW_ALIASES.includes(partSeatRow ?? "");
+  }
+
   function matchesZone(part: ProductionPart, zone: SeatZone) {
-    if (part.seatRow !== zone.seatRow || part.category !== zone.category) return false;
+    if (!seatRowMatches(part.seatRow, zone.seatRow) || part.category !== zone.category) return false;
     if (part.position === zone.position) return true;
     return zone.position !== "Middle" && part.position === "Universal";
   }
@@ -206,6 +174,8 @@ export function PartSkuGeneratorPage() {
 
   const selectedZone = ALL_SEAT_ZONES.find((z) => z.id === selectedZoneId) ?? null;
 
+  // A zone can have more than one matching Part (e.g. a Rear-classified and a Second-Row-classified
+  // Side Bolster both apply to the same diagram zone) — list them so the user can pick.
   const zoneParts = useMemo(() => {
     if (!selectedZone) return [];
     return parts.filter((p) => matchesZone(p, selectedZone));
@@ -214,8 +184,14 @@ export function PartSkuGeneratorPage() {
   const selectedPartRecord = parts.find((p) => p.partName === partName) ?? null;
 
   function handleZoneSelect(zoneId: string) {
-    setSelectedZoneId((current) => (current === zoneId ? null : zoneId));
-    setPartName("");
+    setSelectedZoneId((current) => {
+      const next = current === zoneId ? null : zoneId;
+      const zone = next ? ALL_SEAT_ZONES.find((z) => z.id === next) : null;
+      const matches = zone ? parts.filter((p) => matchesZone(p, zone)) : [];
+      // Auto-select only when the zone has exactly one match; otherwise require an explicit pick.
+      setPartName(matches.length === 1 ? matches[0].partName : "");
+      return next;
+    });
   }
 
   function handleDiagramRowChange(nextRow: SeatCoverPartRow) {
@@ -343,63 +319,6 @@ export function PartSkuGeneratorPage() {
     await fetchPartSkus();
   }
 
-  async function addChecklistItem() {
-    if (!selectedId) return;
-    if (!can("part-sku-generator", "edit")) {
-      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
-      return;
-    }
-    if (!newItemDescription.trim()) {
-      window.alert(pick("설명을 입력하세요.", "Enter a description."));
-      return;
-    }
-    setSavingChecklist(true);
-    try {
-      const res = await fetch(apiPath(`/api/production/part-skus/${selectedId}/checklist`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: newItemDescription.trim(), status: newItemStatus }),
-      });
-      const json = await res.json();
-      if (!json.success) {
-        window.alert(json.error ?? pick("추가에 실패했습니다.", "Failed to add."));
-        return;
-      }
-      setNewItemDescription("");
-      setNewItemStatus("Pending");
-      await fetchChecklist(selectedId);
-    } finally {
-      setSavingChecklist(false);
-    }
-  }
-
-  async function updateChecklistItemStatus(itemId: string, status: string) {
-    if (!selectedId) return;
-    if (!can("part-sku-generator", "edit")) {
-      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
-      return;
-    }
-    const res = await fetch(apiPath(`/api/production/part-skus/${selectedId}/checklist/${itemId}`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    const json = await res.json();
-    if (json.success) await fetchChecklist(selectedId);
-  }
-
-  async function deleteChecklistItem(itemId: string) {
-    if (!selectedId) return;
-    if (!can("part-sku-generator", "edit")) {
-      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
-      return;
-    }
-    if (!window.confirm(pick("이 항목을 삭제하시겠습니까?", "Delete this item?"))) return;
-    const res = await fetch(apiPath(`/api/production/part-skus/${selectedId}/checklist/${itemId}`), { method: "DELETE" });
-    const json = await res.json();
-    if (json.success) await fetchChecklist(selectedId);
-  }
-
   return (
     <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-6 py-4">
@@ -430,8 +349,7 @@ export function PartSkuGeneratorPage() {
 
       {activeTab === "generator" ? (
       <div className="grid min-h-0 flex-1 grid-cols-1 divide-y divide-[#e2dfd8] bg-white lg:grid-cols-[1fr_460px] lg:divide-x lg:divide-y-0">
-        <div className="flex min-h-0 flex-col">
-        <div className="p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <SeatDiagramPicker
             row={diagramRow}
             onRowChange={handleDiagramRowChange}
@@ -441,46 +359,6 @@ export function PartSkuGeneratorPage() {
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto border-t border-[#e2dfd8]">
-          {selectedZone ? (
-            <>
-              <div className="border-b border-[#e2dfd8] px-4 py-3">
-                <span className="text-lg font-semibold text-muted-foreground">
-                  {pick(selectedZone.label.ko, selectedZone.label.en)} · {zoneParts.length} {pick("건", "parts")}
-                </span>
-              </div>
-              {zoneParts.length > 0 ? (
-                zoneParts.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setPartName(p.partName)}
-                    className={`flex w-full flex-col gap-0.5 border-b border-[#e2dfd8] px-4 py-3 text-left transition-colors hover:bg-[#f0eee9] ${
-                      partName === p.partName ? "border-l-4 border-l-[#1a5cdb] bg-[#ebf0fd]" : ""
-                    }`}
-                  >
-                    <span className="text-base font-bold">{p.partName}</span>
-                    {p.description ? (
-                      <span className="truncate text-base text-muted-foreground" title={p.description}>
-                        {p.description}
-                      </span>
-                    ) : null}
-                  </button>
-                ))
-              ) : (
-                <div className="p-5 text-center text-base text-muted-foreground">
-                  {pick("이 부위에 등록된 Part가 없습니다.", "No Parts registered for this zone.")}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex h-full min-h-[200px] items-center justify-center p-5 text-center text-base text-muted-foreground">
-              {pick("다이어그램에서 부위를 선택하세요.", "Select a zone in the diagram.")}
-            </div>
-          )}
-        </div>
-        </div>
-
         <div className="min-h-0 overflow-y-auto bg-[#f9f8f5] p-6">
           {selectedZone ? (
             <div className="flex flex-col gap-4">
@@ -488,7 +366,29 @@ export function PartSkuGeneratorPage() {
                 <span className="text-sm font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                   {pick("선택된 Part", "Selected Part")}
                 </span>
-                {selectedPartRecord ? (
+                {zoneParts.length > 1 ? (
+                  <div className="mt-1 flex flex-col gap-1">
+                    {zoneParts.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPartName(p.partName)}
+                        className={`flex flex-col gap-0.5 rounded-md border px-3 py-2 text-left transition-colors ${
+                          partName === p.partName
+                            ? "border-[#1a5cdb] bg-[#ebf0fd]"
+                            : "border-[#cccac4] bg-white hover:bg-[#f0eee9]"
+                        }`}
+                      >
+                        <span className="text-base font-bold">{p.partName}</span>
+                        {p.description ? (
+                          <span className="truncate text-sm text-muted-foreground" title={p.description}>
+                            {p.description}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : selectedPartRecord ? (
                   <div className="mt-1 rounded-md border border-[#cccac4] bg-white px-3 py-2">
                     <div className="text-base font-bold">{selectedPartRecord.partName}</div>
                     {selectedPartRecord.description ? (
@@ -497,7 +397,7 @@ export function PartSkuGeneratorPage() {
                   </div>
                 ) : (
                   <div className="mt-1 rounded-md border border-dashed border-[#cccac4] px-3 py-2 text-base text-muted-foreground">
-                    {pick("아래 목록에서 Part를 선택하세요.", "Select a Part from the list.")}
+                    {pick("이 부위에 등록된 Part가 없습니다.", "No Part registered for this zone.")}
                   </div>
                 )}
               </div>
@@ -542,7 +442,6 @@ export function PartSkuGeneratorPage() {
                   onChange={setModel}
                   placeholder={pick("선택", "Select")}
                   searchPlaceholder={pick("Model 검색...", "Search Model...")}
-                  disabled={!make}
                   className="h-11 text-base"
                 />
               </label>
@@ -575,7 +474,6 @@ export function PartSkuGeneratorPage() {
                   onChange={setCode}
                   placeholder={pick("선택", "Select")}
                   searchPlaceholder={pick("Code 검색...", "Search Code...")}
-                  disabled={!sessionReady}
                   className="h-11 text-base"
                 />
                 {selectedCodeDescription ? (
@@ -588,7 +486,6 @@ export function PartSkuGeneratorPage() {
                 <span className="text-sm font-semibold text-muted-foreground">Side</span>
                 <select
                   className="form-input h-11 bg-white text-base"
-                  disabled={!sessionReady}
                   value={side}
                   onChange={(e) => setSide(e.target.value)}
                 >
@@ -749,83 +646,6 @@ export function PartSkuGeneratorPage() {
                     <div>{selectedPartSku.createdByName ?? "-"}</div>
                   </div>
                 </div>
-              </section>
-
-              <section>
-                <div className="mb-3 border-b border-[#e2dfd8] pb-2 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                  {pick("체크리스트", "Checklist")}
-                </div>
-                {loadingChecklist ? (
-                  <div className="text-sm text-muted-foreground">{pick("불러오는 중...", "Loading...")}</div>
-                ) : (
-                  <div className="space-y-2">
-                    {checklist.length === 0 ? (
-                      <div className="rounded-lg bg-[#f0eee9] p-4 text-center text-sm text-muted-foreground">
-                        {pick("체크리스트 항목이 없습니다.", "No checklist items yet.")}
-                      </div>
-                    ) : (
-                      checklist.map((item) => (
-                        <div key={item.id} className="flex items-center gap-2 rounded-lg border border-[#e2dfd8] bg-white p-3">
-                          <span className="flex-1 text-sm">{item.description}</span>
-                          {can("part-sku-generator", "edit") ? (
-                            <select
-                              className={`form-input h-9 w-36 rounded-md text-sm font-semibold ${STATUS_STYLES[item.status as (typeof STATUS_OPTIONS)[number]] ?? STATUS_STYLES.Pending}`}
-                              value={item.status}
-                              onChange={(e) => updateChecklistItemStatus(item.id, e.target.value)}
-                            >
-                              {STATUS_OPTIONS.map((s) => (
-                                <option key={s} value={s}>{s}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span
-                              className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${STATUS_STYLES[item.status as (typeof STATUS_OPTIONS)[number]] ?? STATUS_STYLES.Pending}`}
-                            >
-                              {item.status}
-                            </span>
-                          )}
-                          {can("part-sku-generator", "edit") ? (
-                            <button
-                              type="button"
-                              onClick={() => deleteChecklistItem(item.id)}
-                              className="text-sm text-[#c42b2b] hover:underline"
-                            >
-                              {pick("삭제", "Delete")}
-                            </button>
-                          ) : null}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {can("part-sku-generator", "edit") ? (
-                  <div className="mt-3 flex items-center gap-2">
-                    <input
-                      className="form-input h-10 flex-1 bg-white text-sm"
-                      value={newItemDescription}
-                      onChange={(e) => setNewItemDescription(e.target.value)}
-                      placeholder={pick("설명 입력...", "Enter description...")}
-                    />
-                    <select
-                      className="form-input h-10 w-32 bg-white text-sm"
-                      value={newItemStatus}
-                      onChange={(e) => setNewItemStatus(e.target.value)}
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={savingChecklist || !newItemDescription.trim()}
-                      onClick={addChecklistItem}
-                      className="h-10 whitespace-nowrap rounded-md bg-[#1a5cdb] px-3 text-sm font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
-                    >
-                      {pick("추가", "Add")}
-                    </button>
-                  </div>
-                ) : null}
               </section>
             </div>
           ) : (

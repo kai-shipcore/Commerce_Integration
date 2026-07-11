@@ -76,6 +76,11 @@ export function PartRegistrationTab() {
   const catalogOptions = useMemo(() => SEAT_COVER_PART_CATALOG.map((option) => option.name), []);
   const chosenCatalogEntry = SEAT_COVER_PART_CATALOG.find((option) => option.name === catalogChoice) ?? null;
 
+  // partName is @unique and immutable once created, so only check while creating a new record —
+  // mirrors the server's exact (trimmed, case-sensitive) findUnique comparison in POST /api/production/parts.
+  const duplicatePartName =
+    isNew && partNameInput.trim() !== "" && records.some((record) => record.partName === partNameInput.trim());
+
   function selectRecord(record: ProductionPartRecord) {
     setSelectedId(record.id);
     setDescription(record.description ?? "");
@@ -384,6 +389,11 @@ export function PartRegistrationTab() {
                         onChange={(e) => setPartNameInput(e.target.value)}
                         placeholder={pick("등록할 Part 이름 입력", "Enter the name to register")}
                       />
+                      {duplicatePartName ? (
+                        <span className="text-xs text-[#c42b2b]">
+                          {pick("이미 사용 중인 이름입니다.", "This name is already in use.")}
+                        </span>
+                      ) : null}
                     </label>
                   </>
                 ) : null}
@@ -457,7 +467,7 @@ export function PartRegistrationTab() {
                   <button
                     type="button"
                     onClick={saveRecord}
-                    disabled={saving}
+                    disabled={saving || duplicatePartName}
                     className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
                   >
                     {saving ? pick("저장 중...", "Saving...") : pick("저장", "Save")}

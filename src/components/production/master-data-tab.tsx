@@ -32,6 +32,7 @@ export type MasterDataTabConfig = {
   namePlaceholder?: { ko: string; en: string };
   codePlaceholder: string;
   entityLabel: { ko: string; en: string };
+  checkDuplicateOnType?: boolean;
 };
 
 const emptyForm: MasterForm = { code: "", name: "", description: "", isActive: true };
@@ -99,6 +100,18 @@ export function MasterDataTab({ config }: { config: MasterDataTabConfig }) {
   }, [query, showInactive, records, config.codeField, config.nameField, config.hasDescription]);
 
   const selectedRecord = records.find((record) => record.id === selectedId) ?? null;
+
+  // Mirrors the server's exact (trimmed, optionally-uppercased) findUnique comparison, excluding
+  // the record's own id so editing a record back to its own current code doesn't self-flag.
+  const normalizedFormCode = config.uppercaseCode ? form.code.trim().toUpperCase() : form.code.trim();
+  const duplicateCode =
+    !!config.checkDuplicateOnType &&
+    normalizedFormCode !== "" &&
+    records.some((record) => {
+      const existingCode = String(record[config.codeField] ?? "");
+      const normalizedExisting = config.uppercaseCode ? existingCode.toUpperCase() : existingCode;
+      return normalizedExisting === normalizedFormCode && record.id !== selectedId;
+    });
 
   function selectRecord(record: MasterRecord) {
     setSelectedId(record.id);
@@ -355,6 +368,11 @@ export function MasterDataTab({ config }: { config: MasterDataTabConfig }) {
                     onChange={(e) => updateForm("code", config.uppercaseCode ? e.target.value.toUpperCase() : e.target.value)}
                     placeholder={config.codePlaceholder}
                   />
+                  {duplicateCode ? (
+                    <span className="text-xs text-[#c42b2b]">
+                      {pick("이미 사용 중인 코드입니다.", "This code is already in use.")}
+                    </span>
+                  ) : null}
                 </label>
                 {config.nameField && config.namePlaceholder ? (
                   <label className="flex flex-col gap-1">
@@ -423,7 +441,7 @@ export function MasterDataTab({ config }: { config: MasterDataTabConfig }) {
                   <button
                     type="button"
                     onClick={saveRecord}
-                    disabled={saving}
+                    disabled={saving || duplicateCode}
                     className="rounded-md bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:opacity-50"
                   >
                     {saving ? pick("저장 중...", "Saving...") : pick("저장", "Save")}
