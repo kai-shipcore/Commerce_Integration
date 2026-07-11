@@ -12,6 +12,7 @@ export async function POST(
     const upstream = await fetch(`${FORECAST_API}/cancel-simulation/${jobId}`, {
       method: "POST",
       signal: AbortSignal.timeout(5_000),
+      headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" },
     });
     const data = await upstream.json();
     if (!upstream.ok) {

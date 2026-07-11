@@ -11,6 +11,7 @@ export async function GET(
   try {
     const upstream = await fetch(`${FORECAST_API}/forecast-status/${jobId}`, {
       signal: AbortSignal.timeout(5_000),
+      headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" },
     });
     const body = await upstream.text();
     if (!upstream.ok) {

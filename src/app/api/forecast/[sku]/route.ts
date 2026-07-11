@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sku:
 
     const upstream = await fetch(
       `${forecastApiBase()}/forecast/${encodeURIComponent(sku)}${search ? `?${search}` : ""}`,
-      { signal: AbortSignal.timeout(isModelOverride ? 30_000 : 10_000) },
+      { signal: AbortSignal.timeout(isModelOverride ? 30_000 : 10_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
 
     const body = await upstream.text();

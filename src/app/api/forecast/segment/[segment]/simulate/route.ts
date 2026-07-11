@@ -20,7 +20,7 @@ export async function POST(
   try {
     const upstream = await fetch(
       `${FORECAST_API}/segment-simulate-job/${encodeURIComponent(segment)}?cutoff=${encodeURIComponent(cutoff)}&horizon=${horizon}&model=${encodeURIComponent(model)}&product_type=${encodeURIComponent(productType)}`,
-      { method: "POST", signal: AbortSignal.timeout(10_000) },
+      { method: "POST", signal: AbortSignal.timeout(10_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
     const data = await upstream.json();
     if (!upstream.ok) {

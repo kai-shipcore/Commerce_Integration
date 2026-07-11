@@ -13,7 +13,7 @@ export async function GET(
   try {
     const upstream = await fetch(
       `${FORECAST_API}/segment-simulate-result/${jobId}`,
-      { signal: AbortSignal.timeout(10_000) },
+      { signal: AbortSignal.timeout(10_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
     const data = await upstream.json();
     if (!upstream.ok) {

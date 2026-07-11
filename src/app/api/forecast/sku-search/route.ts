@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   try {
     const upstream = await fetch(
       `${FORECAST_API}/sku-search?q=${encodeURIComponent(q)}`,
-      { signal: AbortSignal.timeout(5_000) },
+      { signal: AbortSignal.timeout(5_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
     const data = await upstream.json();
     if (!upstream.ok) return NextResponse.json([], { status: upstream.status });

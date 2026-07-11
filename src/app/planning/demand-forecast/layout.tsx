@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { apiPath } from "@/lib/api-path";
+import { ForecastChat } from "@/components/planning/demand-forecast/forecast-chat";
 
 export default function DemandForecastLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -18,5 +19,10 @@ export default function DemandForecastLayout({ children }: { children: React.Rea
     };
   }, []);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <ForecastChat />
+    </>
+  );
 }

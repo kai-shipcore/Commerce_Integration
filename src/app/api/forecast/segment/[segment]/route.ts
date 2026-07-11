@@ -20,7 +20,7 @@ export async function GET(
   try {
     const upstream = await fetch(
       `${FORECAST_API}/segment-detail/${encodeURIComponent(segment)}?weeks=${weeks}&product_type=${encodeURIComponent(productType)}&mode=${mode}&level=${level}${evalParam}${test}`,
-      { signal: AbortSignal.timeout(15_000) },
+      { signal: AbortSignal.timeout(15_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
     const body = await upstream.text();
     if (!upstream.ok) {

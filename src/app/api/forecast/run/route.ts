@@ -10,6 +10,7 @@ export async function POST(request: Request) {
     const upstream = await fetch(`${FORECAST_API}/run-forecast?horizon=${horizon}`, {
       method: "POST",
       signal: AbortSignal.timeout(10_000),
+      headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" },
     });
     const body = await upstream.text();
     if (!upstream.ok) {

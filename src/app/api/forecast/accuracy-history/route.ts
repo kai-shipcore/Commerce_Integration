@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   try {
     const upstream = await fetch(
       `${FORECAST_API}/accuracy-history?product_type=${encodeURIComponent(productType)}`,
-      { signal: AbortSignal.timeout(30_000) },
+      { signal: AbortSignal.timeout(30_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
     const body = await upstream.text();
     if (!upstream.ok) {

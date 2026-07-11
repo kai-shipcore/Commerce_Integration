@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ sku:
   try {
     const upstream = await fetch(
       `${forecastApiBase()}/backtest/${encodeURIComponent(sku)}${search ? `?${search}` : ""}`,
-      { signal: AbortSignal.timeout(85_000) },
+      { signal: AbortSignal.timeout(85_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
 
     const body = await upstream.text();

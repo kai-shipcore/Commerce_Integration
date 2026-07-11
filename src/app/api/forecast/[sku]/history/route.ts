@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ sku
   try {
     const upstream = await fetch(
       `${forecastApiBase()}/history/${encodeURIComponent(sku)}`,
-      { signal: AbortSignal.timeout(10_000) },
+      { signal: AbortSignal.timeout(10_000), headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" } },
     );
     const body = await upstream.text();
     if (!upstream.ok) {

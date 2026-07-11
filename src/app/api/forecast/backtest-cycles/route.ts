@@ -8,6 +8,7 @@ export async function GET(request: Request) {
   try {
     const upstream = await fetch(`${FORECAST_API}/backtest-cycles?_=1${test}`, {
       signal: AbortSignal.timeout(10_000),
+      headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" },
     });
     const body = await upstream.text();
     if (!upstream.ok) {
