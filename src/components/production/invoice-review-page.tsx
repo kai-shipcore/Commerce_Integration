@@ -824,7 +824,7 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     }
   }
 
-  async function applySelectedItemCredits() {
+  function exportSelectedItems() {
     if (!detail) return;
     const selected = detail.items.filter((item) => selectedItemIds.has(item.id) && isExportableDifference(item));
     if (selected.length === 0) {
@@ -853,24 +853,38 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
     XLSX.writeFile(workbook, `invoice-${detail.invoiceNumber}-selected-skus-${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success(pick(`${selected.length}개 SKU를 내보냈습니다.`, `Exported ${selected.length} SKU row(s).`));
 
+  }
+
+  async function applySelectedItemCredits() {
+    if (!detail) return;
+    const selected = detail.items.filter((item) => selectedItemIds.has(item.id) && isExportableDifference(item));
+    if (selected.length === 0) {
+      toast.error(pick("Credit 적용할 SKU를 선택하세요.", "Select SKU rows to apply credits."));
+      return;
+    }
     const overcharged = selected.filter((item) => item.result === "overcharged");
-    if (overcharged.length > 0) {
-      try {
-        const res = await fetch(apiPath("/api/production/credit-notes/bulk"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ itemIds: overcharged.map((item) => item.id) }),
-        });
-        const json = await res.json();
-        if (res.ok && json.success && json.data.created > 0) {
-          toast.success(pick(
-            `Credit 관리 탭에 ${json.data.created}건이 Pending으로 등록됐습니다.`,
-            `Registered ${json.data.created} pending credit note(s) in Credit Notes.`
-          ));
-        }
-      } catch {
-        // Export already succeeded; credit-note registration is best-effort here.
+    if (overcharged.length === 0) {
+      toast.error(pick("Credit 적용 가능한 과청구 SKU가 없습니다.", "No overcharged SKU rows are available to apply as credits."));
+      return;
+    }
+    try {
+      const res = await fetch(apiPath("/api/production/credit-notes/bulk"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemIds: overcharged.map((item) => item.id) }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || pick("Credit 적용에 실패했습니다.", "Failed to apply credits."));
+      if (json.data.created > 0) {
+        toast.success(pick(
+          `Credit 관리 탭에 ${json.data.created}건이 Pending으로 등록됐습니다.`,
+          `Registered ${json.data.created} pending credit note(s) in Credit Notes.`
+        ));
+      } else {
+        toast.info(pick("새로 등록된 Credit 항목이 없습니다.", "No new credit notes were registered."));
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("Credit 적용에 실패했습니다.", "Failed to apply credits."));
     }
   }
 
@@ -1580,10 +1594,17 @@ export function InvoiceReviewPage({ createFormOpen, onCreateFormOpenChange }: In
                       </span>
                       <button
                         type="button"
+                        onClick={exportSelectedItems}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs font-semibold text-[#1a4db0] hover:bg-[#f5f8fe]"
+                      >
+                        <Download className="h-3.5 w-3.5" /> {pick("선택 항목 내보내기", "Export Selected")}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => void applySelectedItemCredits()}
                         className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1a5cdb] px-2.5 text-xs font-semibold text-white hover:bg-[#174fbf]"
                       >
-                        <Download className="h-3.5 w-3.5" /> {pick("선택 항목 크레딧 적용", "Apply Selected Credits")}
+                        <Plus className="h-3.5 w-3.5" /> {pick("선택 항목 크레딧 적용", "Apply Selected Credits")}
                       </button>
                     </div>
                   ) : null}

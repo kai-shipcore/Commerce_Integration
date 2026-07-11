@@ -301,8 +301,8 @@ export function RolePermissionsTab() {
             <tbody>
               {GROUPED_SECTIONS.map(({ group, sections }) => (
                 <Fragment key={`group-${group}`}>
-                  <tr className="border-b border-[#e2dfd8] bg-[#f0ede8]">
-                    <td className="px-5 py-2 text-[9px] font-bold uppercase tracking-[0.08em] text-[#6b6359]">
+                  <tr className="border-b border-[#e2dfd8] bg-[#f0ede8] dark:border-slate-700 dark:bg-slate-800">
+                    <td className="px-5 py-2 text-[9px] font-bold uppercase tracking-[0.08em] text-[#6b6359] dark:text-slate-300">
                       {pick(PERM_SECTION_GROUP_LABELS[group].ko, PERM_SECTION_GROUP_LABELS[group].en)}
                     </td>
                     {DISPLAY_ACTIONS.map((act) => {
@@ -335,17 +335,20 @@ export function RolePermissionsTab() {
                   {sections.map((sec, idx) => (
                     <tr
                       key={sec.id}
-                      className={`border-b border-[#e2dfd8] transition-colors hover:bg-[#fafaf7] ${idx === sections.length - 1 ? "border-b-2 border-[#d6d3cc]" : ""}`}
+                      className={`border-b border-[#e2dfd8] transition-colors hover:bg-[#fafaf7] dark:border-slate-700 dark:hover:bg-slate-800/70 ${idx === sections.length - 1 ? "border-b-2 border-[#d6d3cc] dark:border-b-slate-600" : ""}`}
                     >
-                      <td className="px-5 py-3">
-                        <div className="text-[12px] font-semibold text-[#1a1917]">
-                          {pick(sec.nameKo, sec.nameEn)}
-                        </div>
-                        {PERM_SECTION_HINTS[sec.id as PermSection] ? (
-                          <div className="mt-0.5 text-[10.5px] font-medium leading-snug text-[#1a5cdb]">
-                            {pick(PERM_SECTION_HINTS[sec.id as PermSection]!.ko, PERM_SECTION_HINTS[sec.id as PermSection]!.en)}
+                      <td className="py-3 pl-9 pr-5">
+                        <div className="relative border-l-2 border-[#d6d3cc] py-0.5 pl-4 dark:border-slate-600">
+                          <div className="absolute left-0 top-4 h-px w-3 bg-[#d6d3cc] dark:bg-slate-600" />
+                          <div className="text-[12px] font-semibold text-[#1a1917] dark:text-slate-100">
+                            {pick(sec.nameKo, sec.nameEn)}
                           </div>
-                        ) : null}
+                          {PERM_SECTION_HINTS[sec.id as PermSection] ? (
+                            <div className="mt-0.5 text-[10.5px] font-medium leading-snug text-[#1a5cdb] dark:text-blue-300">
+                              {pick(PERM_SECTION_HINTS[sec.id as PermSection]!.ko, PERM_SECTION_HINTS[sec.id as PermSection]!.en)}
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
                       {DISPLAY_ACTIONS.map((act) => {
                         const supported = PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id);

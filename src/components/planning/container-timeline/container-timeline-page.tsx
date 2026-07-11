@@ -875,7 +875,7 @@ export function ContainerTimelinePage() {
 
   return (
     <>
-      <div className={`flex flex-col gap-4 transition-[margin] duration-200 ${selected ? "2xl:mr-[1120px]" : ""}`}>
+      <div className={`container-timeline-surface flex flex-col gap-4 transition-[margin] duration-200 ${selected ? "2xl:mr-[1120px]" : ""}`}>
         {/* ── Page header ───────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex shrink-0 items-start gap-2">
@@ -2108,7 +2108,7 @@ function ContainerDetailDrawer({
 
       {/* Drawer */}
       <div
-        className="fixed right-0 w-[min(1120px,calc(100vw-24px))] z-40 bg-white border-l border-[#e2dfd8] shadow-2xl flex flex-col overflow-hidden"
+        className="container-timeline-surface fixed right-0 w-[min(1120px,calc(100vw-24px))] z-40 bg-white border-l border-[#e2dfd8] shadow-2xl flex flex-col overflow-hidden"
         style={{
           top: "var(--app-header-height, 56px)",
           height: "calc(100% - var(--app-header-height, 56px))",

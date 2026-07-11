@@ -28,6 +28,7 @@ import {
 import type { RolePermMatrix } from "@/lib/permissions-config";
 import { apiPath, authPath, stripBasePath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { DEFAULT_MANUAL_MENU_ID, MANUAL_DOC_BY_MENU_ID, SKU_FORECAST_SECTION_ANCHOR_BY_TAB } from "@/lib/manual-docs";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -37,34 +38,6 @@ const TOP_NAV_COLLAPSED_PREF_KEY = "layout.topNavCollapsed";
 const TOP_NAV_COLLAPSED_STORAGE_KEY = "demandpilot-top-nav-collapsed";
 const TOP_NAV_LAUNCHER_STORAGE_KEY = "demandpilot-top-nav-launcher-position";
 const TOP_NAV_LAUNCHER_EDGE_GAP = 4;
-const DEFAULT_MANUAL_SECTION = "overview";
-
-const manualSectionByNavigationId: Record<string, string> = {
-  dashboard: "command-center",
-  inventory: "inventory",
-  orders: "orders",
-  velocity: "velocity",
-  "demand-planning": "demand-planning",
-  "sku-forecasts": "sku-planning",
-  "container-planning": "container-planning",
-  "container-timeline": "container-timeline",
-  "transit-stock": "transit-stock",
-  "available-stock": "available-stock",
-  "sku-master": "sku-master",
-  "seat-cover-parts": "parts",
-  factories: "factories",
-  "warehouse-admin": "warehouse",
-  integrations: "integrations",
-  "audit-log": "audit-log",
-};
-
-const skuForecastManualSectionByTab: Record<string, string> = {
-  sales: "sp-analysis",
-  inventory: "sp-inventory",
-  history: "sp-inbound-history",
-  purchase: "sp-recommend",
-  forecast: "sp-forecast",
-};
 
 interface LauncherPosition {
   x: number;
@@ -161,26 +134,12 @@ export function AppLayout({ children }: AppLayoutProps) {
       .sort((left, right) => right.href.length - left.href.length)[0] ?? null;
   }, [appPathname]);
   const manualHref = useMemo(() => {
-    if (matchedItem?.id === "invoice-price-control") {
-      return withBasePath("/manual/admin_help.html");
-    }
-    if (
-      matchedItem?.id === "seat-cover-sizes" ||
-      matchedItem?.id === "production-vehicles" ||
-      matchedItem?.id === "production-parts-codes" ||
-      matchedItem?.id === "part-sku-generator"
-    ) {
-      return withBasePath("/manual/production_help.html");
-    }
+    const menuId = matchedItem && MANUAL_DOC_BY_MENU_ID[matchedItem.id] ? matchedItem.id : DEFAULT_MANUAL_MENU_ID;
+    const anchor = menuId === "sku-forecasts"
+      ? SKU_FORECAST_SECTION_ANCHOR_BY_TAB[searchParams.get("tab") ?? "sales"]
+      : undefined;
 
-    let section = DEFAULT_MANUAL_SECTION;
-    if (matchedItem?.id === "sku-forecasts") {
-      section = skuForecastManualSectionByTab[searchParams.get("tab") ?? "sales"] ?? manualSectionByNavigationId["sku-forecasts"];
-    } else if (matchedItem) {
-      section = manualSectionByNavigationId[matchedItem.id] ?? DEFAULT_MANUAL_SECTION;
-    }
-
-    return withBasePath(`/manual/index.html?lang=${locale}&section=${section}`);
+    return withBasePath(`/manual/${menuId}?lang=${locale}${anchor ? `#${anchor}` : ""}`);
   }, [locale, matchedItem, searchParams]);
 
   useEffect(() => {
