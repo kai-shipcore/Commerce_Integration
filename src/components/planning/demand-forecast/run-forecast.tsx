@@ -105,7 +105,7 @@ interface LastRun {
 }
 
 interface JobStatus {
-  status: "running" | "done" | "failed" | "cancelled";
+  status: "running" | "cancelling" | "done" | "failed" | "cancelled";
   lines: string[];
   exit_code: number | null;
 }
@@ -132,7 +132,7 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
     fetch(apiPath(`/api/forecast/status/${saved}`))
       .then((r) => r.ok ? r.json() : null)
       .then((data: JobStatus | null) => {
-        if (data && data.status === "running") {
+        if (data && (data.status === "running" || data.status === "cancelling")) {
           setJobId(saved);
           setJob(data);
         } else {
@@ -142,15 +142,15 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
       .catch(() => sessionStorage.removeItem(SESSION_KEY));
   }, []);
 
-  // Poll while running
+  // Poll while running or cancelling
   useEffect(() => {
-    if (!jobId || job?.status !== "running") return;
+    if (!jobId || (job?.status !== "running" && job?.status !== "cancelling")) return;
     const id = setInterval(async () => {
       try {
         const res = await fetch(apiPath(`/api/forecast/status/${jobId}`));
         const data = (await res.json()) as JobStatus;
         setJob(data);
-        if (data.status !== "running") {
+        if (data.status !== "running" && data.status !== "cancelling") {
           clearInterval(id);
           sessionStorage.removeItem(SESSION_KEY);
           if (data.status === "done") {
@@ -242,7 +242,7 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
     }
   }
 
-  const isRunning = job?.status === "running";
+  const isRunning = job?.status === "running" || job?.status === "cancelling";
   const canRun = serverStatus === "running" && !isRunning;
 
   const formattedLastRun = lastRun?.run_date
@@ -374,6 +374,11 @@ export function RunForecast({ initialLastRun, onDone }: { initialLastRun: LastRu
               {job.status === "running" && (
                 <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                   {pick("실행 중", "Running")}
+                </span>
+              )}
+              {job.status === "cancelling" && (
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                  {pick("취소 중…", "Cancelling…")}
                 </span>
               )}
               {job.status === "cancelled" && (
