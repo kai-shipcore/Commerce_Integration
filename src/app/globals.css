@@ -129,6 +129,7 @@
 
   .planning-surface:has(.container-planning-fullbleed),
   .planning-surface:has(.available-stock-fullbleed),
+  .planning-surface:has(.transit-stock-fullbleed),
   .planning-surface:has(.purchase-orders-fullbleed),
   .planning-surface:has(.sku-master-fullbleed),
   .planning-surface:has(.factories-fullbleed),
@@ -184,7 +185,8 @@
     .bg-white,
     [class*="bg-[#f5f4f0]"],
     [class*="bg-[#f8f7f4]"],
-    [class*="bg-[#fbfaf8]"]
+    [class*="bg-[#fbfaf8]"],
+    [class*="bg-slate-100"]
   ) {
     background-color: rgb(17 24 39) !important;
   }
@@ -198,7 +200,11 @@
     .warehouse-fullbleed
   ) :where(
     .planning-muted,
-    [class*="bg-[#f0eee9]"]
+    [class*="bg-[#f0eee9]"],
+    [class*="bg-[#faf8f2]"],
+    [class*="bg-[#fafaf7]"],
+    [class*="bg-[#fffdf8]"],
+    [class*="bg-[#ebe8df]"]
   ) {
     background-color: rgb(30 41 59) !important;
   }
@@ -213,7 +219,12 @@
   ) :where(
     [class*="border-[#e2dfd8]"],
     [class*="border-[#cccac4]"],
-    [class*="border-b-white"]
+    [class*="border-b-white"],
+    [class*="border-[#fde68a]"],
+    [class*="border-[#bfdbfe]"],
+    [class*="border-[#fecaca]"],
+    [class*="border-[#f2b8b5]"],
+    [class*="border-[#8fb8ff]"]
   ) {
     border-color: rgb(51 65 85 / 0.95) !important;
   }
@@ -256,7 +267,8 @@
     .warehouse-fullbleed
   ) :where(
     [class*="bg-[#ebf0fd]"],
-    [class*="hover:bg-[#ebf0fd]"]:hover
+    [class*="hover:bg-[#ebf0fd]"]:hover,
+    [class*="bg-[#eff6ff]"]
   ) {
     background-color: rgb(30 58 138 / 0.45) !important;
   }
@@ -269,7 +281,36 @@
     .factories-fullbleed,
     .warehouse-fullbleed
   ) :where(
+    [class*="bg-[#fffbeb]"]
+  ) {
+    background-color: rgb(120 53 15 / 0.4) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .available-stock-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="bg-[#fff5f5]"],
+    [class*="hover:bg-[#fee2e2]"]:hover
+  ) {
+    background-color: rgb(127 29 29 / 0.45) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .available-stock-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
     [class*="hover:bg-[#f0eee9]"]:hover,
+    [class*="hover:bg-[#faf8f2]"]:hover,
+    [class*="hover:bg-[#ebe8df]"]:hover,
     [class*="hover:bg-[#f8f7f4]"]:hover
   ) {
     background-color: rgb(51 65 85 / 0.75) !important;
@@ -285,7 +326,8 @@
   ) :where(
     [class*="text-[#1a4db0]"],
     [class*="text-[#1a5cdb]"],
-    [class*="text-[#2855d9]"]
+    [class*="text-[#2855d9]"],
+    [class*="text-[#1d4ed8]"]
   ) {
     color: rgb(96 165 250) !important;
   }
@@ -313,7 +355,8 @@
     .warehouse-fullbleed
   ) :where(
     [class*="text-[#8a5300]"],
-    [class*="text-[#b56a00]"]
+    [class*="text-[#b56a00]"],
+    [class*="text-[#92400e]"]
   ) {
     color: rgb(251 146 60) !important;
   }
@@ -329,6 +372,199 @@
     [class*="text-[#b8b5ae]"]
   ) {
     color: rgb(148 163 184) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .available-stock-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="text-slate-500"],
+    [class*="text-slate-600"],
+    [class*="text-slate-700"]
+  ) {
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark .sku-master-fullbleed :where(
+    [class*="bg-blue-100"],
+    [class*="bg-purple-100"]
+  ) {
+    background-color: rgb(30 58 138 / 0.45) !important;
+  }
+
+  .dark .sku-master-fullbleed :where(
+    [class*="bg-amber-100"],
+    [class*="bg-orange-50"]
+  ) {
+    background-color: rgb(120 53 15 / 0.45) !important;
+  }
+
+  .dark .sku-master-fullbleed :where([class*="bg-red-100"]) {
+    background-color: rgb(127 29 29 / 0.45) !important;
+  }
+
+  .dark .sku-master-fullbleed :where(
+    [class*="text-blue-700"],
+    [class*="text-purple-700"]
+  ) {
+    color: rgb(191 219 254) !important;
+  }
+
+  .dark .sku-master-fullbleed :where(
+    [class*="text-amber-700"],
+    [class*="text-orange-700"]
+  ) {
+    color: rgb(253 186 116) !important;
+  }
+
+  .dark .sku-master-fullbleed :where([class*="text-red-600"]) {
+    color: rgb(252 165 165) !important;
+  }
+
+  .dark :where(
+    .container-planning-fullbleed,
+    .available-stock-fullbleed,
+    .purchase-orders-fullbleed,
+    .sku-master-fullbleed,
+    .factories-fullbleed,
+    .warehouse-fullbleed
+  ) :where(
+    [class*="text-[#c42b2b]"]
+  ) {
+    color: rgb(248 113 113) !important;
+  }
+
+  .dark .transit-stock-fullbleed {
+    border-color: rgb(51 65 85 / 0.9) !important;
+    background: rgb(15 23 42) !important;
+    color: rgb(241 245 249) !important;
+    box-shadow: none !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    .transit-stock-header,
+    .transit-stock-tabs,
+    .transit-stock-table-wrap,
+    .transit-stock-modal-panel
+  ) {
+    border-color: rgb(51 65 85 / 0.95) !important;
+    background: rgb(17 24 39) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    .transit-stock-table-head,
+    .transit-stock-step,
+    .transit-stock-preview thead tr,
+    [style*="background: rgb(248, 250, 252)"],
+    [style*="background: #f8fafc"],
+    [style*="background: rgb(248, 249, 250)"],
+    [style*="background: #f8f9fa"],
+    [style*="background: rgb(241, 245, 249)"],
+    [style*="background: #f1f5f9"]
+  ) {
+    background: rgb(30 41 59) !important;
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    .transit-stock-row,
+    .transit-stock-preview tbody tr
+  ) {
+    border-color: rgb(51 65 85 / 0.85) !important;
+    background: rgb(17 24 39) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    .transit-stock-row:hover,
+    .transit-stock-preview tbody tr:hover
+  ) {
+    background: rgb(30 41 59) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    th,
+    td,
+    p,
+    label,
+    span,
+    div
+  ) {
+    border-color: rgb(51 65 85 / 0.9) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    th,
+    [style*="color: rgb(100, 116, 139)"],
+    [style*="color: #64748b"],
+    [style*="color: rgb(136, 136, 136)"],
+    [style*="color: #888"],
+    [style*="color: rgb(148, 163, 184)"],
+    [style*="color: #94a3b8"],
+    [style*="color: rgb(170, 170, 170)"],
+    [style*="color: #aaa"]
+  ) {
+    color: rgb(203 213 225) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(input, select, textarea, .form-input) {
+    border-color: rgb(71 85 105) !important;
+    background: rgb(15 23 42) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(input, textarea)::placeholder {
+    color: rgb(148 163 184) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    [style*="background: rgb(255, 255, 255)"],
+    [style*="background: #fff"]
+  ) {
+    background: rgb(17 24 39) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    [style*="color: rgb(26, 92, 219)"],
+    [style*="color: #1a5cdb"],
+    [style*="color: rgb(26, 79, 192)"],
+    [style*="color: #1A4FC0"]
+  ) {
+    color: rgb(96 165 250) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    [style*="background: rgb(239, 246, 255)"],
+    [style*="background: #EFF6FF"]
+  ) {
+    background: rgb(30 58 138 / 0.45) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    [style*="color: rgb(6, 95, 70)"],
+    [style*="color: #065F46"],
+    [style*="color: rgb(22, 163, 74)"],
+    [style*="color: #16a34a"]
+  ) {
+    color: rgb(52 211 153) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    [style*="background: rgb(236, 253, 245)"],
+    [style*="background: #ECFDF5"]
+  ) {
+    background: rgb(6 78 59 / 0.45) !important;
+  }
+
+  .dark .transit-stock-fullbleed :where(
+    [style*="color: rgb(220, 38, 38)"],
+    [style*="color: #dc2626"]
+  ) {
+    color: rgb(248 113 113) !important;
   }
 
   /* ── Planning surface / panel dark mode (applies to all planning pages) ── */
@@ -386,6 +622,247 @@
 
   .dark .dashboard-columns-popover :where(input[type="checkbox"]) {
     accent-color: rgb(96 165 250);
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) {
+    background-color: rgb(15 23 42) !important;
+    border-color: rgb(51 65 85 / 0.9) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    header,
+    [class*="bg-white"],
+    [class*="bg-[#f6f7f9]"],
+    [class*="bg-[#f5f4f0]"],
+    [class*="bg-[#fafaf7]"],
+    [class*="bg-[#f7f6f2]"],
+    [class*="bg-[#f0eee9]"],
+    [class*="bg-slate-50"],
+    [class*="bg-slate-100"]
+  ) {
+    background-color: rgb(17 24 39) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="bg-[#f0eee9]"],
+    [class*="bg-[#f7f6f2]"],
+    [class*="bg-[#fafaf7]"],
+    [class*="bg-slate-50"],
+    [class*="bg-slate-100"],
+    thead,
+    [class*="sticky top-0"]
+  ) {
+    background-color: rgb(30 41 59) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="bg-[#ebf0fd]"],
+    [class*="bg-[#f5f8fe]"],
+    [class*="bg-[#e8eefb]"],
+    [class*="bg-[#dbeafe]"],
+    [class*="hover:bg-[#ebf0fd]"]:hover
+  ) {
+    background-color: rgb(30 58 138 / 0.45) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="bg-[#e6f7ee]"],
+    [class*="bg-[#d1fae5]"],
+    [class*="bg-[#ecfdf5]"],
+    [class*="bg-emerald-50"]
+  ) {
+    background-color: rgb(6 78 59 / 0.45) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="bg-[#fef3e2]"],
+    [class*="bg-amber-50"]
+  ) {
+    background-color: rgb(120 53 15 / 0.45) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="bg-[#fff5f5]"],
+    [class*="bg-[#fef2f2]"],
+    [class*="hover:bg-[#fef2f2]"]:hover,
+    [class*="bg-red-50"]
+  ) {
+    background-color: rgb(127 29 29 / 0.45) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="border-[#e2dfd8]"],
+    [class*="border-[#cccac4]"],
+    [class*="border-[#ccc7be]"],
+    [class*="border-[#b8cffa]"],
+    .border,
+    .border-b,
+    .border-t,
+    .border-r
+  ) {
+    border-color: rgb(51 65 85 / 0.95) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(input, select, textarea) {
+    border-color: rgb(71 85 105) !important;
+    background-color: rgb(15 23 42) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(input, textarea)::placeholder {
+    color: rgb(148 163 184) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(table, tbody, tr, td, th) {
+    border-color: rgb(51 65 85 / 0.9) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    tbody tr,
+    [data-slot="table-row"],
+    [data-state="selected"],
+    [class*="bg-muted"]
+  ) {
+    background-color: rgb(17 24 39) !important;
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    tbody tr:nth-child(even):not([data-state="selected"]),
+    tr[class*="bg-[#fcfbf8]"],
+    tr[class*="bg-[#f8f7f4]"]
+  ) {
+    background-color: rgb(15 23 42) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    tbody tr:hover,
+    [data-slot="table-row"]:hover
+  ) {
+    background-color: rgb(30 41 59) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [data-state="selected"],
+    [data-slot="table-row"][data-state="selected"],
+    [data-state="selected"]:hover
+  ) {
+    background-color: rgb(30 58 138 / 0.5) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="hover:bg-slate-50"]:hover,
+    [class*="hover:bg-[#faf8f2]"]:hover,
+    [class*="hover:bg-[#f0eee9]"]:hover,
+    [class*="hover:bg-white"]:hover
+  ) {
+    background-color: rgb(51 65 85 / 0.75) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="text-[#1a1917]"],
+    [class*="text-[#57534a]"],
+    [class*="text-[#6b6359]"],
+    [class*="text-[#2f2a24]"],
+    [class*="text-[#374151]"],
+    [class*="text-[#9b9189]"],
+    [class*="text-gray-500"],
+    [class*="text-slate-500"],
+    [class*="text-slate-600"]
+  ) {
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="text-[#1a4db0]"],
+    [class*="text-[#1a5cdb]"],
+    [class*="text-blue-600"]
+  ) {
+    color: rgb(96 165 250) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="text-[#166534]"],
+    [class*="text-[#059669]"],
+    [class*="text-[#065f46]"],
+    [class*="text-emerald-700"]
+  ) {
+    color: rgb(52 211 153) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="text-[#8a5300]"],
+    [class*="text-[#92400e]"],
+    [class*="text-amber-700"]
+  ) {
+    color: rgb(251 191 36) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(
+    [class*="text-[#c42b2b]"],
+    [class*="text-[#dc2626]"],
+    [class*="text-red-600"],
+    [class*="text-red-700"]
+  ) {
+    color: rgb(248 113 113) !important;
+  }
+
+  .dark :is(.invoice-price-control-surface, .audit-log-surface, .user-access-surface, .container-timeline-surface) :where(.shadow-sm, .shadow-xl, .shadow-2xl) {
+    box-shadow: none !important;
+  }
+
+  .dark .container-timeline-surface :where(
+    [class*="bg-stone-100"],
+    [class*="bg-stone-200"],
+    [class*="bg-[#e8e6e0]"],
+    [class*="bg-[#eceae4]"],
+    [class*="bg-[#f5f4f0]"],
+    [class*="bg-[#f5f4f0]"],
+    [class*="bg-[#fafaf7]"],
+    [class*="bg-blue-50"]
+  ) {
+    background-color: rgb(30 41 59) !important;
+  }
+
+  .dark .container-timeline-surface :where(
+    [class*="bg-[#ebf0fd]"],
+    [class*="bg-[#dbeafe]"],
+    [class*="bg-blue-100"]
+  ) {
+    background-color: rgb(30 58 138 / 0.55) !important;
+  }
+
+  .dark .container-timeline-surface :where(
+    [class*="bg-amber-50"],
+    [class*="bg-amber-50/60"]
+  ) {
+    background-color: rgb(120 53 15 / 0.42) !important;
+  }
+
+  .dark .container-timeline-surface :where(
+    [class*="border-[#eef0f3]"],
+    [class*="border-[#f0ede8]"],
+    [class*="border-[#e8e6e1]"],
+    [class*="border-[#d8d6ce]"],
+    [class*="border-[#b8b3aa]"]
+  ) {
+    border-color: rgb(51 65 85 / 0.95) !important;
+  }
+
+  .dark .container-timeline-surface :where(
+    [class*="text-[#1a1917]"],
+    [class*="text-stone-500"],
+    [class*="text-stone-400"]
+  ) {
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark .container-timeline-surface :where(
+    [class*="text-stone-300"]
+  ) {
+    color: rgb(148 163 184) !important;
   }
 }
 

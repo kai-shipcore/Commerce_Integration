@@ -352,9 +352,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!loaded) return NextResponse.json({ success: false, error: "Invoice not found" }, { status: 404 });
 
   const { header, items, credits } = loaded;
-  if (items.length === 0) {
-    return NextResponse.json({ success: false, error: "Invoice has no line items" }, { status: 400 });
-  }
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "ShipCore";

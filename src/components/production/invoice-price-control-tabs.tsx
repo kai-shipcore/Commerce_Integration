@@ -31,7 +31,7 @@ export function InvoicePriceControlTabs() {
   ];
 
   return (
-    <section className="relative left-1/2 flex h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] min-h-0 -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
+    <section className="invoice-price-control-surface relative left-1/2 flex h-[calc(100vh-7rem)] w-[min(1600px,calc(100vw-2rem))] min-h-0 -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4">
         <div className="flex items-start gap-2">
           <ReceiptText className="mt-1 h-5 w-5" />

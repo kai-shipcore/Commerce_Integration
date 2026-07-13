@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import type { DemandRow } from "@/types/demand-planning";
 import { formatNumber, getUrgency, productLabels, recommendedContainerQty, stockOnlyDays, type ProductKey } from "../types";
 import { pick, productLabel, type SkuForecastLanguage } from "../language";
@@ -114,6 +115,7 @@ function SortHeader({
 
 const ROW_HEIGHT = 36;
 const OVERSCAN = 10;
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 export function SkuBrowserPanel({
   product,
@@ -131,6 +133,8 @@ export function SkuBrowserPanel({
   const [sortKey, setSortKey] = useState<SortKey>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [skuFilter, setSkuFilter] = useState<SkuFilterKey>(initialSkuFilter ?? "all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [scrollTop, setScrollTop] = useState(0);
   const [listHeight, setListHeight] = useState(600);
   const listRef = useRef<HTMLDivElement>(null);
@@ -178,6 +182,17 @@ export function SkuBrowserPanel({
     [filteredRows, sortDirection, sortKey, targetInventoryDays],
   );
 
+  const totalRows = sortedRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  // Everything upstream of pagination (product, search, filter chip, sort, page size)
+  // resets back to page 1 — an old page number rarely makes sense for a new list.
+  useEffect(() => {
+    setPage(1);
+  }, [rows, skuFilter, sortKey, sortDirection, pageSize]);
+
   // Track scroll container height
   useEffect(() => {
     const el = listRef.current;
@@ -189,21 +204,21 @@ export function SkuBrowserPanel({
     return () => ro.disconnect();
   }, []);
 
-  // Reset scroll when list content changes (filter, sort, product switch)
+  // Reset scroll when the visible page changes
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = 0;
       setScrollTop(0);
     }
-  }, [sortedRows]);
+  }, [pagedRows]);
 
-  // Virtual window calculation
+  // Virtual window calculation (over the current page only)
   const firstVisible = Math.floor(scrollTop / ROW_HEIGHT);
   const start = Math.max(0, firstVisible - OVERSCAN);
-  const end = Math.min(sortedRows.length, start + Math.ceil(listHeight / ROW_HEIGHT) + OVERSCAN * 2);
+  const end = Math.min(pagedRows.length, start + Math.ceil(listHeight / ROW_HEIGHT) + OVERSCAN * 2);
   const topPad = start * ROW_HEIGHT;
-  const bottomPad = (sortedRows.length - end) * ROW_HEIGHT;
-  const virtualRows = sortedRows.slice(start, end);
+  const bottomPad = (pagedRows.length - end) * ROW_HEIGHT;
+  const virtualRows = pagedRows.slice(start, end);
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -284,12 +299,70 @@ export function SkuBrowserPanel({
         </div>
       </div>
       <div className="border-b" />
+      <div className="flex shrink-0 items-center gap-3 border-b px-3 py-2 text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">
+          {formatNumber(totalRows)} {pick(language, "개 SKU", "SKUs")}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span>{pick(language, "행", "Rows")}</span>
+          <select
+            value={pageSize}
+            onChange={(event) => setPageSize(Number(event.target.value))}
+            className="h-8 rounded-md border bg-white px-2 text-xs font-semibold text-foreground outline-none dark:border-zinc-600 dark:bg-zinc-800"
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex min-w-[120px] justify-center text-sm font-bold text-foreground">
+          {pick(language, "페이지", "Page")} {totalRows === 0 ? 0 : currentPage} / {totalRows === 0 ? 0 : totalPages}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setPage(1)}
+            disabled={currentPage <= 1}
+            className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+            aria-label={pick(language, "첫 페이지", "First page")}
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={currentPage <= 1}
+            className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+            aria-label={pick(language, "이전 페이지", "Previous page")}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+            disabled={currentPage >= totalPages}
+            className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+            aria-label={pick(language, "다음 페이지", "Next page")}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPage(totalPages)}
+            disabled={currentPage >= totalPages}
+            className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+            aria-label={pick(language, "마지막 페이지", "Last page")}
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
       <div
         ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto px-3 pb-3"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
-        {rows.length === 0 ? (
+        {sortedRows.length === 0 ? (
           <div className="py-8 text-center text-sm text-muted-foreground">{pick(language, "SKU 없음", "No SKUs")}</div>
         ) : (
           <div className="rounded-b-md border-x border-b bg-white dark:border-zinc-700 dark:bg-zinc-900">

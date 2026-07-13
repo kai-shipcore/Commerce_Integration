@@ -422,41 +422,51 @@ export async function DELETE(request: NextRequest) {
   const denied = await guardPermission("available-stock", "delete");
   if (denied) return denied;
   const searchParams = new URL(request.url).searchParams;
-  const stockId = searchParams.get("stockId")?.trim() ?? "";
-  if (stockId) {
-    if (!/^\d+$/.test(stockId)) {
+  const stockIdInput = searchParams.get("stockId")?.trim() ?? "";
+  if (stockIdInput) {
+    const stockIds = [...new Set(stockIdInput.split(",").map((id) => id.trim()).filter(Boolean))];
+    if (stockIds.length === 0 || stockIds.some((id) => !/^\d+$/.test(id))) {
       return NextResponse.json({ success: false, error: "Valid stockId is required" }, { status: 400 });
     }
 
     const client = await getPrimaryPool().connect();
     try {
       await client.query("BEGIN");
-      const stock = await client.query<{ allocated_qty: number }>(
-        `SELECT COALESCE((
-           SELECT SUM(a.qty)
-           FROM shipcore.fc_container_item_allocations a
-           WHERE a.source_stock_id = s.id
-         ), 0)::int AS allocated_qty
+      const stock = await client.query<{ id: string; allocated_qty: number }>(
+        `SELECT
+           s.id::text,
+           COALESCE((
+             SELECT SUM(a.qty)
+             FROM shipcore.fc_container_item_allocations a
+             WHERE a.source_stock_id = s.id
+           ), 0)::int AS allocated_qty
          FROM shipcore.fc_available_stock s
-         WHERE s.id = $1::bigint
+         WHERE s.id = ANY($1::bigint[])
          FOR UPDATE OF s`,
-        [stockId]
+        [stockIds]
       );
-      if (stock.rowCount === 0) {
+      if (stock.rowCount !== stockIds.length) {
         await client.query("ROLLBACK");
         return NextResponse.json({ success: false, error: "Available stock not found." }, { status: 404 });
       }
-      if (stock.rows[0].allocated_qty > 0) {
+      const blockedCount = stock.rows.filter((row) => row.allocated_qty > 0).length;
+      if (blockedCount > 0) {
         await client.query("ROLLBACK");
         return NextResponse.json(
-          { success: false, error: "Allocated stock cannot be deleted. Remove its container allocation first." },
+          {
+            success: false,
+            error:
+              stockIds.length > 1
+                ? `Allocated stock cannot be deleted. ${blockedCount} of ${stockIds.length} selected items have a container allocation — remove it first.`
+                : "Allocated stock cannot be deleted. Remove its container allocation first.",
+          },
           { status: 409 }
         );
       }
-      await client.query(`DELETE FROM shipcore.fc_available_stock WHERE id = $1::bigint`, [stockId]);
+      await client.query(`DELETE FROM shipcore.fc_available_stock WHERE id = ANY($1::bigint[])`, [stockIds]);
       await client.query("COMMIT");
       await invalidatePlanningDashboardCache();
-      return NextResponse.json({ success: true, data: { id: stockId } });
+      return NextResponse.json({ success: true, data: { ids: stockIds } });
     } catch (error) {
       await client.query("ROLLBACK");
       console.error("Available stock record DELETE failed:", error);

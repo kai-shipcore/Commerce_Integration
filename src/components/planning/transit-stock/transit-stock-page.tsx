@@ -182,8 +182,10 @@ export function TransitStockPage() {
   }
 
   useEffect(() => {
-    void fetchRecords();
-    void fetchWarehouses();
+    queueMicrotask(() => {
+      void fetchRecords();
+      void fetchWarehouses();
+    });
   }, []);
 
   const visibleRecords = records.filter((r) => activeTab === "all" || r.status === activeTab);
@@ -334,10 +336,10 @@ export function TransitStockPage() {
   };
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 7rem)", borderRadius: 16, border: "1px solid #e2dfd8", background: "#f5f4f0", boxShadow: "0 1px 4px rgba(0,0,0,.06)", overflow: "hidden" }}>
+    <section className="transit-stock-fullbleed" style={{ display: "flex", flexDirection: "column", minHeight: "calc(100vh - 7rem)", borderRadius: 16, border: "1px solid #e2dfd8", background: "#f5f4f0", boxShadow: "0 1px 4px rgba(0,0,0,.06)", overflow: "hidden" }}>
 
       {/* Header */}
-      <header style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottom: "1px solid #e2dfd8", background: "#fff", padding: "16px 24px" }}>
+      <header className="transit-stock-header" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottom: "1px solid #e2dfd8", background: "#fff", padding: "16px 24px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <Ship style={{ marginTop: 3, width: 20, height: 20 }} />
           <div>
@@ -368,7 +370,7 @@ export function TransitStockPage() {
       </header>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2dfd8", background: "#fff", padding: "0 24px" }}>
+      <div className="transit-stock-tabs" style={{ display: "flex", gap: 0, borderBottom: "1px solid #e2dfd8", background: "#fff", padding: "0 24px" }}>
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -395,7 +397,7 @@ export function TransitStockPage() {
       </div>
 
       {/* Table */}
-      <div style={{ flex: 1, background: "#fff", overflow: "auto" }}>
+      <div className="transit-stock-table-wrap" style={{ flex: 1, background: "#fff", overflow: "auto" }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: "#aaa", fontSize: 13 }}>{pick("로딩 중...", "Loading...")}</div>
         ) : visibleRecords.length === 0 ? (
@@ -415,7 +417,7 @@ export function TransitStockPage() {
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #e2dfd8", background: "#f8f9fa" }}>
+              <tr className="transit-stock-table-head" style={{ borderBottom: "1px solid #e2dfd8", background: "#f8f9fa" }}>
                 <Th>{pick("출발 창고", "Source")}</Th>
                 <Th>{pick("도착 창고", "Destination")}</Th>
                 <Th>{pick("Master SKU", "Master SKU")}</Th>
@@ -428,7 +430,7 @@ export function TransitStockPage() {
             </thead>
             <tbody>
               {visibleRecords.map((r) => (
-                <tr key={r.id} style={{ borderBottom: "1px solid #f0eee9" }}>
+                <tr key={r.id} className="transit-stock-row" style={{ borderBottom: "1px solid #f0eee9" }}>
                   <td style={tdStyle}>{warehouseLabel(r.sourceWarehouseCode)}</td>
                   <td style={tdStyle}>{warehouseLabel(r.destWarehouseCode)}</td>
                   <td style={{ ...tdStyle, fontFamily: "monospace", fontWeight: 600 }}>{r.masterSku}</td>
@@ -473,7 +475,7 @@ export function TransitStockPage() {
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}
         >
-          <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 480, boxShadow: "0 8px 32px rgba(0,0,0,.18)" }}>
+          <div className="transit-stock-modal-panel" style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 480, boxShadow: "0 8px 32px rgba(0,0,0,.18)" }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 20px" }}>🚢 {pick("재고 이동 추가", "Add Transit Record")}</h2>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -570,7 +572,7 @@ export function TransitStockPage() {
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
           onClick={(e) => { if (e.target === e.currentTarget && !importing) setShowImport(false); }}
         >
-          <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 600, boxShadow: "0 8px 32px rgba(0,0,0,.18)", maxHeight: "90vh", overflowY: "auto" }}>
+          <div className="transit-stock-modal-panel" style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 600, boxShadow: "0 8px 32px rgba(0,0,0,.18)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
               <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>📥 {pick("엑셀 일괄 업로드", "Import from Excel")}</h2>
               <button
@@ -583,7 +585,7 @@ export function TransitStockPage() {
             </div>
 
             {/* Step 1: Warehouses */}
-            <div style={{ background: "#f8fafc", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
+            <div className="transit-stock-step" style={{ background: "#f8fafc", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>
                 {pick("STEP 1 — 창고 선택", "STEP 1 — SELECT WAREHOUSES")}
               </div>
@@ -622,7 +624,7 @@ export function TransitStockPage() {
             </div>
 
             {/* Step 2: File upload */}
-            <div style={{ background: "#f8fafc", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
+            <div className="transit-stock-step" style={{ background: "#f8fafc", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>
                 {pick("STEP 2 — 파일 업로드", "STEP 2 — UPLOAD FILE")}
               </div>
@@ -650,7 +652,7 @@ export function TransitStockPage() {
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#16a34a", marginBottom: 8 }}>
                   ✓ {importRows.length}{pick("개 행 파싱 완료", " rows parsed")}
                 </div>
-                <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 6 }}>
+                <div className="transit-stock-preview" style={{ maxHeight: 180, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 6 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
                       <tr style={{ background: "#f1f5f9" }}>

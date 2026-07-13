@@ -122,13 +122,17 @@ function readAvailableStockWorkbook(workbook: XLSX.WorkBook): ImportRow[] {
     });
     const headerIndex = rows.findIndex((row) => {
       const headers = row.map(normalizeHeader);
-      return headers.includes("thnumber") && headers.includes("quantity") && (headers.includes("skg") || headers.includes("mastersku"));
+      return headers.includes("thnumber") && headers.includes("quantity") && (headers.includes("sku") || headers.includes("skg") || headers.includes("mastersku"));
     });
     if (headerIndex < 0) continue;
     const headers = rows[headerIndex].map(normalizeHeader);
     const referenceIndex = headers.indexOf("thnumber");
     const plIndex = headers.indexOf("pinumber");
-    const skuIndex = headers.includes("skg") ? headers.indexOf("skg") : headers.indexOf("mastersku");
+    const skuIndex = headers.includes("sku")
+      ? headers.indexOf("sku")
+      : headers.includes("skg")
+        ? headers.indexOf("skg")
+        : headers.indexOf("mastersku");
     const qtyIndex = headers.indexOf("quantity");
     const cbmIndex = headers.indexOf("cbm");
 
@@ -161,6 +165,8 @@ export function AvailableStockPage() {
   const [editForm, setEditForm] = useState<StockForm>(emptyForm);
   const [sortColumn, setSortColumn] = useState<StockSortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   async function loadRows() {
@@ -207,11 +213,54 @@ export function AvailableStockPage() {
     }),
     [tabRows]
   );
+  const deletableRows = useMemo(() => sortedRows.filter((row) => allocatedQty(row) === 0), [sortedRows]);
+  const allDeletableSelected = deletableRows.length > 0 && deletableRows.every((row) => selectedIds.has(row.id));
 
   function switchTab(next: StockSourceType) {
     setSourceType(next);
     setEditingId(null);
+    setSelectedIds(new Set());
     setMessage("");
+  }
+
+  function toggleRowSelected(id: string, checked: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllDeletable(checked: boolean) {
+    setSelectedIds(checked ? new Set(deletableRows.map((row) => row.id)) : new Set());
+  }
+
+  async function bulkDeleteSelected() {
+    if (!can("available-stock", "delete")) {
+      toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
+      return;
+    }
+    const ids = [...selectedIds];
+    if (ids.length === 0 || bulkDeleting) return;
+    if (!window.confirm(pick(`선택한 재고 ${ids.length}개를 삭제하시겠습니까?`, `Delete ${ids.length} selected stock item(s)?`))) return;
+    setBulkDeleting(true);
+    setMessage("");
+    try {
+      const response = await fetch(apiPath(`/api/container-available-stock?stockId=${encodeURIComponent(ids.join(","))}`), {
+        method: "DELETE",
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? pick("선택 삭제에 실패했습니다.", "Failed to delete selected stock."));
+      if (editingId && ids.includes(editingId)) setEditingId(null);
+      setSelectedIds(new Set());
+      setMessage(pick(`선택한 재고 ${ids.length}개를 삭제했습니다.`, `Deleted ${ids.length} selected stock item(s).`));
+      await loadRows();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : pick("선택 삭제에 실패했습니다.", "Failed to delete selected stock."));
+    } finally {
+      setBulkDeleting(false);
+    }
   }
 
   function toggleSort(column: StockSortColumn) {
@@ -369,6 +418,12 @@ export function AvailableStockPage() {
       const json = await response.json();
       if (!response.ok || !json.success) throw new Error(json.error ?? pick("재고 삭제에 실패했습니다.", "Failed to delete stock."));
       if (editingId === row.id) setEditingId(null);
+      setSelectedIds((current) => {
+        if (!current.has(row.id)) return current;
+        const next = new Set(current);
+        next.delete(row.id);
+        return next;
+      });
       setMessage(pick("사용 가능 재고가 삭제되었습니다.", "Available stock deleted."));
       await loadRows();
     } catch (error) {
@@ -411,11 +466,13 @@ export function AvailableStockPage() {
   function downloadTemplate() {
     const mistakeRows = [
       ["Mistaker orders(REMARK:NO PACKAGING)", "", "", ""],
-      ["TH Number", "PI Number", "SKG", "quantity"],
+      ["TH Number", "PI Number", "SKU", "quantity"],
+      ["TH2024-001", "PI-1001", "CA-SC-10-B-10-BK-1TO", 50],
     ];
     const remainingRows = [
       ["remained goods from previous orders (remark: already packaged)", "", "", "", "", "", "", ""],
-      ["TH Number", "PI Number", "SKG", "quantity", "", "", "", "CBM"],
+      ["TH Number", "PI Number", "SKU", "quantity", "", "", "", "CBM"],
+      ["TH2024-002", "PI-1002", "CA-FM-01-BE", 200, "", "", "", 10],
     ];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(mistakeRows), "Mistake");
@@ -458,6 +515,16 @@ export function AvailableStockPage() {
           <button type="button" disabled={importing || saving} onClick={() => importInputRef.current?.click()} className="h-9 rounded-md bg-[#1a5cdb] px-4 text-xs font-semibold text-white hover:bg-[#1650c4] disabled:opacity-50">
             {importing ? pick("가져오는 중...", "Importing...") : pick("엑셀 가져오기", "Excel Import")}
           </button>
+          {selectedIds.size > 0 ? (
+            <button
+              type="button"
+              disabled={bulkDeleting}
+              onClick={() => void bulkDeleteSelected()}
+              className="h-9 rounded-md border border-[#f2b8b5] bg-[#fff5f5] px-3 text-xs font-medium text-[#c42b2b] hover:bg-[#fee2e2] disabled:opacity-50"
+            >
+              {bulkDeleting ? pick("삭제 중...", "Deleting...") : pick(`선택 삭제 (${selectedIds.size})`, `Delete Selected (${selectedIds.size})`)}
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -505,7 +572,14 @@ export function AvailableStockPage() {
       {message ? <div className="border-b border-[#e2dfd8] px-6 py-2 text-xs text-[#8a5300]">{message}</div> : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-5 py-3">
-        <div className="grid grid-cols-[48px_120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground">
+        <div className="grid grid-cols-[28px_48px_120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] bg-[#f0eee9] px-3 py-2 text-[11px] font-semibold uppercase text-muted-foreground">
+          <input
+            type="checkbox"
+            aria-label={pick("전체 선택", "Select all")}
+            checked={allDeletableSelected}
+            disabled={deletableRows.length === 0}
+            onChange={(event) => toggleSelectAllDeletable(event.target.checked)}
+          />
           <span>{pick("번호", "No.")}</span>
           <StockSortHeader label={pick("참조번호", "Reference")} column="referenceNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
           <StockSortHeader label={pick("PI 번호", "PI Number")} column="plNo" activeColumn={sortColumn} direction={sortDirection} onSort={toggleSort} />
@@ -527,7 +601,17 @@ export function AvailableStockPage() {
             const allocated = allocatedQty(row);
             const editing = editingId === row.id;
             return (
-              <div key={row.id} className="grid grid-cols-[48px_120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] items-center border-b border-[#e2dfd8] px-3 py-2 text-sm">
+              <div key={row.id} className="grid grid-cols-[28px_48px_120px_120px_minmax(200px,1fr)_85px_85px_85px_95px_105px_minmax(140px,1fr)_125px] items-center border-b border-[#e2dfd8] px-3 py-2 text-sm">
+                {allocated === 0 ? (
+                  <input
+                    type="checkbox"
+                    aria-label={pick(`${row.masterSku} 선택`, `Select ${row.masterSku}`)}
+                    checked={selectedIds.has(row.id)}
+                    onChange={(event) => toggleRowSelected(row.id, event.target.checked)}
+                  />
+                ) : (
+                  <span />
+                )}
                 <span className="font-mono text-xs text-muted-foreground">{index + 1}</span>
                 {editing ? <StockInput value={editForm.referenceNo} onChange={(value) => setEditForm((form) => ({ ...form, referenceNo: value }))} /> : <span className="text-xs font-semibold">{row.referenceNo}</span>}
                 {editing ? <StockInput value={editForm.plNo} onChange={(value) => setEditForm((form) => ({ ...form, plNo: value }))} /> : <span className="text-xs">{row.plNo || "-"}</span>}
