@@ -1,4 +1,4 @@
-// Code Guide: CRUD API for fc_production_codes table. GET lists all codes with optional filters;
+// Code Guide: CRUD API for pd_production_codes table. GET lists all codes with optional filters;
 // POST creates a new code record.
 
 import { NextRequest, NextResponse } from "next/server";

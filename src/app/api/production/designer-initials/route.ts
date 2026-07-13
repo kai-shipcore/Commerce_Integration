@@ -1,4 +1,4 @@
-// Code Guide: CRUD API for fc_designer_initials table. GET lists all designer initials with
+// Code Guide: CRUD API for pd_designer_initials table. GET lists all designer initials with
 // optional filters; POST creates a new designer initial record.
 
 import { NextRequest, NextResponse } from "next/server";

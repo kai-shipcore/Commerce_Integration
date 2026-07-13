@@ -1,4 +1,4 @@
-// Code Guide: CRUD API for fc_part_skus table. GET lists all generated Part SKUs with optional
+// Code Guide: CRUD API for pd_part_skus table. GET lists all generated Part SKUs with optional
 // filters; POST generates and saves a new Part SKU (Part-MakeAbbr-ModelAbbr-Code-Initial-Side).
 
 import { NextRequest, NextResponse } from "next/server";
@@ -35,6 +35,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") ?? "";
     const activeParam = searchParams.get("active");
+    const make = searchParams.get("make");
+    const model = searchParams.get("model");
 
     const partSkus = await prisma.partSku.findMany({
       where: {
@@ -47,6 +49,8 @@ export async function GET(request: NextRequest) {
             }
           : {}),
         ...(activeParam !== null ? { isActive: activeParam === "true" } : {}),
+        ...(make ? { make: { equals: make, mode: "insensitive" } } : {}),
+        ...(model ? { model: { equals: model, mode: "insensitive" } } : {}),
       },
       orderBy: { createdAt: "desc" },
     });

@@ -5,13 +5,23 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { guardPermission } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { canDo } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const denied = await guardPermission("part-sku-generator", "read");
-  if (denied) return denied;
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+  const role = (session.user.role as string) ?? "user";
+  const allowed =
+    (await canDo(session.user.id, role, "part-sku-generator", "read")) ||
+    (await canDo(session.user.id, role, "project-list", "read"));
+  if (!allowed) {
+    return NextResponse.json({ success: false, error: "Permission denied" }, { status: 403 });
+  }
 
   const { searchParams } = new URL(request.url);
   const make = searchParams.get("make")?.trim();

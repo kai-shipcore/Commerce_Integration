@@ -219,6 +219,14 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    id: "project-list",
+    name: "Product List",
+    href: "/production/product-list",
+    icon: FolderKanban,
+    group: "Production",
+    hideable: true,
+  },
+  {
     id: "invoice-price-control",
     name: "Invoice & Price Control",
     href: "/production/invoice-price-control",
@@ -309,6 +317,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "invoice-price-control": ["invoice-price-control"],
   "parts-codes":         ["production-parts-codes"],
   "part-sku-generator":  ["part-sku-generator"],
+  "project-list":        ["project-list"],
   "factory":             ["factories"],
   "warehouse":           ["warehouse-admin"],
   "integrations":        ["integrations"],

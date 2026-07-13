@@ -1,4 +1,4 @@
-// Code Guide: single fc_part_skus record by id.
+// Code Guide: single pd_part_skus record by id.
 // PATCH only supports toggling isActive (the generated fields are immutable once created).
 // DELETE soft-deletes by marking the Part SKU inactive.
 
