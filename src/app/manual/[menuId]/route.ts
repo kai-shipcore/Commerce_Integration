@@ -28,6 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const screenshotsUrl = withBasePath("/manual/screenshots");
   const mediaUrl = withBasePath("/manual/media");
   const homeHref = withBasePath("/");
+  const overviewHref = withBasePath(`/manual/${DEFAULT_MANUAL_MENU_ID}?lang=${locale}`);
 
   const sections: Record<string, string> = JSON.parse(
     fs.readFileSync(path.join(CONTENT_DIR, "sections.json"), "utf-8"),
@@ -43,6 +44,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     enHtml: prepare(enHtml),
     initialLocale: locale,
     homeHref,
+    overviewHref,
+    isOverview: menuId === DEFAULT_MANUAL_MENU_ID,
   });
 
   return new NextResponse(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
