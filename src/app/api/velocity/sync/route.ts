@@ -9,6 +9,7 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import type { PoolClient } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 
@@ -17,6 +18,10 @@ function getErrorMessage(error: unknown): string {
 }
 
 const VELOCITY_SYNC_LOCK_KEY = 1000000001;
+// No real sync has ever taken this long; a lock held past this age means the previous
+// request's connection died without releasing it (e.g. dropped network, killed dev server)
+// rather than a sync that's genuinely still running.
+const STALE_LOCK_MAX_AGE_MS = 15 * 60 * 1000;
 
 // ─── Shared SQL fragments ─────────────────────────────────────────────────────
 
@@ -162,6 +167,33 @@ async function upsertCustom(
   return upserted;
 }
 
+// ─── Stale lock recovery ──────────────────────────────────────────────────────
+
+async function reclaimStaleLock(
+  client: PoolClient,
+): Promise<{ reclaimed: boolean; holdSeconds: number | null }> {
+  const holderRes = await client.query<{ pid: number; hold_seconds: number }>(
+    `SELECT a.pid, EXTRACT(EPOCH FROM (now() - a.state_change))::int AS hold_seconds
+     FROM pg_locks l
+     JOIN pg_stat_activity a ON a.pid = l.pid
+     WHERE l.locktype = 'advisory' AND l.objid = $1::bigint AND l.granted`,
+    [VELOCITY_SYNC_LOCK_KEY],
+  );
+
+  const holder = holderRes.rows[0];
+  if (!holder) return { reclaimed: false, holdSeconds: null };
+
+  if (holder.hold_seconds * 1000 <= STALE_LOCK_MAX_AGE_MS) {
+    return { reclaimed: false, holdSeconds: holder.hold_seconds };
+  }
+
+  console.warn(
+    `[velocity/sync] Reclaiming stale advisory lock held by pid ${holder.pid} for ${holder.hold_seconds}s`,
+  );
+  await client.query(`SELECT pg_terminate_backend($1::int)`, [holder.pid]);
+  return { reclaimed: true, holdSeconds: holder.hold_seconds };
+}
+
 // ─── Route handlers ───────────────────────────────────────────────────────────
 
 export async function GET() {
@@ -196,16 +228,26 @@ export async function POST(req: NextRequest) {
   const client = await primaryPool().connect();
   let lockAcquired = false;
   try {
-    const lockRes = await client.query<{ acquired: boolean }>(
+    let lockRes = await client.query<{ acquired: boolean }>(
       `SELECT pg_try_advisory_lock($1::bigint) AS acquired`,
       [VELOCITY_SYNC_LOCK_KEY],
     );
 
     if (!lockRes.rows[0].acquired) {
-      return NextResponse.json(
-        { success: false, error: "Sync already in progress" },
-        { status: 409 },
-      );
+      const { reclaimed, holdSeconds } = await reclaimStaleLock(client);
+      if (reclaimed) {
+        lockRes = await client.query<{ acquired: boolean }>(
+          `SELECT pg_try_advisory_lock($1::bigint) AS acquired`,
+          [VELOCITY_SYNC_LOCK_KEY],
+        );
+      }
+
+      if (!lockRes.rows[0].acquired) {
+        return NextResponse.json(
+          { success: false, error: "Sync already in progress", holdSeconds },
+          { status: 409 },
+        );
+      }
     }
     lockAcquired = true;
 

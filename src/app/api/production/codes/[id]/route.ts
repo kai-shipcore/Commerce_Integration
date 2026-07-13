@@ -1,4 +1,4 @@
-// Code Guide: CRUD API for a single fc_production_codes record by id.
+// Code Guide: CRUD API for a single pd_production_codes record by id.
 // PATCH updates any subset of fields; DELETE soft-deletes by marking the code inactive.
 
 import { NextRequest, NextResponse } from "next/server";

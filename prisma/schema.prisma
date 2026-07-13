@@ -491,7 +491,7 @@ model ProductionPart {
 
   @@index([partName])
   @@index([isActive])
-  @@map("fc_production_parts")
+  @@map("pd_production_parts")
   @@schema("shipcore")
 }
 
@@ -505,7 +505,7 @@ model ProductionCode {
 
   @@index([code])
   @@index([isActive])
-  @@map("fc_production_codes")
+  @@map("pd_production_codes")
   @@schema("shipcore")
 }
 
@@ -519,7 +519,7 @@ model DesignerInitial {
 
   @@index([initial])
   @@index([isActive])
-  @@map("fc_designer_initials")
+  @@map("pd_designer_initials")
   @@schema("shipcore")
 }
 
@@ -539,25 +539,91 @@ model PartSku {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  checklistItems PartSkuChecklistItem[]
-
   @@index([isActive])
-  @@map("fc_part_skus")
+  @@map("pd_part_skus")
   @@schema("shipcore")
 }
 
-model PartSkuChecklistItem {
+// ============================================
+// PRODUCT / PROJECT LIST (per-vehicle configuration tracking)
+// Product = vehicle (make/model/year/F Number). Project = one seat row of that
+// vehicle (Front/Rear/Third Row + submodel). ProjectPart = one Part SKU config
+// row within that row.
+// ============================================
+
+model Product {
+  id             BigInt   @id @default(autoincrement())
+  make           String
+  model          String
+  fNumber        String   @map("f_number")
+  yearGeneration String?  @map("year_generation")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  projects Project[]
+
+  @@index([make, model])
+  @@index([fNumber])
+  @@index([isActive])
+  @@map("pd_product_list")
+  @@schema("shipcore")
+}
+
+model Project {
+  id        BigInt   @id @default(autoincrement())
+  productId BigInt   @map("product_id")
+  seatRow   String   @map("seat_row") // Front / Rear / Third Row -- fixed at creation
+  submodel  String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product        Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  parts          ProjectPart[]
+  checklistItems ProjectChecklistItem[]
+
+  @@index([productId])
+  @@index([seatRow])
+  @@index([isActive])
+  @@map("pd_project_list")
+  @@schema("shipcore")
+}
+
+model ProjectPart {
+  id               BigInt   @id @default(autoincrement())
+  projectId        BigInt   @map("project_id")
+  cab              String?
+  code             String? // copied ProductionCode.code value, no FK (same convention as PartSku.code)
+  status           String   @default("Pending") // Pending / Scheduled / Scanned
+  assignedToUserId String?  @map("assigned_to_user_id")
+  photoCount       Int      @default(0) @map("photo_count")
+  docUrl           String?  @map("doc_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedTo User?   @relation("ProjectPartAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([assignedToUserId])
+  @@map("pd_project")
+  @@schema("shipcore")
+}
+
+model ProjectChecklistItem {
   id          BigInt   @id @default(autoincrement())
-  partSkuId   BigInt   @map("part_sku_id")
+  projectId   BigInt   @map("project_id")
   description String
-  status      String   @default("Pending")
+  status      String   @default("Pending") // Pending / In Progress / Done
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  partSku PartSku @relation(fields: [partSkuId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@index([partSkuId])
-  @@map("fc_part_sku_checklist_items")
+  @@index([projectId])
+  @@map("pd_project_list_checklist_items")
   @@schema("shipcore")
 }
 
@@ -604,6 +670,8 @@ model User {
   accounts   Account[]
   sessions   Session[]
   loginLogs  UserLoginLog[]
+
+  assignedProjectParts ProjectPart[] @relation("ProjectPartAssignedTo")
 
   @@map("fc_user")
   @@schema("shipcore")

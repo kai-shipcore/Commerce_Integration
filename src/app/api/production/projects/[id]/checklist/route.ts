@@ -1,5 +1,5 @@
-// Code Guide: checklist items for a single Part SKU.
-// GET lists items for the Part SKU; POST adds a new item (description + status).
+// Code Guide: checklist items for a single Project.
+// GET lists items for the Project; POST adds a new item (description + status).
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
@@ -23,12 +23,12 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await guardPermission("part-sku-generator", "read");
+  const denied = await guardPermission("project-list", "read");
   if (denied) return denied;
   try {
     const { id } = await params;
-    const items = await prisma.partSkuChecklistItem.findMany({
-      where: { partSkuId: BigInt(id) },
+    const items = await prisma.projectChecklistItem.findMany({
+      where: { projectId: BigInt(id) },
       orderBy: { createdAt: "asc" },
     });
     return NextResponse.json({ success: true, data: items.map(serialize) });
@@ -45,23 +45,23 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await guardPermission("part-sku-generator", "edit");
+  const denied = await guardPermission("project-list", "edit");
   if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();
     const validated = ChecklistItemCreateSchema.parse(body);
 
-    const partSku = await prisma.partSku.findUnique({ where: { id: BigInt(id) } });
-    if (!partSku) {
+    const project = await prisma.project.findUnique({ where: { id: BigInt(id) } });
+    if (!project) {
       return NextResponse.json(
-        { success: false, error: "Part SKU not found" },
+        { success: false, error: "Project not found" },
         { status: 404 }
       );
     }
 
-    const item = await prisma.partSkuChecklistItem.create({
-      data: { ...validated, partSkuId: BigInt(id) },
+    const item = await prisma.projectChecklistItem.create({
+      data: { ...validated, projectId: BigInt(id) },
     });
 
     return NextResponse.json({ success: true, data: serialize(item) }, { status: 201 });

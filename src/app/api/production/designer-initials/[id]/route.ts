@@ -1,4 +1,4 @@
-// Code Guide: CRUD API for a single fc_designer_initials record by id.
+// Code Guide: CRUD API for a single pd_designer_initials record by id.
 // PATCH updates any subset of fields; DELETE soft-deletes by marking the initial inactive.
 
 import { NextRequest, NextResponse } from "next/server";
