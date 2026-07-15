@@ -22,6 +22,7 @@ import {
   createPreOrderColumns,
   createCarCoverColumns,
   createFloorMatColumns,
+  toFinalCarCoverSku,
   type VelocityRow,
 } from "@/components/velocity/velocity-table-columns";
 import { Gauge, Check, X, Plus, RefreshCw, Download, RotateCcw } from "lucide-react";
@@ -469,7 +470,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
       if (r.isTotal) return true;
       if (r.masterSku.toLowerCase().includes(q)) return true;
       if (selectedItem === "Car Cover") {
-        return r.masterSku.replace("BKGR", "BKLG").toLowerCase().includes(q);
+        return toFinalCarCoverSku(r.masterSku).toLowerCase().includes(q);
       }
       if (selectedItem === "SWC") return false;
       if (selectedItem === "Floor Mat") return false;

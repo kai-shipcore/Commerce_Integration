@@ -15,6 +15,18 @@ export type VelocityRow = {
   isTotal?: boolean;
 };
 
+const FINAL_CAR_COVER_STYLE_REMAP: Record<string, string> = {
+  BKGR: "BKLG",
+  TN: "TNS",
+};
+
+export function toFinalCarCoverSku(masterSku: string): string {
+  const parts = masterSku.split("-");
+  const remapped = FINAL_CAR_COVER_STYLE_REMAP[parts[1]];
+  if (remapped) parts[1] = remapped;
+  return parts.join("-");
+}
+
 function QtyCell({ value, isTotal }: { value: number | null; isTotal?: boolean }) {
   if (value == null) return <PlaceholderCell />;
   if (isTotal) {
@@ -208,7 +220,7 @@ export function createCarCoverColumns(labels: string[]): ColumnDef<VelocityRow>[
             </div>
           ),
           cell: ({ row }: { row: { original: VelocityRow } }) => {
-            const finalSku = row.original.masterSku.replace("BKGR", "BKLG");
+            const finalSku = toFinalCarCoverSku(row.original.masterSku);
             return (
               <div className="pl-6 border-l-2 border-border">
                 {row.original.isTotal ? (

@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { VelocityRow } from "@/components/velocity/velocity-table-columns";
+import { toFinalCarCoverSku, type VelocityRow } from "@/components/velocity/velocity-table-columns";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -31,7 +31,7 @@ function buildSection(
         result.push([
           r.masterSku || null,
           ...qtys,
-          r.masterSku ? r.masterSku.replace("BKGR", "BKLG") : null,
+          r.masterSku ? toFinalCarCoverSku(r.masterSku) : null,
           ...qtys,
         ]);
       }
@@ -62,7 +62,7 @@ function buildSection(
         result.push([
           r.masterSku || null,
           ...qtys,
-          r.masterSku ? r.masterSku.replace("BKGR", "BKLG") : null,
+          r.masterSku ? toFinalCarCoverSku(r.masterSku) : null,
           ...qtys,
         ]);
       }
