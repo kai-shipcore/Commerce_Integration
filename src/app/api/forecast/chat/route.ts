@@ -23,17 +23,24 @@ export async function POST(request: NextRequest) {
         "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "",
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(180_000),
     });
 
-    const text = await upstream.text();
     if (!upstream.ok) {
+      const text = await upstream.text();
       return NextResponse.json(
         { error: `Forecast server error (${upstream.status})`, detail: text },
         { status: upstream.status },
       );
     }
-    return NextResponse.json(JSON.parse(text));
+    // Forward the SSE stream directly
+    return new NextResponse(upstream.body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection":    "keep-alive",
+      },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(

@@ -299,7 +299,31 @@
       "Bash(node -e \"const p = require\\('./node_modules/react-markdown/package.json'\\); console.log\\(p.version\\)\")",
       "Bash(curl -s -X POST http://127.0.0.1:8001/chat -H 'Content-Type: application/json' -H 'x-forecast-token: 3cccc44d09dab946aaa18fed83d42e7f46ae3b1c11fddf9b13660245304047dc' -d '{\"messages\": [{\"role\": \"user\", \"content\": \"How accurate was the forecast last week?\"}]}')",
       "Bash(git -C /Users/dev.maccoverland.com/Documents/Commerce_Integration/Commerce_Integration diff --stat src/components/planning/demand-forecast/run-forecast.tsx)",
-      "Bash(git -C /Users/dev.maccoverland.com/Documents/Time_Series_Forecasting diff --stat api/API_INSTRUCTIONS.md config.py docs/DEPLOYMENT.md src/db.py src/profile.py)"
+      "Bash(git -C /Users/dev.maccoverland.com/Documents/Time_Series_Forecasting diff --stat api/API_INSTRUCTIONS.md config.py docs/DEPLOYMENT.md src/db.py src/profile.py)",
+      "Bash(curl -s -N -X POST http://127.0.0.1:8001/chat -H 'Content-Type: application/json' -H 'x-forecast-token: 3cccc44d09dab946aaa18fed83d42e7f46ae3b1c11fddf9b13660245304047dc' -d '{\"messages\": [{\"role\": \"user\", \"content\": \"How many SKUs are in each segment?\"}]}')",
+      "Bash(curl -s -N --max-time 45 -X POST http://127.0.0.1:8001/chat -H 'Content-Type: application/json' -H 'x-forecast-token: 3cccc44d09dab946aaa18fed83d42e7f46ae3b1c11fddf9b13660245304047dc' -d '{\"messages\": [{\"role\": \"user\", \"content\": \"How many SKUs are in each segment?\"}]}')",
+      "Bash(curl -s -N --max-time 60 -X POST http://127.0.0.1:8001/chat -H 'Content-Type: application/json' -H 'x-forecast-token: 3cccc44d09dab946aaa18fed83d42e7f46ae3b1c11fddf9b13660245304047dc' -d '{\"messages\": [{\"role\": \"user\", \"content\": \"How many SKUs are in each segment?\"}]}')",
+      "Bash(curl -s -N --max-time 120 -X POST http://127.0.0.1:8001/chat -H 'Content-Type: application/json' -H 'x-forecast-token: 3cccc44d09dab946aaa18fed83d42e7f46ae3b1c11fddf9b13660245304047dc' -d '{\"messages\": [{\"role\": \"user\", \"content\": \"How many SKUs are in each segment?\"}]}')",
+      "Bash(curl -s -N --max-time 180 -X POST http://127.0.0.1:8001/chat -H 'Content-Type: application/json' -H 'x-forecast-token: 3cccc44d09dab946aaa18fed83d42e7f46ae3b1c11fddf9b13660245304047dc' -d '{\"messages\": [{\"role\": \"user\", \"content\": \"How many SKUs are in each segment?\"}]}')",
+      "Bash(node -e \"const { Container } = require\\('lucide-react'\\); console.log\\(typeof Container\\);\")",
+      "Bash(python3 scripts/create-test-sheet.py)",
+      "Bash(timeout 60 node dl-test.mjs)",
+      "Bash(node dl-test.mjs)",
+      "Bash(node dl-test.mjs \"https://ash-speed.hetzner.com/100MB.bin\")",
+      "Bash(node dl-test.mjs \"https://dl.google.com/dl/android/studio/install/2021.1.1.23/android-studio-2021.1.1.23-mac.dmg\")",
+      "Bash(awk '{print $2, $11, $12, $13}')",
+      "Bash(ps -p 1307 -o pid=,comm=)",
+      "Bash(lsof -nP -iTCP:3000 -sTCP:LISTEN)",
+      "Bash(awk 'NR>1 {print $1, $2, $9}')",
+      "Bash(lsof -ti tcp:3000 -sTCP:LISTEN)",
+      "Bash(break)",
+      "Bash(awk 'NR>1{print $1,$2}')",
+      "Bash(rm -f /private/tmp/claude-501/-Users-dev-maccoverland-com-Documents-Commerce-Integration-Commerce-Integration/d3f40551-2f10-45d1-b716-1304243ba79b/scratchpad/retry-test.mjs /tmp/retry-test.bin; npx tsc --noEmit 2>&1 | grep -E \"import-containers-from-sheet\" | head -20; echo \"exit: done\")",
+      "Bash(ps -p 27521 -o pid,etime,command)",
+      "Bash(ps -p 27521 -o %cpu,%mem,etime)",
+      "Bash(kill -0 27521)",
+      "Bash(DOTENV_CONFIG_PATH=.env.local npx tsx --require dotenv/config /private/tmp/claude-501/-Users-dev-maccoverland-com-Documents-Commerce-Integration-Commerce-Integration/d3f40551-2f10-45d1-b716-1304243ba79b/scratchpad/check-import.ts)",
+      "Bash(unzip -l Archive.zip)"
     ],
     "additionalDirectories": [
       "c:\\MyProject\\Commerce_Integration\\src\\app\\api\\warehouses",
@@ -309,7 +333,8 @@
       "/Users/dev.maccoverland.com/Documents/Commerce_Integration/Commerce_Integration/src/app/api/forecast/status",
       "/Users/dev.maccoverland.com/Documents/Commerce_Integration/Commerce_Integration/src/app/api/forecast/segment/[segment]/simulate",
       "/Users/dev.maccoverland.com/Documents/Time_Series_Forecasting/docs",
-      "/Users/dev.maccoverland.com/Documents/Time_Series_Forecasting"
+      "/Users/dev.maccoverland.com/Documents/Time_Series_Forecasting",
+      "/private/tmp"
     ]
   }
 }

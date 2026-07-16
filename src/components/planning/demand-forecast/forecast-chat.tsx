@@ -22,6 +22,7 @@ export function ForecastChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [size, setSize] = useState({ width: DEFAULT_W, height: DEFAULT_H });
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -73,6 +74,7 @@ export function ForecastChat() {
     setMessages(next);
     setInput("");
     setLoading(true);
+    setStatusText(null);
     setError(null);
 
     try {
@@ -81,16 +83,57 @@ export function ForecastChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: next }),
       });
-      const data = await res.json();
+
       if (!res.ok) {
+        const data = await res.json();
         setError(data.error ?? "Request failed");
         return;
       }
-      setMessages([...next, { role: "assistant", content: data.reply }]);
+
+      // Add placeholder assistant message that we'll fill in via deltas
+      setMessages([...next, { role: "assistant", content: "" }]);
+
+      const reader  = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          let event: Record<string, unknown>;
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (event.type === "status") {
+            setStatusText(event.text as string);
+          } else if (event.type === "delta") {
+            const chunk = event.text as string;
+            setMessages(prev => {
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                role: "assistant",
+                content: updated[updated.length - 1].content + chunk,
+              };
+              return updated;
+            });
+          } else if (event.type === "done") {
+            setStatusText(null);
+          } else if (event.type === "error") {
+            setError(event.text as string);
+          }
+        }
+      }
     } catch {
       setError("Could not reach the forecast server.");
     } finally {
       setLoading(false);
+      setStatusText(null);
     }
   }
 
@@ -133,7 +176,7 @@ export function ForecastChat() {
             <span className="text-sm font-medium">Forecast Assistant</span>
             {messages.length > 0 && (
               <button
-                onClick={() => { setMessages([]); setError(null); }}
+                onClick={() => { setMessages([]); setError(null); setStatusText(null); }}
                 className="ml-auto text-xs text-muted-foreground hover:text-foreground"
               >
                 Clear
@@ -190,10 +233,13 @@ export function ForecastChat() {
               </div>
             ))}
 
-            {loading && (
+            {loading && !messages.at(-1)?.content && (
               <div className="flex justify-start">
-                <div className="rounded-2xl rounded-bl-sm bg-muted px-3 py-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <div className="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+                  {statusText && (
+                    <span className="text-xs text-muted-foreground">{statusText}</span>
+                  )}
                 </div>
               </div>
             )}
