@@ -18,6 +18,7 @@ import {
   ShoppingCart,
   TrendingUp,
   Warehouse,
+  Container,
 } from "lucide-react";
 import type { ComponentType } from "react";
 import type { PermSection, RolePermMatrix } from "@/lib/permissions-config";
@@ -278,6 +279,14 @@ export const navigationItems: NavigationItem[] = [
     name: "ShipHero Credentials",
     href: "/admin/shiphero",
     icon: Ship,
+    hideable: true,
+    adminOnly: true,
+  },
+  {
+    id: "container-import",
+    name: "Container Import",
+    href: "/admin/containers",
+    icon: Container,
     hideable: true,
     adminOnly: true,
   },

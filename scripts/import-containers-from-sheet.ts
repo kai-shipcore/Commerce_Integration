@@ -16,10 +16,9 @@
 //
 // DB writes (all inside one transaction):
 //   1. UPDATE fc_products SET cbm_per_unit = ... (only rows with a CBM value)
-//   2. DELETE all from fc_container_items
-//   3. DELETE all from fc_containers
-//   4. INSERT fc_containers (container_number, eta_date, status, cbm_capacity=80)
-//   5. INSERT fc_container_items (only for SKUs found in fc_products)
+//   2. UPSERT fc_containers by container_number (insert or update eta/status)
+//   3. UPSERT fc_container_items by container+sku (update qty/cbm if exists, insert if new)
+//      — items NOT in the sheet are left untouched (no deletes)
 //
 // File parsing: uses Python 3 stdlib (zipfile + re) to read xlsx without loading the
 // entire workbook into memory (ExcelJS OOMed on this 57MB file with 90MB+ sheets).
@@ -28,10 +27,13 @@ import { getPrimaryPool } from "../src/lib/db/primary-db";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import * as https from "https";
+import * as http from "http";
 import { spawnSync, execSync } from "child_process";
 
 const input = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
+const forceDownload = process.argv.includes("--force-download");
 const tabArgIdx = process.argv.indexOf("--tab");
 const tabArg = tabArgIdx !== -1 ? process.argv[tabArgIdx + 1] : null;
 const skuColArgIdx = process.argv.indexOf("--sku-col");
@@ -51,7 +53,8 @@ const CBM_CAPACITY_DEFAULT = 80;
 // and outputs JSON with containers + sku rows.
 
 const PYTHON_SCRIPT = `
-import sys, json, re, zipfile, datetime
+import sys, json, re, zipfile, datetime, io
+import xml.etree.ElementTree as ET
 
 xlsx_path    = sys.argv[1]
 tab_name_arg = sys.argv[2] if len(sys.argv) > 2 else ""
@@ -123,7 +126,7 @@ for name, rid in sheets_info:
     if tab_name_arg:
         match = (name == tab_name_arg)
     else:
-        match = name.startswith("L-") or name.startswith("L- ")
+        match = name.startswith("L-") or name.startswith("L ") or name.startswith("L- ")
     if match:
         target_name = name
         rel = rels_map.get(rid, "")
@@ -134,91 +137,93 @@ if not target_file or not target_file.endswith(".xml"):
     print(json.dumps({"error": "Tab not found", "tabs": tab_names}))
     sys.exit(1)
 
-# 4. Parse sheet XML
-sheet_xml = zf.read(target_file).decode("utf-8", errors="replace")
+# 4. Parse sheet XML — stream directly from the zip so the full XML is never
+#    loaded into memory (a 56 MB xlsx can have 300 MB+ of uncompressed sheet XML)
+NS      = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+tag_row = "{" + NS + "}row"
+tag_c   = "{" + NS + "}c"
+tag_v   = "{" + NS + "}v"
+COLRE   = re.compile(r"([A-Z]+)")
 
 EXCEL_EPOCH = datetime.date(1899, 12, 30)
-
 def serial_to_date(v):
-    try:
-        return (EXCEL_EPOCH + datetime.timedelta(days=int(v))).isoformat()
-    except Exception:
-        return None
+    try:    return (EXCEL_EPOCH + datetime.timedelta(days=int(v))).isoformat()
+    except: return None
 
 containers = []
 sku_rows   = []
 
-for row_m in re.finditer(r'<row\\b[^>]*\\br="(\\d+)"[^>]*>(.*?)</row>', sheet_xml, re.DOTALL):
-    rnum        = int(row_m.group(1))
-    row_content = row_m.group(2)
-    cells       = {}
+with zf.open(target_file) as sheet_stream:
+    context = ET.iterparse(sheet_stream, events=("start", "end"))
+    _, root = next(context)
 
-    # Negative lookbehind (?<!/) before > skips self-closing <c ... /> tags.
-    # Without it, greedy [^>]* consumes the / in />, making the regex treat the
-    # next cell's opening tag as content (swallowing it silently).
-    for cell_m in re.finditer(r'<c\\b([^>]*)(?<!/)>(.*?)</c>', row_content, re.DOTALL):
-        full_attrs = cell_m.group(1)
-        content    = cell_m.group(2)
-        r_m = re.search(r'\\br="([A-Z]+)(\\d+)"', full_attrs)
-        if not r_m: continue
-        col_name = r_m.group(1)
-        col_idx  = col_name_to_num(col_name)
-        t_m  = re.search(r'\\bt="([^"]*)"', full_attrs)
-        s_m  = re.search(r'\\bs="(\\d+)"', full_attrs)
-        typ  = t_m.group(1) if t_m else ""
-        s_idx = int(s_m.group(1)) if s_m else None
-        v_m     = re.search(r'<v>([^<]*)</v>', content)
-        raw_val = v_m.group(1) if v_m else None
+    for event, elem in context:
+        if event != "end" or elem.tag != tag_row:
+            continue
+        rnum_str = elem.get("r")
+        if not rnum_str:
+            root.clear(); continue
+        rnum = int(rnum_str)
+        if rnum < HEADER_ROW:
+            root.clear(); continue
 
-        display_val = None
-        if typ == "s" and raw_val is not None:
-            idx = int(raw_val)
-            display_val = sst[idx] if idx < len(sst) else ""
-        elif typ in ("str", "inlineStr") and raw_val is not None:
-            display_val = raw_val
-        elif raw_val is not None:
-            try:
-                display_val = float(raw_val)
-            except ValueError:
-                display_val = raw_val
+        cells = {}
+        for c in elem:
+            if c.tag != tag_c: continue
+            ref = c.get("r", "")
+            cm  = COLRE.match(ref)
+            if not cm: continue
+            col_idx = col_name_to_num(cm.group(1))
+            typ   = c.get("t", "")
+            s_str = c.get("s")
+            s_idx = int(s_str) if s_str is not None else None
+            v_el  = c.find(tag_v)
+            raw   = v_el.text if v_el is not None else None
+            if typ == "s" and raw is not None:
+                idx = int(raw); display_val = sst[idx] if idx < len(sst) else ""
+            elif typ in ("str", "inlineStr") and raw is not None:
+                display_val = raw
+            elif raw is not None:
+                try:    display_val = float(raw)
+                except: display_val = raw
+            else:
+                display_val = None
+            argb = xf_to_argb.get(s_idx) if s_idx is not None else None
+            cells[col_idx] = {"val": display_val, "argb": argb}
 
-        argb = xf_to_argb.get(s_idx) if s_idx is not None else None
-        cells[col_idx] = {"val": display_val, "argb": argb}
-
-    if rnum == HEADER_ROW:
-        for col_idx, cell in cells.items():
-            v = cell["val"]
-            if isinstance(v, str) and CONTAINER_RE.match(v.strip()):
-                name = v.strip()
-                # ETA is col+5 (seat covers) or col-5 (car/floor covers); try both
-                eta_str = None
-                for offset in (ETA_OFFSET, -ETA_OFFSET):
-                    ec = cells.get(col_idx + offset)
+        if rnum == HEADER_ROW:
+            for col_idx, cell in cells.items():
+                v = cell["val"]
+                if isinstance(v, str) and CONTAINER_RE.match(v.strip()):
+                    name = v.strip()
+                    eta_str = None
+                    ec = cells.get(col_idx + ETA_OFFSET)
                     if ec:
                         ev = ec["val"]
                         if isinstance(ev, float) and ev > 40000:
                             eta_str = serial_to_date(ev)
-                            break
-                containers.append({"colIdx": col_idx, "name": name, "etaDate": eta_str, "argb": cell["argb"]})
-
-    elif rnum >= DATA_START:
-        sku_cell = cells.get(SKU_COL)
-        if not sku_cell or not sku_cell["val"]:
-            continue
-        sku = str(sku_cell["val"]).strip().upper()
-        if not sku:
-            continue
-        cbm_cell = cells.get(CBM_COL)
-        cbm_val  = cbm_cell["val"] if cbm_cell else None
-        cbm      = float(cbm_val) if isinstance(cbm_val, (int, float)) and cbm_val > 0 else None
-        qtys     = {}
-        for cg in containers:
-            qty_cell = cells.get(cg["colIdx"])
-            if qty_cell:
-                qv = qty_cell["val"]
-                if isinstance(qv, (int, float)) and qv > 0:
-                    qtys[cg["name"]] = round(qv)
-        sku_rows.append({"masterSku": sku, "cbmUnit": cbm, "qtys": qtys})
+                    containers.append({"colIdx": col_idx, "name": name, "etaDate": eta_str, "argb": cell["argb"]})
+        elif rnum >= DATA_START:
+            sku_cell = cells.get(SKU_COL)
+            if not sku_cell or not sku_cell["val"]:
+                root.clear(); continue
+            sku = str(sku_cell["val"]).strip().upper()
+            if not sku:
+                root.clear(); continue
+            cbm_cell = cells.get(CBM_COL)
+            cbm_val  = cbm_cell["val"] if cbm_cell else None
+            cbm      = float(cbm_val) if isinstance(cbm_val, (int, float)) and cbm_val > 0 else None
+            qtys = {}
+            for cg in containers:
+                qty_cell = cells.get(cg["colIdx"])
+                if qty_cell:
+                    qv = qty_cell["val"]
+                    if isinstance(qv, (int, float)):
+                        rounded = round(qv)
+                        if rounded > 0:
+                            qtys[cg["name"]] = rounded
+            sku_rows.append({"masterSku": sku, "cbmUnit": cbm, "qtys": qtys})
+        root.clear()
 
 print(json.dumps({"tab": target_name, "containers": containers, "skuRows": sku_rows}))
 `;
@@ -269,8 +274,94 @@ function argbToStatus(argb: string | null, containerName: string): string {
 }
 
 // ─── Google Sheets download ───────────────────────────────────────────────────
+// Uses https.get (fires real per-packet data events; fetch/undici buffers the whole
+// body first). Note: for large sheets, Google generates the xlsx server-side BEFORE
+// sending any bytes — that wait can take minutes with no data flowing, which is why
+// resolveLocalPath() runs a time-based heartbeat around the whole download.
 
-async function resolveLocalPath(): Promise<string> {
+// Error carrying how many bytes had arrived before it failed (for clearer logs).
+class DownloadError extends Error {
+  bytesDownloaded: number;
+  httpStatus: number | null;
+  constructor(message: string, bytesDownloaded = 0, httpStatus: number | null = null) {
+    super(message);
+    this.name = "DownloadError";
+    this.bytesDownloaded = bytesDownloaded;
+    this.httpStatus = httpStatus;
+  }
+}
+
+// A 4xx from Google (not shared / not found) won't fix itself on retry; anything
+// else (aborted/reset/timeout/5xx/truncation) is worth another attempt.
+function isRetryable(err: unknown): boolean {
+  if (err instanceof DownloadError && err.httpStatus && err.httpStatus >= 400 && err.httpStatus < 500) {
+    return false;
+  }
+  return true;
+}
+
+function downloadToFile(
+  url: string,
+  dest: string,
+  onFirstByte: () => void,
+  redirectsLeft = 5
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith("https:") ? https : http;
+    const req = mod.get(url, (res) => {
+      if (
+        (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307) &&
+        res.headers.location
+      ) {
+        if (redirectsLeft <= 0) { reject(new DownloadError("Too many redirects")); return; }
+        res.resume(); // drain body to free socket before following redirect
+        downloadToFile(res.headers.location, dest, onFirstByte, redirectsLeft - 1).then(resolve).catch(reject);
+        return;
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new DownloadError(`HTTP ${res.statusCode} ${res.statusMessage}`, 0, res.statusCode ?? null));
+        return;
+      }
+      const cl = res.headers["content-length"];
+      const expectedBytes = cl ? parseInt(cl) : null;
+      const totalMB = expectedBytes ? expectedBytes / 1024 / 1024 : null;
+      let downloaded = 0, lastLogged = 0, gotFirstByte = false;
+      const out = fs.createWriteStream(dest);
+
+      const fail = (err: Error) => {
+        out.destroy();
+        reject(err instanceof DownloadError ? err : new DownloadError(err.message, downloaded));
+      };
+
+      res.on("data", (chunk: Buffer) => {
+        if (!gotFirstByte) { gotFirstByte = true; onFirstByte(); }
+        downloaded += chunk.length;
+        const mb = downloaded / 1024 / 1024;
+        if (mb - lastLogged >= 5) {
+          const total = totalMB ? ` / ${totalMB.toFixed(1)} MB` : "";
+          console.log(`Downloading... ${mb.toFixed(1)} MB${total}`);
+          lastLogged = mb;
+        }
+      });
+      res.pipe(out);
+      out.on("finish", () => {
+        // Guard against a silent short read: a truncated xlsx would blow up the
+        // Python parser with a confusing "not a zip" error instead of a retry.
+        if (expectedBytes !== null && downloaded < expectedBytes) {
+          fail(new DownloadError(`incomplete download: got ${downloaded} of ${expectedBytes} bytes`, downloaded));
+          return;
+        }
+        resolve(downloaded);
+      });
+      res.on("error", fail);
+      out.on("error", fail);
+    });
+    req.on("error", (err) => reject(new DownloadError(err.message)));
+  });
+}
+
+async function resolveLocalPath(): Promise<{ xlsxPath: string; tempFile: string | null }> {
   const isGoogleSheets =
     input.includes("docs.google.com") || input.includes("spreadsheets");
 
@@ -280,7 +371,7 @@ async function resolveLocalPath(): Promise<string> {
       console.error("File not found:", resolved);
       process.exit(1);
     }
-    return resolved;
+    return { xlsxPath: resolved, tempFile: null };
   }
 
   const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
@@ -288,18 +379,82 @@ async function resolveLocalPath(): Promise<string> {
     console.error("Could not extract sheet ID from:", input);
     process.exit(1);
   }
-  const exportUrl = `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=xlsx`;
-  console.log(`Downloading Google Sheet: ${exportUrl}`);
-  const res = await fetch(exportUrl, { redirect: "follow" });
-  if (!res.ok) {
-    console.error(`Download failed: ${res.status} ${res.statusText}`);
-    console.error("Make sure the sheet is shared as 'Anyone with the link can view'.");
-    process.exit(1);
+  const sheetId   = m[1];
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
+
+  // Cache the downloaded workbook per sheet ID so a dry run followed by the real
+  // run (or a retry after a failed import) can skip the slow Google export. The
+  // export is the whole workbook regardless of tab, so the sheet ID is the key.
+  const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+  const cachePath = path.join(os.tmpdir(), `sheet-import-cache-${sheetId}.xlsx`);
+
+  if (!forceDownload && fs.existsSync(cachePath)) {
+    const ageMs = Date.now() - fs.statSync(cachePath).mtimeMs;
+    if (ageMs < CACHE_TTL_MS) {
+      const ageStr = ageMs >= 60000 ? `${Math.floor(ageMs / 60000)}m` : `${Math.round(ageMs / 1000)}s`;
+      console.log(`Reusing file downloaded ${ageStr} ago — skipping download.`);
+      console.log("(Enable 'Force fresh download' if you've edited the sheet since.)");
+      return { xlsxPath: cachePath, tempFile: null };
+    }
   }
-  const tmp = path.join(os.tmpdir(), `sheet-import-${Date.now()}.xlsx`);
-  fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
-  console.log(`Saved to temp: ${tmp}`);
-  return tmp;
+
+  // Download to a .part file, then atomically promote it to the cache path only on
+  // success, so an interrupted transfer can never leave a corrupt cache behind.
+  const partPath = `${cachePath}.${Date.now()}.part`;
+  const MAX_ATTEMPTS = 4;
+  let lastErr: DownloadError | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt === 1) {
+      console.log("Requesting export from Google...");
+      console.log("(Google builds the file server-side first — for large sheets this can take a few minutes with no bytes flowing yet.)");
+    } else {
+      console.log(`Retrying download — attempt ${attempt} of ${MAX_ATTEMPTS}...`);
+    }
+
+    // Heartbeat: Google sends no bytes while generating the xlsx, so a byte-based
+    // progress bar would sit silent. Tick elapsed time until the first byte arrives.
+    const startTime = Date.now();
+    let receiving = false;
+    const heartbeat = setInterval(() => {
+      if (receiving) return;
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      console.log(`Waiting for Google to finish preparing the file... (${elapsed}s)`);
+    }, 3000);
+
+    try {
+      const totalBytes = await downloadToFile(exportUrl, partPath, () => {
+        receiving = true;
+        console.log("File ready — downloading now...");
+      });
+      clearInterval(heartbeat);
+      fs.renameSync(partPath, cachePath);
+      console.log(`Download complete: ${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
+      return { xlsxPath: cachePath, tempFile: null };
+    } catch (err) {
+      clearInterval(heartbeat);
+      lastErr = err instanceof DownloadError ? err : new DownloadError(String(err));
+      try { fs.unlinkSync(partPath); } catch {}
+
+      const atMb = lastErr.bytesDownloaded > 0
+        ? ` after ${(lastErr.bytesDownloaded / 1024 / 1024).toFixed(1)} MB`
+        : "";
+
+      if (isRetryable(lastErr) && attempt < MAX_ATTEMPTS) {
+        console.log(`Download interrupted${atMb}: ${lastErr.message} — retrying in a moment...`);
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+      break; // non-retryable, or out of attempts
+    }
+  }
+
+  console.error(`Download failed after ${MAX_ATTEMPTS} attempt(s): ${lastErr?.message}`);
+  if (lastErr?.httpStatus && lastErr.httpStatus >= 400 && lastErr.httpStatus < 500) {
+    console.error("Make sure the sheet is shared as 'Anyone with the link can view'.");
+  }
+  try { fs.unlinkSync(partPath); } catch {}
+  process.exit(1);
 }
 
 // ─── Parse xlsx via Python subprocess ────────────────────────────────────────
@@ -322,7 +477,9 @@ function parseXlsx(xlsxPath: string): ExtractionResult {
     process.exit(1);
   }
   if (result.status !== 0) {
-    console.error("Python extraction failed:\n", result.stderr);
+    const detail = result.stderr?.trim() || result.stdout?.trim() || "(no output — process may have been killed by the OS out-of-memory killer)";
+    const signal = result.signal ? ` killed by signal ${result.signal}` : ` exit code ${result.status}`;
+    console.error(`Python extraction failed (${signal}):\n${detail}`);
     process.exit(1);
   }
 
@@ -341,8 +498,9 @@ function parseXlsx(xlsxPath: string): ExtractionResult {
 async function main() {
   if (dryRun) console.log("DRY RUN — no DB writes\n");
 
-  const xlsxPath = await resolveLocalPath();
+  const { xlsxPath, tempFile } = await resolveLocalPath();
   const extracted = parseXlsx(xlsxPath);
+  if (tempFile) try { fs.unlinkSync(tempFile); } catch {}
 
   if (extracted.error) {
     console.error(`Extraction error: ${extracted.error}`);
@@ -444,34 +602,56 @@ async function main() {
     }
     console.log(`\nContainers: ${insertedContainers} inserted, ${updatedContainers} updated.`);
 
-    // 4. Replace items only for containers in this sheet (leave other containers untouched)
+    // 4. Load existing items for these containers so we can upsert without a unique constraint
     const containerIdList = [...containerIds.values()];
-    const deletedItems = await client.query(
-      `DELETE FROM shipcore.fc_container_items WHERE container_id = ANY($1::bigint[])`,
+    const containerIdToName = new Map([...containerIds.entries()].map(([name, id]) => [id, name]));
+    const existingItemsRes = await client.query<{ id: string; container_id: string; master_sku: string }>(
+      `SELECT id::text, container_id::text, master_sku
+       FROM shipcore.fc_container_items
+       WHERE container_id = ANY($1::bigint[])`,
       [containerIdList]
     );
-    console.log(`Cleared ${deletedItems.rowCount ?? 0} old items for these containers.`);
+    // existingMap: containerName → master_sku → item id
+    const existingMap = new Map<string, Map<string, string>>();
+    for (const row of existingItemsRes.rows) {
+      const cName = containerIdToName.get(row.container_id);
+      if (!cName) continue;
+      if (!existingMap.has(cName)) existingMap.set(cName, new Map());
+      existingMap.get(cName)!.set(row.master_sku, row.id);
+    }
 
-    // 5. Insert container items
+    // 5. Upsert container items — update qty/cbm if row exists, insert otherwise
     let inserted = 0;
+    let itemsUpdated = 0;
     for (const r of skuRows) {
       if (!validSkus.has(r.masterSku)) continue;
       for (const [containerName, qty] of Object.entries(r.qtys)) {
         const containerId = containerIds.get(containerName);
         if (!containerId) continue;
-        await client.query(
-          `INSERT INTO shipcore.fc_container_items
-             (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-           VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
-          [containerId, r.masterSku, qty, r.cbmUnit]
-        );
-        inserted++;
+        const existingId = existingMap.get(containerName)?.get(r.masterSku);
+        if (existingId) {
+          await client.query(
+            `UPDATE shipcore.fc_container_items
+             SET qty = $1, cbm_unit = $2, updated_at = NOW()
+             WHERE id = $3::bigint`,
+            [qty, r.cbmUnit, existingId]
+          );
+          itemsUpdated++;
+        } else {
+          await client.query(
+            `INSERT INTO shipcore.fc_container_items
+               (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
+             VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
+            [containerId, r.masterSku, qty, r.cbmUnit]
+          );
+          inserted++;
+        }
       }
     }
 
     await client.query("COMMIT");
     console.log(
-      `\nDone. ${insertedContainers} containers inserted, ${updatedContainers} updated, ${inserted} items inserted, ${cbmUpdated} CBM values updated.`
+      `\nDone. ${insertedContainers} containers inserted, ${updatedContainers} updated, ${inserted} items inserted, ${itemsUpdated} items updated, ${cbmUpdated} CBM values updated.`
     );
   } catch (err) {
     await client.query("ROLLBACK");
