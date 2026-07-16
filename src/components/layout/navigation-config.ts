@@ -314,6 +314,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "orders":              ["orders"],
   "velocity":            ["velocity"],
   "demand-planning":     ["demand-planning"],
+  "demand-forecast":     ["demand-forecast"],
   "container-planning":  ["container-planning"],
   "available-stock":     ["available-stock"],
   "transit-stock":       ["transit-stock"],
