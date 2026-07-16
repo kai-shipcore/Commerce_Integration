@@ -29,7 +29,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as https from "https";
 import * as http from "http";
-import { spawnSync, execSync } from "child_process";
+import { spawnSync, execSync, SpawnSyncReturns } from "child_process";
 
 const input = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
@@ -468,12 +468,29 @@ function parseXlsx(xlsxPath: string): ExtractionResult {
   args.push(skuColArg);
 
   console.log("Parsing xlsx via Python (avoids ExcelJS memory limits)...");
-  const result = spawnSync("python3", args, { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+
+  // Try platform-appropriate interpreter names: macOS/Linux ship "python3";
+  // Windows typically has "python" or the "py" launcher instead.
+  const candidates = process.platform === "win32"
+    ? ["python", "py", "python3"]
+    : ["python3", "python"];
+
+  let result: SpawnSyncReturns<string> | null = null;
+  for (const cmd of candidates) {
+    const attempt = spawnSync(cmd, args, { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+    if (attempt.error && (attempt.error as NodeJS.ErrnoException).code === "ENOENT") continue;
+    result = attempt;
+    break;
+  }
 
   fs.unlinkSync(scriptPath);
 
+  if (!result) {
+    console.error(`Python not found — tried: ${candidates.join(", ")}. Install Python 3 and make sure it is on PATH.`);
+    process.exit(1);
+  }
   if (result.error) {
-    console.error("Failed to spawn python3:", result.error.message);
+    console.error("Failed to spawn Python:", result.error.message);
     process.exit(1);
   }
   if (result.status !== 0) {

@@ -6,6 +6,7 @@
 // clients can replay what they missed. Single-process deployments only.
 
 import { spawn, ChildProcess } from "child_process";
+import * as path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
@@ -87,12 +88,16 @@ function startImportJob(
   dryRun: boolean,
   forceDownload: boolean
 ) {
-  const args = ["tsx", "scripts/import-containers-from-sheet.ts", url];
+  // Spawn the current Node binary with the local tsx CLI directly — spawning
+  // "npx" fails with ENOENT on Windows (it's npx.cmd there) and on any machine
+  // where the server process's PATH lacks npm's bin dir.
+  const tsxCli = path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+  const args = [tsxCli, "scripts/import-containers-from-sheet.ts", url];
   if (tab?.trim()) args.push("--tab", tab.trim());
   if (dryRun) args.push("--dry-run");
   if (forceDownload) args.push("--force-download");
 
-  const child = spawn("npx", args, {
+  const child = spawn(process.execPath, args, {
     cwd:   process.cwd(),
     env:   process.env as NodeJS.ProcessEnv,
     shell: false,
