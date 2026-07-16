@@ -203,11 +203,11 @@ const STATUS_PILL: Record<ContainerStatus, string> = {
 };
 
 const PERIOD_OPTIONS: { value: Period; label: string; labelEn: string; days: number | null }[] = [
+  { value: "monthly", label: "월별 보기", labelEn: "Month View",  days: null },
+  { value: "schedule", label: "스케줄 보기", labelEn: "Schedule View", days: null },
   { value: "3M",      label: "3개월",    labelEn: "3 Months",    days: 90 },
   { value: "6M",      label: "6개월",    labelEn: "6 Months",    days: 180 },
   { value: "all",     label: "전체",     labelEn: "All",          days: null },
-  { value: "monthly", label: "월별 보기", labelEn: "Month View",  days: null },
-  { value: "schedule", label: "스케줄 보기", labelEn: "Schedule View", days: null },
 ];
 
 function isTimelinePeriod(value: unknown): value is Period {
@@ -393,10 +393,10 @@ export function ContainerTimelinePage() {
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<ContainerStatus>>(() => new Set());
   const [period, setPeriod] = useState<Period>(() => {
-    if (typeof window === "undefined") return "3M";
+    if (typeof window === "undefined") return "monthly";
     const saved = localStorage.getItem("container-timeline:period");
     if (isTimelinePeriod(saved)) return saved;
-    return "3M";
+    return "monthly";
   });
   const [periodOpen, setPeriodOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => {
