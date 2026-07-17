@@ -20,7 +20,6 @@ function serialize(p: object): object {
 const ProductCreateSchema = z.object({
   make: z.string().min(1),
   model: z.string().min(1),
-  fNumber: z.string().min(1),
   yearGeneration: z.string().optional(),
 });
 
@@ -76,7 +75,7 @@ export async function POST(request: NextRequest) {
     void logAudit({
       entityType: "product",
       entityId: String(product.id),
-      entityLabel: `${product.make} ${product.model} — ${product.fNumber}`,
+      entityLabel: `${product.make} ${product.model}`,
       userId: session?.user?.id ?? null,
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,

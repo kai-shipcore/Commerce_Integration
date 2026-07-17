@@ -43,6 +43,25 @@ export async function PATCH(
       );
     }
 
+    if (validated.fNumber !== undefined) {
+      const withProjects = await prisma.product.findUnique({
+        where: { id: BigInt(id) },
+        include: { projects: { include: { parts: { select: { status: true } } } } },
+      });
+      const allComplete =
+        !!withProjects &&
+        withProjects.projects.length > 0 &&
+        withProjects.projects.every(
+          (p) => p.parts.length > 0 && p.parts.every((part) => part.status === "Scanned")
+        );
+      if (!allComplete) {
+        return NextResponse.json(
+          { success: false, error: "Cannot set F Number until every row's parts are all Scanned." },
+          { status: 400 }
+        );
+      }
+    }
+
     const product = await prisma.product.update({
       where: { id: BigInt(id) },
       data: validated,
@@ -87,7 +106,7 @@ export async function DELETE(
     void logAudit({
       entityType: "product",
       entityId: id,
-      entityLabel: `${existing.make} ${existing.model} — ${existing.fNumber}`,
+      entityLabel: `${existing.make} ${existing.model}${existing.fNumber ? ` — ${existing.fNumber}` : ""}`,
       userId: session?.user?.id ?? null,
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,

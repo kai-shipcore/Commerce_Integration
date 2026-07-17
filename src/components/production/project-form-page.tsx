@@ -9,9 +9,15 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  PART_STATUS_OPTIONS,
+  CHECKLIST_STATUS_OPTIONS,
+  partStatusClass,
+  checklistStatusClass,
+  StatusPill,
+} from "@/components/production/status-styles";
 
 type AssignableUser = { id: string; name: string | null; email: string };
-type ProductionCodeRecord = { id: string; code: string; description: string | null; isActive: boolean };
 type ProductionPartRecord = { id: string; partName: string; seatRow: string | null };
 type PartSkuRecord = { id: string; sku: string; partName: string; make: string; model: string; code: string; isActive: boolean };
 
@@ -27,7 +33,7 @@ type ProjectPartRecord = {
   docUrl: string | null;
 };
 
-type ProductRecord = { id: string; make: string; model: string; fNumber: string; yearGeneration: string | null };
+type ProductRecord = { id: string; make: string; model: string; fNumber: string | null; yearGeneration: string | null };
 
 type ProjectRecord = {
   id: string;
@@ -53,22 +59,15 @@ type DraftChecklistItem = { tempId: string; description: string; status: string 
 
 const SEAT_ROW_OPTIONS = ["Front", "Rear", "Third Row"] as const;
 
-const PART_STATUS_OPTIONS = ["Pending", "Scheduled", "Scanned"] as const;
-const PART_STATUS_STYLES: Record<(typeof PART_STATUS_OPTIONS)[number], string> = {
-  Pending: "border-[#e8c99a] bg-[#fbf1e0] text-[#8a5a10] dark:border-amber-800 dark:bg-amber-950/70 dark:text-amber-300",
-  Scheduled: "border-[#bcd3f7] bg-[#eaf1fd] text-[#1a4db0] dark:border-blue-800 dark:bg-blue-950/70 dark:text-blue-300",
-  Scanned: "border-[#bfe3d3] bg-[#e6f5f0] text-[#0a5e45] dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300",
-};
-
-const CHECKLIST_STATUS_OPTIONS = ["Pending", "In Progress", "Done"] as const;
-const CHECKLIST_STATUS_STYLES: Record<(typeof CHECKLIST_STATUS_OPTIONS)[number], string> = {
-  Pending: "border-[#cccac4] bg-[#f0eee9] text-muted-foreground",
-  "In Progress": "border-[#bcd3f7] bg-[#eaf1fd] text-[#1a4db0] dark:border-blue-800 dark:bg-blue-950/70 dark:text-blue-300",
-  Done: "border-[#bfe3d3] bg-[#e6f5f0] text-[#0a5e45] dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300",
-};
-
 function userLabel(u: AssignableUser): string {
   return u.name || u.email;
+}
+
+function rowAbbr(row: string): string {
+  if (row === "Front") return "F";
+  if (row === "Third Row") return "3R";
+  if (row === "Second Row") return "2R";
+  return "R";
 }
 
 function makeTempId(): string {
@@ -91,7 +90,6 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
   const [submodel, setSubmodel] = useState("");
 
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
-  const [codes, setCodes] = useState<ProductionCodeRecord[]>([]);
   const [productionParts, setProductionParts] = useState<ProductionPartRecord[]>([]);
   const [partSkuOptions, setPartSkuOptions] = useState<PartSkuRecord[]>([]);
   const [checkedSkuIds, setCheckedSkuIds] = useState<Set<string>>(new Set());
@@ -180,9 +178,6 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
     fetch(apiPath("/api/production/assignable-users"))
       .then((res) => res.json())
       .then((json) => { if (json.success) setAssignableUsers(json.data); });
-    fetch(apiPath("/api/production/codes?active=true"))
-      .then((res) => res.json())
-      .then((json) => { if (json.success) setCodes(json.data); });
     fetch(apiPath("/api/production/parts?active=true"))
       .then((res) => res.json())
       .then((json) => { if (json.success) setProductionParts(json.data); });
@@ -428,8 +423,6 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
     }
   }
 
-  const title = mode === "create" ? pick("새 열", "New Row") : pick("열 상세", "Row Detail");
-
   if (mode === "edit" && loadingProject) {
     return (
       <section className="flex min-h-[calc(100vh-7rem)] items-center justify-center rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0]">
@@ -448,24 +441,43 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
 
   return (
     <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] shadow-sm">
-      <header className="flex items-center gap-3 border-b border-[#e2dfd8] bg-white px-6 py-4">
+      <header className="flex items-center gap-3 border-b border-[#e2dfd8] bg-white px-6 py-3.5">
         <Link href={`/production/product-list/${productId}`} className="text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-lg font-semibold">{title}</h1>
+        {mode === "edit" && project ? (
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#eef3fd] text-xs font-bold text-[#1a5cdb]">
+              {rowAbbr(seatRow)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase leading-tight tracking-[0.06em] text-muted-foreground">
+                {pick("열 상세", "Row Detail")}
+              </p>
+              <h1 className="truncate text-base font-bold leading-tight">{rowNamePreview || "—"}</h1>
+            </div>
+          </div>
+        ) : (
+          <h1 className="text-lg font-semibold">{pick("새 열", "New Row")}</h1>
+        )}
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="flex flex-col gap-4">
-          <div className="mx-auto w-full max-w-2xl rounded-lg border-2 border-[#1a5cdb] bg-[#eef3fd] px-4 py-3 text-center">
-            <div className="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              {pick("행 이름", "Row Name")}
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex w-full flex-col gap-3.5">
+          {mode === "create" ? (
+            <div className="max-w-2xl rounded-lg border-2 border-[#1a5cdb] bg-[#eef3fd] px-4 py-2.5 text-center">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                {pick("행 이름", "Row Name")}
+              </div>
+              <div className="mt-0.5 text-lg font-bold text-[#1a4db0]">{rowNamePreview || "—"}</div>
             </div>
-            <div className="mt-1 text-xl font-bold text-[#1a4db0]">{rowNamePreview || "—"}</div>
-          </div>
+          ) : null}
 
-          <div className="mx-auto w-full max-w-2xl rounded-lg border border-[#e2dfd8] bg-white p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="max-w-2xl rounded-lg border border-[#e2dfd8] bg-white p-4">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+              {pick("열 정보", "Row Info")}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium">{pick("열 (Row)", "Row")} <span className="text-[#c42b2b]">*</span></label>
                 <select
@@ -508,7 +520,9 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
 
           <div className="rounded-lg border border-[#e2dfd8] bg-white p-4">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold">{pick("Part SKU 선택", "Select Part SKUs")}</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                {pick("Part SKU 선택", "Select Part SKUs")}
+              </div>
               {can("project-list", "create") ? (
                 <button
                   type="button"
@@ -537,7 +551,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                   return (
                     <label
                       key={sku.id}
-                      className={`flex items-center gap-3 rounded-md border border-[#e2dfd8] p-2 text-sm ${alreadyAdded ? "opacity-40" : "hover:bg-[#f5f4f0]"}`}
+                      className={`flex items-center gap-3 rounded-lg border border-[#e2dfd8] px-2.5 py-2 text-sm transition-colors ${alreadyAdded ? "opacity-40" : "hover:border-[#bcd3f7] hover:bg-[#f8f9fc]"}`}
                     >
                       <input
                         type="checkbox"
@@ -546,8 +560,10 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                         onChange={() => toggleSkuChecked(sku.id)}
                       />
                       <span className="font-semibold">{sku.sku}</span>
-                      <span className="text-muted-foreground">{sku.partName}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">{sku.code}</span>
+                      <span className="truncate text-muted-foreground">{sku.partName}</span>
+                      <span className="ml-auto shrink-0 rounded-md border border-[#e2dfd8] bg-[#f0eee9] px-1.5 py-0.5 text-xs text-muted-foreground">
+                        {sku.code}
+                      </span>
                     </label>
                   );
                 })}
@@ -556,13 +572,13 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
           </div>
 
           <div className="overflow-hidden rounded-lg border border-[#e2dfd8] bg-white">
-            <div className="border-b border-[#e2dfd8] px-4 py-3 text-sm font-semibold">
-              {pick("구성 (Configurations)", "Configurations")}
+            <div className="border-b border-[#e2dfd8] px-4 py-3 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+              {pick(`구성 (Configurations) · ${(mode === "create" ? draftParts : project?.parts ?? []).length}`, `Configurations · ${(mode === "create" ? draftParts : project?.parts ?? []).length}`)}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[#e2dfd8] text-left text-xs uppercase tracking-[0.04em] text-muted-foreground">
+                  <tr className="border-b border-[#e2dfd8] bg-[#f8f7f4] text-left text-xs uppercase tracking-[0.04em] text-muted-foreground">
                     <th className="px-2 py-1.5 font-semibold">Cab</th>
                     <th className="px-2 py-1.5 font-semibold">Code</th>
                     <th className="px-2 py-1.5 font-semibold">Status</th>
@@ -574,7 +590,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                 <tbody>
                   {mode === "create"
                     ? draftParts.map((part) => (
-                        <tr key={part.tempId} className="border-b border-[#e2dfd8] last:border-b-0">
+                        <tr key={part.tempId} className="border-b border-[#e2dfd8] last:border-b-0 hover:bg-[#f8f7f4]">
                           <td className="px-2 py-1.5">
                             <input
                               className="form-input h-9 w-20 bg-white text-sm"
@@ -583,18 +599,13 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                             />
                           </td>
                           <td className="px-2 py-1.5">
-                            <SearchableSelect
-                              options={codes.map((c) => c.code)}
-                              value={part.code}
-                              onChange={(next) => updateDraftPart(part.tempId, { code: next })}
-                              placeholder={pick("선택", "Select")}
-                              searchPlaceholder={pick("Code 검색...", "Search Code...")}
-                              className="h-9 w-24 text-sm"
-                            />
+                            <span className="inline-flex h-9 w-24 items-center rounded-md border border-[#e2dfd8] bg-[#f0eee9] px-2 text-sm text-muted-foreground">
+                              {part.code}
+                            </span>
                           </td>
                           <td className="px-2 py-1.5">
                             <select
-                              className={`form-input h-9 w-28 rounded-md text-sm font-semibold ${PART_STATUS_STYLES[part.status as (typeof PART_STATUS_OPTIONS)[number]] ?? PART_STATUS_STYLES.Pending}`}
+                              className={`form-input h-9 w-28 rounded-md text-sm font-semibold ${partStatusClass(part.status)}`}
                               value={part.status}
                               onChange={(e) => updateDraftPart(part.tempId, { status: e.target.value })}
                             >
@@ -610,7 +621,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                               onChange={(next) => updateDraftPart(part.tempId, { assignedToUserId: userIdByLabel.get(next) ?? "" })}
                               placeholder={pick("선택", "Select")}
                               searchPlaceholder={pick("이름 검색...", "Search name...")}
-                              className="h-9 w-28 text-sm"
+                              className="h-9 w-44 text-sm"
                             />
                           </td>
                           <td className="px-2 py-1.5">
@@ -639,7 +650,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                         </tr>
                       ))
                     : (project?.parts ?? []).map((part) => (
-                        <tr key={part.id} className="border-b border-[#e2dfd8] last:border-b-0">
+                        <tr key={part.id} className="border-b border-[#e2dfd8] last:border-b-0 hover:bg-[#f8f7f4]">
                           <td className="px-2 py-1.5">
                             <input
                               className="form-input h-9 w-20 bg-white text-sm"
@@ -651,19 +662,13 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                             />
                           </td>
                           <td className="px-2 py-1.5">
-                            <SearchableSelect
-                              options={codes.map((c) => c.code)}
-                              value={part.code ?? ""}
-                              onChange={(next) => handlePatchLivePart(part.id, { code: next })}
-                              placeholder={pick("선택", "Select")}
-                              searchPlaceholder={pick("Code 검색...", "Search Code...")}
-                              disabled={!can("project-list", "edit")}
-                              className="h-9 w-24 text-sm"
-                            />
+                            <span className="inline-flex h-9 w-24 items-center rounded-md border border-[#e2dfd8] bg-[#f0eee9] px-2 text-sm text-muted-foreground">
+                              {part.code ?? "—"}
+                            </span>
                           </td>
                           <td className="px-2 py-1.5">
                             <select
-                              className={`form-input h-9 w-28 rounded-md text-sm font-semibold ${PART_STATUS_STYLES[part.status as (typeof PART_STATUS_OPTIONS)[number]] ?? PART_STATUS_STYLES.Pending}`}
+                              className={`form-input h-9 w-28 rounded-md text-sm font-semibold ${partStatusClass(part.status)}`}
                               value={part.status}
                               disabled={!can("project-list", "edit")}
                               onChange={(e) => handlePatchLivePart(part.id, { status: e.target.value })}
@@ -681,7 +686,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                               placeholder={pick("선택", "Select")}
                               searchPlaceholder={pick("이름 검색...", "Search name...")}
                               disabled={!can("project-list", "edit")}
-                              className="h-9 w-28 text-sm"
+                              className="h-9 w-44 text-sm"
                             />
                           </td>
                           <td className="px-2 py-1.5">
@@ -736,7 +741,9 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
           </div>
 
           <div className="rounded-lg border border-[#e2dfd8] bg-white p-4">
-            <div className="mb-3 text-sm font-semibold">{pick("체크리스트", "Checklist")}</div>
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+              {pick(`체크리스트 · ${(mode === "create" ? draftChecklist : checklist).length}`, `Checklist · ${(mode === "create" ? draftChecklist : checklist).length}`)}
+            </div>
 
             {mode === "create" ? (
               <div className="space-y-2">
@@ -748,9 +755,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                   draftChecklist.map((item) => (
                     <div key={item.tempId} className="flex items-center gap-2 rounded-lg border border-[#e2dfd8] bg-white p-3">
                       <span className="flex-1 text-sm">{item.description}</span>
-                      <span className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${CHECKLIST_STATUS_STYLES[item.status as (typeof CHECKLIST_STATUS_OPTIONS)[number]] ?? CHECKLIST_STATUS_STYLES.Pending}`}>
-                        {item.status}
-                      </span>
+                      <StatusPill label={item.status} className={checklistStatusClass(item.status)} />
                       <button type="button" onClick={() => removeDraftChecklistItem(item.tempId)} className="text-sm text-[#c42b2b] hover:underline">
                         {pick("삭제", "Delete")}
                       </button>
@@ -793,7 +798,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                       <span className="flex-1 text-sm">{item.description}</span>
                       {can("project-list", "edit") ? (
                         <select
-                          className={`form-input h-9 w-36 rounded-md text-sm font-semibold ${CHECKLIST_STATUS_STYLES[item.status as (typeof CHECKLIST_STATUS_OPTIONS)[number]] ?? CHECKLIST_STATUS_STYLES.Pending}`}
+                          className={`form-input h-9 w-36 rounded-md text-sm font-semibold ${checklistStatusClass(item.status)}`}
                           value={item.status}
                           onChange={(e) => updateChecklistItemStatus(item.id, e.target.value)}
                         >
@@ -802,9 +807,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                           ))}
                         </select>
                       ) : (
-                        <span className={`rounded-md border px-2.5 py-1 text-sm font-semibold ${CHECKLIST_STATUS_STYLES[item.status as (typeof CHECKLIST_STATUS_OPTIONS)[number]] ?? CHECKLIST_STATUS_STYLES.Pending}`}>
-                          {item.status}
-                        </span>
+                        <StatusPill label={item.status} className={checklistStatusClass(item.status)} />
                       )}
                       {can("project-list", "edit") ? (
                         <button type="button" onClick={() => deleteChecklistItem(item.id)} className="text-sm text-[#c42b2b] hover:underline">

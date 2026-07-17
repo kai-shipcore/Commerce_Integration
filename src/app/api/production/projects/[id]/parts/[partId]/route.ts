@@ -16,7 +16,6 @@ function serialize(p: object): object {
 
 const ProjectPartUpdateSchema = z.object({
   cab: z.string().nullable().optional(),
-  code: z.string().nullable().optional(),
   status: z.enum(["Pending", "Scheduled", "Scanned"]).optional(),
   assignedToUserId: z.string().nullable().optional(),
   photoCount: z.number().int().min(0).optional(),
