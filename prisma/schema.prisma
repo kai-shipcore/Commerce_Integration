@@ -670,6 +670,7 @@ model User {
   accounts   Account[]
   sessions   Session[]
   loginLogs  UserLoginLog[]
+  dailyActivities UserDailyActivity[]
 
   assignedProjectParts ProjectPart[] @relation("ProjectPartAssignedTo")
 
@@ -688,6 +689,26 @@ model UserLoginLog {
 
   @@index([userId, loggedInAt(sort: Desc)])
   @@map("fc_user_login_log")
+  @@schema("shipcore")
+}
+
+model UserDailyActivity {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  activityDate  DateTime @db.Date @map("activity_date")
+  firstSeenAt   DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt    DateTime @default(now()) @map("last_seen_at")
+  activityCount Int      @default(1) @map("activity_count")
+  lastPath      String?  @map("last_path")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, activityDate])
+  @@index([activityDate])
+  @@index([lastSeenAt])
+  @@map("fc_user_daily_activity")
   @@schema("shipcore")
 }
 

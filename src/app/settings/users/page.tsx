@@ -32,6 +32,7 @@ import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { RolePermissionsTab } from "@/components/settings/role-permissions-tab";
 import { UserExceptionsTab } from "@/components/settings/user-exceptions-tab";
+import { UserActivityTab } from "@/components/settings/user-activity-tab";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,7 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type SettingsTab = "menu" | "role-permissions" | "exceptions";
+type SettingsTab = "menu" | "role-permissions" | "exceptions" | "activity";
 
 type UserRole = "user" | "admin" | "dev" | "planner" | "operation" | "production" | "guest";
 type SortBy = "email" | "name" | "role" | "createdAt" | "lastLoginAt" | "authProvider";
@@ -416,6 +417,7 @@ export default function UserAccessPage() {
     { id: "menu",             label: pick("사용자 관리", "Users") },
     { id: "role-permissions", label: pick("역할 권한",  "Role Permissions") },
     { id: "exceptions",       label: pick("사용자 권한", "User Permissions") },
+    { id: "activity",         label: pick("사용 현황", "User Activity") },
   ];
 
   const showUserList = activeTab === "menu" || activeTab === "exceptions";
@@ -469,6 +471,12 @@ export default function UserAccessPage() {
         {activeTab === "role-permissions" && (
           <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-slate-950">
             <RolePermissionsTab />
+          </div>
+        )}
+
+        {activeTab === "activity" && (
+          <div className="min-h-0 flex-1 overflow-auto bg-[#f5f4f0] dark:bg-slate-950">
+            <UserActivityTab />
           </div>
         )}
 

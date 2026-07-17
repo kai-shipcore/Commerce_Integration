@@ -38,6 +38,7 @@ const TOP_NAV_COLLAPSED_PREF_KEY = "layout.topNavCollapsed";
 const TOP_NAV_COLLAPSED_STORAGE_KEY = "demandpilot-top-nav-collapsed";
 const TOP_NAV_LAUNCHER_STORAGE_KEY = "demandpilot-top-nav-launcher-position";
 const TOP_NAV_LAUNCHER_EDGE_GAP = 4;
+const ACTIVITY_HEARTBEAT_MS = 5 * 60 * 1000;
 
 interface LauncherPosition {
   x: number;
@@ -198,6 +199,51 @@ export function AppLayout({ children }: AppLayoutProps) {
       cancelled = true;
     };
   }, [matchedItem, router]);
+
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+
+    const storageKey = `demandpilot-activity-heartbeat:${userId}`;
+
+    async function reportActivity() {
+      if (document.visibilityState === "hidden") return;
+
+      const now = Date.now();
+      const lastSentAt = Number(window.sessionStorage.getItem(storageKey) ?? "0");
+      if (Number.isFinite(lastSentAt) && now - lastSentAt < ACTIVITY_HEARTBEAT_MS) return;
+
+      window.sessionStorage.setItem(storageKey, String(now));
+      try {
+        const response = await fetch(apiPath("/api/user/activity"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: appPathname }),
+          keepalive: true,
+        });
+        if (!response.ok && window.sessionStorage.getItem(storageKey) === String(now)) {
+          window.sessionStorage.removeItem(storageKey);
+        }
+      } catch {
+        if (window.sessionStorage.getItem(storageKey) === String(now)) {
+          window.sessionStorage.removeItem(storageKey);
+        }
+      }
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void reportActivity();
+    };
+
+    void reportActivity();
+    const timer = window.setInterval(() => void reportActivity(), ACTIVITY_HEARTBEAT_MS);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [appPathname, session?.user?.id]);
 
   useEffect(() => {
     let cancelled = false;
