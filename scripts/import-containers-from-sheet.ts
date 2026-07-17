@@ -29,7 +29,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as https from "https";
 import * as http from "http";
-import { spawnSync, execSync, SpawnSyncReturns } from "child_process";
+import { spawnSync, type SpawnSyncReturns } from "child_process";
 
 const input = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
@@ -468,7 +468,6 @@ function parseXlsx(xlsxPath: string): ExtractionResult {
   args.push(skuColArg);
 
   console.log("Parsing xlsx via Python (avoids ExcelJS memory limits)...");
-
   // Try platform-appropriate interpreter names: macOS/Linux ship "python3";
   // Windows typically has "python" or the "py" launcher instead.
   const candidates = process.platform === "win32"

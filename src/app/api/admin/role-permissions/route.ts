@@ -18,7 +18,7 @@ import {
   type PermAction,
 } from "@/lib/permissions-config";
 
-const CACHE_KEY = "perm:roles:all";
+const CACHE_KEY = "perm:roles:all:v2";
 const CACHE_TTL = 600; // 10 minutes
 
 type DbRow = { role: string; section: string; action: string; allowed: boolean };

@@ -39,6 +39,7 @@ export const MANUAL_DOC_BY_MENU_ID: Record<string, ManualDocEntry> = {
   "warehouse-admin": { kind: "section", sectionId: "warehouse" },
   integrations: { kind: "section", sectionId: "integrations" },
   "audit-log": { kind: "section", sectionId: "audit-log" },
+  "container-import": { kind: "section", sectionId: "container-import" },
 };
 
 export const DEFAULT_MANUAL_MENU_ID = "overview";

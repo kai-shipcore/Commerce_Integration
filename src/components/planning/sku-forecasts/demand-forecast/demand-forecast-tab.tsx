@@ -8,6 +8,7 @@ import { format, subWeeks } from "date-fns";
 import type { DemandRow } from "@/types/demand-planning";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useTheme } from "@/components/theme-provider";
 import { pick, type SkuForecastLanguage } from "../language";
 import { apiPath } from "@/lib/api-path";
 
@@ -188,6 +189,50 @@ interface PlotlyFig {
   layout: object;
 }
 
+function themedPlotLayout(layout: object, isDark: boolean): Partial<Plotly.Layout> {
+  const base = layout as Record<string, unknown>;
+  const textColor = isDark ? "#e4e4e7" : "#3f3f46";
+  const gridColor = isDark ? "#3f3f46" : "#e4e4e7";
+  const axisColor = isDark ? "#71717a" : "#a1a1aa";
+  const hoverBackground = isDark ? "#18181b" : "#ffffff";
+  const hoverBorder = isDark ? "#52525b" : "#d4d4d8";
+
+  const themeAxis = (axis: unknown) => {
+    const current = (axis ?? {}) as Record<string, unknown>;
+    const tickfont = (current.tickfont ?? {}) as Record<string, unknown>;
+    const title = (current.title ?? {}) as Record<string, unknown>;
+    const titleFont = (title.font ?? {}) as Record<string, unknown>;
+    return {
+      ...current,
+      gridcolor: gridColor,
+      linecolor: axisColor,
+      zerolinecolor: axisColor,
+      tickfont: { ...tickfont, color: textColor },
+      title: { ...title, font: { ...titleFont, color: textColor } },
+    };
+  };
+
+  const font = (base.font ?? {}) as Record<string, unknown>;
+  const legend = (base.legend ?? {}) as Record<string, unknown>;
+  const legendFont = (legend.font ?? {}) as Record<string, unknown>;
+  const hoverlabel = (base.hoverlabel ?? {}) as Record<string, unknown>;
+  const hoverFont = (hoverlabel.font ?? {}) as Record<string, unknown>;
+
+  return {
+    ...(base as Partial<Plotly.Layout>),
+    font: { ...font, color: textColor },
+    xaxis: themeAxis(base.xaxis),
+    yaxis: themeAxis(base.yaxis),
+    legend: { ...legend, font: { ...legendFont, color: textColor } },
+    hoverlabel: {
+      ...hoverlabel,
+      bgcolor: hoverBackground,
+      bordercolor: hoverBorder,
+      font: { ...hoverFont, color: textColor },
+    },
+  } as Partial<Plotly.Layout>;
+}
+
 interface BtPrediction {
   ds: string;
   yhat: number;
@@ -247,6 +292,9 @@ function trimFig(fig: PlotlyFig, forecastDates: string[], n: number, viewStart?:
 }
 
 export function DemandForecastTab({ sku, language, serverError }: { sku: DemandRow; language: SkuForecastLanguage; serverError?: string | null }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
   // ── Mode ──────────────────────────────────────────────────────────────────
   const [mode, setMode] = useState<"forward" | "backtest">("forward");
 
@@ -760,7 +808,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
             </div>
             <Plot
               data={historyFig.data}
-              layout={historyFig.layout}
+              layout={themedPlotLayout(historyFig.layout, isDark)}
               config={{ responsive: true, displayModeBar: false }}
               style={{ width: "100%", height: "380px" }}
               useResizeHandler
@@ -943,7 +991,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                 const base = displayFig.layout as Record<string, unknown>;
                 const existingShapes = (base.shapes as object[] | undefined) ?? [];
                 const stockoutStr = forecastedStockout ? format(forecastedStockout, "yyyy-MM-dd") : null;
-                return {
+                return themedPlotLayout({
                   ...(base as Partial<Plotly.Layout>),
                   autosize: true,
                   margin: { t: 40, r: 20, b: 60, l: 60 },
@@ -966,10 +1014,10 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
                       showarrow: false,
                       xanchor: "left", xshift: 5,
                       font: { color: "#C026D3", size: 11 },
-                      bgcolor: "rgba(255,255,255,0.85)",
+                      bgcolor: isDark ? "rgba(24,24,27,0.92)" : "rgba(255,255,255,0.85)",
                     },
                   ] : [],
-                };
+                }, isDark);
               })()}
               config={{ responsive: true, displayModeBar: false }}
               style={{ width: "100%", height: "380px" }}
@@ -1180,7 +1228,7 @@ export function DemandForecastTab({ sku, language, serverError }: { sku: DemandR
             {!btLoading && btDisplayFig && (
               <Plot
                 data={btDisplayFig.data as Plotly.Data[]}
-                layout={btDisplayFig.layout as Partial<Plotly.Layout>}
+                layout={themedPlotLayout(btDisplayFig.layout, isDark)}
                 config={{ responsive: true, displayModeBar: false }}
                 style={{ width: "100%", height: "380px" }}
                 useResizeHandler

@@ -18,7 +18,7 @@ import {
   type RolePermMatrix,
 } from "@/lib/permissions-config";
 
-const ROLES_CACHE_KEY = "perm:roles:all";
+const ROLES_CACHE_KEY = "perm:roles:all:v2";
 const OVERRIDE_TTL = 600;
 
 async function getRoleMatrix(role: ManagedRole): Promise<RolePermMatrix> {

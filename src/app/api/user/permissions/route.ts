@@ -17,7 +17,7 @@ import {
   type PermAction,
 } from "@/lib/permissions-config";
 
-const ROLES_CACHE_KEY = "perm:roles:all";
+const ROLES_CACHE_KEY = "perm:roles:all:v2";
 const OVERRIDE_TTL = 600;
 
 export async function GET() {
