@@ -29,7 +29,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as https from "https";
 import * as http from "http";
-import { spawnSync, execSync } from "child_process";
+import { spawnSync } from "child_process";
 
 const input = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
@@ -468,12 +468,15 @@ function parseXlsx(xlsxPath: string): ExtractionResult {
   args.push(skuColArg);
 
   console.log("Parsing xlsx via Python (avoids ExcelJS memory limits)...");
-  const result = spawnSync("python3", args, { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
+  // Windows Python installers expose `python.exe`; `python3.exe` is commonly a
+  // Microsoft Store alias that exits with code 9009 instead of running Python.
+  const pythonCommand = process.platform === "win32" ? "python" : "python3";
+  const result = spawnSync(pythonCommand, args, { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
 
   fs.unlinkSync(scriptPath);
 
   if (result.error) {
-    console.error("Failed to spawn python3:", result.error.message);
+    console.error(`Failed to spawn ${pythonCommand}:`, result.error.message);
     process.exit(1);
   }
   if (result.status !== 0) {

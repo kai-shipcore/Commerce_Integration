@@ -334,6 +334,7 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "audit-log":           ["audit-log"],
   "user-permissions":    ["user-access"],
   "shiphero":            ["shiphero-credentials"],
+  "container-import":    ["container-import"],
 };
 
 export function getPermissionSectionForMenuId(menuId: string): PermSection | null {

@@ -7,8 +7,7 @@
 
 import { spawn, ChildProcess } from "child_process";
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { isAdminLikeRole } from "@/components/layout/navigation-config";
+import { guardPermission } from "@/lib/permissions";
 
 // ── Run state ──────────────────────────────────────────────────────────────────
 
@@ -87,12 +86,15 @@ function startImportJob(
   dryRun: boolean,
   forceDownload: boolean
 ) {
-  const args = ["tsx", "scripts/import-containers-from-sheet.ts", url];
+  const args = ["--import", "tsx", "scripts/import-containers-from-sheet.ts", url];
   if (tab?.trim()) args.push("--tab", tab.trim());
   if (dryRun) args.push("--dry-run");
   if (forceDownload) args.push("--force-download");
 
-  const child = spawn("npx", args, {
+  // Run the TypeScript importer with the current Node executable. Calling
+  // `npx` directly with shell:false fails on Windows because npx is a shell
+  // shim (npx.cmd/npx.ps1), not a native executable.
+  const child = spawn(process.execPath, args, {
     cwd:   process.cwd(),
     env:   process.env as NodeJS.ProcessEnv,
     shell: false,
@@ -122,10 +124,8 @@ function startImportJob(
 // ── GET — status JSON or SSE subscription ──────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await guardPermission("container-import", "read");
+  if (denied) return denied;
 
   if (request.nextUrl.searchParams.get("stream") === "1") {
     if (!activeRun) {
@@ -155,11 +155,9 @@ export async function GET(request: NextRequest) {
 
 // ── DELETE — cancel the active run ─────────────────────────────────────────────
 
-export async function DELETE(request: NextRequest) {
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+export async function DELETE() {
+  const denied = await guardPermission("container-import", "create");
+  if (denied) return denied;
 
   if (!activeRun || activeRun.done) {
     return NextResponse.json({ error: "No active run" }, { status: 404 });
@@ -175,10 +173,8 @@ export async function DELETE(request: NextRequest) {
 // ── POST — start a new import run ─────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!isAdminLikeRole(session?.user?.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await guardPermission("container-import", "create");
+  if (denied) return denied;
 
   const body = await request.json();
   const { url, tab, dryRun, forceDownload } = body as {

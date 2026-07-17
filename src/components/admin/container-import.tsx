@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 
 interface LogLine {
   text: string;
@@ -19,6 +20,8 @@ type RawPayload = { line: string; isError?: boolean } | { done: true; exitCode: 
 
 export function ContainerImport() {
   const { pick } = useI18n();
+  const { can } = usePermissions();
+  const canCreate = can("container-import", "create");
   const [url, setUrl] = useState("");
   const [tab, setTab] = useState("");
   const [dryRun, setDryRun] = useState(false);
@@ -117,7 +120,7 @@ export function ContainerImport() {
 
     checkExistingRun();
     return () => abort.abort();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Start a new import ───────────────────────────────────────────────────────
 
@@ -260,7 +263,7 @@ export function ContainerImport() {
         </label>
 
         <div className="flex gap-2">
-          <Button onClick={runImport} disabled={isRunning || !url.trim()} className="gap-2">
+          <Button onClick={runImport} disabled={isRunning || !url.trim() || !canCreate} className="gap-2">
             {isRunning
               ? <><Loader2 className="h-4 w-4 animate-spin" /> {pick("실행 중…", "Running…")}</>
               : <><Play className="h-4 w-4" /> {pick("가져오기 실행", "Run Import")}</>
@@ -268,7 +271,7 @@ export function ContainerImport() {
           </Button>
 
           {isRunning && (
-            <Button variant="outline" onClick={cancelRun} disabled={isCancelling} className="gap-2">
+            <Button variant="outline" onClick={cancelRun} disabled={isCancelling || !canCreate} className="gap-2">
               {isCancelling
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> {pick("취소 중…", "Cancelling…")}</>
                 : <><X className="h-4 w-4" /> {pick("취소", "Cancel")}</>

@@ -28,6 +28,7 @@ export const PERM_SECTIONS = [
   { id: "audit-log",           group: "Admin",       nameKo: "감사 로그",          nameEn: "Audit Log" },
   { id: "user-permissions",    group: "Admin",       nameKo: "사용자 권한",         nameEn: "User Access" },
   { id: "shiphero",            group: "Admin",       nameKo: "ShipHero 계정",      nameEn: "ShipHero Credentials" },
+  { id: "container-import",    group: "Admin",       nameKo: "컨테이너 가져오기",    nameEn: "Container Import" },
 ] as const;
 
 export const PERM_SECTION_GROUP_LABELS: Record<string, { ko: string; en: string }> = {
@@ -119,6 +120,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "audit-log":           ALL_ON,
     "user-permissions":    ALL_ON,
     "shiphero":            ALL_ON,
+    "container-import":    ALL_ON,
   }),
   dev: makeMatrix({
     "inventory":           ALL_ON,
@@ -145,6 +147,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "audit-log":           ALL_ON,
     "user-permissions":    ALL_ON,
     "shiphero":            ALL_ON,
+    "container-import":    ALL_ON,
   }),
   planner: makeMatrix({
     "inventory":           READ_ONLY,
@@ -223,6 +226,7 @@ export const PERM_SECTION_ACTIONS: Record<PermSection, readonly PermAction[]> = 
   "audit-log":           ["read"],
   "user-permissions":    ["read", "edit"],
   "shiphero":            ["read", "edit", "delete"],
+  "container-import":    ["read", "create"],
 };
 
 export function blendRolePermissions(
