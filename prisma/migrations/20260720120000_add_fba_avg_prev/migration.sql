@@ -1,0 +1,5 @@
+ALTER TABLE shipcore.fc_stats
+  ADD COLUMN IF NOT EXISTS fba_avg_prev NUMERIC(12, 6) NOT NULL DEFAULT 0;
+
+ALTER TABLE shipcore.fc_stats_custom
+  ADD COLUMN IF NOT EXISTS fba_avg_prev NUMERIC(12, 6) NOT NULL DEFAULT 0;

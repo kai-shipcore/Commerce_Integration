@@ -203,6 +203,7 @@ export async function GET(req: Request) {
         COALESCE(s.east_avg_prev,  0)::float8                AS east_avg_prev,
         COALESCE(s.east_avg_real,  0)::float8                AS east_avg_real,
         COALESCE(s.east_avg_curr,  0)::float8                AS east_avg_curr,
+        COALESCE(s.fba_avg_prev,   0)::float8                AS fba_avg_prev,
         COALESCE(s.fba_avg_real,   0)::float8                AS fba_avg_real,
         COALESCE(s.fba_avg_curr,   0)::float8                AS fba_avg_curr,
         COALESCE(s.west_fbm_30d,   0)::int                   AS west_fbm_30d,
@@ -398,8 +399,8 @@ export async function GET(req: Request) {
             (SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS avg_daily_prev,
             GREATEST(0.01, SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm_preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_real,
             GREATEST(0.01, SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm_preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_prev,
-            (SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30)::float8 AS fba_avg_real,
-            (SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30)::float8 AS fba_avg_prev,
+            GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type='preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS fba_avg_real,
+            GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type='preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS fba_avg_prev,
             SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_30d
           FROM ${table}
           WHERE ${skuCol} IS NOT NULL AND order_date >= $1::date - 96
@@ -446,7 +447,7 @@ export async function GET(req: Request) {
           fba_30d:        Number(r.fba_30d),
           _avg_curr:  currentDailyAverage(wPrev, wReal, categoryCode),
           _east_curr: currentDailyAverage(ePrev, eReal, categoryCode),
-          _fba_curr:  fbaReal,
+          _fba_curr:  currentDailyAverage(fbaPrev, fbaReal, categoryCode),
         } as VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number };
       }
 
@@ -544,6 +545,7 @@ export async function GET(req: Request) {
       const east_avg_prev  = Math.max(0.01, vel ? vel.east_avg_prev  : r.east_avg_prev  as number);
       const east_avg_real  = Math.max(0.01, vel ? vel.east_avg_real  : r.east_avg_real  as number);
       const east_avg_curr  = Math.max(0.01, vel ? vel._east_curr     : currentDailyAverage(east_avg_prev, east_avg_real, categoryCode));
+      const fba_avg_prev   = Math.max(0.01, vel ? vel.fba_avg_prev   : r.fba_avg_prev   as number);
       const fba_avg_real   = Math.max(0.01, vel ? vel.fba_avg_real   : r.fba_avg_real   as number);
       const fba_avg_curr   = Math.max(0.01, vel ? vel._fba_curr      : r.fba_avg_curr   as number);
       const fba_30d        = vel ? vel.fba_30d        : r.fba_30d        as number;
@@ -551,7 +553,7 @@ export async function GET(req: Request) {
       const west_fbm_30d = fbmThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d, salesWindowWeights);
       const east_fbm_30d = fbmThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d, salesWindowWeights);
       const total_30d    = west_fbm_30d + east_fbm_30d + fba_30d;
-      const total_avg_prev = Math.max(0.03, vel ? avg_daily_prev + east_avg_prev + (vel.fba_avg_prev ?? 0) : r.total_avg_prev as number);
+      const total_avg_prev = Math.max(0.03, vel ? avg_daily_prev + east_avg_prev + fba_avg_prev : r.total_avg_prev as number);
       const total_avg_real = Math.max(0.03, vel ? avg_daily_real + east_avg_real + fba_avg_real : r.total_avg_real as number);
       const total_avg_curr = Math.max(0.03, vel ? avg_daily_curr + east_avg_curr + fba_avg_curr : r.total_avg_curr as number);
 
@@ -623,7 +625,7 @@ export async function GET(req: Request) {
         );
         const seasonalFactor = seasonalFactorForEta(eta, DEFAULT_SEASONAL_FACTORS);
         const estSales   = daysBetween * dailyRate * seasonalFactor;
-        const backorderC = Math.max(0, estSales - availQtyC);
+        const backorderC = total_30d <= 0 ? 0 : Math.max(0, estSales - availQtyC);
         const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
         const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
 
@@ -703,6 +705,7 @@ export async function GET(req: Request) {
         east_avg_prev:     Math.round(east_avg_prev  * 100) / 100,
         east_avg_real:     Math.round(east_avg_real  * 100) / 100,
         east_avg_curr:     Math.round(east_avg_curr  * 100) / 100,
+        fba_avg_prev:      Math.round(fba_avg_prev   * 100) / 100,
         fba_avg_real:      Math.round(fba_avg_real   * 100) / 100,
         fba_avg_curr:      Math.round(fba_avg_curr   * 100) / 100,
         west_fbm_30d:      west_fbm_30d,
@@ -738,8 +741,10 @@ export async function GET(req: Request) {
       const eReal    = Math.max(0.01, wAvg(e90, e60, e30, e15, e7, epre));
       const ePrev    = Math.max(0.01, p.east_avg_prev);
       const eCurr    = currentDailyAverage(ePrev, eReal);
+      // fc_pinned_rows has no raw FBA 90/60/15/7d windows, so fbaPrev falls back to the same 30d rate.
       const fbaReal  = Math.max(0.01, p.fba_30d / 30);
-      const fbaCurr  = fbaReal;
+      const fbaPrev  = fbaReal;
+      const fbaCurr  = currentDailyAverage(fbaPrev, fbaReal);
       const wFbm30   = fbmThirtyDayAverage(w90, w60, w30, wpre, w15, w7, salesWindowWeights);
       const eFbm30   = fbmThirtyDayAverage(e90, e60, e30, epre, e15, e7, salesWindowWeights);
       const total30  = wFbm30 + eFbm30 + p.fba_30d;
@@ -779,6 +784,7 @@ export async function GET(req: Request) {
         east_avg_prev:    Math.round(ePrev    * 100) / 100,
         east_avg_real:    Math.round(eReal    * 100) / 100,
         east_avg_curr:    Math.round(eCurr    * 100) / 100,
+        fba_avg_prev:     Math.round(fbaPrev  * 100) / 100,
         fba_avg_real:     Math.round(fbaReal  * 100) / 100,
         fba_avg_curr:     Math.round(fbaCurr  * 100) / 100,
         west_fbm_30d:     wFbm30,

@@ -87,6 +87,7 @@ export interface DemandRow {
   east_avg_prev: number;
   east_avg_real: number;
   east_avg_curr: number;
+  fba_avg_prev: number;
   fba_avg_real: number;
   fba_avg_curr: number;
   west_fbm_30d: number;

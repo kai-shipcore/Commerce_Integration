@@ -251,7 +251,7 @@ function computeContainerChain(
     const days = Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000);
     const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
     const estimatedSales = days * dailyRate * seasonalFactor;
-    const backorder = Math.max(0, estimatedSales - available);
+    const backorder = (row.total_30d ?? 0) <= 0 ? 0 : Math.max(0, estimatedSales - available);
     const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
     const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
     const sodFromContainer = inventoryLife !== null

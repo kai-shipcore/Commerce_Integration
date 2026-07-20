@@ -112,6 +112,7 @@ const SORT_VALUE_BY_COLUMN: Partial<Record<string, (row: DemandRow) => SortValue
   eavg_p: (row) => row.east_avg_prev,
   eavg_r: (row) => row.east_avg_real,
   eavg_c: (row) => row.east_avg_curr,
+  fba_p: (row) => row.fba_avg_prev,
   fba_r: (row) => row.fba_avg_real,
   fba_c: (row) => row.fba_avg_curr,
   wfbm30: (row) => row.west_fbm_30d,

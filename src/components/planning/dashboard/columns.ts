@@ -176,6 +176,7 @@ export const ALL_COLS: ColDef[] = [
   { id: "eavg_r", grp: "eavg", label: "E Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.east_avg_real), sortVal: (r) => r.east_avg_real ?? -1 },
   { id: "eavg_c", grp: "eavg", label: "E Avg\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", bold: true, val: (r) => avgOrBlank(r.east_avg_curr), sortVal: (r) => r.east_avg_curr ?? -1 },
   // FBA Avg
+  { id: "fba_p", grp: "fba", label: "FBA\n이전", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.fba_avg_prev), sortVal: (r) => r.fba_avg_prev ?? -1 },
   { id: "fba_r", grp: "fba", label: "FBA\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_real === null || r.fba_avg_real === undefined ? "" : (Math.round(Math.max(0.01, r.fba_avg_real) * 100) / 100).toFixed(2), sortVal: (r) => r.fba_avg_real ?? -1 },
   { id: "fba_c", grp: "fba", label: "FBA\n현재", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => r.fba_avg_curr === null || r.fba_avg_curr === undefined ? "" : (Math.round(Math.max(0.01, r.fba_avg_curr) * 100) / 100).toFixed(2), sortVal: (r) => r.fba_avg_curr ?? -1 },
   // 30D Sales

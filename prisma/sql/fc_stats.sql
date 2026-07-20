@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_stats (
     east_avg_real  NUMERIC(12, 6)  NOT NULL DEFAULT 0,
     east_avg_curr  NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
-    -- FBA avg daily
+    -- FBA avg daily (prev = prior period, real = trailing, curr = blended)
+    fba_avg_prev   NUMERIC(12, 6)  NOT NULL DEFAULT 0,
     fba_avg_real   NUMERIC(12, 6)  NOT NULL DEFAULT 0,
     fba_avg_curr   NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
