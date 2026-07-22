@@ -2,13 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import { ChevronDown, ChevronUp, Database, Search } from "lucide-react";
+import { ChevronDown, ChevronUp, Database, Download, FileSpreadsheet, Search, Upload } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { ProductKey } from "@/features/planning/mock-data";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
 import { SkuPriceHistoryDrawer } from "@/components/production/sku-price-history-drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type SkuMasterRow = {
   masterSku: string;
@@ -61,9 +69,30 @@ const productMeta: Record<
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
-type ExcelCbmImportRow = {
+type ExcelSkuImportRow = {
   masterSku: string;
-  cbmPerUnit: number;
+  cbmPerUnit?: number;
+  moq?: number;
+  orderMultiple?: number;
+};
+
+type ImportPreviewValue = {
+  cbmPerUnit: number | null;
+  moq: number | null;
+  orderMultiple: number | null;
+};
+
+type ImportPreviewRow = {
+  masterSku: string;
+  action: "insert" | "update" | "unchanged";
+  current: ImportPreviewValue | null;
+  next: ImportPreviewValue;
+  changedFields: Array<keyof ImportPreviewValue>;
+};
+
+type ImportPreview = {
+  rows: ImportPreviewRow[];
+  summary: { insert: number; update: number; unchanged: number };
 };
 
 function normalizeHeader(value: unknown): string {
@@ -102,8 +131,8 @@ function getSheetPriority(sheetName: string): number {
   return 4;
 }
 
-function extractExcelCbmRows(workbook: XLSX.WorkBook): ExcelCbmImportRow[] {
-  const rowsBySku = new Map<string, ExcelCbmImportRow & { precision: number; sheetPriority: number }>();
+function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
+  const rowsBySku = new Map<string, ExcelSkuImportRow & { precision: number; sheetPriority: number }>();
 
   for (const sheetName of workbook.SheetNames) {
     const sheetPriority = getSheetPriority(sheetName);
@@ -131,25 +160,38 @@ function extractExcelCbmRows(workbook: XLSX.WorkBook): ExcelCbmImportRow[] {
         cbmCandidates.find((candidate) => candidate.index < masterSkuIndex)?.index ??
         cbmCandidates[0]?.index ??
         -1;
+      const moqIndex = normalizedHeaders.findIndex(
+        (header) => header === "moq" || header === "minimumorderquantity"
+      );
+      const orderMultipleIndex = normalizedHeaders.findIndex(
+        (header) => header === "ordermultiple" || header === "orderqtymultiple" || header === "ordermultiples"
+      );
 
-      if (cbmIndex < 0) continue;
+      if (cbmIndex < 0 && moqIndex < 0 && orderMultipleIndex < 0) continue;
 
       for (let dataRowIndex = rowIndex + 1; dataRowIndex < matrix.length; dataRowIndex += 1) {
         const dataRow = matrix[dataRowIndex];
         const masterSku = String(dataRow[masterSkuIndex] ?? "").trim().toUpperCase();
-        const cbmPerUnit = parseNumberCell(dataRow[cbmIndex]);
+        const parsedCbm = cbmIndex >= 0 ? parseNumberCell(dataRow[cbmIndex]) : null;
+        const parsedMoq = moqIndex >= 0 ? parseNumberCell(dataRow[moqIndex]) : null;
+        const parsedOrderMultiple = orderMultipleIndex >= 0 ? parseNumberCell(dataRow[orderMultipleIndex]) : null;
+        const cbmPerUnit = parsedCbm != null && parsedCbm > 0 ? parsedCbm : undefined;
+        const moq = parsedMoq != null && Number.isInteger(parsedMoq) && parsedMoq >= 1 ? parsedMoq : undefined;
+        const orderMultiple = parsedOrderMultiple != null && Number.isInteger(parsedOrderMultiple) && parsedOrderMultiple >= 1
+          ? parsedOrderMultiple
+          : undefined;
 
         if (!masterSku || !masterSku.includes("-")) continue;
-        if (cbmPerUnit == null || cbmPerUnit <= 0) continue;
+        if (cbmPerUnit == null && moq == null && orderMultiple == null) continue;
 
-        const precision = decimalPlaces(cbmPerUnit);
+        const precision = cbmPerUnit == null ? 0 : decimalPlaces(cbmPerUnit);
         const existing = rowsBySku.get(masterSku);
         if (
           !existing ||
           sheetPriority < existing.sheetPriority ||
           (sheetPriority === existing.sheetPriority && precision > existing.precision)
         ) {
-          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, precision, sheetPriority });
+          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, precision, sheetPriority });
         }
       }
 
@@ -157,7 +199,12 @@ function extractExcelCbmRows(workbook: XLSX.WorkBook): ExcelCbmImportRow[] {
     }
   }
 
-  return [...rowsBySku.values()].map(({ masterSku, cbmPerUnit }) => ({ masterSku, cbmPerUnit }));
+  return [...rowsBySku.values()].map(({ masterSku, cbmPerUnit, moq, orderMultiple }) => ({
+    masterSku,
+    cbmPerUnit,
+    moq,
+    orderMultiple,
+  }));
 }
 
 export function SkuMasterPage() {
@@ -174,6 +221,10 @@ export function SkuMasterPage() {
   const [syncing, setSyncing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [previewingImport, setPreviewingImport] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [pendingImportRows, setPendingImportRows] = useState<ExcelSkuImportRow[]>([]);
   const [message, setMessage] = useState("");
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [summaryCollapsed, setSummaryCollapsed] = useState(true);
@@ -317,47 +368,91 @@ export function SkuMasterPage() {
     }
   }
 
-  async function importExcel(file: File) {
+  async function previewImportFile(file: File) {
     if (!can("sku-master", "edit")) {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       return;
     }
-    setImporting(true);
+    setPreviewingImport(true);
     setMessage("");
 
     try {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array" });
-      const importRows = extractExcelCbmRows(workbook);
+      const importRows = extractExcelSkuRows(workbook);
 
       if (importRows.length === 0) {
-        throw new Error(pick("엑셀 파일에서 유효한 Master SKU / CBM 행을 찾지 못했습니다.", "No valid Master SKU / CBM rows found in the Excel file"));
+        throw new Error(pick("파일에서 업데이트할 수 있는 유효한 행을 찾지 못했습니다.", "No valid rows with updatable values were found in the file"));
       }
 
       const res = await fetch(apiPath("/api/planning/sku-master"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: importRows }),
+        body: JSON.stringify({ preview: true, rows: importRows }),
       });
       const json = await res.json();
 
-      if (!json.success) throw new Error(json.error ?? pick("엑셀 가져오기에 실패했습니다.", "Failed to import Excel"));
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.error ?? pick("가져오기 미리보기에 실패했습니다.", "Failed to preview import"));
+      }
+      setPendingImportRows(importRows);
+      setImportPreview(json.data as ImportPreview);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : pick("가져오기 미리보기에 실패했습니다.", "Failed to preview import"));
+    } finally {
+      setPreviewingImport(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
 
+  async function applyImport() {
+    if (pendingImportRows.length === 0 || !importPreview) return;
+    const actionableSkus = new Set(
+      importPreview.rows.filter((row) => row.action !== "unchanged").map((row) => row.masterSku)
+    );
+    const rowsToApply = pendingImportRows.filter((row) => actionableSkus.has(row.masterSku));
+    if (rowsToApply.length === 0) return;
+    setImporting(true);
+    setMessage("");
+    try {
+      const res = await fetch(apiPath("/api/planning/sku-master"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: rowsToApply }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? pick("엑셀 가져오기에 실패했습니다.", "Failed to import file"));
+      }
       setMessage(
         pick(
-          `CBM 행 ${numberFormatter.format(json.imported ?? importRows.length)}개를 가져왔습니다 ` +
+          `SKU 행 ${numberFormatter.format(json.imported ?? rowsToApply.length)}개를 반영했습니다 ` +
           `(${numberFormatter.format(json.updated ?? 0)}개 수정, ${numberFormatter.format(json.inserted ?? 0)}개 추가)`,
-          `Imported ${numberFormatter.format(json.imported ?? importRows.length)} CBM rows ` +
+          `Applied ${numberFormatter.format(json.imported ?? rowsToApply.length)} SKU rows ` +
           `(${numberFormatter.format(json.updated ?? 0)} updated, ${numberFormatter.format(json.inserted ?? 0)} inserted)`
         )
       );
+      setImportPreview(null);
+      setPendingImportRows([]);
       await fetchRows();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : pick("엑셀 가져오기에 실패했습니다.", "Failed to import Excel"));
+      setMessage(error instanceof Error ? error.message : pick("엑셀 가져오기에 실패했습니다.", "Failed to import file"));
     } finally {
       setImporting(false);
-      if (importInputRef.current) importInputRef.current.value = "";
     }
+  }
+
+  function downloadImportTemplate() {
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      ["Master SKU", "CBM", "MOQ", "Order Multiple"],
+      ["CC-EXAMPLE-001", 0.012345, 12, 6],
+      ["CC-EXAMPLE-002", 0.023456, 10, 5],
+    ]);
+    worksheet["!cols"] = [{ wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 18 }];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "SKU CBM Import");
+    XLSX.writeFile(workbook, "sku-master-cbm-import-template.xlsx");
   }
 
   async function downloadCsv() {
@@ -521,20 +616,27 @@ export function SkuMasterPage() {
           <input
             ref={importInputRef}
             type="file"
-            accept=".xlsx,.xls"
+            accept=".xlsx,.xls,.csv,text/csv"
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) void importExcel(file);
+              if (file) {
+                setImportDialogOpen(false);
+                void previewImportFile(file);
+              }
             }}
           />
           <button
             type="button"
-            onClick={() => importInputRef.current?.click()}
-            disabled={importing}
+            onClick={() => setImportDialogOpen(true)}
+            disabled={importing || previewingImport}
             className="h-9 rounded-md border border-[#cccac4] bg-white px-3 text-xs font-medium hover:bg-[#f0eee9] disabled:opacity-50"
           >
-            {importing ? pick("가져오는 중...", "Importing...") : pick("엑셀 가져오기", "Excel Import")}
+            {previewingImport
+              ? pick("검토 중...", "Reviewing...")
+              : importing
+                ? pick("가져오는 중...", "Importing...")
+                : pick("엑셀 가져오기", "Excel Import")}
           </button>
           <button
             type="button"
@@ -546,6 +648,215 @@ export function SkuMasterPage() {
           </button>
         </div>
       </header>
+
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b border-[#e2dfd8] bg-[#f8f7f3] px-6 py-5 pr-12">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                <FileSpreadsheet className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5">
+                <DialogTitle>{pick("SKU Master 엑셀 가져오기", "SKU Master Excel Import")}</DialogTitle>
+                <DialogDescription>
+                  {pick(
+                    "아래 템플릿 형식으로 SKU별 CBM, MOQ, 주문 배수를 준비해 주세요.",
+                    "Prepare CBM, MOQ, and order multiple values for each SKU using the template below."
+                  )}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-5 px-6 py-5">
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">{pick("템플릿 미리보기", "Template Preview")}</h3>
+                <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
+                  {pick("첫 행 헤더 필수", "Header row required")}
+                </span>
+              </div>
+              <div className="overflow-hidden rounded-lg border border-[#d8d6ce]">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead className="bg-[#292724] text-white">
+                    <tr>
+                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">Master SKU</th>
+                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">CBM</th>
+                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">MOQ</th>
+                      <th className="px-4 py-2.5 font-semibold">Order Multiple</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono text-xs">
+                    <tr className="border-t border-[#e2dfd8] bg-white">
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">CC-EXAMPLE-001</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">0.012345</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">12</td>
+                      <td className="px-4 py-2.5">6</td>
+                    </tr>
+                    <tr className="border-t border-[#e2dfd8] bg-[#faf9f6]">
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">CC-EXAMPLE-002</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">0.023456</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">10</td>
+                      <td className="px-4 py-2.5">5</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-xs leading-5 text-blue-950">
+              <ul className="list-disc space-y-1 pl-4">
+                <li>{pick("지원 파일: .xlsx, .xls 또는 .csv", "Supported files: .xlsx, .xls, or .csv")}</li>
+                <li>{pick("Master SKU는 필수이며, 나머지는 입력된 컬럼만 업데이트됩니다.", "Master SKU is required; only populated value columns are updated.")}</li>
+                <li>{pick("CBM은 0보다 큰 숫자, MOQ와 주문 배수는 1 이상의 정수로 입력해 주세요.", "CBM must be greater than zero; MOQ and Order Multiple must be integers of at least 1.")}</li>
+                <li>{pick("동일 SKU가 여러 번 나오면 우선순위가 높은 시트의 값이 적용됩니다.", "If a SKU appears more than once, the value from the higher-priority sheet is used.")}</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-[#e2dfd8] bg-[#f8f7f3] px-6 py-4 sm:justify-between">
+            <button
+              type="button"
+              onClick={downloadImportTemplate}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#cccac4] bg-white px-4 text-xs font-semibold hover:bg-[#f0eee9]"
+            >
+              <Download className="h-4 w-4" />
+              {pick("템플릿 다운로드", "Download Template")}
+            </button>
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#1a5cdb] px-5 text-xs font-semibold text-white hover:bg-[#1650c4]"
+            >
+              <Upload className="h-4 w-4" />
+              {pick("엑셀 / CSV 파일 선택", "Choose Excel / CSV File")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={importPreview !== null}
+        onOpenChange={(open) => {
+          if (!open && !importing) {
+            setImportPreview(null);
+            setPendingImportRows([]);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-hidden p-0 sm:max-w-5xl">
+          <DialogHeader className="border-b border-[#e2dfd8] bg-[#f8f7f3] px-6 py-5 pr-12">
+            <DialogTitle>{pick("SKU Master 변경 미리보기", "SKU Master Change Preview")}</DialogTitle>
+            <DialogDescription>
+              {pick(
+                "아직 데이터베이스에 반영되지 않았습니다. 변경 내용을 확인한 후 적용해 주세요.",
+                "Nothing has been written to the database yet. Review the changes before applying them."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {importPreview ? (
+            <>
+              <div className="grid grid-cols-3 border-b border-[#e2dfd8] bg-white">
+                <ImportPreviewStat
+                  label={pick("신규 추가", "New")}
+                  value={importPreview.summary.insert}
+                  className="text-emerald-700"
+                />
+                <ImportPreviewStat
+                  label={pick("기존 수정", "Updated")}
+                  value={importPreview.summary.update}
+                  className="border-l border-[#e2dfd8] text-blue-700"
+                />
+                <ImportPreviewStat
+                  label={pick("변경 없음", "Unchanged")}
+                  value={importPreview.summary.unchanged}
+                  className="border-l border-[#e2dfd8] text-slate-500"
+                />
+              </div>
+
+              <div className="max-h-[55vh] overflow-auto">
+                <table className="w-full min-w-[880px] border-collapse text-left text-xs">
+                  <thead className="sticky top-0 z-10 bg-[#292724] text-white">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">{pick("상태", "Status")}</th>
+                      <th className="px-4 py-3 font-semibold">Master SKU</th>
+                      <th className="px-4 py-3 font-semibold">CBM</th>
+                      <th className="px-4 py-3 font-semibold">MOQ</th>
+                      <th className="px-4 py-3 font-semibold">Order Multiple</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.rows.map((row) => (
+                      <tr key={row.masterSku} className="border-b border-[#e2dfd8] bg-white last:border-b-0 hover:bg-[#faf9f6]">
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                            row.action === "insert"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : row.action === "update"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-slate-100 text-slate-500"
+                          }`}>
+                            {row.action === "insert"
+                              ? pick("신규", "New")
+                              : row.action === "update"
+                                ? pick("수정", "Update")
+                                : pick("동일", "Same")}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono font-semibold">{row.masterSku}</td>
+                        <ImportValueChange
+                          current={row.current?.cbmPerUnit ?? null}
+                          next={row.next.cbmPerUnit}
+                          changed={row.changedFields.includes("cbmPerUnit")}
+                          decimals={6}
+                        />
+                        <ImportValueChange
+                          current={row.current?.moq ?? null}
+                          next={row.next.moq}
+                          changed={row.changedFields.includes("moq")}
+                        />
+                        <ImportValueChange
+                          current={row.current?.orderMultiple ?? null}
+                          next={row.next.orderMultiple}
+                          changed={row.changedFields.includes("orderMultiple")}
+                        />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <DialogFooter className="border-t border-[#e2dfd8] bg-[#f8f7f3] px-6 py-4">
+                <button
+                  type="button"
+                  disabled={importing}
+                  onClick={() => {
+                    setImportPreview(null);
+                    setPendingImportRows([]);
+                  }}
+                  className="h-10 rounded-md border border-[#cccac4] bg-white px-5 text-xs font-semibold hover:bg-[#f0eee9] disabled:opacity-50"
+                >
+                  {pick("취소", "Cancel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={importing || importPreview.summary.insert + importPreview.summary.update === 0}
+                  onClick={() => void applyImport()}
+                  className="h-10 rounded-md bg-[#1a5cdb] px-5 text-xs font-semibold text-white hover:bg-[#1650c4] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {importing
+                    ? pick("적용 중...", "Applying...")
+                    : pick(
+                        `${numberFormatter.format(importPreview.summary.insert + importPreview.summary.update)}건 확인 후 적용`,
+                        `Confirm & Apply ${numberFormatter.format(importPreview.summary.insert + importPreview.summary.update)}`
+                      )}
+                </button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <div className="border-b border-[#e2dfd8] bg-[#f0eee9] dark:border-slate-700 dark:bg-slate-900">
         <button
@@ -896,6 +1207,55 @@ function EditableSalesStatus({
         <span className="text-xs text-muted-foreground">—</span>
       )}
     </div>
+  );
+}
+
+function ImportPreviewStat({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: number;
+  className?: string;
+}) {
+  return (
+    <div className={`px-5 py-3 ${className}`}>
+      <div className="text-[11px] font-semibold uppercase tracking-wide">{label}</div>
+      <div className="mt-0.5 font-mono text-xl font-bold">{numberFormatter.format(value)}</div>
+    </div>
+  );
+}
+
+function ImportValueChange({
+  current,
+  next,
+  changed,
+  decimals = 0,
+}: {
+  current: number | null;
+  next: number | null;
+  changed: boolean;
+  decimals?: number;
+}) {
+  const format = (value: number | null) => value == null
+    ? "—"
+    : decimals > 0
+      ? value.toFixed(decimals)
+      : numberFormatter.format(value);
+
+  return (
+    <td className={`px-4 py-3 font-mono ${changed ? "bg-amber-50" : ""}`}>
+      {changed ? (
+        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+          <span className="text-slate-400 line-through">{format(current)}</span>
+          <span className="text-slate-400">→</span>
+          <span className="font-semibold text-blue-700">{format(next)}</span>
+        </span>
+      ) : (
+        <span className="text-slate-600">{format(next)}</span>
+      )}
+    </td>
   );
 }
 
