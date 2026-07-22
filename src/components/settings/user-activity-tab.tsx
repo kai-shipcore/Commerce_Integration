@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Activity, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, RefreshCw, Search, Users } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
+import { ACTIVITY_TIME_ZONE } from "@/lib/activity-date";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -104,7 +105,7 @@ export function UserActivityTab() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{data?.timeZone}</span>
+          <span className="text-xs text-muted-foreground">{ACTIVITY_TIME_ZONE}</span>
           <Button type="button" variant="outline" size="sm" onClick={() => setRefreshKey((key) => key + 1)}>
             <RefreshCw className="h-3.5 w-3.5" />{pick("새로고침", "Refresh")}
           </Button>
@@ -206,7 +207,7 @@ export function UserActivityTab() {
                   <TableCell><div className="font-medium">{user.name?.trim() || "-"}</div><div className="text-xs text-muted-foreground">{user.email}</div></TableCell>
                   <TableCell><Badge variant="outline">{user.role}</Badge></TableCell>
                   <TableCell>{user.activeToday ? <Badge className="bg-emerald-600 hover:bg-emerald-600">{pick("활동", "Active")}</Badge> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
-                  <TableCell className="whitespace-nowrap text-xs">{formatDateTime(user.lastSeenAt, pick("ko-KR", "en-US"))}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">{formatDateTime(user.lastSeenAt, pick("ko-KR", "en-US"), ACTIVITY_TIME_ZONE)}</TableCell>
                   <TableCell className="text-right tabular-nums">{user.activityDays}</TableCell>
                   <TableCell className="max-w-64 truncate font-mono text-xs text-muted-foreground" title={user.lastPath ?? undefined}>{user.lastPath ?? "-"}</TableCell>
                 </TableRow>
@@ -241,7 +242,14 @@ function PaginationButton({
   );
 }
 
-function formatDateTime(value: string | null, locale: string): string {
+function formatDateTime(value: string | null, locale: string, timeZone: string): string {
   if (!value) return "-";
-  return new Date(value).toLocaleString(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return new Date(value).toLocaleString(locale, {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
