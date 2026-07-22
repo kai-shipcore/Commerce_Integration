@@ -4,6 +4,7 @@ import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { guardPermission } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
 import { logAudit, getIp } from "@/lib/audit";
+import { normalizeMasterSku } from "@/lib/planning/master-sku";
 
 type ProductKey = "cc" | "fm" | "sc" | "ac";
 
@@ -341,10 +342,14 @@ export async function POST() {
        ORDER BY btrim(master_sku)`
     );
 
-    const rows = source.rows.map((row) => {
-      const masterSku = row.master_sku.trim();
-      return { masterSku, ...inferProduct(masterSku) };
-    });
+    const rows = [
+      ...new Map(
+        source.rows.map((row) => {
+          const masterSku = normalizeMasterSku(row.master_sku);
+          return [masterSku, { masterSku, ...inferProduct(masterSku) }] as const;
+        })
+      ).values(),
+    ];
 
     await primaryClient.query("BEGIN");
     await primaryClient.query(`

@@ -13,6 +13,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
+import { normalizedMasterSkuSql } from "@/lib/planning/master-sku";
 import {
   currentDailyAverage,
   fbmThirtyDayAverage,
@@ -89,8 +90,18 @@ export async function POST(request: Request) {
       ttm_available_stock:          number;
       ttm_jeff_available_stock:     number;
     }>(`
+      WITH normalized_inventory AS (
+        SELECT
+          ${normalizedMasterSkuSql("master_sku")} AS master_sku,
+          warehouse,
+          on_hand,
+          available,
+          backorder
+        FROM ecommerce_data.coverland_inventory_by_warehouse
+        WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
+      )
       SELECT
-        BTRIM(master_sku)                                                                                                AS master_sku,
+        master_sku,
         SUM(CASE WHEN warehouse IN ('Fullerton','Canary')                 THEN COALESCE(on_hand,   0) ELSE 0 END)::int  AS west_stock,
         SUM(CASE WHEN warehouse IN ('TTM Group','TTM Group Jefferson')    THEN COALESCE(on_hand,   0) ELSE 0 END)::int  AS east_stock,
         SUM(COALESCE(on_hand,   0))::int                                                                                AS total_stock,
@@ -105,9 +116,8 @@ export async function POST(request: Request) {
         SUM(CASE WHEN warehouse = 'Canary'              THEN COALESCE(available, 0) ELSE 0 END)::int                   AS canary_available_stock,
         SUM(CASE WHEN warehouse = 'TTM Group'           THEN COALESCE(available, 0) ELSE 0 END)::int                   AS ttm_available_stock,
         SUM(CASE WHEN warehouse = 'TTM Group Jefferson' THEN COALESCE(available, 0) ELSE 0 END)::int                   AS ttm_jeff_available_stock
-      FROM ecommerce_data.coverland_inventory_by_warehouse
-      WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
-      GROUP BY BTRIM(master_sku)
+      FROM normalized_inventory
+      GROUP BY master_sku
     `);
 
     const invRows = invResult.rows as Record<string, unknown>[];
