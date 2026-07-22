@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { PoolClient } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
+import { normalizedMasterSkuSql } from "@/lib/planning/master-sku";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -55,19 +56,6 @@ const ORDER_TYPE_CASE = (alias: string) => `
     WHEN COALESCE(${alias}.is_preorder::boolean, false)                                               THEN 'preorder'
     ELSE 'sales'
   END`;
-
-const MASTER_SKU_REMAP: Record<string, string> = {
-  "CC-CP-07-N-GR": "CC-CP-03-M-GR-1TO",
-  "CC-CSP-03-M-GR-1TO": "CC-CS-03-M-GR-1TO",
-  "C-SJ-GR-7": "CC-CS-03-J-GR-1TO",
-};
-
-const MASTER_SKU_REMAP_CASE = (skuExpr: string) => {
-  const whens = Object.entries(MASTER_SKU_REMAP)
-    .map(([from, to]) => `WHEN ${skuExpr} = '${from}' THEN '${to}'`)
-    .join(" ");
-  return `CASE ${whens} ELSE ${skuExpr} END`;
-};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -290,7 +278,7 @@ export async function POST(req: NextRequest) {
            ${CHANNEL_CASE("l")}       AS channel,
            ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("l")}    AS order_type,
-           ${MASTER_SKU_REMAP_CASE("l.master_sku")} AS link_master_sku,
+           ${normalizedMasterSkuSql("l.master_sku")} AS link_master_sku,
            SUM(l.quantity)::int AS link_qty,
            l.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_link_new l`;
@@ -302,7 +290,7 @@ export async function POST(req: NextRequest) {
            ${CHANNEL_CASE("c")}       AS channel,
            ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
            ${ORDER_TYPE_CASE("c")}    AS order_type,
-           ${MASTER_SKU_REMAP_CASE("c.master_sku")} AS custom_master_sku,
+           ${normalizedMasterSkuSql("c.master_sku")} AS custom_master_sku,
            SUM(c.quantity)::int AS custom_qty,
            c.is_custom                AS is_custom
          FROM ecommerce_data.vw_sales_order_items_custom_new c`;

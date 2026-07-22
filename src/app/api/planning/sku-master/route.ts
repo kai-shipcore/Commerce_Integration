@@ -4,12 +4,15 @@ import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { guardPermission } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
 import { logAudit, getIp } from "@/lib/audit";
+import { normalizeMasterSku } from "@/lib/planning/master-sku";
 
 type ProductKey = "cc" | "fm" | "sc" | "ac";
 
-type ExcelCbmRow = {
+type ExcelSkuRow = {
   masterSku: string;
-  cbmPerUnit: number;
+  cbmPerUnit?: number;
+  moq?: number;
+  orderMultiple?: number;
 };
 
 type QueryClient = {
@@ -341,10 +344,14 @@ export async function POST() {
        ORDER BY btrim(master_sku)`
     );
 
-    const rows = source.rows.map((row) => {
-      const masterSku = row.master_sku.trim();
-      return { masterSku, ...inferProduct(masterSku) };
-    });
+    const rows = [
+      ...new Map(
+        source.rows.map((row) => {
+          const masterSku = normalizeMasterSku(row.master_sku);
+          return [masterSku, { masterSku, ...inferProduct(masterSku) }] as const;
+        })
+      ).values(),
+    ];
 
     await primaryClient.query("BEGIN");
     await primaryClient.query(`
@@ -504,38 +511,109 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const rawRows = Array.isArray(body.rows) ? body.rows : [];
-    const rowsBySku = new Map<string, ExcelCbmRow>();
+    const rowsBySku = new Map<string, ExcelSkuRow>();
 
     for (const rawRow of rawRows) {
-      const masterSku = String(rawRow?.masterSku ?? "").trim().toUpperCase();
-      const cbmPerUnit = Number(rawRow?.cbmPerUnit);
+      const masterSku = normalizeMasterSku(
+        String(rawRow?.masterSku ?? "").trim().toUpperCase()
+      );
+      const parsedCbm = Number(rawRow?.cbmPerUnit);
+      const parsedMoq = Number(rawRow?.moq);
+      const parsedOrderMultiple = Number(rawRow?.orderMultiple);
+      const cbmPerUnit = Number.isFinite(parsedCbm) && parsedCbm > 0 ? parsedCbm : undefined;
+      const moq = Number.isInteger(parsedMoq) && parsedMoq >= 1 ? parsedMoq : undefined;
+      const orderMultiple = Number.isInteger(parsedOrderMultiple) && parsedOrderMultiple >= 1
+        ? parsedOrderMultiple
+        : undefined;
 
-      if (!masterSku || !Number.isFinite(cbmPerUnit) || cbmPerUnit <= 0) {
+      if (!masterSku || (cbmPerUnit == null && moq == null && orderMultiple == null)) {
         continue;
       }
 
-      rowsBySku.set(masterSku, { masterSku, cbmPerUnit });
+      rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple });
     }
 
     const rows = [...rowsBySku.values()];
 
     if (rows.length === 0) {
       return NextResponse.json(
-        { success: false, error: "No valid Master SKU / CBM rows found" },
+        { success: false, error: "No valid Master SKU / CBM / MOQ / Order Multiple rows found" },
         { status: 400 }
       );
     }
 
+    if (body.preview === true) {
+      const existingResult = await client.query<{
+        master_sku: string;
+        cbm_per_unit: string | null;
+        moq: number | null;
+        order_multiple: number | null;
+      }>(
+        `SELECT master_sku, cbm_per_unit::text, moq, order_multiple
+         FROM shipcore.fc_products
+         WHERE master_sku = ANY($1::text[])`,
+        [rows.map((row) => row.masterSku)]
+      );
+      const existingBySku = new Map(existingResult.rows.map((row) => [row.master_sku, row]));
+      const previewRows = rows.map((row) => {
+        const existing = existingBySku.get(row.masterSku);
+        const defaults = inferProduct(row.masterSku);
+        const current = existing
+          ? {
+              cbmPerUnit: existing.cbm_per_unit == null ? null : Number(existing.cbm_per_unit),
+              moq: existing.moq,
+              orderMultiple: existing.order_multiple,
+            }
+          : null;
+        const next = {
+          cbmPerUnit: existing
+            ? row.cbmPerUnit ?? current!.cbmPerUnit
+            : row.cbmPerUnit ?? defaults.cbmPerUnit,
+          moq: existing
+            ? row.moq ?? current!.moq
+            : row.moq ?? defaults.moq,
+          orderMultiple: existing
+            ? row.orderMultiple ?? current!.orderMultiple
+            : row.orderMultiple ?? defaults.moq,
+        };
+        const changedFields = existing
+          ? ([
+              current?.cbmPerUnit !== next.cbmPerUnit ? "cbmPerUnit" : null,
+              current?.moq !== next.moq ? "moq" : null,
+              current?.orderMultiple !== next.orderMultiple ? "orderMultiple" : null,
+            ].filter((field): field is string => field !== null))
+          : ["cbmPerUnit", "moq", "orderMultiple"];
+        const action: "insert" | "update" | "unchanged" = existing
+          ? (changedFields.length > 0 ? "update" : "unchanged")
+          : "insert";
+        return {
+          masterSku: row.masterSku,
+          action,
+          current,
+          next,
+          changedFields,
+        };
+      });
+      const summary = previewRows.reduce(
+        (counts, row) => ({ ...counts, [row.action]: counts[row.action] + 1 }),
+        { insert: 0, update: 0, unchanged: 0 }
+      );
+      return NextResponse.json({ success: true, data: { rows: previewRows, summary } });
+    }
+
     await client.query("BEGIN");
     await client.query(`
-      CREATE TEMP TABLE stg_excel_cbm (
+      CREATE TEMP TABLE stg_excel_sku (
         master_sku TEXT PRIMARY KEY,
         product_name TEXT,
         category TEXT,
         category_code TEXT,
-        moq INT,
-        order_multiple INT,
-        cbm_per_unit NUMERIC,
+        imported_moq INT,
+        imported_order_multiple INT,
+        imported_cbm_per_unit NUMERIC,
+        default_moq INT,
+        default_order_multiple INT,
+        default_cbm_per_unit NUMERIC,
         case_qty INT,
         weight_kg NUMERIC
       ) ON COMMIT DROP
@@ -543,14 +621,23 @@ export async function PUT(request: NextRequest) {
 
     await ensureCbmPrecision(client);
 
-    const inferredRows = rows.map((row) => ({
-      ...inferProduct(row.masterSku),
-      ...row,
-    }));
+    const inferredRows = rows.map((row) => {
+      const defaults = inferProduct(row.masterSku);
+      return {
+        ...defaults,
+        masterSku: row.masterSku,
+        importedCbmPerUnit: row.cbmPerUnit ?? null,
+        importedMoq: row.moq ?? null,
+        importedOrderMultiple: row.orderMultiple ?? null,
+      };
+    });
 
     await client.query(
-      `INSERT INTO stg_excel_cbm
-         (master_sku, product_name, category, category_code, moq, order_multiple, cbm_per_unit, case_qty, weight_kg)
+      `INSERT INTO stg_excel_sku
+         (master_sku, product_name, category, category_code,
+          imported_moq, imported_order_multiple, imported_cbm_per_unit,
+          default_moq, default_order_multiple, default_cbm_per_unit,
+          case_qty, weight_kg)
        SELECT
          unnest($1::text[]),
          unnest($2::text[]),
@@ -560,12 +647,18 @@ export async function PUT(request: NextRequest) {
          unnest($6::int[]),
          unnest($7::numeric[]),
          unnest($8::int[]),
-         unnest($9::numeric[])`,
+         unnest($9::int[]),
+         unnest($10::numeric[]),
+         unnest($11::int[]),
+         unnest($12::numeric[])`,
       [
         inferredRows.map((row) => row.masterSku),
         inferredRows.map((row) => row.masterSku),
         inferredRows.map((row) => row.category),
         inferredRows.map((row) => row.categoryCode),
+        inferredRows.map((row) => row.importedMoq),
+        inferredRows.map((row) => row.importedOrderMultiple),
+        inferredRows.map((row) => row.importedCbmPerUnit),
         inferredRows.map((row) => row.moq),
         inferredRows.map((row) => row.moq),
         inferredRows.map((row) => row.cbmPerUnit),
@@ -574,13 +667,21 @@ export async function PUT(request: NextRequest) {
       ]
     );
 
-    const existing = await client.query<{ count: string }>(`
-      SELECT COUNT(*)::text AS count
-      FROM stg_excel_cbm stg
-      JOIN shipcore.fc_products product ON product.master_sku = stg.master_sku
+    const updatedResult = await client.query(`
+      UPDATE shipcore.fc_products product
+      SET
+        cbm_per_unit = COALESCE(stg.imported_cbm_per_unit, product.cbm_per_unit),
+        moq = COALESCE(stg.imported_moq, product.moq),
+        order_multiple = COALESCE(stg.imported_order_multiple, product.order_multiple),
+        product_name = COALESCE(NULLIF(product.product_name, ''), stg.product_name),
+        category = COALESCE(product.category, stg.category),
+        category_code = COALESCE(product.category_code, stg.category_code),
+        updated_at = NOW()
+      FROM stg_excel_sku stg
+      WHERE product.master_sku = stg.master_sku
     `);
 
-    const upsert = await client.query(`
+    const insertedResult = await client.query(`
       INSERT INTO shipcore.fc_products (
         master_sku, product_name, category, category_code, status,
         moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
@@ -588,27 +689,28 @@ export async function PUT(request: NextRequest) {
       )
       SELECT
         master_sku, product_name, category, category_code, 'active',
-        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
+        COALESCE(imported_moq, default_moq),
+        COALESCE(imported_order_multiple, default_order_multiple),
+        COALESCE(imported_cbm_per_unit, default_cbm_per_unit),
+        case_qty, weight_kg,
         NOW(), NOW()
-      FROM stg_excel_cbm
-      ON CONFLICT (master_sku) DO UPDATE SET
-        cbm_per_unit = EXCLUDED.cbm_per_unit,
-        product_name = COALESCE(NULLIF(shipcore.fc_products.product_name, ''), EXCLUDED.product_name),
-        category = COALESCE(shipcore.fc_products.category, EXCLUDED.category),
-        category_code = COALESCE(shipcore.fc_products.category_code, EXCLUDED.category_code),
-        status = 'active',
-        updated_at = NOW()
+      FROM stg_excel_sku stg
+      WHERE NOT EXISTS (
+        SELECT 1 FROM shipcore.fc_products product WHERE product.master_sku = stg.master_sku
+      )
+      ON CONFLICT (master_sku) DO NOTHING
     `);
 
     await client.query("COMMIT");
 
-    const updated = Number(existing.rows[0]?.count ?? 0);
+    const updated = updatedResult.rowCount ?? 0;
+    const inserted = insertedResult.rowCount ?? 0;
     return NextResponse.json({
       success: true,
       imported: rows.length,
-      upserted: upsert.rowCount,
+      upserted: updated + inserted,
       updated,
-      inserted: Math.max(0, rows.length - updated),
+      inserted,
     });
   } catch (error) {
     await client.query("ROLLBACK");
