@@ -1,8 +1,8 @@
-const DEFAULT_ACTIVITY_TIME_ZONE = "America/Los_Angeles";
+export const ACTIVITY_TIME_ZONE = "America/Los_Angeles";
 
 export function getActivityDate(offsetDays = 0): string {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: process.env.APP_TIME_ZONE ?? DEFAULT_ACTIVITY_TIME_ZONE,
+    timeZone: ACTIVITY_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

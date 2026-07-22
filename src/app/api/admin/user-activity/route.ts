@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { guardPermission } from "@/lib/permissions";
-import { getActivityDate } from "@/lib/activity-date";
+import { ACTIVITY_TIME_ZONE, getActivityDate } from "@/lib/activity-date";
 
 type SummaryRow = {
   today_active: string;
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
               users.email,
               users.role,
               users."isActive" AS is_active,
-              MAX(activity.last_seen_at) AS last_seen_at,
+              MAX(activity.last_seen_at) AT TIME ZONE 'UTC' AS last_seen_at,
               COUNT(DISTINCT activity.activity_date)::text AS activity_days,
               COALESCE(SUM(activity.activity_count), 0)::text AS activity_count,
               (ARRAY_AGG(activity.last_path ORDER BY activity.last_seen_at DESC)
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     data: {
-      timeZone: process.env.APP_TIME_ZONE ?? "America/Los_Angeles",
+      timeZone: ACTIVITY_TIME_ZONE,
       periodDays: days,
       summary: {
         today: Number(summary.today_active),

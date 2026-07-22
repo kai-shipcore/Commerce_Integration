@@ -1243,6 +1243,7 @@ export function AgDemandPlanningGrid({
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
   const selectedCellsRef = useRef<Set<string>>(new Set());
   const lastSelectedRef = useRef<string | null>(null);
+  const appliedColumnStructureRef = useRef<string | null>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
@@ -2179,6 +2180,24 @@ autoFilling3: autoFillingContainers3.has(container.name),
   useEffect(() => {
     const api = gridRef.current?.api;
     if (!api) return;
+
+    const columnStructure = columnDefs.map((definition) => {
+      if (!("children" in definition)) return definition.colId ?? definition.field ?? "";
+      return `${definition.groupId ?? ""}[${definition.children.map((child) => (
+        "children" in child
+          ? child.groupId ?? ""
+          : child.colId ?? child.field ?? ""
+      )).join(",")}]`;
+    }).join("|");
+
+    if (appliedColumnStructureRef.current !== columnStructure) {
+      // Container visibility changes add/remove whole column groups. Updating the
+      // React prop alone can leave a previously removed group out of the displayed
+      // tree until another grid update, so apply structural changes explicitly.
+      api.setGridOption("columnDefs", columnDefs);
+      appliedColumnStructureRef.current = columnStructure;
+    }
+
     const pinnedSet = new Set(pinnedBaseColumnLayout.ids);
     api.applyColumnState({
       state: (api.getColumns() ?? []).map((column) => ({
