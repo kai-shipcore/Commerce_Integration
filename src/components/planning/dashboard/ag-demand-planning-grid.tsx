@@ -2175,7 +2175,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [buildContainerSaveSummary, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveQty, skuCellNotes, subColumns, updateEta]);
+  }, [buildContainerSaveSummary, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveQty, skuCellNotes, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
