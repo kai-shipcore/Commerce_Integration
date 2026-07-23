@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_stats_custom (
     total_avg_real NUMERIC(12, 6)  NOT NULL DEFAULT 0,
     total_avg_curr NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
+    oos_days_90d        INTEGER        NOT NULL DEFAULT 0,
+    oos_lost_demand_90d NUMERIC(12, 2),
+
     calculated_at  TIMESTAMPTZ,
     created_at     TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ     NOT NULL DEFAULT NOW()

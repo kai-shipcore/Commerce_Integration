@@ -1,7 +1,9 @@
 "use client";
 
-import { RotateCcw, Settings } from "lucide-react";
+import { useState, type CSSProperties } from "react";
+import { RotateCcw, Settings, Check } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { apiPath } from "@/lib/api-path";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_SEASONAL_FACTORS,
@@ -15,6 +17,14 @@ import {
   type SalesWindowWeightKey,
   type SalesWindowWeights,
 } from "@/lib/planning/sales-window-weights";
+import {
+  DEFAULT_OOS_LOST_DEMAND_WEIGHTS,
+  OOS_LOST_DEMAND_CATEGORIES,
+  OOS_LOST_DEMAND_MARKETPLACES,
+  type CategoryKey,
+  type Marketplace,
+  type OosLostDemandWeights,
+} from "@/lib/planning/oos-lost-demand-weights";
 import type { GradientTier } from "@/lib/planning/gradient-config";
 import { urgStatus } from "./columns";
 import type { DemandRow } from "@/types/demand-planning";
@@ -26,6 +36,9 @@ interface StatusBarProps {
   onSeasonalFactorsChange: (next: SeasonalFactors) => void;
   salesWindowWeights: SalesWindowWeights;
   onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
+  oosLostDemandWeights?: OosLostDemandWeights;
+  onOosLostDemandWeightsChange?: (next: OosLostDemandWeights) => void;
+  onApplyAndSync?: () => void;
   gradient?: GradientTier[];
   gradientSC?: GradientTier[];
   onGradientChange?: (next: GradientTier[]) => void;
@@ -39,6 +52,9 @@ export function StatusBar({
   onSeasonalFactorsChange,
   salesWindowWeights,
   onSalesWindowWeightsChange,
+  oosLostDemandWeights = DEFAULT_OOS_LOST_DEMAND_WEIGHTS,
+  onOosLostDemandWeightsChange,
+  onApplyAndSync,
 }: StatusBarProps) {
   const { pick } = useI18n();
   const crit  = rows.filter((r) => urgStatus(r) === "crit").length;
@@ -76,6 +92,9 @@ export function StatusBar({
         onChange={onSeasonalFactorsChange}
         salesWindowWeights={salesWindowWeights}
         onSalesWindowWeightsChange={onSalesWindowWeightsChange}
+        oosLostDemandWeights={oosLostDemandWeights}
+        onOosLostDemandWeightsChange={onOosLostDemandWeightsChange}
+        onApplyAndSync={onApplyAndSync}
       />
     </div>
   );
@@ -99,32 +118,113 @@ function SbItem({ label, value, color }: { label: string; value: string | number
   );
 }
 
+const inputStyle: CSSProperties = {
+  width: 64,
+  height: 28,
+  boxSizing: "border-box",
+  border: "1px solid #CBD5E1",
+  borderRadius: 4,
+  background: "#F8FAFC",
+  color: "#1E293B",
+  padding: "2px 6px",
+  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+  fontSize: 12,
+};
+
+const restoreButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  border: "1px solid #CBD5E1",
+  borderRadius: 4,
+  background: "#fff",
+  color: "#475569",
+  cursor: "pointer",
+  padding: "5px 10px",
+  fontSize: 12,
+  fontWeight: 600,
+};
+
 function SeasonalFactorSettings({
   factors,
   onChange,
   salesWindowWeights,
   onSalesWindowWeightsChange,
+  oosLostDemandWeights,
+  onOosLostDemandWeightsChange,
+  onApplyAndSync,
 }: {
   factors: SeasonalFactors;
   onChange: (next: SeasonalFactors) => void;
   salesWindowWeights: SalesWindowWeights;
   onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
+  oosLostDemandWeights: OosLostDemandWeights;
+  onOosLostDemandWeightsChange?: (next: OosLostDemandWeights) => void;
+  onApplyAndSync?: () => void;
 }) {
   const { pick } = useI18n();
+
+  // Pending edits — inputs write here, not to the committed props. Changes only
+  // take effect (persist + trigger a re-sync) when "적용 및 동기화" is clicked.
+  const [pendingFactors, setPendingFactors] = useState(factors);
+  const [pendingSalesWeights, setPendingSalesWeights] = useState(salesWindowWeights);
+  const [pendingOosWeights, setPendingOosWeights] = useState(oosLostDemandWeights);
+  // Live preview of what the server would auto-compute for any non-overridden
+  // (null) OOS weight cell — refetched every time the popover opens.
+  const [autoOosWeights, setAutoOosWeights] = useState<Record<CategoryKey, Record<Marketplace, number>> | null>(null);
+  const [justApplied, setJustApplied] = useState(false);
+
+  function handleOpenChange(open: boolean) {
+    if (!open) return;
+    // Discard any unapplied edits from the last time this was open, and pull fresh committed values.
+    setPendingFactors(factors);
+    setPendingSalesWeights(salesWindowWeights);
+    setPendingOosWeights(oosLostDemandWeights);
+    setJustApplied(false);
+    fetch(apiPath("/api/planning/stats/oos-lost-demand-weights"))
+      .then((res) => res.json())
+      .then((json: { success: boolean; weights?: Record<CategoryKey, Record<Marketplace, number>> }) => {
+        if (json.success && json.weights) setAutoOosWeights(json.weights);
+      })
+      .catch(() => {});
+  }
+
   function updateFactor(key: SeasonalFactorKey, rawValue: string) {
     const value = Number(rawValue);
     if (!Number.isFinite(value) || value < 0) return;
-    onChange({ ...factors, [key]: value });
+    setPendingFactors({ ...pendingFactors, [key]: value });
   }
   function updateSalesWeight(key: SalesWindowWeightKey, rawValue: string) {
     const value = Number(rawValue);
     if (!Number.isFinite(value) || value < 0) return;
-    onSalesWindowWeightsChange({ ...salesWindowWeights, [key]: value / 100 });
+    setPendingSalesWeights({ ...pendingSalesWeights, [key]: value / 100 });
   }
-  const salesWeightTotal = SALES_WINDOW_WEIGHT_FIELDS.reduce((sum, { key }) => sum + salesWindowWeights[key], 0);
+  const salesWeightTotal = SALES_WINDOW_WEIGHT_FIELDS.reduce((sum, { key }) => sum + pendingSalesWeights[key], 0);
+
+  function updateOosLostDemandWeight(category: CategoryKey, marketplace: Marketplace, rawValue: string) {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value < 0) return;
+    setPendingOosWeights({
+      ...pendingOosWeights,
+      [category]: { ...pendingOosWeights[category], [marketplace]: value / 100 },
+    });
+  }
+  function displayedOosWeight(category: CategoryKey, marketplace: Marketplace): number {
+    const override = pendingOosWeights[category][marketplace];
+    if (override !== null) return override;
+    return autoOosWeights?.[category]?.[marketplace] ?? 0;
+  }
+
+  function handleApplyAndSync() {
+    onChange(pendingFactors);
+    onSalesWindowWeightsChange(pendingSalesWeights);
+    onOosLostDemandWeightsChange?.(pendingOosWeights);
+    setJustApplied(true);
+    onApplyAndSync?.();
+  }
 
   return (
-    <Popover>
+    <Popover onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -147,7 +247,7 @@ function SeasonalFactorSettings({
           <Settings size={14} strokeWidth={2} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" style={{ width: "min(380px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
+      <PopoverContent align="end" style={{ width: "min(560px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>{pick("시즌지수 설정", "Planning Settings")}</div>
@@ -202,42 +302,15 @@ function SeasonalFactorSettings({
                     type="number"
                     min={0}
                     step={0.05}
-                    value={factors[key]}
+                    value={pendingFactors[key]}
                     onChange={(event) => updateFactor(key, event.target.value)}
-                    style={{
-                      width: 64,
-                      height: 28,
-                      boxSizing: "border-box",
-                      border: "1px solid #CBD5E1",
-                      borderRadius: 4,
-                      background: "#F8FAFC",
-                      color: "#1E293B",
-                      padding: "2px 6px",
-                      fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-                      fontSize: 12,
-                    }}
+                    style={inputStyle}
                   />
                 </label>
               ))}
             </div>
             <div style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={() => onChange(DEFAULT_SEASONAL_FACTORS)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  border: "1px solid #CBD5E1",
-                  borderRadius: 4,
-                  background: "#fff",
-                  color: "#475569",
-                  cursor: "pointer",
-                  padding: "5px 10px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
+              <button type="button" onClick={() => setPendingFactors(DEFAULT_SEASONAL_FACTORS)} style={restoreButtonStyle}>
                 <RotateCcw size={13} />
                 {pick("기본값 복원", "Restore Defaults")}
               </button>
@@ -260,47 +333,90 @@ function SeasonalFactorSettings({
                     min={0}
                     max={100}
                     step={1}
-                    value={Number((salesWindowWeights[key] * 100).toFixed(2))}
+                    value={Number((pendingSalesWeights[key] * 100).toFixed(2))}
                     onChange={(event) => updateSalesWeight(key, event.target.value)}
-                    style={{
-                      width: 64,
-                      height: 28,
-                      boxSizing: "border-box",
-                      border: "1px solid #CBD5E1",
-                      borderRadius: 4,
-                      background: "#F8FAFC",
-                      color: "#1E293B",
-                      padding: "2px 6px",
-                      fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-                      fontSize: 12,
-                    }}
+                    style={inputStyle}
                   />
                   <span style={{ fontSize: 12, color: "#64748B" }}>%</span>
                 </label>
               ))}
             </div>
             <div style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={() => onSalesWindowWeightsChange(DEFAULT_SALES_WINDOW_WEIGHTS)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  border: "1px solid #CBD5E1",
-                  borderRadius: 4,
-                  background: "#fff",
-                  color: "#475569",
-                  cursor: "pointer",
-                  padding: "5px 10px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
+              <button type="button" onClick={() => setPendingSalesWeights(DEFAULT_SALES_WINDOW_WEIGHTS)} style={restoreButtonStyle}>
                 <RotateCcw size={13} />
                 {pick("판매 비중 기본값 복원", "Restore Sales Defaults")}
               </button>
             </div>
+          </div>
+
+          <div style={{ padding: "14px 16px", borderTop: "1px solid #E2E8F0" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>
+              {pick("OOS 손실수요 마켓 비중", "OOS Lost-Demand Marketplace Weights")}
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.4, color: "#64748B", marginBottom: 10 }}>
+              {pick(
+                "비워두면(자동) 최근 90일 판매량 기준으로 매 동기화 시 자동 계산됩니다. 직접 값을 입력하면 그 값을 그대로 씁니다.",
+                "Left as auto, this is recomputed every sync from trailing 90-day sales. Enter a value to override it.",
+              )}
+            </div>
+            {OOS_LOST_DEMAND_CATEGORIES.map(({ key: category, label: categoryLabel }) => (
+              <div key={category} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginBottom: 6 }}>{categoryLabel} ({category})</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  {OOS_LOST_DEMAND_MARKETPLACES.map(({ key: marketplace, label: marketplaceLabel }) => {
+                    const isOverridden = pendingOosWeights[category][marketplace] !== null;
+                    return (
+                      <label key={marketplace} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ width: 48, fontSize: 12, fontWeight: 700, color: "#475569", whiteSpace: "nowrap" }}>{marketplaceLabel}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={Number((displayedOosWeight(category, marketplace) * 100).toFixed(2))}
+                          onChange={(event) => updateOosLostDemandWeight(category, marketplace, event.target.value)}
+                          style={{ ...inputStyle, width: 78, color: isOverridden ? "#1E293B" : "#94A3B8" }}
+                          title={isOverridden ? pick("수동 오버라이드", "Manual override") : pick("자동 계산값", "Auto-computed")}
+                        />
+                        <span style={{ fontSize: 12, color: "#64748B" }}>%</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div style={{ marginTop: 4 }}>
+              <button type="button" onClick={() => setPendingOosWeights(DEFAULT_OOS_LOST_DEMAND_WEIGHTS)} style={restoreButtonStyle}>
+                <RotateCcw size={13} />
+                {pick("자동계산으로 복원", "Restore to Auto")}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ padding: "14px 16px", borderTop: "1px solid #E2E8F0" }}>
+            <PopoverClose asChild>
+              <button
+                type="button"
+                onClick={handleApplyAndSync}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  width: "100%",
+                  border: "none",
+                  borderRadius: 4,
+                  background: "#1A1917",
+                  color: "#fff",
+                  cursor: "pointer",
+                  padding: "9px 10px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {justApplied ? <Check size={14} /> : null}
+                {pick("적용 및 동기화", "Apply & Sync")}
+              </button>
+            </PopoverClose>
           </div>
         </div>
       </PopoverContent>

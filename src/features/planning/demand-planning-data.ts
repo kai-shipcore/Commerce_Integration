@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, salesWindowWeightsParam, type SalesWindowWeights } from "@/lib/planning/sales-window-weights";
+import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], pinned_rows: [], last_sync: null };
 const dashboardMemoryCache = new Map<string, DemandPlanningData>();
@@ -26,6 +27,7 @@ export function useDemandPlanningData(
   includeDrafts = false,
   category?: CategoryFilter,
   salesWindowWeights: SalesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
+  oosLostDemandWeights: OosLostDemandWeights = DEFAULT_OOS_LOST_DEMAND_WEIGHTS,
 ): DemandPlanningDataState {
   const [data, setData] = useState<DemandPlanningData>(EMPTY);
   const [loading, setLoading] = useState(false);
@@ -34,6 +36,7 @@ export function useDemandPlanningData(
   const [error, setError] = useState<string | null>(null);
   const dataScopeRef = useRef<string>("");
   const containerDetailsInFlightRef = useRef<string | null>(null);
+  const syncInFlightRef = useRef(false);
 
   const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category ?? "all"}|${JSON.stringify(salesWindowWeights)}`;
 
@@ -49,7 +52,9 @@ export function useDemandPlanningData(
       setError(null);
     }
 
-    if (!cachedData) setLoading(true);
+    // Sync clicks must show the loading state even when cached data already exists —
+    // otherwise the Sync button never disables and can be double-clicked mid-refresh.
+    if (!cachedData || withRefresh) setLoading(true);
     setError(null);
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
@@ -61,7 +66,7 @@ export function useDemandPlanningData(
       ? fetch(apiPath("/api/planning/stats/refresh"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ salesWindowWeights }),
+          body: JSON.stringify({ salesWindowWeights, oosLostDemandWeights }),
         }).then((res) => {
           if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
           return fetch(dashUrl);
@@ -102,6 +107,7 @@ export function useDemandPlanningData(
             fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0,
             west_fbm_30d: 0, east_fbm_30d: 0, fba_30d: 0, total_30d: 0,
             total_avg_prev: 0, total_avg_real: 0, total_avg_curr: 0,
+            oos_days_90d: null, oos_lost_demand_90d: null,
             total_inbound_qty: null, containers_list: null, next_eta: null, sod: null,
             containers: {},
           }));
@@ -129,6 +135,7 @@ export function useDemandPlanningData(
         setError(err instanceof Error ? err.message : "Network error");
       })
       .finally(() => {
+        if (withRefresh) syncInFlightRef.current = false;
         if (!cancelled) setLoading(false);
       });
 
@@ -142,8 +149,13 @@ export function useDemandPlanningData(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode, date, and inbound scope.
   }, [mode, asOfDate, includeDrafts, category, salesWindowWeights]);
 
-  // Sync button: refresh stats first, then load
-  function reload() { fetchDashboard(true); }
+  // Sync button: refresh stats first, then load. Ref guard blocks a second click
+  // firing before the disabled/loading state has re-rendered onto the button.
+  function reload() {
+    if (syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
+    fetchDashboard(true);
+  }
 
   function loadContainerDetails() {
     const requestKey = scopeKey();

@@ -2,6 +2,12 @@
 // Step 1: inventory — reads ecommerce_data.coverland_inventory_by_warehouse (lookup pool) and upserts
 //         west_stock, east_stock, total_stock, back, and per-warehouse stocks into shipcore.fc_stats.
 //         Warehouse mapping: Fullerton+Canary → west, TTM Group+TTM Group Jefferson → east.
+// Step 1b: OOS episodes — derives OOS start/end date pairs from
+//          ecommerce_data.vw_coverland_inventory_history (lookup pool, trailing 120 days)
+//          via LAG/LEAD, and upserts them into shipcore.fc_inventory_history_snapshot (primary).
+// Step 4: OOS 90-day aggregation — reads only the local episodes from Step 1b (primary DB only),
+//         clips each episode to the trailing 90-day window, and upserts oos_days_90d into
+//         fc_stats/fc_stats_custom.
 // Step 2: sales velocity — reads both snapshots; sales_status derived from is_custom column:
 //         is_custom = 'Y' → 'Custom', is_custom = 'N' → 'Original'
 //         fc_velocity_link_snapshot → fc_stats, fc_velocity_custom_snapshot → fc_stats_custom
@@ -20,6 +26,7 @@ import {
   forecastCategoryCodeForSku,
 } from "@/lib/planning/forecast-calculations";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, normalizeSalesWindowWeights } from "@/lib/planning/sales-window-weights";
+import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, normalizeOosLostDemandWeights, type CategoryKey, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -33,10 +40,11 @@ function planningDateQuery(sql: string): string {
 
 async function batchUpsert(
   primary: ReturnType<typeof getPrimaryPool>,
-  table: "shipcore.fc_stats" | "shipcore.fc_stats_custom",
+  table: "shipcore.fc_stats" | "shipcore.fc_stats_custom" | "shipcore.fc_inventory_history_snapshot",
   rows: Record<string, unknown>[],
   columns: string[],
   updateSet: string,
+  conflictCols: string[] = ["master_sku"],
 ) {
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch  = rows.slice(i, i + BATCH);
@@ -50,7 +58,7 @@ async function batchUpsert(
     await primary.query(
       `INSERT INTO ${table} (${columns.join(", ")})
        VALUES ${values}
-       ON CONFLICT (master_sku) DO UPDATE SET ${updateSet}`,
+       ON CONFLICT (${conflictCols.join(", ")}) DO UPDATE SET ${updateSet}`,
       params,
     );
   }
@@ -60,10 +68,13 @@ export async function POST(request: Request) {
   try {
     const lookup  = getLookupPool();
     const primary = getPrimaryPool();
-    const requestBody = await request.json().catch(() => null) as { salesWindowWeights?: unknown } | null;
+    const requestBody = await request.json().catch(() => null) as { salesWindowWeights?: unknown; oosLostDemandWeights?: unknown } | null;
     const salesWindowWeights = requestBody?.salesWindowWeights
       ? normalizeSalesWindowWeights(requestBody.salesWindowWeights)
       : DEFAULT_SALES_WINDOW_WEIGHTS;
+    const oosLostDemandWeights: OosLostDemandWeights = requestBody?.oosLostDemandWeights
+      ? normalizeOosLostDemandWeights(requestBody.oosLostDemandWeights)
+      : DEFAULT_OOS_LOST_DEMAND_WEIGHTS;
 
     if (!lookup) {
       return NextResponse.json(
@@ -141,6 +152,218 @@ export async function POST(request: Request) {
     await Promise.all([
       batchUpsert(primary, "shipcore.fc_stats",        invRows, invCols, invUpdate),
       batchUpsert(primary, "shipcore.fc_stats_custom", invRows, invCols, invUpdate),
+    ]);
+
+    // ── Step 1b: OOS episodes from vw_coverland_inventory_history ───────────
+    // Stores start/end date pairs (not a raw daily copy) — far fewer rows than a
+    // per-day snapshot, and Step 4's rollup becomes a simple date-range sum.
+    // NOTE: the LEAD() must run over ALL transitions (both OOS-start and
+    // recovery-start rows), not just the OOS rows — a WHERE filter runs before
+    // window functions in SQL's logical order, so filtering to OOS rows first
+    // would make LEAD skip past the recovery straight to the *next* OOS episode.
+    const oosEpisodeResult = await lookup.query<{
+      master_sku: string;
+      oos_started_on: string;
+      back_in_stock_on: string | null;
+    }>(`
+      WITH daily AS (
+        SELECT
+          BTRIM(master_sku) AS master_sku,
+          snapshot_date,
+          CASE WHEN COALESCE(available, 0) > 0 THEN 'IN STOCK' ELSE 'OUT OF STOCK' END AS status
+        FROM ecommerce_data.vw_coverland_inventory_history
+        WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
+          AND snapshot_date >= CURRENT_DATE - 120
+      ),
+      tagged AS (
+        SELECT master_sku, snapshot_date, status,
+               LAG(status) OVER (PARTITION BY master_sku ORDER BY snapshot_date) AS prev_status
+        FROM daily
+      ),
+      transitions AS (
+        SELECT * FROM tagged WHERE prev_status IS DISTINCT FROM status
+      ),
+      episodes AS (
+        SELECT master_sku, snapshot_date AS oos_started_on, status,
+               LEAD(snapshot_date) OVER (PARTITION BY master_sku ORDER BY snapshot_date) AS back_in_stock_on
+        FROM transitions
+      )
+      SELECT master_sku, oos_started_on, back_in_stock_on
+      FROM episodes
+      WHERE status = 'OUT OF STOCK'
+    `);
+    const oosEpisodeRows = oosEpisodeResult.rows.map((r) => ({
+      master_sku: r.master_sku,
+      oos_started_on: r.oos_started_on,
+      back_in_stock_on: r.back_in_stock_on,
+      synced_at: new Date(),
+    })) as Record<string, unknown>[];
+    await batchUpsert(
+      primary,
+      "shipcore.fc_inventory_history_snapshot",
+      oosEpisodeRows,
+      ["master_sku", "oos_started_on", "back_in_stock_on", "synced_at"],
+      `back_in_stock_on = EXCLUDED.back_in_stock_on,
+       synced_at        = EXCLUDED.synced_at`,
+      ["master_sku", "oos_started_on"],
+    );
+
+    // ── Step 4: OOS days in the last 90 days (primary DB only) ──────────────
+    // Clips each episode to the trailing 90-day window and sums the overlap —
+    // no gap-filling needed since episodes already encode start/end directly.
+    const oosAggResult = await primary.query<{ master_sku: string; oos_days_90d: number }>(`
+      SELECT master_sku,
+             SUM(
+               GREATEST(0,
+                 LEAST(COALESCE(back_in_stock_on, CURRENT_DATE), CURRENT_DATE)
+                 - GREATEST(oos_started_on, CURRENT_DATE - 89)
+               )
+             )::int AS oos_days_90d
+      FROM shipcore.fc_inventory_history_snapshot
+      GROUP BY master_sku
+    `);
+    const oosAggRows = oosAggResult.rows as Record<string, unknown>[];
+    const oosAggCols = ["master_sku", "oos_days_90d"];
+    const oosAggUpdate = `oos_days_90d = EXCLUDED.oos_days_90d, updated_at = NOW()`;
+    await Promise.all([
+      batchUpsert(primary, "shipcore.fc_stats",        oosAggRows, oosAggCols, oosAggUpdate),
+      batchUpsert(primary, "shipcore.fc_stats_custom", oosAggRows, oosAggCols, oosAggUpdate),
+    ]);
+
+    // ── Step 5: OOS lost demand (primary DB only) ────────────────────────────
+    // Shopify has preorder, so its preorder sales during an OOS episode reflect
+    // real demand that existed even with zero physical stock. Non-Shopify
+    // marketplaces (Amazon, eBay, Walmart) have no preorder mechanism, so their
+    // demand is invisible during OOS. Estimate: apply a per-category weight
+    // directly to Shopify's in-episode PREORDER sales only (regular 'sales'-type
+    // Shopify orders during the episode are excluded, since those aren't
+    // evidence of stock-out-driven demand), clipped to the trailing 90-day
+    // window (same clip logic as Step 4).
+    //
+    // The weight itself defaults to an auto-computed ratio — recomputed fresh
+    // every sync from each category's trailing-90-day sales (marketplace units
+    // / Shopify units, e.g. Car Cover Amazon ~3x Shopify, Seat Cover the
+    // opposite) — but the client can override any specific category+marketplace
+    // cell via Planning Settings; a non-null override always wins over auto-calc.
+    // Weight resolution + multiplication happens in JS (not SQL) so per-episode
+    // negative differences can be floored to 0 individually before summing.
+    const SHOPIFY_CHANNELS = `'Coverland B2C','Coverland B2B','Icarcover'`;
+    const AMAZON_CHANNELS  = `'Amazon FBA','Amazon FBM'`;
+    const EBAY_CHANNELS    = `'Auto_Armor','Advance_Parts'`;
+    type CategoryRatioRow = { category_code: string; shopify_90d: number; amazon_90d: number; ebay_90d: number; walmart_90d: number };
+    function categoryChannelRatioQuery(qtyCol: "link_qty" | "custom_qty", skuCol: "link_master_sku" | "custom_master_sku", table: string) {
+      return `
+        SELECT
+          COALESCE(p.category_code, 'SC') AS category_code,
+          SUM(CASE WHEN v.channel IN (${SHOPIFY_CHANNELS}) AND v.order_date >= CURRENT_DATE - 91 AND v.order_date <= CURRENT_DATE - 2 THEN v.${qtyCol} ELSE 0 END)::numeric AS shopify_90d,
+          SUM(CASE WHEN v.channel IN (${AMAZON_CHANNELS})  AND v.order_date >= CURRENT_DATE - 91 AND v.order_date <= CURRENT_DATE - 2 THEN v.${qtyCol} ELSE 0 END)::numeric AS amazon_90d,
+          SUM(CASE WHEN v.channel IN (${EBAY_CHANNELS})    AND v.order_date >= CURRENT_DATE - 91 AND v.order_date <= CURRENT_DATE - 2 THEN v.${qtyCol} ELSE 0 END)::numeric AS ebay_90d,
+          SUM(CASE WHEN v.channel = 'Walmart'              AND v.order_date >= CURRENT_DATE - 91 AND v.order_date <= CURRENT_DATE - 2 THEN v.${qtyCol} ELSE 0 END)::numeric AS walmart_90d
+        FROM ${table} v
+        LEFT JOIN shipcore.fc_products p ON p.master_sku = v.${skuCol}
+        GROUP BY COALESCE(p.category_code, 'SC')
+      `;
+    }
+    function autoWeightsByCategory(rows: CategoryRatioRow[]): Record<string, { amazon: number; ebay: number; walmart: number }> {
+      const result: Record<string, { amazon: number; ebay: number; walmart: number }> = {};
+      for (const row of rows) {
+        const shopify90d = Math.max(Number(row.shopify_90d), 1); // avoid /0 only — low volume is intentionally left as-is
+        result[row.category_code] = {
+          amazon: Number(row.amazon_90d) / shopify90d,
+          ebay: Number(row.ebay_90d) / shopify90d,
+          walmart: Number(row.walmart_90d) / shopify90d,
+        };
+      }
+      return result;
+    }
+    function oosLostDemandRawQuery(qtyCol: "link_qty" | "custom_qty", skuCol: "link_master_sku" | "custom_master_sku", table: string) {
+      return `
+        WITH episode_clip AS (
+          SELECT master_sku,
+            GREATEST(oos_started_on, CURRENT_DATE - 89) AS clip_start,
+            LEAST(COALESCE(back_in_stock_on, CURRENT_DATE), CURRENT_DATE) AS clip_end
+          FROM shipcore.fc_inventory_history_snapshot
+        ),
+        episode_days AS (
+          -- No WHERE filter here: episodes outside the 90-day window are kept
+          -- (clipped_days floors to 0, BETWEEN with clip_start>clip_end matches
+          -- nothing) so a SKU whose OOS has aged out still resolves to a real
+          -- row worth 0, instead of vanishing and leaving a stale prior value.
+          SELECT *, GREATEST(0, clip_end - clip_start) AS clipped_days
+          FROM episode_clip
+        )
+        SELECT
+          ed.master_sku,
+          COALESCE(p.category_code, 'SC') AS category_code,
+          ed.clipped_days::int AS clipped_days,
+          COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
+            WHERE v.${skuCol} = ed.master_sku AND v.channel IN (${SHOPIFY_CHANNELS})
+              AND v.order_type = 'preorder'
+              AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS shopify_qty,
+          COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
+            WHERE v.${skuCol} = ed.master_sku AND v.channel IN (${AMAZON_CHANNELS})
+              AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS amazon_qty,
+          COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
+            WHERE v.${skuCol} = ed.master_sku AND v.channel IN (${EBAY_CHANNELS})
+              AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS ebay_qty,
+          COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
+            WHERE v.${skuCol} = ed.master_sku AND v.channel = 'Walmart'
+              AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS walmart_qty
+        FROM episode_days ed
+        LEFT JOIN shipcore.fc_products p ON p.master_sku = ed.master_sku
+      `;
+    }
+    type LostDemandRawRow = {
+      master_sku: string;
+      category_code: string;
+      clipped_days: number;
+      shopify_qty: number;
+      amazon_qty: number;
+      ebay_qty: number;
+      walmart_qty: number;
+    };
+    function computeLostDemandBySku(
+      rows: LostDemandRawRow[],
+      autoWeights: Record<string, { amazon: number; ebay: number; walmart: number }>,
+    ): Record<string, unknown>[] {
+      const totals = new Map<string, number>();
+      for (const row of rows) {
+        const cat: CategoryKey = row.category_code === "CC" || row.category_code === "FM" ? row.category_code : "SC";
+        const override = oosLostDemandWeights[cat];
+        const auto = autoWeights[cat] ?? { amazon: 0, ebay: 0, walmart: 0 };
+        const wAmazon  = override.amazon  ?? auto.amazon;
+        const wEbay    = override.ebay    ?? auto.ebay;
+        const wWalmart = override.walmart ?? auto.walmart;
+        const shopifyQty = Number(row.shopify_qty);
+        const lostAmazon  = Math.max(0, shopifyQty * wAmazon  - Number(row.amazon_qty));
+        const lostEbay    = Math.max(0, shopifyQty * wEbay    - Number(row.ebay_qty));
+        const lostWalmart = Math.max(0, shopifyQty * wWalmart - Number(row.walmart_qty));
+        totals.set(row.master_sku, (totals.get(row.master_sku) ?? 0) + lostAmazon + lostEbay + lostWalmart);
+      }
+      return Array.from(totals, ([master_sku, total]) => ({
+        master_sku,
+        oos_lost_demand_90d: Math.round(total * 100) / 100,
+      }));
+    }
+    const [lostDemandLinkResult, lostDemandCustomResult, linkRatioResult, customRatioResult] = await Promise.all([
+      primary.query<LostDemandRawRow>(
+        oosLostDemandRawQuery("link_qty", "link_master_sku", "shipcore.fc_velocity_link_snapshot"),
+      ),
+      primary.query<LostDemandRawRow>(
+        oosLostDemandRawQuery("custom_qty", "custom_master_sku", "shipcore.fc_velocity_custom_snapshot"),
+      ),
+      primary.query<CategoryRatioRow>(
+        categoryChannelRatioQuery("link_qty", "link_master_sku", "shipcore.fc_velocity_link_snapshot"),
+      ),
+      primary.query<CategoryRatioRow>(
+        categoryChannelRatioQuery("custom_qty", "custom_master_sku", "shipcore.fc_velocity_custom_snapshot"),
+      ),
+    ]);
+    const lostDemandCols = ["master_sku", "oos_lost_demand_90d"];
+    const lostDemandUpdate = `oos_lost_demand_90d = EXCLUDED.oos_lost_demand_90d, updated_at = NOW()`;
+    await Promise.all([
+      batchUpsert(primary, "shipcore.fc_stats",        computeLostDemandBySku(lostDemandLinkResult.rows,   autoWeightsByCategory(linkRatioResult.rows)),   lostDemandCols, lostDemandUpdate),
+      batchUpsert(primary, "shipcore.fc_stats_custom", computeLostDemandBySku(lostDemandCustomResult.rows, autoWeightsByCategory(customRatioResult.rows)), lostDemandCols, lostDemandUpdate),
     ]);
 
     // ── Step 2: Sales velocity ───────────────────────────────────────────────

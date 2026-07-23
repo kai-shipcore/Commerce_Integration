@@ -71,6 +71,10 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_stats (
     total_avg_real NUMERIC(12, 6)  NOT NULL DEFAULT 0,
     total_avg_curr NUMERIC(12, 6)  NOT NULL DEFAULT 0,
 
+    -- OOS history (trailing 90 days, from shipcore.fc_inventory_history_snapshot)
+    oos_days_90d        INTEGER        NOT NULL DEFAULT 0,
+    oos_lost_demand_90d NUMERIC(12, 2),
+
     -- Timestamp of last stats calculation run
     -- NULL means this row has never been calculated (shows zeros on dashboard)
     calculated_at  TIMESTAMPTZ,

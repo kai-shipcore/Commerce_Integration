@@ -12,6 +12,7 @@ export type ColumnGroupKey =
   | "fba"
   | "s30"
   | "tavg"
+  | "oos"
   | "inb"
   | "con";
 
@@ -97,6 +98,8 @@ export interface DemandRow {
   total_avg_prev: number;
   total_avg_real: number;
   total_avg_curr: number;
+  oos_days_90d: number | null;
+  oos_lost_demand_90d: number | null;
   cbm_per_unit?: number;
   case_qty?: number;
   moq?: number;

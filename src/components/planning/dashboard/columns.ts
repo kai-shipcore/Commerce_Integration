@@ -9,6 +9,7 @@ export const TINT_COLORS: Record<string, string> = {
   "t-avg":     "#FFFEF0",
   "t-total":   "#F5FCFC",
   "t-inb":     "#FDF5FF",
+  "t-oos":     "#FFF5F5",
   "t-cn":      "#F0F9FF",
   "t-cn-life": "#EAF6FF",
   "t-cn-sod":  "#E5F3FF",
@@ -23,6 +24,7 @@ export const GROUP_HEADER_COLORS: Record<string, string> = {
   "gh-total":  "#182828",
   "gh-inb":    "#281828",
   "gh-con":    "#0D2535",
+  "gh-oos":    "#3A1414",
 };
 
 export const GROUP_LABELS: Record<string, string> = {
@@ -35,6 +37,7 @@ export const GROUP_LABELS: Record<string, string> = {
   fba:    "FBA Avg",
   s30:    "Sales 30D",
   tavg:   "Total Avg Daily",
+  oos:    "OOS (90D)",
   inb:    "입고 / 컨테이너 / SOD",
 };
 
@@ -46,6 +49,7 @@ export const GROUP_BTN_COLORS: Record<string, string> = {
   fba:    "#1E2A10",
   s30:    "#182828",
   tavg:   "#1A2818",
+  oos:    "#3A1414",
   inb:    "#281828",
   con:    "#0D2535",
 };
@@ -188,6 +192,9 @@ export const ALL_COLS: ColDef[] = [
   { id: "tavg_p", grp: "tavg", label: "T.Avg\n이전", w: 56, align: "num", tint: "t-total", gh: "gh-total", val: (r) => avgOrBlank(r.total_avg_prev), sortVal: (r) => r.total_avg_prev ?? -1 },
   { id: "tavg_r", grp: "tavg", label: "T.Avg\n실제", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => avgOrBlank(r.total_avg_real), sortVal: (r) => r.total_avg_real ?? -1 },
   { id: "tavg_c", grp: "tavg", label: "T.Avg\n현재", w: 56, align: "num", tint: "t-total", gh: "gh-total", bold: true, val: (r) => avgOrBlank(r.total_avg_curr), sortVal: (r) => r.total_avg_curr ?? -1 },
+  // OOS (90D)
+  { id: "oos_days", grp: "oos", label: "OOS\n기간",   w: 52, align: "num", tint: "t-oos", gh: "gh-oos", val: (r) => r.oos_days_90d ?? 0, sortVal: (r) => r.oos_days_90d ?? -1 },
+  { id: "oos_lost", grp: "oos", label: "OOS\n손실수요", w: 68, align: "num", tint: "t-oos", gh: "gh-oos", val: (r) => r.oos_lost_demand_90d ?? "", sortVal: (r) => r.oos_lost_demand_90d ?? -1 },
   // Inbound / SOD
   { id: "inb_qty",  grp: "inb", label: "Inbound\nQty",       w: 52,  align: "num",  tint: "t-inb", gh: "gh-inb", val: (r) => {
     const v = r.total_inbound_qty || 0;
@@ -207,7 +214,7 @@ export const ALL_COLS: ColDef[] = [
 // ── Column visibility / toolbar shared exports ───────────────────────────────
 
 export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
-  "stock","wsales","esales","wavg","eavg","fba","s30","tavg","inb","con",
+  "stock","wsales","esales","wavg","eavg","fba","s30","tavg","oos","inb","con",
 ];
 
 export const COMPACT_COLUMN_IDS = new Set<string>([
@@ -224,6 +231,7 @@ export const GROUP_BTN_LABELS: Record<string, string> = {
   fba:    "FBA Avg",
   s30:    "🗓 30D Sales",
   tavg:   "〜 Total Avg",
+  oos:    "OOS (90D)",
   inb:    "🚢 Inbound/SOD",
   con:    "📋 Container 컬럼",
 };

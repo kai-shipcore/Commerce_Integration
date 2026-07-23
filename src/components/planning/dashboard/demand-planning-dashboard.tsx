@@ -45,6 +45,13 @@ import {
   type SalesWindowWeights,
 } from "@/lib/planning/sales-window-weights";
 import {
+  DEFAULT_OOS_LOST_DEMAND_WEIGHTS,
+  OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY,
+  loadSavedOosLostDemandWeights,
+  normalizeOosLostDemandWeights,
+  type OosLostDemandWeights,
+} from "@/lib/planning/oos-lost-demand-weights";
+import {
   DEFAULT_GRADIENT,
   DEFAULT_GRADIENT_SC,
   GRADIENT_SC_STORAGE_KEY,
@@ -75,6 +82,7 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
   fba: true,
   s30: true,
   tavg: true,
+  oos: true,
   inb: true,
   con: false,
 };
@@ -306,6 +314,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       : "sc";
   });
   const [salesWindowWeights, setSalesWindowWeights] = useState<SalesWindowWeights>(DEFAULT_SALES_WINDOW_WEIGHTS);
+  const [oosLostDemandWeights, setOosLostDemandWeights] = useState<OosLostDemandWeights>(DEFAULT_OOS_LOST_DEMAND_WEIGHTS);
   const {
     data,
     loading,
@@ -314,7 +323,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     error: loadError,
     reload,
     loadContainerDetails,
-  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, false, categoryFilter, salesWindowWeights);
+  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, false, categoryFilter, salesWindowWeights, oosLostDemandWeights);
   const [isCategoryPending, startCategoryTransition] = useTransition();
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
@@ -467,6 +476,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setOosLostDemandWeights(loadSavedOosLostDemandWeights());
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setGradient(loadSavedGradient());
     setGradientSC(loadSavedGradientSC());
   }, []);
@@ -568,6 +582,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setSalesWindowWeights(normalized);
         }
 
+        // OOS lost-demand marketplace weights
+        const ldw = d[OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY];
+        if (ldw && typeof ldw === "object" && !Array.isArray(ldw)) {
+          const normalized = normalizeOosLostDemandWeights(ldw);
+          window.localStorage.setItem(OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
+          setOosLostDemandWeights(normalized);
+        }
+
         // Gradient tiers
         const gd = d[GRADIENT_STORAGE_KEY];
         if (Array.isArray(gd) && gd.length > 0) {
@@ -614,10 +636,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       },
       [SEASONAL_FACTORS_STORAGE_KEY]: seasonalFactors,
       [SALES_WINDOW_WEIGHTS_STORAGE_KEY]: salesWindowWeights,
+      [OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY]: oosLostDemandWeights,
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -720,6 +743,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const normalized = normalizeSalesWindowWeights(next);
     setSalesWindowWeights(normalized);
     window.localStorage.setItem(SALES_WINDOW_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
+  }, []);
+
+  const handleOosLostDemandWeightsChange = useCallback((next: OosLostDemandWeights) => {
+    const normalized = normalizeOosLostDemandWeights(next);
+    setOosLostDemandWeights(normalized);
+    window.localStorage.setItem(OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
   }, []);
 
   const handleGradientChange = useCallback((next: GradientTier[]) => {
@@ -1860,6 +1889,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onSeasonalFactorsChange={handleSeasonalFactorsChange}
           salesWindowWeights={salesWindowWeights}
           onSalesWindowWeightsChange={handleSalesWindowWeightsChange}
+          oosLostDemandWeights={oosLostDemandWeights}
+          onOosLostDemandWeightsChange={handleOosLostDemandWeightsChange}
+          onApplyAndSync={reload}
           gradient={gradient}
           gradientSC={gradientSC}
           onGradientChange={handleGradientChange}

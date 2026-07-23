@@ -212,7 +212,9 @@ export async function GET(req: Request) {
         COALESCE(s.total_30d,      0)::int                   AS total_30d,
         COALESCE(s.total_avg_prev, 0)::float8                AS total_avg_prev,
         COALESCE(s.total_avg_real, 0)::float8                AS total_avg_real,
-        COALESCE(s.total_avg_curr, 0)::float8                AS total_avg_curr
+        COALESCE(s.total_avg_curr, 0)::float8                AS total_avg_curr,
+        COALESCE(s.oos_days_90d,   0)::int                   AS oos_days_90d,
+        s.oos_lost_demand_90d::float8                        AS oos_lost_demand_90d
       FROM ${statsSource} s
       LEFT JOIN shipcore.fc_products p ON p.master_sku = s.master_sku
       LEFT JOIN (
@@ -549,6 +551,9 @@ export async function GET(req: Request) {
       const fba_avg_real   = Math.max(0.01, vel ? vel.fba_avg_real   : r.fba_avg_real   as number);
       const fba_avg_curr   = Math.max(0.01, vel ? vel._fba_curr      : r.fba_avg_curr   as number);
       const fba_30d        = vel ? vel.fba_30d        : r.fba_30d        as number;
+      // OOS history has no asOf/historical variant yet — always reads the latest refresh.
+      const oos_days_90d       = (r.oos_days_90d as number | null) ?? null;
+      const oos_lost_demand_90d = (r.oos_lost_demand_90d as number | null) ?? null;
       // Derived 30d/avg totals
       const west_fbm_30d = fbmThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d, salesWindowWeights);
       const east_fbm_30d = fbmThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d, salesWindowWeights);
@@ -715,6 +720,8 @@ export async function GET(req: Request) {
         total_avg_prev:    Math.round(total_avg_prev * 100) / 100,
         total_avg_real:    Math.round(total_avg_real * 100) / 100,
         total_avg_curr:    Math.round(total_avg_curr * 100) / 100,
+        oos_days_90d:         oos_days_90d,
+        oos_lost_demand_90d:  oos_lost_demand_90d,
         total_inbound_qty: r.total_inbound_qty,
         containers_list:   r.containers_list ?? null,
         next_eta:          r.next_eta ?? null,
@@ -794,6 +801,8 @@ export async function GET(req: Request) {
         total_avg_prev:   Math.round(tAvgPrev * 100) / 100,
         total_avg_real:   Math.round(tAvgReal * 100) / 100,
         total_avg_curr:   Math.round(tAvgCurr * 100) / 100,
+        oos_days_90d:        null,
+        oos_lost_demand_90d: null,
         total_inbound_qty: null,
         containers_list:  null,
         next_eta:         null,
