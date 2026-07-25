@@ -1,0 +1,107 @@
+<section class="page-section" id="en-velocity">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fefce8;font-size:28px">⚡</div>
+    <div>
+      <div class="menu-path">Menu › Velocity</div>
+      <h2>Sales Velocity</h2>
+      <p class="subtitle">Compare how many units sold by product, channel, mode, and time period.</p>
+    </div>
+  </div>
+
+  <div class="callout tip"><span class="callout-icon">💡</span><div><b>Important:</b> 90D, 30D, and 7D are <strong>total units sold</strong> in each period, not units per day. Divide by the number of days or compare short and long windows to understand the pace of demand.</div></div>
+
+  <h3>Quick Start — 3 Steps</h3>
+  <div class="card-grid col3">
+    <div class="card"><h4>① Choose a product</h4><p>Select <strong>Car Cover, Seat Cover, Floor Mat, or SWC</strong>.</p></div>
+    <div class="card"><h4>② Choose channels and mode</h4><p>Select the sales channels, then choose <strong>Sales, TTM, or Pre-Order</strong>.</p></div>
+    <div class="card"><h4>③ Compare periods</h4><p>Use 90D·60D·30D·15D·7D or enter exact date ranges.</p></div>
+  </div>
+
+  <h3>Top Controls</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Control</th><th>How to use it</th></tr>
+    <tr><td class="label">Item</td><td>Select one product family. The table layout changes automatically for that product.</td></tr>
+    <tr><td class="label">Channels</td><td>Select several channels at once. <span class="btn-label">All</span> selects or clears all eight channels.</td></tr>
+    <tr><td class="label">Mode</td><td><strong>Sales</strong> shows regular sales, <strong>TTM</strong> shows TTM-classified orders, and <strong>Pre-Order</strong> shows preorder demand.</td></tr>
+    <tr><td class="label">Period / Custom</td><td>Use rolling day windows or exact start and end dates. Up to five periods can be compared.</td></tr>
+    <tr><td class="label">UTC / LA Time</td><td>Controls which calendar date receives an order. Use <strong>LA Time</strong> for Los Angeles business-day reporting.</td></tr>
+    <tr><td class="label">Last synced</td><td>When the displayed snapshot was last refreshed from source orders.</td></tr>
+    <tr><td class="label">Sync</td><td>Rebuilds the latest velocity snapshot from Supabase after confirmation.</td></tr>
+  </table>
+
+  <h3>Sales Channels</h3>
+  <p>Selected channels are added together. Clear <span class="btn-label">All</span> and select only the channels you need for a channel-specific comparison.</p>
+  <div class="card-grid col2">
+    <div class="card"><h4>Direct Stores</h4><ul><li>Shopify Coverland B2B</li><li>Shopify Coverland B2C</li><li>Shopify Icarcover</li></ul></div>
+    <div class="card"><h4>Marketplaces</h4><ul><li>Amazon FBA / Amazon FBM</li><li>Ebay Auto_Armor / Ebay Advance_Parts</li><li>Walmart</li></ul></div>
+  </div>
+
+  <h3>Understanding Modes</h3>
+  <table class="feat-table">
+    <tr><th style="width:160px">Mode</th><th>Included data</th><th>Best use</th></tr>
+    <tr><td class="label">Sales</td><td>Orders classified as regular sales</td><td>Review recent demand for inventory planning</td></tr>
+    <tr><td class="label">TTM</td><td>Orders classified as TTM</td><td>Compare TTM demand separately from regular sales</td></tr>
+    <tr><td class="label">Pre-Order</td><td>Preorders and, where applicable, TTM preorders</td><td>Review reserved demand not treated as regular sales</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>Avoid accidental double counting:</b> Sales, TTM, and Pre-Order are different classifications. Do not add them together without confirming the business meaning.</div></div>
+
+  <h3>Setting Date Periods</h3>
+  <h3 class="sub">Period mode</h3>
+  <ul>
+    <li>The defaults are <strong>90D, 60D, 30D, 15D, and 7D</strong>.</li>
+    <li>Click a number to edit it, use × to remove it, or use <span class="btn-label">Add</span> for another period.</li>
+    <li>Keep between one and five periods. The reset arrow restores the defaults.</li>
+  </ul>
+  <h3 class="sub">Custom mode</h3>
+  <p>Enter exact start and end dates. Both dates are included, and the inclusive day count appears beside the range. This is useful for promotions, month-to-month comparisons, or other fixed business periods.</p>
+  <div class="callout tip"><span class="callout-icon">📅</span><div><b>Two-day reporting delay:</b> Default rolling windows end at <strong>today minus two days</strong> for data stability. If today is July 22, the default 7D window is July 14–20.</div></div>
+
+  <h3>Reading the Table</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Element</th><th>Meaning</th></tr>
+    <tr><td class="label">Master SKU</td><td>The master SKU used to aggregate sales.</td></tr>
+    <tr><td class="label">90D / 30D / 7D</td><td>Total units sold inside each period. Windows overlap, so do not add them together.</td></tr>
+    <tr><td class="label">Total row</td><td>The period total for all matching SKUs. It remains at the top while searching or sorting.</td></tr>
+    <tr><td class="label">0</td><td>No units sold in that period. Rows with zero across every visible section are hidden.</td></tr>
+    <tr><td class="label">-</td><td>No Link, Custom, or TTM ranked record is available in that display position.</td></tr>
+  </table>
+
+  <h3 class="sub">Simple trend example</h3>
+  <p>If a SKU shows 90D=900, 30D=360, and 7D=105, the approximate daily averages are 10, 12, and 15 units. Because the recent 7-day pace is above the 90-day pace, demand appears to be <strong>accelerating</strong>. Lower short-window averages may indicate slowing demand.</p>
+
+  <h3>Product-Specific Layouts</h3>
+  <table class="feat-table">
+    <tr><th style="width:170px">Product</th><th>Table layout</th></tr>
+    <tr><td class="label">Car Cover</td><td><strong>Total Sales</strong> and display-only <strong>Final Car Cover Sales</strong>. Final quantities are not separate recalculated sales; they repeat the same quantity using the final SKU presentation.</td></tr>
+    <tr><td class="label">Seat Cover</td><td>Link and Custom ranked results side by side. Pre-Order also adds a TTM Pre-Order section.</td></tr>
+    <tr><td class="label">Floor Mat</td><td>A simple Master SKU and Total Sales period layout.</td></tr>
+    <tr><td class="label">SWC</td><td>SKUs classified as SWC, displayed using the Car Cover-style period columns.</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>Seat Cover row alignment:</b> Link and Custom lists are independently ranked by quantity and placed side by side. Two SKUs on the same screen row are not guaranteed to map to each other.</div></div>
+
+  <h3>Search, Sort, and Pagination</h3>
+  <ul>
+    <li><strong>Search:</strong> Enter any part of a Master SKU. The Total row stays visible.</li>
+    <li><strong>Sort:</strong> Click Master SKU or a Link/Total period header to toggle ascending and descending order.</li>
+    <li><strong>Pages:</strong> The default is 100 rows per page. Use the controls below the table to change pages or page size.</li>
+  </ul>
+
+  <h3>Sync and Export</h3>
+  <table class="feat-table">
+    <tr><th style="width:200px">Action</th><th>What it does</th></tr>
+    <tr><td class="label">Sync</td><td>Reloads source orders and refreshes internal Velocity snapshots. The button is disabled during processing, and Last synced updates afterward.</td></tr>
+    <tr><td class="label">Export</td><td>Downloads all data for the current product, channels, mode, and periods to Excel.</td></tr>
+    <tr><td class="label">Export All</td><td>Downloads Sales, TTM, and Pre-Order side by side in one worksheet using the same product, channels, and periods.</td></tr>
+  </table>
+
+  <h3>Troubleshooting</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">Symptom</th><th>What to check</th></tr>
+    <tr><td class="label">No table</td><td>Make sure at least one channel is selected.</td></tr>
+    <tr><td class="label">Expected order is missing</td><td>Check product, channel, mode, period, and UTC/LA basis. Default windows exclude the latest two days.</td></tr>
+    <tr><td class="label">No Custom columns</td><td>Custom columns are shown only for Seat Cover.</td></tr>
+    <tr><td class="label">Data looks old</td><td>Check Last synced and run <span class="btn-label">Sync</span> if you have permission.</td></tr>
+    <tr><td class="label">Sync already in progress</td><td>Another user may be syncing. Wait briefly and try again.</td></tr>
+    <tr><td class="label">Date totals differ</td><td>UTC and LA Time have different midnight boundaries, so an order can fall on different dates.</td></tr>
+  </table>
+</section>

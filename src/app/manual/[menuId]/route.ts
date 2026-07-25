@@ -13,6 +13,31 @@ import { withBasePath } from "@/lib/api-path";
 
 const CONTENT_DIR = path.join(process.cwd(), "src/content/manual");
 
+function loadManualSection(
+  sectionId: string,
+  locale: "ko" | "en",
+  sections: Record<string, string>,
+  fallback: string,
+): string {
+  const overridePath = path.join(CONTENT_DIR, `${sectionId}.${locale}.html`);
+  if (fs.existsSync(overridePath)) {
+    return fs.readFileSync(overridePath, "utf-8");
+  }
+  const key = locale === "en" ? `en-${sectionId}` : sectionId;
+  return sections[key] ?? fallback;
+}
+
+function appendManualSupplement(sectionId: string, locale: "ko" | "en", html: string): string {
+  const supplementPath = path.join(CONTENT_DIR, `${sectionId}.supplement.${locale}.html`);
+  if (!fs.existsSync(supplementPath)) return html;
+
+  const supplement = fs.readFileSync(supplementPath, "utf-8");
+  const closingSectionIndex = html.lastIndexOf("</section>");
+  if (closingSectionIndex < 0) return `${html}${supplement}`;
+
+  return `${html.slice(0, closingSectionIndex)}${supplement}${html.slice(closingSectionIndex)}`;
+}
+
 function applyCurrentManualCorrections(sectionId: string, html: string): string {
   if (sectionId === "sku-master") {
     return html
@@ -84,8 +109,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     fs.readFileSync(path.join(CONTENT_DIR, "sections.json"), "utf-8"),
   );
   const fallback = "<section class=\"page-section\"><p>이 페이지의 도움말이 아직 준비되지 않았습니다.</p></section>";
-  const koHtml = applyCurrentManualCorrections(entry.sectionId, sections[entry.sectionId] ?? fallback);
-  const enHtml = applyCurrentManualCorrections(entry.sectionId, sections[`en-${entry.sectionId}`] ?? koHtml);
+  const correctedKoHtml = applyCurrentManualCorrections(
+    entry.sectionId,
+    loadManualSection(entry.sectionId, "ko", sections, fallback),
+  );
+  const koHtml = appendManualSupplement(
+    entry.sectionId,
+    "ko",
+    correctedKoHtml,
+  );
+  const enHtml = appendManualSupplement(
+    entry.sectionId,
+    "en",
+    applyCurrentManualCorrections(
+      entry.sectionId,
+      loadManualSection(entry.sectionId, "en", sections, correctedKoHtml),
+    ),
+  );
 
   const prepare = (html: string) => rewriteMediaPaths(rewriteScreenshotPaths(html, screenshotsUrl), mediaUrl);
 

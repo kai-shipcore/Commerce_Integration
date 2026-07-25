@@ -1,0 +1,71 @@
+
+  <h3 id="dp-oos-90d">⑦ OOS (90D) — Recent Stockout Duration and Lost Demand</h3>
+  <p><strong>OOS (Out of Stock)</strong> means a period when inventory was unavailable and sales opportunities may have been missed. This group shows how long each SKU was out of stock during the trailing 90 days and the estimated marketplace demand lost during those periods.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:180px">Column</th><th>Meaning</th><th>How to Read It</th></tr>
+    <tr>
+      <td class="label">OOS Period</td>
+      <td>The number of days within the trailing 90-day window when <strong>available inventory was zero or below</strong>.</td>
+      <td><code>0</code> means no recorded stockout period in the trailing 90 days. A larger number means the SKU remained out of stock longer.</td>
+    </tr>
+    <tr>
+      <td class="label">OOS Lost Demand</td>
+      <td>The quantity <strong>estimated</strong> to have been missed on Amazon, eBay, and Walmart, using Shopify preorders received during the stockout as the baseline.</td>
+      <td>This is not a count of actual canceled orders. It is an estimate based on channel sales ratios; a larger value suggests a greater potential sales impact from the stockout.</td>
+    </tr>
+  </table>
+
+  <h3 class="sub">When is the data updated?</h3>
+  <p>Run <span class="btn-label">Sync</span> in the top toolbar or <span class="btn-label">Apply &amp; Sync</span> in Planning Settings. The system then recalculates the values as follows:</p>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div><h4>Read inventory history</h4><p>The system finds each SKU's stockout and recovery dates from the trailing 120 days of inventory history. <code>available &gt; 0</code> is treated as in stock; all other values are treated as out of stock.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div><h4>Calculate the trailing 90-day OOS period</h4><p>Only the portion of each stockout episode that overlaps the trailing 90-day window is counted. An SKU that has not recovered is treated as remaining out of stock through today.</p></div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div><h4>Estimate lost demand</h4><p>Shopify preorders received during the stockout and category-level channel ratios are used to estimate expected Amazon, eBay, and Walmart sales. Actual marketplace sales during the same period are then subtracted.</p></div>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">🧮</span>
+    <div><b>Simple example:</b> Suppose a stockout period has 10 Shopify preorders and the category's Amazon ratio is 300% of Shopify. Expected Amazon sales are 30 units. If 5 units were actually sold on Amazon during the same period, Amazon lost demand is <strong>max(0, 10 × 3 − 5) = 25 units</strong>. eBay and Walmart are calculated the same way and then added together.</div>
+  </div>
+
+  <h3 class="sub">OOS Lost-Demand Marketplace Weights</h3>
+  <p>Open <span class="btn-label">⚙ Planning Settings</span> in the top toolbar to review or change the Amazon, eBay, and Walmart weights for each product category.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Setting</th><th>Behavior</th></tr>
+    <tr>
+      <td class="label">Auto</td>
+      <td>This is the default. For Seat Cover (SC), Car Cover (CC), and Floor Mat (FM), each marketplace ratio is recalculated on every Sync from trailing 90-day sales as <code>marketplace sales ÷ Shopify sales</code>. Auto values appear in light gray.</td>
+    </tr>
+    <tr>
+      <td class="label">Manual value</td>
+      <td>The percentage you enter replaces the auto value. For example, entering <code>300%</code> for Amazon means three units of expected Amazon demand for each Shopify preorder.</td>
+    </tr>
+    <tr>
+      <td class="label">Restore to Auto</td>
+      <td>Clears manual overrides and returns to ratios calculated from recent sales data.</td>
+    </tr>
+    <tr>
+      <td class="label">Apply &amp; Sync</td>
+      <td>Saves the current settings, recalculates OOS duration and lost demand, and updates the grid.</td>
+    </tr>
+  </table>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>OOS Lost Demand is an estimate.</strong> It uses inventory history, Shopify preorders, and recent channel ratios. It does not fully reproduce changes in advertising, pricing, seasonality, or marketplace exposure. Use it together with actual sales trends when making purchase decisions.</div>
+  </div>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>If the columns are hidden:</b> Open <span class="btn-label">⊞ Columns ▾</span>, then enable <strong>OOS Period</strong> and <strong>OOS Lost Demand</strong> under <strong>Column Visibility → OOS (90D)</strong>. Visibility changes are reflected in the grid immediately.</div>
+  </div>
