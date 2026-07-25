@@ -17,7 +17,8 @@ function serialize(p: object): object {
   return JSON.parse(JSON.stringify(p, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
 }
 
-const PartSkuCreateSchema = z.object({
+const CustomPartSkuSchema = z.object({
+  skuType: z.literal("Custom"),
   partName: z.string().min(1),
   make: z.string().min(1),
   makeAbbr: z.string().min(1),
@@ -27,6 +28,13 @@ const PartSkuCreateSchema = z.object({
   initial: z.string().min(1),
   side: z.enum(["D", "P", "MD", "MP", "Universal"]),
 });
+
+const UniversalPartSkuSchema = z.object({
+  skuType: z.literal("Universal"),
+  partName: z.string().min(1),
+});
+
+const PartSkuCreateSchema = z.discriminatedUnion("skuType", [CustomPartSkuSchema, UniversalPartSkuSchema]);
 
 export async function GET(request: NextRequest) {
   const denied = await guardPermission("part-sku-generator", "read");
@@ -38,19 +46,37 @@ export async function GET(request: NextRequest) {
     const make = searchParams.get("make");
     const model = searchParams.get("model");
 
+    // Universal SKUs have no make/model (they fit every vehicle), so they're always
+    // included alongside whatever Custom SKUs match the requested make/model.
+    const vehicleFilter =
+      make || model
+        ? {
+            OR: [
+              {
+                AND: [
+                  ...(make ? [{ make: { equals: make, mode: "insensitive" as const } }] : []),
+                  ...(model ? [{ model: { equals: model, mode: "insensitive" as const } }] : []),
+                ],
+              },
+              { skuType: "Universal" },
+            ],
+          }
+        : {};
+
     const partSkus = await prisma.partSku.findMany({
       where: {
-        ...(search
-          ? {
-              OR: [
-                { sku: { contains: search, mode: "insensitive" } },
-                { partName: { contains: search, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-        ...(activeParam !== null ? { isActive: activeParam === "true" } : {}),
-        ...(make ? { make: { equals: make, mode: "insensitive" } } : {}),
-        ...(model ? { model: { equals: model, mode: "insensitive" } } : {}),
+        AND: [
+          search
+            ? {
+                OR: [
+                  { sku: { contains: search, mode: "insensitive" } },
+                  { partName: { contains: search, mode: "insensitive" } },
+                ],
+              }
+            : {},
+          activeParam !== null ? { isActive: activeParam === "true" } : {},
+          vehicleFilter,
+        ],
       },
       orderBy: { createdAt: "desc" },
     });
@@ -72,15 +98,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = PartSkuCreateSchema.parse(body);
 
-    const skuSegments = [
-      validated.partName,
-      validated.makeAbbr,
-      validated.modelAbbr,
-      validated.code,
-      validated.initial,
-    ];
-    if (validated.side !== "Universal") skuSegments.push(validated.side);
-    const sku = skuSegments.join("-");
+    const sku =
+      validated.skuType === "Universal"
+        ? validated.partName.trim()
+        : [validated.partName, validated.makeAbbr, validated.modelAbbr, validated.code, validated.initial]
+            .concat(validated.side !== "Universal" ? [validated.side] : [])
+            .join("-");
 
     const existing = await prisma.partSku.findUnique({ where: { sku } });
     if (existing) {

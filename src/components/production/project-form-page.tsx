@@ -19,7 +19,16 @@ import {
 
 type AssignableUser = { id: string; name: string | null; email: string };
 type ProductionPartRecord = { id: string; partName: string; seatRow: string | null };
-type PartSkuRecord = { id: string; sku: string; partName: string; make: string; model: string; code: string; isActive: boolean };
+type PartSkuRecord = {
+  id: string;
+  sku: string;
+  partName: string;
+  skuType: string;
+  make: string | null;
+  model: string | null;
+  code: string | null;
+  isActive: boolean;
+};
 
 type ProjectPartRecord = {
   id: string;
@@ -219,7 +228,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       return;
     }
-    const toAdd = zonePartSkuOptions.filter((sku) => checkedSkuIds.has(sku.id) && !existingCodes.has(sku.code));
+    const toAdd = zonePartSkuOptions.filter((sku) => checkedSkuIds.has(sku.id) && !existingCodes.has(sku.code ?? ""));
     if (toAdd.length === 0) return;
 
     if (mode === "create") {
@@ -228,7 +237,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
         ...toAdd.map((sku) => ({
           tempId: makeTempId(),
           cab: "",
-          code: sku.code,
+          code: sku.code ?? "",
           status: "Pending",
           assignedToUserId: "",
           photoCount: 0,
@@ -246,7 +255,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
         const res = await fetch(apiPath(`/api/production/projects/${projectId}/parts`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: sku.code, status: "Pending" }),
+          body: JSON.stringify({ code: sku.code ?? "", status: "Pending" }),
         });
         const json = await res.json();
         if (json.success) {
@@ -547,7 +556,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
             ) : (
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 {zonePartSkuOptions.map((sku) => {
-                  const alreadyAdded = existingCodes.has(sku.code);
+                  const alreadyAdded = existingCodes.has(sku.code ?? "");
                   return (
                     <label
                       key={sku.id}
@@ -562,7 +571,7 @@ export function ProjectFormPage({ mode, productId, projectId }: Props) {
                       <span className="font-semibold">{sku.sku}</span>
                       <span className="truncate text-muted-foreground">{sku.partName}</span>
                       <span className="ml-auto shrink-0 rounded-md border border-[#e2dfd8] bg-[#f0eee9] px-1.5 py-0.5 text-xs text-muted-foreground">
-                        {sku.code}
+                        {sku.code ?? pick("유니버설", "Universal")}
                       </span>
                     </label>
                   );

@@ -26,13 +26,14 @@ type PartSkuRecord = {
   id: string;
   sku: string;
   partName: string;
-  make: string;
-  makeAbbr: string;
-  model: string;
-  modelAbbr: string;
-  code: string;
-  initial: string;
-  side: string;
+  skuType: string;
+  make: string | null;
+  makeAbbr: string | null;
+  model: string | null;
+  modelAbbr: string | null;
+  code: string | null;
+  initial: string | null;
+  side: string | null;
   createdByName: string | null;
   isActive: boolean;
 };
@@ -69,6 +70,7 @@ export function PartSkuGeneratorPage() {
 
   const [activeTab, setActiveTab] = useState<"generator" | "list">("generator");
 
+  const [skuMode, setSkuMode] = useState<"Custom" | "Universal">("Custom");
   const [partName, setPartName] = useState("");
   const [side, setSide] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -144,9 +146,11 @@ export function PartSkuGeneratorPage() {
     make.trim() && makeAbbr.trim() && model.trim() && modelAbbr.trim() && initial.trim()
   );
 
-  const skuPreview = sessionReady && partName && code && side
-    ? [partName, makeAbbr.trim(), modelAbbr.trim(), code, initial, ...(side === "Universal" ? [] : [side])].join("-")
-    : "";
+  const skuPreview = skuMode === "Universal"
+    ? partName.trim()
+    : sessionReady && partName && code && side
+      ? [partName, makeAbbr.trim(), modelAbbr.trim(), code, initial, ...(side === "Universal" ? [] : [side])].join("-")
+      : "";
 
   const selectedCodeDescription = codes.find((c) => c.code === code)?.description ?? "";
 
@@ -213,13 +217,14 @@ export function PartSkuGeneratorPage() {
       const haystack = [
         p.sku,
         p.partName,
-        p.make,
-        p.makeAbbr,
-        p.model,
-        p.modelAbbr,
-        p.code,
-        p.initial,
-        p.side,
+        p.skuType,
+        p.make ?? "",
+        p.makeAbbr ?? "",
+        p.model ?? "",
+        p.modelAbbr ?? "",
+        p.code ?? "",
+        p.initial ?? "",
+        p.side ?? "",
         p.createdByName ?? "",
         partSeatRowByName.get(p.partName) ?? "",
       ];
@@ -244,30 +249,41 @@ export function PartSkuGeneratorPage() {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       return;
     }
-    if (!sessionReady) {
-      window.alert(pick("Make/Model/Initial을 먼저 모두 입력하세요.", "Fill in Make/Model/Initial first."));
+    if (!partName) {
+      window.alert(pick("Part를 선택하세요.", "Select a Part."));
       return;
     }
-    if (!partName || !code || !side) {
-      window.alert(pick("Part/Code/Side를 선택하세요.", "Select a Part, Code, and Side."));
-      return;
+    if (skuMode === "Custom") {
+      if (!sessionReady) {
+        window.alert(pick("Make/Model/Initial을 먼저 모두 입력하세요.", "Fill in Make/Model/Initial first."));
+        return;
+      }
+      if (!code || !side) {
+        window.alert(pick("Code/Side를 선택하세요.", "Select a Code and Side."));
+        return;
+      }
     }
 
     setGenerating(true);
     try {
+      const body =
+        skuMode === "Universal"
+          ? { skuType: "Universal", partName }
+          : {
+              skuType: "Custom",
+              partName,
+              make,
+              makeAbbr: makeAbbr.trim(),
+              model,
+              modelAbbr: modelAbbr.trim(),
+              code,
+              initial,
+              side,
+            };
       const res = await fetch(apiPath("/api/production/part-skus"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          partName,
-          make,
-          makeAbbr: makeAbbr.trim(),
-          model,
-          modelAbbr: modelAbbr.trim(),
-          code,
-          initial,
-          side,
-        }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!json.success) {
@@ -360,6 +376,20 @@ export function PartSkuGeneratorPage() {
         </div>
 
         <div className="min-h-0 overflow-y-auto bg-[#f9f8f5] p-6">
+          <div className="mb-4 flex gap-1 rounded-lg border border-[#cccac4] bg-white p-1">
+            {(["Custom", "Universal"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setSkuMode(m)}
+                className={`flex-1 rounded-md py-1.5 text-sm font-semibold transition-colors ${
+                  skuMode === m ? "bg-[#1a5cdb] text-white" : "text-muted-foreground hover:bg-[#f0eee9]"
+                }`}
+              >
+                {m === "Custom" ? pick("커스텀", "Custom") : pick("유니버설", "Universal")}
+              </button>
+            ))}
+          </div>
           {selectedZone ? (
             <div className="flex flex-col gap-4">
               <div>
@@ -402,99 +432,103 @@ export function PartSkuGeneratorPage() {
                 )}
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                  {pick("Make / Model / Initial", "Make / Model / Initial")}
-                </span>
-                <button type="button" onClick={resetSession} className="text-base text-muted-foreground underline hover:text-foreground">
-                  {pick("초기화", "Reset")}
-                </button>
-              </div>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-muted-foreground">Make</span>
-                <SearchableSelect
-                  options={makes}
-                  value={make}
-                  onChange={(next) => {
-                    setMake(next);
-                    setModel("");
-                    setModelAbbr("");
-                  }}
-                  placeholder={pick("선택", "Select")}
-                  searchPlaceholder={pick("Make 검색...", "Search Make...")}
-                  className="h-11 text-base"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-muted-foreground">Make Abbr</span>
-                <input
-                  className="form-input h-11 bg-white text-base"
-                  value={makeAbbr}
-                  onChange={(e) => setMakeAbbr(e.target.value)}
-                  placeholder="HY"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-muted-foreground">Model</span>
-                <SearchableSelect
-                  options={models}
-                  value={model}
-                  onChange={setModel}
-                  placeholder={pick("선택", "Select")}
-                  searchPlaceholder={pick("Model 검색...", "Search Model...")}
-                  className="h-11 text-base"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-muted-foreground">Model Abbr</span>
-                <input
-                  className="form-input h-11 bg-white text-base"
-                  value={modelAbbr}
-                  onChange={(e) => setModelAbbr(e.target.value)}
-                  placeholder="PA"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-muted-foreground">Initial</span>
-                <SearchableSelect
-                  options={initials.map((i) => i.initial)}
-                  value={initial}
-                  onChange={setInitial}
-                  placeholder={pick("선택", "Select")}
-                  searchPlaceholder={pick("Initial 검색...", "Search Initial...")}
-                  className="h-11 text-base"
-                />
-              </label>
+              {skuMode === "Custom" ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                      {pick("Make / Model / Initial", "Make / Model / Initial")}
+                    </span>
+                    <button type="button" onClick={resetSession} className="text-base text-muted-foreground underline hover:text-foreground">
+                      {pick("초기화", "Reset")}
+                    </button>
+                  </div>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-muted-foreground">Make</span>
+                    <SearchableSelect
+                      options={makes}
+                      value={make}
+                      onChange={(next) => {
+                        setMake(next);
+                        setModel("");
+                        setModelAbbr("");
+                      }}
+                      placeholder={pick("선택", "Select")}
+                      searchPlaceholder={pick("Make 검색...", "Search Make...")}
+                      className="h-11 text-base"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-muted-foreground">Make Abbr</span>
+                    <input
+                      className="form-input h-11 bg-white text-base"
+                      value={makeAbbr}
+                      onChange={(e) => setMakeAbbr(e.target.value)}
+                      placeholder="HY"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-muted-foreground">Model</span>
+                    <SearchableSelect
+                      options={models}
+                      value={model}
+                      onChange={setModel}
+                      placeholder={pick("선택", "Select")}
+                      searchPlaceholder={pick("Model 검색...", "Search Model...")}
+                      className="h-11 text-base"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-muted-foreground">Model Abbr</span>
+                    <input
+                      className="form-input h-11 bg-white text-base"
+                      value={modelAbbr}
+                      onChange={(e) => setModelAbbr(e.target.value)}
+                      placeholder="PA"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-muted-foreground">Initial</span>
+                    <SearchableSelect
+                      options={initials.map((i) => i.initial)}
+                      value={initial}
+                      onChange={setInitial}
+                      placeholder={pick("선택", "Select")}
+                      searchPlaceholder={pick("Initial 검색...", "Search Initial...")}
+                      className="h-11 text-base"
+                    />
+                  </label>
 
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-muted-foreground">Code</span>
-                <SearchableSelect
-                  options={codes.map((c) => c.code)}
-                  value={code}
-                  onChange={setCode}
-                  placeholder={pick("선택", "Select")}
-                  searchPlaceholder={pick("Code 검색...", "Search Code...")}
-                  className="h-11 text-base"
-                />
-                {selectedCodeDescription ? (
-                  <span className="truncate text-base text-muted-foreground" title={selectedCodeDescription}>
-                    {selectedCodeDescription}
-                  </span>
-                ) : null}
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-semibold text-muted-foreground">Side</span>
-                <select
-                  className="form-input h-11 bg-white text-base"
-                  value={side}
-                  onChange={(e) => setSide(e.target.value)}
-                >
-                  <option value="">{pick("선택", "Select")}</option>
-                  {SIDE_OPTIONS.map((s) => (
-                    <option key={s.value} value={s.value}>{pick(s.labelKo, s.labelEn)}</option>
-                  ))}
-                </select>
-              </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-muted-foreground">Code</span>
+                    <SearchableSelect
+                      options={codes.map((c) => c.code)}
+                      value={code}
+                      onChange={setCode}
+                      placeholder={pick("선택", "Select")}
+                      searchPlaceholder={pick("Code 검색...", "Search Code...")}
+                      className="h-11 text-base"
+                    />
+                    {selectedCodeDescription ? (
+                      <span className="truncate text-base text-muted-foreground" title={selectedCodeDescription}>
+                        {selectedCodeDescription}
+                      </span>
+                    ) : null}
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold text-muted-foreground">Side</span>
+                    <select
+                      className="form-input h-11 bg-white text-base"
+                      value={side}
+                      onChange={(e) => setSide(e.target.value)}
+                    >
+                      <option value="">{pick("선택", "Select")}</option>
+                      {SIDE_OPTIONS.map((s) => (
+                        <option key={s.value} value={s.value}>{pick(s.labelKo, s.labelEn)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
               <div className="flex flex-col gap-1">
                 <span className="text-sm font-semibold text-muted-foreground">{pick("미리보기", "Preview")}</span>
                 <div className="flex min-h-[140px] items-center justify-center break-all rounded-lg border-2 border-[#1a5cdb] bg-white px-4 py-6 text-center font-mono text-2xl font-bold leading-snug text-[#1a4db0]">
@@ -567,8 +601,15 @@ export function PartSkuGeneratorPage() {
                       </span>
                     ) : null}
                   </span>
-                  <span className={p.isActive ? "rounded-md bg-[#e6f5f0] px-2 py-0.5 text-xs font-semibold text-[#0a5e45] dark:bg-emerald-950/70 dark:text-emerald-300" : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-xs font-semibold text-muted-foreground dark:bg-slate-800 dark:text-slate-400"}>
-                    {p.isActive ? pick("활성", "Active") : pick("비활성", "Inactive")}
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    {p.skuType === "Universal" ? (
+                      <span className="rounded-md bg-[#eef3fd] px-2 py-0.5 text-xs font-semibold text-[#1a5cdb]">
+                        {pick("유니버설", "Universal")}
+                      </span>
+                    ) : null}
+                    <span className={p.isActive ? "rounded-md bg-[#e6f5f0] px-2 py-0.5 text-xs font-semibold text-[#0a5e45] dark:bg-emerald-950/70 dark:text-emerald-300" : "rounded-md bg-[#f0eee9] px-2 py-0.5 text-xs font-semibold text-muted-foreground dark:bg-slate-800 dark:text-slate-400"}>
+                      {p.isActive ? pick("활성", "Active") : pick("비활성", "Inactive")}
+                    </span>
                   </span>
                 </button>
               ))
@@ -586,6 +627,11 @@ export function PartSkuGeneratorPage() {
               <div className="mb-5 flex items-start justify-between gap-4 border-b border-[#e2dfd8] pb-4">
                 <div>
                   <div className="break-all font-mono text-xl font-semibold">{selectedPartSku.sku}</div>
+                  {selectedPartSku.skuType === "Universal" ? (
+                    <span className="mt-1 inline-block rounded-md bg-[#eef3fd] px-2 py-0.5 text-xs font-semibold text-[#1a5cdb]">
+                      {pick("유니버설", "Universal")}
+                    </span>
+                  ) : null}
                 </div>
                 {selectedPartSku.isActive ? (
                   can("part-sku-generator", "delete") ? (
@@ -621,26 +667,30 @@ export function PartSkuGeneratorPage() {
                     <div className="font-semibold text-muted-foreground">Part</div>
                     <div>{selectedPartSku.partName}</div>
                   </div>
-                  <div>
-                    <div className="font-semibold text-muted-foreground">Make</div>
-                    <div>{selectedPartSku.make} ({selectedPartSku.makeAbbr})</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-muted-foreground">Model</div>
-                    <div>{selectedPartSku.model} ({selectedPartSku.modelAbbr})</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-muted-foreground">Code</div>
-                    <div>{selectedPartSku.code}</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-muted-foreground">Initial</div>
-                    <div>{selectedPartSku.initial}</div>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-muted-foreground">Side</div>
-                    <div>{selectedPartSku.side}</div>
-                  </div>
+                  {selectedPartSku.skuType === "Custom" ? (
+                    <>
+                      <div>
+                        <div className="font-semibold text-muted-foreground">Make</div>
+                        <div>{selectedPartSku.make} ({selectedPartSku.makeAbbr})</div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-muted-foreground">Model</div>
+                        <div>{selectedPartSku.model} ({selectedPartSku.modelAbbr})</div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-muted-foreground">Code</div>
+                        <div>{selectedPartSku.code}</div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-muted-foreground">Initial</div>
+                        <div>{selectedPartSku.initial}</div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-muted-foreground">Side</div>
+                        <div>{selectedPartSku.side}</div>
+                      </div>
+                    </>
+                  ) : null}
                   <div>
                     <div className="font-semibold text-muted-foreground">{pick("생성자", "Created by")}</div>
                     <div>{selectedPartSku.createdByName ?? "-"}</div>
