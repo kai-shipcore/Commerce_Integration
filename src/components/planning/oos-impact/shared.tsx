@@ -27,6 +27,40 @@ export function average(nums: number[]): number {
   return nums.length === 0 ? 0 : nums.reduce((s, n) => s + n, 0) / nums.length;
 }
 
+export function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export function medianExplanation(nums: number[]): string {
+  if (nums.length === 0) return "계산할 SKU가 없습니다.";
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2) {
+    return `낮은 순으로 정렬했을 때 ${mid + 1}번째 값 ${sorted[mid]}%입니다.`;
+  }
+  return `낮은 순으로 정렬했을 때 ${mid}번째 값 ${sorted[mid - 1]}%와 ${mid + 1}번째 값 ${sorted[mid]}%의 평균입니다.`;
+}
+
+export interface PercentBucket { label: string; min: number; max: number; }
+
+export const PERCENT_BUCKETS: PercentBucket[] = [
+  { label: "0–20%", min: 0, max: 20 },
+  { label: "20–40%", min: 20, max: 40 },
+  { label: "40–60%", min: 40, max: 60 },
+  { label: "60–80%", min: 60, max: 80 },
+  { label: "80–100%", min: 80, max: 101 },
+];
+
+export function histogramFrom(values: number[], buckets: PercentBucket[] = PERCENT_BUCKETS): { label: string; count: number }[] {
+  return buckets.map((b) => ({
+    label: b.label,
+    count: values.filter((v) => v >= b.min && v < b.max).length,
+  }));
+}
+
 export function Chip({
   active, onClick, children, ghost, title,
 }: { active?: boolean; onClick?: () => void; children: React.ReactNode; ghost?: boolean; title?: string }) {
@@ -155,6 +189,72 @@ export function LineChart({
           </g>
         );
       })}
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Histogram — plain computed SVG bar chart with a median marker. Used for
+// SKU-count-by-percent-bucket distributions (drop rate, recovery rate, ...).
+// onBinClick/activeIndex are optional so non-interactive callers are unaffected.
+// ---------------------------------------------------------------------------
+
+export function Histogram({
+  bins, medianValue, medianLabel, medianDescription, activeIndex, onBinClick,
+}: {
+  bins: { label: string; count: number }[];
+  medianValue: number;
+  medianLabel: string;
+  medianDescription: string;
+  activeIndex?: number | null;
+  onBinClick?: (index: number) => void;
+}) {
+  const width = 900, height = 200, padL = 34, padR = 10, padT = 10, padB = 26;
+  const max = Math.max(1, ...bins.map((b) => b.count));
+  const plotW = width - padL - padR, plotH = height - padT - padB;
+  const bw = plotW / bins.length;
+  const medianX = padL + plotW * (Math.min(100, Math.max(0, medianValue)) / 100);
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full overflow-visible">
+      {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+        const y = padT + plotH * (1 - f);
+        return (
+          <g key={f}>
+            <line x1={padL} x2={width - padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1} />
+            <text x={padL - 8} y={y + 3} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">{Math.round(max * f)}</text>
+          </g>
+        );
+      })}
+      {bins.map((b, i) => {
+        const h = (b.count / max) * plotH;
+        const x = padL + i * bw + bw * 0.22;
+        const w = bw * 0.56;
+        const y = padT + plotH - h;
+        const isActive = activeIndex === i;
+        const isDimmed = activeIndex != null && !isActive;
+        return (
+          <g key={b.label}>
+            <rect
+              x={x} y={y} width={w} height={h} rx={4} ry={4}
+              fill="var(--chart-blue)"
+              opacity={isDimmed ? 0.35 : 1}
+              stroke={isActive ? "var(--foreground)" : "none"}
+              strokeWidth={isActive ? 2 : 0}
+              className={onBinClick ? "cursor-pointer" : undefined}
+              onClick={onBinClick ? () => onBinClick(i) : undefined}
+            />
+            <text x={x + w / 2} y={y - 5} textAnchor="middle" fontSize={10} fill="var(--foreground)">{b.count}</text>
+            <text x={x + w / 2} y={padT + plotH + 16} textAnchor="middle" fontSize={10} fill="var(--muted-foreground)">{b.label}</text>
+          </g>
+        );
+      })}
+      <g className="cursor-help">
+        <title>{`${medianLabel}: ${medianDescription}`}</title>
+        <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="transparent" strokeWidth={14} />
+        <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="var(--foreground)" strokeWidth={1.5} strokeDasharray="4 3" />
+        <text x={medianX + 6} y={padT + 10} fontSize={10} fontWeight={700} fill="var(--foreground)">{medianLabel}</text>
+      </g>
     </svg>
   );
 }

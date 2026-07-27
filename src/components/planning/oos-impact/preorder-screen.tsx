@@ -1,13 +1,13 @@
 "use client";
 
 // Code Guide: Screen 1 — Shopify Pre-Order conversion drop rate.
-// Owns its own sample data and screen-only pieces (StageTag, Histogram).
+// Owns its own sample data and screen-only pieces (StageTag).
 // Only touch shared.tsx for things this file and recovery-screen.tsx both need.
 
 import { useState } from "react";
 import { Clock, PackageCheck, Search, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Chip, FilterRow, Kpi, LineChart, SeverityPill, average, type Severity } from "./shared";
+import { Chip, FilterRow, Histogram, Kpi, LineChart, SeverityPill, average, histogramFrom, median, medianExplanation, type Severity } from "./shared";
 
 // normalRange = 30 days ending the day BEFORE convDate (regular sale)
 // poRange     = 30 days starting AT convDate (Pre-Order)
@@ -39,37 +39,6 @@ const ROWS1: Row1[] = [
   { sku: "CA-SC-10-F-40-WR-2TO", channel: "Coverland B2C", normalRange: "04/01 – 04/30", pre: 7.2, convDate: "2026-05-01", poRange: "05/01 – 05/30", post: 5.6, before: 72, after: 56, drop: 22, severity: "warning", stage: "ended" },
 ];
 
-function median(nums: number[]): number {
-  if (nums.length === 0) return 0;
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function medianExplanation(nums: number[]): string {
-  if (nums.length === 0) return "계산할 SKU가 없습니다.";
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2) {
-    return `감소율을 낮은 순으로 정렬했을 때 ${mid + 1}번째 값 ${sorted[mid]}%입니다.`;
-  }
-  return `감소율을 낮은 순으로 정렬했을 때 ${mid}번째 값 ${sorted[mid - 1]}%와 ${mid + 1}번째 값 ${sorted[mid]}%의 평균입니다.`;
-}
-
-function histogramFrom(drops: number[]): { label: string; count: number }[] {
-  const buckets = [
-    { label: "0–20%", min: 0, max: 20 },
-    { label: "20–40%", min: 20, max: 40 },
-    { label: "40–60%", min: 40, max: 60 },
-    { label: "60–80%", min: 60, max: 80 },
-    { label: "80–100%", min: 80, max: 101 },
-  ];
-  return buckets.map((b) => ({
-    label: b.label,
-    count: drops.filter((d) => d >= b.min && d < b.max).length,
-  }));
-}
-
 // 진행 상태(Pre-Order 진행중 / 재입고 완료)는 감소율 심각도와는 다른 축이라
 // 색을 넣지 않고 중립 태그로 분리해서 표시한다.
 function StageTag({ stage }: { stage: Row1["stage"] }) {
@@ -79,54 +48,6 @@ function StageTag({ stage }: { stage: Row1["stage"] }) {
       <Icon className="h-3 w-3" />
       {stage === "active" ? "Pre-Order 진행중" : "재입고 완료"}
     </span>
-  );
-}
-
-function Histogram({
-  bins, medianValue, medianLabel, medianDescription,
-}: {
-  bins: { label: string; count: number }[];
-  medianValue: number;
-  medianLabel: string;
-  medianDescription: string;
-}) {
-  const width = 900, height = 200, padL = 34, padR = 10, padT = 10, padB = 26;
-  const max = Math.max(1, ...bins.map((b) => b.count));
-  const plotW = width - padL - padR, plotH = height - padT - padB;
-  const bw = plotW / bins.length;
-  const medianX = padL + plotW * (Math.min(100, Math.max(0, medianValue)) / 100);
-
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full overflow-visible">
-      {[0, 0.25, 0.5, 0.75, 1].map((f) => {
-        const y = padT + plotH * (1 - f);
-        return (
-          <g key={f}>
-            <line x1={padL} x2={width - padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1} />
-            <text x={padL - 8} y={y + 3} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">{Math.round(max * f)}</text>
-          </g>
-        );
-      })}
-      {bins.map((b, i) => {
-        const h = (b.count / max) * plotH;
-        const x = padL + i * bw + bw * 0.22;
-        const w = bw * 0.56;
-        const y = padT + plotH - h;
-        return (
-          <g key={b.label}>
-            <rect x={x} y={y} width={w} height={h} rx={4} ry={4} fill="var(--chart-blue)" />
-            <text x={x + w / 2} y={y - 5} textAnchor="middle" fontSize={10} fill="var(--foreground)">{b.count}</text>
-            <text x={x + w / 2} y={padT + plotH + 16} textAnchor="middle" fontSize={10} fill="var(--muted-foreground)">{b.label}</text>
-          </g>
-        );
-      })}
-      <g className="cursor-help">
-        <title>{`${medianLabel}: ${medianDescription}`}</title>
-        <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="transparent" strokeWidth={14} />
-        <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="var(--foreground)" strokeWidth={1.5} strokeDasharray="4 3" />
-        <text x={medianX + 6} y={padT + 10} fontSize={10} fontWeight={700} fill="var(--foreground)">{medianLabel}</text>
-      </g>
-    </svg>
   );
 }
 
