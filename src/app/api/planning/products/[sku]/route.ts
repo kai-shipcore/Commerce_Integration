@@ -4,6 +4,8 @@
 import { NextResponse } from "next/server";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { auth } from "@/lib/auth";
+import { getIp, logAudit } from "@/lib/audit";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -24,6 +26,7 @@ export async function PATCH(
 
     const primary = getPrimaryPool();
     const client = await primary.connect();
+    let previousCbm: number | null = null;
     let containerItems: Array<{
       item_id: number;
       container_name: string;
@@ -33,6 +36,14 @@ export async function PATCH(
 
     try {
       await client.query("BEGIN");
+      const previousResult = await client.query<{ cbm_per_unit: number | null }>(
+        `SELECT cbm_per_unit::float8 AS cbm_per_unit
+         FROM shipcore.fc_products
+         WHERE master_sku = $1
+         FOR UPDATE`,
+        [sku],
+      );
+      previousCbm = previousResult.rows[0]?.cbm_per_unit ?? null;
       await client.query(
         `UPDATE shipcore.fc_products SET cbm_per_unit = $2::numeric(14,6), updated_at = NOW() WHERE master_sku = $1`,
         [sku, cbm],
@@ -66,6 +77,22 @@ export async function PATCH(
     }
 
     await invalidatePlanningDashboardCache();
+    if (previousCbm !== cbm) {
+      const session = await auth();
+      await logAudit({
+        entityType: "sku",
+        entityId: sku,
+        entityLabel: sku,
+        userId: session?.user?.id ?? null,
+        userName: session?.user?.name ?? null,
+        userEmail: session?.user?.email ?? null,
+        action: "update",
+        before: { cbmPerUnit: previousCbm },
+        after: { cbmPerUnit: cbm },
+        note: "Planning dashboard CBM inline edit",
+        ip: getIp(req.headers),
+      });
+    }
     return NextResponse.json({ success: true, cbm_per_unit: cbm, container_items: containerItems });
   } catch (error) {
     console.error("PATCH /api/planning/products/[sku] failed:", error);

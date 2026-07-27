@@ -151,11 +151,15 @@ function getInitials(name: string | null, email: string | null): string {
   return source.slice(0, 2).toUpperCase();
 }
 
-function valueText(value: unknown): string {
+const SIX_DECIMAL_FIELDS = new Set(["cbmPerUnit", "cbm_per_unit", "cbmUnit", "cbm_unit"]);
+
+function valueText(value: unknown, fieldKey?: string): string {
   if (value == null || value === "") return "-";
-  if (typeof value === "number") return value.toLocaleString();
+  if (typeof value === "number") {
+    return SIX_DECIMAL_FIELDS.has(fieldKey ?? "") ? value.toFixed(6) : value.toLocaleString();
+  }
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (Array.isArray(value)) return value.length ? value.map(valueText).join(", ") : "-";
+  if (Array.isArray(value)) return value.length ? value.map((item) => valueText(item, fieldKey)).join(", ") : "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -169,6 +173,8 @@ const FIELD_LABELS: Record<string, { ko: string; en: string }> = {
   confirmed: { ko: "확인", en: "Confirmed" },
   confirmedDate: { ko: "입고 확정일", en: "Confirmed date" },
   confirmedTime: { ko: "입고 확정 시간", en: "Confirmed time" },
+  cbmPerUnit: { ko: "CBM / 단위", en: "CBM / Unit" },
+  cbmUnit: { ko: "CBM / 단위", en: "CBM / Unit" },
   containerId: { ko: "컨테이너 ID", en: "Container ID" },
   containerNumber: { ko: "컨테이너", en: "Container" },
   creditAmount: { ko: "Credit 금액", en: "Credit amount" },
@@ -222,8 +228,8 @@ function detailRows(entry: AuditEntry): AuditDetailRow[] {
 
 function detailText(row: AuditDetailRow, entry: AuditEntry, pickText: (ko: string, en: string) => string): string {
   const label = fieldLabel(row.key, pickText);
-  const before = valueText(row.before);
-  const after = valueText(row.after);
+  const before = valueText(row.before, row.key);
+  const after = valueText(row.after, row.key);
   if (row.key === "creditNoteId") {
     const sku = valueText(entry.after?.sku ?? entry.before?.sku);
     return sku === "-"
@@ -354,8 +360,8 @@ function summarizeChange(entry: AuditEntry): { before: string; after: string } {
     ) ?? afterKeys[0];
     if (!changed) return { before: "-", after: "-" };
     return {
-      before: `${changed}: ${valueText(entry.before?.[changed])}`,
-      after: `${changed}: ${valueText(entry.after?.[changed])}`,
+      before: `${changed}: ${valueText(entry.before?.[changed], changed)}`,
+      after: `${changed}: ${valueText(entry.after?.[changed], changed)}`,
     };
   }
   if (entry.action === "role_change") {

@@ -1,0 +1,69 @@
+
+  <h3 id="sku-master-toolbar">④ Search, Filters, and CSV Export</h3>
+  <p>Use the top toolbar to find SKUs quickly and save the current result set for review or bulk maintenance.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Feature</th><th>How to use it</th><th>What to know</th></tr>
+    <tr><td class="label">SKU Search</td><td>Enter any part of a Master SKU. The list refreshes automatically after a short delay.</td><td><span class="btn-label">Reset</span> clears the search and returns to page 1.</td></tr>
+    <tr><td class="label">Product, Status, Type</td><td>Combine product group, active status, and sales type filters to narrow the list.</td><td>The default status is <strong>Active</strong>. Select <strong>All Status</strong> or <strong>Inactive</strong> when a retired SKU is missing.</td></tr>
+    <tr><td class="label">Download CSV</td><td>Exports <strong>all rows</strong> matching the current search and filters, not only the visible page.</td><td>The file contains product, Master SKU, product name, category, status, CBM, MOQ, order multiple, case quantity, and weight.</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-icon">💡</span><div><b>Can the export be imported again?</b> Yes. It contains the Master SKU, CBM, MOQ, and Order Multiple columns recognized by Excel Import. Extra columns are ignored. Sales Type is not currently included in the CSV export.</div></div>
+
+  <h3 id="sku-master-inventory-sync">⑤ Sync Inventory — Refresh the SKU List</h3>
+  <p><span class="btn-label">Sync Inventory</span> reads Master SKUs from <code>ecommerce_data.coverland_inventory_by_warehouse</code> and adds or updates records in <code>shipcore.fc_products</code>. SKU Master edit permission is required.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Start the sync</h4><p>Make sure no one is in the middle of a bulk edit, then click <span class="btn-label">Sync Inventory</span>.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Collect and normalize SKUs</h4><p>Blank and duplicate SKUs are removed, SKU formatting is normalized, and defaults for new SKUs are inferred from their SKU pattern.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Insert or refresh</h4><p>Missing SKUs are inserted. Existing rows have blank product/category details filled in and are set to <strong>Active</strong>.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Review the result</h4><p>Check the synchronized count in the completion message. The list reloads automatically.</p></div></div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:220px">Data</th><th>Sync behavior</th></tr>
+    <tr><td class="label">New SKU</td><td>Inserted as Active with inferred product group, CBM, MOQ, order multiple, case quantity, and weight defaults.</td></tr>
+    <tr><td class="label">Existing CBM/MOQ/Multiple</td><td><strong>Preserved.</strong> Inventory sync does not overwrite maintained planning values.</td></tr>
+    <tr><td class="label">Existing Sales Type</td><td><strong>Preserved.</strong> Sales Type is not supplied by the inventory source.</td></tr>
+    <tr><td class="label">Existing Status</td><td>Set to <strong>Active</strong> when the SKU still exists in the external inventory list.</td></tr>
+    <tr><td class="label">SKU absent from source</td><td>Not automatically deleted or deactivated; the existing SKU Master row remains.</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>Inactive SKU warning:</b> An inactive SKU that still exists in the inventory source can become active again after synchronization. Review <strong>All Status</strong> after the sync.</div></div>
+
+  <h3 id="sku-master-excel-import">⑥ Excel/CSV Import — Update Reference Values in Bulk</h3>
+  <p><span class="btn-label">Excel Import</span> adds or updates <strong>CBM, MOQ, and Order Multiple</strong> for many SKUs. It accepts <code>.xlsx</code>, <code>.xls</code>, and <code>.csv</code> files and requires SKU Master edit permission.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Prepare a template</h4><p>Download the template or prepare headers in an existing file. <strong>Master SKU</strong> is required, with at least one valid CBM, MOQ, or Order Multiple value.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Choose a file</h4><p>Select the Excel or CSV file. Master SKUs are uppercased and normalized to the internal SKU format.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Review the preview</h4><p>Check the <strong>New, Updated, and Unchanged</strong> counts and each field's <strong>current → new</strong> value. Nothing has been written yet.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Confirm and apply</h4><p>Click <span class="btn-label">Confirm &amp; Apply</span>. Unchanged rows are skipped, and the final inserted/updated counts are shown.</p></div></div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:180px">Column</th><th>Validation</th><th>Blank cell behavior</th></tr>
+    <tr><td class="label">Master SKU</td><td>Required; use a SKU containing a hyphen (<code>-</code>).</td><td>The row is skipped.</td></tr>
+    <tr><td class="label">CBM</td><td>A number greater than zero. The first number can be read from cells containing commas or units.</td><td>The current value is retained for an existing SKU.</td></tr>
+    <tr><td class="label">MOQ</td><td>An integer of at least 1.</td><td>The current value is retained for an existing SKU.</td></tr>
+    <tr><td class="label">Order Multiple</td><td>An integer of at least 1.</td><td>The current value is retained for an existing SKU.</td></tr>
+  </table>
+  <div class="callout info"><span class="callout-icon">🧾</span><div><b>When importing a new SKU:</b> Missing reference values are filled with defaults inferred from the SKU pattern. Product details, case quantity, and weight are also created. Always verify the preview's final values.</div></div>
+  <div class="callout warn"><span class="callout-icon">⚠️</span><div><b>Duplicates and multiple sheets:</b> Only one row is used for a duplicate SKU. With duplicate SKUs across sheets, sheet priority and CBM precision may determine which row wins. For critical imports, keep one row per SKU in a single template sheet.</div></div>
+
+  <h3 id="sku-master-price-history">⑦ Price History — Review Factory-specific Effective Prices</h3>
+  <p>Click <span class="btn-label">Price</span> or click a row while it is not being edited to open the right-side drawer. The feature is visible only to users with <strong>Invoice Price Control read permission</strong>.</p>
+  <table class="feat-table">
+    <tr><th style="width:190px">Area</th><th>How it works</th></tr>
+    <tr><td class="label">Factory</td><td>Select a factory to load history for that SKU and factory. Use Refresh to reload the latest records.</td></tr>
+    <tr><td class="label">Current Price</td><td>The drawer header shows the price with the latest effective date in the selected factory history.</td></tr>
+    <tr><td class="label">Change History</td><td>Shows effective date, unit price, change amount, and change rate. Click the Effective header to reverse the sort.</td></tr>
+    <tr><td class="label">Lookup by Date</td><td>Select a date to find the latest price whose effective date is on or before it. Invoice validation uses the same rule for Invoice Date.</td></tr>
+    <tr><td class="label">Add/Edit</td><td>With permission, enter effective date, USD unit price, and reason. Use the pencil action to edit an existing row.</td></tr>
+    <tr><td class="label">Delete</td><td>The trash action appears only with delete permission and removes the row after confirmation.</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-icon">💡</span><div><b>No Price button?</b> Ask an administrator to check <strong>Invoice Price Control → Read</strong>. Create, edit, and delete actions are also shown independently according to permission.</div></div>
+
+  <h3 id="sku-master-troubleshooting">⑧ Troubleshooting</h3>
+  <table class="feat-table">
+    <tr><th style="width:240px">Symptom</th><th>What to check</th></tr>
+    <tr><td class="label">A SKU is missing</td><td>Change the default Active filter to <strong>All Status</strong>, then clear search, product, and sales type filters.</td></tr>
+    <tr><td class="label">Import preview is empty</td><td>Confirm a Master SKU header, a hyphenated SKU, and at least one valid CBM, MOQ, or Order Multiple value.</td></tr>
+    <tr><td class="label">Some file values were ignored</td><td>Blank cells preserve current values. CBM must be positive; MOQ and Order Multiple must be integers of at least 1.</td></tr>
+    <tr><td class="label">Inventory sync fails</td><td>Check SKU Master edit permission and the lookup database configuration. Send the message shown at the bottom of the screen to an administrator.</td></tr>
+    <tr><td class="label">An edited value reverted</td><td>The row returns to its previous values when saving fails. Check permissions and values, then save again.</td></tr>
+  </table>

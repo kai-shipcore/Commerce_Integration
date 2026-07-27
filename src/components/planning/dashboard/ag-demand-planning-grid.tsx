@@ -605,30 +605,35 @@ function QtyCellRenderer({
 
 function CbmCellRenderer({
   value,
+  data,
   node,
   onSave,
 }: ICellRendererParams<DemandRow, CellContent> & {
   onSave: (cbm: number) => Promise<boolean>;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
+  const rawCbm = typeof data?.cbm_per_unit === "number" && Number.isFinite(data.cbm_per_unit)
+    ? data.cbm_per_unit
+    : null;
+  const editValue = rawCbm === null ? displayValue : rawCbm.toFixed(6);
   const [editing, setEditing] = useState(false);
-  const [inputValue, setInputValue] = useState(displayValue);
+  const [inputValue, setInputValue] = useState(editValue);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
   useEffect(() => {
-    if (!editing && !savingRef.current) setInputValue(displayValue);
-  }, [displayValue, editing]);
+    if (!editing && !savingRef.current) setInputValue(editValue);
+  }, [editValue, editing]);
 
   async function commit() {
     if (savingRef.current) return;
     const nextCbm = Number.parseFloat(inputValue);
     if (!Number.isFinite(nextCbm) || nextCbm < 0) {
-      setInputValue(displayValue);
+      setInputValue(editValue);
       setEditing(false);
       return;
     }
-    if (nextCbm === Number.parseFloat(displayValue)) {
+    if (rawCbm !== null && nextCbm === rawCbm) {
       setEditing(false);
       return;
     }
@@ -637,9 +642,9 @@ function CbmCellRenderer({
     setSaving(true);
     try {
       const saved = await onSave(nextCbm);
-      if (!saved) setInputValue(displayValue);
+      if (!saved) setInputValue(editValue);
     } catch {
-      setInputValue(displayValue);
+      setInputValue(editValue);
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -649,27 +654,30 @@ function CbmCellRenderer({
 
   if (editing) {
     return (
-      <input
-        autoFocus
-        type="number"
-        min={0}
-        step="0.000001"
-        value={inputValue}
-        onClick={(event) => event.stopPropagation()}
-        onChange={(event) => setInputValue(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setInputValue(displayValue);
-            setEditing(false);
-          }
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void commit();
-          }
-        }}
-        onBlur={() => void commit()}
-        className="h-full w-full border-0 bg-[#FFFDE7] px-1 text-right font-mono text-[11px] outline-none"
-      />
+      <div className="relative h-full w-full overflow-visible">
+        <input
+          autoFocus
+          type="number"
+          min={0}
+          step="0.000001"
+          value={inputValue}
+          aria-label="Edit CBM"
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setInputValue(editValue);
+              setEditing(false);
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void commit();
+            }
+          }}
+          onBlur={() => void commit()}
+          className="planning-cbm-edit-input absolute left-1/2 top-1/2 z-30 h-10 w-36 -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 text-right font-mono text-sm font-semibold shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
+        />
+      </div>
     );
   }
 
@@ -683,7 +691,7 @@ function CbmCellRenderer({
         node.setSelected(true, true);
         setEditing(true);
       }}
-      className="h-full w-full border-0 bg-transparent px-1 text-right font-mono text-[11px] text-[#1A4FC0]"
+      className="h-full w-full border-0 bg-transparent px-0.5 text-right font-mono text-[10px] text-[#1A4FC0]"
     >
       {saving ? "..." : displayValue}
     </button>
@@ -1995,6 +2003,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       pinned: shouldPin ? "left" : undefined,
       valueGetter: (params) => {
         if (!params.data) return "";
+        if (column.id === "cbm") {
+          return params.data.cbm_per_unit ? params.data.cbm_per_unit.toFixed(6) : "";
+        }
         return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
       },
       cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : CellRenderer,
@@ -2283,6 +2294,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
         }
         .planning-ag-grid .ag-cell-focus:not(.ag-cell-range-selected):focus-within {
           border-color: transparent;
+        }
+        .planning-ag-grid .ag-cell:has(.planning-cbm-edit-input),
+        .planning-ag-grid .ag-cell-wrapper:has(.planning-cbm-edit-input),
+        .planning-ag-grid .ag-cell-value:has(.planning-cbm-edit-input) {
+          overflow: visible !important;
+          z-index: 30;
         }
         .planning-ag-grid .container-column-start {
           border-left: 2px solid #5A5750 !important;

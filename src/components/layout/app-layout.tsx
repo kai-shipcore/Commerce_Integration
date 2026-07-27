@@ -39,6 +39,24 @@ const TOP_NAV_COLLAPSED_STORAGE_KEY = "demandpilot-top-nav-collapsed";
 const TOP_NAV_LAUNCHER_STORAGE_KEY = "demandpilot-top-nav-launcher-position";
 const TOP_NAV_LAUNCHER_EDGE_GAP = 4;
 const ACTIVITY_HEARTBEAT_MS = 5 * 60 * 1000;
+const ACTIVITY_EVENT_FLUSH_MS = 10 * 1000;
+
+type ActivityEventPayload = {
+  occurredAt: string;
+  eventType: "page_view" | "button_click" | "link_click" | "form_submit";
+  path: string;
+  label?: string;
+  target?: string;
+};
+
+function activityLabel(element: Element): string | undefined {
+  const explicit = element.getAttribute("data-activity-label")
+    || element.getAttribute("aria-label")
+    || element.getAttribute("title")
+    || element.textContent;
+  const normalized = explicit?.replace(/\s+/g, " ").trim().slice(0, 160);
+  return normalized || undefined;
+}
 
 interface LauncherPosition {
   x: number;
@@ -124,6 +142,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
   const tRef = useRef(t);
+  const activityEventQueueRef = useRef<ActivityEventPayload[]>([]);
 
   useEffect(() => {
     tRef.current = t;
@@ -242,6 +261,86 @@ export function AppLayout({ children }: AppLayoutProps) {
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [appPathname, session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    let flushTimer: number | null = null;
+
+    async function flushEvents() {
+      if (activityEventQueueRef.current.length === 0) return;
+      const events = activityEventQueueRef.current.splice(0, 50);
+      try {
+        const response = await fetch(apiPath("/api/user/activity/events"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ events }),
+          keepalive: true,
+        });
+        if (!response.ok) activityEventQueueRef.current.unshift(...events);
+      } catch {
+        activityEventQueueRef.current.unshift(...events);
+      }
+      if (activityEventQueueRef.current.length > 200) {
+        activityEventQueueRef.current.splice(0, activityEventQueueRef.current.length - 200);
+      }
+    }
+
+    function queueEvent(event: Omit<ActivityEventPayload, "occurredAt" | "path">) {
+      activityEventQueueRef.current.push({
+        ...event,
+        occurredAt: new Date().toISOString(),
+        path: appPathname,
+      });
+      if (activityEventQueueRef.current.length >= 20) void flushEvents();
+    }
+
+    function handleClick(event: MouseEvent) {
+      const origin = event.target instanceof Element ? event.target : null;
+      const actionable = origin?.closest("button, a[href]");
+      if (!actionable || actionable.closest("[data-activity-ignore]")) return;
+
+      if (actionable instanceof HTMLButtonElement) {
+        if ((actionable.type || "submit") === "submit") return;
+        queueEvent({ eventType: "button_click", label: activityLabel(actionable), target: "button" });
+        return;
+      }
+
+      if (actionable instanceof HTMLAnchorElement) {
+        let target = "link";
+        try {
+          target = stripBasePath(new URL(actionable.href, window.location.origin).pathname);
+        } catch {
+          // Keep a generic target for malformed or non-HTTP links.
+        }
+        queueEvent({ eventType: "link_click", label: activityLabel(actionable), target });
+      }
+    }
+
+    function handleSubmit(event: SubmitEvent) {
+      const form = event.target instanceof HTMLFormElement ? event.target : null;
+      if (!form || form.closest("[data-activity-ignore]")) return;
+      queueEvent({ eventType: "form_submit", label: activityLabel(form) || "Form submit", target: "form" });
+    }
+
+    function handleVisibility() {
+      if (document.visibilityState === "hidden") void flushEvents();
+    }
+
+    queueEvent({ eventType: "page_view", label: document.title, target: "page" });
+    void flushEvents();
+    document.addEventListener("click", handleClick, true);
+    document.addEventListener("submit", handleSubmit, true);
+    document.addEventListener("visibilitychange", handleVisibility);
+    flushTimer = window.setInterval(() => void flushEvents(), ACTIVITY_EVENT_FLUSH_MS);
+
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+      document.removeEventListener("submit", handleSubmit, true);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (flushTimer !== null) window.clearInterval(flushTimer);
+      void flushEvents();
     };
   }, [appPathname, session?.user?.id]);
 
