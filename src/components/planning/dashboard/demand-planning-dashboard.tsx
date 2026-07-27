@@ -300,7 +300,7 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
 
 export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "native" | "ag-grid" }) {
   const { pick } = useI18n();
-  const { can } = usePermissions();
+  const { can, ready: permissionsReady } = usePermissions();
   const router = useRouter();
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
   const [todayStr, setTodayStr] = useState("");
@@ -336,7 +336,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>(
     BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []
   );
-  const canEditSkuNotes = can("demand-planning", "edit");
+  const canEditDemandPlanning = permissionsReady && can("demand-planning", "edit");
+  const canEditSkuNotes = canEditDemandPlanning;
 
   useEffect(() => {
     const today = planningLocalDateString();
@@ -2080,6 +2081,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             </div>
           </div>
         )}
+        {permissionsReady && !canEditDemandPlanning ? (
+          <div className="flex shrink-0 items-center justify-center border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+            {pick(
+              "읽기 전용: 수요 계획 수정 권한이 없어 CBM, ETA, 컨테이너 수량, 메모 및 자동 발주 저장이 비활성화되었습니다.",
+              "Read only: Demand Planning edit permission is required to update CBM, ETA, container quantities, notes, or automatic orders.",
+            )}
+          </div>
+        ) : null}
         {gridMode === "ag-grid" ? <AgDemandPlanningGrid
           data={data}
           loading={loading}
@@ -2109,6 +2118,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
           canEditSkuNotes={canEditSkuNotes}
+          canEditPlanning={canEditDemandPlanning}
           selectedCellKeys={selectedCellKeys}
           onAgCellSelected={(selection) => {
             setSelectedAgCell({ rowId: selection.rowId, columnId: selection.columnId, label: selection.label });

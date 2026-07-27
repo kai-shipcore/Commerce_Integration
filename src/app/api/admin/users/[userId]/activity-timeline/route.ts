@@ -24,16 +24,17 @@ export async function GET(
         [userId],
       ),
       pool.query(
-        `SELECT id::text, occurred_at, event_type, path, label, target, ip
+        `SELECT id::text, occurred_at AT TIME ZONE 'UTC' AS occurred_at,
+                event_type, path, label, target, ip
          FROM shipcore.fc_user_activity_event
          WHERE user_id = $1
            AND (occurred_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles')::date = $2::date
-         ORDER BY occurred_at ASC
-         LIMIT 500`,
+         ORDER BY occurred_at ASC`,
         [userId, date],
       ),
       pool.query(
-        `SELECT id, "loggedInAt" AS occurred_at, ip, "userAgent" AS user_agent
+        `SELECT id, "loggedInAt" AT TIME ZONE 'UTC' AS occurred_at,
+                ip, "userAgent" AS user_agent
          FROM shipcore.fc_user_login_log
          WHERE "userId" = $1
            AND ("loggedInAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles')::date = $2::date
@@ -59,9 +60,8 @@ export async function GET(
            FROM shipcore.fc_audit_log
          ) logs
          WHERE user_id = $1
-           AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles')::date = $2::date
-         ORDER BY created_at ASC
-         LIMIT 500`,
+           AND (created_at AT TIME ZONE 'America/Los_Angeles')::date = $2::date
+         ORDER BY created_at ASC`,
         [userId, date],
       ),
     ]);
@@ -70,17 +70,49 @@ export async function GET(
       return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
     }
 
+    // Older SKU browser rows were logged using the button's concatenated cell
+    // text (SKU + stock + average + SOD + recommendation). Resolve the longest
+    // matching master SKU so historical activity remains human-readable.
+    const legacySkuLabels = [...new Set(
+      eventsResult.rows
+        .filter((row) => row.event_type === "button_click" && row.path === "/planning/sku-forecasts" && typeof row.label === "string")
+        .map((row) => row.label as string),
+    )];
+    const legacySkuByLabel = new Map<string, string>();
+    if (legacySkuLabels.length > 0) {
+      const legacySkuResult = await pool.query(
+        `SELECT candidate.label, product.master_sku
+         FROM unnest($1::text[]) AS candidate(label)
+         JOIN LATERAL (
+           SELECT master_sku
+           FROM shipcore.sc_products
+           WHERE candidate.label LIKE master_sku || '%'
+           ORDER BY length(master_sku) DESC
+           LIMIT 1
+         ) product ON true`,
+        [legacySkuLabels],
+      );
+      for (const row of legacySkuResult.rows) {
+        legacySkuByLabel.set(row.label as string, row.master_sku as string);
+      }
+    }
+
     const events = [
-      ...eventsResult.rows.map((row) => ({
-        id: `event:${row.id}`,
-        source: "activity",
-        occurredAt: (row.occurred_at as Date).toISOString(),
-        eventType: row.event_type,
-        path: row.path,
-        label: row.label,
-        target: row.target,
-        ip: row.ip,
-      })),
+      ...eventsResult.rows.map((row) => {
+        const legacySku = typeof row.label === "string" ? legacySkuByLabel.get(row.label) : undefined;
+        return {
+          id: `event:${row.id}`,
+          source: "activity",
+          occurredAt: (row.occurred_at as Date).toISOString(),
+          eventType: row.event_type,
+          path: row.path,
+          label: row.label,
+          target: row.target,
+          ip: row.ip,
+          subjectType: legacySku ? "sku" : null,
+          subjectId: legacySku ?? null,
+        };
+      }),
       ...loginResult.rows.map((row) => ({
         id: `login:${row.id}`,
         source: "login",

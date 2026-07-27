@@ -395,6 +395,7 @@ export function SkuBrowserPanel({
                 <button
                   key={row.sku}
                   type="button"
+                  data-activity-label={pick(language, `SKU 선택: ${row.sku}`, `Select SKU: ${row.sku}`)}
                   onClick={() => onSelectSku(row.sku)}
                   style={{ height: ROW_HEIGHT }}
                   className={`grid w-full grid-cols-[minmax(210px,1fr)_68px_62px_62px_72px] items-center gap-2 border-b px-3 text-left transition-colors dark:border-zinc-700/50 ${

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getIp } from "@/lib/audit";
 
-const EVENT_TYPES = new Set(["page_view", "button_click", "link_click", "form_submit"]);
+const EVENT_TYPES = new Set(["page_view", "button_click", "link_click", "form_submit", "action_failed"]);
 const MAX_BATCH_SIZE = 50;
 
 function clean(value: unknown, max: number): string | null {

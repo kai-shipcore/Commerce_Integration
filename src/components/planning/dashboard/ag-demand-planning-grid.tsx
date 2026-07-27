@@ -56,6 +56,7 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
+const DEMAND_PLANNING_MUTATION_HEADER = { "X-Planning-Permission-Context": "demand-planning" };
 const planningTheme = themeQuartz.withParams({
   backgroundColor: "#fff",
   borderColor: "#D8D6CE",
@@ -1066,6 +1067,7 @@ function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
     baseline: boolean;
+    editable: boolean;
     qtyEditable: boolean;
     status?: string;
     totalColumns: ContainerTotalColumn[];
@@ -1126,9 +1128,10 @@ function ContainerGroupHeader(
               <input
                 type="date"
                 value={props.eta}
+                disabled={!props.editable}
                 onChange={(event) => props.onEtaChange(event.target.value)}
                 style={{ colorScheme: "dark" }}
-                className="h-[24px] w-[108px] rounded border border-white/30 bg-transparent px-2 text-[11px] font-semibold text-white"
+                className="h-[24px] w-[108px] rounded border border-white/30 bg-transparent px-2 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
               />
             </label>
             <input
@@ -1235,6 +1238,7 @@ export function AgDemandPlanningGrid({
   cellColors = {},
   skuCellNotes = {},
   canEditSkuNotes = false,
+  canEditPlanning = false,
   onSkuCellNoteChange,
   onAgCellSelected,
   onCellSelectionChange,
@@ -1475,24 +1479,28 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return () => window.removeEventListener("pointerup", handlePointerUp);
   }, []);
 
-  const updateEta = useCallback((container: ContainerMeta, eta: string) => {
-    if (!eta || !container.container_id) return;
+  const updateEta = useCallback(async (container: ContainerMeta, eta: string) => {
+    if (!canEditPlanning || !eta || !container.container_id) return;
+    const response = await fetch(apiPath(`/api/containers?id=${container.container_id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+      body: JSON.stringify({ eta }),
+    });
+    if (!response.ok) return;
+    const result = await response.json().catch(() => null) as { success?: boolean } | null;
+    if (!result?.success) return;
     setEtaOverrides((current) => new Map(current).set(container.container_id!, eta));
     const nextContainers = containers.map((entry) => entry.container_id === container.container_id ? { ...entry, eta } : entry);
     setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides, seasonalFactors)])));
-    void fetch(apiPath(`/api/containers?id=${container.container_id}`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eta }),
-    });
-  }, [containers, data.rows, qtyOverrides, seasonalFactors]);
+  }, [canEditPlanning, containers, data.rows, qtyOverrides, seasonalFactors]);
 
   const saveCbm = useCallback(async (row: DemandRow, nextCbm: number) => {
+    if (!canEditPlanning) return false;
     if (!Number.isFinite(nextCbm) || nextCbm < 0) return false;
     if (nextCbm === row.cbm_per_unit) return true;
     const response = await fetch(apiPath(`/api/planning/products/${encodeURIComponent(row.sku)}`), {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
       body: JSON.stringify({ cbm_per_unit: nextCbm }),
     });
     const json = await response.json() as {
@@ -1527,7 +1535,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     }
     return true;
-  }, []);
+  }, [canEditPlanning]);
 
   const saveQty = useCallback(async (
     row: DemandRow,
@@ -1535,6 +1543,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     raw: ContainerRowData,
     nextQty: number,
   ) => {
+    if (!canEditPlanning) return false;
     if (!Number.isFinite(nextQty) || nextQty < 0 || !container.container_id) return false;
     const key = `${row.sku}::${container.name}`;
     const previous = qtyOverrides.get(key);
@@ -1544,17 +1553,20 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
 
     let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
     if (itemId && nextQty === 0) {
-      json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), { method: "DELETE" }).then((response) => response.json());
+      json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
+        method: "DELETE",
+        headers: DEMAND_PLANNING_MUTATION_HEADER,
+      }).then((response) => response.json());
     } else if (itemId) {
       json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
         body: JSON.stringify({ qty: nextQty }),
       }).then((response) => response.json());
     } else {
       json = await fetch(apiPath("/api/planning/containers/items"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
         body: JSON.stringify({
           container_id: container.container_id,
           master_sku: row.sku,
@@ -1607,10 +1619,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     }
     return true;
-  }, [containers, qtyOverrides, seasonalFactors]);
+  }, [canEditPlanning, containers, qtyOverrides, seasonalFactors]);
 
 const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
-    if (!onSkuCellNoteChange) return;
+    if (!canEditPlanning || !onSkuCellNoteChange) return;
     await onSkuCellNoteChange(row.sku, memo);
     // rowOverrides만 업데이트 — refreshCells 호출 안 함 (팝업 열린 상태 유지)
     setRowOverrides((cur) => {
@@ -1618,13 +1630,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       map.set(row.sku, { ...(cur.get(row.sku) ?? {}), memo });
       return map;
     });
-  }, [onSkuCellNoteChange]);
+  }, [canEditPlanning, onSkuCellNoteChange]);
 
   const autoFill = useCallback(async (
     container: ContainerMeta,
     containerIndex: number,
     force = false,
   ): Promise<void> => {
+    if (!canEditPlanning) return;
     if (!container.container_id) return;
     const prevContainer = containers[containerIndex - 1];
     if (!prevContainer) return;
@@ -1708,7 +1721,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
     const res = await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
       body: JSON.stringify({ items: orders.map((o) => ({ sku: o.sku, qty: o.qty })) }),
     });
     const json = await res.json() as { success: boolean; items?: Array<{ sku: string; item_id: number; qty: number; cbm_unit: number; total_cbm: number; allocated_qty: number }> };
@@ -1731,7 +1744,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       }
       return next;
     });
-  }, [containers, chainMap, visibleRows, gradient, gradientSC, seasonalFactors]);
+  }, [canEditPlanning, categoryFilter, containers, chainMap, visibleRows, gradient, gradientSC, qtyOverrides, seasonalFactors]);
 
   const calculateTargetOrders = useCallback((
     container: ContainerMeta,
@@ -1800,6 +1813,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   }, [categoryFilter, chainMap, containers, rowsInDisplayOrder, seasonalFactors]);
 
   const applyTargetOrders = useCallback((container: ContainerMeta, preview: TargetOrderPreview): void => {
+    if (!canEditPlanning) return;
     setQtyOverrides((current) => {
       const next = new Map(current);
       for (const { row, qty, cbmUnit } of preview.orders) {
@@ -1815,7 +1829,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       return next;
     });
     setDirtyContainers((current) => new Set(current).add(container.name));
-  }, []);
+  }, [canEditPlanning]);
 
   const autoFill2 = useCallback((
     container: ContainerMeta,
@@ -1913,24 +1927,31 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   }, [data.rows, qtyOverrides]);
 
   const saveContainer = useCallback(async (container: ContainerMeta): Promise<void> => {
-    if (!container.container_id) return;
+    if (!canEditPlanning || !container.container_id) return;
     setSavingContainers((s) => new Set(s).add(container.name));
-    const items: Array<{ sku: string; qty: number }> = [];
-    for (const [key, val] of qtyOverrides.entries()) {
-      if (!key.endsWith(`::${container.name}`)) continue;
-      const sku = key.slice(0, -(container.name.length + 2));
-      if ((val.inbound_qty ?? 0) > 0) items.push({ sku, qty: val.inbound_qty! });
-    }
-    if (items.length > 0) {
-      await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
+    let saved = false;
+    try {
+      const items: Array<{ sku: string; qty: number }> = [];
+      for (const [key, val] of qtyOverrides.entries()) {
+        if (!key.endsWith(`::${container.name}`)) continue;
+        const sku = key.slice(0, -(container.name.length + 2));
+        if ((val.inbound_qty ?? 0) > 0) items.push({ sku, qty: val.inbound_qty! });
+      }
+      if (items.length === 0) return;
+      const response = await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
         body: JSON.stringify({ items }),
       });
+      const result = await response.json().catch(() => null) as { success?: boolean } | null;
+      saved = response.ok && result?.success === true;
+    } finally {
+      setSavingContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
+      if (saved) {
+        setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
+      }
     }
-    setSavingContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
-    setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
-  }, [qtyOverrides]);
+  }, [canEditPlanning, qtyOverrides]);
 
   const pinnedBaseColumnLayout = useMemo(() => {
     const visibleBaseColumns = ALL_COLS
@@ -2008,7 +2029,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         }
         return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
       },
-      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" ? CbmCellRenderer : CellRenderer,
+      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" && canEditPlanning ? CbmCellRenderer : CellRenderer,
       cellRendererParams: isCopyable
         ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
             copyValue: column.id === "sku"
@@ -2021,7 +2042,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               ? (memo: string) => saveMemo(params.data!, memo)
               : undefined,
           })
-        : column.id === "cbm"
+        : column.id === "cbm" && canEditPlanning
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
               onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
             })
@@ -2056,7 +2077,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       for (const [containerIndex, container] of renderOrder.entries()) {
         if (container.status === "baseline" && hiddenBases.has("Base")) continue;
         const baseline = container.status === "baseline";
-        const qtyEditable = !baseline && container.status !== "packing_received";
+        const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
         groups.push({
           groupId: `container-${container.name}`,
           headerName: container.name,
@@ -2065,6 +2086,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           headerGroupComponentParams: {
             eta: container.eta,
             baseline,
+            editable: canEditPlanning,
             qtyEditable,
             status: container.status,
             totalColumns: subColumns.map((column) => ({
@@ -2186,7 +2208,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [buildContainerSaveSummary, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveQty, skuCellNotes, subColumns, updateEta]);
+  }, [buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, skuCellNotes, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;

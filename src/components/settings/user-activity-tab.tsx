@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Activity, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Clock3, Database, Eye, Link2, Loader2, LogIn, MousePointerClick, RefreshCw, Search, Users } from "lucide-react";
+import { Activity, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, Loader2, RefreshCw, Search, Users, X } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
-import { ACTIVITY_TIME_ZONE, getActivityDate } from "@/lib/activity-date";
+import { ACTIVITY_TIME_ZONE } from "@/lib/activity-date";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { UserActivityTimelineDialog } from "@/components/settings/user-activity-timeline";
 
 type PeriodDays = 7 | 30 | 90;
 type ActivityFilter = "all" | "today" | "period" | "none";
@@ -32,13 +32,6 @@ interface ActivityResponse {
 }
 
 type ActivityUser = ActivityResponse["users"][number];
-type TimelineEvent = {
-  id: string; source: "activity" | "login" | "audit"; occurredAt: string; eventType: string;
-  path: string | null; label: string | null; target: string | null; ip: string | null;
-  entityType?: string; entityId?: string; before?: Record<string, unknown> | null;
-  after?: Record<string, unknown> | null; note?: string | null;
-};
-
 export function UserActivityTab() {
   const { pick } = useI18n();
   const [period, setPeriod] = useState<PeriodDays>(30);
@@ -162,13 +155,23 @@ export function UserActivityTab() {
       <div className="overflow-hidden rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-950">
         <div className="flex flex-wrap items-center gap-2 border-b p-4 dark:border-slate-700">
           <div className="relative min-w-52 flex-1 md:max-w-sm">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(event) => { setSearch(event.target.value); setPage(1); }}
               placeholder={pick("이름 또는 이메일 검색", "Search name or email")}
-              className="pl-8"
+              className="pl-8 pr-9"
             />
+            {search ? (
+              <button
+                type="button"
+                aria-label={pick("검색어 초기화", "Clear search")}
+                onClick={() => { setSearch(""); setPage(1); }}
+                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-slate-100 hover:text-foreground dark:hover:bg-slate-800"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
           <Select value={role} onValueChange={(value) => { setRole(value); setPage(1); }}>
             <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
@@ -230,96 +233,6 @@ export function UserActivityTab() {
       <UserActivityTimelineDialog user={timelineUser} onClose={() => setTimelineUser(null)} />
     </div>
   );
-}
-
-function UserActivityTimelineDialog({ user, onClose }: { user: ActivityUser | null; onClose: () => void }) {
-  const { pick } = useI18n();
-  const [date, setDate] = useState(getActivityDate());
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    async function loadTimeline() {
-      setLoading(true);
-      try {
-        const response = await fetch(apiPath(`/api/admin/users/${encodeURIComponent(user!.id)}/activity-timeline?date=${date}`), { cache: "no-store" });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.error || "Failed to load activity timeline");
-        if (!cancelled) { setEvents(result.data.events as TimelineEvent[]); setError(null); }
-      } catch (loadError) {
-        if (!cancelled) { setEvents([]); setError(loadError instanceof Error ? loadError.message : "Failed to load activity timeline"); }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void loadTimeline();
-    return () => { cancelled = true; };
-  }, [date, user]);
-
-  const pageViews = events.filter((event) => event.eventType === "page_view").length;
-  const actions = events.filter((event) => event.source === "activity" && event.eventType !== "page_view").length;
-  const dataChanges = events.filter((event) => event.source === "audit").length;
-
-  return (
-    <Dialog open={Boolean(user)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90vh] overflow-hidden p-0 sm:max-w-4xl">
-        <DialogHeader className="border-b px-6 py-5 pr-12">
-          <DialogTitle>{pick("사용자 일일 활동 기록", "Daily User Activity")}</DialogTitle>
-          <DialogDescription>{user ? `${user.name?.trim() || user.email} · ${user.email}` : ""}</DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-wrap items-center gap-3 border-b bg-muted/30 px-6 py-3">
-          <label className="flex items-center gap-2 text-sm font-medium"><CalendarDays className="h-4 w-4" /><input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-9 rounded-md border bg-background px-2" /></label>
-          <Badge variant="secondary">{pick("페이지", "Pages")} {pageViews}</Badge>
-          <Badge variant="secondary">{pick("화면 행동", "UI actions")} {actions}</Badge>
-          <Badge variant="secondary">{pick("데이터 변경", "Data changes")} {dataChanges}</Badge>
-          <span className="ml-auto text-xs text-muted-foreground">{ACTIVITY_TIME_ZONE}</span>
-        </div>
-        <div className="max-h-[65vh] overflow-y-auto px-6 py-4">
-          {loading ? <div className="flex min-h-48 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
-            : error ? <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error}</div>
-              : events.length === 0 ? <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">{pick("선택한 날짜의 활동 기록이 없습니다.", "No activity was recorded on this date.")}</div>
-                : <div className="space-y-2">{events.map((event) => <TimelineEventRow key={event.id} event={event} />)}</div>}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TimelineEventRow({ event }: { event: TimelineEvent }) {
-  const { pick } = useI18n();
-  const config = event.source === "audit"
-    ? { icon: Database, label: pick("데이터 변경", "Data change"), className: "bg-amber-100 text-amber-700" }
-    : event.source === "login"
-      ? { icon: LogIn, label: pick("로그인", "Login"), className: "bg-emerald-100 text-emerald-700" }
-      : event.eventType === "page_view"
-        ? { icon: Eye, label: pick("페이지 방문", "Page view"), className: "bg-blue-100 text-blue-700" }
-        : event.eventType === "link_click"
-          ? { icon: Link2, label: pick("링크 이동", "Link click"), className: "bg-violet-100 text-violet-700" }
-          : { icon: MousePointerClick, label: event.eventType === "form_submit" ? pick("폼 제출", "Form submit") : pick("버튼 클릭", "Button click"), className: "bg-slate-100 text-slate-700" };
-  const Icon = config.icon;
-  const summary = event.source === "audit" ? `${event.entityType ?? "data"} · ${event.label ?? event.entityId ?? "-"} · ${event.target ?? "update"}` : event.label || event.target || "-";
-  return (
-    <div className="grid grid-cols-[86px_32px_minmax(0,1fr)] gap-3 rounded-lg border bg-background px-3 py-3">
-      <div className="flex items-start gap-1 pt-1 font-mono text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{formatTime(event.occurredAt)}</div>
-      <div className={`flex h-8 w-8 items-center justify-center rounded-full ${config.className}`}><Icon className="h-4 w-4" /></div>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2"><span className="text-xs font-semibold">{config.label}</span>{event.path ? <code className="truncate rounded bg-muted px-1.5 py-0.5 text-[11px]">{event.path}</code> : null}</div>
-        <div className="mt-1 truncate text-sm" title={summary}>{summary}</div>
-        {event.source === "audit" ? <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
-          {event.before ? <div className="truncate">{pick("변경 전", "Before")}: {JSON.stringify(event.before)}</div> : null}
-          {event.after ? <div className="truncate">{pick("변경 후", "After")}: {JSON.stringify(event.after)}</div> : null}
-          {event.note ? <div className="truncate">{event.note}</div> : null}
-        </div> : event.target && !["page", "button", "form"].includes(event.target) ? <div className="mt-1 truncate text-[11px] text-muted-foreground">→ {event.target}</div> : null}
-      </div>
-    </div>
-  );
-}
-
-function formatTime(value: string): string {
-  return new Date(value).toLocaleTimeString("en-US", { timeZone: ACTIVITY_TIME_ZONE, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
 function SummaryCard({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: number }) {

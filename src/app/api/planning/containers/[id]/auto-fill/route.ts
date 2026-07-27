@@ -7,7 +7,7 @@ import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { syncRemainingAllocationForContainerItem } from "@/lib/planning/available-stock-allocation";
-import { guardPermission } from "@/lib/permissions";
+import { guardPlanningMutation } from "@/lib/planning/mutation-permission";
 
 const BodySchema = z.object({
   items: z.array(z.object({
@@ -20,7 +20,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = await guardPermission("container-planning", "edit");
+  const denied = await guardPlanningMutation(req, "container-planning", "edit");
   if (denied) return denied;
   const { id } = await params;
   const containerId = parseInt(id, 10);

@@ -39,6 +39,18 @@ export const PERM_SECTION_GROUP_LABELS: Record<string, { ko: string; en: string 
   "Admin":       { ko: "관리",      en: "Admin" },
 };
 
+// Shared hierarchy for every permissions UI. Because it is derived from
+// PERM_SECTIONS, section additions, moves, and ordering changes stay in sync.
+export const PERM_SECTION_GROUPS = (() => {
+  const groups = new Map<string, (typeof PERM_SECTIONS)[number][]>();
+  for (const section of PERM_SECTIONS) {
+    const sections = groups.get(section.group) ?? [];
+    sections.push(section);
+    groups.set(section.group, sections);
+  }
+  return [...groups.entries()].map(([group, sections]) => ({ group, sections }));
+})();
+
 export const PERM_ACTIONS = [
   { id: "read",   labelKo: "조회",     labelEn: "View" },
   { id: "create", labelKo: "생성",     labelEn: "Create" },

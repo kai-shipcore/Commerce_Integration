@@ -6,6 +6,7 @@ import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { auth } from "@/lib/auth";
 import { getIp, logAudit } from "@/lib/audit";
+import { guardPermission } from "@/lib/permissions";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -15,6 +16,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ sku: string }> },
 ) {
+  const denied = await guardPermission("demand-planning", "edit");
+  if (denied) return denied;
+
   try {
     const { sku } = await params;
     const body = await req.json() as { cbm_per_unit?: unknown };

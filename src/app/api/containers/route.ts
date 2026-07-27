@@ -396,15 +396,20 @@ export async function PATCH(request: NextRequest) {
   const client = await getPrimaryPool().connect();
   const session = await auth();
   const ip = getRequestIp(request);
+  const demandPlanningRequest = request.headers.get("x-planning-permission-context") === "demand-planning";
 
   try {
+    if (demandPlanningRequest) {
+      const denied = await guardPermission("demand-planning", "edit");
+      if (denied) return denied;
+    }
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id")?.trim();
     const isTimelineDatePatch =
       searchParams.get("confirmedOnly") === "true" ||
       searchParams.get("etaLaxLgbOnly") === "true";
 
-    if (session?.user?.id) {
+    if (session?.user?.id && !demandPlanningRequest) {
       const role = (session.user.role as string) ?? "user";
       const allowed = isTimelineDatePatch
         ? (await canDo(session.user.id, role, "container-timeline", "edit")) ||

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath } from "@/lib/api-path";
@@ -8,6 +8,8 @@ import { usePermissions } from "@/lib/hooks/use-permissions";
 import {
   PERM_SECTIONS,
   PERM_ACTIONS,
+  PERM_SECTION_GROUP_LABELS,
+  PERM_SECTION_GROUPS,
   PERM_SECTION_ACTIONS,
   PERM_SECTION_HINTS,
   DEFAULT_ROLE_PERMISSIONS,
@@ -273,10 +275,20 @@ export function UserExceptionsTab({
               }}
               className="rounded-md border border-[#ccc7be] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#1a1917] outline-none focus:border-[#1a5cdb]"
             >
-              {PERM_SECTIONS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {pick(s.nameKo, s.nameEn)}
-                </option>
+              {PERM_SECTION_GROUPS.map(({ group, sections }) => (
+                <optgroup
+                  key={group}
+                  label={pick(
+                    PERM_SECTION_GROUP_LABELS[group]?.ko ?? group,
+                    PERM_SECTION_GROUP_LABELS[group]?.en ?? group
+                  )}
+                >
+                  {sections.map((section) => (
+                    <option key={section.id} value={section.id}>
+                      {pick(section.nameKo, section.nameEn)}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <select
@@ -424,53 +436,73 @@ export function UserExceptionsTab({
                 </tr>
               </thead>
               <tbody>
-                {PERM_SECTIONS.map((sec) => (
-                  <tr
-                    key={sec.id}
-                    className="border-b border-[#e2dfd8] last:border-0"
-                  >
-                    <td className="px-3 py-2 text-[11px] font-medium text-[#1a1917]">
-                      {pick(sec.nameKo, sec.nameEn)}
-                    </td>
-                    {DISPLAY_ACTIONS.map((act) => {
-                      const supported = PERM_SECTION_ACTIONS[sec.id as PermSection].includes(act.id as PermAction);
-                      if (!supported) {
-                        return (
-                          <td key={act.id} className="px-2 py-2 text-center">
-                            <span className="text-[12px] text-[#d1c9be]">—</span>
-                          </td>
-                        );
-                      }
-                      const { value, isOverride } = getEffective(
-                        user.role,
-                        sec.id,
-                        act.id,
-                        overrides,
-                        roleMatrix
-                      );
-                      return (
-                        <td key={act.id} className="px-2 py-2 text-center">
-                          {isOverride ? (
-                            <span
-                              className={`inline-flex items-center justify-center rounded px-1 py-0.5 text-[11px] font-bold ${
-                                value
-                                  ? "bg-[#ecfdf5] text-[#059669]"
-                                  : "bg-[#fef2f2] text-[#dc2626]"
-                              }`}
-                            >
-                              {value ? "✓" : "✗"}
-                            </span>
-                          ) : (
-                            <span
-                              className={`text-[12px] ${value ? "text-[#059669]" : "text-[#d1c9be]"}`}
-                            >
-                              {value ? "✓" : "—"}
-                            </span>
-                          )}
+                {PERM_SECTION_GROUPS.map(({ group, sections }) => (
+                  <Fragment key={group}>
+                    <tr className="border-b border-[#e2dfd8] bg-[#f0ede8] dark:border-slate-700 dark:bg-slate-800">
+                      <td className="px-3 py-2 text-[9px] font-bold uppercase tracking-[0.08em] text-[#6b6359] dark:text-slate-300">
+                        {pick(
+                          PERM_SECTION_GROUP_LABELS[group]?.ko ?? group,
+                          PERM_SECTION_GROUP_LABELS[group]?.en ?? group
+                        )}
+                      </td>
+                      {DISPLAY_ACTIONS.map((action) => (
+                        <td key={action.id} className="px-2 py-2 text-center">
+                          <span className="text-[12px] text-[#d1c9be]">—</span>
                         </td>
-                      );
-                    })}
-                  </tr>
+                      ))}
+                    </tr>
+                    {sections.map((section, index) => (
+                      <tr
+                        key={section.id}
+                        className={`border-b border-[#e2dfd8] dark:border-slate-700 ${index === sections.length - 1 ? "border-b-2 border-b-[#d6d3cc] dark:border-b-slate-600" : ""}`}
+                      >
+                        <td className="py-2 pl-6 pr-3">
+                          <div className="relative border-l-2 border-[#d6d3cc] py-0.5 pl-4 dark:border-slate-600">
+                            <div className="absolute left-0 top-3 h-px w-3 bg-[#d6d3cc] dark:bg-slate-600" />
+                            <span className="text-[11px] font-medium text-[#1a1917] dark:text-slate-100">
+                              {pick(section.nameKo, section.nameEn)}
+                            </span>
+                          </div>
+                        </td>
+                        {DISPLAY_ACTIONS.map((action) => {
+                          const supported = PERM_SECTION_ACTIONS[section.id as PermSection].includes(action.id as PermAction);
+                          if (!supported) {
+                            return (
+                              <td key={action.id} className="px-2 py-2 text-center">
+                                <span className="text-[12px] text-[#d1c9be]">—</span>
+                              </td>
+                            );
+                          }
+                          const { value, isOverride } = getEffective(
+                            user.role,
+                            section.id,
+                            action.id,
+                            overrides,
+                            roleMatrix
+                          );
+                          return (
+                            <td key={action.id} className="px-2 py-2 text-center">
+                              {isOverride ? (
+                                <span
+                                  className={`inline-flex items-center justify-center rounded px-1 py-0.5 text-[11px] font-bold ${
+                                    value
+                                      ? "bg-[#ecfdf5] text-[#059669]"
+                                      : "bg-[#fef2f2] text-[#dc2626]"
+                                  }`}
+                                >
+                                  {value ? "✓" : "✗"}
+                                </span>
+                              ) : (
+                                <span className={`text-[12px] ${value ? "text-[#059669]" : "text-[#d1c9be]"}`}>
+                                  {value ? "✓" : "—"}
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

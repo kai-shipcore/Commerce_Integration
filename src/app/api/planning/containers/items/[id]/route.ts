@@ -12,7 +12,7 @@ import {
   deleteRemainingAllocationsForContainerItem,
   syncRemainingAllocationForContainerItem,
 } from "@/lib/planning/available-stock-allocation";
-import { guardPermission } from "@/lib/permissions";
+import { guardPlanningMutation } from "@/lib/planning/mutation-permission";
 import { z } from "zod";
 
 const BodySchema = z.object({
@@ -41,7 +41,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = await guardPermission("container-planning", "delete");
+  const denied = await guardPlanningMutation(_req, "container-planning", "delete");
   if (denied) return denied;
   const { id } = await params;
   const itemId = parseItemId(id);
@@ -90,7 +90,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = await guardPermission("container-planning", "edit");
+  const denied = await guardPlanningMutation(req, "container-planning", "edit");
   if (denied) return denied;
   const { id } = await params;
   const itemId = parseItemId(id);

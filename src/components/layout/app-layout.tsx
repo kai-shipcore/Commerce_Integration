@@ -43,7 +43,7 @@ const ACTIVITY_EVENT_FLUSH_MS = 10 * 1000;
 
 type ActivityEventPayload = {
   occurredAt: string;
-  eventType: "page_view" | "button_click" | "link_click" | "form_submit";
+  eventType: "page_view" | "button_click" | "link_click" | "form_submit" | "action_failed";
   path: string;
   label?: string;
   target?: string;
@@ -328,6 +328,44 @@ export function AppLayout({ children }: AppLayoutProps) {
       if (document.visibilityState === "hidden") void flushEvents();
     }
 
+    const originalFetch = window.fetch;
+    const trackedFetch: typeof window.fetch = async (input, init) => {
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      let endpointPath = "";
+      try {
+        const inputUrl = input instanceof Request ? input.url : String(input);
+        endpointPath = new URL(inputUrl, window.location.origin).pathname;
+      } catch {
+        // A malformed URL will be handled by fetch itself.
+      }
+      const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+      const isActivityEndpoint = endpointPath.includes("/api/user/activity");
+      const shouldTrackFailure = isMutation && !isActivityEndpoint;
+
+      try {
+        const response = await originalFetch.call(window, input, init);
+        if (shouldTrackFailure && !response.ok) {
+          queueEvent({
+            eventType: "action_failed",
+            label: `${method} request failed`,
+            target: `HTTP ${response.status}`,
+          });
+        }
+        return response;
+      } catch (requestError) {
+        if (shouldTrackFailure) {
+          queueEvent({
+            eventType: "action_failed",
+            label: `${method} request failed`,
+            target: "Network error",
+          });
+        }
+        throw requestError;
+      }
+    };
+
+    window.fetch = trackedFetch;
+
     queueEvent({ eventType: "page_view", label: document.title, target: "page" });
     void flushEvents();
     document.addEventListener("click", handleClick, true);
@@ -339,6 +377,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("submit", handleSubmit, true);
       document.removeEventListener("visibilitychange", handleVisibility);
+      if (window.fetch === trackedFetch) window.fetch = originalFetch;
       if (flushTimer !== null) window.clearInterval(flushTimer);
       void flushEvents();
     };

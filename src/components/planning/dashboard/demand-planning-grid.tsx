@@ -67,6 +67,7 @@ export interface DemandPlanningGridProps {
   skuCellNotes?: Record<string, string>;
   onSkuCellNoteChange?: (sku: string, note: string) => void | Promise<void>;
   canEditSkuNotes?: boolean;
+  canEditPlanning?: boolean;
   selectedCellKeys?: string[];
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
   onCellSelectionChange?: (keys: string[]) => void;
