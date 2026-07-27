@@ -1,0 +1,133 @@
+<section class="page-section" id="oos-impact">
+  <div class="section-header">
+    <div class="section-icon" style="background:#fff1f2;font-size:28px">📉</div>
+    <div>
+      <div class="menu-path">Planning › OOS Impact</div>
+      <h2>OOS Impact Analysis</h2>
+      <p class="subtitle">A simple view of how much sales fall during a stockout and how quickly they recover after restocking.</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">🚧</span>
+    <div><strong>This page is currently a UI design prototype.</strong> The SKUs, sales figures, and percentages such as 32% are sample data for reviewing the screen. The page is not connected to the production database yet and must not be interpreted as actual company performance.</div>
+  </div>
+
+  <h3>What this screen shows</h3>
+  <div class="card-grid col2">
+    <div class="card" style="border-left:4px solid #2563eb">
+      <h4>① How much do sales fall after switching to Pre-Order?</h4>
+      <p>Compare Shopify sales before and after a product changes from normal sales to Pre-Order. A large drop may mean that customers do not want to wait.</p>
+    </div>
+    <div class="card" style="border-left:4px solid #10b981">
+      <h4>② How quickly do sales return after restocking?</h4>
+      <p>Measure how much of the pre-stockout sales level returns after 30, 60, and 90 days on Amazon, eBay, and Walmart.</p>
+    </div>
+  </div>
+  <div class="callout info">
+    <span class="callout-icon">💼</span>
+    <div><strong>Business purpose:</strong> A stockout may hurt more than the days with no inventory. Orders may fall during Pre-Order, and marketplace ranking or visibility may take time to return after restocking. This design helps support decisions about purchase timing, safety stock, and which SKUs to replenish first.</div>
+  </div>
+
+  <h3>Simple glossary</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Term</th><th>Plain-language meaning</th></tr>
+    <tr><td class="label">Normal Daily Average</td><td>The average number of units sold per day before the product switched to Pre-Order.</td></tr>
+    <tr><td class="label">PO Daily Average</td><td>The average number of units ordered per day after the product switched to Pre-Order.</td></tr>
+    <tr><td class="label">Drop Rate</td><td>The percentage by which sales slowed versus normal sales. A larger value means a larger impact.</td></tr>
+    <tr><td class="label">Baseline</td><td>The normal sales speed before the stockout, used as the comparison target.</td></tr>
+    <tr><td class="label">Recovery Rate</td><td>How much of the pre-stockout sales speed has returned. A value of 100% means sales are back to the old level.</td></tr>
+  </table>
+
+  <h3 id="oos-tab1">Screen 1 — Shopify Pre-Order Drop Rate</h3>
+  <p>This screen answers, “How much did orders fall after inventory ran out and the product switched to Pre-Order?” For a fair comparison, the before and after windows should have the <strong>same number of days</strong>.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Select item and channel</h4><p>Choose an item such as Car Cover or Seat Cover and one or more Shopify channels. The final design will include only matching SKUs in every card, chart, and table.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Read the summary cards</h4><p>Start with SKU count, average drop, median drop, and the SKU with the largest drop.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Read the distribution</h4><p>The bars show whether most SKUs have a small, medium, or large sales drop.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Open a problem SKU</h4><p>Click an SKU row to review its before/after trend and calculation inputs.</p></div></div>
+  </div>
+
+  <h3 class="sub">Drop-rate formula</h3>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
+    <p style="margin:0 0 8px"><strong>Drop rate = (Normal daily average − PO daily average) ÷ Normal daily average × 100</strong></p>
+    <p style="margin:0">Example: normal sales are 10 units/day and Pre-Order sales are 6 units/day. The drop is <code>(10 − 6) ÷ 10 × 100 = 40%</code>.</p>
+  </div>
+
+  <table class="feat-table">
+    <tr><th style="width:190px">Summary card</th><th>Meaning</th></tr>
+    <tr><td class="label">Analyzed SKUs</td><td>The number of products matching the selected filters.</td></tr>
+    <tr><td class="label">Average Sales Drop</td><td>Add every SKU's drop rate and divide by the number of SKUs. It shows the overall impact.</td></tr>
+    <tr><td class="label">Median Drop</td><td>Sort the drop rates and take the middle. It is less affected by unusually high or low values than the average.</td></tr>
+    <tr><td class="label">Largest Drop SKU</td><td>The product with the largest drop and a priority candidate for investigation.</td></tr>
+  </table>
+
+  <h3 class="sub">Understanding the histogram and the 32% median</h3>
+  <p>Each bar shows how many SKUs fall inside a percentage range. The dashed line is not the average of one bar; it is the <strong>median of all selected SKUs</strong>.</p>
+  <div class="callout tip">
+    <span class="callout-icon">🧮</span>
+    <div>The ten sample drop rates sorted from low to high are <code>10, 18, 21, 22, 29, 35, 50, 50, 64, 74</code>. With ten values, the median is the average of the 5th and 6th values: <strong>(29 + 35) ÷ 2 = 32%</strong>. This means half of the selected SKUs are at or below 32%, and half are at or above 32%.</div>
+  </div>
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div>The median does not delete or exclude outliers. It is simply less sensitive to extreme values than the average. Use the average for the overall impact and the median for a more typical SKU.</div>
+  </div>
+
+  <h3 id="oos-tab2">Screen 2 — Marketplace Restock Recovery</h3>
+  <p>This screen answers, “Do sales return immediately after inventory returns?” It focuses on Amazon, eBay, and Walmart, where a stockout may affect search visibility and sales ranking.</p>
+  <div class="callout tip">
+    <span class="callout-icon">🏃</span>
+    <div>If a product sold 10 units/day before the stockout, that is the 100% baseline. Selling 5/day after restocking means 50% recovery, 8/day means 80%, and returning to 10/day means 100% recovery.</div>
+  </div>
+
+  <h3 class="sub">Recovery formula</h3>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
+    <p style="margin:0 0 8px"><strong>Recovery rate = Post-restock daily average ÷ Pre-stockout baseline × 100</strong></p>
+    <p style="margin:0">Example: the baseline is 10 units/day and the post-restock average is 7/day. Recovery is <code>7 ÷ 10 × 100 = 70%</code>.</p>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:210px">Screen element</th><th>Meaning</th></tr>
+    <tr><td class="label">Channel</td><td>Select Amazon FBA/FBM, eBay accounts, or Walmart.</td></tr>
+    <tr><td class="label">Target</td><td>Only SKUs that were out of stock and have since been restocked are included. Currently OOS products cannot have a recovery rate.</td></tr>
+    <tr><td class="label">Previous OOS Duration</td><td>Filter to products that were OOS for at least 14, 30, or 60 days to test whether longer stockouts recover more slowly.</td></tr>
+    <tr><td class="label">30/60/90-day Cards</td><td>The average recovery among selected SKUs at each checkpoint.</td></tr>
+    <tr><td class="label">Horizontal Axis</td><td>Days since restocking; day 0 is the restock date.</td></tr>
+    <tr><td class="label">Vertical Axis</td><td>Sales recovery compared with the pre-stockout baseline.</td></tr>
+    <tr><td class="label">100% Baseline</td><td>The old normal sales level. A line closer to 100% indicates stronger recovery.</td></tr>
+    <tr><td class="label">Channel Lines</td><td>Compare Amazon, eBay, and Walmart. The dashed black line represents the overall average.</td></tr>
+  </table>
+
+  <h3>Decisions this analysis is intended to support</h3>
+  <ul>
+    <li><strong>Replenishment priority:</strong> replenish SKUs with a large Pre-Order drop and slow restock recovery first.</li>
+    <li><strong>Safety stock:</strong> hold more protection inventory for products that suffer more from stockouts.</li>
+    <li><strong>Channel follow-up:</strong> consider advertising, price, and listing checks when a marketplace recovers slowly.</li>
+    <li><strong>Acceptable OOS duration:</strong> compare short and long stockouts to decide how much stockout risk the business can tolerate.</li>
+  </ul>
+
+  <h3>Important interpretation limits</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">Caution</th><th>Why it matters</th></tr>
+    <tr><td class="label">Not every drop is caused by OOS</td><td>Price, ads, seasonality, competition, reviews, and promotions can also change sales.</td></tr>
+    <tr><td class="label">Small samples are unstable</td><td>When only a few SKUs are selected, one unusual SKU can move the average considerably.</td></tr>
+    <tr><td class="label">Compare equal-length windows</td><td>Comparing 30 days before with only 5 days after is not a fair comparison.</td></tr>
+    <tr><td class="label">Check zero baselines</td><td>A product with no pre-stockout sales cannot produce a meaningful drop or recovery rate.</td></tr>
+    <tr><td class="label">Correlation is not proof of cause</td><td>A drop after Pre-Order does not prove that Pre-Order was the only cause.</td></tr>
+  </table>
+
+  <h3>Current implementation status</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">Feature</th><th>Status</th></tr>
+    <tr><td class="label">Layout, charts, sample details</td><td>Available for UI review.</td></tr>
+    <tr><td class="label">Some channel selection</td><td>Can update the sample rows displayed.</td></tr>
+    <tr><td class="label">Item filter</td><td>Visual prototype only; not connected to real product filtering.</td></tr>
+    <tr><td class="label">Search and Export</td><td>Visual elements only; the functional logic is not connected.</td></tr>
+    <tr><td class="label">Sync</td><td>Disabled and marked as coming soon.</td></tr>
+    <tr><td class="label">Production DB calculation</td><td>Not connected. Calculation validation and business-rule approval are required after integration.</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <span class="callout-icon">📌</span>
+    <div><strong>Current usage notice:</strong> This is a UI concept for measuring pre/post-stockout sales impact and restock recovery. Current figures are samples. Use it for demand forecasting and inventory planning only after production data integration and calculation validation are complete.</div>
+  </div>
+</section>

@@ -1,0 +1,85 @@
+"use client";
+
+// Code Guide:
+// Root for the two OOS-impact screens from the planning doc:
+//   1) Shopify Pre-Order conversion drop rate  → preorder-screen.tsx
+//   2) Marketplace restock recovery            → recovery-screen.tsx
+// This file only owns the tab switcher and page header — split out so two
+// people can each own one screen file without touching this one. Shared
+// pieces (Chip, Kpi, LineChart, etc.) live in shared.tsx.
+
+import { useState } from "react";
+import { ChevronRight, Download, PackageX, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
+import { PreorderScreen } from "./preorder-screen";
+import { RecoveryScreen } from "./recovery-screen";
+
+export function OosImpactContent() {
+  const { pick } = useI18n();
+  const [screen, setScreen] = useState<"preorder" | "recovery">("preorder");
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-4",
+        "[--chart-blue:#2a78d6] [--chart-orange:#eb6834] [--chart-aqua:#1baf7a] [--chart-baseline-bar:#c3c2b7]",
+        "dark:[--chart-blue:#3987e5] dark:[--chart-orange:#d95926] dark:[--chart-aqua:#199e70] dark:[--chart-baseline-bar:#383835]"
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+            <PackageX className="h-4 w-4" />
+          </span>
+          <div>
+            <h1 className="text-lg font-semibold">{pick("품절 영향 분석", "OOS Impact Analysis")}</h1>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {pick(
+                "품절이 판매에 미치는 영향을 채널별로 다르게 측정합니다 — 화면 설계 단계 (샘플 데이터, 로직 연동 전)",
+                "Measures how stockouts hit sales, split by channel — screen design stage (sample data, logic not wired yet)"
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+            <Download className="h-3.5 w-3.5" />
+            {pick("내보내기", "Export")}
+          </button>
+          <button type="button" disabled className="flex cursor-not-allowed items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background opacity-50">
+            <RefreshCw className="h-3.5 w-3.5" />
+            {pick("동기화 (준비 중)", "Sync (coming soon)")}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex w-fit gap-1.5 rounded-xl bg-muted p-1">
+        {(
+          [
+            ["preorder", "Shopify · Pre-Order 전환 감소율"],
+            ["recovery", "타 채널 · 재입고 회복 추이"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setScreen(key)}
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-semibold transition-colors",
+              screen === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <span className={cn("flex h-[18px] w-[18px] items-center justify-center rounded-full font-mono text-[10.5px] font-bold", screen === key ? "bg-foreground text-background" : "bg-background/60 text-muted-foreground")}>
+              {key === "preorder" ? 1 : 2}
+            </span>
+            {label}
+            <ChevronRight className="h-3 w-3 opacity-40" />
+          </button>
+        ))}
+      </div>
+
+      {screen === "preorder" ? <PreorderScreen /> : <RecoveryScreen />}
+    </div>
+  );
+}
