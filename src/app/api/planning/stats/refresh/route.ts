@@ -27,6 +27,7 @@ import {
 } from "@/lib/planning/forecast-calculations";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, normalizeSalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, normalizeOosLostDemandWeights, type CategoryKey, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
+import { CacheManager } from "@/lib/redis";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -654,7 +655,11 @@ export async function POST(request: Request) {
         updated_at = NOW()
     `);
 
-    await invalidatePlanningDashboardCache();
+    await Promise.all([
+      invalidatePlanningDashboardCache(),
+      CacheManager.delete("oos-preorder:sku-list:v4"),
+      CacheManager.delete("oos-recovery:sku-list"),
+    ]);
 
     return NextResponse.json({
       success: true,

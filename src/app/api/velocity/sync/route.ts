@@ -13,6 +13,7 @@ import type { PoolClient } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { normalizedMasterSkuSql } from "@/lib/planning/master-sku";
+import { CacheManager } from "@/lib/redis";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -331,6 +332,11 @@ export async function POST(req: NextRequest) {
         `DELETE FROM shipcore.fc_velocity_link_snapshot_forecast WHERE synced_at < $1`,
         [syncedAt],
       ),
+    ]);
+
+    await Promise.all([
+      CacheManager.delete("oos-preorder:sku-list:v4"),
+      CacheManager.delete("oos-recovery:sku-list"),
     ]);
 
     return NextResponse.json({

@@ -587,6 +587,7 @@ export function PartSkuGeneratorPage() {
                 <button
                   key={p.id}
                   type="button"
+                  data-activity-label={pick(`Part SKU 선택: ${p.sku}`, `Select Part SKU: ${p.sku}`)}
                   onClick={() => setSelectedId(p.id)}
                   className={`flex w-full items-start gap-3 border-b border-[#e2dfd8] px-4 py-3 text-left transition-colors hover:bg-[#f0eee9] ${
                     selectedId === p.id ? "border-l-4 border-l-[#1a5cdb] bg-[#ebf0fd]" : ""

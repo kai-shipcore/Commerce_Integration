@@ -15,6 +15,7 @@ import {
   Loader2,
   LogIn,
   MousePointerClick,
+  Search,
 } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { ACTIVITY_TIME_ZONE, getActivityDate } from "@/lib/activity-date";
@@ -26,7 +27,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type TimelineSource = "activity" | "login" | "audit";
-type TimelineFilter = "all" | "pages" | "actions" | "changes" | "logins" | "failures";
+type TimelineFilter = "all" | "pages" | "lookups" | "actions" | "changes" | "logins" | "failures";
 type TimelineView = "summary" | "raw";
 
 type TimelineEvent = {
@@ -156,13 +157,23 @@ export function UserActivityTimelineDialog({
 
   const counts = useMemo(() => ({
     pages: events.filter((event) => event.eventType === "page_view").length,
-    actions: events.filter((event) => event.source === "activity" && event.eventType !== "page_view" && !isFailureEvent(event)).length,
+    lookups: events.filter(isLookupEvent).length,
+    actions: events.filter((event) => event.source === "activity" && event.eventType !== "page_view" && !isFailureEvent(event) && !isLookupEvent(event)).length,
     changes: events.filter((event) => event.source === "audit").length,
     logins: events.filter((event) => event.source === "login").length,
     failures: events.filter(isFailureEvent).length,
   }), [events]);
 
+  function selectMetricFilter(nextFilter: Exclude<TimelineFilter, "all">) {
+    setFilter((current) => current === nextFilter ? "all" : nextFilter);
+    setRawLimit(RAW_PAGE_SIZE);
+  }
+
   const contextualEvents = useMemo(() => enrichPageContext(events), [events]);
+  const filteredEvents = useMemo(
+    () => events.filter((event) => matchesFilter(event, filter)),
+    [events, filter],
+  );
   const filteredContextualEvents = useMemo(
     () => contextualEvents.filter(({ event }) => matchesFilter(event, filter)),
     [contextualEvents, filter],
@@ -199,20 +210,22 @@ export function UserActivityTimelineDialog({
                 className="h-9 rounded-md border bg-background px-2"
               />
             </label>
-            <MetricBadge label={pick("페이지", "Pages")} value={counts.pages} />
-            <MetricBadge label={pick("화면 행동", "UI actions")} value={counts.actions} />
-            <MetricBadge label={pick("데이터 변경", "Data changes")} value={counts.changes} tone="important" />
-            <MetricBadge label={pick("로그인", "Logins")} value={counts.logins} />
-            <MetricBadge label={pick("실패", "Failures")} value={counts.failures} tone={counts.failures > 0 ? "failure" : "default"} />
+            <MetricFilterButton label={pick("페이지", "Pages")} value={counts.pages} active={filter === "pages"} onClick={() => selectMetricFilter("pages")} />
+            <MetricFilterButton label={pick("SKU 조회", "SKU lookups")} value={counts.lookups} active={filter === "lookups"} onClick={() => selectMetricFilter("lookups")} />
+            <MetricFilterButton label={pick("화면 행동", "UI actions")} value={counts.actions} active={filter === "actions"} onClick={() => selectMetricFilter("actions")} />
+            <MetricFilterButton label={pick("데이터 변경", "Data changes")} value={counts.changes} tone="important" active={filter === "changes"} onClick={() => selectMetricFilter("changes")} />
+            <MetricFilterButton label={pick("로그인", "Logins")} value={counts.logins} active={filter === "logins"} onClick={() => selectMetricFilter("logins")} />
+            <MetricFilterButton label={pick("실패", "Failures")} value={counts.failures} tone={counts.failures > 0 ? "failure" : "default"} active={filter === "failures"} onClick={() => selectMetricFilter("failures")} />
             <span className="ml-auto text-xs text-muted-foreground">{ACTIVITY_TIME_ZONE}</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={filter} onValueChange={(value) => setFilter(value as TimelineFilter)} disabled={view === "raw"}>
+            <Select value={filter} onValueChange={(value) => { setFilter(value as TimelineFilter); setRawLimit(RAW_PAGE_SIZE); }}>
               <SelectTrigger className="h-8 w-44 bg-background"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{pick("전체 활동", "All activity")} ({events.length})</SelectItem>
                 <SelectItem value="pages">{pick("화면 방문", "Page views")} ({counts.pages})</SelectItem>
+                <SelectItem value="lookups">{pick("SKU 조회·탐색", "SKU lookups")} ({counts.lookups})</SelectItem>
                 <SelectItem value="actions">{pick("버튼·링크 활동", "UI actions")} ({counts.actions})</SelectItem>
                 <SelectItem value="changes">{pick("데이터 변경", "Data changes")} ({counts.changes})</SelectItem>
                 <SelectItem value="logins">{pick("로그인", "Logins")} ({counts.logins})</SelectItem>
@@ -238,7 +251,7 @@ export function UserActivityTimelineDialog({
             <span className="text-[11px] text-muted-foreground">
               {view === "summary"
                 ? pick("반복 행동은 횟수로 합쳐 표시합니다.", "Repeated actions are combined into counts.")
-                : pick("필터 없이 저장된 이벤트를 그대로 표시합니다.", "Shows every stored event without filtering.")}
+                : pick("선택한 활동 그룹의 저장된 이벤트를 합치지 않고 표시합니다.", "Shows uncombined stored events from the selected activity group.")}
             </span>
           </div>
         </div>
@@ -252,9 +265,13 @@ export function UserActivityTimelineDialog({
             <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
               {pick("선택한 날짜의 활동 기록이 없습니다.", "No activity was recorded on this date.")}
             </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+              {pick("선택한 그룹에 해당하는 활동이 없습니다.", "No activity matches the selected group.")}
+            </div>
           ) : view === "raw" ? (
             <RawTimeline
-              events={events}
+              events={filteredEvents}
               limit={rawLimit}
               onLoadMore={() => setRawLimit((current) => current + RAW_PAGE_SIZE)}
             />
@@ -291,6 +308,7 @@ export function UserActivityTimelineDialog({
                               screen={screen}
                               open={expandedScreens.has(stateKey)}
                               onToggle={() => toggleScreen(stateKey)}
+                              collapseLowPriority={filter === "all"}
                             />
                           );
                         })}
@@ -307,12 +325,30 @@ export function UserActivityTimelineDialog({
   );
 }
 
-function ScreenActivityGroup({ screen, open, onToggle }: { screen: ScreenGroup; open: boolean; onToggle: () => void }) {
+function ScreenActivityGroup({
+  screen,
+  open,
+  onToggle,
+  collapseLowPriority,
+}: {
+  screen: ScreenGroup;
+  open: boolean;
+  onToggle: () => void;
+  collapseLowPriority: boolean;
+}) {
   const { pick } = useI18n();
   const visits = screen.events.filter((event) => event.eventType === "page_view").length;
-  const actions = screen.events.filter((event) => event.source === "activity" && event.eventType !== "page_view" && !isFailureEvent(event)).length;
+  const lookups = screen.events.filter(isLookupEvent).length;
+  const actions = screen.events.filter((event) => event.source === "activity" && event.eventType !== "page_view" && !isFailureEvent(event) && !isLookupEvent(event)).length;
   const changes = screen.events.filter((event) => event.source === "audit").length;
   const failures = screen.events.filter(isFailureEvent).length;
+  const lowPrioritySummaries = collapseLowPriority
+    ? screen.summaries.filter((summary) => summary.representative.eventType === "page_view" || isLookupEvent(summary.representative))
+    : [];
+  const visibleSummaries = collapseLowPriority
+    ? screen.summaries.filter((summary) => summary.representative.eventType !== "page_view" && !isLookupEvent(summary.representative))
+    : screen.summaries;
+  const lowPriorityEventCount = lowPrioritySummaries.reduce((sum, summary) => sum + summary.events.length, 0);
 
   return (
     <div className={`overflow-hidden rounded-lg border ${failures > 0 ? "border-red-200" : changes > 0 ? "border-amber-200" : ""}`}>
@@ -325,6 +361,7 @@ function ScreenActivityGroup({ screen, open, onToggle }: { screen: ScreenGroup; 
           </div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             {visits > 0 ? <span>{pick("방문", "Visits")} {visits}</span> : null}
+            {lookups > 0 ? <span>{pick("SKU 조회", "SKU lookups")} {lookups}</span> : null}
             {actions > 0 ? <span>{pick("행동", "Actions")} {actions}</span> : null}
             {changes > 0 ? <span className="font-semibold text-amber-700">{pick("변경", "Changes")} {changes}</span> : null}
             {failures > 0 ? <span className="font-semibold text-red-700">{pick("실패", "Failures")} {failures}</span> : null}
@@ -334,7 +371,17 @@ function ScreenActivityGroup({ screen, open, onToggle }: { screen: ScreenGroup; 
       </button>
       {open ? (
         <div className="space-y-2 border-t bg-muted/10 p-3">
-          {screen.summaries.map((summary) => <TimelineSummaryRow key={summary.key} summary={summary} />)}
+          {visibleSummaries.map((summary) => <TimelineSummaryRow key={summary.key} summary={summary} />)}
+          {lowPrioritySummaries.length > 0 ? (
+            <details className="rounded-lg border border-dashed bg-background/60">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">
+                {pick("페이지 방문·SKU 조회 기록", "Page visits and SKU lookups")} {lowPriorityEventCount}{pick("건", " events")}
+              </summary>
+              <div className="space-y-2 border-t border-dashed p-2">
+                {lowPrioritySummaries.map((summary) => <TimelineSummaryRow key={summary.key} summary={summary} />)}
+              </div>
+            </details>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -386,6 +433,7 @@ function TimelineEventRow({
 }) {
   const { pick } = useI18n();
   const failure = isFailureEvent(event);
+  const lookup = isLookupEvent(event);
   const config = failure
     ? { icon: AlertTriangle, label: pick("실패한 작업", "Failed action"), iconClass: "bg-red-100 text-red-700", rowClass: "border-red-200 bg-red-50/40" }
     : event.source === "audit"
@@ -394,12 +442,16 @@ function TimelineEventRow({
         ? { icon: LogIn, label: pick("로그인", "Login"), iconClass: "bg-emerald-100 text-emerald-700", rowClass: "" }
         : event.eventType === "page_view"
           ? { icon: Eye, label: pick("페이지 방문", "Page view"), iconClass: "bg-blue-100 text-blue-700", rowClass: "" }
+          : lookup
+            ? { icon: Search, label: pick("SKU 조회·탐색", "SKU lookup"), iconClass: "bg-cyan-100 text-cyan-700", rowClass: "" }
           : event.eventType === "link_click"
             ? { icon: Link2, label: pick("링크 이동", "Link click"), iconClass: "bg-violet-100 text-violet-700", rowClass: "" }
             : { icon: MousePointerClick, label: event.eventType === "form_submit" ? pick("폼 제출", "Form submit") : pick("버튼 클릭", "Button click"), iconClass: "bg-slate-100 text-slate-700", rowClass: "" };
   const Icon = config.icon;
-  const summary = event.subjectType === "sku" && event.subjectId
-    ? pick(`SKU 선택: ${event.subjectId}`, `Select SKU: ${event.subjectId}`)
+  const summary = event.subjectType === "part_sku" && event.subjectId
+    ? pick(`Part SKU 선택: ${event.subjectId}`, `Select Part SKU: ${event.subjectId}`)
+    : event.subjectType === "sku" && event.subjectId
+      ? pick(`SKU 선택: ${event.subjectId}`, `Select SKU: ${event.subjectId}`)
     : event.source === "audit"
       ? `${event.entityType ?? "data"} · ${event.label ?? event.entityId ?? "-"} · ${event.target ?? "update"}`
       : event.label || event.target || "-";
@@ -411,7 +463,11 @@ function TimelineEventRow({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold">{config.label}</span>
-          {event.source === "audit" || failure ? <Badge className={failure ? "bg-red-600 hover:bg-red-600" : "bg-amber-600 hover:bg-amber-600"}>{pick("중요", "Important")}</Badge> : <Badge variant="outline" className="text-[9px]">{pick("일반", "Normal")}</Badge>}
+          {event.source === "audit" || failure
+            ? <Badge className={failure ? "bg-red-600 hover:bg-red-600" : "bg-amber-600 hover:bg-amber-600"}>{pick("중요", "Important")}</Badge>
+            : lookup
+              ? <Badge className="bg-cyan-100 text-cyan-800 hover:bg-cyan-100">{pick("탐색", "Lookup")}</Badge>
+              : <Badge variant="outline" className="text-[9px]">{pick("일반", "Normal")}</Badge>}
           {count > 1 ? <Badge variant="secondary">{count}{pick("회", " times")}</Badge> : null}
           {showPath && event.path ? <code className="max-w-96 truncate rounded bg-muted px-1.5 py-0.5 text-[10px]">{event.path}</code> : null}
         </div>
@@ -430,13 +486,41 @@ function TimelineEventRow({
   );
 }
 
-function MetricBadge({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "important" | "failure" }) {
-  const className = tone === "failure"
-    ? "border-red-200 bg-red-100 text-red-800"
+function MetricFilterButton({
+  label,
+  value,
+  active,
+  onClick,
+  tone = "default",
+}: {
+  label: string;
+  value: number;
+  active: boolean;
+  onClick: () => void;
+  tone?: "default" | "important" | "failure";
+}) {
+  const toneClass = tone === "failure"
+    ? active
+      ? "border-red-600 bg-red-600 text-white"
+      : "border-red-200 bg-red-100 text-red-800 hover:bg-red-200"
     : tone === "important"
-      ? "border-amber-200 bg-amber-100 text-amber-800"
-      : "";
-  return <Badge variant="secondary" className={className}>{label} {value}</Badge>;
+      ? active
+        ? "border-amber-600 bg-amber-600 text-white"
+        : "border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-200"
+      : active
+        ? "border-slate-700 bg-slate-700 text-white"
+        : "border-border bg-secondary text-secondary-foreground hover:bg-secondary/70";
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`inline-flex h-6 items-center rounded-full border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${toneClass}`}
+      title={active ? "선택 해제" : `${label} 기록만 보기`}
+    >
+      {label} {value}
+    </button>
+  );
 }
 
 function enrichPageContext(events: TimelineEvent[]): ContextualEvent[] {
@@ -531,7 +615,12 @@ function matchesFilter(event: TimelineEvent, filter: TimelineFilter): boolean {
   if (filter === "changes") return event.source === "audit";
   if (filter === "logins") return event.source === "login";
   if (filter === "pages") return event.eventType === "page_view";
-  return event.source === "activity" && event.eventType !== "page_view" && !isFailureEvent(event);
+  if (filter === "lookups") return isLookupEvent(event);
+  return event.source === "activity" && event.eventType !== "page_view" && !isFailureEvent(event) && !isLookupEvent(event);
+}
+
+function isLookupEvent(event: TimelineEvent): boolean {
+  return (event.subjectType === "sku" || event.subjectType === "part_sku") && Boolean(event.subjectId);
 }
 
 function isFailureEvent(event: TimelineEvent): boolean {

@@ -6,6 +6,7 @@
 
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export type Severity = "good" | "warning" | "serious" | "critical";
 
@@ -37,16 +38,17 @@ export function Pagination({
   onPageSizeChange: (size: number) => void;
   pageSizeOptions?: number[];
 }) {
+  const { pick } = useI18n();
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground">
       <div className="flex items-center gap-1.5">
-        <span>페이지당</span>
+        <span>{pick("페이지당", "Per page")}</span>
         <select
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
           className="rounded border border-border bg-background px-1.5 py-1 text-[11px] outline-none"
         >
-          {pageSizeOptions.map((s) => <option key={s} value={s}>{s}개</option>)}
+          {pageSizeOptions.map((s) => <option key={s} value={s}>{pick(`${s}개`, `${s} rows`)}</option>)}
         </select>
       </div>
       <div className="flex items-center gap-2">
@@ -97,14 +99,18 @@ export function median(nums: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export function medianExplanation(nums: number[]): string {
-  if (nums.length === 0) return "계산할 SKU가 없습니다.";
+export function medianExplanation(nums: number[], locale: "ko" | "en" = "ko"): string {
+  if (nums.length === 0) return locale === "ko" ? "계산할 SKU가 없습니다." : "No SKUs are available for calculation.";
   const sorted = [...nums].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   if (sorted.length % 2) {
-    return `낮은 순으로 정렬했을 때 ${mid + 1}번째 값 ${sorted[mid]}%입니다.`;
+    return locale === "ko"
+      ? `낮은 순으로 정렬했을 때 ${mid + 1}번째 값 ${sorted[mid]}%입니다.`
+      : `When sorted from lowest to highest, the median is value ${mid + 1}: ${sorted[mid]}%.`;
   }
-  return `낮은 순으로 정렬했을 때 ${mid}번째 값 ${sorted[mid - 1]}%와 ${mid + 1}번째 값 ${sorted[mid]}%의 평균입니다.`;
+  return locale === "ko"
+    ? `낮은 순으로 정렬했을 때 ${mid}번째 값 ${sorted[mid - 1]}%와 ${mid + 1}번째 값 ${sorted[mid]}%의 평균입니다.`
+    : `When sorted from lowest to highest, the median is the average of values ${mid} (${sorted[mid - 1]}%) and ${mid + 1} (${sorted[mid]}%).`;
 }
 
 export interface PercentBucket { label: string; min: number; max: number; }
@@ -199,14 +205,17 @@ export interface LineSeries {
 
 export function LineChart({
   xs, series, yMin, yMax, yTicks, xTicks, xUnit = "", yUnit = "",
-  refValue, refLabel, marker, markerLabel, height = 240,
+  refValue, refLabel, marker, markerLabel, height = 240, labelFontSize = 10,
 }: {
   xs: number[]; series: LineSeries[]; yMin: number; yMax: number; yTicks: number[];
   xTicks?: number[]; xUnit?: string; yUnit?: string;
-  refValue?: number; refLabel?: string; marker?: number; markerLabel?: string; height?: number;
+  refValue?: number; refLabel?: string; marker?: number; markerLabel?: string; height?: number; labelFontSize?: number;
 }) {
   const width = 900;
-  const padL = 38, padR = 16, padT = 18, padB = 26;
+  const padL = labelFontSize > 10 ? 52 : 38;
+  const padR = labelFontSize > 10 ? 24 : 16;
+  const padT = labelFontSize > 10 ? labelFontSize * 2 + 12 : 18;
+  const padB = labelFontSize > 10 ? 36 : 26;
   const plotW = width - padL - padR;
   const plotH = height - padT - padB;
   const [xMinV, xMaxV] = [xs[0], xs[xs.length - 1]];
@@ -223,22 +232,22 @@ export function LineChart({
       {uniqueYTicks.map((t) => (
         <g key={`y${t}`}>
           <line x1={padL} x2={width - padR} y1={Y(t)} y2={Y(t)} stroke="var(--border)" strokeWidth={1} />
-          <text x={padL - 8} y={Y(t) + 3} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">{t}{yUnit}</text>
+          <text x={padL - 8} y={Y(t) + labelFontSize * 0.35} textAnchor="end" fontSize={labelFontSize} fontWeight={600} fill="var(--muted-foreground)">{t}{yUnit}</text>
         </g>
       ))}
       {uniqueXTicks.map((t) => (
-        <text key={`x${t}`} x={X(t)} y={height - padB + 16} textAnchor="middle" fontSize={10} fill="var(--muted-foreground)">{t}{xUnit}</text>
+        <text key={`x${t}`} x={X(t)} y={height - padB + labelFontSize + 5} textAnchor="middle" fontSize={labelFontSize} fontWeight={600} fill="var(--muted-foreground)">{t}{xUnit}</text>
       ))}
       {refValue !== undefined && (
         <g>
           <line x1={padL} x2={width - padR} y1={Y(refValue)} y2={Y(refValue)} stroke="var(--muted-foreground)" strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />
-          {refLabel && <text x={width - padR} y={Y(refValue) - 6} textAnchor="end" fontSize={10} fill="var(--muted-foreground)" fontWeight={600}>{refLabel}</text>}
+          {refLabel && <text x={width - padR} y={Y(refValue) - 7} textAnchor="end" fontSize={labelFontSize} fill="var(--muted-foreground)" fontWeight={700}>{refLabel}</text>}
         </g>
       )}
       {marker !== undefined && (
         <g>
           <line x1={X(marker)} x2={X(marker)} y1={padT} y2={height - padB} stroke="var(--foreground)" strokeWidth={1.25} strokeDasharray="3 3" opacity={0.55} />
-          {markerLabel && <text x={X(marker)} y={padT - 4} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--foreground)">{markerLabel}</text>}
+          {markerLabel && <text x={X(marker)} y={padT - 7} textAnchor="middle" fontSize={labelFontSize + 1} fontWeight={700} fill="var(--foreground)">{markerLabel}</text>}
         </g>
       )}
       {series.map((s, si) => {
@@ -253,7 +262,18 @@ export function LineChart({
             <polyline points={pts} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={s.dashed ? "5 4" : undefined} strokeLinecap="round" strokeLinejoin="round" />
             <circle cx={lastX} cy={lastY} r={4} fill={s.color} />
             <circle cx={lastX} cy={lastY} r={6} fill="none" stroke={s.color} strokeWidth={1.5} opacity={0.4} />
-            {s.endLabel && <text x={lastX + 8} y={lastY + 4} fontSize={10} fontWeight={700} fill={s.color}>{s.endLabel}</text>}
+            {s.endLabel && (
+              <text
+                x={labelFontSize > 10 ? lastX - 9 : lastX + 8}
+                y={labelFontSize > 10 ? lastY - 10 : lastY + labelFontSize * 0.35}
+                textAnchor={labelFontSize > 10 ? "end" : "start"}
+                fontSize={labelFontSize}
+                fontWeight={700}
+                fill={s.color}
+              >
+                {s.endLabel}
+              </text>
+            )}
           </g>
         );
       })}
@@ -268,13 +288,14 @@ export function LineChart({
 // ---------------------------------------------------------------------------
 
 export function Histogram({
-  bins, medianValue, medianLabel, medianDescription, activeIndex, onBinClick,
+  bins, medianValue, medianPosition, medianLabel, medianDescription, activeIndex, onBinClick,
 }: {
   bins: { label: string; count: number }[];
   // Omit all three when bins aren't points on a continuous 0–100 scale (e.g.
   // discrete outcome categories) — the median line only makes sense for a
   // percent-style distribution like preorder-screen's drop-rate histogram.
   medianValue?: number;
+  medianPosition?: number;
   medianLabel?: string;
   medianDescription?: string;
   activeIndex?: number | null;
@@ -285,7 +306,7 @@ export function Histogram({
   const plotW = width - padL - padR, plotH = height - padT - padB;
   const bw = plotW / bins.length;
   const showMedian = medianValue !== undefined && medianLabel !== undefined;
-  const medianX = padL + plotW * (Math.min(100, Math.max(0, medianValue ?? 0)) / 100);
+  const medianX = padL + plotW * (medianPosition ?? (Math.min(100, Math.max(0, medianValue ?? 0)) / 100));
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full overflow-visible">
@@ -294,7 +315,7 @@ export function Histogram({
         return (
           <g key={f}>
             <line x1={padL} x2={width - padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1} />
-            <text x={padL - 8} y={y + 3} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">{Math.round(max * f)}</text>
+            <text x={padL - 8} y={y + 3} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">{Math.round(max * f).toLocaleString("en-US")}</text>
           </g>
         );
       })}
@@ -316,7 +337,17 @@ export function Histogram({
               className={onBinClick ? "cursor-pointer" : undefined}
               onClick={onBinClick ? () => onBinClick(i) : undefined}
             />
-            <text x={x + w / 2} y={y - 5} textAnchor="middle" fontSize={10} fill="var(--foreground)">{b.count}</text>
+            <text
+              x={x + w / 2}
+              y={y - 5}
+              textAnchor="middle"
+              fontSize={10}
+              fill="var(--foreground)"
+              className={onBinClick ? "cursor-pointer select-none" : undefined}
+              onClick={onBinClick ? () => onBinClick(i) : undefined}
+            >
+              {b.count.toLocaleString("en-US")}
+            </text>
             <text x={x + w / 2} y={padT + plotH + 16} textAnchor="middle" fontSize={10} fill="var(--muted-foreground)">{b.label}</text>
           </g>
         );

@@ -40,6 +40,7 @@ const TOP_NAV_LAUNCHER_STORAGE_KEY = "demandpilot-top-nav-launcher-position";
 const TOP_NAV_LAUNCHER_EDGE_GAP = 4;
 const ACTIVITY_HEARTBEAT_MS = 5 * 60 * 1000;
 const ACTIVITY_EVENT_FLUSH_MS = 10 * 1000;
+const SKU_SELECTION_DEDUPE_MS = 60 * 1000;
 
 type ActivityEventPayload = {
   occurredAt: string;
@@ -56,6 +57,10 @@ function activityLabel(element: Element): string | undefined {
     || element.textContent;
   const normalized = explicit?.replace(/\s+/g, " ").trim().slice(0, 160);
   return normalized || undefined;
+}
+
+function isSkuSelectionLabel(label: string | undefined): boolean {
+  return Boolean(label && /^(?:SKU 선택|Select SKU|Part SKU 선택|Select Part SKU):/i.test(label));
 }
 
 interface LauncherPosition {
@@ -143,6 +148,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const previewCloseTimerRef = useRef<number | null>(null);
   const tRef = useRef(t);
   const activityEventQueueRef = useRef<ActivityEventPayload[]>([]);
+  const recentSkuSelectionsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     tRef.current = t;
@@ -288,9 +294,21 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
 
     function queueEvent(event: Omit<ActivityEventPayload, "occurredAt" | "path">) {
+      const occurredAt = Date.now();
+      if (event.eventType === "button_click" && isSkuSelectionLabel(event.label)) {
+        const selectionKey = `${appPathname}|${event.label}`;
+        const previousAt = recentSkuSelectionsRef.current.get(selectionKey);
+        if (previousAt !== undefined && occurredAt - previousAt < SKU_SELECTION_DEDUPE_MS) return;
+        recentSkuSelectionsRef.current.set(selectionKey, occurredAt);
+        if (recentSkuSelectionsRef.current.size > 500) {
+          for (const [key, selectedAt] of recentSkuSelectionsRef.current) {
+            if (occurredAt - selectedAt >= SKU_SELECTION_DEDUPE_MS) recentSkuSelectionsRef.current.delete(key);
+          }
+        }
+      }
       activityEventQueueRef.current.push({
         ...event,
-        occurredAt: new Date().toISOString(),
+        occurredAt: new Date(occurredAt).toISOString(),
         path: appPathname,
       });
       if (activityEventQueueRef.current.length >= 20) void flushEvents();

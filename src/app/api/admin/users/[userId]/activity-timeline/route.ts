@@ -4,6 +4,15 @@ import { guardPermission } from "@/lib/permissions";
 import { getActivityDate } from "@/lib/activity-date";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const SKU_LIKE_LABEL_PATTERN = /^(?:CA|CC|CL|ICC)-/i;
+
+function explicitSkuSubject(label: unknown): { type: "sku" | "part_sku"; id: string } | undefined {
+  if (typeof label !== "string") return undefined;
+  const partSku = label.match(/^(?:Part SKU 선택|Select Part SKU):\s*(.+)$/i)?.[1]?.trim();
+  if (partSku) return { type: "part_sku", id: partSku };
+  const sku = label.match(/^(?:SKU 선택|Select SKU):\s*(.+)$/i)?.[1]?.trim();
+  return sku ? { type: "sku", id: sku } : undefined;
+}
 
 export async function GET(
   request: NextRequest,
@@ -70,36 +79,51 @@ export async function GET(
       return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
     }
 
-    // Older SKU browser rows were logged using the button's concatenated cell
-    // text (SKU + stock + average + SOD + recommendation). Resolve the longest
-    // matching master SKU so historical activity remains human-readable.
-    const legacySkuLabels = [...new Set(
+    // Older selectable SKU rows were logged using the button's concatenated
+    // text (SKU + metrics/status). Resolve both master and Part SKUs by their
+    // longest prefix so historical activity remains human-readable.
+    const legacySelectableLabels = [...new Set(
       eventsResult.rows
-        .filter((row) => row.event_type === "button_click" && row.path === "/planning/sku-forecasts" && typeof row.label === "string")
+        .filter((row) => (
+          row.event_type === "button_click"
+          && typeof row.label === "string"
+          && (row.path === "/planning/sku-forecasts" || SKU_LIKE_LABEL_PATTERN.test(row.label))
+        ))
         .map((row) => row.label as string),
     )];
-    const legacySkuByLabel = new Map<string, string>();
-    if (legacySkuLabels.length > 0) {
-      const legacySkuResult = await pool.query(
-        `SELECT candidate.label, product.master_sku
+    const legacySubjectByLabel = new Map<string, { type: "sku" | "part_sku"; id: string }>();
+    if (legacySelectableLabels.length > 0) {
+      const legacySubjectResult = await pool.query(
+        `WITH known_sku AS (
+           SELECT master_sku AS sku, 'sku'::text AS subject_type
+           FROM shipcore.sc_products
+           UNION ALL
+           SELECT sku, 'part_sku'::text AS subject_type
+           FROM shipcore.pd_part_skus
+         )
+         SELECT candidate.label, matched.sku, matched.subject_type
          FROM unnest($1::text[]) AS candidate(label)
          JOIN LATERAL (
-           SELECT master_sku
-           FROM shipcore.sc_products
-           WHERE candidate.label LIKE master_sku || '%'
-           ORDER BY length(master_sku) DESC
+           SELECT sku, subject_type
+           FROM known_sku
+           WHERE candidate.label LIKE sku || '%'
+           ORDER BY length(sku) DESC
            LIMIT 1
-         ) product ON true`,
-        [legacySkuLabels],
+         ) matched ON true`,
+        [legacySelectableLabels],
       );
-      for (const row of legacySkuResult.rows) {
-        legacySkuByLabel.set(row.label as string, row.master_sku as string);
+      for (const row of legacySubjectResult.rows) {
+        legacySubjectByLabel.set(row.label as string, {
+          type: row.subject_type as "sku" | "part_sku",
+          id: row.sku as string,
+        });
       }
     }
 
     const events = [
       ...eventsResult.rows.map((row) => {
-        const legacySku = typeof row.label === "string" ? legacySkuByLabel.get(row.label) : undefined;
+        const legacySubject = explicitSkuSubject(row.label)
+          ?? (typeof row.label === "string" ? legacySubjectByLabel.get(row.label) : undefined);
         return {
           id: `event:${row.id}`,
           source: "activity",
@@ -109,8 +133,8 @@ export async function GET(
           label: row.label,
           target: row.target,
           ip: row.ip,
-          subjectType: legacySku ? "sku" : null,
-          subjectId: legacySku ?? null,
+          subjectType: legacySubject?.type ?? null,
+          subjectId: legacySubject?.id ?? null,
         };
       }),
       ...loginResult.rows.map((row) => ({

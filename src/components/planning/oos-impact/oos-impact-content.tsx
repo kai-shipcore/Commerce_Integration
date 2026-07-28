@@ -34,12 +34,6 @@ export function OosImpactContent() {
           </span>
           <div>
             <h1 className="text-lg font-semibold">{pick("품절 영향 분석", "OOS Impact Analysis")}</h1>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {pick(
-                "품절이 판매에 미치는 영향을 채널별로 다르게 측정합니다 — 화면 설계 단계 (샘플 데이터, 로직 연동 전)",
-                "Measures how stockouts hit sales, split by channel — screen design stage (sample data, logic not wired yet)"
-              )}
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -57,8 +51,8 @@ export function OosImpactContent() {
       <div className="flex w-fit gap-1.5 rounded-xl bg-muted p-1">
         {(
           [
-            ["preorder", "Shopify · Pre-Order 전환 감소율"],
-            ["recovery", "타 채널 · 재입고 회복 추이"],
+            ["preorder", pick("Shopify · Pre-Order 전환 감소율", "Shopify · Pre-Order Conversion Drop")],
+            ["recovery", pick("타 채널 · 재입고 회복 추이", "Marketplaces · Restock Recovery")],
           ] as const
         ).map(([key, label]) => (
           <button
