@@ -329,7 +329,7 @@ export async function POST(request: Request) {
     ): Record<string, unknown>[] {
       const totals = new Map<string, number>();
       for (const row of rows) {
-        const cat: CategoryKey = row.category_code === "CC" || row.category_code === "SWC" ? "CC" : row.category_code === "FM" ? "FM" : "SC";
+        const cat: CategoryKey = row.category_code === "CC" ? "CC" : row.category_code === "FM" ? "FM" : row.category_code === "SWC" ? "SWC" : "SC";
         const override = oosLostDemandWeights[cat];
         const auto = autoWeights[cat] ?? { amazon: 0, ebay: 0, walmart: 0 };
         const wAmazon  = override.amazon  ?? auto.amazon;

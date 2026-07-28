@@ -4,7 +4,7 @@ export type Marketplace = "amazon" | "ebay" | "walmart";
 // null = no override — server computes the weight fresh each sync from
 // category-level 90-day sales ratios (marketplace / Shopify).
 export type MarketplaceWeights = Record<Marketplace, number | null>;
-export type CategoryKey = "SC" | "CC" | "FM";
+export type CategoryKey = "SC" | "CC" | "FM" | "SWC";
 export type OosLostDemandWeights = Record<CategoryKey, MarketplaceWeights>;
 
 const AUTO_MARKETPLACE_WEIGHTS: MarketplaceWeights = { amazon: null, ebay: null, walmart: null };
@@ -13,12 +13,14 @@ export const DEFAULT_OOS_LOST_DEMAND_WEIGHTS: OosLostDemandWeights = {
   SC: { ...AUTO_MARKETPLACE_WEIGHTS },
   CC: { ...AUTO_MARKETPLACE_WEIGHTS },
   FM: { ...AUTO_MARKETPLACE_WEIGHTS },
+  SWC: { ...AUTO_MARKETPLACE_WEIGHTS },
 };
 
 export const OOS_LOST_DEMAND_CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
   { key: "SC", label: "Seat Cover" },
   { key: "CC", label: "Car Cover" },
   { key: "FM", label: "Floor Mat" },
+  { key: "SWC", label: "SWC" },
 ];
 
 export const OOS_LOST_DEMAND_MARKETPLACES: Array<{ key: Marketplace; label: string }> = [

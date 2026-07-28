@@ -19,7 +19,10 @@ import { apiPath } from "@/lib/api-path";
 import { ContainerHistoryTab } from "../container-timeline/container-history-tab";
 
 type ContainerItem = MockContainer["items"][number];
-type PlanningProductFilter = ProductKey | "empty" | null;
+// SWC is a real category_code value (see src/app/api/planning/sku-master/route.ts), kept page-local
+// rather than widening the shared mock-data ProductKey.
+type ContainerProductKey = ProductKey | "swc";
+type PlanningProductFilter = ContainerProductKey | "empty" | null;
 
 type ContainerFormState = {
   number: string;
@@ -150,55 +153,64 @@ type WarehouseOption = {
 
 type ContainerListTab = "active" | "completed";
 
-const productBadgeClasses: Record<ProductKey, string> = {
+const productBadgeClasses: Record<ContainerProductKey, string> = {
   sc: "bg-[#e6f5f0] text-[#0a5e45] dark:bg-emerald-950/60 dark:text-emerald-300",
   cc: "bg-[#ebf0fd] text-[#1a4db0] dark:bg-blue-950/60 dark:text-blue-300",
   fm: "bg-[#fef3e2] text-[#8a5300] dark:bg-amber-950/60 dark:text-amber-300",
   ac: "bg-[#f0e6ff] text-[#7c3aed] dark:bg-purple-950/60 dark:text-purple-300",
+  swc: "bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300",
 };
 
-const productLabels: Record<ProductKey, string> = {
+const productLabels: Record<ContainerProductKey, string> = {
   fm: "Floor Mat",
   cc: "Car Cover",
   sc: "Seat Cover",
   ac: "Accessories",
+  swc: "SWC",
 };
 
-const productShortLabels: Record<ProductKey, string> = {
+const productShortLabels: Record<ContainerProductKey, string> = {
   fm: "FM",
   cc: "CC",
   sc: "SC",
   ac: "AC",
+  swc: "SWC",
 };
 
-const productFilterOrder: ProductKey[] = ["fm", "cc", "sc"];
+// SWC is intentionally left out of the quick-filter chip order, same as Accessories — both are
+// available via the badge/labels above but aren't part of this page's top-level filter chips.
+const productFilterOrder: ContainerProductKey[] = ["fm", "cc", "sc"];
 
-const productFilterColors: Record<ProductKey, string> = {
+const productFilterColors: Record<ContainerProductKey, string> = {
   cc: "#1a4db0",
   fm: "#8a5300",
   sc: "#0a5e45",
   ac: "#7c3aed",
+  swc: "#c2410c",
 };
 
-const productFilterIcons: Record<ProductKey, string> = {
+const productFilterIcons: Record<ContainerProductKey, string> = {
   cc: "🚗",
   fm: "🧩",
   sc: "💺",
   ac: "🎁",
+  swc: "🔧",
 };
 
 const SKU_LIST_COLLAPSED_STORAGE_KEY = "container-planning-sku-list-collapsed";
 
-function inferProductKey(sku: string): ProductKey {
+function inferProductKey(sku: string): ContainerProductKey {
   const matchedSku = mockSkus.find((item) => item.id === sku);
   if (matchedSku) return matchedSku.product;
-  if (sku.startsWith("CC")) return "cc";
-  if (sku.startsWith("CA-FM")) return "fm";
+  const normalized = sku.toUpperCase();
+  if (normalized.includes("SWC")) return "swc";
+  if (normalized.startsWith("CC")) return "cc";
+  if (normalized.startsWith("CA-FM")) return "fm";
   return "sc";
 }
 
-function getContainerProducts(container: MockContainer): Set<ProductKey> {
-  const products = new Set<ProductKey>();
+function getContainerProducts(container: MockContainer): Set<ContainerProductKey> {
+  const products = new Set<ContainerProductKey>();
   for (const item of container.items) {
     products.add(inferProductKey(item.sku));
   }
@@ -1789,7 +1801,7 @@ export function ContainerPlanningPage() {
     }
 
     const sortedContainers = [...selectedExportContainers].sort(compareContainersForExport);
-    const productKeys = new Set<ProductKey>();
+    const productKeys = new Set<ContainerProductKey>();
     for (const container of sortedContainers) {
       for (const key of getContainerProducts(container)) productKeys.add(key);
     }
@@ -3610,7 +3622,7 @@ function ContainerCard({
   );
 }
 
-function ProductBadge({ product }: { product: ProductKey }) {
+function ProductBadge({ product }: { product: ContainerProductKey }) {
   return (
     <span className={`inline-flex shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold ${productBadgeClasses[product]}`}>
       {product.toUpperCase()}

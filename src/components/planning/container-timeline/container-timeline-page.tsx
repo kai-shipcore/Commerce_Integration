@@ -17,7 +17,10 @@ import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-f
 
 type ContainerStatus = "draft" | "final-list-sent" | "packing-list-received" | "complete";
 type Period = "3M" | "6M" | "all" | "monthly" | "schedule";
-type TimelineProductKey = "sc" | "cc" | "fm";
+// SWC is a real category_code value; left out of TimelineProductFilter's top-level filter chips
+// below (PRODUCT_OPTIONS), same as this page already excludes Accessories there, but still needs
+// to resolve to a real key so SWC items get a badge instead of being dropped from categorization.
+type TimelineProductKey = "sc" | "cc" | "fm" | "swc";
 type TimelineProductFilter = "all" | TimelineProductKey | "empty";
 
 interface ContainerItem {
@@ -230,6 +233,7 @@ const PRODUCT_BADGE: Record<TimelineProductKey, string> = {
   sc: "bg-blue-100 text-blue-700",
   cc: "bg-violet-100 text-violet-700",
   fm: "bg-emerald-100 text-emerald-700",
+  swc: "bg-orange-100 text-orange-700",
 };
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -322,13 +326,14 @@ function normalizeStatus(raw: string): ContainerStatus {
 }
 
 function productKeyForTimelineSku(item: ContainerItem, row?: DemandRow): TimelineProductKey | null {
-  if (item.categoryCode === "SC" || item.categoryCode === "CC" || item.categoryCode === "FM") {
+  if (item.categoryCode === "SC" || item.categoryCode === "CC" || item.categoryCode === "FM" || item.categoryCode === "SWC") {
     return item.categoryCode.toLowerCase() as TimelineProductKey;
   }
-  if (row?.category_code === "SC" || row?.category_code === "CC" || row?.category_code === "FM") {
+  if (row?.category_code === "SC" || row?.category_code === "CC" || row?.category_code === "FM" || row?.category_code === "SWC") {
     return row.category_code.toLowerCase() as TimelineProductKey;
   }
   const normalized = item.sku.toUpperCase();
+  if (normalized.includes("SWC")) return "swc";
   if (normalized.startsWith("CC-")) return "cc";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "fm";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "sc";
