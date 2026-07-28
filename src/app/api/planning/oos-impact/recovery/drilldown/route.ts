@@ -28,13 +28,16 @@ export async function GET(request: Request) {
 
     const primary = getPrimaryPool();
 
+    // Repeated stats/refresh runs can leave more than one episode row for the
+    // same (sku, back_in_stock_on) if oos_started_on drifted between syncs (see
+    // route.ts) — break ties with the most recently synced detection.
     const episodeResult = await primary.query<{ oos_started_on: string; back_in_stock_on: string }>(
       `SELECT oos_started_on::text, back_in_stock_on::text
        FROM shipcore.fc_inventory_history_snapshot
        WHERE ${normalizedMasterSkuSql("master_sku")} = $1
          AND back_in_stock_on IS NOT NULL
          ${restockDate ? "AND back_in_stock_on = $2::date" : ""}
-       ORDER BY back_in_stock_on DESC
+       ORDER BY back_in_stock_on DESC, synced_at DESC
        LIMIT 1`,
       restockDate ? [sku, restockDate] : [sku],
     );

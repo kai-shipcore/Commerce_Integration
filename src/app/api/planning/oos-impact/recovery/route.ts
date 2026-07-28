@@ -71,16 +71,32 @@ export async function GET() {
       r60_avg: string | null;
       r90_avg: string | null;
     }>(`
-      WITH episodes AS (
+      WITH episodes_raw AS (
+        -- Re-running /api/planning/stats/refresh can shift oos_started_on by a
+        -- day or two for the same real restock if the upstream inventory-history
+        -- view gets corrected between syncs. Since its upsert keys on
+        -- (master_sku, oos_started_on), a shifted date inserts a new row instead
+        -- of replacing the old one, leaving stale duplicate episodes behind for
+        -- the same (master_sku, back_in_stock_on) — keep only the most recently
+        -- synced detection per restock so downstream rows stay unique.
         SELECT
           ${normalizedMasterSkuSql("master_sku")} AS master_sku,
           oos_started_on,
           back_in_stock_on,
-          (back_in_stock_on - oos_started_on)::int AS oos_days,
-          (CURRENT_DATE - back_in_stock_on)::int AS days_since_restock
+          synced_at
         FROM shipcore.fc_inventory_history_snapshot
         WHERE back_in_stock_on IS NOT NULL
           AND CURRENT_DATE - back_in_stock_on >= ${MIN_DAYS_SINCE_RESTOCK}
+      ),
+      episodes AS (
+        SELECT DISTINCT ON (master_sku, back_in_stock_on)
+          master_sku,
+          oos_started_on,
+          back_in_stock_on,
+          (back_in_stock_on - oos_started_on)::int AS oos_days,
+          (CURRENT_DATE - back_in_stock_on)::int AS days_since_restock
+        FROM episodes_raw
+        ORDER BY master_sku, back_in_stock_on, synced_at DESC
       ),
       velocity AS (
         SELECT order_date, channel, link_master_sku AS master_sku, link_qty AS qty
