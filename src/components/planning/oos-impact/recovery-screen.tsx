@@ -12,7 +12,7 @@ import { Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
 import {
-  Chip, FilterRow, Histogram, Kpi, LineChart, PERCENT_BUCKETS, SeverityPill, SortIcon,
+  Chip, FilterRow, Histogram, Kpi, LineChart, PAGE_SIZES, PERCENT_BUCKETS, Pagination, SeverityPill, SortIcon,
   average, histogramFrom, median, medianExplanation, type LineSeries, type Severity, type SortDir,
 } from "./shared";
 
@@ -109,6 +109,8 @@ export function RecoveryScreen() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[1]);
 
   const [rows, setRows] = useState<RecoveryRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -130,6 +132,7 @@ export function RecoveryScreen() {
   const toggle = (v: string) => {
     setChannels((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
     setSelectedBin(null);
+    setPage(1);
   };
 
   const visibleRows = useMemo(() => (rows ?? []).filter((r) => channels.includes(r.channel)), [rows, channels]);
@@ -178,7 +181,12 @@ export function RecoveryScreen() {
       setSortKey(key);
       setSortDir(DEFAULT_ASC_KEYS.includes(key) ? "asc" : "desc");
     }
+    setPage(1);
   };
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const clampedPage = Math.min(page, totalPages);
+  const pageRows = sortedRows.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
 
   // Keyed instead of indexed: sorting/searching reorders the array without
   // changing its length, so an index-based "open row" would silently point at
@@ -274,8 +282,8 @@ export function RecoveryScreen() {
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-[13px] font-semibold">재입고 후 경과일별 회복률 — {chartView === "channel" ? "채널 비교" : "스큐 비교"}</h3>
           <div className="flex items-center gap-1.5">
-            <Chip active={chartView === "channel"} onClick={() => setChartView("channel")}>채널 비교</Chip>
-            <Chip active={chartView === "sku"} onClick={() => setChartView("sku")}>스큐 비교</Chip>
+            <Chip active={chartView === "channel"} onClick={() => { setChartView("channel"); setPage(1); }}>채널 비교</Chip>
+            <Chip active={chartView === "sku"} onClick={() => { setChartView("sku"); setPage(1); }}>스큐 비교</Chip>
             {chartView === "channel" && (
               <span className="rounded-md border border-dashed border-border px-2 py-1 text-[10.5px] font-medium text-muted-foreground" title="채널별 회복 곡선은 아직 샘플 데이터입니다 — 시계열 집계 설계가 필요해 다음 단계로 예정">
                 샘플 데이터
@@ -306,7 +314,7 @@ export function RecoveryScreen() {
               medianLabel={`전체 ${visibleRows.length}개 SKU 중앙값 ${Math.round(recoveryMedian)}%`}
               medianDescription={medianExplanation(recoveryValues)}
               activeIndex={selectedBin}
-              onBinClick={(i) => setSelectedBin((prev) => (prev === i ? null : i))}
+              onBinClick={(i) => { setSelectedBin((prev) => (prev === i ? null : i)); setPage(1); }}
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               막대를 클릭하면 아래 SKU별 상세가 해당 구간으로 필터링됩니다 · 같은 막대를 다시 클릭하면 해제됩니다.
@@ -324,7 +332,7 @@ export function RecoveryScreen() {
             <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="마스터 SKU 검색..."
               className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2.5 text-xs outline-none focus:border-foreground/40"
             />
@@ -350,7 +358,7 @@ export function RecoveryScreen() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((r) => (
+              {pageRows.map((r) => (
                 <tr
                   key={rowKey(r)}
                   onClick={() => setOpenKey(openKey === rowKey(r) ? null : rowKey(r))}
@@ -370,6 +378,13 @@ export function RecoveryScreen() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={clampedPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+        />
       </div>
 
       {open && (
@@ -436,7 +451,7 @@ export function RecoveryScreen() {
             심각도 기준: 85% 이상 정상화 · 50~85% 회복 후반 · 50% 미만 회복 초기.
           </li>
           <li><span className="font-mono">채널 비교</span>(라인차트)는 아직 샘플 데이터 — 채널별 시계열 집계는 별도 설계가 필요해 다음 단계로 예정.</li>
-          <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링 — 열려있던 드릴다운 행은 SKU/채널/재입고일 키로 추적해 정렬·검색으로 순서가 바뀌어도 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
+          <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링, 페이지네이션(25/50/100개씩)까지 지원 — 열려있던 드릴다운 행은 SKU/채널/재입고일 키로 추적해 정렬·검색·페이지 이동과 무관하게 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
         </ul>
       </div>
     </div>

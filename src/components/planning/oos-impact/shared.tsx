@@ -21,6 +21,57 @@ export function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   return <Icon className="ml-1 inline h-3 w-3 text-foreground" />;
 }
 
+// ---------------------------------------------------------------------------
+// Pagination — used below both screens' "SKU별 상세" tables.
+// ---------------------------------------------------------------------------
+
+export const PAGE_SIZES = [25, 50, 100];
+
+export function Pagination({
+  page, totalPages, pageSize, onPageChange, onPageSizeChange, pageSizeOptions = PAGE_SIZES,
+}: {
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  pageSizeOptions?: number[];
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1.5">
+        <span>페이지당</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          className="rounded border border-border bg-background px-1.5 py-1 text-[11px] outline-none"
+        >
+          {pageSizeOptions.map((s) => <option key={s} value={s}>{s}개</option>)}
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="rounded border border-border px-2 py-1 disabled:opacity-40 hover:bg-muted"
+        >
+          ‹
+        </button>
+        <span>{page} / {totalPages}</span>
+        <button
+          type="button"
+          disabled={page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="rounded border border-border px-2 py-1 disabled:opacity-40 hover:bg-muted"
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export const SEVERITY_STYLES: Record<Severity, string> = {
   good: "bg-[#e6f6e6] text-[#0ca30c] dark:bg-[#0c2c14] dark:text-[#3ecf3e]",
   warning: "bg-[#fef3d9] text-[#a5670a] dark:bg-[#3a2a0c] dark:text-[#f0ad2e]",

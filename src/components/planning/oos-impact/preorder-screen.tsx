@@ -8,7 +8,7 @@ import { useState } from "react";
 import { Clock, PackageCheck, Search, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  Chip, FilterRow, Histogram, Kpi, LineChart, SeverityPill, SortIcon,
+  Chip, FilterRow, Histogram, Kpi, LineChart, PAGE_SIZES, Pagination, SeverityPill, SortIcon,
   average, histogramFrom, median, medianExplanation, type Severity, type SortDir,
 } from "./shared";
 
@@ -93,9 +93,13 @@ export function PreorderScreen() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
 
-  const toggle = (list: string[], setList: (v: string[]) => void, v: string) =>
+  const toggle = (list: string[], setList: (v: string[]) => void, v: string) => {
     setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+    setPage(1);
+  };
 
   const visibleRows = ROWS1.filter((r) => channels.includes(r.channel));
   const drops = visibleRows.map((r) => r.drop);
@@ -127,7 +131,12 @@ export function PreorderScreen() {
       setSortKey(key);
       setSortDir(DEFAULT_ASC_KEYS.includes(key) ? "asc" : "desc");
     }
+    setPage(1);
   };
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const clampedPage = Math.min(page, totalPages);
+  const pageRows = sortedRows.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
 
   // Keyed instead of indexed: sorting/searching reorders the array without
   // changing its length, so an index-based "open row" would silently point at
@@ -199,7 +208,7 @@ export function PreorderScreen() {
             <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="마스터 SKU 검색..."
               className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2.5 text-xs outline-none focus:border-foreground/40"
             />
@@ -226,7 +235,7 @@ export function PreorderScreen() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map((r) => (
+              {pageRows.map((r) => (
                 <tr
                   key={r.sku}
                   onClick={() => setOpenKey(openKey === r.sku ? null : r.sku)}
@@ -252,6 +261,13 @@ export function PreorderScreen() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={clampedPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+        />
       </div>
 
       {open && (
@@ -297,7 +313,7 @@ export function PreorderScreen() {
           <li>Before/After는 추세가 아닌 두 구간의 단순 비교라 라인이 아닌 막대 2개로 표현.</li>
           <li>정상판매/Pre-Order 구간은 SKU마다 길이가 다를 수 있음 — 전환 후 실제 경과일만큼을 Pre-Order 구간으로 잡고, 정상판매 구간도 항상 같은 길이로 맞춤. 전역으로 &quot;7D/30D/60D&quot;를 고정하지 않는 이유는 SKU마다 전환일(anchor)이 달라서 같은 절대 기간을 강제하면 방금 전환된 SKU는 계산이 안 되기 때문.</li>
           <li>감소율(심각도)과 진행 상태(Pre-Order 진행중 / 재입고 완료)는 서로 다른 축이라 컬럼을 분리 — 색 있는 pill은 심각도, 색 없는 태그는 생애주기 상태.</li>
-          <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링 — Before/After 막대 열은 단일 값이 아니라 정렬 대상에서 제외. 열려있던 드릴다운 행은 SKU 키로 추적해 정렬·검색으로 순서가 바뀌어도 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
+          <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링, 페이지네이션까지 지원 — Before/After 막대 열은 단일 값이 아니라 정렬 대상에서 제외. 열려있던 드릴다운 행은 SKU 키로 추적해 정렬·검색·페이지 이동과 무관하게 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
         </ul>
       </div>
     </div>
