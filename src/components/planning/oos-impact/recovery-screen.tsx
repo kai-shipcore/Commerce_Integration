@@ -44,6 +44,18 @@ interface Drilldown {
   baseline: number;
 }
 
+// "판매량 TOP 100 SKU만" filter — restricts the recovery table (both 채널
+// 비교/스큐 비교 views) to Master SKUs that rank in the trailing-30-day,
+// all-channel top 100 (see /api/planning/oos-impact/top-sellers). Only the
+// sku field is used; the rest of the response is unused here.
+interface TopSellerRow {
+  rank: number;
+  sku: string;
+  categoryCode: string | null;
+  totalQty: number;
+  avgDaily: number;
+}
+
 const RECOVERY_XS = [0, 15, 30, 45, 60, 75, 90, 105, 120];
 const RECOVERY_SERIES = {
   overall: [0, 22, 46, 58, 64, 71, 78, 83, 87],
@@ -140,6 +152,23 @@ export function RecoveryScreen() {
       .catch((err: Error) => setLoadError(err.message));
   }, []);
 
+  // "판매량 TOP 100 SKU만" filter — see /api/planning/oos-impact/top-sellers.
+  const [topRows, setTopRows] = useState<TopSellerRow[] | null>(null);
+  const [topLoadError, setTopLoadError] = useState<string | null>(null);
+  const [topSellersOnly, setTopSellersOnly] = useState(false);
+
+  useEffect(() => {
+    fetch(apiPath("/api/planning/oos-impact/top-sellers"))
+      .then((r) => r.json())
+      .then((json: { success: boolean; data?: TopSellerRow[]; error?: string }) => {
+        if (!json.success) throw new Error(json.error ?? "Unknown error");
+        setTopRows(json.data ?? []);
+      })
+      .catch((err: Error) => setTopLoadError(err.message));
+  }, []);
+
+  const topSellerSkuSet = useMemo(() => new Set((topRows ?? []).map((r) => r.sku)), [topRows]);
+
   const [drilldown, setDrilldown] = useState<Drilldown | null>(null);
   const [drilldownLoading, setDrilldownLoading] = useState(false);
   const [drilldownError, setDrilldownError] = useState<string | null>(null);
@@ -150,7 +179,12 @@ export function RecoveryScreen() {
     setPage(1);
   };
 
-  const visibleRows = useMemo(() => (rows ?? []).filter((r) => channels.includes(r.channel)), [rows, channels]);
+  const visibleRows = useMemo(
+    () => (rows ?? [])
+      .filter((r) => channels.includes(r.channel))
+      .filter((r) => !topSellersOnly || topSellerSkuSet.has(r.sku)),
+    [rows, channels, topSellersOnly, topSellerSkuSet],
+  );
 
   const tableRows = useMemo(() => {
     if (chartView !== "sku" || selectedBin === null) return visibleRows;
@@ -269,6 +303,13 @@ export function RecoveryScreen() {
         <FilterRow label="대상">
           <Chip active>과거 품절 → 재입고 완료</Chip>
           <Chip ghost title="현재 품절 중인 상품은 회복 추이 계산 자체가 불가능해 제외">현재 품절중 제외</Chip>
+          <Chip
+            active={topSellersOnly}
+            onClick={() => { setTopSellersOnly((v) => !v); setPage(1); }}
+            title={topLoadError ? `TOP 100 데이터 로드 실패: ${topLoadError}` : topRows === null ? "TOP 100 데이터 불러오는 중…" : "최근 30일 전체 채널(Shopify 포함) 판매량 기준 상위 100 Master SKU만"}
+          >
+            판매량 TOP 100 SKU만
+          </Chip>
         </FilterRow>
         <FilterRow label="직전 품절">
           {["전체", "14일 이상", "30일 이상", "60일 이상"].map((p) => (
@@ -294,7 +335,7 @@ export function RecoveryScreen() {
       ) : (
       <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Kpi label="재입고 추적 SKU" value={String(visibleRows.length)} foot="선택된 채널 기준" />
+        <Kpi label="재입고 추적 SKU" value={String(visibleRows.length)} foot={topSellersOnly ? "선택된 채널 · 판매량 TOP 100 SKU 기준" : "선택된 채널 기준"} />
         <Kpi
           label="평균 회복 소요일"
           value={confirmedDays.length ? String(Math.round(average(confirmedDays))) : "—"}
@@ -367,6 +408,10 @@ export function RecoveryScreen() {
             />
           </div>
         </div>
+        <p className="border-b border-border bg-muted/40 px-3.5 py-1.5 text-[10.5px] text-muted-foreground">
+          <span className="font-semibold text-foreground/80">상태 기준</span> — 정상 회복: 재입고 후 30일 이내 회복 · 느린 회복: 30~90일 이내 회복 · 관찰중: 재입고 후 아직 90일 안 지남 · 미회복: 90일이 지나도 회복 못함
+          <span className="ml-1" title="회복 = 트레일링 14일 평균 판매량이 품절 직전 기준선(baseline)의 80% 이상에 도달">(회복 기준: 기준선의 80% 도달)</span>
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-collapse text-xs">
             <thead>
@@ -493,6 +538,7 @@ export function RecoveryScreen() {
           <li>히스토그램은 0-100% 연속 분포가 아니라 &quot;0–30일/30–60일/60–90일/관찰중/미회복&quot; 이산 카테고리라 중앙값 선 없이 막대 개수만 표시 (Histogram 컴포넌트의 medianValue 등은 optional로 바꿔서 preorder-screen의 %기반 히스토그램과 공유).</li>
           <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링, 페이지네이션(25/50/100개씩)까지 지원 — 열려있던 드릴다운 행은 SKU/채널/재입고일 키로 추적해 정렬·검색·페이지 이동과 무관하게 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
           <li>드릴다운은 표 아래로 펼치지 않고 오른쪽에 고정 패널로 배치(넓은 화면 기준) — 행을 클릭해도 페이지가 밀리지 않고, 스크롤해도 패널이 따라와서 여러 SKU를 훑어보며 그래프를 바로바로 확인하기 편함. 좁은 화면(lg 미만)에서는 표 아래로 쌓임.</li>
+          <li>&quot;판매량 TOP 100 SKU만&quot; 필터(대상 행) — 품절/재입고 이력과 무관하게 Master SKU 단위·전체 채널(Shopify 포함)·최근 30일 판매량 기준 상위 100 SKU로만 회복 추적 대상을 좁힘. 채널 비교/스큐 비교 두 뷰 모두에 공통 적용되며, KPI·히스토그램·표가 전부 필터링된 집합 기준으로 갱신됨. link/custom 스냅샷 중복 집계 방지 로직(카테고리 기준 소스 택일)은 이 필터의 판매량 집계 API(top-sellers)에도 동일하게 적용됨.</li>
         </ul>
       </div>
     </div>
