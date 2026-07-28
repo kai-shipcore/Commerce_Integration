@@ -51,11 +51,17 @@ export async function GET(request: Request) {
       pre1: string; pre2: string; baseline: string; d15: string; d30: string; d60: string; d90: string;
     }>(
       `WITH velocity AS (
-         SELECT order_date, link_qty AS qty FROM shipcore.fc_velocity_link_snapshot
-         WHERE link_master_sku = $1 AND channel = $2
+         -- fc_velocity_link_snapshot and fc_velocity_custom_snapshot are two
+         -- near-duplicate copies of the same sales data (see recovery/route.ts
+         -- for the full explanation), not additive subsets — pick exactly one
+         -- per SKU by category, same rule as dashboard/route.ts's default branch.
+         SELECT v.order_date, v.link_qty AS qty FROM shipcore.fc_velocity_link_snapshot v
+         WHERE v.link_master_sku = $1 AND v.channel = $2
+           AND NOT EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code IN ('CC', 'FM', 'SWC'))
          UNION ALL
-         SELECT order_date, custom_qty AS qty FROM shipcore.fc_velocity_custom_snapshot
-         WHERE custom_master_sku = $1 AND channel = $2
+         SELECT v.order_date, v.custom_qty AS qty FROM shipcore.fc_velocity_custom_snapshot v
+         WHERE v.custom_master_sku = $1 AND v.channel = $2
+           AND EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code IN ('CC', 'FM', 'SWC'))
        )
        SELECT
          COALESCE(SUM(qty) FILTER (WHERE order_date >= $3::date - 30 AND order_date < $3::date - 15), 0) / 15.0 AS pre1,

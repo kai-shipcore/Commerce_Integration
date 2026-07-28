@@ -5,6 +5,13 @@
 // /api/planning/oos-impact/recovery (+ /recovery/drilldown for the per-row
 // chart). "채널 비교" (the line chart) still uses sample RECOVERY_SERIES —
 // it needs a separate time-series aggregation design, tracked as follow-up.
+//
+// Core metric is daysToRecovery (days since restock until sales trailing-
+// average first reached 80% of baseline), NOT a live/current sales snapshot —
+// this screen exists to find SKUs whose post-restock recovery was slow or
+// never happened, which is a question about the past trajectory, not "is this
+// SKU selling well today." See recovery/route.ts for the SQL-side definition.
+//
 // Only touch shared.tsx for things this file and preorder-screen.tsx both need.
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,21 +19,22 @@ import { Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
 import {
-  Chip, FilterRow, Histogram, Kpi, LineChart, PAGE_SIZES, PERCENT_BUCKETS, Pagination, SeverityPill, SortIcon,
-  average, histogramFrom, median, medianExplanation, type LineSeries, type Severity, type SortDir,
+  Chip, FilterRow, Histogram, Kpi, LineChart, PAGE_SIZES, Pagination, SeverityPill, SortIcon,
+  average, type LineSeries, type Severity, type SortDir,
 } from "./shared";
 
 interface RecoveryRow {
   sku: string;
   channel: string;
-  oosDays: number;
+  oosStartedOn: string;
   restockDate: string;
+  oosDays: number;
   daysSinceRestock: number;
   baseline: number;
-  currentRecovery: number;
-  r30: number | null;
-  r60: number | null;
-  r90: number | null;
+  day0to30: number | null;
+  day30to60: number | null;
+  day60to90: number | null;
+  daysToRecovery: number | null;
   severity: Severity;
   label: string;
 }
@@ -57,48 +65,55 @@ const CHANNEL_DISPLAY_LABELS: Record<string, string> = {
   Walmart: "Walmart",
 };
 
-const CHANNEL_DOT: Record<string, string> = {
-  "Amazon FBA": "bg-[var(--chart-blue)]",
-  "Amazon FBM": "bg-[var(--chart-blue)]",
-  Auto_Armor: "bg-[var(--chart-orange)]",
-  Advance_Parts: "bg-[var(--chart-orange)]",
-  Walmart: "bg-[var(--chart-aqua)]",
-};
-
-function ChannelBadge({ channel }: { channel: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-foreground/80">
-      <span className={cn("h-1.5 w-1.5 rounded-full", CHANNEL_DOT[channel] ?? "bg-muted-foreground")} />
-      {CHANNEL_DISPLAY_LABELS[channel] ?? channel}
-    </span>
-  );
+function num1(v: number | null): string {
+  return v === null ? "—" : v.toFixed(1);
 }
 
-function pct(v: number | null): string {
-  return v === null ? "—" : `${v}%`;
+function daysToRecoveryLabel(r: RecoveryRow): string {
+  if (r.daysToRecovery !== null) return `${r.daysToRecovery}일`;
+  return r.severity === "critical" ? "미회복" : "관찰중";
 }
 
-type SortKey = "sku" | "channel" | "oosDays" | "restockDate" | "baseline" | "r30" | "r60" | "r90" | "severity";
+type SortKey = "sku" | "baseline" | "oosStartedOn" | "restockDate" | "oosDays" | "daysToRecovery" | "severity";
 
 // Columns whose first click sorts ascending (text/date-like); numeric columns
 // default to descending so the most extreme values surface first.
-const DEFAULT_ASC_KEYS: SortKey[] = ["sku", "channel", "restockDate", "severity"];
+const DEFAULT_ASC_KEYS: SortKey[] = ["sku", "oosStartedOn", "restockDate", "severity"];
 const SEVERITY_RANK: Record<Severity, number> = { critical: 0, serious: 1, warning: 2, good: 3 };
 
 const TABLE_COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
   { key: "sku", label: "Master SKU" },
-  { key: "channel", label: "채널" },
-  { key: "oosDays", label: "직전 품절", right: true },
-  { key: "restockDate", label: "재입고일", right: true },
-  { key: "baseline", label: "기준선", right: true },
-  { key: "r30", label: "30일", right: true },
-  { key: "r60", label: "60일", right: true },
-  { key: "r90", label: "90일", right: true },
+  { key: "baseline", label: "품절직전 일평균", right: true },
+  { key: "oosStartedOn", label: "품절일" },
+  { key: "restockDate", label: "재입고일" },
+  { key: "oosDays", label: "품절기간", right: true },
+  { key: "daysToRecovery", label: "회복까지 걸린 일수", right: true },
   { key: "severity", label: "상태" },
 ];
 
 function rowKey(r: RecoveryRow): string {
   return `${r.sku}|${r.channel}|${r.restockDate}`;
+}
+
+// Distribution buckets for the "스큐 비교" histogram — categorical (days-to-
+// recovery ranges plus the two undecided/failed outcomes), not a continuous
+// 0–100% scale, so no median line here (Histogram's median props are optional).
+type RecoveryBucketKey = "0-30" | "30-60" | "60-90" | "pending" | "none";
+const RECOVERY_BUCKETS: { key: RecoveryBucketKey; label: string }[] = [
+  { key: "0-30", label: "0–30일" },
+  { key: "30-60", label: "30–60일" },
+  { key: "60-90", label: "60–90일" },
+  { key: "pending", label: "관찰중" },
+  { key: "none", label: "미회복" },
+];
+
+function bucketOf(r: RecoveryRow): RecoveryBucketKey {
+  if (r.daysToRecovery !== null) {
+    if (r.daysToRecovery <= 30) return "0-30";
+    if (r.daysToRecovery <= 60) return "30-60";
+    return "60-90";
+  }
+  return r.severity === "critical" ? "none" : "pending";
 }
 
 export function RecoveryScreen() {
@@ -139,8 +154,8 @@ export function RecoveryScreen() {
 
   const tableRows = useMemo(() => {
     if (chartView !== "sku" || selectedBin === null) return visibleRows;
-    const bucket = PERCENT_BUCKETS[selectedBin];
-    return visibleRows.filter((r) => r.currentRecovery >= bucket.min && r.currentRecovery < bucket.max);
+    const bucketKey = RECOVERY_BUCKETS[selectedBin].key;
+    return visibleRows.filter((r) => bucketOf(r) === bucketKey);
   }, [visibleRows, chartView, selectedBin]);
 
   const searchedRows = useMemo(() => {
@@ -155,13 +170,11 @@ export function RecoveryScreen() {
     const valueOf = (r: RecoveryRow): string | number => {
       switch (sortKey) {
         case "sku": return r.sku;
-        case "channel": return CHANNEL_DISPLAY_LABELS[r.channel] ?? r.channel;
-        case "oosDays": return r.oosDays;
-        case "restockDate": return r.restockDate;
         case "baseline": return r.baseline;
-        case "r30": return r.r30 ?? (sortDir === "asc" ? Infinity : -Infinity);
-        case "r60": return r.r60 ?? (sortDir === "asc" ? Infinity : -Infinity);
-        case "r90": return r.r90 ?? (sortDir === "asc" ? Infinity : -Infinity);
+        case "oosStartedOn": return r.oosStartedOn;
+        case "restockDate": return r.restockDate;
+        case "oosDays": return r.oosDays;
+        case "daysToRecovery": return r.daysToRecovery ?? (sortDir === "asc" ? Infinity : -Infinity);
         case "severity": return SEVERITY_RANK[r.severity];
       }
     };
@@ -230,11 +243,20 @@ export function RecoveryScreen() {
     return s;
   }, [showAmazon, showEbay, showWalmart]);
 
-  const recoveryValues = useMemo(() => visibleRows.map((r) => r.currentRecovery), [visibleRows]);
-  const recoveryBins = useMemo(() => histogramFrom(recoveryValues), [recoveryValues]);
-  const recoveryMedian = median(recoveryValues);
+  const recoveryBins = useMemo(
+    () => RECOVERY_BUCKETS.map((def) => ({
+      label: def.label,
+      count: visibleRows.filter((r) => bucketOf(r) === def.key).length,
+    })),
+    [visibleRows],
+  );
 
-  const nonNull = (nums: (number | null)[]) => nums.filter((n): n is number => n !== null);
+  const confirmedDays = useMemo(
+    () => visibleRows.map((r) => r.daysToRecovery).filter((n): n is number => n !== null),
+    [visibleRows],
+  );
+  const neverRecoveredCount = useMemo(() => visibleRows.filter((r) => r.severity === "critical").length, [visibleRows]);
+  const pendingCount = useMemo(() => visibleRows.filter((r) => r.severity === "serious").length, [visibleRows]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -273,9 +295,18 @@ export function RecoveryScreen() {
       <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Kpi label="재입고 추적 SKU" value={String(visibleRows.length)} foot="선택된 채널 기준" />
-        <Kpi label="평균 30일 회복률" value={String(Math.round(average(nonNull(visibleRows.map((r) => r.r30)))))} unit="%" foot="기준선 대비" />
-        <Kpi label="평균 60일 회복률" value={String(Math.round(average(nonNull(visibleRows.map((r) => r.r60)))))} unit="%" foot="기준선 대비" />
-        <Kpi label="평균 90일 회복률" value={String(Math.round(average(nonNull(visibleRows.map((r) => r.r90)))))} unit="%" foot="기준선 대비" />
+        <Kpi
+          label="평균 회복 소요일"
+          value={confirmedDays.length ? String(Math.round(average(confirmedDays))) : "—"}
+          unit="일"
+          foot="회복 확정된 건 평균"
+        />
+        <Kpi
+          label="미회복 SKU"
+          value={String(neverRecoveredCount)}
+          foot={`전체의 ${visibleRows.length ? Math.round((neverRecoveredCount / visibleRows.length) * 100) : 0}% · 90일 내 회복 못함`}
+        />
+        <Kpi label="관찰중 SKU" value={String(pendingCount)} foot="아직 90일 안 지나 판단 이름" />
       </div>
 
       <div className="planning-panel rounded-xl border p-4">
@@ -310,19 +341,17 @@ export function RecoveryScreen() {
           <>
             <Histogram
               bins={recoveryBins}
-              medianValue={recoveryMedian}
-              medianLabel={`전체 ${visibleRows.length}개 SKU 중앙값 ${Math.round(recoveryMedian)}%`}
-              medianDescription={medianExplanation(recoveryValues)}
               activeIndex={selectedBin}
               onBinClick={(i) => { setSelectedBin((prev) => (prev === i ? null : i)); setPage(1); }}
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              막대를 클릭하면 아래 SKU별 상세가 해당 구간으로 필터링됩니다 · 같은 막대를 다시 클릭하면 해제됩니다.
+              회복까지 걸린 일수 기준 분포 — 막대를 클릭하면 아래 SKU별 상세가 해당 구간으로 필터링됩니다 · 같은 막대를 다시 클릭하면 해제됩니다.
             </p>
           </>
         )}
       </div>
 
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_1fr]">
       <div className="planning-panel overflow-hidden rounded-xl border">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
           <span className="text-[12.5px] font-semibold">
@@ -339,7 +368,7 @@ export function RecoveryScreen() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px] border-collapse text-xs">
+          <table className="w-full min-w-[640px] border-collapse text-xs">
             <thead>
               <tr className="bg-muted">
                 {TABLE_COLUMNS.map((col) => (
@@ -365,13 +394,16 @@ export function RecoveryScreen() {
                   className={cn("cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted", openKey === rowKey(r) && "bg-muted")}
                 >
                   <td className="px-3.5 py-2.5"><span className="font-mono font-semibold text-[#1238a0] dark:text-[#7aa2f7]">{r.sku}</span></td>
-                  <td className="px-3.5 py-2.5"><ChannelBadge channel={r.channel} /></td>
-                  <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums">{r.oosDays}일</td>
-                  <td className="whitespace-nowrap px-3.5 py-2.5 font-mono text-muted-foreground">{r.restockDate}</td>
                   <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums">{r.baseline.toFixed(1)}</td>
-                  <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums">{pct(r.r30)}</td>
-                  <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums">{pct(r.r60)}</td>
-                  <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono font-bold tabular-nums">{pct(r.r90)}</td>
+                  <td className="whitespace-nowrap px-3.5 py-2.5 font-mono text-muted-foreground">{r.oosStartedOn}</td>
+                  <td className="whitespace-nowrap px-3.5 py-2.5 font-mono text-muted-foreground">{r.restockDate}</td>
+                  <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums">{r.oosDays}일</td>
+                  <td
+                    className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono font-bold tabular-nums"
+                    title="재입고 후 트레일링 14일 평균이 기준선의 80%에 처음 도달한 날 — 90일 안에 도달 못하면 미회복(또는 아직 90일 전이면 관찰중)"
+                  >
+                    {daysToRecoveryLabel(r)}
+                  </td>
                   <td className="px-3.5 py-2.5"><SeverityPill severity={r.severity}>{r.label}</SeverityPill></td>
                 </tr>
               ))}
@@ -387,55 +419,64 @@ export function RecoveryScreen() {
         />
       </div>
 
-      {open && (
-        <div className="planning-panel rounded-xl border p-4">
-          <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="font-mono text-sm font-semibold">{open.sku}</span>
-              <span className="text-xs text-muted-foreground">일별 판매량(실측) vs 품절 직전 기준선</span>
-            </div>
-            <button type="button" onClick={() => setOpenKey(null)} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground hover:text-foreground">닫기</button>
+      <div className="planning-panel flex flex-col gap-3 rounded-xl border p-4 lg:sticky lg:top-4 lg:self-start">
+        {!open ? (
+          <div className="flex min-h-[240px] flex-col items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+            <span>SKU별 상세에서 행을 클릭하면</span>
+            <span>재입고 후 일별 판매량 그래프가 여기에 표시됩니다.</span>
           </div>
-          {drilldownLoading ? (
-            <div className="flex min-h-[160px] items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              드릴다운 데이터 불러오는 중…
-            </div>
-          ) : drilldownError ? (
-            <div className="flex min-h-[160px] items-center justify-center text-sm text-destructive">
-              드릴다운 데이터 로드 실패: {drilldownError}
-            </div>
-          ) : drilldown ? (
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-[1.5fr_1fr]">
-              <LineChart
-                xs={[-30, -15, 0, 15, 30, 60, 90]} xTicks={[-30, 0, 30, 60, 90]} xUnit="d"
-                yMin={0} yMax={Math.max(drilldown.baseline * 1.15, ...drilldown.points.map((p) => p * 1.15), 1)}
-                yTicks={[0, Math.round(drilldown.baseline / 2), Math.round(drilldown.baseline)]}
-                refValue={drilldown.baseline} refLabel={`기준선 ${drilldown.baseline.toFixed(1)}/day`}
-                marker={0} markerLabel="재입고"
-                series={[{ data: drilldown.points, color: "var(--chart-blue)", area: true, endLabel: `${drilldown.points[drilldown.points.length - 1].toFixed(1)}/day` }]}
-              />
-              <div className="overflow-hidden rounded-lg border border-border">
-                {([
-                  ["days_since_restock", String(open.daysSinceRestock)],
-                  ["previous_oos_days", String(open.oosDays)],
-                  ["recovery_rate_30d", pct(open.r30)],
-                  ["recovery_rate_60d", pct(open.r60)],
-                  ["recovery_rate_90d", pct(open.r90)],
-                  ["current_recovery_rate", pct(open.currentRecovery)],
-                  ["expected_recovery_stage", open.label],
-                  ["pre_oos_baseline_demand", `${open.baseline.toFixed(2)}/day`],
-                ] as [string, string][]).map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-xs last:border-0">
-                    <span className="font-mono text-[11px] text-muted-foreground">{k}</span>
-                    <span className="font-mono font-semibold">{v}</span>
-                  </div>
-                ))}
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="font-mono text-sm font-semibold">{open.sku}</span>
               </div>
+              <button type="button" onClick={() => setOpenKey(null)} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground hover:text-foreground">닫기</button>
             </div>
-          ) : null}
-        </div>
-      )}
+            <span className="-mt-2 text-xs text-muted-foreground">일별 판매량(실측) vs 품절 직전 기준선</span>
+            {drilldownLoading ? (
+              <div className="flex min-h-[160px] items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                드릴다운 데이터 불러오는 중…
+              </div>
+            ) : drilldownError ? (
+              <div className="flex min-h-[160px] items-center justify-center text-sm text-destructive">
+                드릴다운 데이터 로드 실패: {drilldownError}
+              </div>
+            ) : drilldown ? (
+              <>
+                <LineChart
+                  xs={[-30, -15, 0, 15, 30, 60, 90]} xTicks={[-30, 0, 30, 60, 90]} xUnit="d"
+                  yMin={0} yMax={Math.max(drilldown.baseline * 1.15, ...drilldown.points.map((p) => p * 1.15), 1)}
+                  yTicks={[0, Math.round(drilldown.baseline / 2), Math.round(drilldown.baseline)]}
+                  refValue={drilldown.baseline} refLabel={`기준선 ${drilldown.baseline.toFixed(1)}/day`}
+                  marker={0} markerLabel="재입고"
+                  series={[{ data: drilldown.points, color: "var(--chart-blue)", area: true, endLabel: `${drilldown.points[drilldown.points.length - 1].toFixed(1)}/day` }]}
+                  height={360}
+                />
+                <div className="overflow-hidden rounded-lg border border-border">
+                  {([
+                    ["days_since_restock", String(open.daysSinceRestock)],
+                    ["previous_oos_days", String(open.oosDays)],
+                    ["days_to_recovery", daysToRecoveryLabel(open)],
+                    ["recovery_outcome", open.label],
+                    ["day_0_30_avg", `${num1(open.day0to30)}/day`],
+                    ["day_30_60_avg", `${num1(open.day30to60)}/day`],
+                    ["day_60_90_avg", `${num1(open.day60to90)}/day`],
+                    ["pre_oos_baseline_demand", `${open.baseline.toFixed(2)}/day`],
+                  ] as [string, string][]).map(([k, v]) => (
+                    <div key={k} className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-xs last:border-0">
+                      <span className="font-mono text-[11px] text-muted-foreground">{k}</span>
+                      <span className="font-mono font-semibold">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
+      </div>
+      </div>
       </>
       )}
 
@@ -446,12 +487,12 @@ export function RecoveryScreen() {
           <li>직전 품절 기간 필터 — &quot;장기 품절일수록 회복이 느리다&quot;는 가설을 화면에서 바로 검증할 수 있어야 발주 타이밍 논의가 됨.</li>
           <li>상태 pill은 항상 아이콘 + 텍스트 + 숫자를 같이 표시 — 색만으로 판단하지 않도록 함.</li>
           <li>
-            <span className="font-mono">스큐 비교</span>는 실제 데이터로 연동됨 (<span className="font-mono">/api/planning/oos-impact/recovery</span>) —
-            품절 시작 30일 전 평균을 기준선으로, 재입고 후 최근 14일 평균을 현재 회복률로 계산. 30/60/90일 회복률은 그 시점이 실제로 지난 SKU만 표시(&quot;—&quot;는 아직 집계 전).
-            심각도 기준: 85% 이상 정상화 · 50~85% 회복 후반 · 50% 미만 회복 초기.
+            이 탭의 목적은 &quot;재입고 후 회복이 느린/안 된 SKU&quot;를 찾는 것이라, 핵심 지표는 <span className="font-mono">회복까지 걸린 일수</span>(daysToRecovery) — 재입고 후 트레일링 14일 평균이 기준선의 80%에 처음 도달한 날. 90일 안에 도달 못하면 경과일이 90일 미만이면 &quot;관찰중&quot;, 90일을 넘겼으면 &quot;미회복&quot;으로 확정(가장 타격이 큰 케이스). 예전엔 &quot;오늘 기준 최근 14일&quot; 현재 판매 상태로 상태/히스토그램을 계산했는데, 그건 회복 속도와 무관한 다른 질문(지금 잘 팔리냐)이라 완전히 제거함.
           </li>
-          <li><span className="font-mono">채널 비교</span>(라인차트)는 아직 샘플 데이터 — 채널별 시계열 집계는 별도 설계가 필요해 다음 단계로 예정.</li>
+          <li>재입고 후 30/30~60/60~90일 하루 평균(겹치지 않는 구간)은 표 컬럼에서 빼고 오른쪽 드릴다운 패널의 변수 목록으로 옮김 — 회복까지 걸린 일수라는 단일 지표가 이미 있어서 표에서는 중복이고, 필요할 때(행 클릭 시) 그래프와 함께 보는 게 더 유용함. 채널 컬럼은 표에서 뺐지만 한 SKU가 채널별로 여러 행에 나올 수 있음(내부적으로는 SKU+채널+재입고일로 구분).</li>
+          <li>히스토그램은 0-100% 연속 분포가 아니라 &quot;0–30일/30–60일/60–90일/관찰중/미회복&quot; 이산 카테고리라 중앙값 선 없이 막대 개수만 표시 (Histogram 컴포넌트의 medianValue 등은 optional로 바꿔서 preorder-screen의 %기반 히스토그램과 공유).</li>
           <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링, 페이지네이션(25/50/100개씩)까지 지원 — 열려있던 드릴다운 행은 SKU/채널/재입고일 키로 추적해 정렬·검색·페이지 이동과 무관하게 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
+          <li>드릴다운은 표 아래로 펼치지 않고 오른쪽에 고정 패널로 배치(넓은 화면 기준) — 행을 클릭해도 페이지가 밀리지 않고, 스크롤해도 패널이 따라와서 여러 SKU를 훑어보며 그래프를 바로바로 확인하기 편함. 좁은 화면(lg 미만)에서는 표 아래로 쌓임.</li>
         </ul>
       </div>
     </div>

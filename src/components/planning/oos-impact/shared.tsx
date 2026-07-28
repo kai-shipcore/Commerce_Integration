@@ -212,16 +212,21 @@ export function LineChart({
   const [xMinV, xMaxV] = [xs[0], xs[xs.length - 1]];
   const X = (x: number) => padL + ((x - xMinV) / (xMaxV - xMinV || 1)) * plotW;
   const Y = (y: number) => padT + (1 - (y - yMin) / (yMax - yMin || 1)) * plotH;
+  // Callers sometimes derive ticks from rounded data (e.g. Math.round(baseline/2)),
+  // which can collide for small values — dedupe so React keys stay unique and we
+  // don't draw the same gridline/label on top of itself.
+  const uniqueYTicks = [...new Set(yTicks)];
+  const uniqueXTicks = [...new Set(xTicks ?? xs)];
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full overflow-visible">
-      {yTicks.map((t) => (
+      {uniqueYTicks.map((t) => (
         <g key={`y${t}`}>
           <line x1={padL} x2={width - padR} y1={Y(t)} y2={Y(t)} stroke="var(--border)" strokeWidth={1} />
           <text x={padL - 8} y={Y(t) + 3} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">{t}{yUnit}</text>
         </g>
       ))}
-      {(xTicks ?? xs).map((t) => (
+      {uniqueXTicks.map((t) => (
         <text key={`x${t}`} x={X(t)} y={height - padB + 16} textAnchor="middle" fontSize={10} fill="var(--muted-foreground)">{t}{xUnit}</text>
       ))}
       {refValue !== undefined && (
@@ -266,9 +271,12 @@ export function Histogram({
   bins, medianValue, medianLabel, medianDescription, activeIndex, onBinClick,
 }: {
   bins: { label: string; count: number }[];
-  medianValue: number;
-  medianLabel: string;
-  medianDescription: string;
+  // Omit all three when bins aren't points on a continuous 0–100 scale (e.g.
+  // discrete outcome categories) — the median line only makes sense for a
+  // percent-style distribution like preorder-screen's drop-rate histogram.
+  medianValue?: number;
+  medianLabel?: string;
+  medianDescription?: string;
   activeIndex?: number | null;
   onBinClick?: (index: number) => void;
 }) {
@@ -276,7 +284,8 @@ export function Histogram({
   const max = Math.max(1, ...bins.map((b) => b.count));
   const plotW = width - padL - padR, plotH = height - padT - padB;
   const bw = plotW / bins.length;
-  const medianX = padL + plotW * (Math.min(100, Math.max(0, medianValue)) / 100);
+  const showMedian = medianValue !== undefined && medianLabel !== undefined;
+  const medianX = padL + plotW * (Math.min(100, Math.max(0, medianValue ?? 0)) / 100);
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full overflow-visible">
@@ -312,12 +321,14 @@ export function Histogram({
           </g>
         );
       })}
-      <g className="cursor-help">
-        <title>{`${medianLabel}: ${medianDescription}`}</title>
-        <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="transparent" strokeWidth={14} />
-        <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="var(--foreground)" strokeWidth={1.5} strokeDasharray="4 3" />
-        <text x={medianX + 6} y={padT + 10} fontSize={10} fontWeight={700} fill="var(--foreground)">{medianLabel}</text>
-      </g>
+      {showMedian && (
+        <g className="cursor-help">
+          <title>{`${medianLabel}: ${medianDescription ?? ""}`}</title>
+          <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="transparent" strokeWidth={14} />
+          <line x1={medianX} x2={medianX} y1={padT} y2={padT + plotH} stroke="var(--foreground)" strokeWidth={1.5} strokeDasharray="4 3" />
+          <text x={medianX + 6} y={padT + 10} fontSize={10} fontWeight={700} fill="var(--foreground)">{medianLabel}</text>
+        </g>
+      )}
     </svg>
   );
 }
