@@ -1,13 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
+import type { BaseCategoryFilter, CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, salesWindowWeightsParam, type SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], pinned_rows: [], last_sync: null };
 const dashboardMemoryCache = new Map<string, DemandPlanningData>();
+const BASE_CATEGORIES: BaseCategoryFilter[] = ["sc", "cc", "fm", "ac"];
+
+// Server-side category scoping only applies when exactly one base category (sc/cc/fm/ac)
+// is selected — Part/SWC and multi-category combinations fetch the full dataset and are
+// scoped client-side instead.
+function fastPathCategory(category?: CategoryFilter[]): BaseCategoryFilter | undefined {
+  if (!category || category.length !== 1) return undefined;
+  const [only] = category;
+  return (BASE_CATEGORIES as CategoryFilter[]).includes(only) ? (only as BaseCategoryFilter) : undefined;
+}
 
 export type VelocityMode = "link" | "custom";
 
@@ -25,7 +35,7 @@ export function useDemandPlanningData(
   mode: VelocityMode = "link",
   asOfDate?: string,
   includeDrafts = false,
-  category?: CategoryFilter,
+  category?: CategoryFilter[],
   salesWindowWeights: SalesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
   oosLostDemandWeights: OosLostDemandWeights = DEFAULT_OOS_LOST_DEMAND_WEIGHTS,
 ): DemandPlanningDataState {
@@ -38,7 +48,7 @@ export function useDemandPlanningData(
   const containerDetailsInFlightRef = useRef<string | null>(null);
   const syncInFlightRef = useRef(false);
 
-  const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category ?? "all"}|${JSON.stringify(salesWindowWeights)}`;
+  const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category && category.length ? [...category].sort().join(",") : "all"}|${JSON.stringify(salesWindowWeights)}`;
 
   function fetchDashboard(withRefresh: boolean) {
     let cancelled = false;
@@ -59,7 +69,7 @@ export function useDemandPlanningData(
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    const categorySuffix = category ? `&product=${category}` : "";
+    const categorySuffix = fastPathCategory(category) ? `&product=${fastPathCategory(category)}` : "";
     const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(salesWindowWeights)}`;
     const dashUrl = apiPath(`/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}${salesWeightsSuffix}`);
     const dashFetch = withRefresh
@@ -78,7 +88,7 @@ export function useDemandPlanningData(
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
       }),
-      category === "sc"
+      category?.includes("part")
         ? fetch(apiPath("/api/planning/dashboard/part-rows"))
           .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }>)
           .catch(() => ({ success: false, rows: [] as { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }))
@@ -166,7 +176,7 @@ export function useDemandPlanningData(
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    const categorySuffix = category ? `&product=${category}` : "";
+    const categorySuffix = fastPathCategory(category) ? `&product=${fastPathCategory(category)}` : "";
     const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(salesWindowWeights)}`;
     const abortController = new AbortController();
     const timeoutId = window.setTimeout(() => abortController.abort(), 60_000);

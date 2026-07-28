@@ -44,8 +44,9 @@ function parseSku(sku: string): { seat: string; no: number; color: string; tone:
   return { no: 0, seat: "", color: "", tone: "" };
 }
 
-function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" {
+function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" | "SWC" {
   const normalized = sku.toUpperCase();
+  if (normalized.includes("SWC")) return "SWC";
   if (normalized.startsWith("CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
@@ -107,13 +108,13 @@ export async function GET(req: Request) {
           SELECT s.* FROM shipcore.fc_stats_custom s
           WHERE EXISTS (
             SELECT 1 FROM shipcore.fc_products p
-            WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
+            WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
           )
           UNION ALL
           SELECT s.* FROM shipcore.fc_stats s
           WHERE NOT EXISTS (
             SELECT 1 FROM shipcore.fc_products p
-            WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
+            WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
           )
         )`;
     })();
@@ -509,7 +510,7 @@ export async function GET(req: Request) {
       const masterSku    = r.sku as string;
       const rowSku       = masterSku;
       const { seat, no, color, tone } = parseSku(masterSku);
-      const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC"
+      const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC" || r.category_code === "SWC"
         ? r.category_code
         : inferCategoryCode(masterSku);
 
@@ -527,7 +528,7 @@ export async function GET(req: Request) {
 
       // For historical dates, pick velocity from the correct snapshot source:
       // CC/FM use custom_snapshot; SC uses link_snapshot (mirrors statsSource logic).
-      const velSourceMap = (categoryCode === "CC" || categoryCode === "FM") ? customVelMap : linkVelMap;
+      const velSourceMap = (categoryCode === "CC" || categoryCode === "FM" || categoryCode === "SWC") ? customVelMap : linkVelMap;
       const vel = velSourceMap.get(masterSku) as (VelRow & { _avg_curr: number; _east_curr: number; _fba_curr: number }) | undefined;
       const west_90d     = vel ? vel.west_90d     : r.west_90d as number;
       const west_60d     = vel ? vel.west_60d     : r.west_60d as number;

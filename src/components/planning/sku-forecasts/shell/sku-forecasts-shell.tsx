@@ -154,7 +154,7 @@ export function SkuForecastsShell({
     loading,
     error,
     reload,
-  } = useDemandPlanningData("link", undefined, includeDraftContainers, product, salesWindowWeights);
+  } = useDemandPlanningData("link", undefined, includeDraftContainers, [product], salesWindowWeights);
 
   const rowsByProduct = useMemo(() => {
     const grouped: Record<ProductKey, DemandRow[]> = { sc: [], cc: [], fm: [] };

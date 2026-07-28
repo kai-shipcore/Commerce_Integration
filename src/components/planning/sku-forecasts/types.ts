@@ -43,7 +43,7 @@ export function salesVelocityTrend(row: DemandRow): { recentDaily: number; thirt
 }
 
 export function productKeyForRow(row: DemandRow): ProductKey {
-  if (row.category_code === "CC") return "cc";
+  if (row.category_code === "CC" || row.category_code === "SWC") return "cc";
   if (row.category_code === "FM") return "fm";
   const sku = row.sku.toUpperCase();
   if (sku.startsWith("CC-")) return "cc";
@@ -53,7 +53,7 @@ export function productKeyForRow(row: DemandRow): ProductKey {
 
 export function forecastProductKeyForRow(row: DemandRow): ProductKey | null {
   if (row.category_code === "SC") return "sc";
-  if (row.category_code === "CC") return "cc";
+  if (row.category_code === "CC" || row.category_code === "SWC") return "cc";
   if (row.category_code === "FM") return "fm";
   if (row.category_code) return null;
 

@@ -254,6 +254,7 @@ function localDateString(date: Date): string {
 }
 
 function supportedSalesCategory(category: DemandRow["category_code"]): "SC" | "CC" | "FM" | undefined {
+  if (category === "SWC") return "CC";
   return category === "SC" || category === "CC" || category === "FM" ? category : undefined;
 }
 

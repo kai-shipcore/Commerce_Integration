@@ -50,7 +50,7 @@ import {
 } from "@/lib/planning/order-optimizer";
 import type { CellContent } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
-import type { ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
+import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
@@ -196,13 +196,30 @@ function baseColumnWidth(column: { id: string; w: number }) {
   return column.w;
 }
 
-function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
+function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
+  if (normalized.includes("SWC")) return "SWC";
   if (normalized.startsWith("CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
+}
+
+// Base categories (sc/cc/fm/ac) checked in the multi-select — Part/SWC are excluded since
+// they're cross-cutting status filters, not categories.
+function checkedBaseCategories(selected: CategoryFilter[]): ("sc" | "cc" | "fm" | "ac")[] {
+  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "part" && c !== "swc");
+}
+
+// A row matches if it belongs to a checked base category, OR if its status matches a checked
+// Part/SWC chip (regardless of the row's own category) — the Part/SWC chips pull in rows from
+// outside the checked categories rather than narrowing the checked categories.
+function matchesCategorySelection(row: DemandRow, selected: CategoryFilter[]): boolean {
+  if (checkedBaseCategories(selected).some((c) => c.toUpperCase() === categoryCodeForRow(row))) return true;
+  if (selected.includes("part") && row.sales_status === "Part") return true;
+  if (selected.includes("swc") && row.sales_status === "SWC") return true;
+  return false;
 }
 
 function computeContainerChain(
@@ -1288,12 +1305,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       .filter((container) => {
         if (container.status === "baseline") return true;
         if (hiddenContainers.has(container.name)) return false;
+        const checkedBase = checkedBaseCategories(categoryFilter);
+        // Part/SWC have no container concept — if nothing category-shaped is checked, don't filter containers at all.
+        if (!checkedBase.length) return true;
         if (!container.categories?.length) {
-          if (container.name.endsWith("-FLOOR")) return categoryFilter === "fm";
-          if (container.name.endsWith("-SEAT")) return categoryFilter === "sc";
+          if (container.name.endsWith("-FLOOR")) return checkedBase.includes("fm");
+          if (container.name.endsWith("-SEAT")) return checkedBase.includes("sc");
           return true;
         }
-        return container.categories.includes(categoryFilter.toUpperCase());
+        return checkedBase.some((cat) => container.categories!.includes(cat.toUpperCase()));
       });
 
     return filtered;
@@ -1302,17 +1322,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const visibleRows = useMemo(() => {
     const query = search.toLowerCase();
     const filtered = data.rows.filter((row) => {
-      if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) return false;
+      if (!matchesCategorySelection(row, categoryFilter)) return false;
       if (row.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (productFilter === "orig" && row.sales_status !== "Original")      return false;
       if (productFilter === "cust" && row.sales_status !== "Custom")        return false;
-      if (productFilter === "hold" && row.sales_status !== "Hold")          return false;
-      if (productFilter === "part" && row.sales_status !== "Part")          return false;
-      if (productFilter === "disc" && row.sales_status !== "Discontinued")  return false;
-      if (productFilter === "tbd"  && row.sales_status !== "TBD")           return false;
-      if (productFilter === "swc"  && row.sales_status !== "SWC")           return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
       if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       const urgency = urgStatus(row);
@@ -1655,8 +1670,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     let usedCbm = 0;
     const skuInputs: SkuOrderInput[] = visibleRows
       .filter((r) => {
-        const cat = r.category_code;
-        if ((cat ?? "").toLowerCase() !== categoryFilter) return false;
+        const cat = (r.category_code ?? "").toLowerCase();
+        if (!checkedBaseCategories(categoryFilter).some((c) => c === cat)) return false;
         if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
         const key = `${r.sku}::${container.name}`;
         const existingQty = qtyOverrides.get(key)?.inbound_qty ?? r.containers?.[container.name]?.inbound_qty ?? 0;
@@ -1763,7 +1778,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
     );
     const rows = rowsInDisplayOrder().filter((row) => {
-      if ((row.category_code ?? "").toLowerCase() !== categoryFilter) return false;
+      const cat = (row.category_code ?? "").toLowerCase();
+      if (!checkedBaseCategories(categoryFilter).some((c) => c === cat)) return false;
       if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
       return true;
     });

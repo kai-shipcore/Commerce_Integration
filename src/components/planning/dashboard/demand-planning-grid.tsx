@@ -41,7 +41,7 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
-  categoryFilter: CategoryFilter;
+  categoryFilter: CategoryFilter[];
   productFilter: ProductFilter;
   urgencyFilter: UrgencyFilter | null;
   search: string;
@@ -142,13 +142,30 @@ function compareAscending(left: SortValue, right: SortValue): number {
   return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
+function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
+  if (normalized.includes("SWC")) return "SWC";
   if (normalized.startsWith("CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
+}
+
+// Base categories (sc/cc/fm/ac) checked in the multi-select — Part/SWC are excluded since
+// they're cross-cutting status filters, not categories.
+function checkedBaseCategories(selected: CategoryFilter[]): ("sc" | "cc" | "fm" | "ac")[] {
+  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "part" && c !== "swc");
+}
+
+// A row matches if it belongs to a checked base category, OR if its status matches a checked
+// Part/SWC chip (regardless of the row's own category) — the Part/SWC chips pull in rows from
+// outside the checked categories rather than narrowing the checked categories.
+function matchesCategorySelection(row: DemandRow, selected: CategoryFilter[]): boolean {
+  if (checkedBaseCategories(selected).some((c) => c.toUpperCase() === categoryCodeForRow(row))) return true;
+  if (selected.includes("part") && row.sales_status === "Part") return true;
+  if (selected.includes("swc") && row.sales_status === "SWC") return true;
+  return false;
 }
 
 function renderCell(content: CellContent): React.ReactNode {
@@ -283,13 +300,16 @@ export function DemandPlanningGrid({
       )
       .filter((c) => {
         if (c.status === "baseline") return true;
+        const checkedBase = checkedBaseCategories(categoryFilter);
+        // Part/SWC have no container concept — if nothing category-shaped is checked, don't filter containers at all.
+        if (!checkedBase.length) return true;
         if (!c.categories || c.categories.length === 0) {
           // fallback: name-suffix heuristic for containers without category data
-          if (c.name.endsWith("-FLOOR")) return categoryFilter === "fm";
-          if (c.name.endsWith("-SEAT"))  return categoryFilter === "sc";
-          return categoryFilter === "cc";
+          if (c.name.endsWith("-FLOOR")) return checkedBase.includes("fm");
+          if (c.name.endsWith("-SEAT"))  return checkedBase.includes("sc");
+          return checkedBase.includes("cc");
         }
-        return c.categories.includes(categoryFilter.toUpperCase());
+        return checkedBase.some((cat) => c.categories!.includes(cat.toUpperCase()));
       }),
     [data.containers, categoryFilter, etaOverrides],
   );
@@ -378,17 +398,12 @@ export function DemandPlanningGrid({
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
-      if (categoryCodeForRow(r) !== categoryFilter.toUpperCase()) return false;
+      if (!matchesCategorySelection(r, categoryFilter)) return false;
       if (r.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original")      return false;
       if (productFilter === "cust" && r.sales_status !== "Custom")        return false;
-      if (productFilter === "hold" && r.sales_status !== "Hold")          return false;
-      if (productFilter === "part" && r.sales_status !== "Part")          return false;
-      if (productFilter === "disc" && r.sales_status !== "Discontinued")  return false;
-      if (productFilter === "tbd"  && r.sales_status !== "TBD")           return false;
-      if (productFilter === "swc"  && r.sales_status !== "SWC")           return false;
       if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
       const u: UrgencyStatus = urgStatus(r);

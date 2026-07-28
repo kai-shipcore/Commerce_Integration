@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { logAudit, getIp } from "@/lib/audit";
 import { normalizeMasterSku } from "@/lib/planning/master-sku";
 
-type ProductKey = "cc" | "fm" | "sc" | "ac";
+type ProductKey = "cc" | "fm" | "sc" | "ac" | "swc";
 
 type ExcelSkuRow = {
   masterSku: string;
@@ -60,7 +60,15 @@ function getErrorMessage(error: unknown): string {
 }
 
 const partSalesStatusSql = `(SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSku" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END)`;
-const salesStatusSql = `COALESCE(p.sales_status, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), ${partSalesStatusSql}, 'Original')`;
+// Manual override only (Hold/Discontinued/TBD). Part and SWC are item/category designations (they
+// live in the category filter bar instead, matched directly against the raw column below) rather
+// than lifecycle statuses, so they're excluded here. Legacy rows where p.sales_status was mistakenly
+// written as 'Original'/'Custom' (a footgun in the old single-dropdown UI) are also treated as having
+// no override, same as NULL — Original/Custom live in originalOrCustomSql.
+const overrideStatusSql = `(CASE WHEN p.sales_status IN ('Hold', 'Discontinued', 'TBD') THEN p.sales_status ELSE NULL END)`;
+// Original vs Custom is derived purely from actual order/velocity data (the is_custom flag baked
+// into fc_stats/fc_stats_custom), independent of any manual override on fc_products.
+const originalOrCustomSql = `COALESCE((SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), 'Original')`;
 
 function inferProduct(masterSku: string): {
   productKey: ProductKey;
@@ -75,9 +83,9 @@ function inferProduct(masterSku: string): {
 
   if (sku.includes("SWC")) {
     return {
-      productKey: "cc",
-      category: "Car Cover",
-      categoryCode: "CC",
+      productKey: "swc",
+      category: "SWC",
+      categoryCode: "SWC",
       moq: 1,
       cbmPerUnit: 0.078,
       caseQty: 1,
@@ -159,17 +167,26 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim() ?? "";
-    const product = searchParams.get("product")?.trim() ?? "all";
+    const productParam = searchParams.get("product")?.trim() ?? "";
+    const productValues = productParam ? productParam.split(",").map((v) => v.trim()).filter(Boolean) : [];
     const status = searchParams.get("status")?.trim().toLowerCase() ?? "active";
     const masterSku = searchParams.get("masterSku")?.trim() ?? "";
     const page = Math.max(1, Number(searchParams.get("page") ?? 1));
     const limit = Math.min(200, Math.max(20, Number(searchParams.get("limit") ?? 50)));
     const offset = (page - 1) * limit;
 
+    // "salesType" filters on the derived Original/Custom classification (originalOrCustomSql).
     const salesType = searchParams.get("salesType")?.trim() ?? "all";
-    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD", "SWC"];
-    if (salesType !== "all" && !validSalesStatuses.includes(salesType)) {
+    if (salesType !== "all" && salesType !== "Original" && salesType !== "Custom") {
       return NextResponse.json({ success: false, error: "Invalid salesType filter" }, { status: 400 });
+    }
+
+    // "type" filters on the manual override (overrideStatusSql) — the UI's "All Types" filter,
+    // matching the TYPE column (Hold/Discontinued/TBD only — Original/Custom never appear there).
+    const typeParam = searchParams.get("type")?.trim() ?? "all";
+    const validTypeFilters = ["Hold", "Discontinued", "TBD"];
+    if (typeParam !== "all" && !validTypeFilters.includes(typeParam)) {
+      return NextResponse.json({ success: false, error: "Invalid type filter" }, { status: 400 });
     }
 
     const filters: string[] = [];
@@ -188,22 +205,33 @@ export async function GET(request: NextRequest) {
       filters.push(`p.master_sku ILIKE $${params.length}`);
     }
 
-    if (product !== "all") {
-      const productMap: Record<string, string> = {
-        cc: "CC",
-        fm: "FM",
-        sc: "SC",
-      };
-      const code = productMap[product];
-      if (code) {
-        params.push(code);
-        filters.push(`p.category_code = $${params.length}`);
+    // Merged category + cross-cutting item filter: SWC is now a real category_code value (see
+    // "swc" in productMap below), so it flows through baseCategoryCodes like the others. Part is
+    // still a sales_status-based item designation (not a category_code value), matched separately.
+    const productMap: Record<string, string> = { cc: "CC", fm: "FM", sc: "SC", ac: "AC", swc: "SWC" };
+    const baseCategoryCodes = productValues
+      .map((v) => productMap[v])
+      .filter((code): code is string => Boolean(code));
+    const includePart = productValues.includes("part");
+
+    if (baseCategoryCodes.length || includePart) {
+      const orClauses: string[] = [];
+      if (baseCategoryCodes.length) {
+        params.push(baseCategoryCodes);
+        orClauses.push(`p.category_code = ANY($${params.length}::text[])`);
       }
+      if (includePart) orClauses.push(`(p.sales_status = 'Part' OR ${partSalesStatusSql} = 'Part')`);
+      filters.push(`(${orClauses.join(" OR ")})`);
     }
 
     if (salesType !== "all") {
       params.push(salesType);
-      filters.push(`${salesStatusSql} = $${params.length}`);
+      filters.push(`${originalOrCustomSql} = $${params.length}`);
+    }
+
+    if (typeParam !== "all") {
+      params.push(typeParam);
+      filters.push(`${overrideStatusSql} = $${params.length}`);
     }
 
     const pool = getPrimaryPool();
@@ -217,7 +245,8 @@ export async function GET(request: NextRequest) {
            p.category,
            p.category_code,
            p.status::text AS status,
-           ${salesStatusSql} AS sales_status,
+           ${overrideStatusSql} AS sales_status,
+           ${originalOrCustomSql} AS original_or_custom,
            p.moq,
            p.order_multiple,
            p.cbm_per_unit::text AS cbm_per_unit,
@@ -248,6 +277,7 @@ export async function GET(request: NextRequest) {
           categoryCode: row.category_code ?? inferred.categoryCode,
           status: row.status ?? "active",
           salesStatus: (row.sales_status as string | null) ?? null,
+          originalOrCustom: (row.original_or_custom as string | null) ?? "Original",
           moq: Number(row.moq ?? inferred.moq),
           orderMultiple: Number(row.order_multiple ?? inferred.moq),
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
@@ -276,7 +306,8 @@ export async function GET(request: NextRequest) {
          p.category,
          p.category_code,
          p.status::text AS status,
-         ${salesStatusSql} AS sales_status,
+         ${overrideStatusSql} AS sales_status,
+         ${originalOrCustomSql} AS original_or_custom,
          p.moq,
          p.order_multiple,
          p.cbm_per_unit::text AS cbm_per_unit,
@@ -301,6 +332,7 @@ export async function GET(request: NextRequest) {
           categoryCode: row.category_code ?? inferred.categoryCode,
           status: row.status ?? "active",
           salesStatus: (row.sales_status as string | null) ?? null,
+          originalOrCustom: (row.original_or_custom as string | null) ?? "Original",
           moq: Number(row.moq ?? inferred.moq),
           orderMultiple: Number(row.order_multiple ?? inferred.moq),
           cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
@@ -451,7 +483,10 @@ export async function PATCH(request: NextRequest) {
     const salesStatusRaw = body.salesStatus == null ? undefined : String(body.salesStatus).trim();
     const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
 
-    const validSalesStatuses = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD", "SWC"];
+    // Original/Custom are derived from order data (see originalOrCustomSql in the GET handler above)
+    // and must never be written manually; Part/SWC are item/category designations (auto-detected or
+    // set by dedicated sync jobs, not this endpoint) — only override statuses are settable here.
+    const validSalesStatuses = ["Hold", "Discontinued", "TBD"];
     if (salesStatusValue != null && !validSalesStatuses.includes(salesStatusValue)) {
       return NextResponse.json({ success: false, error: "Invalid salesStatus" }, { status: 400 });
     }

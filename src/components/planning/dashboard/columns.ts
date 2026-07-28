@@ -355,7 +355,7 @@ export function skuFilterKeysForProduct(product: "sc" | "cc" | "fm" | "ac"): Sku
 
 export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone" | "category_code">): SkuParts {
   const parts = String(row.sku ?? "").trim().toUpperCase().split("-");
-  if (row.category_code === "CC" || parts[0] === "CC") {
+  if (row.category_code === "CC" || row.category_code === "SWC" || parts[0] === "CC") {
     if (/^\d+$/.test(parts[1] ?? "")) {
       return {
         ...EMPTY_SKU_PARTS,

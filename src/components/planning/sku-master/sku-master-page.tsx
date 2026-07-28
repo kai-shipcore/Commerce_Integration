@@ -21,11 +21,12 @@ import {
 type SkuMasterRow = {
   masterSku: string;
   productName: string;
-  productKey: ProductKey;
+  productKey: SkuMasterProductKey;
   category: string;
   categoryCode: string;
   status: SkuStatus;
-  salesStatus: SalesStatus | null;
+  salesStatus: OverrideSalesStatus | null;
+  originalOrCustom: OriginalOrCustom;
   moq: number;
   orderMultiple: number;
   cbmPerUnit: number;
@@ -34,11 +35,27 @@ type SkuMasterRow = {
 };
 
 type SkuStatus = "active" | "inactive";
-type SalesStatus = "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC";
+// Manual override only — Original/Custom are derived from actual order data (is_custom flag),
+// never manually assignable, so they live in a separate OriginalOrCustom field/column instead.
+// Part/SWC are item/category designations (surfaced in the category filter bar), not lifecycle
+// statuses, so they're excluded here too.
+type OverrideSalesStatus = "Hold" | "Discontinued" | "TBD";
+type OriginalOrCustom = "Original" | "Custom";
 type StatusFilter = SkuStatus | "all";
+// SWC is a real category_code value (see productMeta below), kept page-local rather than widening
+// the shared mock-data ProductKey (used elsewhere, e.g. container planning, which doesn't need it).
+type SkuMasterProductKey = ProductKey | "swc";
+// Merged category + cross-cutting status filter for the top filter bar — Part is a sales_status
+// value (not a category) but is surfaced alongside the categories here, same as Demand Planning.
+type SkuMasterCategoryFilter = SkuMasterProductKey | "part";
+// Trimmed filter-bar type, distinct from the full SalesStatus domain used by the per-row editor below.
+type SalesTypeFilter = "all" | "Original" | "Custom";
+// Filters on the TYPE column (manual override) — distinct from SalesTypeFilter, which filters the
+// separate ORIGINAL/CUSTOM column.
+type TypeFilter = "all" | OverrideSalesStatus;
 
 const productMeta: Record<
-  ProductKey,
+  SkuMasterProductKey,
   { label: string; icon: string; badgeClass: string; cbmClass: string }
 > = {
   cc: {
@@ -65,7 +82,26 @@ const productMeta: Record<
     badgeClass: "bg-[#f0e6ff] text-[#7c3aed] dark:bg-purple-950/70 dark:text-purple-300",
     cbmClass: "text-[#b56a00]",
   },
+  swc: {
+    label: "SWC",
+    icon: "SWC",
+    badgeClass: "bg-orange-50 text-orange-700 dark:bg-orange-950/70 dark:text-orange-300",
+    cbmClass: "text-[#b56a00]",
+  },
 };
+
+const CATEGORY_FILTER_OPTIONS: { value: SkuMasterCategoryFilter; label: string }[] = [
+  ...(Object.keys(productMeta) as SkuMasterProductKey[]).map((key) => ({ value: key, label: productMeta[key].label })),
+  { value: "part", label: "Part" },
+];
+
+function categoryFilterSummary(selected: SkuMasterCategoryFilter[], allLabel: string) {
+  if (!selected.length) return allLabel;
+  const labelByValue = new Map(CATEGORY_FILTER_OPTIONS.map((option) => [option.value, option.label]));
+  const labels = selected.map((value) => labelByValue.get(value) ?? value);
+  if (labels.length <= 2) return labels.join(", ");
+  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+}
 
 const numberFormatter = new Intl.NumberFormat("en-US");
 
@@ -212,9 +248,13 @@ export function SkuMasterPage() {
   const { can, ready } = usePermissions();
   const [rows, setRows] = useState<SkuMasterRow[]>([]);
   const [query, setQuery] = useState("");
-  const [product, setProduct] = useState<ProductKey | "all">("all");
+  const [product, setProduct] = useState<SkuMasterCategoryFilter[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
-  const [salesTypeFilter, setSalesTypeFilter] = useState<SalesStatus | "all">("all");
+  const [salesTypeFilter, setSalesTypeFilter] = useState<SalesTypeFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [categoryDropdownPos, setCategoryDropdownPos] = useState<{ top: number; left: number } | null>(null);
+  const categoryFilterRef = useRef<HTMLDivElement>(null);
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [editingSnapshot, setEditingSnapshot] = useState<SkuMasterRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -243,9 +283,10 @@ export function SkuMasterPage() {
     try {
       const params = new URLSearchParams();
       if (query.trim()) params.set("search", query.trim());
-      if (product !== "all") params.set("product", product);
+      if (product.length) params.set("product", product.join(","));
       if (statusFilter !== "active") params.set("status", statusFilter);
       if (salesTypeFilter !== "all") params.set("salesType", salesTypeFilter);
+      if (typeFilter !== "all") params.set("type", typeFilter);
       params.set("page", String(page));
       params.set("limit", String(limit));
       const res = await fetch(apiPath(`/api/planning/sku-master?${params.toString()}`), { cache: "no-store" });
@@ -267,7 +308,23 @@ export function SkuMasterPage() {
     }, 200);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, product, statusFilter, salesTypeFilter, page, limit]);
+  }, [query, product, statusFilter, salesTypeFilter, typeFilter, page, limit]);
+
+  useEffect(() => {
+    if (!isCategoryDropdownOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && categoryFilterRef.current?.contains(target)) return;
+      setIsCategoryDropdownOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isCategoryDropdownOpen]);
+
+  function toggleCategoryFilter(value: SkuMasterCategoryFilter) {
+    setProduct((current) => current.includes(value) ? current.filter((v) => v !== value) : [...current, value]);
+    setPage(1);
+  }
 
   const visibleSkus = useMemo(
     () => rows,
@@ -279,7 +336,7 @@ export function SkuMasterPage() {
     const averageCbm = rows.length
       ? rows.reduce((sum, sku) => sum + sku.cbmPerUnit, 0) / rows.length
       : 0;
-    const productTypes = product === "all" ? Object.keys(productMeta).length : 1;
+    const productTypes = product.length === 0 ? Object.keys(productMeta).length : product.length;
     return { missingCbm, averageCbm, productTypes };
   }, [product, rows]);
 
@@ -466,9 +523,10 @@ export function SkuMasterPage() {
       for (let exportPage = 1; exportPage <= totalPages; exportPage += 1) {
         const params = new URLSearchParams();
         if (query.trim()) params.set("search", query.trim());
-        if (product !== "all") params.set("product", product);
+        if (product.length) params.set("product", product.join(","));
         if (statusFilter !== "active") params.set("status", statusFilter);
         if (salesTypeFilter !== "all") params.set("salesType", salesTypeFilter);
+        if (typeFilter !== "all") params.set("type", typeFilter);
         params.set("page", String(exportPage));
         params.set("limit", String(exportLimit));
 
@@ -565,21 +623,55 @@ export function SkuMasterPage() {
               <span className="text-sm font-normal" aria-hidden="true">X</span>
             </button>
           ) : null}
-          <select
-            value={product}
-            onChange={(event) => {
-              setProduct(event.target.value as ProductKey | "all");
-              setPage(1);
-            }}
-            className="form-input h-9 w-36 bg-white text-xs"
-          >
-            <option value="all">{pick("전체", "All")}</option>
-            {(Object.keys(productMeta) as ProductKey[]).map((key) => (
-              <option key={key} value={key}>
-                {productMeta[key].label}
-              </option>
-            ))}
-          </select>
+          <div ref={categoryFilterRef} className="relative">
+            <details open={isCategoryDropdownOpen}>
+              <summary
+                aria-label="Category filter"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setIsCategoryDropdownOpen((open) => {
+                    const next = !open;
+                    if (next) {
+                      const rect = categoryFilterRef.current?.getBoundingClientRect();
+                      if (rect) setCategoryDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                    }
+                    return next;
+                  });
+                }}
+                className="form-input flex h-9 w-36 list-none items-center justify-between gap-1 bg-white text-xs cursor-pointer"
+              >
+                <span className="truncate">{categoryFilterSummary(product, pick("전체", "All"))}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">▼</span>
+              </summary>
+              {/*
+                position: fixed (not absolute) — an ancestor toolbar row uses overflowX: auto,
+                which forces overflowY to compute as auto too and clips absolutely-positioned
+                popovers. Same fix applied in demand-planning-dashboard.tsx.
+              */}
+              <div
+                className="fixed z-50 min-w-[160px] rounded-md border border-[#cccac4] bg-white p-1.5 shadow-lg"
+                style={{ top: categoryDropdownPos?.top ?? 0, left: categoryDropdownPos?.left ?? 0 }}
+              >
+                {CATEGORY_FILTER_OPTIONS.map((option) => {
+                  const checked = product.includes(option.value);
+                  return (
+                    <label
+                      key={option.value}
+                      className={`flex items-center gap-2 rounded px-1.5 py-1 text-xs cursor-pointer ${checked ? "bg-[#eef2ff] text-[#1a5cdb]" : "text-foreground"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleCategoryFilter(option.value)}
+                        className="h-3.5 w-3.5 cursor-pointer accent-[#1a5cdb]"
+                      />
+                      <span className={checked ? "font-semibold" : ""}>{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </details>
+          </div>
           <select
             value={statusFilter}
             onChange={(event) => {
@@ -593,17 +685,29 @@ export function SkuMasterPage() {
             <option value="all">{pick("전체 상태", "All Status")}</option>
           </select>
           <select
-            value={salesTypeFilter}
+            value={typeFilter}
             onChange={(event) => {
-              setSalesTypeFilter(event.target.value as SalesStatus | "all");
+              setTypeFilter(event.target.value as TypeFilter);
               setPage(1);
             }}
             className="form-input h-9 w-36 bg-white text-xs"
           >
             <option value="all">{pick("전체 유형", "All Types")}</option>
-            {SALES_STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
+            <option value="Hold">Hold</option>
+            <option value="Discontinued">Discontinued</option>
+            <option value="TBD">TBD</option>
+          </select>
+          <select
+            value={salesTypeFilter}
+            onChange={(event) => {
+              setSalesTypeFilter(event.target.value as SalesTypeFilter);
+              setPage(1);
+            }}
+            className="form-input h-9 w-36 bg-white text-xs"
+          >
+            <option value="all">{pick("전체 (오리지널/커스텀)", "All (Original/Custom)")}</option>
+            <option value="Original">Original</option>
+            <option value="Custom">Custom</option>
           </select>
           <button
             type="button"
@@ -954,11 +1058,12 @@ export function SkuMasterPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-white">
-        <div className="grid min-w-[1320px] grid-cols-[180px_290px_120px_120px_180px_90px_110px_90px_140px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+        <div className="grid min-w-[1450px] grid-cols-[180px_290px_120px_120px_130px_180px_90px_110px_90px_140px] border-b border-[#e2dfd8] bg-white text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
           <div className="px-4 py-3">{pick("제품", "Product")}</div>
           <div className="px-4 py-3">{pick("마스터 SKU", "Master SKU")}</div>
           <div className="px-4 py-3">{pick("상태", "Status")}</div>
           <div className="px-4 py-3">{pick("판매 유형", "Type")}</div>
+          <div className="px-4 py-3">{pick("오리지널/커스텀", "Original/Custom")}</div>
           <div className="px-4 py-3">{pick("CBM / 단위", "CBM / Unit")}</div>
           <div className="px-4 py-3">{pick("최소 주문량", "MOQ")}</div>
           <div className="px-4 py-3">{pick("주문 배수", "Order Mult")}</div>
@@ -972,7 +1077,7 @@ export function SkuMasterPage() {
             onClick={() => {
               if (canViewPriceHistory && editingSku !== sku.masterSku) setSelectedPriceSku(sku);
             }}
-            className={`grid min-w-[1320px] grid-cols-[180px_290px_120px_120px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0 ${canViewPriceHistory && editingSku !== sku.masterSku ? "cursor-pointer hover:bg-[#faf8f2]" : ""}`}
+            className={`grid min-w-[1450px] grid-cols-[180px_290px_120px_120px_130px_180px_90px_110px_90px_140px] items-center border-b border-[#e2dfd8] text-sm last:border-b-0 ${canViewPriceHistory && editingSku !== sku.masterSku ? "cursor-pointer hover:bg-[#faf8f2]" : ""}`}
           >
             <div className="px-4 py-3">
               <ProductBadge product={sku.productKey} />
@@ -988,6 +1093,7 @@ export function SkuMasterPage() {
               value={sku.salesStatus}
               onChange={(value) => updateRow(sku.masterSku, { salesStatus: value })}
             />
+            <OriginalOrCustomBadge value={sku.originalOrCustom} />
             <EditableNumber
               active={editingSku === sku.masterSku}
               value={sku.cbmPerUnit}
@@ -1101,7 +1207,7 @@ function SkuStat({ label, value, sub }: { label: string; value: string; sub: str
   );
 }
 
-function ProductBadge({ product }: { product: ProductKey }) {
+function ProductBadge({ product }: { product: SkuMasterProductKey }) {
   const meta = productMeta[product];
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-[11px] font-semibold ${meta.badgeClass}`}>
@@ -1159,7 +1265,7 @@ function EditableStatus({
   );
 }
 
-const SALES_STATUS_OPTIONS: SalesStatus[] = ["Original", "Custom", "Hold", "Part", "Discontinued", "TBD", "SWC"];
+const SALES_STATUS_OPTIONS: OverrideSalesStatus[] = ["Hold", "Discontinued", "TBD"];
 
 function EditableSalesStatus({
   active,
@@ -1167,15 +1273,15 @@ function EditableSalesStatus({
   onChange,
 }: {
   active: boolean;
-  value: SalesStatus | null;
-  onChange: (value: SalesStatus | null) => void;
+  value: OverrideSalesStatus | null;
+  onChange: (value: OverrideSalesStatus | null) => void;
 }) {
   if (active) {
     return (
       <div className="px-4 py-3">
         <select
           value={value ?? ""}
-          onChange={(e) => onChange(e.target.value === "" ? null : e.target.value as SalesStatus)}
+          onChange={(e) => onChange(e.target.value === "" ? null : e.target.value as OverrideSalesStatus)}
           className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb]"
         >
           <option value="">—</option>
@@ -1187,14 +1293,10 @@ function EditableSalesStatus({
     );
   }
 
-  const badge: Record<SalesStatus, string> = {
-    Original:     "bg-gray-100 text-gray-600",
-    Custom:       "bg-blue-100 text-blue-700",
+  const badge: Record<OverrideSalesStatus, string> = {
     Hold:         "bg-amber-100 text-amber-700",
-    Part:         "bg-purple-100 text-purple-700",
     Discontinued: "bg-red-100 text-red-600",
     TBD:          "bg-slate-100 text-slate-500",
-    SWC:          "bg-orange-50 text-orange-700",
   };
 
   return (
@@ -1206,6 +1308,20 @@ function EditableSalesStatus({
       ) : (
         <span className="text-xs text-muted-foreground">—</span>
       )}
+    </div>
+  );
+}
+
+function OriginalOrCustomBadge({ value }: { value: OriginalOrCustom }) {
+  const badge: Record<OriginalOrCustom, string> = {
+    Original: "bg-gray-100 text-gray-600",
+    Custom:   "bg-blue-100 text-blue-700",
+  };
+  return (
+    <div className="px-4 py-3">
+      <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${badge[value]}`}>
+        {value}
+      </span>
     </div>
   );
 }

@@ -1,5 +1,6 @@
-export type ProductFilter = "all" | "orig" | "cust" | "hold" | "part" | "disc" | "tbd" | "swc";
-export type CategoryFilter = "sc" | "cc" | "fm" | "ac";
+export type ProductFilter = "all" | "orig" | "cust";
+export type CategoryFilter = "sc" | "cc" | "fm" | "ac" | "part" | "swc";
+export type BaseCategoryFilter = "sc" | "cc" | "fm" | "ac";
 export type UrgencyFilter = "crit" | "warn" | "bo" | "over";
 export type UrgencyStatus = "crit" | "warn" | "ok" | "over";
 export type ColumnGroupKey =
@@ -53,7 +54,7 @@ export interface DemandRow {
   tone: string;
   back: number;
   sales_status: "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC";
-  category_code?: "SC" | "CC" | "FM" | "AC";
+  category_code?: "SC" | "CC" | "FM" | "AC" | "SWC";
   sku: string;
   west_stock: number;
   east_stock: number;

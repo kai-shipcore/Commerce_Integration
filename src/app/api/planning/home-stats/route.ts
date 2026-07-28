@@ -23,6 +23,7 @@ function getErrorMessage(e: unknown) {
 const CAT_CASE = `
   CASE
     WHEN UPPER(p.category_code) = 'CC' THEN 'cc'
+    WHEN UPPER(p.category_code) = 'SWC' THEN 'cc'
     WHEN UPPER(p.category_code) = 'SC' THEN 'sc'
     WHEN UPPER(p.category_code) = 'FM' THEN 'fm'
     WHEN UPPER(s.master_sku) LIKE 'CC-%' THEN 'cc'
@@ -40,13 +41,13 @@ const STATS_SOURCE_CTE = `
     SELECT s.* FROM shipcore.fc_stats_custom s
     WHERE EXISTS (
       SELECT 1 FROM shipcore.fc_products p
-      WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
+      WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
     )
     UNION ALL
     SELECT s.* FROM shipcore.fc_stats s
     WHERE NOT EXISTS (
       SELECT 1 FROM shipcore.fc_products p
-      WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM')
+      WHERE p.master_sku = s.master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
     )
   )
 `;

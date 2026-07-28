@@ -328,7 +328,7 @@ export async function POST(request: Request) {
     ): Record<string, unknown>[] {
       const totals = new Map<string, number>();
       for (const row of rows) {
-        const cat: CategoryKey = row.category_code === "CC" || row.category_code === "FM" ? row.category_code : "SC";
+        const cat: CategoryKey = row.category_code === "CC" || row.category_code === "SWC" ? "CC" : row.category_code === "FM" ? "FM" : "SC";
         const override = oosLostDemandWeights[cat];
         const auto = autoWeights[cat] ?? { amazon: 0, ebay: 0, walmart: 0 };
         const wAmazon  = override.amazon  ?? auto.amazon;
@@ -639,8 +639,8 @@ export async function POST(request: Request) {
       SELECT DISTINCT
         link_master_sku,
         link_master_sku,
-        'Car Cover',
-        'CC',
+        'SWC',
+        'SWC',
         'active'::shipcore.fc_product_status,
         'SWC',
         1, 1, 0.078, 1, 2.8,
@@ -649,7 +649,7 @@ export async function POST(request: Request) {
       WHERE link_master_sku ILIKE '%SWC%'
         AND link_master_sku IS NOT NULL
       ON CONFLICT (master_sku) DO UPDATE SET
-        category_code = 'CC',
+        category_code = 'SWC',
         sales_status  = 'SWC',
         updated_at = NOW()
     `);

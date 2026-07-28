@@ -62,7 +62,7 @@ import {
   saveGradientSC,
   type GradientTier,
 } from "@/lib/planning/gradient-config";
-import type { CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
@@ -178,7 +178,34 @@ function skuFilterSummary(values: string[]) {
   return `${values.slice(0, 2).join(", ")} +${values.length - 2}`;
 }
 
-function skuFilterLabel(key: SkuPartFilterKey, product: CategoryFilter) {
+const CATEGORY_FILTER_OPTIONS: { value: CategoryFilter; label: string }[] = [
+  { value: "sc", label: "Seat Cover" },
+  { value: "cc", label: "Car Cover" },
+  { value: "fm", label: "Floor Mat" },
+  { value: "ac", label: "Accessories" },
+  { value: "part", label: "Part" },
+  { value: "swc", label: "SWC" },
+];
+
+const BASE_CATEGORY_ORDER: BaseCategoryFilter[] = ["sc", "cc", "fm", "ac"];
+
+function categoryFilterSummary(selected: CategoryFilter[]) {
+  if (!selected.length) return "None";
+  const labelByValue = new Map(CATEGORY_FILTER_OPTIONS.map((option) => [option.value, option.label]));
+  const labels = selected.map((value) => labelByValue.get(value) ?? value);
+  if (labels.length <= 2) return labels.join(", ");
+  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+}
+
+const VALID_CATEGORY_FILTER_VALUES = new Set<CategoryFilter>(CATEGORY_FILTER_OPTIONS.map((option) => option.value));
+
+function parseCategoryFilterParam(value: string | null): CategoryFilter[] {
+  if (!value) return ["sc"];
+  const parsed = value.split(",").filter((token): token is CategoryFilter => VALID_CATEGORY_FILTER_VALUES.has(token as CategoryFilter));
+  return parsed.length ? parsed : ["sc"];
+}
+
+function skuFilterLabel(key: SkuPartFilterKey, product: BaseCategoryFilter | undefined) {
   if (product === "sc" && key === "seat") return "Seat Position";
   if (product === "sc" && key === "no") return "Size";
   if (product === "sc" && key === "tone") return "Color Type";
@@ -197,23 +224,27 @@ function skuFilterLabel(key: SkuPartFilterKey, product: CategoryFilter) {
   return SKU_FILTER_LABELS[key];
 }
 
-function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" {
+function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
+  if (normalized.includes("SWC")) return "SWC";
   if (normalized.startsWith("CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
 }
 
-function containerMatchesCategory(container: ContainerMeta, categoryFilter: CategoryFilter) {
+function containerMatchesCategory(container: ContainerMeta, categoryFilter: CategoryFilter[]) {
   if (container.status === "baseline") return true;
+  const checkedBaseCategories = BASE_CATEGORY_ORDER.filter((c) => categoryFilter.includes(c));
+  // Part/SWC have no container concept — if nothing category-shaped is checked, don't filter containers at all.
+  if (!checkedBaseCategories.length) return true;
   if (!container.categories?.length) {
-    if (container.name.endsWith("-FLOOR")) return categoryFilter === "fm";
-    if (container.name.endsWith("-SEAT")) return categoryFilter === "sc";
+    if (container.name.endsWith("-FLOOR")) return checkedBaseCategories.includes("fm");
+    if (container.name.endsWith("-SEAT")) return checkedBaseCategories.includes("sc");
     return true;
   }
-  return container.categories.includes(categoryFilter.toUpperCase());
+  return checkedBaseCategories.some((c) => container.categories!.includes(c.toUpperCase()));
 }
 
 function getColumnVisibilityForPreset(preset: "all" | "core" | "compact"): ColumnVisibility {
@@ -307,12 +338,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
   const searchParams = useSearchParams();
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(() => {
-    const productParam = searchParams.get("product");
-    return productParam === "fm" || productParam === "cc" || productParam === "sc" || productParam === "ac"
-      ? productParam
-      : "sc";
-  });
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter[]>(() => parseCategoryFilterParam(searchParams.get("product")));
   const [salesWindowWeights, setSalesWindowWeights] = useState<SalesWindowWeights>(DEFAULT_SALES_WINDOW_WEIGHTS);
   const [oosLostDemandWeights, setOosLostDemandWeights] = useState<OosLostDemandWeights>(DEFAULT_OOS_LOST_DEMAND_WEIGHTS);
   const {
@@ -332,6 +358,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(EMPTY_SKU_PART_FILTERS);
   const [isSkuFiltersOpen, setIsSkuFiltersOpen] = useState(true);
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [categoryDropdownPos, setCategoryDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>(
     BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []
@@ -347,8 +375,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setAsOfDate((current) => current || today);
 
     const productParam = searchParams.get("product");
-    if (productParam === "fm" || productParam === "cc" || productParam === "sc" || productParam === "ac") {
-      setCategoryFilter(productParam);
+    if (productParam) {
+      setCategoryFilter(parseCategoryFilterParam(productParam));
     }
     const statusParam = searchParams.get("status");
     if (statusParam === "crit" || statusParam === "warn" || statusParam === "bo" || statusParam === "over") {
@@ -362,18 +390,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setUrgencyFilter(null);
   }, []);
 
-  const handleCategoryFilter = useCallback((filter: CategoryFilter) => {
-    if (filter === categoryFilter) return;
+  const handleCategoryFilter = useCallback((value: CategoryFilter) => {
+    const next = categoryFilter.includes(value)
+      ? categoryFilter.filter((v) => v !== value)
+      : [...categoryFilter, value];
     if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
 
     setSelectedColorColumns((current) => current.some((id) => id.startsWith("container:")) ? (BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []) : current);
     setIsCategoryLoading(true);
     const params = new URLSearchParams(searchParams.toString());
-    params.set("product", filter);
+    if (next.length) params.set("product", next.join(",")); else params.delete("product");
     router.replace(`?${params.toString()}`, { scroll: false });
     categoryChangeTimerRef.current = window.setTimeout(() => {
       startCategoryTransition(() => {
-        setCategoryFilter(filter);
+        setCategoryFilter(next);
       });
       categoryChangeTimerRef.current = null;
     }, 60);
@@ -401,6 +431,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openSkuFilterKey]);
+
+  useEffect(() => {
+    if (!isCategoryDropdownOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && categoryFilterRef.current?.contains(target)) return;
+      setIsCategoryDropdownOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isCategoryDropdownOpen]);
 
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [hiddenContainers, setHiddenContainers] = useState<Set<string>>(new Set());
@@ -432,6 +473,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
   const skuFiltersRef = useRef<HTMLDivElement>(null);
+  const categoryFilterRef = useRef<HTMLDivElement>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -893,7 +935,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const activeSkuFilterKeys = useMemo(() => skuFilterKeysForProduct(categoryFilter), [categoryFilter]);
+  // SKU sub-filters (Fabric/Seat/Size/Color/etc.) are shaped per base category. When multiple
+  // base categories are checked, key off the first one in a fixed priority; hide the panel
+  // entirely when only Part/SWC are checked (neither has a sub-filter shape).
+  const primaryBaseCategory = useMemo(
+    () => BASE_CATEGORY_ORDER.find((c) => categoryFilter.includes(c)),
+    [categoryFilter],
+  );
+  const activeSkuFilterKeys = useMemo(
+    () => primaryBaseCategory ? skuFilterKeysForProduct(primaryBaseCategory) : [],
+    [primaryBaseCategory],
+  );
   const activeSkuPartFilters = useMemo(() => {
     const next = { ...EMPTY_SKU_PART_FILTERS };
     activeSkuFilterKeys.forEach((key) => {
@@ -908,7 +960,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       activeKeys.map((key) => [key, new Set<string>()]),
     ) as Record<SkuPartFilterKey, Set<string>>;
     for (const row of data.rows) {
-      if (categoryCodeForRow(row) !== categoryFilter.toUpperCase()) continue;
+      if (!primaryBaseCategory || categoryCodeForRow(row) !== primaryBaseCategory.toUpperCase()) continue;
       const parts = skuPartsForRow(row);
       activeKeys.forEach((key) => {
         if (parts[key]) options[key].add(parts[key]);
@@ -917,7 +969,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     return Object.fromEntries(
       activeKeys.map((key) => [key, sortSkuFilterValues(options[key])]),
     ) as Record<SkuPartFilterKey, string[]>;
-  }, [activeSkuFilterKeys, categoryFilter, data.rows]);
+  }, [activeSkuFilterKeys, primaryBaseCategory, data.rows]);
 
   const hasSkuPartFilters = activeSkuFilterKeys.some((key) => activeSkuPartFilters[key].length > 0);
 
@@ -1034,30 +1086,91 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           overflowX: "auto",
         }}
       >
-<label style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-          <select
-            aria-label="Product category"
-            value={categoryFilter}
-            onChange={(event) => handleCategoryFilter(event.target.value as CategoryFilter)}
-            style={{
-              minWidth: 112,
-              height: 26,
-              padding: "2px 7px",
-              borderRadius: 4,
-              border: "1px solid #C2BFB5",
-              background: "#E3F5EC",
-              color: "#0A6A45",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            <option value="sc">Seat Cover</option>
-            <option value="cc">Car Cover</option>
-            <option value="fm">Floor Mat</option>
-            <option value="ac">Accessories</option>
-          </select>
-        </label>
+<div ref={categoryFilterRef} style={{ position: "relative", flexShrink: 0 }}>
+          <details open={isCategoryDropdownOpen} style={{ position: "relative" }}>
+            <summary
+              aria-label="Product category"
+              onClick={(event) => {
+                event.preventDefault();
+                setIsCategoryDropdownOpen((open) => {
+                  const next = !open;
+                  if (next) {
+                    const rect = categoryFilterRef.current?.getBoundingClientRect();
+                    if (rect) setCategoryDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                  }
+                  return next;
+                });
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minWidth: 112,
+                height: 26,
+                boxSizing: "border-box",
+                padding: "2px 7px",
+                borderRadius: 4,
+                border: "1px solid #C2BFB5",
+                background: "#E3F5EC",
+                color: "#0A6A45",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                listStyle: "none",
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {categoryFilterSummary(categoryFilter)}
+              </span>
+              <span style={{ marginLeft: "auto", fontSize: 9 }}>▼</span>
+            </summary>
+            <div
+              style={{
+                // Fixed (not absolute) so this escapes the toolbar's overflowX:auto ancestor,
+                // which otherwise clips anything extending past its 42px height.
+                position: "fixed",
+                top: categoryDropdownPos?.top ?? 0,
+                left: categoryDropdownPos?.left ?? 0,
+                zIndex: 50,
+                minWidth: 140,
+                borderRadius: 5,
+                border: "1px solid #CBD5E1",
+                background: "#fff",
+                boxShadow: "0 8px 20px rgba(15, 23, 42, .16)",
+                padding: 5,
+              }}
+            >
+              {CATEGORY_FILTER_OPTIONS.map((option) => {
+                const checked = categoryFilter.includes(option.value);
+                return (
+                  <label
+                    key={option.value}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "3px 5px",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      background: checked ? "rgba(10,106,69,.08)" : "transparent",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => handleCategoryFilter(option.value)}
+                      style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#0A6A45" }}
+                    />
+                    <span style={{ fontSize: 12, color: checked ? "#0A6A45" : "#334155", fontWeight: checked ? 700 : 500 }}>
+                      {option.label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </details>
+        </div>
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
@@ -1081,11 +1194,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           <option value="all">All Types</option>
           <option value="orig">Original</option>
           <option value="cust">Custom</option>
-          <option value="hold">Hold</option>
-          <option value="part">Part</option>
-          <option value="disc">Discontinued</option>
-          <option value="tbd">TBD</option>
-          <option value="swc">SWC</option>
         </select>
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
@@ -1355,7 +1463,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         const optionValues = skuFilterOptions[key] ?? [];
                         return (
                           <div key={key} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{skuFilterLabel(key, categoryFilter)}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{skuFilterLabel(key, primaryBaseCategory)}</span>
                             <details open={openSkuFilterKey === key} style={{ position: "relative" }}>
                               <summary
                                 title={selectedValues.length ? selectedValues.join(", ") : "All"}
