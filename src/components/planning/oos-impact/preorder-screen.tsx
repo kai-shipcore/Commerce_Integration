@@ -7,7 +7,10 @@
 import { useState } from "react";
 import { Clock, PackageCheck, Search, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Chip, FilterRow, Histogram, Kpi, LineChart, SeverityPill, average, histogramFrom, median, medianExplanation, type Severity } from "./shared";
+import {
+  Chip, FilterRow, Histogram, Kpi, LineChart, SeverityPill, SortIcon,
+  average, histogramFrom, median, medianExplanation, type Severity, type SortDir,
+} from "./shared";
 
 // normalRange = 30 days ending the day BEFORE convDate (regular sale)
 // poRange     = 30 days starting AT convDate (Pre-Order)
@@ -53,10 +56,43 @@ function StageTag({ stage }: { stage: Row1["stage"] }) {
 
 const SHOPIFY_CHANNELS = ["Coverland B2C", "Coverland B2B", "Icarcover"] as const;
 
+type SortKey = "sku" | "normalRange" | "pre" | "poRange" | "post" | "drop" | "stage";
+
+// Columns whose first click sorts ascending (text/date-like); numeric columns
+// default to descending so the most extreme values surface first.
+const DEFAULT_ASC_KEYS: SortKey[] = ["sku", "normalRange", "poRange", "stage"];
+const STAGE_RANK: Record<Row1["stage"], number> = { active: 0, ended: 1 };
+
+const TABLE_COLUMNS: { key?: SortKey; label: string; right?: boolean }[] = [
+  { key: "sku", label: "Master SKU" },
+  { key: "normalRange", label: "정상판매 구간" },
+  { key: "pre", label: "정상 일평균", right: true },
+  { key: "poRange", label: "Pre-Order 구간" },
+  { key: "post", label: "PO 일평균", right: true },
+  { label: "Before / After" },
+  { key: "drop", label: "감소율", right: true },
+  { key: "stage", label: "진행 상태" },
+];
+
+function sortValueOf(r: Row1, key: SortKey): string | number {
+  switch (key) {
+    case "sku": return r.sku;
+    case "normalRange": return r.normalRange;
+    case "pre": return r.pre;
+    case "poRange": return r.poRange;
+    case "post": return r.post;
+    case "drop": return r.drop;
+    case "stage": return STAGE_RANK[r.stage];
+  }
+}
+
 export function PreorderScreen() {
   const [items, setItems] = useState(["전체"]);
   const [channels, setChannels] = useState<string[]>([...SHOPIFY_CHANNELS]);
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const toggle = (list: string[], setList: (v: string[]) => void, v: string) =>
     setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
@@ -68,9 +104,35 @@ export function PreorderScreen() {
   const medianDrop = median(drops);
   const medianDetail = medianExplanation(drops);
 
-  // Bounds-check instead of resetting via effect: if a channel toggle shrinks
-  // the list out from under an open row, the drawer just closes on its own.
-  const open = openIdx !== null && openIdx < visibleRows.length ? visibleRows[openIdx] : null;
+  const searchQuery = search.trim().toUpperCase();
+  const searchedRows = searchQuery
+    ? visibleRows.filter((r) => r.sku.toUpperCase().includes(searchQuery))
+    : visibleRows;
+
+  const sortedRows = sortKey
+    ? [...searchedRows].sort((a, b) => {
+        const dir = sortDir === "asc" ? 1 : -1;
+        const av = sortValueOf(a, sortKey), bv = sortValueOf(b, sortKey);
+        const cmp = typeof av === "string" || typeof bv === "string"
+          ? String(av).localeCompare(String(bv))
+          : (av as number) - (bv as number);
+        return cmp * dir;
+      })
+    : searchedRows;
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(DEFAULT_ASC_KEYS.includes(key) ? "asc" : "desc");
+    }
+  };
+
+  // Keyed instead of indexed: sorting/searching reorders the array without
+  // changing its length, so an index-based "open row" would silently point at
+  // the wrong row. Looking it up by key means it just closes if filtered out.
+  const open = openKey ? sortedRows.find((r) => r.sku === openKey) ?? null : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -131,30 +193,44 @@ export function PreorderScreen() {
       <div className="planning-panel overflow-hidden rounded-xl border">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
           <span className="text-[12.5px] font-semibold">
-            SKU별 상세 <span className="font-normal text-muted-foreground">— {visibleRows.length}건 표시</span>
+            SKU별 상세 <span className="font-normal text-muted-foreground">— {sortedRows.length}건 표시</span>
           </span>
-          <span className="flex min-w-[220px] items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground">
-            <Search className="h-3.5 w-3.5" />
-            마스터 SKU 검색...
-          </span>
+          <div className="relative flex min-w-[220px] items-center">
+            <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="마스터 SKU 검색..."
+              className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2.5 text-xs outline-none focus:border-foreground/40"
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[880px] border-collapse text-xs">
             <thead>
               <tr className="bg-muted">
-                {["Master SKU", "정상판매 구간", "정상 일평균", "Pre-Order 구간", "PO 일평균", "Before / After", "감소율", "진행 상태"].map((h, i) => (
-                  <th key={h} className={cn("whitespace-nowrap border-b border-border px-3.5 py-2 text-left text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground", i >= 2 && (i === 2 || i === 4 || i === 6) && "text-right")}>
-                    {h}
+                {TABLE_COLUMNS.map((col) => (
+                  <th
+                    key={col.label}
+                    onClick={col.key ? () => handleSort(col.key!) : undefined}
+                    className={cn(
+                      "whitespace-nowrap border-b border-border px-3.5 py-2 text-left text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground",
+                      col.right && "text-right",
+                      col.key && "cursor-pointer select-none hover:text-foreground",
+                    )}
+                  >
+                    {col.label}
+                    {col.key && <SortIcon active={sortKey === col.key} dir={sortDir} />}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {visibleRows.map((r, i) => (
+              {sortedRows.map((r) => (
                 <tr
                   key={r.sku}
-                  onClick={() => setOpenIdx(openIdx === i ? null : i)}
-                  className={cn("cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted", openIdx === i && "bg-muted")}
+                  onClick={() => setOpenKey(openKey === r.sku ? null : r.sku)}
+                  className={cn("cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted", openKey === r.sku && "bg-muted")}
                 >
                   <td className="px-3.5 py-2.5"><span className="font-mono font-semibold text-[#1238a0] dark:text-[#7aa2f7]">{r.sku}</span></td>
                   <td className="whitespace-nowrap px-3.5 py-2.5 font-mono text-muted-foreground">{r.normalRange}</td>
@@ -185,7 +261,7 @@ export function PreorderScreen() {
               <span className="font-mono text-sm font-semibold">{open.sku}</span>
               <span className="text-xs text-muted-foreground">일별 판매량 · 정상 구간 vs Pre-Order 구간</span>
             </div>
-            <button type="button" onClick={() => setOpenIdx(null)} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground hover:text-foreground">닫기</button>
+            <button type="button" onClick={() => setOpenKey(null)} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground hover:text-foreground">닫기</button>
           </div>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-[1.5fr_1fr]">
             <LineChart
@@ -221,6 +297,7 @@ export function PreorderScreen() {
           <li>Before/After는 추세가 아닌 두 구간의 단순 비교라 라인이 아닌 막대 2개로 표현.</li>
           <li>정상판매/Pre-Order 구간은 SKU마다 길이가 다를 수 있음 — 전환 후 실제 경과일만큼을 Pre-Order 구간으로 잡고, 정상판매 구간도 항상 같은 길이로 맞춤. 전역으로 &quot;7D/30D/60D&quot;를 고정하지 않는 이유는 SKU마다 전환일(anchor)이 달라서 같은 절대 기간을 강제하면 방금 전환된 SKU는 계산이 안 되기 때문.</li>
           <li>감소율(심각도)과 진행 상태(Pre-Order 진행중 / 재입고 완료)는 서로 다른 축이라 컬럼을 분리 — 색 있는 pill은 심각도, 색 없는 태그는 생애주기 상태.</li>
+          <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링 — Before/After 막대 열은 단일 값이 아니라 정렬 대상에서 제외. 열려있던 드릴다운 행은 SKU 키로 추적해 정렬·검색으로 순서가 바뀌어도 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
         </ul>
       </div>
     </div>

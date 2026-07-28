@@ -4,10 +4,22 @@
 // screen's own file, not here — keep this file lean so both people working
 // on separate screens rarely need to touch it at the same time.
 
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type Severity = "good" | "warning" | "serious" | "critical";
+
+// ---------------------------------------------------------------------------
+// Sortable-table header icon — used by both screens' "SKU별 상세" tables.
+// ---------------------------------------------------------------------------
+
+export type SortDir = "asc" | "desc";
+
+export function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ArrowUpDown className="ml-1 inline h-3 w-3 text-muted-foreground/40" />;
+  const Icon = dir === "asc" ? ArrowUp : ArrowDown;
+  return <Icon className="ml-1 inline h-3 w-3 text-foreground" />;
+}
 
 export const SEVERITY_STYLES: Record<Severity, string> = {
   good: "bg-[#e6f6e6] text-[#0ca30c] dark:bg-[#0c2c14] dark:text-[#3ecf3e]",

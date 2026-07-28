@@ -12,8 +12,8 @@ import { Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
 import {
-  Chip, FilterRow, Histogram, Kpi, LineChart, PERCENT_BUCKETS, SeverityPill,
-  average, histogramFrom, median, medianExplanation, type LineSeries, type Severity,
+  Chip, FilterRow, Histogram, Kpi, LineChart, PERCENT_BUCKETS, SeverityPill, SortIcon,
+  average, histogramFrom, median, medianExplanation, type LineSeries, type Severity, type SortDir,
 } from "./shared";
 
 interface RecoveryRow {
@@ -78,11 +78,37 @@ function pct(v: number | null): string {
   return v === null ? "—" : `${v}%`;
 }
 
+type SortKey = "sku" | "channel" | "oosDays" | "restockDate" | "baseline" | "r30" | "r60" | "r90" | "severity";
+
+// Columns whose first click sorts ascending (text/date-like); numeric columns
+// default to descending so the most extreme values surface first.
+const DEFAULT_ASC_KEYS: SortKey[] = ["sku", "channel", "restockDate", "severity"];
+const SEVERITY_RANK: Record<Severity, number> = { critical: 0, serious: 1, warning: 2, good: 3 };
+
+const TABLE_COLUMNS: { key: SortKey; label: string; right?: boolean }[] = [
+  { key: "sku", label: "Master SKU" },
+  { key: "channel", label: "채널" },
+  { key: "oosDays", label: "직전 품절", right: true },
+  { key: "restockDate", label: "재입고일", right: true },
+  { key: "baseline", label: "기준선", right: true },
+  { key: "r30", label: "30일", right: true },
+  { key: "r60", label: "60일", right: true },
+  { key: "r90", label: "90일", right: true },
+  { key: "severity", label: "상태" },
+];
+
+function rowKey(r: RecoveryRow): string {
+  return `${r.sku}|${r.channel}|${r.restockDate}`;
+}
+
 export function RecoveryScreen() {
   const [channels, setChannels] = useState<string[]>([...MARKETPLACE_CHANNELS]);
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const [chartView, setChartView] = useState<"channel" | "sku">("sku");
   const [selectedBin, setSelectedBin] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const [rows, setRows] = useState<RecoveryRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -114,9 +140,50 @@ export function RecoveryScreen() {
     return visibleRows.filter((r) => r.currentRecovery >= bucket.min && r.currentRecovery < bucket.max);
   }, [visibleRows, chartView, selectedBin]);
 
-  // Bounds-check instead of resetting via effect: if a channel toggle shrinks
-  // the list out from under an open row, the drawer just closes on its own.
-  const open = openIdx !== null && openIdx < tableRows.length ? tableRows[openIdx] : null;
+  const searchedRows = useMemo(() => {
+    const q = search.trim().toUpperCase();
+    if (!q) return tableRows;
+    return tableRows.filter((r) => r.sku.toUpperCase().includes(q));
+  }, [tableRows, search]);
+
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return searchedRows;
+    const dir = sortDir === "asc" ? 1 : -1;
+    const valueOf = (r: RecoveryRow): string | number => {
+      switch (sortKey) {
+        case "sku": return r.sku;
+        case "channel": return CHANNEL_DISPLAY_LABELS[r.channel] ?? r.channel;
+        case "oosDays": return r.oosDays;
+        case "restockDate": return r.restockDate;
+        case "baseline": return r.baseline;
+        case "r30": return r.r30 ?? (sortDir === "asc" ? Infinity : -Infinity);
+        case "r60": return r.r60 ?? (sortDir === "asc" ? Infinity : -Infinity);
+        case "r90": return r.r90 ?? (sortDir === "asc" ? Infinity : -Infinity);
+        case "severity": return SEVERITY_RANK[r.severity];
+      }
+    };
+    return [...searchedRows].sort((a, b) => {
+      const av = valueOf(a), bv = valueOf(b);
+      const cmp = typeof av === "string" || typeof bv === "string"
+        ? String(av).localeCompare(String(bv))
+        : (av as number) - (bv as number);
+      return cmp * dir;
+    });
+  }, [searchedRows, sortKey, sortDir]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(DEFAULT_ASC_KEYS.includes(key) ? "asc" : "desc");
+    }
+  };
+
+  // Keyed instead of indexed: sorting/searching reorders the array without
+  // changing its length, so an index-based "open row" would silently point at
+  // the wrong row. Looking it up by key means it just closes if filtered out.
+  const open = openKey ? sortedRows.find((r) => rowKey(r) === openKey) ?? null : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -251,30 +318,43 @@ export function RecoveryScreen() {
       <div className="planning-panel overflow-hidden rounded-xl border">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
           <span className="text-[12.5px] font-semibold">
-            SKU별 상세 <span className="font-normal text-muted-foreground">— {tableRows.length}건 표시</span>
+            SKU별 상세 <span className="font-normal text-muted-foreground">— {sortedRows.length}건 표시</span>
           </span>
-          <span className="flex min-w-[220px] items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground">
-            <Search className="h-3.5 w-3.5" />
-            마스터 SKU 검색...
-          </span>
+          <div className="relative flex min-w-[220px] items-center">
+            <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="마스터 SKU 검색..."
+              className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-2.5 text-xs outline-none focus:border-foreground/40"
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[880px] border-collapse text-xs">
             <thead>
               <tr className="bg-muted">
-                {["Master SKU", "채널", "직전 품절", "재입고일", "기준선", "30일", "60일", "90일", "상태"].map((h, i) => (
-                  <th key={h} className={cn("whitespace-nowrap border-b border-border px-3.5 py-2 text-left text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground", i >= 2 && i <= 7 && "text-right")}>
-                    {h}
+                {TABLE_COLUMNS.map((col) => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    className={cn(
+                      "cursor-pointer select-none whitespace-nowrap border-b border-border px-3.5 py-2 text-left text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground hover:text-foreground",
+                      col.right && "text-right",
+                    )}
+                  >
+                    {col.label}
+                    <SortIcon active={sortKey === col.key} dir={sortDir} />
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {tableRows.map((r, i) => (
+              {sortedRows.map((r) => (
                 <tr
-                  key={`${r.sku}|${r.channel}|${r.restockDate}`}
-                  onClick={() => setOpenIdx(openIdx === i ? null : i)}
-                  className={cn("cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted", openIdx === i && "bg-muted")}
+                  key={rowKey(r)}
+                  onClick={() => setOpenKey(openKey === rowKey(r) ? null : rowKey(r))}
+                  className={cn("cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-muted", openKey === rowKey(r) && "bg-muted")}
                 >
                   <td className="px-3.5 py-2.5"><span className="font-mono font-semibold text-[#1238a0] dark:text-[#7aa2f7]">{r.sku}</span></td>
                   <td className="px-3.5 py-2.5"><ChannelBadge channel={r.channel} /></td>
@@ -299,7 +379,7 @@ export function RecoveryScreen() {
               <span className="font-mono text-sm font-semibold">{open.sku}</span>
               <span className="text-xs text-muted-foreground">일별 판매량(실측) vs 품절 직전 기준선</span>
             </div>
-            <button type="button" onClick={() => setOpenIdx(null)} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground hover:text-foreground">닫기</button>
+            <button type="button" onClick={() => setOpenKey(null)} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground hover:text-foreground">닫기</button>
           </div>
           {drilldownLoading ? (
             <div className="flex min-h-[160px] items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -356,6 +436,7 @@ export function RecoveryScreen() {
             심각도 기준: 85% 이상 정상화 · 50~85% 회복 후반 · 50% 미만 회복 초기.
           </li>
           <li><span className="font-mono">채널 비교</span>(라인차트)는 아직 샘플 데이터 — 채널별 시계열 집계는 별도 설계가 필요해 다음 단계로 예정.</li>
+          <li>SKU별 상세는 열 헤더 클릭으로 정렬(다시 클릭 시 역순), SKU 검색으로 필터링 — 열려있던 드릴다운 행은 SKU/채널/재입고일 키로 추적해 정렬·검색으로 순서가 바뀌어도 같은 행을 계속 가리키고, 필터에서 벗어나면 자동으로 닫힘.</li>
         </ul>
       </div>
     </div>
