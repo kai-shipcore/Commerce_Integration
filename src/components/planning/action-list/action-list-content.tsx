@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, Download, Loader2, RotateCcw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { apiPath } from "@/lib/api-path";
@@ -28,6 +28,7 @@ import {
   type SortCriterion, type SortKey,
 } from "./action-list-table";
 import { NotForecastSection } from "./not-forecast-section";
+import { PortfolioChart } from "./portfolio-chart";
 import {
   DEFAULT_PLANNING_PARAMS,
   planningQuery,
@@ -38,7 +39,7 @@ import {
 
 const nf = new Intl.NumberFormat("en-US");
 
-type Focus = "all" | "preorder" | "no-stock" | "best-seller" | "out-soon";
+type Focus = "all" | "preorder" | "no-stock" | "best-seller" | "out-soon" | "supply-gap";
 
 const SERVICE_LEVELS: { label: string; z: number }[] = [
   { label: "84% (z=1.0)", z: 1.0 },
@@ -67,6 +68,7 @@ export function ActionListContent({
   const [category, setCategory] = useState("all");
   const [tier, setTier] = useState("all");
   const [history, setHistory] = useState("all");
+  const [priority, setPriority] = useState("all");
   const [sort, setSort] = useState<SortCriterion[]>(DEFAULT_SORT);
   // Which population is on screen. The non-forecast section fetches only once
   // opened, since it covers roughly seven times as many SKUs and most visits
@@ -130,6 +132,7 @@ export function ActionListContent({
     if (focus === "preorder") rows = rows.filter((r) => r.priority_label === PRIORITY.preorder);
     else if (focus === "no-stock") rows = rows.filter((r) => r.available_inventory <= 0);
     else if (focus === "best-seller") rows = rows.filter((r) => r.priority_label === PRIORITY.bestSeller);
+    else if (focus === "supply-gap") rows = rows.filter((r) => r.has_supply_gap);
     else if (focus === "out-soon") {
       rows = rows.filter(
         (r) => r.days_to_stockout !== null && r.days_to_stockout <= data.params.stockout_horizon_days,
@@ -146,16 +149,20 @@ export function ActionListContent({
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     if (tier !== "all") rows = rows.filter((r) => r.tier === tier);
     if (history !== "all") rows = rows.filter((r) => r.history_group === history);
+    // Independent of the chips, which cover three of the four labels.
+    // Without this "Routine" is unreachable: it is the only priority with
+    // no chip, being the absence of a reason to hurry.
+    if (priority !== "all") rows = rows.filter((r) => r.priority_label === priority);
     // Sorted last, and on a copy: the server returns the worklist order, which
     // is what no criteria means, so it must not be mutated on the way through.
     return sortRows(rows, sort);
-  }, [data, focus, query, category, tier, history, sort]);
+  }, [data, focus, query, category, tier, history, priority, sort]);
 
   // The page is tied to the filter set it was chosen under, so changing a filter
   // returns to page 1 without an effect resetting it. Narrowing the filters while
   // on page 5 would otherwise land on an empty page, which reads as "no results"
   // rather than "you are past the end".
-  const filterKey = `${focus}|${query}|${category}|${tier}|${history}|${pageSize}`;
+  const filterKey = `${focus}|${query}|${category}|${tier}|${history}|${priority}|${pageSize}`;
   const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(view.length / pageSize));
   const currentPage = page.key === filterKey ? Math.min(page.page, totalPages) : 1;
   const goToPage = (n: number) => setPage({ key: filterKey, page: n });
@@ -228,6 +235,9 @@ export function ActionListContent({
     { key: "no-stock", label: pick("품절", "out of stock"), value: m.out_of_stock },
     { key: "best-seller", label: pick("주력 위험", "best seller risk"), value: m.best_sellers_at_risk },
     { key: "out-soon", label: pick(`${m.horizon_days}일 내 품절`, `out ≤${m.horizon_days}d`), value: m.stockout_within_horizon },
+    // Reported apart from the stockout count because the action differs: these
+    // already have stock booked and cannot be helped by ordering more.
+    { key: "supply-gap", label: pick("입고 전 품절", "dry before inbound"), value: m.supply_gap },
   ];
 
   return (
@@ -380,6 +390,16 @@ export function ActionListContent({
           <option value="none">{pick("미측정", "none")}</option>
         </select>
         <select
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-xs"
+        >
+          <option value="all">{pick("우선순위: 전체", "Priority: all")}</option>
+          {[PRIORITY.preorder, PRIORITY.noStock, PRIORITY.bestSeller, PRIORITY.routine].map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+        <select
           value={history}
           onChange={(e) => setHistory(e.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-xs"
@@ -404,7 +424,7 @@ export function ActionListContent({
           type="button"
           onClick={() => {
             setFocus("all"); setQuery(""); setCategory("all");
-            setTier("all"); setHistory("all"); setSort(DEFAULT_SORT);
+            setTier("all"); setHistory("all"); setPriority("all"); setSort(DEFAULT_SORT);
           }}
           className="flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted/60"
         >
@@ -433,6 +453,31 @@ export function ActionListContent({
         </span>
       </div>
 
+      {view.length > 0 && <PortfolioChart skus={view.map((r) => r.unique_id)} />}
+
+      {/* Data-quality summary for what is on screen, not the whole list. A count
+          that ignores the filters describes a different population from the rows
+          below it. */}
+      {(() => {
+        const counts = new Map<string, number>();
+        for (const r of view) for (const f of r.flags) counts.set(f, (counts.get(f) ?? 0) + 1);
+        const flagged = view.filter((r) => r.flags.length > 0).length;
+        if (!flagged) return null;
+        return (
+          <p className="text-[11px] text-muted-foreground">
+            <AlertTriangle className="mr-1 inline h-3 w-3 text-amber-500" />
+            {pick(
+              `이 목록의 ${nf.format(view.length)}개 중 ${nf.format(flagged)}개에 데이터 품질 경고가 있습니다: `,
+              `${nf.format(flagged)} of ${nf.format(view.length)} SKUs in this view carry a data-quality warning: `,
+            )}
+            {[...counts.entries()]
+              .sort((a, b) => b[1] - a[1])
+              .map(([label, n]) => `${label} (${n})`)
+              .join(" · ")}
+          </p>
+        );
+      })()}
+
       {view.length === 0 ? (
         <Card><CardContent className="p-6 text-sm text-muted-foreground">
           {pick("조건에 맞는 SKU가 없습니다.", "No SKUs match these filters.")}
@@ -458,6 +503,37 @@ export function ActionListContent({
             setSort((prev) => nextSort(prev, key, shiftKey))
           }
         />
+        {/* Legend. The reliability column is three glyphs and a percentage, which
+            means nothing without the thresholds behind it, and a tier is a
+            judgement the reader should be able to check. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-muted-foreground">
+          <span className="font-medium">{pick("신뢰도", "Reliability")}:</span>
+          {([
+            ["good", "●●●", pick("좋음 · 오차 15% 이하", "good · error ≤15%")],
+            ["fair", "●●○", pick("보통 · 15–30%", "fair · 15–30%")],
+            ["poor", "●○○", pick("낮음 · 30% 초과", "poor · over 30%")],
+            ["none", "○○○", pick("미측정 · 백테스트 없음", "not measured · no backtest window")],
+          ] as const).map(([tierKey, glyph, label]) => {
+            const n = view.filter((r) => r.tier === tierKey).length;
+            return (
+              <span key={tierKey} className="inline-flex items-center gap-1">
+                <span
+                  className={`font-mono ${
+                    tierKey === "good" ? "text-emerald-600 dark:text-emerald-400"
+                      : tierKey === "fair" ? "text-amber-600 dark:text-amber-400"
+                      : tierKey === "poor" ? "text-red-600 dark:text-red-400"
+                      : "text-neutral-400"
+                  }`}
+                >
+                  {glyph}
+                </span>
+                {label}
+                <span className="tabular-nums opacity-70">({nf.format(n)})</span>
+              </span>
+            );
+          })}
+        </div>
+
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-3 text-xs">
             <button

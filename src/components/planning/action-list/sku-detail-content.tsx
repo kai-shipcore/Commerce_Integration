@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiPath } from "@/lib/api-path";
@@ -52,6 +53,7 @@ export function SkuDetailContent({
   planning?: ActionListParams;
 }) {
   const { pick } = useI18n();
+  const router = useRouter();
   const query = planningQuery(planning);
   // The request key includes the parameters, so arriving at the same SKU under
   // a different lead time refetches rather than showing the previous answer.
@@ -212,6 +214,51 @@ export function SkuDetailContent({
         </span>
       </div>
 
+      {/* Move between SKUs without returning to the list. The order is the
+          list's own, so stepping through walks the same worklist sequence. */}
+      {d.skus.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={d.position <= 0}
+            onClick={() => router.push(`/planning/action-list/${encodeURIComponent(d.skus[d.position - 1])}?${query}`)}
+            className="rounded-md border px-2 py-1 text-xs hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            ‹ {pick("이전", "Prev")}
+          </button>
+          <select
+            value={r.unique_id}
+            onChange={(e) => router.push(`/planning/action-list/${encodeURIComponent(e.target.value)}?${query}`)}
+            className="h-8 max-w-[22rem] flex-1 rounded-md border bg-background px-2 font-mono text-xs"
+          >
+            {d.skus.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button
+            type="button"
+            disabled={d.position < 0 || d.position >= d.skus.length - 1}
+            onClick={() => router.push(`/planning/action-list/${encodeURIComponent(d.skus[d.position + 1])}?${query}`)}
+            className="rounded-md border px-2 py-1 text-xs hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            {pick("다음", "Next")} ›
+          </button>
+          <span className="text-[11px] tabular-nums text-muted-foreground">
+            {pick(
+              `${nf.format(d.position + 1)} / ${nf.format(d.skus.length)}`,
+              `${nf.format(d.position + 1)} of ${nf.format(d.skus.length)}`,
+            )}
+          </span>
+        </div>
+      )}
+
+      {d.meta.inventory_is_sample && (
+        <p className="rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+          {pick(
+            "재고 수치는 샘플 데이터입니다. 실제 재고가 아닙니다.",
+            "Inventory figures on this page are SAMPLE data, not real stock positions.",
+          )}
+        </p>
+      )}
+
       {d.flags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {d.flags.map((f) => (
@@ -226,6 +273,35 @@ export function SkuDetailContent({
       )}
 
       {runsHigh}
+
+      {/* Sits with the other caveats, above the order card. A gap is a service
+          failure the data can already see, and the number in that card cannot
+          fix it: with an eight-week lead time a purchase order placed today
+          lands after a container already booked. */}
+      {r.has_supply_gap && r.supply_gap_days !== null && (
+        <div className="rounded-md border border-amber-300/60 bg-amber-50/60 p-3 text-[11.5px] leading-relaxed dark:border-amber-800/60 dark:bg-amber-950/30">
+          <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          <strong>
+            {pick(
+              `재고가 입고보다 ${Math.round(r.supply_gap_days)}일 먼저 소진됩니다.`,
+              `Stock runs out ${Math.round(r.supply_gap_days)} days before the next container lands.`,
+            )}
+          </strong>{" "}
+          {pick(
+            `현재 재고 기준 ${Math.round(r.days_to_stockout ?? 0)}일 후 소진되며, 확정 입고 ${nf.format(Math.round(r.confirmed_inbound))}개는 ${Math.round(r.days_to_inbound ?? 0)}일 후 도착합니다.`,
+            `It runs dry in ${Math.round(r.days_to_stockout ?? 0)} days; the ${nf.format(Math.round(r.confirmed_inbound))} units already booked arrive in ${Math.round(r.days_to_inbound ?? 0)}.`,
+          )}{" "}
+          {r.gap_closable_by_order
+            ? pick(
+                "리드타임보다 늦게 도착하므로 지금 발주하면 이 공백을 메울 수 있습니다.",
+                "That container lands later than the lead time, so ordering now could close the gap.",
+              )
+            : pick(
+                "지금 발주해도 이미 예정된 컨테이너보다 늦게 도착하므로, 필요한 조치는 추가 발주가 아니라 입고를 앞당기거나 재고를 재배분하는 것입니다.",
+                "A new order placed today would arrive later than the container already booked, so the action here is to expedite or reallocate rather than to buy more.",
+              )}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <OrderCard
@@ -272,6 +348,54 @@ export function SkuDetailContent({
           />
         </div>
       </section>
+
+      {/* The same figures as numbers. Collapsed: the chart answers the shape
+          question, this answers the per-week planning one, which is asked less
+          often. */}
+      {d.forecast.length > 0 && (
+        <details className="rounded-md border">
+          <summary className="cursor-pointer select-none px-3 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground">
+            {pick("주별 수치", "Weekly figures")}
+          </summary>
+          <div className="max-h-64 overflow-auto border-t">
+            <table className="w-full border-collapse tabular-nums">
+              <thead className="sticky top-0 bg-background">
+                <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-1.5 text-left font-medium">{pick("주", "Week")}</th>
+                  <th className="px-3 py-1.5 text-right font-medium">{pick("모델 예측", "Model forecast")}</th>
+                  <th className="px-3 py-1.5 text-right font-medium">{pick("스프레드시트 (V1)", "Spreadsheet (V1)")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.forecast.map((f) => (
+                  <tr key={f.ds} className="border-t">
+                    <td className="px-3 py-1.5 text-[11px]">{f.ds}</td>
+                    <td className="px-3 py-1.5 text-right text-[11px]">{f.yhat.toFixed(1)}</td>
+                    {/* Null where V1 did not cover this SKU, which is normal and
+                        shown as a dash rather than a zero. */}
+                    <td className="px-3 py-1.5 text-right text-[11px] text-muted-foreground">
+                      {f.v1_yhat === null ? "—" : f.v1_yhat.toFixed(1)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 font-semibold">
+                  <td className="px-3 py-1.5 text-[11px]">{pick("합계", "Total")}</td>
+                  <td className="px-3 py-1.5 text-right text-[11px]">
+                    {nf.format(Math.round(d.forecast.reduce((s, f) => s + f.yhat, 0)))}
+                  </td>
+                  <td className="px-3 py-1.5 text-right text-[11px] text-muted-foreground">
+                    {d.forecast.some((f) => f.v1_yhat !== null)
+                      ? nf.format(Math.round(d.forecast.reduce((s, f) => s + (f.v1_yhat ?? 0), 0)))
+                      : "—"}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </details>
+      )}
 
       {d.backtest.windows.length > 0 && (
         <section>

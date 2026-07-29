@@ -45,7 +45,13 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<NfSort[]>(NF_DEFAULT_SORT);
-  const [limit, setLimit] = useState(200);
+  // Paginated the same way as the forecast table. It was originally capped with
+  // a "show more" button on the argument that nobody pages through an
+  // intermittent tail, but that was a guess about behaviour, and two adjacent
+  // tables that scroll and page differently is a certain cost against an
+  // uncertain benefit.
+  const [pageSize, setPageSize] = useState<number | "all">(100);
+  const [page, setPage] = useState<{ key: string; page: number }>({ key: "", page: 1 });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -89,6 +95,20 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     return nfSortRows(rows, sort);
   }, [data, focus, search, category, sort]);
+
+  // Page tied to the filter set it was chosen under, so narrowing a filter
+  // returns to page 1 rather than stranding the reader past the end.
+  const filterKey = `${focus}|${search}|${category}|${pageSize}`;
+  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(view.length / pageSize));
+  const currentPage = page.key === filterKey ? Math.min(page.page, totalPages) : 1;
+  const goToPage = (n: number) => setPage({ key: filterKey, page: n });
+  const pageRows = useMemo(
+    () =>
+      pageSize === "all"
+        ? view
+        : view.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [view, pageSize, currentPage],
+  );
 
   if (loading) {
     return (
@@ -188,6 +208,18 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
           <option value="all">{pick("카테고리: 전체", "Category: all")}</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select
+          value={String(pageSize)}
+          onChange={(e) =>
+            setPageSize(e.target.value === "all" ? "all" : Number(e.target.value))
+          }
+          className="h-8 rounded-md border bg-background px-2 text-xs"
+        >
+          {[25, 50, 100, 200].map((n) => (
+            <option key={n} value={n}>{pick(`${n}개씩`, `${n} per page`)}</option>
+          ))}
+          <option value="all">{pick("전체 보기", "Show all")}</option>
+        </select>
         <button
           type="button"
           onClick={() => { setFocus("all"); setSearch(""); setCategory("all"); setSort(NF_DEFAULT_SORT); }}
@@ -217,24 +249,35 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
       ) : (
         <>
           <NotForecastTable
-            rows={view.slice(0, limit)}
+            rows={pageRows}
             sort={sort}
             onSort={(key: NfSortKey, shiftKey: boolean) => setSort((prev) => nfNextSort(prev, key, shiftKey))}
           />
-          {view.length > limit && (
-            // Capped rather than paginated. Thousands of rows in one DOM makes
-            // the page unusable, and paging through an intermittent tail is not
-            // how anyone works with it: filter or sort to what matters instead.
-            <button
-              type="button"
-              onClick={() => setLimit((n) => n + 200)}
-              className="self-center rounded-md border px-3 py-1.5 text-xs hover:bg-muted/60"
-            >
-              {pick(
-                `${nf.format(Math.min(200, view.length - limit))}개 더 보기 (${nf.format(view.length - limit)}개 남음)`,
-                `Show ${nf.format(Math.min(200, view.length - limit))} more (${nf.format(view.length - limit)} remaining)`,
-              )}
-            </button>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 text-xs">
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => goToPage(currentPage - 1)}
+                className="rounded-md border px-2 py-1 hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                ‹ {pick("이전", "Previous")}
+              </button>
+              <span className="tabular-nums text-muted-foreground">
+                {pick(
+                  `${nf.format((currentPage - 1) * (pageSize as number) + 1)}–${nf.format(Math.min(currentPage * (pageSize as number), view.length))} / ${nf.format(view.length)} · ${currentPage}/${totalPages} 페이지`,
+                  `${nf.format((currentPage - 1) * (pageSize as number) + 1)}–${nf.format(Math.min(currentPage * (pageSize as number), view.length))} of ${nf.format(view.length)} · page ${currentPage} of ${totalPages}`,
+                )}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => goToPage(currentPage + 1)}
+                className="rounded-md border px-2 py-1 hover:bg-muted/60 disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                {pick("다음", "Next")} ›
+              </button>
+            </div>
           )}
         </>
       )}

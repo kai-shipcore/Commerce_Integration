@@ -18,7 +18,10 @@ function forecastApiBase(): string {
 
 export async function proxyPlanning(
   path: string,
-  search: string,
+  /** Query string without the leading "?". Optional: several planning endpoints
+   *  take no parameters, and requiring an empty string at those call sites adds
+   *  an argument that carries no meaning. */
+  search: string = "",
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ) {
   const { NextResponse } = await import("next/server");
