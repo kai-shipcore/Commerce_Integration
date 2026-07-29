@@ -2,192 +2,136 @@
   <div class="section-header">
     <div class="section-icon" style="background:#fff1f2;font-size:28px">📉</div>
     <div>
-      <div class="menu-path">Planning › OOS Impact</div>
+      <div class="menu-path">계획 › 품절 영향 분석</div>
       <h2>품절 영향 분석</h2>
-      <p class="subtitle">상품이 품절되었을 때 판매가 얼마나 줄고, 재입고 후 얼마나 빨리 회복하는지 쉽게 확인하는 화면입니다.</p>
+      <p class="subtitle">Shopify Pre-Order 전환 전후의 판매 변화와 타 채널 재입고 후 회복 속도를 실제 품절·판매 이력으로 분석합니다.</p>
     </div>
   </div>
 
-  <div class="callout warn">
-    <span class="callout-icon">🚧</span>
-    <div><strong>현재는 UI 설계 단계입니다.</strong> 화면에 보이는 SKU, 판매량, 32% 같은 숫자는 화면을 이해하기 위한 <strong>샘플 데이터</strong>입니다. 아직 실제 데이터베이스와 연결되지 않았으므로 회사의 실제 실적이나 확정된 분석 결과로 해석하면 안 됩니다.</div>
+  <div class="callout info">
+    <span class="callout-icon">✅</span>
+    <div><strong>실제 데이터 화면입니다.</strong> Pre-Order SKU 분석과 타 채널 SKU 회복 분석은 데이터베이스의 품절 이력 및 판매 이력을 사용합니다. 단, <strong>타 채널 탭의 ‘채널 비교’ 선 그래프만 현재 샘플 데이터</strong>이며 화면에 ‘샘플 데이터’로 표시됩니다.</div>
   </div>
 
-  <h3>화면에서 확인할 수 있는 내용</h3>
+  <h3>두 탭의 차이</h3>
   <div class="card-grid col2">
     <div class="card" style="border-left:4px solid #2563eb">
-      <h4>① Pre-Order로 바뀌면 판매가 얼마나 줄어드는가?</h4>
-      <p>Shopify 상품이 정상 판매에서 Pre-Order로 바뀌기 전과 후를 비교합니다. 감소폭이 크면 고객이 기다리지 않고 구매를 포기했을 가능성을 확인할 수 있습니다.</p>
+      <h4>① Shopify · Pre-Order 전환 감소율</h4>
+      <p>품절 직전 정상 판매와 Pre-Order 전환 후 주문을 같은 기간으로 비교합니다. 판매 감소뿐 아니라 Pre-Order 중 판매가 증가한 기회 SKU도 찾을 수 있습니다.</p>
     </div>
     <div class="card" style="border-left:4px solid #10b981">
-      <h4>② 재입고하면 판매가 얼마나 빨리 돌아오는가?</h4>
-      <p>Amazon·eBay·Walmart 상품이 재입고된 뒤 30일, 60일, 90일에 품절 전 판매 수준을 얼마나 회복했는지 비교합니다.</p>
+      <h4>② 타 채널 · 재입고 회복 추이</h4>
+      <p>Amazon, eBay, Walmart 상품이 재입고된 뒤 품절 전 판매 수준의 80%까지 회복하는 데 며칠이 걸렸는지 확인합니다.</p>
     </div>
   </div>
-  <div class="callout info">
-    <span class="callout-icon">💼</span>
-    <div><strong>이 화면의 경영 목적:</strong> 품절은 재고가 없는 며칠만의 문제가 아닐 수 있습니다. Pre-Order 전환 시 주문이 줄고, 재입고 후에도 검색 노출이나 판매 순위가 바로 돌아오지 않을 수 있습니다. 이 화면은 그 영향을 숫자로 확인해 <strong>발주 시점, 안전재고, 우선 보충 SKU</strong>를 결정하는 데 도움을 주기 위한 설계입니다.</div>
-  </div>
 
-  <h3>용어 정리</h3>
+  <h3>데이터 기준</h3>
   <table class="feat-table">
-    <tr><th style="width:190px">용어</th><th>아주 쉬운 설명</th></tr>
-    <tr><td class="label">정상 일평균</td><td>Pre-Order가 되기 전, 하루에 평균 몇 개가 판매됐는지 나타냅니다.</td></tr>
-    <tr><td class="label">PO 일평균</td><td>Pre-Order로 바뀐 뒤, 하루에 평균 몇 개가 주문됐는지 나타냅니다.</td></tr>
-    <tr><td class="label">감소율</td><td>정상 판매 때보다 판매 속도가 몇 퍼센트 줄었는지 나타냅니다. 숫자가 클수록 영향이 큽니다.</td></tr>
-    <tr><td class="label">기준선</td><td>품절되기 전의 정상 판매 속도입니다. 재입고 후 판매가 돌아왔는지 비교하는 출발점입니다.</td></tr>
-    <tr><td class="label">회복률</td><td>재입고 후 판매 속도가 품절 전 수준의 몇 퍼센트까지 돌아왔는지 나타냅니다. 100%면 예전 수준으로 돌아온 것입니다.</td></tr>
+    <tr><th style="width:210px">데이터</th><th>용도</th></tr>
+    <tr><td class="label">fc_inventory_history_snapshot</td><td>SKU별 품절 시작일과 실제 재입고일을 찾습니다. 같은 SKU가 여러 번 품절되면 품절 회차별로 여러 행이 표시됩니다.</td></tr>
+    <tr><td class="label">fc_velocity_custom_snapshot</td><td>Shopify 정상 판매 및 Pre-Order 수량을 집계합니다.</td></tr>
+    <tr><td class="label">Link / Custom 판매 스냅샷</td><td>타 채널 회복 분석에서 상품 카테고리에 맞는 한 가지 판매 소스를 선택해 사용합니다. 두 소스를 더해 중복 집계하지 않습니다.</td></tr>
+    <tr><td class="label">캐시</td><td>조회 결과는 최대 약 10분간 캐시됩니다. 판매 속도 동기화 또는 계획 데이터 새로고침 시 관련 캐시가 삭제됩니다.</td></tr>
   </table>
 
-  <h3 id="oos-tab1">화면 1 — Shopify · Pre-Order 전환 감소율</h3>
-  <p>이 탭은 “재고가 없어 Pre-Order로 바뀐 뒤 주문이 얼마나 줄었는가?”를 확인합니다. 비교가 공정하도록 <strong>전환 전과 전환 후의 기간 길이를 같게</strong> 맞추는 것이 핵심입니다.</p>
+  <h3 id="oos-tab1">1. Shopify · Pre-Order 전환 감소율</h3>
+  <p>Shopify는 품절 중에도 Pre-Order 주문을 받을 수 있으므로, 품절 후 주문이 0인지보다 <strong>정상 판매 대비 주문 속도가 얼마나 변했는지</strong>를 측정합니다.</p>
 
   <div class="steps">
-    <div class="step">
-      <div class="step-num">1</div>
-      <div><h4>아이템과 채널 선택</h4><p>Car Cover, Seat Cover 같은 아이템과 Coverland B2C, Coverland B2B, Icarcover 같은 Shopify 채널을 선택합니다. 선택 조건에 맞는 SKU만 아래 숫자와 그래프에 포함되는 것이 최종 설계 의도입니다.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">2</div>
-      <div><h4>위쪽 요약 숫자 확인</h4><p>분석 SKU 수, 평균 감소율, 중앙값 감소율, 가장 많이 감소한 SKU를 먼저 봅니다.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">3</div>
-      <div><h4>분포 그래프 확인</h4><p>감소율이 낮은 SKU가 많은지, 높은 SKU가 많은지 막대 높이로 확인합니다.</p></div>
-    </div>
-    <div class="step">
-      <div class="step-num">4</div>
-      <div><h4>문제 SKU를 클릭해 상세 확인</h4><p>표에서 SKU 행을 클릭하면 전환 전후 일별 판매 흐름과 계산에 사용된 값을 자세히 볼 수 있습니다.</p></div>
-    </div>
+    <div class="step"><div class="step-num">1</div><div><h4>아이템·채널·상태 선택</h4><p>Car Cover, Seat Cover, Floor Mat, SWC와 Coverland B2C/B2B, Icarcover를 복수 선택할 수 있습니다. 상태는 전체, Pre-Order 진행중, 재입고 완료 중에서 선택합니다.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>신뢰 분석 KPI 확인</h4><p>비교 기간 14일 이상이면서 품절 전 정상 일평균이 1개 이상인 사례만 KPI, 평균, 중앙값과 분포에 사용합니다.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>감소율 분포 선택</h4><p>막대 또는 막대 위 숫자를 클릭하면 상세 그리드가 해당 구간으로 필터링됩니다. 같은 막대를 다시 클릭하면 해제됩니다.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>SKU 행과 상세 그래프 확인</h4><p>행을 클릭하면 오른쪽에 비교 그래프와 실제 판매 수량, 품절일, 재입고일, 비교 기간이 표시됩니다. 좁은 화면에서는 상세가 그리드 아래에 표시됩니다.</p></div></div>
   </div>
 
-  <h3 class="sub">감소율 계산</h3>
-  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
-    <p style="margin:0 0 8px"><strong>감소율 = (정상 일평균 − PO 일평균) ÷ 정상 일평균 × 100</strong></p>
-    <p style="margin:0">예: 정상 판매가 하루 10개, Pre-Order 후 하루 6개라면 <code>(10 − 6) ÷ 10 × 100 = 40%</code> 감소입니다.</p>
-  </div>
-
-  <table class="feat-table">
-    <tr><th style="width:190px">요약 카드</th><th>뜻</th><th>어떻게 판단하나요?</th></tr>
-    <tr><td class="label">분석 대상 SKU</td><td>현재 선택한 아이템·채널 조건에 포함된 상품 수입니다.</td><td>표본이 너무 적으면 한두 SKU의 영향이 커지므로 상세표도 함께 봅니다.</td></tr>
-    <tr><td class="label">평균 판매 감소율</td><td>모든 SKU 감소율을 더해 SKU 수로 나눈 값입니다.</td><td>선택된 상품군 전체가 받은 전반적인 충격을 봅니다.</td></tr>
-    <tr><td class="label">중앙값 감소율</td><td>감소율을 작은 순서로 놓았을 때 가운데에 있는 값입니다.</td><td>일부 극단적으로 높은 값의 영향을 평균보다 덜 받으므로 일반적인 SKU의 모습을 보는 데 유용합니다.</td></tr>
-    <tr><td class="label">최대 감소 SKU</td><td>감소율이 가장 큰 상품입니다.</td><td>가격, 광고, 재고, 상품 노출을 우선 점검할 후보입니다.</td></tr>
-  </table>
-
-  <h3 class="sub">분포 그래프와 중앙값 32% 읽기</h3>
-  <p>막대는 각 감소율 구간에 SKU가 몇 개 있는지 보여줍니다. 점선은 막대 하나의 평균이 아니라, <strong>선택된 전체 SKU의 중앙값</strong>입니다.</p>
-  <table class="feat-table">
-    <tr><th>감소율 구간</th><th>SKU 수</th><th>뜻</th></tr>
-    <tr><td>0~20%</td><td>2개</td><td>판매 감소가 비교적 작은 SKU 2개</td></tr>
-    <tr><td>20~40%</td><td>4개</td><td>판매가 20% 이상 40% 미만 감소한 SKU 4개</td></tr>
-    <tr><td>40~60%</td><td>2개</td><td>판매가 절반 가까이 감소한 SKU 2개</td></tr>
-    <tr><td>60~80%</td><td>2개</td><td>판매 감소가 매우 큰 SKU 2개</td></tr>
-    <tr><td>80~100%</td><td>0개</td><td>이 구간에는 SKU가 없음</td></tr>
-  </table>
-  <div class="callout tip">
-    <span class="callout-icon">🧮</span>
-    <div>
-      <strong>왜 중앙값이 32%인가요?</strong><br>
-      샘플 10개 SKU의 감소율을 작은 순서로 정리하면 <code>10, 18, 21, 22, 29, 35, 50, 50, 64, 74</code>입니다. 10개처럼 짝수일 때는 가운데 두 값인 5번째 29%와 6번째 35%의 평균을 사용합니다.<br>
-      <strong>(29 + 35) ÷ 2 = 32%</strong><br>
-      따라서 “전체 SKU의 절반은 32% 이하, 나머지 절반은 32% 이상 감소했다”라고 이해하면 됩니다.
-    </div>
-  </div>
-  <div class="callout info">
-    <span class="callout-icon">ℹ️</span>
-    <div>중앙값은 이상치를 <strong>삭제하거나 배제하지 않습니다.</strong> 단지 아주 크거나 작은 값의 영향을 평균보다 덜 받습니다. 그래서 평균은 전체 충격을, 중앙값은 일반적인 SKU의 모습을 볼 때 함께 사용합니다.</div>
-  </div>
-
-  <h3 class="sub">SKU별 상세표</h3>
-  <table class="feat-table">
-    <tr><th style="width:190px">컬럼</th><th>설명</th></tr>
-    <tr><td class="label">정상판매 구간</td><td>Pre-Order 전환 직전의 비교 기간입니다.</td></tr>
-    <tr><td class="label">정상 일평균</td><td>정상판매 구간의 하루 평균 판매량입니다.</td></tr>
-    <tr><td class="label">Pre-Order 구간</td><td>Pre-Order 전환일부터 시작되는 비교 기간입니다. 정상판매 구간과 같은 길이로 비교합니다.</td></tr>
-    <tr><td class="label">PO 일평균</td><td>Pre-Order 구간의 하루 평균 주문량입니다.</td></tr>
-    <tr><td class="label">Before / After</td><td>전환 전과 후의 판매 크기를 작은 막대 두 개로 빠르게 비교합니다.</td></tr>
-    <tr><td class="label">감소율</td><td>정상 판매 대비 줄어든 비율입니다. 숫자가 클수록 주의가 필요합니다.</td></tr>
-    <tr><td class="label">진행 상태</td><td>현재도 Pre-Order인지, 이후 재입고가 완료되었는지 보여줍니다. 감소율의 심각도와는 다른 정보입니다.</td></tr>
-  </table>
-
-  <h3 id="oos-tab2">화면 2 — 타 채널 · 재입고 회복 추이</h3>
-  <p>이 탭은 “재입고만 하면 판매가 즉시 예전처럼 돌아오는가?”를 확인합니다. Amazon, eBay, Walmart처럼 품절이 검색 노출과 판매 순위에 영향을 줄 수 있는 채널을 대상으로 합니다.</p>
-
-  <div class="callout tip">
-    <span class="callout-icon">🏃</span>
-    <div><strong>달리기 비유:</strong> 품절 전 하루 10개를 팔았다면 그것이 100% 기준선입니다. 재입고 30일 후 하루 5개라면 50% 회복, 하루 8개라면 80% 회복, 다시 하루 10개가 되면 100% 회복입니다.</div>
-  </div>
-
-  <h3 class="sub">회복률 계산</h3>
-  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
-    <p style="margin:0 0 8px"><strong>회복률 = 재입고 후 일평균 판매량 ÷ 품절 전 기준 일평균 × 100</strong></p>
-    <p style="margin:0">예: 품절 전 하루 10개, 재입고 30일 시점의 평균이 하루 7개라면 <code>7 ÷ 10 × 100 = 70%</code> 회복입니다.</p>
-  </div>
-  <table class="feat-table">
-    <tr><th style="width:150px">회복률</th><th>뜻</th></tr>
-    <tr><td class="label">100%</td><td>품절 전의 정상 판매 속도로 돌아왔습니다.</td></tr>
-    <tr><td class="label">80%</td><td>예전 판매 속도의 80%까지 돌아왔고 아직 20%가 부족합니다.</td></tr>
-    <tr><td class="label">50%</td><td>예전 판매 속도의 절반만 회복했습니다.</td></tr>
-    <tr><td class="label">100% 초과</td><td>재입고 후 판매 속도가 품절 전보다 더 높아졌습니다.</td></tr>
-  </table>
-
-  <h3 class="sub">필터와 그래프 읽기</h3>
-  <table class="feat-table">
-    <tr><th style="width:210px">화면 요소</th><th>설명</th></tr>
-    <tr><td class="label">채널</td><td>Amazon FBA·FBM, eBay 계정, Walmart 중 비교할 채널을 선택합니다.</td></tr>
-    <tr><td class="label">대상</td><td>과거에 품절되었다가 재입고가 완료된 SKU만 분석합니다. 현재도 품절 중이면 회복 여부를 계산할 수 없어 제외합니다.</td></tr>
-    <tr><td class="label">직전 품절 기간</td><td>14일·30일·60일 이상 품절된 SKU만 골라 “오래 품절될수록 회복이 느린가?”를 확인하기 위한 조건입니다.</td></tr>
-    <tr><td class="label">30·60·90일 회복률 카드</td><td>선택된 SKU들이 재입고 후 각 시점에 평균적으로 얼마나 회복했는지 보여줍니다.</td></tr>
-    <tr><td class="label">가로축</td><td>재입고 후 지난 날짜입니다. 0일이 재입고일입니다.</td></tr>
-    <tr><td class="label">세로축</td><td>품절 전 기준선 대비 판매 회복률입니다.</td></tr>
-    <tr><td class="label">100% 기준선</td><td>품절 전 정상 판매 수준입니다. 선이 이곳에 가까울수록 판매가 많이 회복된 것입니다.</td></tr>
-    <tr><td class="label">채널별 선</td><td>Amazon·eBay·Walmart의 회복 속도를 비교합니다. 검은 점선은 전체 평균입니다.</td></tr>
-  </table>
-
-  <h3 class="sub">분석 결과는 어떻게 활용하나요?</h3>
-  <div class="card-grid col2">
-    <div class="card">
-      <h4>감소율 해석 예시</h4>
-      <p>선택한 10개 SKU의 평균 감소율이 약 37%, 중앙값이 32%라면 일반적인 SKU도 Pre-Order 전환 후 판매가 뚜렷하게 줄었다고 볼 수 있습니다. 60% 이상 감소한 SKU 2개는 상세표를 열어 가격, 광고, 전환 시점 등을 우선 확인합니다.</p>
-    </div>
-    <div class="card">
-      <h4>회복률 해석 예시</h4>
-      <p>재입고 후 90일에도 eBay 판매가 품절 전 수준의 약 71%라면 아직 완전히 회복되지 않은 상태입니다. 해당 SKU의 재고를 보충하는 것에서 끝내지 않고 광고 재개, 가격, 상품 노출과 리스팅 상태도 함께 확인합니다.</p>
-    </div>
-  </div>
-
-  <h3>이 숫자로 할 수 있는 의사결정</h3>
+  <h3 class="sub">비교 기간은 어떻게 정해지나요?</h3>
   <ul>
-    <li><strong>발주 우선순위:</strong> Pre-Order 감소율이 크고 재입고 회복도 느린 SKU를 먼저 보충합니다.</li>
-    <li><strong>안전재고:</strong> 품절 후 손상이 큰 상품은 평소 안전재고를 더 높게 잡는 근거로 사용합니다.</li>
-    <li><strong>채널 대응:</strong> 재입고 후 회복이 느린 채널은 광고 재개, 가격 점검, 리스팅 상태 확인 등의 후속 조치를 검토합니다.</li>
-    <li><strong>품절 허용 수준:</strong> 짧은 품절과 긴 품절의 회복 차이를 비교해 허용 가능한 품절 기간을 정합니다.</li>
+    <li>품절 시작일을 Pre-Order 전환 기준일로 사용합니다.</li>
+    <li>정상 판매 구간은 기준일 직전, Pre-Order 구간은 기준일부터 시작합니다.</li>
+    <li>전후 기간은 반드시 같은 길이이며 최대 30일입니다.</li>
+    <li>30일 전에 재입고된 사례는 실제 Pre-Order 기간만큼만 비교합니다. 예: 18일 후 재입고 → 전 18일과 후 18일 비교.</li>
+    <li>최대 30일은 Pre-Order의 직접 효과를 보면서 계절성, 광고, 프로모션 등 장기 요인이 지나치게 섞이는 것을 줄이기 위한 기준입니다.</li>
   </ul>
 
-  <h3>해석할 때 반드시 주의할 점</h3>
-  <table class="feat-table">
-    <tr><th style="width:220px">주의사항</th><th>이유</th></tr>
-    <tr><td class="label">감소가 모두 품절 때문은 아님</td><td>가격, 광고, 계절, 경쟁 상품, 리뷰, 프로모션도 판매량을 바꿀 수 있습니다.</td></tr>
-    <tr><td class="label">SKU 수가 적으면 흔들림이 큼</td><td>분석 SKU가 몇 개뿐이면 한 상품의 큰 변화가 평균을 크게 움직일 수 있습니다.</td></tr>
-    <tr><td class="label">기간 길이를 같게 비교</td><td>전환 전 30일과 전환 후 5일처럼 길이가 다른 기간을 그대로 비교하면 공정하지 않습니다.</td></tr>
-    <tr><td class="label">판매량 0인 기준선 확인</td><td>품절 전 판매가 없던 SKU는 감소율이나 회복률을 정상적으로 계산하기 어렵습니다.</td></tr>
-    <tr><td class="label">상관관계와 원인은 다름</td><td>Pre-Order 후 판매가 줄었다는 사실만으로 Pre-Order가 유일한 원인이라고 단정할 수 없습니다.</td></tr>
-  </table>
+  <h3 class="sub">감소율 계산과 음수 값</h3>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
+    <p style="margin:0 0 8px"><strong>판매 감소율 = (정상 일평균 − Pre-Order 일평균) ÷ 정상 일평균 × 100</strong></p>
+    <p style="margin:0 0 6px">예: 정상 10개 / 일 → Pre-Order 6개 / 일 = <strong>40% 감소</strong></p>
+    <p style="margin:0">예: 정상 1.28개 / 일 → Pre-Order 2.06개 / 일 = <strong>-61% 감소(판매 61% 증가)</strong></p>
+  </div>
+  <div class="callout tip">
+    <span class="callout-icon">📈</span>
+    <div><strong>음수 감소율은 오류가 아닙니다.</strong> Pre-Order로 전환한 뒤 판매가 증가한 사례입니다. 화면에서는 파란색 ‘판매 증가’ 배지와 분포 구간으로 구분합니다. 품절 상태에서도 수요가 강하므로 빠른 재고 보충, 대체품 운영, 발주 우선순위 검토에 활용할 수 있습니다.</div>
+  </div>
 
-  <h3>현재 구현 상태</h3>
+  <h3 class="sub">KPI 읽는 법</h3>
   <table class="feat-table">
-    <tr><th style="width:210px">기능</th><th>현재 상태</th></tr>
-    <tr><td class="label">화면 구조·그래프·샘플 상세</td><td>UI 설계가 구현되어 화면 동작을 검토할 수 있습니다.</td></tr>
-    <tr><td class="label">일부 채널 선택</td><td>샘플 행을 대상으로 화면 변화를 확인할 수 있습니다.</td></tr>
-    <tr><td class="label">아이템 필터</td><td>최종 동작을 보여주기 위한 UI이며, 아직 실제 상품 데이터 필터와 연결되지 않았습니다.</td></tr>
-    <tr><td class="label">검색·Export</td><td>화면 요소만 있으며 실제 검색 및 파일 생성 로직은 아직 연결되지 않았습니다.</td></tr>
-    <tr><td class="label">Sync</td><td><strong>준비 중</strong>으로 비활성화되어 있습니다.</td></tr>
-    <tr><td class="label">실제 DB 계산</td><td>아직 연결되지 않았습니다. 연결 후 계산 검수와 운영 기준 확정이 필요합니다.</td></tr>
+    <tr><th style="width:230px">KPI</th><th>의미</th></tr>
+    <tr><td class="label">신뢰 분석 대상 SKU</td><td>현재 필터에서 14일 이상 비교하고 정상 판매가 1개 / 일 이상인 품절 사례 수입니다. 동일 SKU의 반복 품절은 각각 한 사례로 계산됩니다.</td></tr>
+    <tr><td class="label">재입고 완료 평균 · 확정치</td><td>실제 재입고일까지 Pre-Order 기간이 확정된 신뢰 사례의 평균 감소율과 중앙값입니다.</td></tr>
+    <tr><td class="label">Pre-Order 진행중 평균 · 잠정치</td><td>아직 재입고되지 않은 사례의 현재까지 평균 감소율과 중앙값입니다. 비교 기간이 짧거나 데이터가 추가되면 값이 변할 수 있습니다.</td></tr>
+    <tr><td class="label">판매 영향 최대 SKU</td><td>감소율만 높은 저판매 SKU가 아니라, <strong>정상 일평균 − PO 일평균</strong>으로 계산한 하루 판매 감소 수량이 가장 큰 신뢰 사례입니다.</td></tr>
   </table>
+  <div class="callout tip">
+    <span class="callout-icon">🖱️</span>
+    <div><strong>KPI 카드도 필터입니다.</strong> 각 카드를 클릭하면 감소율 그래프와 SKU별 상세가 같은 조건으로 필터링됩니다. 재입고 완료 또는 진행중 카드를 누르면 상단 상태 버튼도 같이 선택됩니다. 같은 카드를 다시 클릭하면 필터가 해제되고 상태는 전체로 돌아갑니다. ‘판매 영향 최대 SKU’를 클릭하면 해당 품절 사례만 남고 오른쪽 상세 그래프가 자동으로 열립니다.</div>
+  </div>
 
   <div class="callout warn">
-    <span class="callout-icon">📌</span>
-    <div><strong>현재 화면 이용 안내:</strong> 이 화면은 품절 전후 판매 영향과 재입고 회복을 확인하기 위한 UI 시안입니다. 현재 수치는 샘플이며, 실제 데이터 연동과 계산 검증이 끝난 뒤 수요 예측과 재고 계획 업무에 사용해야 합니다.</div>
+    <span class="callout-icon">🔎</span>
+    <div><strong>KPI 수와 상세 건수가 다른 이유:</strong> KPI와 분포에는 신뢰 기준을 통과한 사례만 포함되지만, ‘SKU별 상세’는 검증을 위해 1일짜리 사례를 포함한 전체 원본 품절 이력을 보여줍니다. 또한 화면의 ‘건’은 고유 SKU 수가 아니라 품절 회차 수입니다.</div>
+  </div>
+
+  <h3 class="sub">SKU별 상세 그리드</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">항목</th><th>사용 방법</th></tr>
+    <tr><td class="label">정상판매 구간 / 비교 기간</td><td>품절 전 비교 날짜와 비교에 사용한 일수를 보여줍니다.</td></tr>
+    <tr><td class="label">정상 일평균 / PO 일평균</td><td>소수 둘째 자리까지 표시합니다. 상세 패널에서는 ‘23개 ÷ 18일’처럼 실제 수량과 분모도 확인할 수 있습니다.</td></tr>
+    <tr><td class="label">Pre-Order 구간</td><td>품절 기준일부터 시작하는 동일 길이의 비교 기간입니다. 구간 종료일이 실제 재입고일과 항상 같은 것은 아닙니다.</td></tr>
+    <tr><td class="label">진행 상태</td><td>Pre-Order 진행중 또는 재입고 완료를 보여줍니다. 상세 패널에는 실제 재입고일을 표시하며, 진행 중이면 ‘미입고’로 표시합니다.</td></tr>
+    <tr><td class="label">정렬</td><td>열 제목을 클릭해 정렬하고 다시 클릭해 오름차순/내림차순을 전환합니다.</td></tr>
+    <tr><td class="label">검색과 X</td><td>Master SKU 일부를 입력해 검색합니다. 글자가 입력되면 오른쪽 X 버튼으로 즉시 초기화할 수 있습니다.</td></tr>
+    <tr><td class="label">페이지당 표시</td><td>페이지 하단에서 25/50/100개 단위로 변경할 수 있습니다.</td></tr>
+  </table>
+
+  <h3 id="oos-tab2">2. 타 채널 · 재입고 회복 추이</h3>
+  <p>Amazon, eBay, Walmart처럼 품절 중 주문이 0으로 기록되는 채널에서, 재입고 후 판매 속도가 실제로 회복되었는지 측정합니다. 현재 품절 중인 SKU는 재입고 후 회복을 계산할 수 없어 제외합니다.</p>
+
+  <h3 class="sub">핵심 회복 기준</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">기준</th><th>설명</th></tr>
+    <tr><td class="label">품절 전 기준선</td><td>품절 시작 전 30일간의 일평균 판매량입니다.</td></tr>
+    <tr><td class="label">회복 판정</td><td>재입고 후 트레일링 14일 일평균이 기준선의 80% 이상에 처음 도달한 날을 ‘회복까지 걸린 일수’로 계산합니다.</td></tr>
+    <tr><td class="label">최소 경과 기간</td><td>재입고 후 7일 이상 지난 사례만 분석합니다. 너무 최근 사례는 일평균이 불안정해 제외합니다.</td></tr>
+    <tr><td class="label">정상 회복</td><td>30일 안에 80% 기준에 도달한 사례입니다.</td></tr>
+    <tr><td class="label">느린 회복</td><td>30일을 넘긴 뒤 90일 안에 80% 기준에 도달한 사례입니다.</td></tr>
+    <tr><td class="label">관찰중</td><td>아직 80%에 도달하지 않았지만 재입고 후 90일이 지나지 않은 사례입니다.</td></tr>
+    <tr><td class="label">미회복</td><td>재입고 후 90일 동안 80% 기준에 도달하지 못한 사례입니다.</td></tr>
+  </table>
+
+  <h3 class="sub">화면 사용법</h3>
+  <ul>
+    <li>채널을 복수 선택해 분석 범위를 바꿉니다.</li>
+    <li>직전 품절 14일/30일/60일 이상 선택지는 화면에 표시되어 있지만 현재 필터 연결 전입니다. 지금은 ‘전체’ 기준으로 조회됩니다.</li>
+    <li>SKU 비교 막대는 0–30일, 30–60일, 60–90일, 관찰중, 미회복 사례 수를 보여줍니다. 막대나 숫자를 클릭하면 상세가 필터링됩니다.</li>
+    <li>상세 행을 클릭하면 오른쪽 패널에서 재입고 전 기준선, 재입고 후 실제 판매 그래프, 0–30/30–60/60–90일 일평균을 확인합니다.</li>
+    <li><strong>채널 비교 선 그래프는 아직 샘플 데이터</strong>이므로 운영 판단에는 SKU 비교 및 상세 데이터만 사용하세요.</li>
+  </ul>
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div><strong>현재 기능 범위:</strong> SKU 비교, 막대 필터, 정렬, 검색, 페이지 이동과 행별 상세 그래프는 실제 데이터로 동작합니다. 직전 품절 기간 선택 필터와 채널 비교 실데이터 집계는 후속 연결 대상입니다.</div>
+  </div>
+
+  <h3>업무 판단 예시</h3>
+  <ul>
+    <li><strong>발주 우선순위:</strong> Pre-Order 중 하루 판매 감소 수량이 크거나 판매 증가가 확인된 SKU를 우선 검토합니다.</li>
+    <li><strong>안전재고:</strong> Pre-Order 감소가 크고 재입고 회복도 느린 SKU는 더 높은 보호 재고가 필요할 수 있습니다.</li>
+    <li><strong>채널 후속 조치:</strong> 미회복 SKU는 가격, 광고, 검색 노출, 리뷰, 경쟁 상품과 리스팅 상태를 함께 확인합니다.</li>
+    <li><strong>반복 품절:</strong> 같은 SKU가 여러 행이면 품절일과 상세 재입고일을 비교해 회차별 영향을 확인합니다.</li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>해석 주의:</strong> 품절 전후의 변화가 모두 품절 또는 Pre-Order 때문에 발생했다고 단정할 수는 없습니다. 가격, 프로모션, 광고, 계절성, 경쟁 상황과 상품 노출 변화도 함께 확인해야 합니다.</div>
   </div>
 </section>

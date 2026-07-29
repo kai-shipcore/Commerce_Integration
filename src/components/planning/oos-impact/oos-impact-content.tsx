@@ -20,14 +20,14 @@ export function OosImpactContent() {
   const [screen, setScreen] = useState<"preorder" | "recovery">("preorder");
 
   return (
-    <div
+    <section
       className={cn(
-        "flex flex-col gap-4",
+        "oos-impact-fullbleed flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950",
         "[--chart-blue:#2a78d6] [--chart-orange:#eb6834] [--chart-aqua:#1baf7a] [--chart-baseline-bar:#c3c2b7]",
         "dark:[--chart-blue:#3987e5] dark:[--chart-orange:#d95926] dark:[--chart-aqua:#199e70] dark:[--chart-baseline-bar:#383835]"
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2dfd8] bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-start gap-2.5">
           <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
             <PackageX className="h-4 w-4" />
@@ -46,34 +46,36 @@ export function OosImpactContent() {
             {pick("동기화 (준비 중)", "Sync (coming soon)")}
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="flex w-fit gap-1.5 rounded-xl bg-muted p-1">
-        {(
-          [
-            ["preorder", pick("Shopify · Pre-Order 전환 감소율", "Shopify · Pre-Order Conversion Drop")],
-            ["recovery", pick("타 채널 · 재입고 회복 추이", "Marketplaces · Restock Recovery")],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setScreen(key)}
-            className={cn(
-              "flex items-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-semibold transition-colors",
-              screen === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <span className={cn("flex h-[18px] w-[18px] items-center justify-center rounded-full font-mono text-[10.5px] font-bold", screen === key ? "bg-foreground text-background" : "bg-background/60 text-muted-foreground")}>
-              {key === "preorder" ? 1 : 2}
-            </span>
-            {label}
-            <ChevronRight className="h-3 w-3 opacity-40" />
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-1 flex-col gap-4 p-4 md:p-5">
+        <div className="flex w-fit gap-1.5 rounded-xl bg-muted p-1">
+          {(
+            [
+              ["preorder", pick("Shopify · Pre-Order 전환 감소율", "Shopify · Pre-Order Conversion Drop")],
+              ["recovery", pick("타 채널 · 재입고 회복 추이", "Marketplaces · Restock Recovery")],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setScreen(key)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-semibold transition-colors",
+                screen === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <span className={cn("flex h-[18px] w-[18px] items-center justify-center rounded-full font-mono text-[10.5px] font-bold", screen === key ? "bg-foreground text-background" : "bg-background/60 text-muted-foreground")}>
+                {key === "preorder" ? 1 : 2}
+              </span>
+              {label}
+              <ChevronRight className="h-3 w-3 opacity-40" />
+            </button>
+          ))}
+        </div>
 
-      {screen === "preorder" ? <PreorderScreen /> : <RecoveryScreen />}
-    </div>
+        {screen === "preorder" ? <PreorderScreen /> : <RecoveryScreen />}
+      </div>
+    </section>
   );
 }

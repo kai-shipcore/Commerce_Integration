@@ -166,16 +166,42 @@ export function FilterRow({ label, children }: { label: string; children: React.
 }
 
 export function Kpi({
-  label, value, unit, foot,
-}: { label: string; value: React.ReactNode; unit?: string; foot?: React.ReactNode }) {
-  return (
-    <div className="planning-panel flex flex-col gap-1.5 rounded-xl border p-4">
+  label, value, unit, foot, active = false, onClick,
+}: {
+  label: string;
+  value: React.ReactNode;
+  unit?: string;
+  foot?: React.ReactNode;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
       <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
       <span className="font-mono text-2xl font-semibold tabular-nums tracking-tight">
         {value}
         {unit && <span className="ml-0.5 font-sans text-sm font-semibold text-foreground/70">{unit}</span>}
       </span>
       {foot && <span className="text-[11px] text-muted-foreground">{foot}</span>}
+    </>
+  );
+  const className = cn(
+    "planning-panel flex w-full flex-col gap-1.5 rounded-xl border p-4 text-left",
+    onClick && "cursor-pointer transition-colors hover:border-foreground/40 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    active && "border-foreground/60 bg-muted/40 ring-2 ring-foreground/15",
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" aria-pressed={active} onClick={onClick} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={className}>
+      {content}
     </div>
   );
 }

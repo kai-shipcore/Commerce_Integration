@@ -101,7 +101,7 @@ function StageTag({ stage }: { stage: Row1["stage"] }) {
     <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
       <Icon className="h-3 w-3" />
       {stage === "active"
-        ? pick("Pre-Order 진행중", "Pre-Order Active")
+        ? pick("진행중", "Active")
         : pick("재입고 완료", "Restocked")}
     </span>
   );
@@ -115,6 +115,7 @@ const MIN_BASELINE_DAILY_AVERAGE = 1;
 
 type SortKey = "sku" | "normalRange" | "windowDays" | "pre" | "poRange" | "post" | "drop" | "stage";
 type StageFilter = "all" | Row1["stage"];
+type KpiFilter = "reliable" | "completed" | "active" | "maxImpact";
 
 function isReliableAnalysisRow(row: Row1) {
   return row.windowDays >= MIN_ANALYSIS_WINDOW_DAYS && row.pre >= MIN_BASELINE_DAILY_AVERAGE;
@@ -147,7 +148,7 @@ const TABLE_COLUMNS: { key?: SortKey; ko: string; en: string; right?: boolean }[
   { key: "poRange", ko: "Pre-Order 구간", en: "Pre-Order Period" },
   { key: "post", ko: "PO 일평균", en: "PO Daily Avg.", right: true },
   { key: "drop", ko: "감소율", en: "Drop Rate", right: true },
-  { key: "stage", ko: "진행 상태", en: "Stage" },
+  { key: "stage", ko: "진행 상태", en: "Stage", right: true },
 ];
 
 function sortValueOf(r: Row1, key: SortKey): string | number {
@@ -171,6 +172,7 @@ export function PreorderScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedBin, setSelectedBin] = useState<number | null>(null);
+  const [kpiFilter, setKpiFilter] = useState<KpiFilter | null>(null);
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -204,6 +206,7 @@ export function PreorderScreen() {
   const toggleChannel = (channel: string) => {
     setChannels((current) => current.includes(channel) ? current.filter((value) => value !== channel) : [...current, channel]);
     setSelectedBin(null);
+    setKpiFilter(null);
     setOpenKey(null);
     setPage(1);
   };
@@ -216,6 +219,7 @@ export function PreorderScreen() {
       return current.includes(item) ? current.filter((value) => value !== item) : [...current, item];
     });
     setSelectedBin(null);
+    setKpiFilter(null);
     setOpenKey(null);
     setPage(1);
   };
@@ -233,7 +237,6 @@ export function PreorderScreen() {
     { label: pick("판매 증가", "Sales increase"), min: Number.NEGATIVE_INFINITY, max: 0 },
     ...PERCENT_BUCKETS,
   ];
-  const drops = reliableVisibleRows.map((r) => r.drop);
   const maxImpactRow = reliableVisibleRows.length
     ? reliableVisibleRows.reduce((current, candidate) => {
         const impactDifference = lostDailyAverage(candidate) - lostDailyAverage(current);
@@ -242,6 +245,14 @@ export function PreorderScreen() {
         return candidate.windowDays > current.windowDays ? candidate : current;
       })
     : null;
+  const chartRows = kpiFilter === "completed"
+    ? reliableScopedRows.filter((row) => row.stage === "ended")
+    : kpiFilter === "active"
+      ? reliableScopedRows.filter((row) => row.stage === "active")
+      : kpiFilter === "maxImpact"
+        ? (maxImpactRow ? [maxImpactRow] : [])
+        : reliableVisibleRows;
+  const drops = chartRows.map((r) => r.drop);
   const bins = histogramFrom(drops, percentBuckets);
   const medianDrop = median(drops);
   const medianDetail = medianExplanation(drops, locale);
@@ -257,11 +268,28 @@ export function PreorderScreen() {
   };
 
   const tableRows = selectedBin === null
-    ? visibleRows
-    : reliableVisibleRows.filter((row) => {
+    ? (kpiFilter === null ? visibleRows : chartRows)
+    : chartRows.filter((row) => {
         const bucket = percentBuckets[selectedBin];
         return row.drop >= bucket.min && row.drop < bucket.max;
       });
+
+  const selectKpiFilter = (nextFilter: KpiFilter) => {
+    const clearing = kpiFilter === nextFilter;
+    setKpiFilter(clearing ? null : nextFilter);
+    setSelectedBin(null);
+    setSearch("");
+    setPage(1);
+
+    if (clearing) {
+      if (nextFilter === "completed" || nextFilter === "active") setStageFilter("all");
+      setOpenKey(null);
+      return;
+    }
+    if (nextFilter === "completed") setStageFilter("ended");
+    if (nextFilter === "active") setStageFilter("active");
+    setOpenKey(nextFilter === "maxImpact" ? maxImpactRow?.id ?? null : null);
+  };
 
   const searchQuery = search.trim().toUpperCase();
   const searchedRows = searchQuery
@@ -332,6 +360,7 @@ export function PreorderScreen() {
               onClick={() => {
                 setStageFilter(value);
                 setSelectedBin(null);
+                setKpiFilter(null);
                 setOpenKey(null);
                 setPage(1);
               }}
@@ -371,6 +400,8 @@ export function PreorderScreen() {
         <Kpi
           label={pick("신뢰 분석 대상 SKU", "Reliable SKUs Analyzed")}
           value={reliableVisibleRows.length.toLocaleString("en-US")}
+          active={kpiFilter === "reliable"}
+          onClick={() => selectKpiFilter("reliable")}
           foot={
             <span className="mt-1 flex flex-col gap-1.5 border-t border-border pt-2">
               <span className="font-semibold text-foreground">
@@ -400,6 +431,8 @@ export function PreorderScreen() {
           label={pick("재입고 완료 평균 · 확정치", "Restocked Average · Final")}
           value={metricValue(completedRows, "average")}
           unit={completedRows.length ? "%" : undefined}
+          active={kpiFilter === "completed"}
+          onClick={() => selectKpiFilter("completed")}
           foot={
             <span className="flex flex-col gap-1">
               <span>{pick(`${completedRows.length.toLocaleString("en-US")}건`, `${completedRows.length.toLocaleString("en-US")} records`)}</span>
@@ -411,6 +444,8 @@ export function PreorderScreen() {
           label={pick("Pre-Order 진행중 평균 · 잠정치", "Active Pre-Order Average · Preliminary")}
           value={metricValue(activeRows, "average")}
           unit={activeRows.length ? "%" : undefined}
+          active={kpiFilter === "active"}
+          onClick={() => selectKpiFilter("active")}
           foot={
             <span className="flex flex-col gap-1">
               <span>{pick(`${activeRows.length.toLocaleString("en-US")}건`, `${activeRows.length.toLocaleString("en-US")} records`)}</span>
@@ -421,6 +456,8 @@ export function PreorderScreen() {
         <Kpi
           label={pick("판매 영향 최대 SKU", "Highest Sales-Impact SKU")}
           value={<span className="font-mono text-sm">{maxImpactRow?.sku ?? "—"}</span>}
+          active={kpiFilter === "maxImpact"}
+          onClick={() => selectKpiFilter("maxImpact")}
           foot={maxImpactRow ? (
             <span>
               <b className="font-mono text-foreground">{lostDailyAverage(maxImpactRow).toFixed(2)}{pick("개 / 일", " units / day")}</b>
@@ -433,13 +470,13 @@ export function PreorderScreen() {
       <div className="planning-panel rounded-xl border p-4">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-[13px] font-semibold">{pick("SKU별 감소율 분포", "SKU Drop-Rate Distribution")}</h3>
-          <span className="text-[11px] text-muted-foreground">{pick(`${reliableVisibleRows.length.toLocaleString("en-US")}개 신뢰 분석 SKU · 구간별 개수`, `${reliableVisibleRows.length.toLocaleString("en-US")} reliable SKUs · count by range`)}</span>
+          <span className="text-[11px] text-muted-foreground">{pick(`${chartRows.length.toLocaleString("en-US")}개 신뢰 분석 SKU · 구간별 개수`, `${chartRows.length.toLocaleString("en-US")} reliable SKUs · count by range`)}</span>
         </div>
         <Histogram
           bins={bins}
           medianValue={medianDrop}
           medianPosition={histogramMedianPosition(medianDrop, percentBuckets)}
-          medianLabel={pick(`신뢰 분석 ${reliableVisibleRows.length.toLocaleString("en-US")}개 SKU 중앙값 ${Math.round(medianDrop)}%`, `Median across ${reliableVisibleRows.length.toLocaleString("en-US")} reliable SKUs: ${Math.round(medianDrop)}%`)}
+          medianLabel={pick(`신뢰 분석 ${chartRows.length.toLocaleString("en-US")}개 SKU 중앙값 ${Math.round(medianDrop)}%`, `Median across ${chartRows.length.toLocaleString("en-US")} reliable SKUs: ${Math.round(medianDrop)}%`)}
           medianDescription={medianDetail}
           activeIndex={selectedBin}
           onBinClick={(index) => {
@@ -548,15 +585,16 @@ export function PreorderScreen() {
                   <td className="whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums">{r.post.toFixed(2)}</td>
                   <td className="px-3 py-2.5 text-right">
                     {r.drop < 0 ? (
-                      <span className="inline-flex flex-col items-center gap-0.5 rounded-xl bg-sky-100 px-2.5 py-1 font-mono text-[11px] font-bold leading-tight text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-                        <span className="inline-flex items-center gap-1 whitespace-nowrap"><TrendingUp className="h-3 w-3" />{r.drop}%</span>
-                        <span className="whitespace-nowrap font-sans">{pick("판매 증가", "Sales increase")}</span>
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl bg-sky-100 px-2.5 py-1 font-mono text-[11px] font-bold leading-tight text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                        <TrendingUp className="h-3 w-3" />
+                        <span>{r.drop}%</span>
+                        <span className="font-sans">{pick("판매 증가", "Sales increase")}</span>
                       </span>
                     ) : (
                       <SeverityPill severity={r.severity}><TrendingDown className="h-3 w-3" />{r.drop}%</SeverityPill>
                     )}
                   </td>
-                  <td className="px-3 py-2.5"><StageTag stage={r.stage} /></td>
+                  <td className="px-3 py-2.5 text-right"><StageTag stage={r.stage} /></td>
                 </tr>
               ))}
             </tbody>
