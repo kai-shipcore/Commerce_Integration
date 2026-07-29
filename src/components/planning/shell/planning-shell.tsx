@@ -20,7 +20,6 @@ export function PlanningShell({ children }: PlanningShellProps) {
     "/planning/purchase-orders",
     "/planning/sku-master",
     "/planning/factories",
-    "/planning/seat-cover/parts",
     "/planning/oos-impact",
   ]);
   const surfaceClass = fullBleedPages.has(appPathname)

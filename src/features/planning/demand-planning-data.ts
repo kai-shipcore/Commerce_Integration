@@ -11,7 +11,7 @@ const dashboardMemoryCache = new Map<string, DemandPlanningData>();
 const BASE_CATEGORIES: BaseCategoryFilter[] = ["sc", "cc", "fm", "ac"];
 
 // Server-side category scoping only applies when exactly one base category (sc/cc/fm/ac)
-// is selected — Part/SWC and multi-category combinations fetch the full dataset and are
+// is selected — SWC and multi-category combinations fetch the full dataset and are
 // scoped client-side instead.
 function fastPathCategory(category?: CategoryFilter[]): BaseCategoryFilter | undefined {
   if (!category || category.length !== 1) return undefined;
@@ -83,53 +83,20 @@ export function useDemandPlanningData(
         })
       : fetch(dashUrl);
 
-    Promise.all([
-      dashFetch.then((res) => {
+    dashFetch
+      .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
-      }),
-      category?.includes("part")
-        ? fetch(apiPath("/api/planning/dashboard/part-rows"))
-          .then((res) => res.json() as Promise<{ success: boolean; rows: { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }>)
-          .catch(() => ({ success: false, rows: [] as { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }))
-        : Promise.resolve({ success: false, rows: [] as { sku: string; cbm_per_unit: number; back: number; west_stock: number; east_stock: number; total_stock: number; west_avail: number; east_avail: number }[] }),
-    ])
-      .then(([json, partJson]) => {
+      })
+      .then((json) => {
         if (cancelled) return;
         if (json.success && json.data) {
-          const partRows: DemandPlanningData["rows"] = (partJson.rows ?? []).map((p) => ({
-            sku:               p.sku,
-            category_code:     "SC" as const,
-            sales_status:      "Part" as const,
-            back:              p.back,
-            cbm_per_unit:      p.cbm_per_unit ?? 0,
-            container_info: "", cbm: 0, seat: "", no: 0, color: "", tone: "",
-            west_stock:               p.west_stock  ?? 0,
-            east_stock:               p.east_stock  ?? 0,
-            total_stock:              p.total_stock ?? 0,
-            west_available_stock:     p.west_avail  ?? 0,
-            east_available_stock:     p.east_avail  ?? 0,
-            transit_stock: 0,
-            west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
-            east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
-            avg_daily_prev: 0, avg_daily_real: 0, avg_daily_curr: 0,
-            east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
-            fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0,
-            west_fbm_30d: 0, east_fbm_30d: 0, fba_30d: 0, total_30d: 0,
-            total_avg_prev: 0, total_avg_real: 0, total_avg_curr: 0,
-            oos_days_90d: null, oos_lost_demand_90d: null,
-            total_inbound_qty: null, containers_list: null, next_eta: null, sod: null,
-            containers: {},
-          }));
-          // Part SKU가 fc_stats에 'Original'로 있을 경우 중복 제거
-          const partSkuSet = new Set(partRows.map((r) => r.sku));
-          const mainRows = json.data.rows.filter((r) => !partSkuSet.has(r.sku));
           setData((current) => {
             const d = json.data!;
             const next: DemandPlanningData = {
               containers:  d.containers  ?? current.containers,
               last_sync:   d.last_sync   ?? current.last_sync,
-              rows:        [...mainRows, ...partRows],
+              rows:        d.rows,
               pinned_rows: d.pinned_rows ?? current.pinned_rows,
             };
             dashboardMemoryCache.set(requestScopeKey, next);

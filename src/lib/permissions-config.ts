@@ -19,7 +19,6 @@ export const PERM_SECTIONS = [
   { id: "project-list",        group: "Production",  nameKo: "제품 목록",          nameEn: "Product List" },
   // Master Data
   { id: "sku-master",          group: "Master Data", nameKo: "SKU 기준 정보",       nameEn: "SKU Master" },
-  { id: "parts",               group: "Master Data", nameKo: "부품",              nameEn: "Parts" },
   { id: "factory",             group: "Master Data", nameKo: "공장",              nameEn: "Factories" },
   { id: "warehouse",           group: "Master Data", nameKo: "창고",              nameEn: "Warehouse" },
   // Admin
@@ -27,7 +26,6 @@ export const PERM_SECTIONS = [
   { id: "invoice-price-control", group: "Admin",     nameKo: "Invoice·가격 검수", nameEn: "Invoice & Price Control" },
   { id: "audit-log",           group: "Admin",       nameKo: "감사 로그",          nameEn: "Audit Log" },
   { id: "user-permissions",    group: "Admin",       nameKo: "사용자 권한",         nameEn: "User Access" },
-  { id: "shiphero",            group: "Admin",       nameKo: "ShipHero 계정",      nameEn: "ShipHero Credentials" },
   { id: "container-import",    group: "Admin",       nameKo: "컨테이너 가져오기",    nameEn: "Container Import" },
 ] as const;
 
@@ -118,7 +116,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "sku-master":          ALL_ON,
     "sku-forecasts":       ALL_ON,
     "container-timeline":  ALL_ON,
-    "parts":               ALL_ON,
     "seat-cover-parts":    ALL_ON,
     "production-vehicles": ALL_ON,
     "invoice-price-control": ALL_ON,
@@ -131,7 +128,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "integrations":        ALL_ON,
     "audit-log":           ALL_ON,
     "user-permissions":    ALL_ON,
-    "shiphero":            ALL_ON,
     "container-import":    ALL_ON,
   }),
   dev: makeMatrix({
@@ -145,7 +141,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "sku-master":          ALL_ON,
     "sku-forecasts":       ALL_ON,
     "container-timeline":  ALL_ON,
-    "parts":               ALL_ON,
     "seat-cover-parts":    ALL_ON,
     "production-vehicles": ALL_ON,
     "invoice-price-control": ALL_ON,
@@ -158,7 +153,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "integrations":        ALL_ON,
     "audit-log":           ALL_ON,
     "user-permissions":    ALL_ON,
-    "shiphero":            ALL_ON,
     "container-import":    ALL_ON,
   }),
   planner: makeMatrix({
@@ -172,7 +166,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "sku-master":          { read: true,  create: false, edit: true,  status: false, delete: false },
     "sku-forecasts":       READ_ONLY,
     "container-timeline":  { read: true, create: false, edit: true, status: false, delete: false },
-    "parts":               READ_ONLY,
     "transit-stock":       { read: true,  create: true,  edit: true,  status: true,  delete: false },
     "seat-cover-parts":    NONE,
     "production-vehicles": NONE,
@@ -183,11 +176,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<ManagedRole, RolePermMatrix> = {
     "integrations":        READ_ONLY,
     "audit-log":           NONE,
     "user-permissions":    NONE,
-    "shiphero":            NONE,
   }),
-  operation: makeMatrix({
-    "parts": READ_ONLY,
-  }),
+  operation: makeMatrix({}),
   production: makeMatrix({
     "seat-cover-parts":    READ_ONLY,
     "production-vehicles": READ_ONLY,
@@ -224,7 +214,6 @@ export const PERM_SECTION_ACTIONS: Record<PermSection, readonly PermAction[]> = 
   "sku-master":          ["read", "create", "edit", "delete"],
   "sku-forecasts":       ["read"],
   "container-timeline":  ["read", "create", "edit"],
-  "parts":               ["read", "create", "edit", "delete"],
   "transit-stock":       ["read", "create", "edit", "status", "delete"],
   "seat-cover-parts":    ["read", "create", "edit"],
   "production-vehicles": ["read", "create", "edit"],
@@ -237,7 +226,6 @@ export const PERM_SECTION_ACTIONS: Record<PermSection, readonly PermAction[]> = 
   "integrations":        ["read", "create", "edit", "delete"],
   "audit-log":           ["read"],
   "user-permissions":    ["read", "edit"],
-  "shiphero":            ["read", "edit", "delete"],
   "container-import":    ["read", "create"],
 };
 

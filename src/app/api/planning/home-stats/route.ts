@@ -9,7 +9,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { getLookupPool } from "@/lib/db/supabase-lookup";
 import { CacheManager } from "@/lib/redis";
 
 const CACHE_KEY = "home:planning-stats:v28";
@@ -96,7 +95,6 @@ export async function GET(req: NextRequest) {
 
   try {
     const pool = getPrimaryPool();
-    const lookup = getLookupPool();
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sixtyDaysAgo  = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
@@ -105,8 +103,6 @@ export async function GET(req: NextRequest) {
     type SyncRow       = { last_sync: string | null };
     type ContainerRow  = { name: string; eta: string | null; confirmed_date: string | null; confirmed_time: string | null; total_qty: string; status: string; cbm_capacity: string | null; used_cbm: string; sku_count: string };
     type SalesRow      = { qty: string; revenue: string };
-    type PartSkuRow    = { sku: string };
-    type PartBackRow   = { sku: string; back: number };
     type DelayedConRow = { name: string; eta: string | null; delay_days: string; status: string };
 
     type CatDetailRow  = {
@@ -294,36 +290,6 @@ export async function GET(req: NextRequest) {
       if (k in catTopMap) catTopMap[k].push(row);
     }
 
-    // ── Replacement parts backorder adjustment (SC category) ──────────────────
-    const partSkusResult = await pool.query<PartSkuRow>(`
-      SELECT DISTINCT "partSku" AS sku
-      FROM shipcore.fc_replacement_parts
-      WHERE "partSku" IS NOT NULL
-        AND "shippingStatus" = 'Not Ready'
-        AND "deleteYN" = 'N'
-        AND "orderRequest" ~ '^[0-9]+$'
-        AND "orderRequest"::int > 0
-    `);
-
-    let scCriticalAdjust = 0;
-    let scBackorderAdjust = 0;
-
-    if (lookup && partSkusResult.rows.length > 0) {
-      const skuList = partSkusResult.rows.map((r) => r.sku);
-      const partBackResult = await lookup.query<PartBackRow>(
-        `SELECT
-           BTRIM(master_sku) AS sku,
-           (-SUM(COALESCE(backorder, 0)))::int AS back
-         FROM ecommerce_data.coverland_inventory_by_warehouse
-         WHERE BTRIM(master_sku) = ANY($1)
-         GROUP BY BTRIM(master_sku)`,
-        [skuList],
-      );
-      const backorderedParts = partBackResult.rows.filter((r) => Number(r.back) < 0);
-      scCriticalAdjust  = Math.min(3, backorderedParts.length);
-      scBackorderAdjust = backorderedParts.reduce((sum, r) => sum + Math.abs(Number(r.back)), 0);
-    }
-
     // ── Per-category Redis delta snapshots ────────────────────────────────────
     const todayStr     = now.toISOString().slice(0, 10);
     const yesterdayStr = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
@@ -347,16 +313,9 @@ export async function GET(req: NextRequest) {
         const d = catDetailMap[cat];
         const prev = prevSnaps[cat];
 
-        let criticalSku  = parseInt(d.critical_sku,  10);
-        let urgentPo     = parseInt(d.urgent_po,      10);
-        let backorder    = parseInt(d.backorder,      10);
-
-        if (cat === "sc") {
-          criticalSku += scCriticalAdjust;
-          urgentPo    += scCriticalAdjust;
-          backorder   += scBackorderAdjust;
-        }
-
+        const criticalSku  = parseInt(d.critical_sku,  10);
+        const urgentPo     = parseInt(d.urgent_po,      10);
+        const backorder    = parseInt(d.backorder,      10);
         const expectedOos  = parseInt(d.expected_oos,  10);
         const overstockSku = parseInt(d.overstock_sku, 10);
 
@@ -377,7 +336,7 @@ export async function GET(req: NextRequest) {
         };
 
         const stockDistribution = {
-          d0_30:    parseInt(d.d0_30,    10) + (cat === "sc" ? scCriticalAdjust : 0),
+          d0_30:    parseInt(d.d0_30,    10),
           d30_60:   parseInt(d.d30_60,   10),
           d60_180:  parseInt(d.d60_180,  10),
           d180plus: parseInt(d.d180plus, 10),

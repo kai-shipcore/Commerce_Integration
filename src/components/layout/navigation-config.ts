@@ -189,14 +189,6 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
-    id: "seat-cover-parts",
-    name: "Parts",
-    href: "/planning/seat-cover/parts",
-    icon: Package,
-    group: "Planning",
-    hideable: true,
-  },
-  {
     id: "seat-cover-sizes",
     name: "Seat Cover Parts",
     href: "/production/seat-cover-parts",
@@ -284,14 +276,6 @@ export const navigationItems: NavigationItem[] = [
     adminOnly: true,
   },
   {
-    id: "shiphero-credentials",
-    name: "ShipHero Credentials",
-    href: "/admin/shiphero",
-    icon: Ship,
-    hideable: true,
-    adminOnly: true,
-  },
-  {
     id: "container-import",
     name: "Container Import",
     href: "/admin/containers",
@@ -331,7 +315,6 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "sku-master":          ["sku-master"],
   "sku-forecasts":       ["sku-forecasts"],
   "container-timeline":  ["container-timeline"],
-  "parts":               ["seat-cover-parts"],
   "seat-cover-parts":    ["seat-cover-sizes"],
   "production-vehicles": ["production-vehicles"],
   "invoice-price-control": ["invoice-price-control"],
@@ -343,7 +326,6 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "integrations":        ["integrations"],
   "audit-log":           ["audit-log"],
   "user-permissions":    ["user-access"],
-  "shiphero":            ["shiphero-credentials"],
   "container-import":    ["container-import"],
 };
 

@@ -37,17 +37,15 @@ type SkuMasterRow = {
 type SkuStatus = "active" | "inactive";
 // Manual override only — Original/Custom are derived from actual order data (is_custom flag),
 // never manually assignable, so they live in a separate OriginalOrCustom field/column instead.
-// Part/SWC are item/category designations (surfaced in the category filter bar), not lifecycle
-// statuses, so they're excluded here too.
+// SWC is an item/category designation (surfaced in the category filter bar), not a lifecycle
+// status, so it's excluded here too.
 type OverrideSalesStatus = "Hold" | "Discontinued" | "TBD";
 type OriginalOrCustom = "Original" | "Custom";
 type StatusFilter = SkuStatus | "all";
 // SWC is a real category_code value (see productMeta below), kept page-local rather than widening
 // the shared mock-data ProductKey (used elsewhere, e.g. container planning, which doesn't need it).
 type SkuMasterProductKey = ProductKey | "swc";
-// Merged category + cross-cutting status filter for the top filter bar — Part is a sales_status
-// value (not a category) but is surfaced alongside the categories here, same as Demand Planning.
-type SkuMasterCategoryFilter = SkuMasterProductKey | "part";
+type SkuMasterCategoryFilter = SkuMasterProductKey;
 // Trimmed filter-bar type, distinct from the full SalesStatus domain used by the per-row editor below.
 type SalesTypeFilter = "all" | "Original" | "Custom";
 // Filters on the TYPE column (manual override) — distinct from SalesTypeFilter, which filters the
@@ -92,7 +90,6 @@ const productMeta: Record<
 
 const CATEGORY_FILTER_OPTIONS: { value: SkuMasterCategoryFilter; label: string }[] = [
   ...(Object.keys(productMeta) as SkuMasterProductKey[]).map((key) => ({ value: key, label: productMeta[key].label })),
-  { value: "part", label: "Part" },
 ];
 
 function categoryFilterSummary(selected: SkuMasterCategoryFilter[], allLabel: string) {

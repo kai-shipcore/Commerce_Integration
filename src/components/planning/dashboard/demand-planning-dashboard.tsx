@@ -183,7 +183,6 @@ const CATEGORY_FILTER_OPTIONS: { value: CategoryFilter; label: string }[] = [
   { value: "cc", label: "Car Cover" },
   { value: "fm", label: "Floor Mat" },
   { value: "ac", label: "Accessories" },
-  { value: "part", label: "Part" },
   { value: "swc", label: "SWC" },
 ];
 
@@ -237,7 +236,7 @@ function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
 function containerMatchesCategory(container: ContainerMeta, categoryFilter: CategoryFilter[]) {
   if (container.status === "baseline") return true;
   const checkedBaseCategories = BASE_CATEGORY_ORDER.filter((c) => categoryFilter.includes(c));
-  // Part/SWC have no container concept — if nothing category-shaped is checked, don't filter containers at all.
+  // SWC has no container concept — if nothing category-shaped is checked, don't filter containers at all.
   if (!checkedBaseCategories.length) return true;
   if (!container.categories?.length) {
     if (container.name.endsWith("-FLOOR")) return checkedBaseCategories.includes("fm");
@@ -937,7 +936,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   // SKU sub-filters (Fabric/Seat/Size/Color/etc.) are shaped per base category. When multiple
   // base categories are checked, key off the first one in a fixed priority; hide the panel
-  // entirely when only Part/SWC are checked (neither has a sub-filter shape).
+  // entirely when only SWC is checked (it has no sub-filter shape).
   const primaryBaseCategory = useMemo(
     () => BASE_CATEGORY_ORDER.find((c) => categoryFilter.includes(c)),
     [categoryFilter],

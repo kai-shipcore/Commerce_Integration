@@ -152,18 +152,17 @@ function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   return "AC";
 }
 
-// Base categories (sc/cc/fm/ac) checked in the multi-select — Part/SWC are excluded since
-// they're cross-cutting status filters, not categories.
+// Base categories (sc/cc/fm/ac) checked in the multi-select — SWC is excluded since
+// it's a cross-cutting status filter, not a category.
 function checkedBaseCategories(selected: CategoryFilter[]): ("sc" | "cc" | "fm" | "ac")[] {
-  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "part" && c !== "swc");
+  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "swc");
 }
 
 // A row matches if it belongs to a checked base category, OR if its status matches a checked
-// Part/SWC chip (regardless of the row's own category) — the Part/SWC chips pull in rows from
+// SWC chip (regardless of the row's own category) — the SWC chip pulls in rows from
 // outside the checked categories rather than narrowing the checked categories.
 function matchesCategorySelection(row: DemandRow, selected: CategoryFilter[]): boolean {
   if (checkedBaseCategories(selected).some((c) => c.toUpperCase() === categoryCodeForRow(row))) return true;
-  if (selected.includes("part") && row.sales_status === "Part") return true;
   if (selected.includes("swc") && row.sales_status === "SWC") return true;
   return false;
 }
@@ -301,7 +300,7 @@ export function DemandPlanningGrid({
       .filter((c) => {
         if (c.status === "baseline") return true;
         const checkedBase = checkedBaseCategories(categoryFilter);
-        // Part/SWC have no container concept — if nothing category-shaped is checked, don't filter containers at all.
+        // SWC has no container concept — if nothing category-shaped is checked, don't filter containers at all.
         if (!checkedBase.length) return true;
         if (!c.categories || c.categories.length === 0) {
           // fallback: name-suffix heuristic for containers without category data
@@ -399,7 +398,7 @@ export function DemandPlanningGrid({
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
       if (!matchesCategorySelection(r, categoryFilter)) return false;
-      if (r.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
+      if (!showZeroSales && !urgencyFilter &&
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original")      return false;
@@ -423,10 +422,7 @@ export function DemandPlanningGrid({
           return sortDirection === "asc" ? result : -result;
         })
       : filteredRows;
-    // "Part" 행은 항상 하단
-    const normal = sorted.filter((r) => r.sales_status !== "Part");
-    const parts  = sorted.filter((r) => r.sales_status === "Part");
-    return [...normal, ...parts];
+    return sorted;
   }, [filteredRows, sortColumnId, sortDirection]);
 
   const handleSort = useCallback((columnId: string) => {
@@ -583,7 +579,6 @@ export function DemandPlanningGrid({
         .sc-orig { background: #E5EEFF; color: #1238A0; }
         .sc-cust { background: #E3F5EC; color: #0A6A45; }
         .sc-hold { background: #FEF3D8; color: #9A5200; }
-        .sc-part { background: #EDE9FE; color: #5B21B6; }
         .sc-disc { background: #FEE2E2; color: #B91C1C; }
         .sc-tbd  { background: #F1F5F9; color: #64748B; }
         .sc-swc  { background: #FFF7ED; color: #C2410C; }

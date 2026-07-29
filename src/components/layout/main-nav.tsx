@@ -35,8 +35,8 @@ const navigationGroups = [
   { name: "Commerce", labelKey: "nav.commerce" as const, itemIds: ["inventory", "orders", "velocity"] },
   { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "demand-forecast", "oos-impact", "container-planning", "container-timeline", "available-stock", "transit-stock"] },
   { name: "Production", labelKey: "nav.production" as const, itemIds: ["seat-cover-sizes", "production-vehicles", "production-parts-codes", "part-sku-generator", "project-list"] },
-  { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "seat-cover-parts", "factories", "warehouse-admin"] },
-  { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "invoice-price-control", "audit-log", "user-access", "shiphero-credentials", "container-import"] },
+  { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "factories", "warehouse-admin"] },
+  { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "invoice-price-control", "audit-log", "user-access", "container-import"] },
 ];
 
 const navigationLabelKeys: Record<string, MessageKey> = {
@@ -58,7 +58,6 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   "transit-stock": "nav.transitStock",
   "purchase-orders": "nav.purchaseOrders",
   "sku-master": "nav.skuMaster",
-  "seat-cover-parts": "nav.parts",
   "seat-cover-sizes": "nav.seatCoverParts",
   "production-vehicles": "nav.vehicles",
   "production-parts-codes": "nav.partsCodes",
@@ -70,7 +69,6 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   "audit-log": "nav.auditLog",
   "warehouse-admin": "nav.warehouse",
   "user-access": "nav.userAccess",
-  "shiphero-credentials": "nav.shipHeroCredentials",
   "container-import": "nav.containerImport",
 };
 

@@ -56,7 +56,7 @@ erDiagram
 | Planning SKU Master | `fc_products`, `fc_stats`, `fc_stats_custom`, `fc_forecast_baselines` | SKU Master, Demand Planning, SKU Forecasts |
 | Container Planning | `fc_containers`, `fc_container_items`, `fc_available_stock`, `fc_container_item_allocations` | Container Planning, Available Stock, SKU Forecast inbound |
 | Purchase Orders | `fc_purchase_orders`, `fc_purchase_order_items`, `fc_container_po_links`, `fc_factories`, `fc_warehouses` | Purchase Orders, Factories, Warehouses |
-| Velocity / Forecast Input | `fc_velocity_link_snapshot`, `fc_velocity_custom_snapshot`, `fc_replacement_parts` | Velocity page, stats refresh, SKU forecasts |
+| Velocity / Forecast Input | `fc_velocity_link_snapshot`, `fc_velocity_custom_snapshot` | Velocity page, stats refresh, SKU forecasts |
 | Auth / Preferences | `fc_user`, `account`, `Session`, `verificationtoken`, `fc_user_preferences` | 로그인, 사용자 관리, 메뉴 권한, 사용자 설정 |
 | Legacy Prisma App | `sku`, `salesrecord`, `inventorybalance`, `inventorylocation`, `purchaseorder`, `container` 등 | 구 Products/Inventory/PO 모델 또는 호환 레이어 |
 
@@ -245,23 +245,7 @@ Forecast/Container/PO에서 쓰는 창고 마스터입니다.
 | `country`, `state_region`, `city`, `timezone` | 위치/시간대 |
 | `is_active` | 활성 여부 |
 
-## 6. Seat Cover / Replacement Parts Tables
-
-### `shipcore.fc_replacement_parts` - Seat cover replacement part orders
-
-Seat Cover Parts 화면에서 사용하는 교체 부품 주문 테이블입니다.
-
-| 주요 컬럼 | 설명 |
-|---|---|
-| `id` | PK |
-| `request_received_at` | 요청 접수일 |
-| `order_number` | 주문 번호 |
-| `part_number` | 부품 번호 |
-| `corresponding_sku` | 연결 SKU |
-| `qty` | 수량 |
-| `orderstatus`, `shipping_status` | 주문/배송 상태 |
-| `shiphero_order`, `shiphero_order_id` | ShipHero 주문 연결 |
-| `delete_yn` | 삭제 플래그 |
+## 6. Seat Cover Parts Tables
 
 ### `shipcore.fc_seat_covers_indv_part_skus`
 

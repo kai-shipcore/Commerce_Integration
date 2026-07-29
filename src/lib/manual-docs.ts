@@ -35,7 +35,6 @@ export const MANUAL_DOC_BY_MENU_ID: Record<string, ManualDocEntry> = {
   "transit-stock": { kind: "section", sectionId: "transit-stock" },
   "available-stock": { kind: "section", sectionId: "available-stock" },
   "sku-master": { kind: "section", sectionId: "sku-master" },
-  "seat-cover-parts": { kind: "section", sectionId: "parts" },
   factories: { kind: "section", sectionId: "factories" },
   "warehouse-admin": { kind: "section", sectionId: "warehouse" },
   integrations: { kind: "section", sectionId: "integrations" },

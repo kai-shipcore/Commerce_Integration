@@ -842,29 +842,6 @@ model VelocityLinkSnapshot {
 // PART ORDERS (Seat Cover)
 // ============================================
 
-model PartOrder {
-  id                BigInt   @id @default(autoincrement())
-  requestReceivedAt DateTime @db.Date
-  orderNumber       String
-  partNumber        String
-  correspondingSku  String?
-  qty               Int      @default(0)
-  orderRequest      String?
-  partSku           String?
-  note              String?
-  orderStatus       String?  @map("orderstatus")
-  shipheroOrder     String?
-  shipheroOrderId   String?
-  shippingStatus    String?
-  deleteYN          String   @default("N")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  @@index([orderNumber])
-  @@index([shippingStatus])
-  @@map("fc_replacement_parts")
-  @@schema("shipcore")
-}
 
 model VelocityCustomSnapshot {
   id              Int      @id @default(autoincrement())

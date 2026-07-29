@@ -59,10 +59,9 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
-const partSalesStatusSql = `(SELECT CASE WHEN EXISTS (SELECT 1 FROM shipcore.fc_replacement_parts r WHERE r."partSku" = p.master_sku AND r."shippingStatus" = 'Not Ready' AND r."deleteYN" = 'N' AND r."orderRequest" ~ '^[0-9]+$' AND r."orderRequest"::int > 0) THEN 'Part' END)`;
-// Manual override only (Hold/Discontinued/TBD). Part and SWC are item/category designations (they
-// live in the category filter bar instead, matched directly against the raw column below) rather
-// than lifecycle statuses, so they're excluded here. Legacy rows where p.sales_status was mistakenly
+// Manual override only (Hold/Discontinued/TBD). SWC is an item/category designation (it lives in
+// the category filter bar instead, matched directly against the raw column below) rather than a
+// lifecycle status, so it's excluded here. Legacy rows where p.sales_status was mistakenly
 // written as 'Original'/'Custom' (a footgun in the old single-dropdown UI) are also treated as having
 // no override, same as NULL — Original/Custom live in originalOrCustomSql.
 const overrideStatusSql = `(CASE WHEN p.sales_status IN ('Hold', 'Discontinued', 'TBD') THEN p.sales_status ELSE NULL END)`;
@@ -205,23 +204,16 @@ export async function GET(request: NextRequest) {
       filters.push(`p.master_sku ILIKE $${params.length}`);
     }
 
-    // Merged category + cross-cutting item filter: SWC is now a real category_code value (see
-    // "swc" in productMap below), so it flows through baseCategoryCodes like the others. Part is
-    // still a sales_status-based item designation (not a category_code value), matched separately.
+    // Merged category filter: SWC is a real category_code value (see "swc" in productMap below),
+    // so it flows through baseCategoryCodes like the others.
     const productMap: Record<string, string> = { cc: "CC", fm: "FM", sc: "SC", ac: "AC", swc: "SWC" };
     const baseCategoryCodes = productValues
       .map((v) => productMap[v])
       .filter((code): code is string => Boolean(code));
-    const includePart = productValues.includes("part");
 
-    if (baseCategoryCodes.length || includePart) {
-      const orClauses: string[] = [];
-      if (baseCategoryCodes.length) {
-        params.push(baseCategoryCodes);
-        orClauses.push(`p.category_code = ANY($${params.length}::text[])`);
-      }
-      if (includePart) orClauses.push(`(p.sales_status = 'Part' OR ${partSalesStatusSql} = 'Part')`);
-      filters.push(`(${orClauses.join(" OR ")})`);
+    if (baseCategoryCodes.length) {
+      params.push(baseCategoryCodes);
+      filters.push(`p.category_code = ANY($${params.length}::text[])`);
     }
 
     if (salesType !== "all") {

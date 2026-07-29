@@ -206,18 +206,17 @@ function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
   return "AC";
 }
 
-// Base categories (sc/cc/fm/ac) checked in the multi-select — Part/SWC are excluded since
-// they're cross-cutting status filters, not categories.
+// Base categories (sc/cc/fm/ac) checked in the multi-select — SWC is excluded since
+// it's a cross-cutting status filter, not a category.
 function checkedBaseCategories(selected: CategoryFilter[]): ("sc" | "cc" | "fm" | "ac")[] {
-  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "part" && c !== "swc");
+  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "swc");
 }
 
 // A row matches if it belongs to a checked base category, OR if its status matches a checked
-// Part/SWC chip (regardless of the row's own category) — the Part/SWC chips pull in rows from
+// SWC chip (regardless of the row's own category) — the SWC chip pulls in rows from
 // outside the checked categories rather than narrowing the checked categories.
 function matchesCategorySelection(row: DemandRow, selected: CategoryFilter[]): boolean {
   if (checkedBaseCategories(selected).some((c) => c.toUpperCase() === categoryCodeForRow(row))) return true;
-  if (selected.includes("part") && row.sales_status === "Part") return true;
   if (selected.includes("swc") && row.sales_status === "SWC") return true;
   return false;
 }
@@ -1306,7 +1305,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         if (container.status === "baseline") return true;
         if (hiddenContainers.has(container.name)) return false;
         const checkedBase = checkedBaseCategories(categoryFilter);
-        // Part/SWC have no container concept — if nothing category-shaped is checked, don't filter containers at all.
+        // SWC has no container concept — if nothing category-shaped is checked, don't filter containers at all.
         if (!checkedBase.length) return true;
         if (!container.categories?.length) {
           if (container.name.endsWith("-FLOOR")) return checkedBase.includes("fm");
@@ -1323,7 +1322,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const query = search.toLowerCase();
     const filtered = data.rows.filter((row) => {
       if (!matchesCategorySelection(row, categoryFilter)) return false;
-      if (row.sales_status !== "Part" && !showZeroSales && !urgencyFilter &&
+      if (!showZeroSales && !urgencyFilter &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (productFilter === "orig" && row.sales_status !== "Original")      return false;
@@ -1343,9 +1342,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       }
       return true;
     });
-    const parts  = filtered.filter((r) => r.sales_status === "Part");
-    const rest   = filtered.filter((r) => r.sales_status !== "Part");
-    return [...rest, ...parts].map((row) => {
+    return filtered.map((row) => {
       const merged: DemandRow = {
         ...row,
         ...(rowOverrides.get(row.sku) ?? {}),
