@@ -134,6 +134,7 @@ export function HomeDashboard({
   const [stats, setStats]       = useState<HomeStats | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [kpiError, setKpiError] = useState(false);
   const [activeCat, setActiveCat]   = useState<CategoryKey>("sc");
 
   // Sales chart
@@ -146,14 +147,42 @@ export function HomeDashboard({
   const [ordersHref, setOrdersHref]     = useState("/orders?preset=last7");
 
   // ── KPI fetch ──────────────────────────────────────────────────────────────
-  const loadKpi = useCallback((bust = false) => {
+  const loadKpi = useCallback(async (bust = false) => {
     setRefreshing(true);
-    fetch(apiPath(bust ? "/api/planning/home-stats?bust=1" : "/api/planning/home-stats"))
-      .then((r) => r.json())
-      .then((res) => { if (res.success) setStats(res.data as HomeStats); })
-      .catch(() => {})
-      .finally(() => { setKpiLoading(false); setRefreshing(false); });
-  }, []);
+    setKpiError(false);
+
+    try {
+      const requestStats = async (clearCache: boolean) => {
+        const response = await fetch(apiPath(
+          clearCache ? "/api/planning/home-stats?bust=1" : "/api/planning/home-stats"
+        ));
+        const result = await response.json();
+        const data = result?.data as HomeStats | undefined;
+
+        if (!response.ok || !result?.success || !data?.byCategoryFull) {
+          throw new Error(result?.error || "Invalid Command Center response");
+        }
+        return data;
+      };
+
+      try {
+        setStats(await requestStats(bust));
+      } catch (error) {
+        // Retry once without the cache so an old payload cannot appear as all zeroes.
+        if (bust) throw error;
+        setStats(await requestStats(true));
+      }
+    } catch {
+      setKpiError(true);
+      toast.error(pick(
+        "커맨드 센터 데이터를 불러오지 못했습니다. 새로고침을 다시 시도해 주세요.",
+        "Could not load Command Center data. Please try refreshing again."
+      ));
+    } finally {
+      setKpiLoading(false);
+      setRefreshing(false);
+    }
+  }, [pick]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => loadKpi(), 0);
@@ -346,6 +375,14 @@ export function HomeDashboard({
       </div>
 
       {/* ── 5 KPI Cards ── */}
+      {kpiError && !stats && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {pick(
+            "커맨드 센터 데이터를 불러오지 못했습니다. 오른쪽 위 새로고침 버튼을 눌러 다시 시도해 주세요.",
+            "Could not load Command Center data. Use the Refresh button above to try again."
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {kpiLoading
           ? [1, 2, 3, 4, 5].map((i) => (
