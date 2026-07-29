@@ -72,6 +72,8 @@ export function ActionListContent({
   // opened, since it covers roughly seven times as many SKUs and most visits
   // never need it.
   const [section, setSection] = useState<"forecast" | "not-forecast">("forecast");
+  const [pageSize, setPageSize] = useState<number | "all">(100);
+  const [page, setPage] = useState<{ key: string; page: number }>({ key: "", page: 1 });
 
   // The planning parameters identify a response. Holding them alongside the
   // result lets `loading` be derived rather than set, which keeps the effect
@@ -148,6 +150,22 @@ export function ActionListContent({
     // is what no criteria means, so it must not be mutated on the way through.
     return sortRows(rows, sort);
   }, [data, focus, query, category, tier, history, sort]);
+
+  // The page is tied to the filter set it was chosen under, so changing a filter
+  // returns to page 1 without an effect resetting it. Narrowing the filters while
+  // on page 5 would otherwise land on an empty page, which reads as "no results"
+  // rather than "you are past the end".
+  const filterKey = `${focus}|${query}|${category}|${tier}|${history}|${pageSize}`;
+  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(view.length / pageSize));
+  const currentPage = page.key === filterKey ? Math.min(page.page, totalPages) : 1;
+  const goToPage = (n: number) => setPage({ key: filterKey, page: n });
+  const pageRows = useMemo(
+    () =>
+      pageSize === "all"
+        ? view
+        : view.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [view, pageSize, currentPage],
+  );
 
   const exportCsv = useCallback(() => {
     if (!view.length) return;
@@ -370,6 +388,18 @@ export function ActionListContent({
           <option value="short">{pick("단기", "short")}</option>
           <option value="long">{pick("장기", "long")}</option>
         </select>
+        <select
+          value={String(pageSize)}
+          onChange={(e) =>
+            setPageSize(e.target.value === "all" ? "all" : Number(e.target.value))
+          }
+          className="h-8 rounded-md border bg-background px-2 text-xs"
+        >
+          {[25, 50, 100, 200].map((n) => (
+            <option key={n} value={n}>{pick(`${n}개씩`, `${n} per page`)}</option>
+          ))}
+          <option value="all">{pick("전체 보기", "Show all")}</option>
+        </select>
         <button
           type="button"
           onClick={() => {
@@ -408,8 +438,9 @@ export function ActionListContent({
           {pick("조건에 맞는 SKU가 없습니다.", "No SKUs match these filters.")}
         </CardContent></Card>
       ) : (
+        <>
         <ActionListTable
-          rows={view}
+          rows={pageRows}
           // The planning parameters travel with the link. Without them the
           // detail page answers at the default lead time while the row the user
           // clicked answers at theirs, and the two screens quietly disagree
@@ -427,6 +458,33 @@ export function ActionListContent({
             setSort((prev) => nextSort(prev, key, shiftKey))
           }
         />
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 text-xs">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => goToPage(currentPage - 1)}
+              className="rounded-md border px-2 py-1 disabled:opacity-40 hover:bg-muted/60 disabled:hover:bg-transparent"
+            >
+              ‹ {pick("이전", "Previous")}
+            </button>
+            <span className="tabular-nums text-muted-foreground">
+              {pick(
+                `${nf.format((currentPage - 1) * (pageSize as number) + 1)}–${nf.format(Math.min(currentPage * (pageSize as number), view.length))} / ${nf.format(view.length)} · ${currentPage}/${totalPages} 페이지`,
+                `${nf.format((currentPage - 1) * (pageSize as number) + 1)}–${nf.format(Math.min(currentPage * (pageSize as number), view.length))} of ${nf.format(view.length)} · page ${currentPage} of ${totalPages}`,
+              )}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => goToPage(currentPage + 1)}
+              className="rounded-md border px-2 py-1 disabled:opacity-40 hover:bg-muted/60 disabled:hover:bg-transparent"
+            >
+              {pick("다음", "Next")} ›
+            </button>
+          </div>
+        )}
+        </>
       )}
       </>
       )}

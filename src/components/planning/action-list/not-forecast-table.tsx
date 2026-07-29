@@ -22,6 +22,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { TABLE_WINDOW } from "./action-list-table";
 import type { NotForecastRow } from "./types";
 
 const nf = new Intl.NumberFormat("en-US");
@@ -32,16 +33,21 @@ const nf = new Intl.NumberFormat("en-US");
  *  averaged from recent sales. */
 const NF_BAND = {
   sold: {
-    head: "bg-slate-100/70 text-slate-700 dark:bg-slate-900/60 dark:text-slate-300",
-    sub: "bg-slate-50/60 dark:bg-slate-900/25",
+    head: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+    sub: "bg-slate-50 dark:bg-slate-900",
     edge: "border-l-2 border-l-slate-300 dark:border-l-slate-700",
   },
   stock: {
-    head: "bg-amber-100/60 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-    sub: "bg-amber-50/50 dark:bg-amber-950/20",
+    head: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+    sub: "bg-amber-50 dark:bg-amber-950",
     edge: "border-l-2 border-l-amber-300 dark:border-l-amber-800",
   },
 } as const;
+
+// Opaque backgrounds and the same four-layer stacking as the forecast table:
+// a translucent sticky header lets the rows underneath show through it.
+const BAND_ROW_H = "top-7";
+const Z = { headCorner: "z-40", head: "z-30", bodyLeft: "z-20" } as const;
 
 export type NfSortKey =
   | "unique_id" | "product_category" | "recent_units" | "weekly_rate"
@@ -131,9 +137,9 @@ export function NotForecastTable({
   const th = (key: NfSortKey, label: string, right = false, extra = "") => (
     <TableHead
       onClick={onSort ? (e) => onSort(key, e.shiftKey) : undefined}
-      className={`h-10 whitespace-nowrap ${right ? "text-right" : ""} ${extra} ${
-        onSort ? "cursor-pointer select-none hover:text-foreground" : ""
-      }`}
+      className={`sticky ${BAND_ROW_H} ${Z.head} h-10 whitespace-nowrap ${
+        right ? "text-right" : ""
+      } ${extra} ${onSort ? "cursor-pointer select-none hover:text-foreground" : ""}`}
     >
       {label}
       {onSort && icon(key)}
@@ -141,26 +147,26 @@ export function NotForecastTable({
   );
 
   return (
-    <div className="relative overflow-x-auto rounded-md border">
+    <div className={`relative ${TABLE_WINDOW} overflow-auto rounded-md border`}>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="sticky left-0 z-20 h-7 bg-background" />
+            <TableHead className={`sticky left-0 top-0 ${Z.headCorner} h-7 bg-background`} />
             <TableHead
               colSpan={3}
-              className={`h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
+              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
             >
               {h.soldBand}
             </TableHead>
             <TableHead
               colSpan={3}
-              className={`h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
+              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
             >
               {h.stockBand}
             </TableHead>
           </TableRow>
           <TableRow className="hover:bg-transparent">
-            {th("unique_id", h.sku, false, "sticky left-0 z-20 bg-background")}
+            {th("unique_id", h.sku, false, `left-0 ${Z.headCorner} bg-background`)}
             {th("recent_units", h.demand, true, `${NF_BAND.sold.sub} ${NF_BAND.sold.edge}`)}
             {th("weekly_rate", h.rate, true, NF_BAND.sold.sub)}
             {th("last_sale_week", h.lastSale, true, NF_BAND.sold.sub)}
@@ -174,7 +180,7 @@ export function NotForecastTable({
             const sub = [r.product_category, r.product_name].filter(Boolean).join(" · ");
             return (
               <TableRow key={r.unique_id} className="group">
-                <TableCell className="sticky left-0 z-10 bg-background align-top group-hover:bg-muted/50">
+                <TableCell className={`sticky left-0 ${Z.bodyLeft} bg-background align-top group-hover:bg-muted/50`}>
                   <span className="font-mono text-[11px]">{r.unique_id}</span>
                   {r.reorder_signal && (
                     <AlertTriangle

@@ -40,21 +40,51 @@ const nf = new Intl.NumberFormat("en-US");
  *  because Tailwind scans source text and cannot see a class built at runtime. */
 const BAND = {
   pos: {
-    head: "bg-sky-100/70 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
-    sub: "bg-sky-50/60 dark:bg-sky-950/25",
+    head: "bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-200",
+    sub: "bg-sky-50 dark:bg-sky-950",
     edge: "border-l-2 border-l-sky-300 dark:border-l-sky-800",
   },
   dem: {
-    head: "bg-teal-100/70 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300",
-    sub: "bg-teal-50/60 dark:bg-teal-950/25",
+    head: "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-200",
+    sub: "bg-teal-50 dark:bg-teal-950",
     edge: "border-l-2 border-l-teal-300 dark:border-l-teal-800",
   },
   act: {
-    head: "bg-indigo-100/70 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300",
-    sub: "bg-indigo-50/60 dark:bg-indigo-950/25",
+    head: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200",
+    sub: "bg-indigo-50 dark:bg-indigo-950",
     edge: "border-l-2 border-l-indigo-300 dark:border-l-indigo-800",
   },
 } as const;
+
+/** Stacking order for the cells that stick.
+ *
+ *  Four layers, because two axes stick independently and the corner cell has to
+ *  beat both. Backgrounds on every sticky cell are opaque rather than tinted
+ *  with an alpha: a translucent header lets the rows scrolling underneath show
+ *  through it, which is worse than no header at all.
+ *
+ *  BAND_ROW_H must match the band row's height class, since the column-name row
+ *  sticks directly beneath it and the offset is in pixels. */
+const BAND_ROW_H = "top-7";
+const Z = {
+  headCorner: "z-40", // sticky in both axes
+  head: "z-30", // sticky vertically
+  bodyLeft: "z-20", // sticky horizontally
+} as const;
+
+/** Height of the scrolling table window, shared by both planning tables.
+ *
+ *  Sized to show about twenty rows. A row is roughly 46px: 16px of cell padding
+ *  from the table primitive's p-2, plus two lines in the SKU cell (the SKU at
+ *  11px and the category subtitle at 10px), plus the row border. Twenty of those
+ *  is ~920px, and the two header rows add 68px, so ~62rem.
+ *
+ *  Capped by the viewport as well, because 62rem exceeds the usable height of a
+ *  laptop screen once the page header, chips and filters are above it, and a
+ *  table taller than the window makes the page itself scroll, which is the thing
+ *  the sticky header exists to avoid. Tall monitors get twenty rows; shorter
+ *  ones get as many as fit. */
+export const TABLE_WINDOW = "max-h-[min(62rem,78vh)]";
 
 /** Priority labels exactly as src/planning/calc.py emits them. The casing is
  *  load-bearing: these are dictionary keys, so "Best seller" instead of
@@ -235,9 +265,9 @@ export function ActionListTable({
   const th = (key: SortKey, label: string, right = false, extra = "") => (
     <TableHead
       onClick={onSort ? (e) => onSort(key, e.shiftKey) : undefined}
-      className={`h-10 whitespace-nowrap ${right ? "text-right" : ""} ${extra} ${
-        onSort ? "cursor-pointer select-none hover:text-foreground" : ""
-      }`}
+      className={`sticky ${BAND_ROW_H} ${Z.head} h-10 whitespace-nowrap ${
+        right ? "text-right" : ""
+      } ${extra} ${onSort ? "cursor-pointer select-none hover:text-foreground" : ""}`}
       aria-sort={
         sort.find((c) => c.key === key)
           ? sort.find((c) => c.key === key)!.dir === "asc"
@@ -252,35 +282,39 @@ export function ActionListTable({
   );
 
   return (
-    <div className="relative overflow-x-auto rounded-md border">
+    // Scrolls in both axes with the header and the SKU column pinned. Height is
+    // capped rather than growing without limit: the controls above stay useful
+    // while reading the table, and pushing them off screen to show more rows is
+    // a bad trade.
+    <div className={`relative ${TABLE_WINDOW} overflow-auto rounded-md border`}>
       <Table>
         <TableHeader>
           {/* Band row. Sits above the column names so the three groups read as
               headings rather than as another row of labels. */}
           <TableRow className="hover:bg-transparent">
-            <TableHead className="sticky left-0 z-20 h-7 bg-background" />
-            <TableHead className="h-7" />
+            <TableHead className={`sticky left-0 top-0 ${Z.headCorner} h-7 bg-background`} />
+            <TableHead className={`sticky top-0 ${Z.head} h-7 bg-background`} />
             <TableHead
               colSpan={3}
-              className={`h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
+              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
             >
               {headers.position}
             </TableHead>
             <TableHead
               colSpan={2}
-              className={`h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
+              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
             >
               {headers.demand}
             </TableHead>
             <TableHead
               colSpan={3}
-              className={`h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
+              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
             >
               {headers.action}
             </TableHead>
           </TableRow>
           <TableRow className="hover:bg-transparent">
-            {th("unique_id", headers.sku, false, "sticky left-0 z-20 bg-background")}
+            {th("unique_id", headers.sku, false, `left-0 ${Z.headCorner} bg-background`)}
             {th("priority_label", headers.priority)}
             {th("available_inventory", headers.available, true, `${BAND.pos.sub} ${BAND.pos.edge}`)}
             {th("preorder_backlog", headers.preorder, true, BAND.pos.sub)}
@@ -299,7 +333,7 @@ export function ActionListTable({
               .join(" · ");
             return (
               <TableRow key={r.unique_id} className="group">
-                <TableCell className="sticky left-0 z-10 bg-background align-top group-hover:bg-muted/50">
+                <TableCell className={`sticky left-0 ${Z.bodyLeft} bg-background align-top group-hover:bg-muted/50`}>
                   <Link
                     href={skuHref(r.unique_id)}
                     onClick={(e) => {
