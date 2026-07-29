@@ -140,6 +140,17 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    // Distinct from Demand Forecast, which reports on how the model is doing.
+    // This answers what to order today: it joins the forecast to stock on hand,
+    // preorder backlog and confirmed inbound, and ranks by what needs attention.
+    id: "action-list",
+    name: "Action List",
+    href: "/planning/action-list",
+    icon: ClipboardList,
+    group: "Planning",
+    hideable: true,
+  },
+  {
     id: "container-planning",
     name: "Container Planning",
     href: "/planning/container-planning",
@@ -295,6 +306,7 @@ export const userDefaultVisibleMenuIds = [
   "sku-forecasts",
   "demand-forecast",
   "oos-impact",
+  "action-list",
   "container-planning",
   "container-timeline",
   "available-stock",
