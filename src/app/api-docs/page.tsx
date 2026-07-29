@@ -13,7 +13,7 @@ export default function ApiDocsPage() {
     <div className="min-h-screen bg-white">
       <link
         rel="stylesheet"
-        href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css"
+        href={withBasePath("/api/swagger-ui/swagger-ui.css")}
       />
       <div className="border-b bg-slate-950 px-6 py-4 text-white">
         <h1 className="text-xl font-semibold">Demand Pilot API Docs</h1>
@@ -23,7 +23,7 @@ export default function ApiDocsPage() {
       </div>
       <div id="swagger-ui" className="min-h-[calc(100vh-81px)]" />
       <Script
-        src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"
+        src={withBasePath("/api/swagger-ui/swagger-ui-bundle.js")}
         strategy="afterInteractive"
       />
       <Script
