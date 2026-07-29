@@ -20,7 +20,6 @@ export function getOpenApiDocument(baseUrl: string) {
       { name: "Orders" },
       { name: "Sales" },
       { name: "Analytics" },
-      { name: "Collections" },
       { name: "Integrations" },
       { name: "Settings" },
       { name: "Admin" },
@@ -34,6 +33,28 @@ export function getOpenApiDocument(baseUrl: string) {
           responses: {
             "200": { description: "User registered" },
             "400": { description: "Validation error" },
+          },
+        },
+      },
+      "/auth/{...nextauth}": {
+        get: {
+          tags: ["Auth"],
+          summary: "NextAuth.js catch-all handler (session, callback, signin, signout, csrf, providers, etc.)",
+          parameters: [
+            { name: "...nextauth", in: "path", required: true, schema: { type: "string" }, description: "NextAuth internal action segments" },
+          ],
+          responses: {
+            "200": { description: "NextAuth response (shape depends on the action segment)" },
+          },
+        },
+        post: {
+          tags: ["Auth"],
+          summary: "NextAuth.js catch-all handler (signin, signout, callback, etc.)",
+          parameters: [
+            { name: "...nextauth", in: "path", required: true, schema: { type: "string" }, description: "NextAuth internal action segments" },
+          ],
+          responses: {
+            "200": { description: "NextAuth response (shape depends on the action segment)" },
           },
         },
       },
@@ -218,54 +239,6 @@ export function getOpenApiDocument(baseUrl: string) {
           },
         },
       },
-      "/collections": {
-        get: {
-          tags: ["Collections"],
-          summary: "List collections",
-          responses: {
-            "200": { description: "Collection list" },
-          },
-        },
-        post: {
-          tags: ["Collections"],
-          summary: "Create one collection",
-          responses: {
-            "201": { description: "Collection created" },
-          },
-        },
-      },
-      "/collections/{id}": {
-        get: {
-          tags: ["Collections"],
-          summary: "Get one collection",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Collection detail" },
-          },
-        },
-        patch: {
-          tags: ["Collections"],
-          summary: "Update one collection",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Collection updated" },
-          },
-        },
-        delete: {
-          tags: ["Collections"],
-          summary: "Delete one collection",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Collection deleted" },
-          },
-        },
-      },
       "/integrations": {
         get: {
           tags: ["Integrations"],
@@ -382,12 +355,161 @@ export function getOpenApiDocument(baseUrl: string) {
           },
         },
       },
+      "/admin/audit-log": {
+        get: {
+          tags: ["Admin"],
+          summary: "List audit log entries across containers, invoices, and general entities",
+          parameters: [
+            { name: "user", in: "query", schema: { type: "string" }, description: "Free-text match on actor name/email/id" },
+            { name: "entity", in: "query", schema: { type: "string" }, description: "Free-text match on entity label/id/before/after/note" },
+            { name: "entityId", in: "query", schema: { type: "string" } },
+            { name: "entityType", in: "query", schema: { type: "string", enum: ["container", "invoice", "factory", "warehouse", "sku", "user_permission", "user_role", "integration"] } },
+            { name: "action", in: "query", schema: { type: "string" }, description: "One of the known audit action values (e.g. create, update, delete, role_change)" },
+            { name: "startDate", in: "query", schema: { type: "string", format: "date" } },
+            { name: "endDate", in: "query", schema: { type: "string", format: "date" } },
+            { name: "export", in: "query", schema: { type: "string", enum: ["1"] }, description: "When '1', raises the page size to 5000 for export" },
+            { name: "page", in: "query", schema: { type: "integer" } },
+            { name: "limit", in: "query", schema: { type: "integer" } },
+          ],
+          responses: {
+            "200": { description: "Paginated audit log entries" },
+            "401": { description: "Unauthorized" },
+          },
+        },
+      },
+      "/admin/import-containers": {
+        get: {
+          tags: ["Admin"],
+          summary: "Get the current container-import job status, or subscribe to its log via SSE (?stream=1)",
+          parameters: [
+            { name: "stream", in: "query", schema: { type: "string", enum: ["1"] }, description: "When '1', responds with a text/event-stream of log lines instead of a status JSON" },
+          ],
+          responses: {
+            "200": { description: "Job status JSON, or an SSE stream when stream=1" },
+            "403": { description: "Forbidden" },
+          },
+        },
+        post: {
+          tags: ["Admin"],
+          summary: "Start a container-import run from a Google Sheet URL (fire-and-forget child process, streams progress via SSE)",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["url"],
+                  properties: {
+                    url: { type: "string" },
+                    tab: { type: "string" },
+                    dryRun: { type: "boolean" },
+                    forceDownload: { type: "boolean" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "SSE stream of import log lines, ending with a done event" },
+            "403": { description: "Forbidden" },
+            "409": { description: "An import is already in progress" },
+            "422": { description: "url is required" },
+          },
+        },
+        delete: {
+          tags: ["Admin"],
+          summary: "Cancel the active container-import run",
+          responses: {
+            "200": { description: "Run cancelled" },
+            "403": { description: "Forbidden" },
+            "404": { description: "No active run" },
+          },
+        },
+      },
+      "/admin/role-permissions": {
+        get: {
+          tags: ["Admin"],
+          summary: "Get the permission matrix for every managed role (cached 10 min)",
+          responses: {
+            "200": { description: "Map of role -> section -> action -> allowed" },
+            "401": { description: "Unauthorized" },
+            "403": { description: "Forbidden" },
+          },
+        },
+        put: {
+          tags: ["Admin"],
+          summary: "Replace one role's full permission matrix",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["role", "permissions"],
+                  properties: {
+                    role: { type: "string" },
+                    permissions: { type: "object", description: "section -> action -> allowed" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Permissions saved" },
+            "400": { description: "Invalid role or permissions" },
+            "401": { description: "Unauthorized" },
+            "403": { description: "Forbidden" },
+          },
+        },
+      },
+      "/admin/user-activity": {
+        get: {
+          tags: ["Admin"],
+          summary: "Get org-wide user activity summary, daily trend, and per-user activity rows",
+          parameters: [
+            { name: "days", in: "query", schema: { type: "integer", enum: [7, 30, 90] }, description: "Trend window; defaults to 30 if not one of 7/30/90" },
+          ],
+          responses: {
+            "200": { description: "Activity summary + trend + per-user rows" },
+            "403": { description: "Forbidden" },
+          },
+        },
+      },
       "/admin/users": {
         get: {
           tags: ["Admin"],
           summary: "List users and menu visibility",
           responses: {
             "200": { description: "User list" },
+            "403": { description: "Forbidden" },
+          },
+        },
+      },
+      "/admin/users/{userId}/activity-timeline": {
+        get: {
+          tags: ["Admin"],
+          summary: "Get one user's merged activity timeline (button clicks, logins, audit log) for a single day",
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "string" } },
+            { name: "date", in: "query", schema: { type: "string", format: "date" }, description: "Defaults to today (America/Los_Angeles)" },
+          ],
+          responses: {
+            "200": { description: "User info + that day's merged, chronologically sorted events" },
+            "403": { description: "Forbidden" },
+            "404": { description: "User not found" },
+          },
+        },
+      },
+      "/admin/users/{userId}/login-history": {
+        get: {
+          tags: ["Admin"],
+          summary: "Get a user's 10 most recent login records",
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Up to 10 login records (id, loggedInAt, ip, userAgent)" },
+            "401": { description: "Unauthorized" },
             "403": { description: "Forbidden" },
           },
         },
@@ -404,6 +526,105 @@ export function getOpenApiDocument(baseUrl: string) {
           },
         },
       },
+      "/admin/users/{userId}/name": {
+        patch: {
+          tags: ["Admin"],
+          summary: "Rename one user (admin-only, audit logged)",
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["name"],
+                  properties: { name: { type: "string", minLength: 1 } },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "User renamed" },
+            "400": { description: "Validation error" },
+            "401": { description: "Unauthorized" },
+            "403": { description: "Forbidden" },
+            "404": { description: "User not found" },
+          },
+        },
+      },
+      "/admin/users/{userId}/permission-overrides": {
+        get: {
+          tags: ["Admin"],
+          summary: "List a user's permission overrides (exceptions to their role defaults, cached 10 min)",
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "List of {section, action, allowed} overrides" },
+            "401": { description: "Unauthorized" },
+            "403": { description: "Forbidden" },
+          },
+        },
+        post: {
+          tags: ["Admin"],
+          summary: "Add or update one permission override for a user",
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["section", "action", "allowed"],
+                  properties: {
+                    section: { type: "string" },
+                    action: { type: "string" },
+                    allowed: { type: "boolean" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Override saved" },
+            "400": { description: "Invalid section/action/allowed" },
+            "401": { description: "Unauthorized" },
+            "403": { description: "Forbidden" },
+          },
+        },
+        delete: {
+          tags: ["Admin"],
+          summary: "Remove one permission override for a user",
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["section", "action"],
+                  properties: {
+                    section: { type: "string" },
+                    action: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Override removed" },
+            "400": { description: "Invalid section/action" },
+            "401": { description: "Unauthorized" },
+            "403": { description: "Forbidden" },
+          },
+        },
+      },
       "/admin/users/{userId}/role": {
         patch: {
           tags: ["Admin"],
@@ -413,6 +634,22 @@ export function getOpenApiDocument(baseUrl: string) {
           ],
           responses: {
             "200": { description: "Role updated" },
+          },
+        },
+      },
+      "/admin/users/{userId}/status": {
+        patch: {
+          tags: ["Admin"],
+          summary: "Toggle a user's active/inactive status (blocked for self, and for the last active admin)",
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Status toggled" },
+            "400": { description: "Cannot change own status, or cannot deactivate the last active admin" },
+            "401": { description: "Unauthorized" },
+            "403": { description: "Forbidden" },
+            "404": { description: "User not found" },
           },
         },
       },
