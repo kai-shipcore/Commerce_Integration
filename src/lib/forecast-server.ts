@@ -5,6 +5,13 @@ import path from "path";
 // Survive Next.js hot-reload by stashing the child on globalThis
 const g = globalThis as typeof globalThis & {
   _forecastChild?: ChildProcess | null;
+  // One shared start attempt. A planning page fires several requests at once,
+  // and without this each would spawn its own uvicorn to fight over port 8000.
+  _forecastStarting?: Promise<EnsureResult> | null;
+  // Remembers a failed attempt so every subsequent request does not pay the
+  // ten-second startup timeout before failing the same way.
+  _forecastStartFailedUntil?: number;
+  _forecastStartFailure?: EnsureResult | null;
 };
 
 function getChild(): ChildProcess | null {
@@ -34,6 +41,16 @@ export async function startForecastServer(): Promise<"already_running" | "starte
 
   const serverDir = process.env.FORECAST_SERVER_DIR;
   if (!serverDir) throw new Error("FORECAST_SERVER_DIR is not set in .env");
+  // Checked before spawning because FORECAST_SERVER_DIR is an absolute path to
+  // one developer's checkout. Copied between machines it points at nothing, and
+  // spawn with a missing cwd fails asynchronously with stdio ignored, so the
+  // symptom is a server that never appears and never says why.
+  if (!fs.existsSync(serverDir)) {
+    throw new Error(
+      `FORECAST_SERVER_DIR points at ${serverDir}, which does not exist on this machine. ` +
+        `Set it in .env to your own Time_Series_Forecasting checkout.`,
+    );
+  }
 
   const uvicorn = resolveUvicorn(serverDir);
   const appModule = resolveAppModule(serverDir);
@@ -44,13 +61,83 @@ export async function startForecastServer(): Promise<"already_running" | "starte
   });
   setChild(child);
   child.on("exit", () => setChild(null));
+  // Without a listener, a spawn failure raises an unhandled 'error' event on the
+  // ChildProcess, which takes down the Next.js process rather than this request.
+  child.on("error", () => setChild(null));
 
   // Poll until ready (up to 10 seconds)
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
     if (await isRunning()) return "started";
   }
-  throw new Error("Forecast server failed to start within 10 seconds");
+  throw new Error(
+    `Forecast server did not come up within 10 seconds. Try starting it by hand in ${serverDir}: ` +
+      `.venv/bin/uvicorn ${appModule} --host 0.0.0.0 --port 8000`,
+  );
+}
+
+export type EnsureResult =
+  | { ok: true; state: "already_running" | "started" }
+  | { ok: false; reason: "remote" | "not_configured" | "start_failed"; message: string };
+
+const START_FAILURE_COOLDOWN_MS = 30_000;
+
+/**
+ * Bring the forecast server up if it is down, for a request that needs it.
+ *
+ * Unlike `startForecastServer` this never throws and never lets two callers
+ * spawn at once, because it runs on the request path where a page issues
+ * several fetches in parallel.
+ *
+ * It only starts a server that is meant to be local. When `AI_SERVICE_URL`
+ * points somewhere else, that machine's server is not ours to manage and the
+ * honest answer is that it is down.
+ */
+export async function ensureForecastServer(): Promise<EnsureResult> {
+  if (!usesLocalForecastServer()) {
+    return {
+      ok: false,
+      reason: "remote",
+      message: `The forecast server at ${forecastApiBase()} is not responding, and it is not a local server this app can start.`,
+    };
+  }
+  if (!process.env.FORECAST_SERVER_DIR) {
+    return {
+      ok: false,
+      reason: "not_configured",
+      message:
+        "The forecast server is not running, and FORECAST_SERVER_DIR is not set in .env, so it cannot be started automatically. Point it at your Time_Series_Forecasting checkout.",
+    };
+  }
+
+  const failedUntil = g._forecastStartFailedUntil ?? 0;
+  if (Date.now() < failedUntil && g._forecastStartFailure) {
+    return g._forecastStartFailure;
+  }
+
+  if (g._forecastStarting) return g._forecastStarting;
+
+  g._forecastStarting = (async (): Promise<EnsureResult> => {
+    try {
+      const state = await startForecastServer();
+      g._forecastStartFailedUntil = 0;
+      g._forecastStartFailure = null;
+      return { ok: true, state };
+    } catch (err) {
+      const failure: EnsureResult = {
+        ok: false,
+        reason: "start_failed",
+        message: err instanceof Error ? err.message : String(err),
+      };
+      g._forecastStartFailedUntil = Date.now() + START_FAILURE_COOLDOWN_MS;
+      g._forecastStartFailure = failure;
+      return failure;
+    } finally {
+      g._forecastStarting = null;
+    }
+  })();
+
+  return g._forecastStarting;
 }
 
 function forecastApiBase() {

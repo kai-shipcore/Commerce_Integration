@@ -78,4 +78,12 @@ Inngest (`src/lib/inngest/`) handles event-driven background workflows. The clie
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` — Password reset email
 - `NEXT_PUBLIC_APP_URL` — Public-facing URL
 
+**Forecasting service** (the Planning pages: Demand Forecast, Action List, Forecast Validation):
+- `AI_SERVICE_URL` — Where the FastAPI forecast service lives. Defaults to `http://localhost:8000`.
+- `FORECAST_API_TOKEN` — Sent as `x-forecast-token`. Must match the same variable on the Python side, or every request except `/health` returns 401.
+- `FORECAST_SERVER_DIR` — **Machine-specific absolute path** to your own `Time_Series_Forecasting` checkout. When `AI_SERVICE_URL` is localhost and the service is not answering, the app starts it from here on demand. Do not copy this value from someone else's `.env`: pointing at a directory that does not exist on your machine is the usual reason the Planning pages report that they cannot reach the forecast server.
+- `FORECAST_SERVER_APP` — Optional uvicorn app path. Inferred as `api.main:app` when `api/main.py` is present.
+
+Auto-start only applies to a local service. If `AI_SERVICE_URL` points at another host, that server is not this app's to manage and an outage is reported rather than worked around.
+
 The project uses a `.env` file (not `.env.local`).

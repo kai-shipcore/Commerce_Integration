@@ -27,31 +27,84 @@ export async function proxyPlanning(
   const { NextResponse } = await import("next/server");
   const url = `${forecastApiBase()}${path}${search ? `?${search}` : ""}`;
 
-  try {
-    const upstream = await fetch(url, {
+  const attempt = () =>
+    fetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
       headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" },
     });
 
-    const body = await upstream.text();
-
-    if (!upstream.ok) {
-      // The status is passed through rather than flattened to 500. A 404 from
-      // the planning endpoints is meaningful: it distinguishes a SKU that is
-      // not forecastable from one that does not exist, and the page words those
-      // differently.
+  let upstream: Response;
+  try {
+    upstream = await attempt();
+  } catch {
+    // Unreachable rather than erroring. On a developer machine the forecast
+    // server is a process someone has to remember to start, and forgetting is
+    // the single most common way these pages appear broken. Start it and retry
+    // once, so opening the page is enough.
+    //
+    // Deliberately not a general retry: this runs only when the connection
+    // itself failed, never on a response the server actually produced.
+    const { ensureForecastServer } = await import("@/lib/forecast-server");
+    const ensured = await ensureForecastServer();
+    if (!ensured.ok) {
       return NextResponse.json(
-        { error: `Forecast server error (${upstream.status})`, detail: body },
-        { status: upstream.status },
+        { error: "Could not reach forecast server", detail: ensured.message },
+        { status: 503 },
+      );
+    }
+    try {
+      upstream = await attempt();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json(
+        {
+          error: "Could not reach forecast server",
+          detail: `The server started but did not answer: ${message}`,
+        },
+        { status: 503 },
+      );
+    }
+  }
+
+  const body = await upstream.text();
+
+  if (!upstream.ok) {
+    // A 404 on a planning path means the server is running an older revision
+    // that predates these endpoints, which is a different problem from a
+    // missing SKU and has a different fix. Saying so here saves the reader
+    // debugging their data when the answer is git pull.
+    const outdated = upstream.status === 404 && !path.startsWith("/planning/sku/");
+    if (outdated) {
+      return NextResponse.json(
+        {
+          error: "Forecast server is out of date",
+          detail:
+            `The forecast server does not have the ${path} endpoint. It is running an older ` +
+            `revision of Time_Series_Forecasting. Pull the latest there and restart it.`,
+        },
+        { status: 404 },
       );
     }
 
-    return NextResponse.json(JSON.parse(body));
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Otherwise the status is passed through rather than flattened to 500. A
+    // 404 from the SKU endpoint is meaningful: it distinguishes a SKU that is
+    // not forecastable from one that does not exist, and the page words those
+    // differently.
     return NextResponse.json(
-      { error: "Could not reach forecast server", detail: message },
-      { status: 503 },
+      { error: `Forecast server error (${upstream.status})`, detail: body },
+      { status: upstream.status },
+    );
+  }
+
+  try {
+    return NextResponse.json(JSON.parse(body));
+  } catch {
+    return NextResponse.json(
+      {
+        error: "Forecast server returned a malformed response",
+        detail: body.slice(0, 500),
+      },
+      { status: 502 },
     );
   }
 }
