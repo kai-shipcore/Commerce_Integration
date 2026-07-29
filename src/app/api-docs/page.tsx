@@ -1,5 +1,5 @@
-import Script from "next/script";
 import { withBasePath } from "@/lib/api-path";
+import { SwaggerDocs } from "./swagger-docs";
 
 export const metadata = {
   title: "API Docs | Demand Pilot",
@@ -7,42 +7,18 @@ export const metadata = {
 };
 
 export default function ApiDocsPage() {
-  const openApiUrl = withBasePath("/api/openapi");
-
   return (
     <div className="min-h-screen bg-white">
-      <link
-        rel="stylesheet"
-        href={withBasePath("/api/swagger-ui/swagger-ui.css")}
-      />
       <div className="border-b bg-slate-950 px-6 py-4 text-white">
         <h1 className="text-xl font-semibold">Demand Pilot API Docs</h1>
         <p className="mt-1 text-sm text-slate-300">
           Swagger UI for the current Next.js API routes.
         </p>
       </div>
-      <div id="swagger-ui" className="min-h-[calc(100vh-81px)]" />
-      <Script
-        src={withBasePath("/api/swagger-ui/swagger-ui-bundle.js")}
-        strategy="afterInteractive"
-      />
-      <Script
-        id="swagger-ui-init"
-        strategy="afterInteractive"
-        dangerouslySetInnerHTML={{
-          __html: `
-            window.addEventListener('load', function () {
-              if (!window.SwaggerUIBundle) return;
-              window.SwaggerUIBundle({
-                url: ${JSON.stringify(openApiUrl)},
-                dom_id: '#swagger-ui',
-                deepLinking: true,
-                presets: [window.SwaggerUIBundle.presets.apis],
-                layout: 'BaseLayout',
-              });
-            });
-          `,
-        }}
+      <SwaggerDocs
+        cssHref={withBasePath("/api/swagger-ui/swagger-ui.css")}
+        bundleSrc={withBasePath("/api/swagger-ui/swagger-ui-bundle.js")}
+        openApiUrl={withBasePath("/api/openapi")}
       />
     </div>
   );
