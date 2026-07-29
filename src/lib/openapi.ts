@@ -24,6 +24,17 @@ export function getOpenApiDocument(baseUrl: string) {
       { name: "Settings" },
       { name: "Admin" },
       { name: "Background" },
+      { name: "Containers" },
+      { name: "Docs" },
+      { name: "Factories" },
+      { name: "Forecast" },
+      { name: "Home" },
+      { name: "Planning" },
+      { name: "Production" },
+      { name: "Purchase Orders" },
+      { name: "User" },
+      { name: "Velocity" },
+      { name: "Warehouses" },
     ],
     paths: {
       "/auth/register": {
@@ -673,6 +684,1727 @@ export function getOpenApiDocument(baseUrl: string) {
           summary: "Inngest auxiliary handler",
           responses: {
             "200": { description: "Inngest request handled" },
+          },
+        },
+      },
+      "/auth/forgot-password": {
+        post: {
+          tags: ["Auth"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/auth/reset-password": {
+        post: {
+          tags: ["Auth"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/container-available-stock": {
+        get: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/containers/{id}/history": {
+        get: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        put: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/containers": {
+        get: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Containers"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/factories/{id}": {
+        put: {
+          tags: ["Factories"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Factories"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/factories": {
+        get: {
+          tags: ["Factories"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Factories"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast-server/start": {
+        post: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast-server/status": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast-server/stop": {
+        post: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/{sku}/accuracy": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/{sku}/backtest": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/{sku}/history": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/{sku}": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/accuracy-history": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/all-skus": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/backtest-cycles": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/bounds": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/cancel/{jobId}": {
+        post: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "jobId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/chat": {
+        post: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/config": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        put: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/demand-trend": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/last-run": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/run": {
+        post: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/segment/{segment}": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "segment", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/segment/{segment}/simulate/cancel/{jobId}": {
+        post: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "segment", in: "path", required: true, schema: { type: "string" } },
+            { name: "jobId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/segment/{segment}/simulate/result": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "segment", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/segment/{segment}/simulate": {
+        post: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "segment", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/segmentation": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/sku-search": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/forecast/status/{jobId}": {
+        get: {
+          tags: ["Forecast"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "jobId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/home/sales-trend": {
+        get: {
+          tags: ["Home"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/integrations/{id}/ebay-auth": {
+        get: {
+          tags: ["Integrations"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/integrations/ebay-callback": {
+        get: {
+          tags: ["Integrations"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/openapi": {
+        get: {
+          tags: ["Docs"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/action-list": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/containers/{id}/auto-fill": {
+        post: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/containers/items/{id}": {
+        delete: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/containers/items": {
+        post: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/dashboard": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/home-stats": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/not-forecast": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/oos-impact/preorder": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/oos-impact/recovery/drilldown": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/oos-impact/recovery": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/oos-impact/top-sellers": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/products/{sku}": {
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku-forecasts/inbound-history": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku-forecasts/inbound": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku-forecasts/sales-history": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku-master": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        put: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku-notes": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        put: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku/{sku}/memo": {
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku/{sku}": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku/{sku}/stock-mode": {
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku/{sku}/transit-stock": {
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "sku", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/sku/stock-mode": {
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/stats/oos-lost-demand-weights": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/stats/refresh": {
+        post: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/transit-records/{id}": {
+        patch: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/transit-records/import": {
+        post: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/transit-records": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/transit-stock/import": {
+        put: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/planning/warehouses": {
+        get: {
+          tags: ["Planning"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/product-vehicles/sync": {
+        post: {
+          tags: ["Integrations"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/assignable-users": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/codes/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/codes": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/credit-notes/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/credit-notes/bulk": {
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/credit-notes": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/designer-initials/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/designer-initials": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/attachment": {
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/generated-invoice": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/items/{itemId}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "itemId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "itemId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/items/import": {
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/items/imports/{sourceFileId}": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "sourceFileId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "sourceFileId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/items/imports": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/items": {
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}/recompare": {
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices/{id}": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/invoices": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/part-skus/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/part-skus": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/parts/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/parts": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/price-history/files/{id}": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/price-history": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        put: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/product-vehicles/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/product-vehicles": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/products/{id}/projects": {
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/products/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/products": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/projects/{id}/checklist/{itemId}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "itemId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "itemId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/projects/{id}/checklist": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/projects/{id}/parts/{partId}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "partId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+            { name: "partId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/projects/{id}/parts": {
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/projects/{id}": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/seat-cover-parts/{id}": {
+        patch: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/seat-cover-parts": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/production/vehicle-options": {
+        get: {
+          tags: ["Production"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/products/sync": {
+        post: {
+          tags: ["Integrations"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/purchase-orders": {
+        get: {
+          tags: ["Purchase Orders"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Purchase Orders"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        patch: {
+          tags: ["Purchase Orders"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Purchase Orders"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/settings/password": {
+        patch: {
+          tags: ["Settings"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/sku-mappings/sync": {
+        post: {
+          tags: ["Integrations"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/swagger-ui/{...file}": {
+        get: {
+          tags: ["Docs"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "file", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/user/activity/events": {
+        post: {
+          tags: ["User"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/user/activity": {
+        post: {
+          tags: ["User"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/user/permissions": {
+        get: {
+          tags: ["User"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/user/preferences": {
+        get: {
+          tags: ["User"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        put: {
+          tags: ["User"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity/channels": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity/custom-enrich": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity/data": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity/preorder-enrich": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity/sales-export": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity/sync": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/velocity/ttm-enrich": {
+        get: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Velocity"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/warehouses/{id}": {
+        patch: {
+          tags: ["Warehouses"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        delete: {
+          tags: ["Warehouses"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+      },
+      "/warehouses": {
+        get: {
+          tags: ["Warehouses"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
+          },
+        },
+        post: {
+          tags: ["Warehouses"],
+          summary: "TODO: undocumented (auto-generated stub)",
+          responses: {
+            "200": { description: "Success" },
           },
         },
       },
