@@ -1,8 +1,8 @@
 // Code Guide: Download an uploaded price list source file by id.
 
 import { NextResponse } from "next/server";
-import { getPrimaryPool } from "@/lib/db/primary-db";
 import { guardPermission } from "@/lib/permissions";
+import { InvoicePriceControlService } from "@/lib/invoice-price-control/service";
 
 export async function GET(
   _request: Request,
@@ -12,24 +12,13 @@ export async function GET(
   if (denied) return denied;
 
   const { id } = await params;
-  const result = await getPrimaryPool().query<{
-    original_name: string;
-    mime_type: string | null;
-    file_data: Buffer;
-  }>(
-    `SELECT original_name, mime_type, file_data
-     FROM shipcore.fc_price_list_files
-     WHERE id = $1::bigint`,
-    [id],
-  );
+  const file = await InvoicePriceControlService.findPriceListFile(id);
+  if (!file) return NextResponse.json({ success: false, error: "File not found" }, { status: 404 });
 
-  const row = result.rows[0];
-  if (!row) return NextResponse.json({ success: false, error: "File not found" }, { status: 404 });
-
-  return new NextResponse(new Uint8Array(row.file_data), {
+  return new NextResponse(new Uint8Array(file.fileData), {
     headers: {
-      "Content-Type": row.mime_type || "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${row.original_name.replace(/"/g, "")}"`,
+      "Content-Type": file.mimeType || "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${file.originalName.replace(/"/g, "")}"`,
     },
   });
 }
