@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, Download, Loader2, RotateCcw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { apiPath } from "@/lib/api-path";
@@ -27,7 +27,14 @@ import {
   ActionListTable, DEFAULT_SORT, PRIORITY, nextSort, sortRows,
   type SortCriterion, type SortKey,
 } from "./action-list-table";
+import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
+import {
+  PlanningError,
+  planningErrorFrom,
+  type PlanningErrorBody,
+} from "@/components/planning/planning-error";
 import { NotForecastSection } from "./not-forecast-section";
+import { PortfolioChart } from "./portfolio-chart";
 import {
   DEFAULT_PLANNING_PARAMS,
   planningQuery,
@@ -38,7 +45,7 @@ import {
 
 const nf = new Intl.NumberFormat("en-US");
 
-type Focus = "all" | "preorder" | "no-stock" | "best-seller" | "out-soon";
+type Focus = "all" | "preorder" | "no-stock" | "best-seller" | "out-soon" | "supply-gap";
 
 const SERVICE_LEVELS: { label: string; z: number }[] = [
   { label: "84% (z=1.0)", z: 1.0 },
@@ -67,6 +74,7 @@ export function ActionListContent({
   const [category, setCategory] = useState("all");
   const [tier, setTier] = useState("all");
   const [history, setHistory] = useState("all");
+  const [priority, setPriority] = useState("all");
   const [sort, setSort] = useState<SortCriterion[]>(DEFAULT_SORT);
   // Which population is on screen. The non-forecast section fetches only once
   // opened, since it covers roughly seven times as many SKUs and most visits
@@ -80,11 +88,14 @@ export function ActionListContent({
   // free of the synchronous setState that causes cascading renders, and gives
   // the better behaviour for free: while a new lead time is in flight the
   // previous table stays on screen instead of blanking to a spinner.
-  const paramsKey = `${lead}|${review}|${z}|${horizon}`;
+  // Bumped to refetch without changing any parameter, for the retry button and
+  // for the status indicator noticing the server came back.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const paramsKey = `${lead}|${review}|${z}|${horizon}|${reloadNonce}`;
   const [state, setState] = useState<{
     key: string;
     data: ActionListResponse | null;
-    error: string | null;
+    error: PlanningErrorBody | null;
   }>({ key: "", data: null, error: null });
 
   useEffect(() => {
@@ -98,7 +109,10 @@ export function ActionListContent({
     fetch(apiPath(`/api/planning/action-list?${qs}`), { signal: controller.signal })
       .then(async (res) => {
         const body = await res.json();
-        if (!res.ok) throw new Error(body?.detail || body?.error || `HTTP ${res.status}`);
+        // The whole body is carried through, not just a message. The proxy
+        // classifies the failure and names missing files, and flattening that
+        // to a string is what produced a card reading "Internal Server Error".
+        if (!res.ok) throw planningErrorFrom(body, `HTTP ${res.status}`);
         return body as ActionListResponse;
       })
       .then((body) => setState({ key: paramsKey, data: body, error: null }))
@@ -107,7 +121,7 @@ export function ActionListContent({
         setState({
           key: paramsKey,
           data: null,
-          error: err instanceof Error ? err.message : String(err),
+          error: planningErrorFrom(err, err instanceof Error ? err.message : String(err)),
         });
       });
     return () => controller.abort();
@@ -130,6 +144,7 @@ export function ActionListContent({
     if (focus === "preorder") rows = rows.filter((r) => r.priority_label === PRIORITY.preorder);
     else if (focus === "no-stock") rows = rows.filter((r) => r.available_inventory <= 0);
     else if (focus === "best-seller") rows = rows.filter((r) => r.priority_label === PRIORITY.bestSeller);
+    else if (focus === "supply-gap") rows = rows.filter((r) => r.has_supply_gap);
     else if (focus === "out-soon") {
       rows = rows.filter(
         (r) => r.days_to_stockout !== null && r.days_to_stockout <= data.params.stockout_horizon_days,
@@ -146,16 +161,20 @@ export function ActionListContent({
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     if (tier !== "all") rows = rows.filter((r) => r.tier === tier);
     if (history !== "all") rows = rows.filter((r) => r.history_group === history);
+    // Independent of the chips, which cover three of the four labels.
+    // Without this "Routine" is unreachable: it is the only priority with
+    // no chip, being the absence of a reason to hurry.
+    if (priority !== "all") rows = rows.filter((r) => r.priority_label === priority);
     // Sorted last, and on a copy: the server returns the worklist order, which
     // is what no criteria means, so it must not be mutated on the way through.
     return sortRows(rows, sort);
-  }, [data, focus, query, category, tier, history, sort]);
+  }, [data, focus, query, category, tier, history, priority, sort]);
 
   // The page is tied to the filter set it was chosen under, so changing a filter
   // returns to page 1 without an effect resetting it. Narrowing the filters while
   // on page 5 would otherwise land on an empty page, which reads as "no results"
   // rather than "you are past the end".
-  const filterKey = `${focus}|${query}|${category}|${tier}|${history}|${pageSize}`;
+  const filterKey = `${focus}|${query}|${category}|${tier}|${history}|${priority}|${pageSize}`;
   const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(view.length / pageSize));
   const currentPage = page.key === filterKey ? Math.min(page.page, totalPages) : 1;
   const goToPage = (n: number) => setPage({ key: filterKey, page: n });
@@ -202,20 +221,12 @@ export function ActionListContent({
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="p-6 text-sm">
-          <p className="font-medium text-red-600 dark:text-red-400">
-            {pick("예측 서버에 연결할 수 없습니다.", "Could not reach the forecast server.")}
-          </p>
-          <p className="mt-1 text-muted-foreground">{error}</p>
-          <p className="mt-3 text-xs text-muted-foreground">
-            {pick(
-              "FastAPI 서비스가 AI_SERVICE_URL 주소에서 실행 중인지 확인하세요.",
-              "Check that the FastAPI service is running at AI_SERVICE_URL.",
-            )}
-          </p>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-3">
+        <div className="flex justify-end">
+          <ForecastServerStatus onRecovered={() => setReloadNonce((n) => n + 1)} />
+        </div>
+        <PlanningError body={error} onRetry={() => setReloadNonce((n) => n + 1)} />
+      </div>
     );
   }
 
@@ -228,6 +239,9 @@ export function ActionListContent({
     { key: "no-stock", label: pick("품절", "out of stock"), value: m.out_of_stock },
     { key: "best-seller", label: pick("주력 위험", "best seller risk"), value: m.best_sellers_at_risk },
     { key: "out-soon", label: pick(`${m.horizon_days}일 내 품절`, `out ≤${m.horizon_days}d`), value: m.stockout_within_horizon },
+    // Reported apart from the stockout count because the action differs: these
+    // already have stock booked and cannot be helped by ordering more.
+    { key: "supply-gap", label: pick("입고 전 품절", "dry before inbound"), value: m.supply_gap },
   ];
 
   return (
@@ -237,6 +251,12 @@ export function ActionListContent({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
           {pick("학습 기준", "Trained through")}: <strong>{data.meta.trained_through ?? "—"}</strong>
+        </span>
+        {/* Kept visible on the success path too. The service can go down while
+            the page is open, and the next filter change would then fail with no
+            hint that the cause is external. */}
+        <span className="ml-auto">
+          <ForecastServerStatus onRecovered={() => setReloadNonce((n) => n + 1)} />
         </span>
         <span>
           {pick("예측 SKU", "SKUs")}: <strong>{nf.format(data.meta.sku_count)}</strong>
@@ -380,6 +400,16 @@ export function ActionListContent({
           <option value="none">{pick("미측정", "none")}</option>
         </select>
         <select
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-xs"
+        >
+          <option value="all">{pick("우선순위: 전체", "Priority: all")}</option>
+          {[PRIORITY.preorder, PRIORITY.noStock, PRIORITY.bestSeller, PRIORITY.routine].map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+        <select
           value={history}
           onChange={(e) => setHistory(e.target.value)}
           className="h-8 rounded-md border bg-background px-2 text-xs"
@@ -404,7 +434,7 @@ export function ActionListContent({
           type="button"
           onClick={() => {
             setFocus("all"); setQuery(""); setCategory("all");
-            setTier("all"); setHistory("all"); setSort(DEFAULT_SORT);
+            setTier("all"); setHistory("all"); setPriority("all"); setSort(DEFAULT_SORT);
           }}
           className="flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted/60"
         >
@@ -433,6 +463,31 @@ export function ActionListContent({
         </span>
       </div>
 
+      {view.length > 0 && <PortfolioChart skus={view.map((r) => r.unique_id)} />}
+
+      {/* Data-quality summary for what is on screen, not the whole list. A count
+          that ignores the filters describes a different population from the rows
+          below it. */}
+      {(() => {
+        const counts = new Map<string, number>();
+        for (const r of view) for (const f of r.flags) counts.set(f, (counts.get(f) ?? 0) + 1);
+        const flagged = view.filter((r) => r.flags.length > 0).length;
+        if (!flagged) return null;
+        return (
+          <p className="text-[11px] text-muted-foreground">
+            <AlertTriangle className="mr-1 inline h-3 w-3 text-amber-500" />
+            {pick(
+              `이 목록의 ${nf.format(view.length)}개 중 ${nf.format(flagged)}개에 데이터 품질 경고가 있습니다: `,
+              `${nf.format(flagged)} of ${nf.format(view.length)} SKUs in this view carry a data-quality warning: `,
+            )}
+            {[...counts.entries()]
+              .sort((a, b) => b[1] - a[1])
+              .map(([label, n]) => `${label} (${n})`)
+              .join(" · ")}
+          </p>
+        );
+      })()}
+
       {view.length === 0 ? (
         <Card><CardContent className="p-6 text-sm text-muted-foreground">
           {pick("조건에 맞는 SKU가 없습니다.", "No SKUs match these filters.")}
@@ -458,6 +513,37 @@ export function ActionListContent({
             setSort((prev) => nextSort(prev, key, shiftKey))
           }
         />
+        {/* Legend. The reliability column is three glyphs and a percentage, which
+            means nothing without the thresholds behind it, and a tier is a
+            judgement the reader should be able to check. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-muted-foreground">
+          <span className="font-medium">{pick("신뢰도", "Reliability")}:</span>
+          {([
+            ["good", "●●●", pick("좋음 · 오차 15% 이하", "good · error ≤15%")],
+            ["fair", "●●○", pick("보통 · 15–30%", "fair · 15–30%")],
+            ["poor", "●○○", pick("낮음 · 30% 초과", "poor · over 30%")],
+            ["none", "○○○", pick("미측정 · 백테스트 없음", "not measured · no backtest window")],
+          ] as const).map(([tierKey, glyph, label]) => {
+            const n = view.filter((r) => r.tier === tierKey).length;
+            return (
+              <span key={tierKey} className="inline-flex items-center gap-1">
+                <span
+                  className={`font-mono ${
+                    tierKey === "good" ? "text-emerald-600 dark:text-emerald-400"
+                      : tierKey === "fair" ? "text-amber-600 dark:text-amber-400"
+                      : tierKey === "poor" ? "text-red-600 dark:text-red-400"
+                      : "text-neutral-400"
+                  }`}
+                >
+                  {glyph}
+                </span>
+                {label}
+                <span className="tabular-nums opacity-70">({nf.format(n)})</span>
+              </span>
+            );
+          })}
+        </div>
+
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-3 text-xs">
             <button

@@ -30,6 +30,19 @@ export interface ActionListRow {
 
   // Action: when it runs out and what to buy.
   days_to_stockout: number | null;
+  /** Days until the earliest confirmed container lands. Null when nothing is
+   *  inbound. */
+  days_to_inbound: number | null;
+  /** Days the SKU sits at zero between running out and that container landing.
+   *  Null when there is no gap. The order quantity credits inbound as though it
+   *  were on the shelf, while the stockout date ignores it entirely, so without
+   *  this the row shows "out in 12 days" beside "order 0" and explains neither. */
+  supply_gap_days: number | null;
+  has_supply_gap: boolean;
+  /** Whether a purchase order placed today would beat the container. Usually
+   *  false: with an 8-week lead time, ordering cannot close a shorter gap, and
+   *  the action is to expedite rather than to buy. */
+  gap_closable_by_order: boolean;
   estimated_stockout_date: string | null;
   coverage_demand: number;
   safety_stock: number;
@@ -58,6 +71,8 @@ export interface ActionListMetrics {
   out_of_stock: number;
   best_sellers_at_risk: number;
   stockout_within_horizon: number;
+  supply_gap: number;
+  supply_gap_backlog: number;
   total_recommended_order_qty: number;
   horizon_days: number;
 }
@@ -236,6 +251,13 @@ export interface HistoryWeek {
 
 export interface SkuDetailResponse {
   params: ActionListParams;
+  /** Every forecastable SKU in worklist order, so the detail view can offer a
+   *  selector and step between SKUs without returning to the list. */
+  skus: string[];
+  /** This SKU's index in that list. -1 if absent, which cannot happen for a
+   *  successful response but keeps the consumer honest. */
+  position: number;
+  meta: { inventory_is_sample: boolean; inventory_source: string };
   row: ActionListRow & {
     /** Mean weekly units over the last 4 weeks, on raw demand. The figure the
      *  runs-high callout compares the forecast against. */

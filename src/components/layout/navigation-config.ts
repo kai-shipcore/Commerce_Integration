@@ -15,6 +15,7 @@ import {
   Plug,
   ScrollText,
   ShieldCheck,
+  SearchCheck,
   Ship,
   ShoppingCart,
   TrendingUp,
@@ -138,6 +139,17 @@ export const navigationItems: NavigationItem[] = [
     name: "Action List",
     href: "/planning/action-list",
     icon: ClipboardList,
+    group: "Planning",
+    hideable: true,
+  },
+  {
+    // Sits next to Action List because it is what justifies trusting it. Action
+    // List says what to order; this says how much the forecast behind that
+    // recommendation has earned, against the spreadsheet method it replaces.
+    id: "forecast-validation",
+    name: "Forecast Validation",
+    href: "/planning/forecast-validation",
+    icon: SearchCheck,
     group: "Planning",
     hideable: true,
   },
@@ -298,6 +310,7 @@ export const userDefaultVisibleMenuIds = [
   "demand-forecast",
   "oos-impact",
   "action-list",
+  "forecast-validation",
   "container-planning",
   "container-timeline",
   "available-stock",

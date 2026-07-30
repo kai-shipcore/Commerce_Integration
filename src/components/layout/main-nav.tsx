@@ -33,7 +33,10 @@ const MENU_FETCH_TIMEOUT_MS = 2000;
 
 const navigationGroups = [
   { name: "Commerce", labelKey: "nav.commerce" as const, itemIds: ["inventory", "orders", "velocity"] },
-  { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "demand-forecast", "oos-impact", "action-list", "container-planning", "container-timeline", "available-stock", "transit-stock"] },
+  // Note: this list is what actually renders. navigation-config.ts defines the
+  // items, but a group here decides which appear and in what order, so an item
+  // missing from this array is invisible however it is registered there.
+  { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "demand-forecast", "oos-impact", "action-list", "forecast-validation", "container-planning", "container-timeline", "available-stock", "transit-stock"] },
   { name: "Production", labelKey: "nav.production" as const, itemIds: ["seat-cover-sizes", "production-vehicles", "production-parts-codes", "part-sku-generator", "project-list"] },
   { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "factories", "warehouse-admin"] },
   { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "invoice-price-control", "audit-log", "user-access", "container-import"] },
@@ -51,6 +54,7 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   "demand-forecast": "nav.demandForecast",
   "oos-impact": "nav.oosImpact",
   "action-list": "nav.actionList",
+  "forecast-validation": "nav.forecastValidation",
   "sku-forecasts": "nav.skuPlanning",
   "container-planning": "nav.containerPlanning",
   "container-timeline": "nav.containerTimeline",

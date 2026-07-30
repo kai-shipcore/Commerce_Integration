@@ -192,7 +192,17 @@ export function sortRows(rows: ActionListRow[], criteria: SortCriterion[]): Acti
   return out;
 }
 
-function Urgency({ days, date }: { days: number | null; date: string | null }) {
+function Urgency({
+  days,
+  date,
+  gapDays,
+  inboundDays,
+}: {
+  days: number | null;
+  date: string | null;
+  gapDays: number | null;
+  inboundDays: number | null;
+}) {
   const { pick } = useI18n();
   if (days === null || !Number.isFinite(days)) {
     return <span className="text-neutral-400">—</span>;
@@ -202,7 +212,16 @@ function Urgency({ days, date }: { days: number | null; date: string | null }) {
   return (
     <span className={urgent ? "font-semibold text-red-600 dark:text-red-400" : ""}>
       {label}
-      {date && <span className="ml-1 text-[10px] font-normal opacity-60">{date}</span>}
+      {/* When stock runs out before the container lands, both dates are shown.
+          One number alone reads as "order 0 is fine" beside a stockout date, and
+          the days in between are the whole point. */}
+      {gapDays !== null && inboundDays !== null ? (
+        <span className="ml-1 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
+          {pick(`· ${Math.round(inboundDays)}일 후 입고`, `· lands ${Math.round(inboundDays)}d`)}
+        </span>
+      ) : (
+        date && <span className="ml-1 text-[10px] font-normal opacity-60">{date}</span>
+      )}
     </span>
   );
 }
@@ -371,7 +390,12 @@ export function ActionListTable({
                 <TableCell className={`text-right tabular-nums ${BAND.dem.edge}`}>{nf.format(Math.round(r.recent_units))}</TableCell>
                 <TableCell className="text-right tabular-nums">{nf.format(Math.round(r.forecast_total))}</TableCell>
                 <TableCell className={`text-right tabular-nums ${BAND.act.edge}`}>
-                  <Urgency days={r.days_to_stockout} date={r.estimated_stockout_date} />
+                  <Urgency
+                    days={r.days_to_stockout}
+                    date={r.estimated_stockout_date}
+                    gapDays={r.supply_gap_days}
+                    inboundDays={r.days_to_inbound}
+                  />
                 </TableCell>
                 <TableCell className="text-right text-[13px] font-semibold tabular-nums">
                   {nf.format(r.recommended_order_qty)}
