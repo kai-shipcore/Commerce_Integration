@@ -18,8 +18,14 @@ import {
   type RolePermMatrix,
 } from "@/lib/permissions-config";
 
-const ROLES_CACHE_KEY = "perm:roles:all:v2";
-const OVERRIDE_TTL = 600;
+// Exported so the User-Admin domain (which owns the write side of these two
+// tables) can invalidate the same cache entries this module reads from —
+// keeping the key/TTL in one place instead of duplicated per consumer.
+export const ROLES_CACHE_KEY = "perm:roles:all:v2";
+export const PERMISSION_CACHE_TTL = 600;
+export function userOverridesCacheKey(userId: string): string {
+  return `perm:user:${userId}`;
+}
 
 async function getRoleMatrix(role: ManagedRole): Promise<RolePermMatrix> {
   const allRoles = await CacheManager.get<Record<string, RolePermMatrix>>(ROLES_CACHE_KEY);
@@ -33,7 +39,7 @@ async function getRoleMatrix(role: ManagedRole): Promise<RolePermMatrix> {
 }
 
 async function getUserOverrides(userId: string) {
-  const key = `perm:user:${userId}`;
+  const key = userOverridesCacheKey(userId);
   const cached = await CacheManager.get<Array<{ section: string; action: string; allowed: boolean }>>(key);
   if (cached) return cached;
 
@@ -41,7 +47,7 @@ async function getUserOverrides(userId: string) {
     `SELECT section, action, allowed FROM shipcore.fc_user_permission_overrides WHERE user_id = $1`,
     [userId]
   );
-  void CacheManager.set(key, result.rows, OVERRIDE_TTL);
+  void CacheManager.set(key, result.rows, PERMISSION_CACHE_TTL);
   return result.rows as Array<{ section: string; action: string; allowed: boolean }>;
 }
 
