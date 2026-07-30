@@ -45,7 +45,6 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   inventory: "nav.inventory",
   orders: "nav.orders",
   signals: "nav.demandSignals",
-  collections: "nav.collections",
   analytics: "nav.analytics",
   velocity: "nav.velocity",
   "demand-planning": "nav.demandPlanning",

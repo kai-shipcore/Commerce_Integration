@@ -82,15 +82,6 @@ export const navigationItems: NavigationItem[] = [
     hidden: true,
   },
   {
-    id: "collections",
-    name: "Collections",
-    href: "/collections",
-    icon: FolderKanban,
-    group: "Commerce",
-    hideable: true,
-    hidden: true,
-  },
-  {
     id: "analytics",
     name: "Analytics",
     href: "/analytics",
