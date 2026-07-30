@@ -10,7 +10,7 @@ export type ManualDocEntry = { kind: "section"; sectionId: string };
 
 export const MANUAL_DOC_BY_MENU_ID: Record<string, ManualDocEntry> = {
   // Generic fallback for menus with no dedicated help content yet
-  // (e.g. products, collections, purchase-orders). No permission section
+  // (e.g. products, purchase-orders). No permission section
   // is registered for this pseudo-id, so it only requires a login.
   overview: { kind: "section", sectionId: "overview" },
 

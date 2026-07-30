@@ -57,28 +57,6 @@ export interface SalesRecord {
   createdAt: Date
 }
 
-// Collection Types
-export interface SKUCollection {
-  id: string
-  name: string
-  description?: string | null
-  colorCode?: string | null
-  isPinned: boolean
-  sortOrder: number
-  createdAt: Date
-  updatedAt: Date
-}
-
-export interface SKUCollectionWithMembers extends SKUCollection {
-  members: {
-    id: string
-    skuId: string
-    sortOrder: number
-    addedAt: Date
-    sku: SKU
-  }[]
-}
-
 // Purchase Order Types
 export interface PurchaseOrder {
   id: string
