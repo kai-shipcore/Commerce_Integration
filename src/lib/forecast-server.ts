@@ -169,12 +169,19 @@ export async function ensureForecastServer(): Promise<EnsureResult> {
       message: `The forecast server at ${forecastApiBase()} is not responding, and it is not a local server this app can start.`,
     };
   }
+  // Unset is also how the deployed box opts out. There the service is a systemd
+  // unit with Restart=always, and a second supervisor racing it to spawn
+  // uvicorn on the same port is worse than an honest outage. So this is not
+  // necessarily a misconfiguration, and the message must not assume it is.
   if (!process.env.FORECAST_SERVER_DIR) {
     return {
       ok: false,
       reason: "not_configured",
       message:
-        "The forecast server is not running, and FORECAST_SERVER_DIR is not set in .env, so it cannot be started automatically. Point it at your Time_Series_Forecasting checkout.",
+        "The forecast server is not answering and this app is not configured to start it. " +
+        "On a deployed server that is expected: systemd owns the service, so check " +
+        "`systemctl status coverland-forecast-api`. On a development machine, set " +
+        "FORECAST_SERVER_DIR in .env to your own Time_Series_Forecasting checkout.",
     };
   }
 
