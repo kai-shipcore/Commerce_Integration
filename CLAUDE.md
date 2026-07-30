@@ -87,3 +87,26 @@ Inngest (`src/lib/inngest/`) handles event-driven background workflows. The clie
 Auto-start only applies to a local service. If `AI_SERVICE_URL` points at another host, that server is not this app's to manage and an outage is reported rather than worked around.
 
 The project uses a `.env` file (not `.env.local`).
+
+## Dependency notes
+
+### `xlsx` is installed from a URL, deliberately
+
+```json
+"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+```
+
+SheetJS stopped publishing to npm. The `xlsx` package on the public registry is
+frozen at `0.18.5` from 2022 and carries two unpatched advisories, prototype
+pollution and a ReDoS, both in the parsing path. `npm audit` reports them as
+"no fix available", which is true of npm and not of the library: maintained
+releases live on the vendor's own CDN and are installed by URL.
+
+Do not "tidy" this back to a semver range. That silently reinstalls the
+abandoned 2022 build. The app parses user-supplied spreadsheets in
+`sku-master`, `container-planning`, `transit-stock`, `available-stock` and the
+transit-stock import dialog, so the parsing path is reachable.
+
+Consequence for deployment: whatever runs `npm install` needs network access to
+`cdn.sheetjs.com`. If a build host is locked down, vendor the tarball rather
+than reverting the version.
