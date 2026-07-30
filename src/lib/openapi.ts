@@ -85,14 +85,6 @@ export function getOpenApiDocument(baseUrl: string) {
             "200": { description: "Aggregated SKU list" },
           },
         },
-        post: {
-          tags: ["SKUs"],
-          summary: "Create one SKU",
-          responses: {
-            "201": { description: "SKU created" },
-            "400": { description: "Validation error" },
-          },
-        },
       },
       "/skus/{id}": {
         get: {
@@ -104,52 +96,6 @@ export function getOpenApiDocument(baseUrl: string) {
           responses: {
             "200": { description: "SKU detail" },
             "404": { description: "SKU not found" },
-          },
-        },
-        patch: {
-          tags: ["SKUs"],
-          summary: "Update one SKU",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "SKU updated" },
-            "400": { description: "Validation error" },
-          },
-        },
-        delete: {
-          tags: ["SKUs"],
-          summary: "Delete one SKU",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "SKU deleted" },
-          },
-        },
-      },
-      "/skus/bulk": {
-        delete: {
-          tags: ["SKUs"],
-          summary: "Delete multiple SKUs",
-          responses: {
-            "200": { description: "Bulk delete completed" },
-          },
-        },
-      },
-      "/skus/backfill-master": {
-        get: {
-          tags: ["SKUs"],
-          summary: "Get master SKU backfill status",
-          responses: {
-            "200": { description: "Backfill stats" },
-          },
-        },
-        post: {
-          tags: ["SKUs"],
-          summary: "Backfill master SKU codes into SKU and sales data",
-          responses: {
-            "200": { description: "Backfill executed" },
           },
         },
       },

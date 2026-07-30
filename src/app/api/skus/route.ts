@@ -1,42 +1,20 @@
 /**
  * Code Guide:
  * This API route owns the skus backend workflow.
- * It validates request data, reads or writes database records, and returns JSON to the UI.
- * Cache invalidation and service calls usually happen here because this layer coordinates side effects.
+ * Controller layer only: parses the request, validates input, delegates to
+ * SkuService, and formats the response. Business logic and data access live
+ * in src/lib/skus/service.ts and src/lib/skus/repository.ts.
+ *
+ * Read-only: this list endpoint is still consumed as a SKU picker by the
+ * Sales/Collections forms and the Analytics overview. The create/edit/delete
+ * SKU management UI (the standalone /skus page) has been removed since it
+ * was hidden from navigation and unreachable.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
-import { Prisma } from "@prisma/client";
-import { z } from "zod";
-import { CacheManager } from "@/lib/redis";
+import { NextRequest } from "next/server";
 import { guardPermission } from "@/lib/permissions";
-
-const DEFAULT_INVENTORY_LOCATION_CODE = "DEFAULT";
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
-// Validation schema for creating/updating SKUs
-const SKUSchema = z.object({
-  skuCode: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().optional(),
-  category: z.string().optional(),
-  currentStock: z.number().int().min(0).default(0),
-  reorderPoint: z.number().int().min(0).optional(),
-  isCustomVariant: z.boolean().default(false),
-  parentSKUId: z.string().optional(),
-  imageUrl: z.string().url().optional().or(z.literal("")),
-  tags: z.array(z.string()).default([]),
-  unitCost: z.number().positive().optional(),
-  retailPrice: z.number().positive().optional(),
-  shopifyProductId: z.string().optional(),
-  amazonASIN: z.string().optional(),
-  walmartItemId: z.string().optional(),
-  ebayItemId: z.string().optional(),
-});
+import { apiSuccess, handleApiError } from "@/lib/api-response";
+import { SkuService, resolveSalesPeriodDays } from "@/lib/skus/service";
 
 // GET /api/skus - List products from sc_products + sc_inventory_snapshot
 export async function GET(request: NextRequest) {
@@ -45,267 +23,27 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "50")));
-    const offset = (page - 1) * limit;
-
-    const rawSortBy = searchParams.get("sortBy") || "masterSkuCode";
-    const sortOrder = searchParams.get("sortOrder") === "desc" ? "DESC" : "ASC";
-    const sortColMap: Record<string, string> = {
-      masterSkuCode: "p.master_sku",
-      name: "p.product_name",
-      available: "inv_available",
-      onHand: "inv_on_hand",
-      backorder: "inv_backorder",
-      salesRecords: "p.master_sku",
-      webSkuCount: "web_sku_count",
-    };
-    const sortCol = sortColMap[rawSortBy] ?? "p.master_sku";
-
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "50");
+    const sortBy = searchParams.get("sortBy") || "masterSkuCode";
+    const sortOrder = searchParams.get("sortOrder") === "desc" ? "desc" : "asc";
     const search = searchParams.get("search")?.trim() || "";
-    const searchParam = search ? `%${search}%` : null;
-
     const category = searchParams.get("category")?.trim() || "";
-    const categoryParam = category && category !== "all" ? category : null;
+    const salesPeriodDays = resolveSalesPeriodDays(searchParams.get("salesPeriod"));
 
-    const validPeriods = [30, 60, 90, 365];
-    const salesPeriodDays = validPeriods.includes(parseInt(searchParams.get("salesPeriod") || ""))
-      ? parseInt(searchParams.get("salesPeriod")!)
-      : 30;
-    const salesStartDate = new Date(Date.now() - salesPeriodDays * 24 * 60 * 60 * 1000);
-
-    type CategoryRow = { category: string };
-    const categoryRows = await prisma.$queryRawUnsafe<CategoryRow[]>(
-      `SELECT DISTINCT p.category FROM shipcore.sc_products p WHERE p.category IS NOT NULL ORDER BY p.category`
-    );
-    const availableCategories = categoryRows.map((r: CategoryRow) => r.category);
-
-    type CountRow = { count: bigint };
-    const countResult = await prisma.$queryRawUnsafe<CountRow[]>(
-      `SELECT COUNT(*)::bigint AS count
-       FROM shipcore.sc_products p
-       WHERE (
-           $1::text IS NULL
-           OR p.master_sku ILIKE $1
-           OR p.product_name ILIKE $1
-           OR EXISTS (
-             SELECT 1
-             FROM shipcore.sc_sku_mappings sm_search
-             WHERE sm_search.master_sku = p.master_sku
-               AND sm_search.channel_sku ILIKE $1
-           )
-         )
-         AND ($2::text IS NULL OR p.category = $2)`,
-      searchParam,
-      categoryParam
-    );
-    const total = Number(countResult[0]?.count ?? 0);
-
-    type ProductRow = {
-      master_sku: string;
-      product_name: string;
-      category: string | null;
-      web_sku_count: bigint;
-      inv_on_hand: string | null;
-      inv_available: string | null;
-      inv_backorder: string | null;
-      inv_reserved: string | null;
-    };
-    const rows = await prisma.$queryRawUnsafe<ProductRow[]>(
-      `SELECT
-         p.master_sku,
-         p.product_name,
-         p.category,
-         COUNT(DISTINCT sm.channel_sku)::bigint AS web_sku_count,
-         COALESCE(SUM(i.on_hand_qty), 0)::text  AS inv_on_hand,
-         COALESCE(SUM(i.available_qty), 0)::text AS inv_available,
-         COALESCE(SUM(i.backorder_qty), 0)::text AS inv_backorder,
-         COALESCE(SUM(i.reserved_qty), 0)::text  AS inv_reserved
-       FROM shipcore.sc_products p
-       LEFT JOIN shipcore.sc_inventory_snapshot i ON i.master_sku = p.master_sku
-       LEFT JOIN shipcore.sc_sku_mappings sm ON sm.master_sku = p.master_sku
-       WHERE (
-           $1::text IS NULL
-           OR p.master_sku ILIKE $1
-           OR p.product_name ILIKE $1
-           OR EXISTS (
-             SELECT 1
-             FROM shipcore.sc_sku_mappings sm_search
-             WHERE sm_search.master_sku = p.master_sku
-               AND sm_search.channel_sku ILIKE $1
-           )
-         )
-         AND ($2::text IS NULL OR p.category = $2)
-       GROUP BY p.master_sku, p.product_name, p.category
-       ORDER BY ${sortCol} ${sortOrder}
-       LIMIT $3 OFFSET $4`,
-      searchParam,
-      categoryParam,
+    const result = await SkuService.listSkus({
+      page,
       limit,
-      offset
-    );
-
-    const masterSkuCodes = rows.map((r: ProductRow) => r.master_sku);
-    let salesMap = new Map<string, number>();
-    if (masterSkuCodes.length > 0) {
-      const salesRows = await prisma.$queryRawUnsafe<{ master_sku: string; qty: string }[]>(
-        `SELECT i.master_sku, COALESCE(SUM(i.quantity), 0)::text AS qty
-         FROM shipcore.sc_sales_order_items i
-         JOIN shipcore.sc_sales_orders o ON o.id = i.order_id
-         WHERE i.master_sku = ANY($1::text[])
-           AND o.order_date >= $2
-           AND i.is_counted_in_demand = true
-         GROUP BY i.master_sku`,
-        masterSkuCodes,
-        salesStartDate
-      );
-      salesMap = new Map(salesRows.map((s: { master_sku: string; qty: string }) => [s.master_sku, parseInt(s.qty, 10)]));
-    }
-
-    const data = rows.map((row: ProductRow) => ({
-      id: row.master_sku,
-      masterSkuCode: row.master_sku,
-      skuCode: row.master_sku,
-      name: row.product_name,
-      description: null,
-      category: row.category ?? null,
-      webSkuCount: Number(row.web_sku_count ?? 0),
-      currentStock: Number(row.inv_available ?? 0),
-      reorderPoint: null,
-      unitCost: null,
-      retailPrice: null,
-      inventory: {
-        onHand: Number(row.inv_on_hand ?? 0),
-        reserved: Number(row.inv_reserved ?? 0),
-        allocated: 0,
-        backorder: Number(row.inv_backorder ?? 0),
-        inbound: 0,
-        available: Number(row.inv_available ?? 0),
-      },
-      _count: { salesRecords: salesMap.get(row.master_sku) || 0 },
-      salesSummary: {
-        totalQuantity: salesMap.get(row.master_sku) || 0,
-        days: salesPeriodDays,
-      },
-    }));
-
-    return NextResponse.json({
-      success: true,
-      data,
-      categories: availableCategories,
-      periods: { sales: salesPeriodDays },
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      sortBy,
+      sortOrder,
+      search,
+      category,
+      salesPeriodDays,
     });
+
+    return apiSuccess(result);
   } catch (error: unknown) {
     console.error("Error fetching SKUs:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
-  }
-}
-
-// POST /api/skus - Create a new SKU
-export async function POST(request: NextRequest) {
-  const denied = await guardPermission("sku-master", "create");
-  if (denied) return denied;
-  try {
-    const body = await request.json();
-
-    // Validate input
-    const validatedData = SKUSchema.parse(body);
-
-    // Check if SKU code already exists
-    const existing = await prisma.sKU.findUnique({
-      where: { skuCode: validatedData.skuCode },
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { success: false, error: "SKU code already exists" },
-        { status: 400 }
-      );
-    }
-
-    // If custom variant, verify parent exists
-    if (validatedData.isCustomVariant && validatedData.parentSKUId) {
-      const parent = await prisma.sKU.findUnique({
-        where: { id: validatedData.parentSKUId },
-      });
-
-      if (!parent) {
-        return NextResponse.json(
-          { success: false, error: "Parent SKU not found" },
-          { status: 400 }
-        );
-      }
-    }
-
-    const defaultLocation = await prisma.inventoryLocation.findFirst({
-      where: { code: DEFAULT_INVENTORY_LOCATION_CODE },
-      select: { id: true },
-    });
-
-    const sku = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const createdSku = await tx.sKU.create({
-        data: validatedData,
-        include: {
-          parentSKU: {
-            select: {
-              id: true,
-              skuCode: true,
-              name: true,
-            },
-          },
-          customVariants: {
-            select: {
-              id: true,
-              skuCode: true,
-              name: true,
-            },
-          },
-        },
-      });
-
-      if (defaultLocation) {
-        await tx.inventoryBalance.create({
-          data: {
-            skuId: createdSku.id,
-            locationId: defaultLocation.id,
-            onHandQty: validatedData.currentStock,
-            availableQty: validatedData.currentStock,
-          },
-        });
-      }
-
-      return createdSku;
-    });
-
-    // Invalidate dashboard cache (new SKU affects totals)
-    await CacheManager.delete("dashboard:analytics");
-
-    return NextResponse.json(
-      { success: true, data: sku },
-      { status: 201 }
-    );
-  } catch (error: unknown) {
-    console.error("Error creating SKU:", error);
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: "Validation error", details: error.issues },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

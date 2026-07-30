@@ -1,13 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
-import {
-  getSalesOrders,
-  type SalesOrdersQueryOptions,
-} from "@/lib/db/supabase-lookup";
-import { CacheManager } from "@/lib/redis";
+/**
+ * Code Guide:
+ * This API route owns the orders backend workflow.
+ * Controller layer only: parses the request, delegates to OrderService, and
+ * formats the response. Data access lives in
+ * src/lib/orders/repository.ts, caching in
+ * src/lib/orders/service.ts.
+ */
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
+import { NextRequest } from "next/server";
+import { OrderService } from "@/lib/orders/service";
+import type { SalesOrdersQueryOptions } from "@/lib/orders/repository";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,14 +28,7 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
     const skipMeta = searchParams.get("skipMeta") === "true";
 
-    const cacheKey = `orders:v3:${page}:${limit}:${sortBy}:${sortOrder}:${search}:${platformSource}:${orderStatus}:${startDate}:${endDate}`;
-
-    if (!exportAll) {
-      const cached = await CacheManager.get<object>(cacheKey);
-      if (cached) return NextResponse.json(cached);
-    }
-
-    const result = await getSalesOrders({
+    const result = await OrderService.listOrders({
       page,
       limit,
       exportAll,
@@ -46,8 +42,7 @@ export async function GET(request: NextRequest) {
       skipMeta,
     });
 
-    const response = {
-      success: true,
+    return apiSuccess({
       data: result.rows,
       summary: result.summary,
       platformSources: result.platformSources,
@@ -58,18 +53,9 @@ export async function GET(request: NextRequest) {
         total: result.totalRows,
         totalPages: Math.ceil(result.totalRows / limit),
       },
-    };
-
-    if (!exportAll) {
-      await CacheManager.set(cacheKey, response, 120);
-    }
-
-    return NextResponse.json(response);
+    });
   } catch (error: unknown) {
     console.error("Error fetching sales orders:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

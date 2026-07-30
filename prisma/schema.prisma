@@ -14,16 +14,16 @@ datasource db {
 // ============================================
 
 model SKU {
-  id            String   @id @default(cuid())
-  skuCode       String   @unique // Web/variant SKU from Shopify
-  masterSkuCode String?           // Master SKU from Supabase lookup
+  id            String  @id @default(cuid())
+  skuCode       String  @unique // Web/variant SKU from Shopify
+  masterSkuCode String? // Master SKU from Supabase lookup
   name          String
   description   String?
   category      String?
 
   // Legacy summary inventory fields. Keep these for UI compatibility while
   // operational inventory moves into InventoryBalance by location.
-  currentStock Int     @default(0)
+  currentStock Int  @default(0)
   reorderPoint Int?
 
   // SKU Hierarchy (for custom variants)
@@ -33,8 +33,8 @@ model SKU {
   customVariants  SKU[]   @relation("SKUVariants")
 
   // Additional metadata
-  imageUrl    String?
-  tags        String[] // For flexible categorization
+  imageUrl String?
+  tags     String[] // For flexible categorization
 
   // Product details
   unitCost    Decimal? @db.Decimal(10, 2)
@@ -51,13 +51,13 @@ model SKU {
   updatedAt DateTime @updatedAt
 
   // Relations
-  salesRecords       SalesRecord[]
-  inventoryBalances  InventoryBalance[]
-  inventorySnapshots InventorySnapshot[]
+  salesRecords          SalesRecord[]
+  inventoryBalances     InventoryBalance[]
+  inventorySnapshots    InventorySnapshot[]
   inventoryTransactions InventoryTransaction[]
-  poItems            POItem[]
-  collectionMembers  SKUCollectionMember[]
-  trendData          TrendData[]
+  poItems               POItem[]
+  collectionMembers     SKUCollectionMember[]
+  trendData             TrendData[]
 
   @@index([skuCode])
   @@index([masterSkuCode])
@@ -73,14 +73,14 @@ model SKU {
 // ============================================
 
 model SKUCollection {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   description String?
 
   // Collection metadata
-  colorCode   String?  // For visual identification
-  isPinned    Boolean  @default(false)
-  sortOrder   Int      @default(0)
+  colorCode String? // For visual identification
+  isPinned  Boolean @default(false)
+  sortOrder Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -99,7 +99,7 @@ model SKUCollectionMember {
   skuId        String
 
   // Member metadata
-  sortOrder Int @default(0)
+  sortOrder Int      @default(0)
   addedAt   DateTime @default(now())
 
   // Relations
@@ -118,14 +118,14 @@ model SKUCollectionMember {
 // ============================================
 
 model SalesRecord {
-  id          String   @id @default(cuid())
-  skuId       String
+  id            String  @id @default(cuid())
+  skuId         String
   integrationId String?
 
   // Source information
-  platform    String   // shopify, walmart, ebay, manual
-  orderId     String
-  orderType   String   @default("actual_sale") // actual_sale, pre_order
+  platform  String // shopify, walmart, ebay, manual
+  orderId   String
+  orderType String @default("actual_sale") // actual_sale, pre_order
 
   // Sales details
   saleDate    DateTime
@@ -134,7 +134,7 @@ model SalesRecord {
   totalAmount Decimal  @db.Decimal(12, 2)
 
   // Master SKU tracking (for aggregation by master SKU)
-  masterSkuCode String?  // Master SKU from lookup function
+  masterSkuCode String? // Master SKU from lookup function
 
   // Fulfillment
   fulfilled     Boolean   @default(false)
@@ -147,7 +147,7 @@ model SalesRecord {
   createdAt DateTime @default(now())
 
   // Relations
-  sku SKU @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  sku         SKU                  @relation(fields: [skuId], references: [id], onDelete: Cascade)
   integration PlatformIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
 
   @@index([skuId, saleDate])
@@ -199,18 +199,18 @@ model InventoryLocation {
 }
 
 model InventoryBalance {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   skuId         String
   locationId    String
-  onHandQty     Int      @default(0)
-  reservedQty   Int      @default(0)
-  allocatedQty  Int      @default(0)
-  backorderQty  Int      @default(0)
-  inboundQty    Int      @default(0)
-  availableQty  Int      @default(0)
+  onHandQty     Int       @default(0)
+  reservedQty   Int       @default(0)
+  allocatedQty  Int       @default(0)
+  backorderQty  Int       @default(0)
+  inboundQty    Int       @default(0)
+  availableQty  Int       @default(0)
   lastCountedAt DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   sku      SKU               @relation(fields: [skuId], references: [id], onDelete: Cascade)
   location InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
@@ -224,17 +224,17 @@ model InventoryBalance {
 }
 
 model InventoryTransaction {
-  id             String   @id @default(cuid())
-  skuId          String
-  locationId     String
+  id              String   @id @default(cuid())
+  skuId           String
+  locationId      String
   transactionType String
-  quantityDelta  Int
-  referenceType  String?
-  referenceId    String?
-  notes          String?
-  effectiveAt    DateTime @default(now())
-  createdAt      DateTime @default(now())
-  createdBy      String?
+  quantityDelta   Int
+  referenceType   String?
+  referenceId     String?
+  notes           String?
+  effectiveAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  createdBy       String?
 
   sku      SKU               @relation(fields: [skuId], references: [id], onDelete: Cascade)
   location InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
@@ -252,45 +252,45 @@ model InventoryTransaction {
 // ============================================
 
 model TrendData {
-  id     String   @id @default(cuid())
-  skuId  String
+  id    String @id @default(cuid())
+  skuId String
 
   // Research period
-  researchDate  DateTime
-  validUntil    DateTime  // Cache expiration
+  researchDate DateTime
+  validUntil   DateTime // Cache expiration
 
   // Google Trends data
-  googleTrendsChange      Decimal? @db.Decimal(5, 2) // % change
-  googleTrendsConfidence  Decimal? @db.Decimal(5, 2)
-  googleTrendsRaw         Json?    // Full data
+  googleTrendsChange     Decimal? @db.Decimal(5, 2) // % change
+  googleTrendsConfidence Decimal? @db.Decimal(5, 2)
+  googleTrendsRaw        Json? // Full data
 
   // Competitor intelligence
-  competitorStockChange   Decimal? @db.Decimal(5, 2)
-  competitorPriceChange   Decimal? @db.Decimal(5, 2)
-  competitorConfidence    Decimal? @db.Decimal(5, 2)
-  competitorRaw           Json?
+  competitorStockChange Decimal? @db.Decimal(5, 2)
+  competitorPriceChange Decimal? @db.Decimal(5, 2)
+  competitorConfidence  Decimal? @db.Decimal(5, 2)
+  competitorRaw         Json?
 
   // Amazon data
-  amazonBSRChange         Decimal? @db.Decimal(5, 2)
-  amazonReviewVelocity    Decimal? @db.Decimal(5, 2)
-  amazonConfidence        Decimal? @db.Decimal(5, 2)
-  amazonRaw               Json?
+  amazonBSRChange      Decimal? @db.Decimal(5, 2)
+  amazonReviewVelocity Decimal? @db.Decimal(5, 2)
+  amazonConfidence     Decimal? @db.Decimal(5, 2)
+  amazonRaw            Json?
 
   // Social media signals
-  socialMentionsChange    Decimal? @db.Decimal(5, 2)
-  socialConfidence        Decimal? @db.Decimal(5, 2)
-  socialRaw               Json?
+  socialMentionsChange Decimal? @db.Decimal(5, 2)
+  socialConfidence     Decimal? @db.Decimal(5, 2)
+  socialRaw            Json?
 
   // AI analysis
-  aiTrendDirection        String?  // up, down, stable
-  aiConfidence            Decimal? @db.Decimal(5, 2)
-  aiSuggestedAdjustment   Decimal? @db.Decimal(5, 2)
-  aiReasoning             String?  // 2-3 sentences
-  aiAnalysisRaw           Json?    // Full AI response
+  aiTrendDirection      String? // up, down, stable
+  aiConfidence          Decimal? @db.Decimal(5, 2)
+  aiSuggestedAdjustment Decimal? @db.Decimal(5, 2)
+  aiReasoning           String? // 2-3 sentences
+  aiAnalysisRaw         Json? // Full AI response
 
   // Combined signal
-  combinedSignal          Decimal? @db.Decimal(5, 2) // Weighted average
-  combinedConfidence      Decimal? @db.Decimal(5, 2)
+  combinedSignal     Decimal? @db.Decimal(5, 2) // Weighted average
+  combinedConfidence Decimal? @db.Decimal(5, 2)
 
   // Metadata
   createdAt DateTime @default(now())
@@ -306,21 +306,21 @@ model TrendData {
 }
 
 model TrendWeightConfig {
-  id        String @id @default(cuid())
+  id String @id @default(cuid())
 
   // Config identification
-  name      String   // "Default", "Conservative", "Aggressive"
-  isDefault Boolean  @default(false)
-  skuId     String?  // Null = global config, or per-SKU
+  name      String // "Default", "Conservative", "Aggressive"
+  isDefault Boolean @default(false)
+  skuId     String? // Null = global config, or per-SKU
 
   // Signal weights (must sum to 100)
-  historicalDataWeight Int @default(65)  // 65%
-  googleTrendsWeight   Int @default(15)  // 15%
-  competitorWeight     Int @default(10)  // 10%
-  aiSynthesisWeight    Int @default(10)  // 10%
+  historicalDataWeight Int @default(65) // 65%
+  googleTrendsWeight   Int @default(15) // 15%
+  competitorWeight     Int @default(10) // 10%
+  aiSynthesisWeight    Int @default(10) // 10%
 
   // Advanced settings
-  minimumConfidence    Decimal @default(50.0) @db.Decimal(5, 2)
+  minimumConfidence Decimal @default(50.0) @db.Decimal(5, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -336,15 +336,15 @@ model TrendWeightConfig {
 // ============================================
 
 model PurchaseOrder {
-  id                    String    @id @default(cuid())
-  poNumber              String    @unique
-  supplier              String?
-  orderDate             DateTime
-  expectedDeliveryDate  DateTime?
-  actualDeliveryDate    DateTime?
-  status                String    // pending, in_transit, delivered, cancelled
-  totalAmount           Decimal?  @db.Decimal(12, 2)
-  notes                 String?
+  id                   String    @id @default(cuid())
+  poNumber             String    @unique
+  supplier             String?
+  orderDate            DateTime
+  expectedDeliveryDate DateTime?
+  actualDeliveryDate   DateTime?
+  status               String // pending, in_transit, delivered, cancelled
+  totalAmount          Decimal?  @db.Decimal(12, 2)
+  notes                String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -359,7 +359,7 @@ model PurchaseOrder {
 }
 
 model POItem {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   poId      String
   skuId     String
   quantity  Int
@@ -376,27 +376,27 @@ model POItem {
 }
 
 model Container {
-  id                    String    @id @default(cuid())
-  containerNumber       String    @unique
-  poId                  String?
+  id              String  @id @default(cuid())
+  containerNumber String  @unique
+  poId            String?
 
   // Dates
-  bookingDate           DateTime?
-  departureDate         DateTime?
-  estimatedArrivalDate  DateTime?
-  actualArrivalDate     DateTime?
-  estimatedReleaseDate  DateTime?
-  actualReleaseDate     DateTime?
+  bookingDate          DateTime?
+  departureDate        DateTime?
+  estimatedArrivalDate DateTime?
+  actualArrivalDate    DateTime?
+  estimatedReleaseDate DateTime?
+  actualReleaseDate    DateTime?
 
   // Details
-  carrier               String?
-  vesselName            String?
-  portOfLoading         String?
-  portOfDischarge       String?
+  carrier         String?
+  vesselName      String?
+  portOfLoading   String?
+  portOfDischarge String?
 
   // Tracking
-  status                String    // booked, in_transit, arrived, released
-  trackingUrl           String?
+  status      String // booked, in_transit, arrived, released
+  trackingUrl String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -441,7 +441,7 @@ model RolePermission {
 }
 
 model UserPermissionOverride {
-  userId  String @map("user_id")
+  userId  String  @map("user_id")
   section String
   action  String
   allowed Boolean
@@ -524,21 +524,21 @@ model DesignerInitial {
 }
 
 model PartSku {
-  id          BigInt   @id @default(autoincrement())
-  sku         String   @unique
-  partName    String   @map("part_name")
-  skuType     String   @default("Custom") @map("sku_type") // Custom / Universal
-  make        String?
-  makeAbbr    String?  @map("make_abbr")
-  model       String?
-  modelAbbr   String?  @map("model_abbr")
-  code        String?
-  initial     String?
-  side        String?
-  createdByName String? @map("created_by_name")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            BigInt   @id @default(autoincrement())
+  sku           String   @unique
+  partName      String   @map("part_name")
+  skuType       String   @default("Custom") @map("sku_type") // Custom / Universal
+  make          String?
+  makeAbbr      String?  @map("make_abbr")
+  model         String?
+  modelAbbr     String?  @map("model_abbr")
+  code          String?
+  initial       String?
+  side          String?
+  createdByName String?  @map("created_by_name")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@index([isActive])
   @@index([skuType])
@@ -655,25 +655,25 @@ model TransitRecord {
 // ============================================
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  role          String    @default("user") // user, admin
-  isActive      Boolean   @default(true)
-  passwordHash  String?
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  role           String    @default("user") // user, admin
+  isActive       Boolean   @default(true)
+  passwordHash   String?
   menuVisibility Json?
-  lastLoginAt   DateTime?
+  lastLoginAt    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accounts   Account[]
-  sessions   Session[]
-  loginLogs  UserLoginLog[]
+  accounts        Account[]
+  sessions        Session[]
+  loginLogs       UserLoginLog[]
   dailyActivities UserDailyActivity[]
-  activityEvents UserActivityEvent[]
+  activityEvents  UserActivityEvent[]
 
   assignedProjectParts ProjectPart[] @relation("ProjectPartAssignedTo")
 
@@ -698,7 +698,7 @@ model UserLoginLog {
 model UserDailyActivity {
   id            String   @id @default(cuid())
   userId        String   @map("user_id")
-  activityDate  DateTime @db.Date @map("activity_date")
+  activityDate  DateTime @map("activity_date") @db.Date
   firstSeenAt   DateTime @default(now()) @map("first_seen_at")
   lastSeenAt    DateTime @default(now()) @map("last_seen_at")
   activityCount Int      @default(1) @map("activity_count")
@@ -788,8 +788,8 @@ model PlatformIntegration {
   platform String // shopify, walmart, ebay, amazon
 
   // Connection info
-  name        String  // User-friendly name, e.g., "My Shopify Store"
-  isActive    Boolean @default(true)
+  name     String // User-friendly name, e.g., "My Shopify Store"
+  isActive Boolean @default(true)
 
   // Platform-specific config (stored as JSON)
   // Shopify: { shopDomain, accessToken, apiVersion }
@@ -798,13 +798,13 @@ model PlatformIntegration {
   config Json
 
   // Sync tracking
-  syncCursor Json?     // Platform-specific cursor for incremental sync
-  lastSyncAt DateTime?
+  syncCursor     Json? // Platform-specific cursor for incremental sync
+  lastSyncAt     DateTime?
   lastSyncStatus String? // success, failed, partial
   lastSyncError  String?
 
   // Statistics
-  totalOrdersSynced Int @default(0)
+  totalOrdersSynced  Int @default(0)
   totalRecordsSynced Int @default(0)
 
   createdAt DateTime @default(now())
@@ -841,7 +841,6 @@ model VelocityLinkSnapshot {
 // ============================================
 // PART ORDERS (Seat Cover)
 // ============================================
-
 
 model VelocityCustomSnapshot {
   id              Int      @id @default(autoincrement())
@@ -919,135 +918,383 @@ model SeatCoverSize {
 }
 
 model SeatCoverSizeRear {
-  id                     String   @id @default(cuid())
-  size                   String   @unique
-  inventory              String?
-  fitting_photo          String?
-  confirmed              String?
-  blueprint              String?
-  manual                 String?
-  ymm                    String?
-  fitting_dp_detail      String?
-  added_date             String?
-  package                String?
-  headrest               String?
-  headrest_dp_detail     String?
-  headrest_qty           String?
-  headrest2              String?
-  headrest2_dp_detail    String?
-  headrest2_qty          String?
-  top_body               String?
-  top_body_dp_detail     String?
-  top_body_qty           String?
-  top_body2              String?
-  top_body2_dp_detail    String?
-  top_body2_qty          String?
-  bottom                 String?
-  bottom_dp_detail       String?
-  bottom_qty             String?
-  bottom2                String?
-  bottom2_dp_detail      String?
-  bottom2_qty            String?
-  middle_headrest        String?
-  middle_headrest_detail String?
-  middle_headrest_qty    String?
-  middle_top_body        String?
-  middle_top_body_detail String?
-  middle_top_body_qty    String?
-  middle_bottom          String?
-  middle_bottom_detail   String?
-  middle_bottom_qty      String?
-  console                String?
-  console_dp_detail      String?
-  console_qty            String?
-  backrest_storage       String?
-  backrest_storage_dp_detail String?
-  backrest_storage_qty   String?
-  backrest_storage2      String?
+  id                          String   @id @default(cuid())
+  size                        String   @unique
+  inventory                   String?
+  fitting_photo               String?
+  confirmed                   String?
+  blueprint                   String?
+  manual                      String?
+  ymm                         String?
+  fitting_dp_detail           String?
+  added_date                  String?
+  package                     String?
+  headrest                    String?
+  headrest_dp_detail          String?
+  headrest_qty                String?
+  headrest2                   String?
+  headrest2_dp_detail         String?
+  headrest2_qty               String?
+  top_body                    String?
+  top_body_dp_detail          String?
+  top_body_qty                String?
+  top_body2                   String?
+  top_body2_dp_detail         String?
+  top_body2_qty               String?
+  bottom                      String?
+  bottom_dp_detail            String?
+  bottom_qty                  String?
+  bottom2                     String?
+  bottom2_dp_detail           String?
+  bottom2_qty                 String?
+  middle_headrest             String?
+  middle_headrest_detail      String?
+  middle_headrest_qty         String?
+  middle_top_body             String?
+  middle_top_body_detail      String?
+  middle_top_body_qty         String?
+  middle_bottom               String?
+  middle_bottom_detail        String?
+  middle_bottom_qty           String?
+  console                     String?
+  console_dp_detail           String?
+  console_qty                 String?
+  backrest_storage            String?
+  backrest_storage_dp_detail  String?
+  backrest_storage_qty        String?
+  backrest_storage2           String?
   backrest_storage2_dp_detail String?
-  backrest_storage2_qty  String?
-  armrest                String?
-  armrest_detail         String?
-  armrest_qty            String?
-  armrest2               String?
-  armrest2_detail        String?
-  armrest2_qty           String?
-  subpart                String?
-  subpart_dp_detail      String?
-  subpart_qty            String?
-  subpart2               String?
-  subpart2_dp_detail     String?
-  subpart2_qty           String?
-  note                   String?
-  created_at             DateTime @default(now())
-  updated_at             DateTime @updatedAt
+  backrest_storage2_qty       String?
+  armrest                     String?
+  armrest_detail              String?
+  armrest_qty                 String?
+  armrest2                    String?
+  armrest2_detail             String?
+  armrest2_qty                String?
+  subpart                     String?
+  subpart_dp_detail           String?
+  subpart_qty                 String?
+  subpart2                    String?
+  subpart2_dp_detail          String?
+  subpart2_qty                String?
+  note                        String?
+  created_at                  DateTime @default(now())
+  updated_at                  DateTime @updatedAt
 
   @@map("fc_seat_cover_parts_rear")
   @@schema("shipcore")
 }
 
 model SeatCoverSizeThird {
-  id                     String   @id @default(cuid())
-  size                   String   @unique
-  inventory              String?
-  fitting_photo          String?
-  confirmed              String?
-  blueprint              String?
-  manual                 String?
-  ymm                    String?
-  package                String?
-  headrest               String?
-  headrest_dp_detail     String?
-  headrest_qty           String?
-  headrest2              String?
-  headrest2_dp_detail    String?
-  headrest2_qty          String?
-  top_body               String?
-  top_body_dp_detail     String?
-  top_body_qty           String?
-  top_body2              String?
-  top_body2_dp_detail    String?
-  top_body2_qty          String?
-  bottom                 String?
-  bottom_dp_detail       String?
-  bottom_qty             String?
-  bottom2                String?
-  bottom2_dp_detail      String?
-  bottom2_qty            String?
-  middle_headrest        String?
-  middle_headrest_detail String?
-  middle_headrest_qty    String?
-  middle_top_body        String?
-  middle_top_body_detail String?
-  middle_top_body_qty    String?
-  middle_bottom          String?
-  middle_bottom_detail   String?
-  middle_bottom_qty      String?
-  console                String?
-  console_dp_detail      String?
-  console_qty            String?
-  backrest_storage       String?
-  backrest_storage_dp_detail String?
-  backrest_storage_qty   String?
-  backrest_storage2      String?
+  id                          String   @id @default(cuid())
+  size                        String   @unique
+  inventory                   String?
+  fitting_photo               String?
+  confirmed                   String?
+  blueprint                   String?
+  manual                      String?
+  ymm                         String?
+  package                     String?
+  headrest                    String?
+  headrest_dp_detail          String?
+  headrest_qty                String?
+  headrest2                   String?
+  headrest2_dp_detail         String?
+  headrest2_qty               String?
+  top_body                    String?
+  top_body_dp_detail          String?
+  top_body_qty                String?
+  top_body2                   String?
+  top_body2_dp_detail         String?
+  top_body2_qty               String?
+  bottom                      String?
+  bottom_dp_detail            String?
+  bottom_qty                  String?
+  bottom2                     String?
+  bottom2_dp_detail           String?
+  bottom2_qty                 String?
+  middle_headrest             String?
+  middle_headrest_detail      String?
+  middle_headrest_qty         String?
+  middle_top_body             String?
+  middle_top_body_detail      String?
+  middle_top_body_qty         String?
+  middle_bottom               String?
+  middle_bottom_detail        String?
+  middle_bottom_qty           String?
+  console                     String?
+  console_dp_detail           String?
+  console_qty                 String?
+  backrest_storage            String?
+  backrest_storage_dp_detail  String?
+  backrest_storage_qty        String?
+  backrest_storage2           String?
   backrest_storage2_dp_detail String?
-  backrest_storage2_qty  String?
-  armrest                String?
-  armrest_detail         String?
-  armrest_qty            String?
-  armrest2               String?
-  armrest2_detail        String?
-  armrest2_qty           String?
-  subpart                String?
-  subpart_dp_detail      String?
-  subpart_qty            String?
-  subpart2               String?
-  subpart2_dp_detail     String?
-  subpart2_qty           String?
-  note                   String?
-  created_at             DateTime @default(now())
-  updated_at             DateTime @updatedAt
+  backrest_storage2_qty       String?
+  armrest                     String?
+  armrest_detail              String?
+  armrest_qty                 String?
+  armrest2                    String?
+  armrest2_detail             String?
+  armrest2_qty                String?
+  subpart                     String?
+  subpart_dp_detail           String?
+  subpart_qty                 String?
+  subpart2                    String?
+  subpart2_dp_detail          String?
+  subpart2_qty                String?
+  note                        String?
+  created_at                  DateTime @default(now())
+  updated_at                  DateTime @updatedAt
 
   @@map("fc_seat_cover_parts_third")
+  @@schema("shipcore")
+}
+
+// ============================================
+// SC_ LEGACY DATA (primary DB, shipcore schema)
+// Introspected via `prisma db pull` against a scratch schema and
+// copied in with field/model names kept as-is (matching the real
+// columns/tables) to avoid renaming drift against a schema this app
+// does not own the migration history for. Previously queried only via
+// prisma.$queryRawUnsafe / raw pg.Pool from route handlers.
+// ============================================
+
+enum platform_type {
+  amazon
+  shopify
+  ebay
+  walmart
+  shiphero
+  manual
+  Amazon_FBA @map("Amazon FBA")
+  Amazon_FBM @map("Amazon FBM")
+
+  @@schema("shipcore")
+}
+
+model sc_products {
+  id                     BigInt                  @id @default(autoincrement())
+  master_sku             String                  @unique @db.VarChar(100)
+  product_name           String                  @db.VarChar(255)
+  category               String?                 @db.VarChar(100)
+  brand                  String?                 @db.VarChar(100)
+  status                 String                  @default("active") @db.VarChar(30)
+  moq                    Int                     @default(0)
+  order_multiple         Int                     @default(1)
+  cbm_per_unit           Decimal?                @db.Decimal(12, 4)
+  is_custom_sku          Boolean                 @default(false)
+  created_at             DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                @default(now()) @db.Timestamptz(6)
+  sub_category           String?                 @db.VarChar(100)
+  category_code          String?                 @db.VarChar(10)
+  sub_category_code      String?                 @db.VarChar(20)
+  sku_pattern_type       String?                 @db.VarChar(30)
+  source_web_sku_example String?                 @db.VarChar(150)
+  source_market_code     String?                 @db.VarChar(10)
+  material_code          String?                 @db.VarChar(20)
+  color_code             String?                 @db.VarChar(30)
+  color_detail_code      String?                 @db.VarChar(20)
+  product_line           String?                 @db.VarChar(20)
+  position_code          String?                 @db.VarChar(20)
+  size_code              String?                 @db.VarChar(30)
+  size_code_2            String?                 @db.VarChar(30)
+  vehicle_type_code      String?                 @db.VarChar(20)
+  vehicle_class_code     String?                 @db.VarChar(20)
+  mirror_type_code       String?                 @db.VarChar(20)
+  cover_scope_code       String?                 @db.VarChar(20)
+  custom_fit_code        String?                 @db.VarChar(30)
+  position_code_2        String?                 @db.VarChar(20)
+  material_detail_code   String?                 @db.VarChar(20)
+  seat_config_code       String?                 @db.VarChar(30)
+  row_config_code        String?                 @db.VarChar(30)
+  surface_code           String?                 @db.VarChar(20)
+  vehicle_position_code  String?                 @db.VarChar(30)
+  make_code              String?                 @db.VarChar(30)
+  model_code             String?                 @db.VarChar(50)
+  f_number               String?                 @db.VarChar(30)
+  fitment_code           String?                 @db.VarChar(50)
+  product_type_code      String?                 @db.VarChar(30)
+  variant_code           String?                 @db.VarChar(30)
+  feature_code           String?                 @db.VarChar(30)
+  accessory_group_code   String?                 @db.VarChar(30)
+  package_type_code      String?                 @db.VarChar(20)
+  parsed_from_web_sku    String?                 @db.VarChar(150)
+  parser_version         String?                 @db.VarChar(30)
+  parse_status           String?                 @db.VarChar(30)
+  parse_note             String?
+  product_vehicle_id     BigInt?
+  sc_inventory_snapshot  sc_inventory_snapshot[]
+  sc_sales_order_items   sc_sales_order_items[]
+  sc_sku_mappings        sc_sku_mappings[]
+
+  @@index([category], map: "idx_products_category")
+  @@index([category_code], map: "idx_products_category_code")
+  @@index([color_code], map: "idx_products_color_code")
+  @@index([f_number], map: "idx_products_f_number")
+  @@index([material_code], map: "idx_products_material_code")
+  @@index([parse_status], map: "idx_products_parse_status")
+  @@index([position_code], map: "idx_products_position_code")
+  @@index([product_type_code], map: "idx_products_product_type_code")
+  @@index([size_code], map: "idx_products_size_code")
+  @@index([sku_pattern_type], map: "idx_products_sku_pattern_type")
+  @@index([status], map: "idx_products_status")
+  @@index([sub_category], map: "idx_products_sub_category")
+  @@index([sub_category_code], map: "idx_products_sub_category_code")
+  @@index([vehicle_type_code], map: "idx_products_vehicle_type_code")
+  @@schema("shipcore")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sc_sku_mappings {
+  id             BigInt      @id @default(autoincrement())
+  product_id     BigInt
+  channel        String      @db.VarChar(50)
+  channel_sku    String      @db.VarChar(100)
+  linked_sku     String?     @db.VarChar(100)
+  production_sku String?     @db.VarChar(100)
+  master_sku     String      @db.VarChar(100)
+  mapping_type   String      @default("direct") @db.VarChar(30)
+  active_from    DateTime    @default(dbgenerated("CURRENT_DATE")) @db.Date
+  active_to      DateTime?   @db.Date
+  created_at     DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime    @default(now()) @db.Timestamptz(6)
+  sc_products    sc_products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_sku_mappings_product_id")
+
+  @@unique([product_id, channel, channel_sku, active_from], map: "uq_sku_mappings_product_channel_sku_period")
+  @@index([active_from, active_to], map: "idx_sku_mappings_active_period")
+  @@index([channel, channel_sku], map: "idx_sku_mappings_channel_sku")
+  @@index([master_sku], map: "idx_sku_mappings_master_sku")
+  @@index([product_id], map: "idx_sku_mappings_product_id")
+  @@schema("shipcore")
+}
+
+model sc_inventory_snapshot {
+  id                    BigInt        @id @default(autoincrement())
+  snapshot_at           DateTime      @db.Timestamptz(6)
+  product_id            BigInt
+  master_sku            String        @db.VarChar(100)
+  warehouse_code        String        @db.VarChar(50)
+  on_hand_qty           Decimal       @default(0) @db.Decimal(12, 2)
+  reserved_qty          Decimal       @default(0) @db.Decimal(12, 2)
+  available_qty         Decimal       @default(0) @db.Decimal(12, 2)
+  backorder_qty         Decimal       @default(0) @db.Decimal(12, 2)
+  manual_adjustment_qty Decimal       @default(0) @db.Decimal(12, 2)
+  final_usable_qty      Decimal       @default(0) @db.Decimal(12, 2)
+  source_system         String?       @db.VarChar(50)
+  created_at            DateTime      @default(now()) @db.Timestamptz(6)
+  sc_products           sc_products   @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_inventory_snapshot_product_id")
+  sc_warehouses         sc_warehouses @relation(fields: [warehouse_code], references: [warehouse_code], onDelete: NoAction, onUpdate: NoAction, map: "fk_inventory_snapshot_warehouse")
+
+  @@unique([snapshot_at, product_id, warehouse_code], map: "uq_inventory_snapshot")
+  @@index([master_sku, snapshot_at(sort: Desc)], map: "idx_inventory_snapshot_master_sku_time")
+  @@index([product_id, snapshot_at(sort: Desc)], map: "idx_inventory_snapshot_product_time")
+  @@index([snapshot_at(sort: Desc)], map: "idx_inventory_snapshot_time")
+  @@index([warehouse_code], map: "idx_inventory_snapshot_warehouse")
+  @@schema("shipcore")
+}
+
+model sc_sales_orders {
+  id                      BigInt                 @id @default(autoincrement())
+  platform_source         platform_type
+  external_order_id       String                 @unique
+  order_number            String?
+  order_date              DateTime               @db.Timestamptz(6)
+  business_date           DateTime?              @db.Date
+  order_timezone          String?                @db.VarChar(100)
+  order_status            String?
+  normalized_order_status String?                @db.VarChar(50)
+  financial_status        String?                @db.VarChar(50)
+  fulfillment_channel     String?
+  sales_channel           String?
+  total_price             Decimal?               @db.Decimal(19, 4)
+  currency                String?                @default("USD") @db.VarChar(10)
+  customer_email          String?
+  buyer_email             String?                @db.VarChar(255)
+  shipping_country        String?
+  is_preorder             Boolean?               @default(false)
+  is_counted_in_demand    Boolean?               @default(true)
+  cancelled_at            DateTime?              @db.Timestamptz(6)
+  closed_at               DateTime?              @db.Timestamptz(6)
+  tags                    String?
+  raw_data                Json?
+  created_at              DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?              @default(now()) @db.Timestamptz(6)
+  sc_sales_order_items    sc_sales_order_items[]
+
+  @@unique([platform_source, external_order_id], map: "uq_sales_orders")
+  @@index([business_date], map: "idx_sales_orders_business_date")
+  @@index([order_date], map: "idx_sales_orders_order_date")
+  @@index([platform_source, order_date], map: "idx_sales_orders_platform_order_date")
+  @@schema("shipcore")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sc_sales_order_items {
+  id                    BigInt          @id @default(autoincrement())
+  order_id              BigInt
+  platform_source       platform_type?
+  external_line_item_id String          @unique(map: "uq_sales_order_items")
+  product_id            BigInt?
+  master_sku            String?         @db.VarChar(100)
+  channel_sku           String?
+  sku                   String?
+  product_name          String?
+  quantity              Int
+  refunded_quantity     Int             @default(0)
+  cancelled_quantity    Int             @default(0)
+  fulfilled_quantity    Int             @default(0)
+  demand_quantity       Int?            @default(dbgenerated("GREATEST(((quantity - COALESCE(refunded_quantity, 0)) - COALESCE(cancelled_quantity, 0)), 0)"))
+  unit_price            Decimal?        @db.Decimal(19, 4)
+  line_total            Decimal?        @db.Decimal(19, 4)
+  discount_amount       Decimal         @default(0) @db.Decimal(19, 4)
+  net_sales_amount      Decimal?        @db.Decimal(19, 4)
+  item_tax              Decimal         @default(0) @db.Decimal(19, 4)
+  shipping_price        Decimal         @default(0) @db.Decimal(19, 4)
+  currency              String?         @db.VarChar(10)
+  item_status           String?
+  fulfillment_status    String?
+  is_removed            String          @default("N") @db.Char(1)
+  is_preorder           Boolean         @default(false)
+  is_counted_in_demand  Boolean         @default(true)
+  business_date         DateTime?       @db.Date
+  warehouse_code        String?         @db.VarChar(50)
+  raw_data              Json?
+  created_at            DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime        @default(now()) @db.Timestamptz(6)
+  sc_sales_orders       sc_sales_orders @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sales_order_items_order")
+  sc_products           sc_products?    @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_sales_order_items_product_id")
+  sc_warehouses         sc_warehouses?  @relation(fields: [warehouse_code], references: [warehouse_code], onDelete: NoAction, onUpdate: NoAction, map: "fk_sales_order_items_warehouse")
+
+  @@index([business_date], map: "idx_sales_order_items_business_date")
+  @@index([channel_sku], map: "idx_sales_order_items_channel_sku")
+  @@index([master_sku], map: "idx_sales_order_items_master_sku")
+  @@index([master_sku, business_date], map: "idx_sales_order_items_master_sku_date")
+  @@index([order_id], map: "idx_sales_order_items_order_id")
+  @@index([platform_source], map: "idx_sales_order_items_platform")
+  @@index([product_id, business_date], map: "idx_sales_order_items_product_date")
+  @@index([product_id], map: "idx_sales_order_items_product_id")
+  @@index([sku], map: "idx_sales_order_items_sku")
+  @@schema("shipcore")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sc_warehouses {
+  id                    BigInt                  @id @default(autoincrement())
+  warehouse_code        String                  @unique @db.VarChar(50)
+  warehouse_name        String                  @db.VarChar(255)
+  warehouse_type        String                  @db.VarChar(50)
+  country               String?                 @db.VarChar(100)
+  state_region          String?                 @db.VarChar(100)
+  city                  String?                 @db.VarChar(100)
+  timezone              String?                 @db.VarChar(100)
+  is_active             Boolean                 @default(true)
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                @default(now()) @db.Timestamptz(6)
+  sc_inventory_snapshot sc_inventory_snapshot[]
+  sc_sales_order_items  sc_sales_order_items[]
+
+  @@index([is_active], map: "idx_warehouses_active")
+  @@index([warehouse_type], map: "idx_warehouses_type")
   @@schema("shipcore")
 }

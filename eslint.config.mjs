@@ -19,6 +19,28 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Controllers (src/app/**) must go through a domain's Service, not call its
+  // Repository directly — Repository is data-access only and has no business
+  // rules, caching, or validation. Type-only imports (e.g. sort-key unions) are
+  // still allowed since they carry no runtime coupling to the repository object.
+  {
+    files: ["src/app/**/*.ts", "src/app/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/*/repository"],
+              allowTypeImports: true,
+              message:
+                'Controllers must call the domain\'s Service ("@/lib/<domain>/service"), not Repository directly.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

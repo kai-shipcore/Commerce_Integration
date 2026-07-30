@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSalesOrderDetail } from "@/lib/db/supabase-lookup";
+/**
+ * Code Guide:
+ * This API route owns the orders / [id] backend workflow.
+ * Controller layer only: parses the request, delegates to OrderService, and
+ * formats the response. Data access lives in
+ * src/lib/orders/repository.ts.
+ */
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
+import { NextRequest } from "next/server";
+import { OrderService } from "@/lib/orders/service";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
 export async function GET(
   _request: NextRequest,
@@ -11,30 +16,10 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    const orderId = Number(id);
-
-    if (!Number.isInteger(orderId) || orderId <= 0) {
-      return NextResponse.json(
-        { success: false, error: "Invalid order id" },
-        { status: 400 }
-      );
-    }
-
-    const order = await getSalesOrderDetail(orderId);
-
-    if (!order) {
-      return NextResponse.json(
-        { success: false, error: "Order not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({ success: true, data: order });
+    const order = await OrderService.getOrderDetail(id);
+    return apiSuccess({ data: order });
   } catch (error: unknown) {
     console.error("Error fetching sales order detail:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

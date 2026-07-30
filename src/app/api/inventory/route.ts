@@ -1,12 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import {
-  getCoverlandInventory,
-  isLookupConnectionError,
-} from "@/lib/db/supabase-lookup";
+/**
+ * Code Guide:
+ * This API route owns the inventory backend workflow.
+ * Controller layer only: parses the request, delegates to InventoryService,
+ * and formats the response. Data access lives in
+ * src/lib/inventory/repository.ts, caching in
+ * src/lib/inventory/service.ts.
+ */
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
+import { NextRequest, NextResponse } from "next/server";
+import { isLookupConnectionError } from "@/lib/db/supabase-lookup";
+import { InventoryService } from "@/lib/inventory/service";
+import type { InventorySortBy } from "@/lib/inventory/repository";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,27 +25,18 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sortBy") || "masterSku";
     const sortOrder = searchParams.get("sortOrder") === "desc" ? "desc" : "asc";
 
-    const result = await getCoverlandInventory({
+    const result = await InventoryService.getInventory({
       page,
       limit,
       exportAll,
       groupBy,
       search,
       warehouse,
-      sortBy: sortBy as
-        | "masterSku"
-        | "warehouse"
-        | "warehouseCount"
-        | "onHand"
-        | "allocated"
-        | "available"
-        | "backorder"
-        | "createdAt",
+      sortBy: sortBy as InventorySortBy,
       sortOrder,
     });
 
-    return NextResponse.json({
-      success: true,
+    return apiSuccess({
       data: result.rows,
       warehouses: result.warehouses,
       summary: {
@@ -83,12 +79,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(
-      {
-        success: false,
-        error: getErrorMessage(error),
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
