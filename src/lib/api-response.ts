@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { NotFoundError, ConflictError, ValidationError } from "./errors";
+import { NotFoundError, ConflictError, ValidationError, ServiceUnavailableError } from "./errors";
 
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -37,6 +37,9 @@ export function handleApiError(error: unknown) {
   }
   if (error instanceof ConflictError) {
     return apiError(error.message, 409);
+  }
+  if (error instanceof ServiceUnavailableError) {
+    return apiError(error.message, 503);
   }
   return apiError(getErrorMessage(error), 500);
 }
