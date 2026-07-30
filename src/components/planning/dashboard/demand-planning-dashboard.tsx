@@ -332,7 +332,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const { pick } = useI18n();
   const { can, ready: permissionsReady } = usePermissions();
   const router = useRouter();
-  const [velocityMode, setVelocityMode] = useState<VelocityMode>("link");
+  const [velocityMode, setVelocityMode] = useState<VelocityMode>("custom");
   const [todayStr, setTodayStr] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
@@ -2071,7 +2071,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             {gridMode === "ag-grid" ? "Excel" : "CSV"}
           </button>
           <div style={{ display: "flex", borderRadius: 4, border: "1px solid #C2BFB5", overflow: "hidden" }}>
-            {(["link", "custom"] as VelocityMode[]).map((m) => (
+            {(["custom", "link"] as VelocityMode[]).map((m, i) => (
               <button
                 key={m}
                 type="button"
@@ -2081,7 +2081,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   fontWeight: 600,
                   padding: "5px 10px",
                   border: "none",
-                  borderRight: m === "link" ? "1px solid #C2BFB5" : undefined,
+                  borderRight: i === 0 ? "1px solid #C2BFB5" : undefined,
                   background: velocityMode === m ? "#1A1917" : "#fff",
                   color: velocityMode === m ? "#fff" : "#1A1917",
                   cursor: "pointer",
