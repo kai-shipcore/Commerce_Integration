@@ -1,22 +1,22 @@
-// Code Guide: GET /api/planning/warehouses — list active warehouses for transit record dropdowns.
+/**
+ * Code Guide:
+ * GET /api/planning/warehouses — list active warehouses for transit record
+ * dropdowns. Controller layer only: delegates to WarehousesService (shared
+ * with /api/warehouses, since both read the same fc_warehouses table).
+ */
 
-import { NextResponse } from "next/server";
-import { getPrimaryPool } from "@/lib/db/primary-db";
 import { guardPermission } from "@/lib/permissions";
+import { WarehousesService } from "@/lib/warehouses/service";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
 export async function GET() {
   const denied = await guardPermission("transit-stock", "read");
   if (denied) return denied;
   try {
-    const primary = getPrimaryPool();
-    const result = await primary.query(
-      `SELECT warehouse_code AS "warehouseCode", warehouse_name AS "warehouseName", warehouse_type AS "warehouseType"
-       FROM shipcore.fc_warehouses
-       WHERE is_active = true
-       ORDER BY warehouse_name ASC`,
-    );
-    return NextResponse.json({ success: true, data: result.rows });
-  } catch (e) {
-    return NextResponse.json({ success: false, error: String(e) }, { status: 500 });
+    const data = await WarehousesService.listActiveForDropdown();
+    return apiSuccess({ data });
+  } catch (error) {
+    console.error("Error fetching warehouses for dropdown:", error);
+    return handleApiError(error);
   }
 }

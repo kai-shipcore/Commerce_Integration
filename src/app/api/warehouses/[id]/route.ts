@@ -1,20 +1,17 @@
-// Code Guide: CRUD API for a single fc_warehouses record by id.
-// PATCH updates any subset of fields; DELETE soft-deletes by marking the warehouse inactive.
+/**
+ * Code Guide:
+ * This API route owns the warehouses / [id] backend workflow.
+ * Controller layer only: parses the request, validates input, applies the
+ * auth guard, and delegates to WarehousesService for business logic and
+ * audit logging. Data access lives in src/lib/warehouses/repository.ts.
+ */
 
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
-import { auth } from "@/lib/auth";
-import { logAudit, getIp } from "@/lib/audit";
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
-function serialize(w: object): object {
-  return JSON.parse(JSON.stringify(w, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
-}
+import { getIp } from "@/lib/audit";
+import { WarehousesService, isStatusOnlyUpdate } from "@/lib/warehouses/service";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
 const WarehouseUpdateSchema = z.object({
   warehouseCode: z.string().min(1).optional(),
@@ -35,116 +32,30 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const validated = WarehouseUpdateSchema.parse(body);
-    const isStatusOnly = Object.keys(validated).length === 1 && validated.isActive !== undefined;
-    const requiredAction = isStatusOnly
-      ? (validated.isActive ? "status" : "delete")
-      : "edit";
+    const requiredAction = isStatusOnlyUpdate(validated) ? (validated.isActive ? "status" : "delete") : "edit";
     const denied = await guardPermission("warehouse", requiredAction);
     if (denied) return denied;
 
-    const existing = await prisma.warehouse.findUnique({ where: { id: BigInt(id) } });
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: "Warehouse not found" },
-        { status: 404 }
-      );
-    }
-
-    if (validated.warehouseCode) {
-      const code = validated.warehouseCode.toUpperCase();
-      const duplicate = await prisma.warehouse.findUnique({
-        where: { warehouseCode: code },
-      });
-      if (duplicate && duplicate.id !== BigInt(id)) {
-        return NextResponse.json(
-          { success: false, error: `Warehouse code already exists: ${code}` },
-          { status: 400 }
-        );
-      }
-      validated.warehouseCode = code;
-    }
-
-    const warehouse = await prisma.warehouse.update({
-      where: { id: BigInt(id) },
-      data: validated,
-    });
-
-    const session = await auth();
-    const auditAction = isStatusOnly
-      ? (validated.isActive ? "status_change" : "delete")
-      : "update";
-    void logAudit({
-      entityType: "warehouse",
-      entityId: id,
-      entityLabel: existing.warehouseCode,
-      userId: session?.user?.id ?? null,
-      userName: session?.user?.name ?? null,
-      userEmail: session?.user?.email ?? null,
-      action: auditAction,
-      before: isStatusOnly
-        ? { isActive: !validated.isActive }
-        : { warehouseName: existing.warehouseName, warehouseType: existing.warehouseType, country: existing.country },
-      after: isStatusOnly
-        ? { isActive: validated.isActive }
-        : { warehouseName: warehouse.warehouseName, warehouseType: warehouse.warehouseType, country: warehouse.country },
-      ip: getIp(request.headers),
-    });
-    return NextResponse.json({ success: true, data: serialize(warehouse) });
-  } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: "Validation error", details: error.issues },
-        { status: 400 }
-      );
-    }
+    const data = await WarehousesService.updateWarehouse(id, validated, getIp(request.headers));
+    return apiSuccess({ data });
+  } catch (error) {
     console.error("Error updating warehouse:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const denied = await guardPermission("warehouse", "delete");
   if (denied) return denied;
   try {
     const { id } = await params;
-
-    const existing = await prisma.warehouse.findUnique({ where: { id: BigInt(id) } });
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: "Warehouse not found" },
-        { status: 404 }
-      );
-    }
-
-    await prisma.warehouse.update({
-      where: { id: BigInt(id) },
-      data: { isActive: false },
-    });
-
-    const session = await auth();
-    void logAudit({
-      entityType: "warehouse",
-      entityId: id,
-      entityLabel: existing.warehouseCode,
-      userId: session?.user?.id ?? null,
-      userName: session?.user?.name ?? null,
-      userEmail: session?.user?.email ?? null,
-      action: "delete",
-      before: { isActive: true, warehouseName: existing.warehouseName },
-      ip: getIp(_request.headers),
-    });
-    return NextResponse.json({ success: true, message: "Warehouse deactivated successfully" });
-  } catch (error: unknown) {
+    await WarehousesService.deactivateWarehouse(id, getIp(request.headers));
+    return apiSuccess({ message: "Warehouse deactivated successfully" });
+  } catch (error) {
     console.error("Error deleting warehouse:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

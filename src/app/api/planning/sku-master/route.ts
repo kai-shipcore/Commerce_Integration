@@ -1,458 +1,56 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryPool } from "@/lib/db/primary-db";
-import { getLookupPool } from "@/lib/db/supabase-lookup";
+/**
+ * Code Guide:
+ * This API route owns the planning/sku-master backend workflow.
+ * Controller layer only: parses the request, applies the auth guard, and
+ * delegates to SkuMasterService for validation, business logic, and audit
+ * logging. Data access lives in src/lib/sku-master/repository.ts.
+ */
+
+import { NextRequest } from "next/server";
 import { guardPermission } from "@/lib/permissions";
-import { auth } from "@/lib/auth";
-import { logAudit, getIp } from "@/lib/audit";
-import { normalizeMasterSku } from "@/lib/planning/master-sku";
-
-type ProductKey = "cc" | "fm" | "sc" | "ac" | "swc";
-
-type ExcelSkuRow = {
-  masterSku: string;
-  cbmPerUnit?: number;
-  moq?: number;
-  orderMultiple?: number;
-};
-
-type QueryClient = {
-  query: (sql: string, params?: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
-};
-
-const forecastDashboardViewSql = `
-  CREATE VIEW shipcore.fc_forecast_dashboard AS
-  SELECT p.master_sku,
-      p.sub_category_code,
-      p.status AS product_status,
-      p.moq,
-      p.cbm_per_unit,
-      COALESCE(st.total_usable_qty, 0::numeric) AS stock_qty,
-      COALESCE(st.total_backorder, 0::numeric) AS backorder_qty,
-      COALESCE(ib.inbound_qty, 0::bigint) AS inbound_qty,
-      ib.nearest_eta,
-      fb.adjusted_daily_forecast AS daily_forecast,
-      fb.seasonality_factor,
-      CASE
-        WHEN fb.adjusted_daily_forecast > 0::numeric THEN round(COALESCE(st.total_usable_qty, 0::numeric) / fb.adjusted_daily_forecast)
-        ELSE NULL::numeric
-      END AS days_of_cover,
-      CURRENT_DATE +
-      CASE
-        WHEN fb.adjusted_daily_forecast > 0::numeric THEN round(COALESCE(st.total_usable_qty, 0::numeric) / fb.adjusted_daily_forecast)::integer
-        ELSE 9999
-      END AS est_sold_out_date
-    FROM shipcore.fc_products p
-      LEFT JOIN shipcore.fc_stock_total st ON st.master_sku::text = p.master_sku::text
-      LEFT JOIN shipcore.fc_inbound_qty ib ON ib.master_sku::text = p.master_sku::text
-      LEFT JOIN LATERAL (
-        SELECT fc_forecast_baselines.adjusted_daily_forecast,
-          fc_forecast_baselines.seasonality_factor
-        FROM shipcore.fc_forecast_baselines
-        WHERE fc_forecast_baselines.master_sku::text = p.master_sku::text
-        ORDER BY fc_forecast_baselines.forecast_date DESC
-        LIMIT 1
-      ) fb ON true
-    WHERE p.status = 'active'::shipcore.fc_product_status
-`;
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
-// Manual override only (Hold/Discontinued/TBD). SWC is an item/category designation (it lives in
-// the category filter bar instead, matched directly against the raw column below) rather than a
-// lifecycle status, so it's excluded here. Legacy rows where p.sales_status was mistakenly
-// written as 'Original'/'Custom' (a footgun in the old single-dropdown UI) are also treated as having
-// no override, same as NULL — Original/Custom live in originalOrCustomSql.
-const overrideStatusSql = `(CASE WHEN p.sales_status IN ('Hold', 'Discontinued', 'TBD') THEN p.sales_status ELSE NULL END)`;
-// Original vs Custom is derived purely from actual order/velocity data (the is_custom flag baked
-// into fc_stats/fc_stats_custom), independent of any manual override on fc_products.
-const originalOrCustomSql = `COALESCE((SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), 'Original')`;
-
-function inferProduct(masterSku: string): {
-  productKey: ProductKey;
-  category: string;
-  categoryCode: string;
-  moq: number;
-  cbmPerUnit: number;
-  caseQty: number;
-  weightKg: number;
-} {
-  const sku = masterSku.toUpperCase();
-
-  if (sku.includes("SWC")) {
-    return {
-      productKey: "swc",
-      category: "SWC",
-      categoryCode: "SWC",
-      moq: 1,
-      cbmPerUnit: 0.078,
-      caseQty: 1,
-      weightKg: 2.8,
-    };
-  }
-
-  if (sku.startsWith("CC-") || sku === "C-SJ-GR-7") {
-    return {
-      productKey: "cc",
-      category: "Car Cover",
-      categoryCode: "CC",
-      moq: 3,
-      cbmPerUnit: 0.078,
-      caseQty: 3,
-      weightKg: 2.8,
-    };
-  }
-
-  if (sku.startsWith("CA-SC-") || sku.startsWith("CL-SC-")) {
-    return {
-      productKey: "sc",
-      category: "Seat Cover",
-      categoryCode: "SC",
-      moq: 5,
-      cbmPerUnit: 0.048,
-      caseQty: 1,
-      weightKg: 0.9,
-    };
-  }
-
-  if (sku.startsWith("CA-FM-")) {
-    return {
-      productKey: "fm",
-      category: "Floor Mat",
-      categoryCode: "FM",
-      moq: 5,
-      cbmPerUnit: 0.125,
-      caseQty: 1,
-      weightKg: 1.4,
-    };
-  }
-
-  return {
-    productKey: "ac",
-    category: "Accessories",
-    categoryCode: "AC",
-    moq: 1,
-    cbmPerUnit: 0.05,
-    caseQty: 1,
-    weightKg: 0.5,
-  };
-}
-
-async function ensureCbmPrecision(client: QueryClient) {
-  const result = await client.query(`
-    SELECT numeric_scale
-    FROM information_schema.columns
-    WHERE table_schema = 'shipcore'
-      AND table_name = 'fc_products'
-      AND column_name = 'cbm_per_unit'
-  `);
-  const scale = Number(result.rows[0]?.numeric_scale ?? 0);
-
-  if (scale < 6) {
-    await client.query("DROP VIEW IF EXISTS shipcore.fc_forecast_dashboard");
-    await client.query(`
-      ALTER TABLE shipcore.fc_products
-      ALTER COLUMN cbm_per_unit TYPE NUMERIC(14,6)
-      USING cbm_per_unit::NUMERIC(14,6)
-    `);
-    await client.query(forecastDashboardViewSql);
-  }
-}
+import { getIp } from "@/lib/audit";
+import { SkuMasterService } from "@/lib/sku-master/service";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
 export async function GET(request: NextRequest) {
   const denied = await guardPermission("sku-master", "read");
   if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get("search")?.trim() ?? "";
-    const productParam = searchParams.get("product")?.trim() ?? "";
-    const productValues = productParam ? productParam.split(",").map((v) => v.trim()).filter(Boolean) : [];
-    const status = searchParams.get("status")?.trim().toLowerCase() ?? "active";
     const masterSku = searchParams.get("masterSku")?.trim() ?? "";
-    const page = Math.max(1, Number(searchParams.get("page") ?? 1));
-    const limit = Math.min(200, Math.max(20, Number(searchParams.get("limit") ?? 50)));
-    const offset = (page - 1) * limit;
-
-    // "salesType" filters on the derived Original/Custom classification (originalOrCustomSql).
-    const salesType = searchParams.get("salesType")?.trim() ?? "all";
-    if (salesType !== "all" && salesType !== "Original" && salesType !== "Custom") {
-      return NextResponse.json({ success: false, error: "Invalid salesType filter" }, { status: 400 });
-    }
-
-    // "type" filters on the manual override (overrideStatusSql) — the UI's "All Types" filter,
-    // matching the TYPE column (Hold/Discontinued/TBD only — Original/Custom never appear there).
-    const typeParam = searchParams.get("type")?.trim() ?? "all";
-    const validTypeFilters = ["Hold", "Discontinued", "TBD"];
-    if (typeParam !== "all" && !validTypeFilters.includes(typeParam)) {
-      return NextResponse.json({ success: false, error: "Invalid type filter" }, { status: 400 });
-    }
-
-    const filters: string[] = [];
-    const params: unknown[] = [];
-
-    if (status !== "all") {
-      if (status !== "active" && status !== "inactive") {
-        return NextResponse.json({ success: false, error: "Invalid status filter" }, { status: 400 });
-      }
-      params.push(status);
-      filters.push(`p.status = $${params.length}::shipcore.fc_product_status`);
-    }
-
-    if (search) {
-      params.push(`%${search}%`);
-      filters.push(`p.master_sku ILIKE $${params.length}`);
-    }
-
-    // Merged category filter: SWC is a real category_code value (see "swc" in productMap below),
-    // so it flows through baseCategoryCodes like the others.
-    const productMap: Record<string, string> = { cc: "CC", fm: "FM", sc: "SC", ac: "AC", swc: "SWC" };
-    const baseCategoryCodes = productValues
-      .map((v) => productMap[v])
-      .filter((code): code is string => Boolean(code));
-
-    if (baseCategoryCodes.length) {
-      params.push(baseCategoryCodes);
-      filters.push(`p.category_code = ANY($${params.length}::text[])`);
-    }
-
-    if (salesType !== "all") {
-      params.push(salesType);
-      filters.push(`${originalOrCustomSql} = $${params.length}`);
-    }
-
-    if (typeParam !== "all") {
-      params.push(typeParam);
-      filters.push(`${overrideStatusSql} = $${params.length}`);
-    }
-
-    const pool = getPrimaryPool();
-    const whereClause = filters.length > 0 ? filters.join(" AND ") : "TRUE";
 
     if (masterSku) {
-      const result = await pool.query(
-        `SELECT
-           p.master_sku,
-           p.product_name,
-           p.category,
-           p.category_code,
-           p.status::text AS status,
-           ${overrideStatusSql} AS sales_status,
-           ${originalOrCustomSql} AS original_or_custom,
-           p.moq,
-           p.order_multiple,
-           p.cbm_per_unit::text AS cbm_per_unit,
-           p.case_qty,
-           p.weight_kg::text AS weight_kg
-         FROM shipcore.fc_products p
-         WHERE p.master_sku = $1 AND p.status = 'active'
-         LIMIT 1`,
-        [masterSku]
-      );
-
-      if (result.rowCount === 0) {
-        return NextResponse.json(
-          { success: false, error: `SKU does not exist in fc_products: ${masterSku}` },
-          { status: 404 }
-        );
-      }
-
-      const row = result.rows[0];
-      const inferred = inferProduct(row.master_sku);
-      return NextResponse.json({
-        success: true,
-        data: {
-          masterSku: row.master_sku,
-          productName: row.product_name,
-          productKey: (row.category_code?.toLowerCase() ?? inferred.productKey) as ProductKey,
-          category: row.category ?? inferred.category,
-          categoryCode: row.category_code ?? inferred.categoryCode,
-          status: row.status ?? "active",
-          salesStatus: (row.sales_status as string | null) ?? null,
-          originalOrCustom: (row.original_or_custom as string | null) ?? "Original",
-          moq: Number(row.moq ?? inferred.moq),
-          orderMultiple: Number(row.order_multiple ?? inferred.moq),
-          cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
-          caseQty: Number(row.case_qty ?? inferred.caseQty),
-          weightKg: Number(row.weight_kg ?? inferred.weightKg),
-        },
-      });
+      const data = await SkuMasterService.getProduct(masterSku);
+      return apiSuccess({ data });
     }
 
-    const countResult = await pool.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count
-       FROM shipcore.fc_products p
-       WHERE ${whereClause}`,
-      params
-    );
-    const total = Number(countResult.rows[0]?.count ?? 0);
-
-    const dataParams = [...params, limit, offset];
-    const limitParam = dataParams.length - 1;
-    const offsetParam = dataParams.length;
-
-    const result = await pool.query(
-      `SELECT
-         p.master_sku,
-         p.product_name,
-         p.category,
-         p.category_code,
-         p.status::text AS status,
-         ${overrideStatusSql} AS sales_status,
-         ${originalOrCustomSql} AS original_or_custom,
-         p.moq,
-         p.order_multiple,
-         p.cbm_per_unit::text AS cbm_per_unit,
-         p.case_qty,
-         p.weight_kg::text AS weight_kg
-       FROM shipcore.fc_products p
-       WHERE ${whereClause}
-       ORDER BY p.category_code NULLS LAST, p.master_sku
-       LIMIT $${limitParam} OFFSET $${offsetParam}`,
-      dataParams
-    );
-
-    return NextResponse.json({
-      success: true,
-      data: result.rows.map((row) => {
-        const inferred = inferProduct(row.master_sku);
-        return {
-          masterSku: row.master_sku,
-          productName: row.product_name,
-          productKey: (row.category_code?.toLowerCase() ?? inferred.productKey) as ProductKey,
-          category: row.category ?? inferred.category,
-          categoryCode: row.category_code ?? inferred.categoryCode,
-          status: row.status ?? "active",
-          salesStatus: (row.sales_status as string | null) ?? null,
-          originalOrCustom: (row.original_or_custom as string | null) ?? "Original",
-          moq: Number(row.moq ?? inferred.moq),
-          orderMultiple: Number(row.order_multiple ?? inferred.moq),
-          cbmPerUnit: Number(row.cbm_per_unit ?? inferred.cbmPerUnit),
-          caseQty: Number(row.case_qty ?? inferred.caseQty),
-          weightKg: Number(row.weight_kg ?? inferred.weightKg),
-        };
-      }),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
-      },
+    const result = await SkuMasterService.listProducts({
+      search: searchParams.get("search")?.trim() ?? "",
+      product: searchParams.get("product")?.trim() ?? "",
+      status: searchParams.get("status")?.trim().toLowerCase() ?? "active",
+      masterSku: "",
+      page: Number(searchParams.get("page") ?? 1),
+      limit: Number(searchParams.get("limit") ?? 50),
+      salesType: searchParams.get("salesType")?.trim() ?? "all",
+      type: searchParams.get("type")?.trim() ?? "all",
     });
+
+    return apiSuccess(result);
   } catch (error) {
     console.error("SKU master GET failed:", error);
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
 export async function POST() {
   const denied = await guardPermission("sku-master", "edit");
   if (denied) return denied;
-  const lookup = getLookupPool();
-  if (!lookup) {
-    return NextResponse.json(
-      { success: false, error: "SUPABASE_LOOKUP_DATABASE_URL is not configured" },
-      { status: 500 }
-    );
-  }
-
-  const primary = getPrimaryPool();
-  const lookupClient = await lookup.connect();
-  const primaryClient = await primary.connect();
-
   try {
-    const source = await lookupClient.query<{ master_sku: string }>(
-      `SELECT DISTINCT btrim(master_sku) AS master_sku
-       FROM ecommerce_data.coverland_inventory_by_warehouse
-       WHERE master_sku IS NOT NULL AND btrim(master_sku) <> ''
-       ORDER BY btrim(master_sku)`
-    );
-
-    const rows = [
-      ...new Map(
-        source.rows.map((row) => {
-          const masterSku = normalizeMasterSku(row.master_sku);
-          return [masterSku, { masterSku, ...inferProduct(masterSku) }] as const;
-        })
-      ).values(),
-    ];
-
-    await primaryClient.query("BEGIN");
-    await primaryClient.query(`
-      CREATE TEMP TABLE stg_fc_products (
-        master_sku TEXT,
-        product_name TEXT,
-        category TEXT,
-        category_code TEXT,
-        moq INT,
-        order_multiple INT,
-        cbm_per_unit NUMERIC,
-        case_qty INT,
-        weight_kg NUMERIC
-      ) ON COMMIT DROP
-    `);
-
-    if (rows.length > 0) {
-      await primaryClient.query(
-        `INSERT INTO stg_fc_products
-           (master_sku, product_name, category, category_code, moq, order_multiple, cbm_per_unit, case_qty, weight_kg)
-         SELECT
-           unnest($1::text[]),
-           unnest($2::text[]),
-           unnest($3::text[]),
-           unnest($4::text[]),
-           unnest($5::int[]),
-           unnest($6::int[]),
-           unnest($7::numeric[]),
-           unnest($8::int[]),
-           unnest($9::numeric[])`,
-        [
-          rows.map((row) => row.masterSku),
-          rows.map((row) => row.masterSku),
-          rows.map((row) => row.category),
-          rows.map((row) => row.categoryCode),
-          rows.map((row) => row.moq),
-          rows.map((row) => row.moq),
-          rows.map((row) => row.cbmPerUnit),
-          rows.map((row) => row.caseQty),
-          rows.map((row) => row.weightKg),
-        ]
-      );
-    }
-
-    const upsert = await primaryClient.query(`
-      INSERT INTO shipcore.fc_products (
-        master_sku, product_name, category, category_code, status,
-        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
-        created_at, updated_at
-      )
-      SELECT
-        master_sku, product_name, category, category_code, 'active',
-        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
-        NOW(), NOW()
-      FROM stg_fc_products
-      ON CONFLICT (master_sku) DO UPDATE SET
-        product_name = COALESCE(NULLIF(shipcore.fc_products.product_name, ''), EXCLUDED.product_name),
-        category = COALESCE(shipcore.fc_products.category, EXCLUDED.category),
-        category_code = COALESCE(shipcore.fc_products.category_code, EXCLUDED.category_code),
-        status = 'active',
-        updated_at = NOW()
-    `);
-
-    await primaryClient.query("COMMIT");
-
-    return NextResponse.json({
-      success: true,
-      sourceRows: source.rowCount,
-      upserted: upsert.rowCount,
-    });
+    const result = await SkuMasterService.syncFromInventory();
+    return apiSuccess(result);
   } catch (error) {
-    await primaryClient.query("ROLLBACK");
     console.error("SKU master sync failed:", error);
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
-  } finally {
-    lookupClient.release();
-    primaryClient.release();
+    return handleApiError(error);
   }
 }
 
@@ -461,290 +59,31 @@ export async function PATCH(request: NextRequest) {
   if (denied) return denied;
   try {
     const body = await request.json();
-    const masterSku = String(body.masterSku ?? "").trim();
-    if (!masterSku) {
-      return NextResponse.json({ success: false, error: "masterSku is required" }, { status: 400 });
-    }
-
-    const moq = body.moq == null ? null : Math.max(1, Number(body.moq));
-    const orderMultiple = body.orderMultiple == null ? null : Math.max(1, Number(body.orderMultiple));
-    const caseQty = body.caseQty == null ? null : Math.max(1, Number(body.caseQty));
-    const cbmPerUnit = body.cbmPerUnit == null ? null : Math.max(0.000001, Number(body.cbmPerUnit));
-    const weightKg = body.weightKg == null ? null : Math.max(0, Number(body.weightKg));
-    const statusValue = body.status == null ? null : String(body.status).trim().toLowerCase();
-    const salesStatusRaw = body.salesStatus == null ? undefined : String(body.salesStatus).trim();
-    const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
-
-    // Original/Custom are derived from order data (see originalOrCustomSql in the GET handler above)
-    // and must never be written manually; Part/SWC are item/category designations (auto-detected or
-    // set by dedicated sync jobs, not this endpoint) — only override statuses are settable here.
-    const validSalesStatuses = ["Hold", "Discontinued", "TBD"];
-    if (salesStatusValue != null && !validSalesStatuses.includes(salesStatusValue)) {
-      return NextResponse.json({ success: false, error: "Invalid salesStatus" }, { status: 400 });
-    }
-
-    if (statusValue !== null && statusValue !== "active" && statusValue !== "inactive") {
-      return NextResponse.json({ success: false, error: "Invalid status" }, { status: 400 });
-    }
-
-    const pool = getPrimaryPool();
-    const result = await pool.query(
-      `UPDATE shipcore.fc_products
-       SET moq = COALESCE($2, moq),
-           order_multiple = COALESCE($3, order_multiple),
-           cbm_per_unit = COALESCE($4, cbm_per_unit),
-           case_qty = COALESCE($5, case_qty),
-           weight_kg = COALESCE($6, weight_kg),
-           status = COALESCE($7::shipcore.fc_product_status, status),
-           sales_status = CASE WHEN $8::text IS NOT NULL THEN $8::text ELSE sales_status END,
-           updated_at = NOW()
-       WHERE master_sku = $1
-       RETURNING master_sku`,
-      [masterSku, moq, orderMultiple, cbmPerUnit, caseQty, weightKg, statusValue, salesStatusValue ?? null]
-    );
-
-    if (result.rowCount === 0) {
-      return NextResponse.json({ success: false, error: "SKU not found" }, { status: 404 });
-    }
-
-    const session = await auth();
-    void logAudit({
-      entityType: "sku",
-      entityId: masterSku,
-      entityLabel: masterSku,
-      userId: session?.user?.id ?? null,
-      userName: session?.user?.name ?? null,
-      userEmail: session?.user?.email ?? null,
-      action: statusValue === "inactive" ? "delete" : "update",
-      after: Object.fromEntries(
-        Object.entries({ moq, orderMultiple, cbmPerUnit, caseQty, weightKg, status: statusValue, salesStatus: salesStatusValue })
-          .filter(([, v]) => v != null)
-      ),
-      ip: getIp(request.headers),
-    });
-    return NextResponse.json({ success: true });
+    await SkuMasterService.updateProduct(body, getIp(request.headers));
+    return apiSuccess({});
   } catch (error) {
     console.error("SKU master PATCH failed:", error);
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
 export async function PUT(request: NextRequest) {
   const denied = await guardPermission("sku-master", "edit");
   if (denied) return denied;
-  const pool = getPrimaryPool();
-  const client = await pool.connect();
-
   try {
     const body = await request.json();
     const rawRows = Array.isArray(body.rows) ? body.rows : [];
-    const rowsBySku = new Map<string, ExcelSkuRow>();
-
-    for (const rawRow of rawRows) {
-      const masterSku = normalizeMasterSku(
-        String(rawRow?.masterSku ?? "").trim().toUpperCase()
-      );
-      const parsedCbm = Number(rawRow?.cbmPerUnit);
-      const parsedMoq = Number(rawRow?.moq);
-      const parsedOrderMultiple = Number(rawRow?.orderMultiple);
-      const cbmPerUnit = Number.isFinite(parsedCbm) && parsedCbm > 0 ? parsedCbm : undefined;
-      const moq = Number.isInteger(parsedMoq) && parsedMoq >= 1 ? parsedMoq : undefined;
-      const orderMultiple = Number.isInteger(parsedOrderMultiple) && parsedOrderMultiple >= 1
-        ? parsedOrderMultiple
-        : undefined;
-
-      if (!masterSku || (cbmPerUnit == null && moq == null && orderMultiple == null)) {
-        continue;
-      }
-
-      rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple });
-    }
-
-    const rows = [...rowsBySku.values()];
-
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "No valid Master SKU / CBM / MOQ / Order Multiple rows found" },
-        { status: 400 }
-      );
-    }
 
     if (body.preview === true) {
-      const existingResult = await client.query<{
-        master_sku: string;
-        cbm_per_unit: string | null;
-        moq: number | null;
-        order_multiple: number | null;
-      }>(
-        `SELECT master_sku, cbm_per_unit::text, moq, order_multiple
-         FROM shipcore.fc_products
-         WHERE master_sku = ANY($1::text[])`,
-        [rows.map((row) => row.masterSku)]
-      );
-      const existingBySku = new Map(existingResult.rows.map((row) => [row.master_sku, row]));
-      const previewRows = rows.map((row) => {
-        const existing = existingBySku.get(row.masterSku);
-        const defaults = inferProduct(row.masterSku);
-        const current = existing
-          ? {
-              cbmPerUnit: existing.cbm_per_unit == null ? null : Number(existing.cbm_per_unit),
-              moq: existing.moq,
-              orderMultiple: existing.order_multiple,
-            }
-          : null;
-        const next = {
-          cbmPerUnit: existing
-            ? row.cbmPerUnit ?? current!.cbmPerUnit
-            : row.cbmPerUnit ?? defaults.cbmPerUnit,
-          moq: existing
-            ? row.moq ?? current!.moq
-            : row.moq ?? defaults.moq,
-          orderMultiple: existing
-            ? row.orderMultiple ?? current!.orderMultiple
-            : row.orderMultiple ?? defaults.moq,
-        };
-        const changedFields = existing
-          ? ([
-              current?.cbmPerUnit !== next.cbmPerUnit ? "cbmPerUnit" : null,
-              current?.moq !== next.moq ? "moq" : null,
-              current?.orderMultiple !== next.orderMultiple ? "orderMultiple" : null,
-            ].filter((field): field is string => field !== null))
-          : ["cbmPerUnit", "moq", "orderMultiple"];
-        const action: "insert" | "update" | "unchanged" = existing
-          ? (changedFields.length > 0 ? "update" : "unchanged")
-          : "insert";
-        return {
-          masterSku: row.masterSku,
-          action,
-          current,
-          next,
-          changedFields,
-        };
-      });
-      const summary = previewRows.reduce(
-        (counts, row) => ({ ...counts, [row.action]: counts[row.action] + 1 }),
-        { insert: 0, update: 0, unchanged: 0 }
-      );
-      return NextResponse.json({ success: true, data: { rows: previewRows, summary } });
+      const data = await SkuMasterService.previewExcelImport(rawRows);
+      return apiSuccess({ data });
     }
 
-    await client.query("BEGIN");
-    await client.query(`
-      CREATE TEMP TABLE stg_excel_sku (
-        master_sku TEXT PRIMARY KEY,
-        product_name TEXT,
-        category TEXT,
-        category_code TEXT,
-        imported_moq INT,
-        imported_order_multiple INT,
-        imported_cbm_per_unit NUMERIC,
-        default_moq INT,
-        default_order_multiple INT,
-        default_cbm_per_unit NUMERIC,
-        case_qty INT,
-        weight_kg NUMERIC
-      ) ON COMMIT DROP
-    `);
-
-    await ensureCbmPrecision(client);
-
-    const inferredRows = rows.map((row) => {
-      const defaults = inferProduct(row.masterSku);
-      return {
-        ...defaults,
-        masterSku: row.masterSku,
-        importedCbmPerUnit: row.cbmPerUnit ?? null,
-        importedMoq: row.moq ?? null,
-        importedOrderMultiple: row.orderMultiple ?? null,
-      };
-    });
-
-    await client.query(
-      `INSERT INTO stg_excel_sku
-         (master_sku, product_name, category, category_code,
-          imported_moq, imported_order_multiple, imported_cbm_per_unit,
-          default_moq, default_order_multiple, default_cbm_per_unit,
-          case_qty, weight_kg)
-       SELECT
-         unnest($1::text[]),
-         unnest($2::text[]),
-         unnest($3::text[]),
-         unnest($4::text[]),
-         unnest($5::int[]),
-         unnest($6::int[]),
-         unnest($7::numeric[]),
-         unnest($8::int[]),
-         unnest($9::int[]),
-         unnest($10::numeric[]),
-         unnest($11::int[]),
-         unnest($12::numeric[])`,
-      [
-        inferredRows.map((row) => row.masterSku),
-        inferredRows.map((row) => row.masterSku),
-        inferredRows.map((row) => row.category),
-        inferredRows.map((row) => row.categoryCode),
-        inferredRows.map((row) => row.importedMoq),
-        inferredRows.map((row) => row.importedOrderMultiple),
-        inferredRows.map((row) => row.importedCbmPerUnit),
-        inferredRows.map((row) => row.moq),
-        inferredRows.map((row) => row.moq),
-        inferredRows.map((row) => row.cbmPerUnit),
-        inferredRows.map((row) => row.caseQty),
-        inferredRows.map((row) => row.weightKg),
-      ]
-    );
-
-    const updatedResult = await client.query(`
-      UPDATE shipcore.fc_products product
-      SET
-        cbm_per_unit = COALESCE(stg.imported_cbm_per_unit, product.cbm_per_unit),
-        moq = COALESCE(stg.imported_moq, product.moq),
-        order_multiple = COALESCE(stg.imported_order_multiple, product.order_multiple),
-        product_name = COALESCE(NULLIF(product.product_name, ''), stg.product_name),
-        category = COALESCE(product.category, stg.category),
-        category_code = COALESCE(product.category_code, stg.category_code),
-        updated_at = NOW()
-      FROM stg_excel_sku stg
-      WHERE product.master_sku = stg.master_sku
-    `);
-
-    const insertedResult = await client.query(`
-      INSERT INTO shipcore.fc_products (
-        master_sku, product_name, category, category_code, status,
-        moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
-        created_at, updated_at
-      )
-      SELECT
-        master_sku, product_name, category, category_code, 'active',
-        COALESCE(imported_moq, default_moq),
-        COALESCE(imported_order_multiple, default_order_multiple),
-        COALESCE(imported_cbm_per_unit, default_cbm_per_unit),
-        case_qty, weight_kg,
-        NOW(), NOW()
-      FROM stg_excel_sku stg
-      WHERE NOT EXISTS (
-        SELECT 1 FROM shipcore.fc_products product WHERE product.master_sku = stg.master_sku
-      )
-      ON CONFLICT (master_sku) DO NOTHING
-    `);
-
-    await client.query("COMMIT");
-
-    const updated = updatedResult.rowCount ?? 0;
-    const inserted = insertedResult.rowCount ?? 0;
-    return NextResponse.json({
-      success: true,
-      imported: rows.length,
-      upserted: updated + inserted,
-      updated,
-      inserted,
-    });
+    const result = await SkuMasterService.applyExcelImport(rawRows);
+    return apiSuccess(result);
   } catch (error) {
-    await client.query("ROLLBACK");
     console.error("SKU master Excel import failed:", error);
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
-  } finally {
-    client.release();
+    return handleApiError(error);
   }
 }
 
@@ -754,34 +93,10 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const masterSku = searchParams.get("masterSku")?.trim() ?? "";
-    if (!masterSku) {
-      return NextResponse.json({ success: false, error: "masterSku is required" }, { status: 400 });
-    }
-
-    const pool = getPrimaryPool();
-    await pool.query(
-      `UPDATE shipcore.fc_products
-       SET status = 'inactive', updated_at = NOW()
-       WHERE master_sku = $1`,
-      [masterSku]
-    );
-
-    const session = await auth();
-    void logAudit({
-      entityType: "sku",
-      entityId: masterSku,
-      entityLabel: masterSku,
-      userId: session?.user?.id ?? null,
-      userName: session?.user?.name ?? null,
-      userEmail: session?.user?.email ?? null,
-      action: "delete",
-      before: { status: "active" },
-      after: { status: "inactive" },
-      ip: getIp(request.headers),
-    });
-    return NextResponse.json({ success: true });
+    await SkuMasterService.deactivateProduct(masterSku, getIp(request.headers));
+    return apiSuccess({});
   } catch (error) {
     console.error("SKU master DELETE failed:", error);
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return handleApiError(error);
   }
 }
