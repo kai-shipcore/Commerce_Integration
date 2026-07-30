@@ -1,8 +1,23 @@
+// Code Guide: Available Stock CRUD/import (GET/POST create+import/PATCH/DELETE-by-stockId)
+// backs the /planning/available-stock page and delegates to AvailableStockService.
+//
+// The container-allocation logic interleaved in this same file (POST
+// action="allocate", DELETE by allocationIds) is a DIFFERENT domain
+// (container-planning, not yet refactored) that happens to share this route
+// path and the "available-stock" permission's edit action for historical
+// reasons. It is intentionally left exactly as it was — inline, raw SQL,
+// hand-rolled responses — rather than partially refactored into a
+// service that doesn't fully exist yet. See src/lib/available-stock/repository.ts.
+
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { guardPermission } from "@/lib/permissions";
+import { auth } from "@/lib/auth";
+import { getIp } from "@/lib/audit";
+import { AvailableStockService } from "@/lib/available-stock/service";
+import { apiSuccess, apiError, handleApiError } from "@/lib/api-response";
 
 const StockSourceSchema = z.enum(["remaining", "mistake"]);
 
@@ -46,55 +61,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
+async function currentWho() {
+  const session = await auth();
+  return { userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null };
+}
+
 export async function GET(request: NextRequest) {
   const denied = await guardPermission("available-stock", "read");
   if (denied) return denied;
   try {
     const containerId = new URL(request.url).searchParams.get("containerId")?.trim() ?? "";
-    const params: unknown[] = [];
-    let allocationExpr = "0::int";
-    if (/^\d+$/.test(containerId)) {
-      params.push(containerId);
-      allocationExpr = `COALESCE(SUM(a.qty) FILTER (WHERE a.container_id = $1::bigint), 0)::int`;
-    }
-
-    const result = await getPrimaryPool().query(
-      `SELECT
-         s.id::text AS id,
-         s.source_type,
-         s.reference_no,
-         s.pl_no,
-         s.master_sku,
-         s.total_qty::int,
-         s.cbm_unit::float8 AS cbm,
-         s.note,
-         (s.total_qty - COALESCE(SUM(a.qty), 0))::int AS available_qty,
-         ${allocationExpr} AS allocated_to_container
-       FROM shipcore.fc_available_stock s
-       LEFT JOIN shipcore.fc_container_item_allocations a ON a.source_stock_id = s.id
-       GROUP BY s.id
-       ORDER BY s.source_type, s.reference_no, s.master_sku`,
-      params
-    );
-
-    return NextResponse.json({
-      success: true,
-      data: result.rows.map((row) => ({
-        id: row.id as string,
-        sourceType: row.source_type as "remaining" | "mistake",
-        referenceNo: row.reference_no as string,
-        plNo: row.pl_no as string | null,
-        masterSku: row.master_sku as string,
-        totalQty: Number(row.total_qty),
-        availableQty: Number(row.available_qty),
-        allocatedToContainer: Number(row.allocated_to_container),
-        cbm: Number(row.cbm),
-        note: row.note as string | null,
-      })),
-    });
+    const data = await AvailableStockService.listStock(containerId || null);
+    return apiSuccess({ data });
   } catch (error) {
-    console.error("Available stock GET failed:", error);
-    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+    return handleApiError(error);
   }
 }
 
@@ -105,68 +85,14 @@ export async function POST(request: NextRequest) {
   const postAction = actionCheck === "allocate" ? "edit" : "create";
   const denied = await guardPermission("available-stock", postAction);
   if (denied) return denied;
+
   const importRequest = ImportStockSchema.safeParse(body);
   if (importRequest.success) {
-    const client = await getPrimaryPool().connect();
     try {
-      await client.query("BEGIN");
-      const normalizedRows = importRequest.data.rows.map((row) => ({
-        ...row,
-        referenceNo: row.referenceNo.trim(),
-        plNo: row.plNo?.trim() || null,
-        masterSku: row.masterSku.trim().toUpperCase(),
-        note: row.note?.trim() || null,
-      }));
-      const skus = [...new Set(normalizedRows.map((row) => row.masterSku))];
-      const products = await client.query<{ master_sku: string; cbm: number }>(
-        `SELECT master_sku, cbm_per_unit::float8 AS cbm
-         FROM shipcore.fc_products
-         WHERE master_sku = ANY($1::text[])`,
-        [skus]
-      );
-      const cbmBySku = new Map(products.rows.map((row) => [row.master_sku, Number(row.cbm)]));
-      const missingSkus = skus.filter((sku) => !cbmBySku.has(sku));
-      if (missingSkus.length > 0) {
-        await client.query("ROLLBACK");
-        return NextResponse.json(
-          { success: false, error: `SKU does not exist in SKU Master: ${missingSkus.join(", ")}` },
-          { status: 400 }
-        );
-      }
-
-      let inserted = 0;
-      let skipped = 0;
-      for (const row of normalizedRows) {
-        const cbm = row.cbm ?? cbmBySku.get(row.masterSku) ?? 0;
-        if (cbm <= 0) {
-          throw new Error(`No CBM per unit on file for ${row.masterSku}.`);
-        }
-        const result = await client.query(
-          `INSERT INTO shipcore.fc_available_stock
-             (source_type, reference_no, pl_no, master_sku, total_qty, cbm_unit, note)
-           SELECT $1::varchar, $2::varchar, $3::varchar, $4::varchar, $5::int, $6::numeric(14,6), $7::text
-           WHERE NOT EXISTS (
-             SELECT 1 FROM shipcore.fc_available_stock
-             WHERE source_type = $1::varchar
-               AND reference_no = $2::varchar
-               AND pl_no IS NOT DISTINCT FROM $3::varchar
-               AND master_sku = $4::varchar
-           )
-           RETURNING id`,
-          [row.sourceType, row.referenceNo, row.plNo, row.masterSku, row.totalQty, cbm, row.note]
-        );
-        if (result.rowCount === 1) inserted += 1;
-        else skipped += 1;
-      }
-      await client.query("COMMIT");
-      await invalidatePlanningDashboardCache();
-      return NextResponse.json({ success: true, data: { inserted, skipped, total: normalizedRows.length } });
+      const data = await AvailableStockService.importStock(importRequest.data.rows, await currentWho(), getIp(request.headers));
+      return apiSuccess({ data });
     } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Available stock import failed:", error);
-      return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
-    } finally {
-      client.release();
+      return handleApiError(error);
     }
   }
 
@@ -175,46 +101,14 @@ export async function POST(request: NextRequest) {
   if (!allocation.success) {
     try {
       const validated = CreateStockSchema.parse(body);
-      const masterSku = validated.masterSku.toUpperCase();
-      const product = await getPrimaryPool().query(
-        `SELECT master_sku
-         FROM shipcore.fc_products
-         WHERE master_sku = $1
-         LIMIT 1`,
-        [masterSku]
-      );
-      if (product.rowCount === 0) {
-        return NextResponse.json(
-          { success: false, error: `SKU not found in SKU Master: ${masterSku}` },
-          { status: 400 }
-        );
-      }
-      const result = await getPrimaryPool().query(
-        `INSERT INTO shipcore.fc_available_stock
-           (source_type, reference_no, pl_no, master_sku, total_qty, cbm_unit, note)
-         VALUES ($1, $2, $3, $4, $5, $6::numeric(14,6), $7)
-         RETURNING id::text`,
-        [
-          validated.sourceType,
-          validated.referenceNo,
-          validated.plNo || null,
-          masterSku,
-          validated.totalQty,
-          validated.cbm,
-          validated.note || null,
-        ]
-      );
-      await invalidatePlanningDashboardCache();
-      return NextResponse.json({ success: true, data: { id: result.rows[0].id } });
+      const data = await AvailableStockService.createStock(validated, await currentWho(), getIp(request.headers));
+      return apiSuccess({ data });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return NextResponse.json({ success: false, error: "Validation error", details: error.issues }, { status: 400 });
-      }
-      console.error("Available stock POST failed:", error);
-      return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
+      return handleApiError(error);
     }
   }
 
+  // ── container-planning territory below: intentionally untouched ────────
   const client = await getPrimaryPool().connect();
   try {
     await client.query("BEGIN");
@@ -312,109 +206,13 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const denied = await guardPermission("available-stock", "edit");
   if (denied) return denied;
-  const client = await getPrimaryPool().connect();
-
   try {
     const body: unknown = await request.json();
     const validated = UpdateStockSchema.parse(body);
-    const masterSku = validated.masterSku.toUpperCase();
-
-    await client.query("BEGIN");
-    const product = await client.query(
-      `SELECT master_sku
-       FROM shipcore.fc_products
-       WHERE master_sku = $1
-       LIMIT 1`,
-      [masterSku]
-    );
-    if (product.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, error: `SKU not found in SKU Master: ${masterSku}` },
-        { status: 400 }
-      );
-    }
-    const existing = await client.query<{
-      source_type: "remaining" | "mistake";
-      master_sku: string;
-      cbm: number;
-      allocated_qty: number;
-    }>(
-      `SELECT
-         s.source_type,
-         s.master_sku,
-         s.cbm_unit::float8 AS cbm,
-         COALESCE((
-           SELECT SUM(a.qty)
-           FROM shipcore.fc_container_item_allocations a
-           WHERE a.source_stock_id = s.id
-         ), 0)::int AS allocated_qty
-       FROM shipcore.fc_available_stock s
-       WHERE s.id = $1::bigint
-       FOR UPDATE OF s`,
-      [validated.id]
-    );
-
-    if (existing.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json({ success: false, error: "Available stock not found." }, { status: 404 });
-    }
-
-    const current = existing.rows[0];
-    if (validated.totalQty < current.allocated_qty) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, error: `Quantity cannot be less than allocated quantity (${current.allocated_qty}).` },
-        { status: 409 }
-      );
-    }
-    if (
-      current.allocated_qty > 0 &&
-      (validated.sourceType !== current.source_type ||
-        masterSku !== current.master_sku ||
-        validated.cbm !== current.cbm)
-    ) {
-      await client.query("ROLLBACK");
-      return NextResponse.json(
-        { success: false, error: "Allocated stock cannot change list, Master SKU, or CBM." },
-        { status: 409 }
-      );
-    }
-
-    await client.query(
-      `UPDATE shipcore.fc_available_stock
-       SET source_type = $2,
-           reference_no = $3,
-           pl_no = $4,
-           master_sku = $5,
-           total_qty = $6::int,
-           cbm_unit = $7::numeric(14,6),
-           note = $8,
-           updated_at = NOW()
-       WHERE id = $1::bigint`,
-      [
-        validated.id,
-        validated.sourceType,
-        validated.referenceNo,
-        validated.plNo || null,
-        masterSku,
-        validated.totalQty,
-        validated.cbm,
-        validated.note || null,
-      ]
-    );
-    await client.query("COMMIT");
-    await invalidatePlanningDashboardCache();
-    return NextResponse.json({ success: true, data: { id: validated.id } });
+    const data = await AvailableStockService.updateStock(validated.id, validated, await currentWho(), getIp(request.headers));
+    return apiSuccess({ data });
   } catch (error) {
-    await client.query("ROLLBACK");
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ success: false, error: "Validation error", details: error.issues }, { status: 400 });
-    }
-    console.error("Available stock PATCH failed:", error);
-    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
-  } finally {
-    client.release();
+    return handleApiError(error);
   }
 }
 
@@ -426,56 +224,18 @@ export async function DELETE(request: NextRequest) {
   if (stockIdInput) {
     const stockIds = [...new Set(stockIdInput.split(",").map((id) => id.trim()).filter(Boolean))];
     if (stockIds.length === 0 || stockIds.some((id) => !/^\d+$/.test(id))) {
-      return NextResponse.json({ success: false, error: "Valid stockId is required" }, { status: 400 });
+      return apiError("Valid stockId is required", 400);
     }
 
-    const client = await getPrimaryPool().connect();
     try {
-      await client.query("BEGIN");
-      const stock = await client.query<{ id: string; allocated_qty: number }>(
-        `SELECT
-           s.id::text,
-           COALESCE((
-             SELECT SUM(a.qty)
-             FROM shipcore.fc_container_item_allocations a
-             WHERE a.source_stock_id = s.id
-           ), 0)::int AS allocated_qty
-         FROM shipcore.fc_available_stock s
-         WHERE s.id = ANY($1::bigint[])
-         FOR UPDATE OF s`,
-        [stockIds]
-      );
-      if (stock.rowCount !== stockIds.length) {
-        await client.query("ROLLBACK");
-        return NextResponse.json({ success: false, error: "Available stock not found." }, { status: 404 });
-      }
-      const blockedCount = stock.rows.filter((row) => row.allocated_qty > 0).length;
-      if (blockedCount > 0) {
-        await client.query("ROLLBACK");
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              stockIds.length > 1
-                ? `Allocated stock cannot be deleted. ${blockedCount} of ${stockIds.length} selected items have a container allocation — remove it first.`
-                : "Allocated stock cannot be deleted. Remove its container allocation first.",
-          },
-          { status: 409 }
-        );
-      }
-      await client.query(`DELETE FROM shipcore.fc_available_stock WHERE id = ANY($1::bigint[])`, [stockIds]);
-      await client.query("COMMIT");
-      await invalidatePlanningDashboardCache();
-      return NextResponse.json({ success: true, data: { ids: stockIds } });
+      const data = await AvailableStockService.deleteStock(stockIds, await currentWho(), getIp(request.headers));
+      return apiSuccess({ data });
     } catch (error) {
-      await client.query("ROLLBACK");
-      console.error("Available stock record DELETE failed:", error);
-      return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
-    } finally {
-      client.release();
+      return handleApiError(error);
     }
   }
 
+  // ── container-planning territory below: intentionally untouched ────────
   const allocationInput = searchParams.get("allocationIds")?.trim() || searchParams.get("allocationId")?.trim() || "";
   const allocationIds = [...new Set(allocationInput.split(",").map((id) => id.trim()).filter(Boolean))];
   if (allocationIds.length === 0 || allocationIds.some((id) => !/^\d+$/.test(id))) {
