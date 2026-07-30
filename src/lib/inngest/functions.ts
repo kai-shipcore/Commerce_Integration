@@ -11,8 +11,8 @@ import { CacheManager, CacheKeys, CacheTTL } from '../redis';
 import {
   getPlatformIntegrationById,
   listActivePlatformIntegrations,
-} from '../db/platform-integrations';
-import { runIntegrationSync } from '../integrations/core/sync-runner';
+} from '../integrations/repository';
+import { IntegrationsService } from '../integrations/service';
 
 /**
  * Sync sales data from all active platform integrations
@@ -58,7 +58,10 @@ export const syncSalesData = inngest.createFunction(
         `sync-${integration.platform}-${integration.id}`,
         async () => {
           try {
-            const syncResult = await runIntegrationSync(integration.id);
+            const syncResult = await IntegrationsService.runSync(integration.id);
+            if (syncResult.queued) {
+              throw new Error('Unexpected queued sync result from a direct (non-Inngest) sync call');
+            }
 
             return {
               integrationId: integration.id,
@@ -166,8 +169,11 @@ export const manualSyncTrigger = inngest.createFunction(
 
     // Perform sync
     const result = await step.run('sync-integration', async () => {
-      return await runIntegrationSync(integrationId, { fullSync });
+      return await IntegrationsService.runSync(integrationId, { fullSync });
     });
+    if (result.queued) {
+      throw new Error('Unexpected queued sync result from a direct (non-Inngest) sync call');
+    }
 
     // Invalidate cache
     await step.run('invalidate-cache', async () => {

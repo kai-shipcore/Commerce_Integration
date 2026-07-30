@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getPrimaryPool } from "@/lib/db/primary-db";
-import { listActivePlatformIntegrations } from "@/lib/db/platform-integrations";
+import { IntegrationsService } from "@/lib/integrations/service";
 import { CacheManager } from "@/lib/redis";
 
 const DASHBOARD_CACHE_KEY = "dashboard:analytics";
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
       // Total Collections
       prisma.sKUCollection.count(),
 
-      listActivePlatformIntegrations()
+      IntegrationsService.listActiveIntegrations()
         .then((integrations) => integrations.length)
         .catch((error) => {
           console.warn(

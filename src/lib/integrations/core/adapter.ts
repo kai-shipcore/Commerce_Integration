@@ -1,4 +1,4 @@
-import type { PlatformIntegrationRecord } from "@/lib/db/platform-integrations";
+import type { PlatformIntegrationRecord } from "@/lib/integrations/repository";
 import type {
   ConnectionCheckResult,
   IntegrationConfig,

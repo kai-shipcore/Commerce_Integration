@@ -1,7 +1,7 @@
 import {
   updatePlatformIntegration,
   type PlatformIntegrationRecord,
-} from "@/lib/db/platform-integrations";
+} from "@/lib/integrations/repository";
 import type { IntegrationAdapter } from "@/lib/integrations/core/adapter";
 import type {
   ConnectionCheckResult,

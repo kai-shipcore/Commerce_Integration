@@ -1,18 +1,21 @@
 /**
  * Code Guide:
- * This API route owns the integrations / [id] / sync backend workflow.
- * It validates request data, reads or writes database records, and returns JSON to the UI.
- * Cache invalidation and service calls usually happen here because this layer coordinates side effects.
+ * POST /api/integrations/[id]/sync — Trigger a sync for an integration, either
+ *                                    directly (synchronous) or queued via Inngest.
+ * GET  /api/integrations/[id]/sync — Get the last sync status for an integration.
+ * Note: on POST, the response's top-level `success` mirrors the sync result's
+ * own success flag (it can be `false` on a 200 response when the adapter sync
+ * partially/fully fails) — not the standard apiSuccess envelope — matching the
+ * original route's contract exactly.
+ * Controller layer only: parses the request and delegates to IntegrationsService,
+ * which owns the adapter dispatch and DB status/counter updates.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { guardPermission } from "@/lib/permissions";
-import {
-  getPlatformIntegrationById,
-} from "@/lib/db/platform-integrations";
-import { runIntegrationSync } from "@/lib/integrations/core/sync-runner";
+import { IntegrationsService } from "@/lib/integrations/service";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
-// POST /api/integrations/[id]/sync - Trigger a sync for an integration
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -26,51 +29,21 @@ export async function POST(
     const fullSync = body.fullSync || false;
     const useInngest = body.useInngest || false;
 
-    // Verify integration exists and is active
-    const integration = await getPlatformIntegrationById(id);
+    const result = await IntegrationsService.runSync(id, { fullSync, useInngest });
 
-    if (!integration) {
-      return NextResponse.json(
-        { success: false, error: "Integration not found" },
-        { status: 404 }
-      );
-    }
-
-    if (!integration.isActive) {
-      return NextResponse.json(
-        { success: false, error: "Integration is not active" },
-        { status: 400 }
-      );
-    }
-
-    // Option to use Inngest for background processing
-    if (useInngest) {
-      const { inngest } = await import("@/lib/inngest/client");
-      await inngest.send({
-        name: "app/sync.trigger",
-        data: {
-          integrationId: id,
-          fullSync,
-        },
-      });
-
+    if (result.queued) {
       return NextResponse.json({
         success: true,
-        message: `Sync queued for ${integration.name}`,
+        message: `Sync queued for ${result.name}`,
         data: {
-          integrationId: id,
-          platform: integration.platform,
-          name: integration.name,
-          fullSync,
+          integrationId: result.integrationId,
+          platform: result.platform,
+          name: result.name,
+          fullSync: result.fullSync,
           async: true,
         },
       });
     }
-
-    // Direct sync (synchronous)
-    console.log(`[sync route] Starting sync for ${integration.platform} / ${integration.name}`);
-    const result = await runIntegrationSync(id, { fullSync });
-    console.log(`[sync route] Sync result:`, JSON.stringify(result));
 
     return NextResponse.json({
       success: result.success,
@@ -87,54 +60,22 @@ export async function POST(
         errors: result.errors,
       },
     });
-  } catch (error: any) {
-    console.error("[sync route] UNHANDLED ERROR:", error?.message, error?.stack);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("[integrations/sync] UNHANDLED ERROR:", error);
+    return handleApiError(error);
   }
 }
 
-// GET /api/integrations/[id]/sync - Get sync status
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-
-    const integration = await getPlatformIntegrationById(id);
-
-    if (!integration) {
-      return NextResponse.json(
-        { success: false, error: "Integration not found" },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        integrationId: id,
-        platform: integration.platform,
-        name: integration.name,
-        isActive: integration.isActive,
-        sync: {
-          lastSyncAt: integration.lastSyncAt,
-          status: integration.lastSyncStatus,
-          error: integration.lastSyncError,
-          totalOrders: integration.totalOrdersSynced,
-          totalRecords: integration.totalRecordsSynced,
-          cursor: integration.syncCursor,
-        },
-      },
-    });
-  } catch (error: any) {
+    const data = await IntegrationsService.getSyncStatus(id);
+    return apiSuccess({ data });
+  } catch (error) {
     console.error("Error getting sync status:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

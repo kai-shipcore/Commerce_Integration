@@ -1,69 +1,45 @@
 /**
  * Code Guide:
- * This API route owns the integrations / [id] backend workflow.
- * It validates request data, reads or writes database records, and returns JSON to the UI.
- * Cache invalidation and service calls usually happen here because this layer coordinates side effects.
+ * GET    /api/integrations/[id] — Fetch a single integration with masked config.
+ * PATCH  /api/integrations/[id] — Update name/isActive/config; re-validates
+ *                                 config via the platform adapter and audit-logs.
+ * DELETE /api/integrations/[id] — Delete an integration and audit-log it.
+ * PATCH/DELETE intentionally use the stricter admin-role + permission double
+ * gate (not the guardPermission() one-liner) — this matches the original
+ * route's behavior exactly and is preserved as-is.
+ * Controller layer only: parses/validates the request and delegates to
+ * IntegrationsService. Data access lives in src/lib/integrations/repository.ts.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import {
-  deletePlatformIntegration,
-  getPlatformIntegrationById,
-  updatePlatformIntegration,
-} from "@/lib/db/platform-integrations";
-import { getIntegrationAdapter } from "@/lib/integrations/core/registry";
-import type { UpdatePlatformIntegrationInput } from "@/lib/db/platform-integrations";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
 import { canDo } from "@/lib/permissions";
-import { z } from "zod";
-import { logAudit, getIp } from "@/lib/audit";
+import { getIp } from "@/lib/audit";
+import { IntegrationsService } from "@/lib/integrations/service";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
-// Schema for updating an integration
 const UpdateIntegrationSchema = z.object({
   name: z.string().min(1).optional(),
   isActive: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
 
-// GET /api/integrations/[id] - Get a single integration
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-
-    const integration = await getPlatformIntegrationById(id);
-
-    if (!integration) {
-      return NextResponse.json(
-        { success: false, error: "Integration not found" },
-        { status: 404 }
-      );
-    }
-
-    const config = integration.config as Record<string, any>;
-    const adapter = getIntegrationAdapter(integration.platform);
-    const maskedConfig = adapter.maskConfig(config);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...integration,
-        config: maskedConfig,
-      },
-    });
-  } catch (error: any) {
+    const data = await IntegrationsService.getIntegrationForDisplay(id);
+    return apiSuccess({ data });
+  } catch (error) {
     console.error("Error fetching integration:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
-// PATCH /api/integrations/[id] - Update an integration
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -72,17 +48,11 @@ export async function PATCH(
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
     if (!isAdminLikeRole(session.user.role)) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden" },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
     const allowed = await canDo(session.user.id, session.user.role as string, "integrations", "edit");
@@ -94,68 +64,15 @@ export async function PATCH(
     const body = await request.json();
     const data = UpdateIntegrationSchema.parse(body);
 
-    const existing = await getPlatformIntegrationById(id);
+    const integration = await IntegrationsService.updateIntegration(id, data, getIp(request.headers));
 
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: "Integration not found" },
-        { status: 404 }
-      );
-    }
-
-    const adapter = getIntegrationAdapter(existing.platform);
-
-    const updateData: UpdatePlatformIntegrationInput = {};
-    if (data.name) updateData.name = data.name;
-    if (data.isActive !== undefined) updateData.isActive = data.isActive;
-    if (data.config) {
-      const existingConfig = existing.config as Record<string, any>;
-      const nextConfig = adapter.applyDefaults({
-        ...existingConfig,
-        ...data.config,
-      });
-
-      adapter.validateConfig(nextConfig);
-      updateData.config = nextConfig;
-    }
-
-    const integration = await updatePlatformIntegration(id, updateData);
-
-    void logAudit({
-      entityType: "integration",
-      entityId: id,
-      entityLabel: `${existing.platform} - ${existing.name}`,
-      userId: session.user.id,
-      userName: session.user.name ?? null,
-      userEmail: session.user.email ?? null,
-      action: "config_update",
-      before: { name: existing.name, isActive: existing.isActive },
-      after: { name: integration?.name, isActive: integration?.isActive },
-      ip: getIp(request.headers),
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: integration,
-      message: "Integration updated successfully",
-    });
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: error.issues[0].message },
-        { status: 400 }
-      );
-    }
-
+    return apiSuccess({ data: integration, message: "Integration updated successfully" });
+  } catch (error) {
     console.error("Error updating integration:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
-// DELETE /api/integrations/[id] - Delete an integration
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -164,17 +81,11 @@ export async function DELETE(
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
     if (!isAdminLikeRole(session.user.role)) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden" },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
     const allowed = await canDo(session.user.id, session.user.role as string, "integrations", "delete");
@@ -183,39 +94,11 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    await IntegrationsService.deleteIntegration(id, getIp(request.headers));
 
-    const integration = await getPlatformIntegrationById(id);
-
-    if (!integration) {
-      return NextResponse.json(
-        { success: false, error: "Integration not found" },
-        { status: 404 }
-      );
-    }
-
-    await deletePlatformIntegration(id);
-
-    void logAudit({
-      entityType: "integration",
-      entityId: id,
-      entityLabel: `${integration.platform} - ${integration.name}`,
-      userId: session.user.id,
-      userName: session.user.name ?? null,
-      userEmail: session.user.email ?? null,
-      action: "delete",
-      before: { name: integration.name, platform: integration.platform, isActive: integration.isActive },
-      ip: getIp(request.headers),
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: "Integration deleted successfully",
-    });
-  } catch (error: any) {
+    return apiSuccess({ message: "Integration deleted successfully" });
+  } catch (error) {
     console.error("Error deleting integration:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

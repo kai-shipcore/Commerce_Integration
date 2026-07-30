@@ -1,13 +1,16 @@
+/**
+ * Code Guide:
+ * GET /api/integrations/[id]/ebay-auth — Starts the eBay OAuth Authorization
+ * Code flow and redirects to eBay's consent screen. Requires the integration's
+ * ruName (or the EBAY_RUNAME env var as a legacy fallback).
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isAdminLikeRole } from "@/components/layout/navigation-config";
-import { getPlatformIntegrationById } from "@/lib/db/platform-integrations";
-import { EbayClient } from "@/lib/integrations/ebay/client";
-import { applyEbayDefaults, validateEbayConfig } from "@/lib/integrations/ebay/config";
+import { IntegrationsService } from "@/lib/integrations/service";
+import { handleApiError } from "@/lib/api-response";
 
-// GET /api/integrations/[id]/ebay-auth
-// Starts the eBay OAuth Authorization Code flow.
-// Requires EBAY_RUNAME env var (the RuName registered in eBay developer portal).
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,48 +23,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const integration = await getPlatformIntegrationById(id);
-
-    if (!integration || integration.platform !== "ebay") {
-      return NextResponse.json({ success: false, error: "eBay integration not found" }, { status: 404 });
-    }
-
-    const config = applyEbayDefaults(integration.config);
-
-    // ruName is stored per-integration; fall back to global env var for legacy integrations
-    const ruName = String(config.ruName || "") || process.env.EBAY_RUNAME;
-    if (!ruName) {
-      return NextResponse.json(
-        { success: false, error: "RuName is not configured. Edit this integration and add the RuName from your eBay developer app." },
-        { status: 500 }
-      );
-    }
-
-    try {
-      validateEbayConfig(config);
-    } catch {
-      return NextResponse.json(
-        { success: false, error: "Integration is missing clientId or clientSecret. Please edit the integration first." },
-        { status: 400 }
-      );
-    }
-
-    const client = new EbayClient({
-      clientId: String(config.clientId),
-      clientSecret: String(config.clientSecret),
-      refreshToken: "",
-      environment: config.environment === "sandbox" ? "sandbox" : "production",
-    });
-
-    // state = integrationId so the callback can route to the right integration
-    const authUrl = client.buildAuthorizationUrl(ruName, id);
+    const authUrl = await IntegrationsService.buildEbayAuthUrl(id);
 
     return NextResponse.redirect(authUrl);
-  } catch (error: unknown) {
+  } catch (error) {
     console.error("eBay auth start error:", error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
