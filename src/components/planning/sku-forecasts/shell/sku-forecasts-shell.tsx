@@ -149,12 +149,14 @@ export function SkuForecastsShell({
     window.localStorage.setItem(SALES_ONLY_STORAGE_KEY, nextValue ? "1" : "0");
   }
 
+  const productScope = useMemo(() => [product], [product]);
+
   const {
     data,
     loading,
     error,
     reload,
-  } = useDemandPlanningData("link", undefined, includeDraftContainers, [product], salesWindowWeights);
+  } = useDemandPlanningData("link", undefined, includeDraftContainers, productScope, salesWindowWeights);
 
   const rowsByProduct = useMemo(() => {
     const grouped: Record<ProductKey, DemandRow[]> = { sc: [], cc: [], fm: [] };

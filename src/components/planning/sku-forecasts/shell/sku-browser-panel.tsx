@@ -133,8 +133,9 @@ export function SkuBrowserPanel({
   const [sortKey, setSortKey] = useState<SortKey>("sku");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [skuFilter, setSkuFilter] = useState<SkuFilterKey>(initialSkuFilter ?? "all");
-  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const listScope = JSON.stringify([product, search, skuFilter, sortKey, sortDirection, pageSize]);
+  const [pagination, setPagination] = useState(() => ({ scope: listScope, page: 1 }));
   const [scrollTop, setScrollTop] = useState(0);
   const [listHeight, setListHeight] = useState(600);
   const listRef = useRef<HTMLDivElement>(null);
@@ -184,15 +185,15 @@ export function SkuBrowserPanel({
 
   const totalRows = sortedRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pagedRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const requestedPage = pagination.scope === listScope ? pagination.page : 1;
+  const currentPage = Math.min(requestedPage, totalPages);
+  const pagedRows = useMemo(
+    () => sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, pageSize, sortedRows],
+  );
 
   // Everything upstream of pagination (product, search, filter chip, sort, page size)
   // resets back to page 1 — an old page number rarely makes sense for a new list.
-  useEffect(() => {
-    setPage(1);
-  }, [rows, skuFilter, sortKey, sortDirection, pageSize]);
-
   // Track scroll container height
   useEffect(() => {
     const el = listRef.current;
@@ -210,7 +211,7 @@ export function SkuBrowserPanel({
       listRef.current.scrollTop = 0;
       setScrollTop(0);
     }
-  }, [pagedRows]);
+  }, [currentPage, listScope]);
 
   // Virtual window calculation (over the current page only)
   const firstVisible = Math.floor(scrollTop / ROW_HEIGHT);
@@ -219,6 +220,13 @@ export function SkuBrowserPanel({
   const topPad = start * ROW_HEIGHT;
   const bottomPad = (pagedRows.length - end) * ROW_HEIGHT;
   const virtualRows = pagedRows.slice(start, end);
+
+  function goToPage(nextPage: number) {
+    setPagination({
+      scope: listScope,
+      page: Math.max(1, Math.min(totalPages, nextPage)),
+    });
+  }
 
   function toggleSort(nextKey: SortKey) {
     if (sortKey === nextKey) {
@@ -321,7 +329,7 @@ export function SkuBrowserPanel({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setPage(1)}
+            onClick={() => goToPage(1)}
             disabled={currentPage <= 1}
             className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
             aria-label={pick(language, "첫 페이지", "First page")}
@@ -330,7 +338,7 @@ export function SkuBrowserPanel({
           </button>
           <button
             type="button"
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage <= 1}
             className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
             aria-label={pick(language, "이전 페이지", "Previous page")}
@@ -339,7 +347,7 @@ export function SkuBrowserPanel({
           </button>
           <button
             type="button"
-            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+            onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= totalPages}
             className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
             aria-label={pick(language, "다음 페이지", "Next page")}
@@ -348,7 +356,7 @@ export function SkuBrowserPanel({
           </button>
           <button
             type="button"
-            onClick={() => setPage(totalPages)}
+            onClick={() => goToPage(totalPages)}
             disabled={currentPage >= totalPages}
             className="flex h-8 w-8 items-center justify-center rounded-md border bg-white text-foreground disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
             aria-label={pick(language, "마지막 페이지", "Last page")}
