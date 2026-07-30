@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "prepare": "husky"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -75,6 +76,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.2.4",
     "exceljs": "^4.4.0",
+    "husky": "^9.1.7",
     "playwright": "^1.61.0",
     "prisma": "^7.0.1",
     "tailwindcss": "^4",

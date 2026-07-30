@@ -1,0 +1,13 @@
+echo "Running TypeScript type check..."
+npx tsc --noEmit
+if [ $? -ne 0 ]; then
+  echo "Type check failed. Commit aborted."
+  exit 1
+fi
+
+echo "Running tests..."
+npx vitest run
+if [ $? -ne 0 ]; then
+  echo "Tests failed. Commit aborted."
+  exit 1
+fi
