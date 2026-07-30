@@ -140,7 +140,7 @@ export function DemandPatternsSection({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-md border p-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             {pick("예측 대상 SKU", "Forecast SKUs")}
@@ -155,42 +155,36 @@ export function DemandPatternsSection({
             )}
           </p>
         </div>
+        {/* The two demand cards are complements by construction, so each states
+            what it is a share OF and in what units. Previously one read "their
+            share of demand" and the other "tail share of demand", which is the
+            same fact twice, and "tail" is a word only someone who built the
+            segmentation would recognise. */}
         <div className="rounded-md border p-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {pick("그 SKU들의 수요 비중", "Their share of demand")}
+            {pick("예측이 설명하는 수요", "Demand the forecast covers")}
           </div>
           <div className="mt-1 text-2xl font-bold leading-none tabular-nums">
             {Math.round((1 - totals.tailShare) * 100)}%
           </div>
           <p className="mt-1 text-[10.5px] text-muted-foreground">
-            {pick(`${nf.format(Math.round(totals.forecast))}개`, `${nf.format(Math.round(totals.forecast))} units`)}
+            {pick(
+              `총 ${nf.format(Math.round(totals.forecast + totals.tail))}개 중 ${nf.format(Math.round(totals.forecast))}개`,
+              `${nf.format(Math.round(totals.forecast))} of ${nf.format(Math.round(totals.forecast + totals.tail))} units`,
+            )}
           </p>
         </div>
-        <div className="rounded-md border p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {pick("간헐 SKU", "Intermittent SKUs")}
+        <div className="rounded-md border border-amber-300 bg-amber-50/60 p-3 dark:border-amber-900 dark:bg-amber-950/20">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-500">
+            {pick("예측이 없는 수요", "Demand with no forecast")}
           </div>
-          <div className="mt-1 text-2xl font-bold leading-none tabular-nums">
-            {nf.format(segTail?.n_skus ?? 0)}
-          </div>
-          <p className="mt-1 text-[10.5px] text-muted-foreground">
-            {pick("예측 없음", "no forecast at all")}
-          </p>
-        </div>
-        <div className="rounded-md border p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {pick("간헐 SKU 수요 비중", "Tail share of demand")}
-          </div>
-          <div className="mt-1 text-2xl font-bold leading-none tabular-nums">
+          <div className="mt-1 text-2xl font-bold leading-none tabular-nums text-amber-700 dark:text-amber-500">
             {Math.round(totals.tailShare * 100)}%
           </div>
-          {/* Names the span it compares over. At 26 weeks these are six-week
-              periods, at 104 they are half-years, and "early" without that
-              qualifier would read as the same claim at every setting. */}
-          <p className="mt-1 text-[10.5px] text-muted-foreground">
+          <p className="mt-1 text-[10.5px] leading-snug text-amber-800/80 dark:text-amber-500/80">
             {pick(
-              `첫 ${totals.spanWeeks}주 ${Math.round(totals.tailShareEarly * 100)}% → 최근 ${totals.spanWeeks}주 ${Math.round(totals.tailShareLate * 100)}%`,
-              `${Math.round(totals.tailShareEarly * 100)}% over the first ${totals.spanWeeks}w, ${Math.round(totals.tailShareLate * 100)}% over the last ${totals.spanWeeks}w`,
+              `${nf.format(segTail?.n_skus ?? 0)}개 SKU는 판매가 불규칙해 예측 대상이 아닙니다. ${nf.format(Math.round(totals.tail))}개 판매.`,
+              `${nf.format(segTail?.n_skus ?? 0)} SKUs sell too irregularly to forecast. ${nf.format(Math.round(totals.tail))} units sold.`,
             )}
           </p>
         </div>
@@ -203,6 +197,19 @@ export function DemandPatternsSection({
           config={{ responsive: true, displayModeBar: false }}
           style={{ width: "100%" }}
         />
+        {/* The trend lives here rather than in a card, and only at a year or
+            more. Over 26 weeks it compares two six-week periods, where a move
+            from 21% to 20% is noise presented with the same confidence as a
+            real change. A reader cannot tell those apart, so the shorter
+            windows do not offer it. */}
+        {weeks >= 52 && Math.abs(totals.tailShareLate - totals.tailShareEarly) >= 0.02 && (
+          <p className="px-1 pt-1 text-[11px] font-medium leading-relaxed">
+            {pick(
+              `예측 없는 수요의 비중이 이 기간 초반 ${Math.round(totals.tailShareEarly * 100)}%에서 최근 ${Math.round(totals.tailShareLate * 100)}%로 ${totals.tailShareLate > totals.tailShareEarly ? "늘었습니다" : "줄었습니다"}.`,
+              `The share with no forecast has ${totals.tailShareLate > totals.tailShareEarly ? "grown" : "fallen"} from ${Math.round(totals.tailShareEarly * 100)}% to ${Math.round(totals.tailShareLate * 100)}% of weekly volume across this period.`,
+            )}
+          </p>
+        )}
         <p className="px-1 pt-1 text-[10.5px] leading-relaxed text-muted-foreground">
           {pick(
             "주간 실판매를 예측 대상 여부로 나눈 누적 그래프입니다. 주황색 영역은 예측이 전혀 없는 매출이므로, 이 페이지의 모든 정확도 수치가 닿지 않는 범위입니다.",
