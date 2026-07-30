@@ -21,11 +21,16 @@ import {
   type PlanningErrorBody,
 } from "@/components/planning/planning-error";
 import { ComparisonSection } from "./comparison-section";
+import { DemandVsForecastSection } from "./demand-vs-forecast-section";
 import { DEFAULT_WEEKS, DemandPatternsSection } from "./demand-patterns-section";
 import { EmptySection } from "./empty-section";
 import { OutliersSection } from "./outliers-section";
 import { OverTimeSection } from "./over-time-section";
-import type { DemandPatternsResponse, ValidationResponse } from "./types";
+import type {
+  DemandPatternsResponse,
+  DemandVsForecastResponse,
+  ValidationResponse,
+} from "./types";
 
 interface Fetched<T> {
   done: boolean;
@@ -107,7 +112,12 @@ export function ValidationContent() {
   // slicing client-side. The server holds the weekly series; sending two years
   // of it to trim in the browser would ship the data to discard most of it.
   const [weeks, setWeeks] = useState<number>(DEFAULT_WEEKS);
+  const [trendWindow, setTrendWindow] = useState<string>("all");
   const validation = useEndpoint<ValidationResponse>("/api/planning/validation", reloadNonce);
+  const trend = useEndpoint<DemandVsForecastResponse>(
+    `/api/planning/demand-vs-forecast?window=${encodeURIComponent(trendWindow)}`,
+    reloadNonce,
+  );
   const patterns = useEndpoint<DemandPatternsResponse>(
     `/api/planning/demand-patterns?weeks=${weeks}`,
     reloadNonce,
@@ -127,6 +137,20 @@ export function ValidationContent() {
       {v && (
         <>
           <ComparisonSection comparison={v.comparison} coverage={v.coverage} />
+
+          {/* Directly under the grid, because it is the same evidence drawn
+              rather than summarised. Absent if it fails: the grid above already
+              carries the claim, and a second error card for one outage is
+              noise. */}
+          {trend.data && trend.data.weekly.length > 0 && (
+            <div className={trend.stale ? "opacity-50 transition-opacity" : "transition-opacity"}>
+              <DemandVsForecastSection
+                data={trend.data}
+                window={trendWindow}
+                onWindowChange={setTrendWindow}
+              />
+            </div>
+          )}
 
           <OutliersSection
             best={v.outliers.best}

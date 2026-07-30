@@ -101,6 +101,39 @@ export interface WeeklyPoint {
   units: number;
 }
 
+/** One backtest week. `actual` and `predicted` come from the same rows, so they
+ *  cover the same SKUs by construction. `n_skus` is carried because that
+ *  population is not constant: a SKU needs history reaching past a window's
+ *  cutoff to be backtestable at all, so both lines step together at window
+ *  boundaries. */
+export interface TrendWeek {
+  ds: string;
+  actual: number;
+  predicted: number;
+  n_skus: number;
+  lead: number;
+}
+
+export interface TrendBoundary {
+  window: string;
+  start: string;
+  end: string;
+  n_skus: number;
+}
+
+export interface DemandVsForecastResponse {
+  weekly: TrendWeek[];
+  forward: { ds: string; value: number }[];
+  boundaries: TrendBoundary[];
+  windows: string[];
+  window: string;
+  /** The span between the last scored week and the first forward week. Left
+   *  empty on purpose: it is the quarantined final test window. */
+  quarantine: { start: string; end: string | null } | null;
+  sku_count: number;
+  version: string | null;
+}
+
 export interface DemandPatternsResponse {
   weekly: WeeklyPoint[];
   concentration: { sku_share: number; n_skus: number; demand_share: number }[];
