@@ -26,7 +26,22 @@ const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 const nf = new Intl.NumberFormat("en-US");
 const COLOUR = { forecast: "#6366f1", tail: "#f59e0b" } as const;
 
-export function DemandPatternsSection({ data }: { data: DemandPatternsResponse }) {
+/** Offered windows, in weeks. 26 is the default: the annual view is already
+ *  carried by the comparison grid above, and half a year is the horizon a
+ *  planner can act on. 52 stays one click away because the tail's growth as a
+ *  share of volume only reads over a full year. */
+export const WEEK_OPTIONS = [13, 26, 52, 104] as const;
+export const DEFAULT_WEEKS = 26;
+
+export function DemandPatternsSection({
+  data,
+  weeks,
+  onWeeksChange,
+}: {
+  data: DemandPatternsResponse;
+  weeks: number;
+  onWeeksChange: (weeks: number) => void;
+}) {
   const { pick } = useI18n();
 
   const traces = useMemo<Data[]>(() => {
@@ -73,6 +88,8 @@ export function DemandPatternsSection({ data }: { data: DemandPatternsResponse }
     const all = f + t;
     // First and last quarter of the window, to say whether the tail's share is
     // moving rather than only what it is now. A single ratio hides a trend.
+    // The comparison is only as long as the window allows, which is why the
+    // card names the span rather than saying "early" and "now" unqualified.
     const q = Math.max(1, Math.floor(data.weekly.length / 4));
     const shareOf = (pts: typeof data.weekly) => {
       const sf = pts.reduce((s, p) => s + p.forecast, 0);
@@ -85,6 +102,7 @@ export function DemandPatternsSection({ data }: { data: DemandPatternsResponse }
       tailShare: all > 0 ? t / all : 0,
       tailShareEarly: shareOf(data.weekly.slice(0, q)),
       tailShareLate: shareOf(data.weekly.slice(-q)),
+      spanWeeks: q,
     };
   }, [data]);
 
@@ -94,14 +112,32 @@ export function DemandPatternsSection({ data }: { data: DemandPatternsResponse }
 
   return (
     <section className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-base font-semibold">{pick("수요 구조", "How demand is shaped")}</h2>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          {pick(
-            `최근 ${data.weeks}주. 이 항목들은 예측이 아니라 실판매이며, 위 정확도 수치를 어떤 규모에 놓고 읽어야 하는지를 보여줍니다.`,
-            `The last ${data.weeks} weeks. Nothing here is a forecast; it is what sold, and it sets the scale the accuracy figures above should be read against.`,
-          )}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">{pick("수요 구조", "How demand is shaped")}</h2>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
+            {pick(
+              `최근 ${data.weeks}주. 이 항목들은 예측이 아니라 실판매이며, 위 정확도 수치를 어떤 규모에 놓고 읽어야 하는지를 보여줍니다.`,
+              `The last ${data.weeks} weeks. Nothing here is a forecast; it is what sold, and it sets the scale the accuracy figures above should be read against.`,
+            )}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-1 rounded-md border p-0.5">
+          {WEEK_OPTIONS.map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => onWeeksChange(w)}
+              className={`rounded px-2 py-1 text-[11px] transition-colors ${
+                weeks === w
+                  ? "bg-sky-100 font-semibold text-sky-900 dark:bg-sky-900 dark:text-sky-100"
+                  : "text-muted-foreground hover:bg-muted/60"
+              }`}
+            >
+              {w === 104 ? pick("2년", "2y") : w === 52 ? pick("1년", "1y") : `${w}w`}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">
@@ -148,10 +184,13 @@ export function DemandPatternsSection({ data }: { data: DemandPatternsResponse }
           <div className="mt-1 text-2xl font-bold leading-none tabular-nums">
             {Math.round(totals.tailShare * 100)}%
           </div>
+          {/* Names the span it compares over. At 26 weeks these are six-week
+              periods, at 104 they are half-years, and "early" without that
+              qualifier would read as the same claim at every setting. */}
           <p className="mt-1 text-[10.5px] text-muted-foreground">
             {pick(
-              `초기 ${Math.round(totals.tailShareEarly * 100)}% → 최근 ${Math.round(totals.tailShareLate * 100)}%`,
-              `${Math.round(totals.tailShareEarly * 100)}% early in the window, ${Math.round(totals.tailShareLate * 100)}% now`,
+              `첫 ${totals.spanWeeks}주 ${Math.round(totals.tailShareEarly * 100)}% → 최근 ${totals.spanWeeks}주 ${Math.round(totals.tailShareLate * 100)}%`,
+              `${Math.round(totals.tailShareEarly * 100)}% over the first ${totals.spanWeeks}w, ${Math.round(totals.tailShareLate * 100)}% over the last ${totals.spanWeeks}w`,
             )}
           </p>
         </div>

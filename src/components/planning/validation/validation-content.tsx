@@ -21,13 +21,19 @@ import {
   type PlanningErrorBody,
 } from "@/components/planning/planning-error";
 import { ComparisonSection } from "./comparison-section";
-import { DemandPatternsSection } from "./demand-patterns-section";
+import { DEFAULT_WEEKS, DemandPatternsSection } from "./demand-patterns-section";
 import { EmptySection } from "./empty-section";
 import { OutliersSection } from "./outliers-section";
 import { OverTimeSection } from "./over-time-section";
 import type { DemandPatternsResponse, ValidationResponse } from "./types";
 
-interface Fetched<T> { done: boolean; data: T | null; error: PlanningErrorBody | null }
+interface Fetched<T> {
+  done: boolean;
+  data: T | null;
+  error: PlanningErrorBody | null;
+  /** True when `data` belongs to a previous request that is being replaced. */
+  stale?: boolean;
+}
 
 /**
  * Fetch a planning endpoint, refetching whenever `nonce` changes.
@@ -70,8 +76,17 @@ function useEndpoint<T>(path: string, nonce: number): Fetched<T> {
     return () => controller.abort();
   }, [path, key]);
 
-  if (state.key !== key) return { done: false, data: null, error: null };
-  return { done: state.done, data: state.data, error: state.error };
+  // While a new request is in flight the previous answer stays on screen. The
+  // alternative blanks the chart to a spinner on every timeframe click, which
+  // reads as the section breaking rather than loading. `stale` lets the caller
+  // dim it so nobody mistakes the old window for the new one.
+  const stale = state.key !== key;
+  return {
+    done: state.done && !stale,
+    data: state.data,
+    error: stale ? null : state.error,
+    stale: stale && state.data !== null,
+  };
 }
 
 function Loading() {
@@ -88,9 +103,13 @@ export function ValidationContent() {
   const { pick } = useI18n();
   const [reloadNonce, setReloadNonce] = useState(0);
   const reload = () => setReloadNonce((n) => n + 1);
+  // The window is part of the request, so changing it refetches rather than
+  // slicing client-side. The server holds the weekly series; sending two years
+  // of it to trim in the browser would ship the data to discard most of it.
+  const [weeks, setWeeks] = useState<number>(DEFAULT_WEEKS);
   const validation = useEndpoint<ValidationResponse>("/api/planning/validation", reloadNonce);
   const patterns = useEndpoint<DemandPatternsResponse>(
-    "/api/planning/demand-patterns?weeks=52",
+    `/api/planning/demand-patterns?weeks=${weeks}`,
     reloadNonce,
   );
 
@@ -161,13 +180,21 @@ export function ValidationContent() {
         </>
       )}
 
-      {!patterns.done && !patterns.error && validation.done && <Loading />}
+      {!patterns.done && !patterns.stale && !patterns.error && validation.done && <Loading />}
       {/* Only shown when the section above succeeded. Two identical cards for
           one outage is noise, and the first already carries the fix. */}
       {patterns.error && !validation.error && (
         <PlanningError body={patterns.error} onRetry={reload} />
       )}
-      {patterns.data && <DemandPatternsSection data={patterns.data} />}
+      {patterns.data && (
+        <div className={patterns.stale ? "opacity-50 transition-opacity" : "transition-opacity"}>
+          <DemandPatternsSection
+            data={patterns.data}
+            weeks={weeks}
+            onWeeksChange={setWeeks}
+          />
+        </div>
+      )}
     </div>
   );
 }

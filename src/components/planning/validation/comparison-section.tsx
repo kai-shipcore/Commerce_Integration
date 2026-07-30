@@ -28,42 +28,85 @@ function deltaStyle(delta: number): string {
   return "text-muted-foreground";
 }
 
-function Cell({ row, versions }: { row: ValidationCell; versions: string[] }) {
-  const total = row.segment === "TOTAL";
+/** Bias is a direction, not a severity, so it gets two colour ramps rather than
+ *  one. Over-forecasting leaves stock on the shelf; under-forecasting loses the
+ *  sale. A single "bad" scale would suggest those cost the same. */
+function biasStyle(pp: number): string {
+  const m = Math.abs(pp);
+  if (m < 2) return "text-muted-foreground";
+  if (pp > 0) return m >= 8 ? "text-sky-600 dark:text-sky-400" : "text-sky-500/80";
+  return m >= 8 ? "text-amber-600 dark:text-amber-400" : "text-amber-500/80";
+}
+
+/**
+ * One segment-and-window result.
+ *
+ * The flat table this replaces repeated the segment on every row and the window
+ * on every third, so nine results took nine rows and four columns of labels.
+ * As a matrix the labels appear once each on the edges and the cell carries
+ * only what differs.
+ */
+function MatrixCell({
+  cell,
+  current,
+  baseline,
+}: {
+  cell: ValidationCell | undefined;
+  current: string;
+  baseline: string;
+}) {
+  const { pick } = useI18n();
+  if (!cell) {
+    return <td className="border-l p-2 text-center text-[11px] text-muted-foreground">—</td>;
+  }
+
+  const value = cell[current];
+  const delta = cell.delta;
+  const bias = cell.bias_pct;
+  const lost = cell.winner === baseline;
+
   return (
-    <tr className={total ? "border-t bg-muted/40 font-medium" : "border-t"}>
-      <td className="py-1.5 pl-3 pr-2 text-[11.5px] whitespace-nowrap">
-        {total ? "All segments" : row.segment}
-      </td>
-      <td className="py-1.5 pr-2 text-[11.5px] whitespace-nowrap">{row.window}</td>
-      <td className="py-1.5 pr-3 text-right text-[11px] tabular-nums text-muted-foreground">
-        {row.n_skus === undefined || row.n_skus === null ? "—" : nf.format(row.n_skus)}
-      </td>
-      <td className="py-1.5 pr-3 text-right text-[11px] tabular-nums text-muted-foreground">
-        {row.actual_units === undefined || row.actual_units === null
-          ? "—"
-          : nf.format(Math.round(row.actual_units as number))}
-      </td>
-      {versions.map((v) => {
-        const value = row[v];
-        const best = row.winner === v;
-        return (
-          <td
-            key={v}
-            className={`py-1.5 pr-3 text-right text-[11.5px] tabular-nums ${best ? "font-semibold" : ""}`}
-          >
-            {typeof value === "number" ? pct(value) : "—"}
-          </td>
-        );
-      })}
-      <td className={`py-1.5 pr-3 text-right text-[11.5px] font-semibold tabular-nums ${
-        typeof row.delta === "number" ? deltaStyle(row.delta) : ""
-      }`}>
-        {typeof row.delta === "number"
-          ? `${row.delta > 0 ? "+" : ""}${(row.delta * 100).toFixed(1)}`
-          : "—"}
-      </td>
-    </tr>
+    <td
+      className={`border-l p-2 align-top ${
+        lost ? "bg-red-50/60 dark:bg-red-950/20" : ""
+      }`}
+    >
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-lg font-semibold leading-none tabular-nums">
+          {typeof value === "number" ? pct(value) : "—"}
+        </span>
+        {typeof delta === "number" && (
+          <span className={`text-[11px] font-medium tabular-nums ${deltaStyle(delta)}`}>
+            {delta > 0 ? "+" : ""}
+            {(delta * 100).toFixed(1)}
+            <span className="ml-0.5 font-normal opacity-70">pp</span>
+          </span>
+        )}
+      </div>
+
+      <div className="mt-1 space-y-0.5 text-[10px] leading-tight text-muted-foreground">
+        <div>
+          {baseline} {typeof cell[baseline] === "number" ? pct(cell[baseline] as number) : "—"}
+        </div>
+        {typeof bias === "number" && (
+          <div className={biasStyle(bias)}>
+            {bias > 0 ? "+" : ""}
+            {bias.toFixed(1)}%{" "}
+            {Math.abs(bias) < 2
+              ? pick("편향 적음", "balanced")
+              : bias > 0
+                ? pick("과다 예측", "over")
+                : pick("과소 예측", "under")}
+          </div>
+        )}
+        <div className="opacity-80">
+          {cell.n_skus ? `${nf.format(cell.n_skus)} SKU` : ""}
+          {cell.actual_units
+            ? ` · ${nf.format(Math.round(cell.actual_units as number))}u`
+            : ""}
+        </div>
+      </div>
+    </td>
   );
 }
 
@@ -75,19 +118,26 @@ export function ComparisonSection({
   coverage: ValidationCoverage;
 }) {
   const { pick } = useI18n();
-  const { headline, versions, current, baseline } = comparison;
+  // `versions` is no longer read: the matrix shows the current model's figure
+  // and the baseline underneath it, rather than a column per version. A third
+  // version would need a deliberate decision about what a cell shows, not
+  // another column appearing on its own.
+  const { headline, current, baseline } = comparison;
 
-  const rows = [...comparison.grid].sort((a, b) => {
-    // "All segments" last: it is a summary of the rows above it, and reading it
-    // first encourages stopping there.
-    const at = a.segment === "TOTAL" ? 1 : 0;
-    const bt = b.segment === "TOTAL" ? 1 : 0;
-    if (at !== bt) return at - bt;
-    if (a.segment !== b.segment) return a.segment.localeCompare(b.segment);
-    return comparison.windows.indexOf(a.window) - comparison.windows.indexOf(b.window);
+  // Segments as rows, windows as columns. "All segments" last, because it
+  // summarises the rows above it and reading it first encourages stopping there.
+  const segments = Array.from(new Set(comparison.grid.map((r) => r.segment))).sort((a, b) => {
+    if (a === "TOTAL") return 1;
+    if (b === "TOTAL") return -1;
+    return a.localeCompare(b);
   });
 
-  const lost = rows.filter((r) => r.winner && r.winner !== current && r.segment !== "TOTAL");
+  const at = (segment: string, window: string) =>
+    comparison.grid.find((r) => r.segment === segment && r.window === window);
+
+  const lost = comparison.grid.filter(
+    (r) => r.winner && r.winner !== current && r.segment !== "TOTAL",
+  );
 
   return (
     <section className="flex flex-col gap-3">
@@ -140,6 +190,15 @@ export function ComparisonSection({
                 `ahead in ${headline.cells_won} of ${headline.cells_total} cells`,
               )}
             </p>
+            {/* The caveat travels with the number. This is the card that gets
+                screenshotted, and three cards away from its coverage note it
+                reads as a claim about the whole catalogue. */}
+            <p className="mt-1.5 border-t border-emerald-300/60 pt-1.5 text-[10px] leading-snug text-emerald-700/70 dark:border-emerald-800/60 dark:text-emerald-400/70">
+              {pick(
+                `예측 대상 ${nf.format(coverage.served)}개 중 측정 가능한 ${nf.format(coverage.scored)}개(${Math.round(coverage.share * 100)}%) 기준`,
+                `measured on ${nf.format(coverage.scored)} of ${nf.format(coverage.served)} forecast SKUs (${Math.round(coverage.share * 100)}%)`,
+              )}
+            </p>
           </div>
         </div>
       )}
@@ -147,24 +206,54 @@ export function ComparisonSection({
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-muted/60 text-[9.5px] uppercase tracking-wide text-muted-foreground">
-              <th className="py-2 pl-3 pr-2 text-left font-medium">{pick("세그먼트", "Segment")}</th>
-              <th className="py-2 pr-2 text-left font-medium">{pick("구간", "Window")}</th>
-              <th className="py-2 pr-3 text-right font-medium">SKUs</th>
-              <th className="py-2 pr-3 text-right font-medium">{pick("실판매", "Actual")}</th>
-              {versions.map((v) => (
-                <th key={v} className="py-2 pr-3 text-right font-medium">{v}</th>
+            <tr className="bg-muted/60">
+              <th className="w-40 py-2 pl-3 pr-2 text-left text-[9.5px] font-medium uppercase tracking-wide text-muted-foreground">
+                {pick("세그먼트", "Segment")}
+              </th>
+              {comparison.windows.map((w) => (
+                <th
+                  key={w}
+                  className="border-l py-2 px-2 text-left text-[11px] font-semibold whitespace-nowrap"
+                >
+                  {w}
+                </th>
               ))}
-              <th className="py-2 pr-3 text-right font-medium">{pick("차이 (pp)", "Delta (pp)")}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <Cell key={`${r.segment}-${r.window}`} row={r} versions={versions} />
-            ))}
+            {segments.map((seg) => {
+              const total = seg === "TOTAL";
+              return (
+                <tr key={seg} className={`border-t ${total ? "bg-muted/40" : ""}`}>
+                  <th
+                    scope="row"
+                    className={`py-2 pl-3 pr-2 text-left align-top text-[11.5px] ${
+                      total ? "font-semibold" : "font-medium"
+                    }`}
+                  >
+                    {total ? pick("전체", "All segments") : seg}
+                  </th>
+                  {comparison.windows.map((w) => (
+                    <MatrixCell
+                      key={w}
+                      cell={at(seg, w)}
+                      current={current}
+                      baseline={baseline}
+                    />
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+        {pick(
+          `각 칸의 큰 숫자는 ${current} 의 오차이고, 옆의 pp 는 ${baseline} 대비 차이입니다(음수가 개선). 그 아래는 ${baseline} 의 오차와 편향입니다. 편향은 방향이 다르므로 색을 나눴습니다. 과다 예측은 재고가 남고, 과소 예측은 판매를 놓칩니다. 붉은 칸은 ${baseline} 가 앞선 구간입니다.`,
+          `The large figure is ${current}'s error; the pp beside it is the difference against ${baseline}, where negative is better. Underneath: ${baseline}'s error, then bias. Bias is coloured by direction rather than size, because over-forecasting leaves stock on the shelf and under-forecasting loses the sale. Shaded cells are where ${baseline} is ahead.`,
+        )}
+      </p>
 
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-md border border-dashed p-3">
