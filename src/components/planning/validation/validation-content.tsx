@@ -12,9 +12,14 @@
 
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
+import {
+  PlanningError,
+  planningErrorFrom,
+  type PlanningErrorBody,
+} from "@/components/planning/planning-error";
 import { ComparisonSection } from "./comparison-section";
 import { DemandPatternsSection } from "./demand-patterns-section";
 import { EmptySection } from "./empty-section";
@@ -22,45 +27,51 @@ import { OutliersSection } from "./outliers-section";
 import { OverTimeSection } from "./over-time-section";
 import type { DemandPatternsResponse, ValidationResponse } from "./types";
 
-interface Fetched<T> { done: boolean; data: T | null; error: string | null }
-const PENDING = { done: false, data: null, error: null } as const;
+interface Fetched<T> { done: boolean; data: T | null; error: PlanningErrorBody | null }
 
-function useEndpoint<T>(path: string): Fetched<T> {
-  const [state, setState] = useState<Fetched<T>>(PENDING);
+/**
+ * Fetch a planning endpoint, refetching whenever `nonce` changes.
+ *
+ * `done` is derived from whether the stored result belongs to the current
+ * request rather than reset by the effect. Clearing it with a setState at the
+ * top of the effect is the same cascading-render pattern the lint rule catches,
+ * and keying the result gives the better behaviour anyway: a retry leaves the
+ * previous content on screen until the new answer arrives.
+ */
+function useEndpoint<T>(path: string, nonce: number): Fetched<T> {
+  const key = `${path}|${nonce}`;
+  const [state, setState] = useState<Fetched<T> & { key: string }>({
+    key: "",
+    done: false,
+    data: null,
+    error: null,
+  });
+
   useEffect(() => {
     const controller = new AbortController();
     fetch(apiPath(path), { signal: controller.signal })
       .then(async (res) => {
         const body = await res.json();
-        if (!res.ok) throw new Error(body?.detail || body?.error || `HTTP ${res.status}`);
+        // Carried whole rather than flattened to a message, so the card can say
+        // which failure this is and what fixes it.
+        if (!res.ok) throw planningErrorFrom(body, `HTTP ${res.status}`);
         return body as T;
       })
-      .then((data) => setState({ done: true, data, error: null }))
+      .then((data) => setState({ key, done: true, data, error: null }))
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setState({ done: true, data: null, error: err instanceof Error ? err.message : String(err) });
+        setState({
+          key,
+          done: true,
+          data: null,
+          error: planningErrorFrom(err, err instanceof Error ? err.message : String(err)),
+        });
       });
     return () => controller.abort();
-  }, [path]);
-  return state;
-}
+  }, [path, key]);
 
-function SectionError({ message }: { message: string }) {
-  const { pick } = useI18n();
-  return (
-    <Card><CardContent className="p-5 text-sm">
-      <p className="font-medium text-red-600 dark:text-red-400">
-        {pick("불러올 수 없습니다.", "Could not load this section.")}
-      </p>
-      <p className="mt-1 text-muted-foreground">{message}</p>
-      <p className="mt-2 text-[11.5px] text-muted-foreground">
-        {pick(
-          "예측 API가 실행 중인지 확인하세요.",
-          "Check that the forecasting API is running.",
-        )}
-      </p>
-    </CardContent></Card>
-  );
+  if (state.key !== key) return { done: false, data: null, error: null };
+  return { done: state.done, data: state.data, error: state.error };
 }
 
 function Loading() {
@@ -75,15 +86,24 @@ function Loading() {
 
 export function ValidationContent() {
   const { pick } = useI18n();
-  const validation = useEndpoint<ValidationResponse>("/api/planning/validation");
-  const patterns = useEndpoint<DemandPatternsResponse>("/api/planning/demand-patterns?weeks=52");
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const reload = () => setReloadNonce((n) => n + 1);
+  const validation = useEndpoint<ValidationResponse>("/api/planning/validation", reloadNonce);
+  const patterns = useEndpoint<DemandPatternsResponse>(
+    "/api/planning/demand-patterns?weeks=52",
+    reloadNonce,
+  );
 
   const v = validation.data;
 
   return (
     <div className="flex flex-col gap-8">
+      <div className="flex justify-end">
+        <ForecastServerStatus onRecovered={reload} />
+      </div>
+
       {!validation.done && <Loading />}
-      {validation.error && <SectionError message={validation.error} />}
+      {validation.error && <PlanningError body={validation.error} onRetry={reload} />}
 
       {v && (
         <>
@@ -142,7 +162,11 @@ export function ValidationContent() {
       )}
 
       {!patterns.done && !patterns.error && validation.done && <Loading />}
-      {patterns.error && <SectionError message={patterns.error} />}
+      {/* Only shown when the section above succeeded. Two identical cards for
+          one outage is noise, and the first already carries the fix. */}
+      {patterns.error && !validation.error && (
+        <PlanningError body={patterns.error} onRetry={reload} />
+      )}
       {patterns.data && <DemandPatternsSection data={patterns.data} />}
     </div>
   );

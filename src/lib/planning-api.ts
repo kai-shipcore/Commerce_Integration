@@ -48,7 +48,7 @@ export async function proxyPlanning(
     const ensured = await ensureForecastServer();
     if (!ensured.ok) {
       return NextResponse.json(
-        { error: "Could not reach forecast server", detail: ensured.message },
+        { kind: "unreachable", error: "Could not reach forecast server", detail: ensured.message },
         { status: 503 },
       );
     }
@@ -58,6 +58,7 @@ export async function proxyPlanning(
       const message = err instanceof Error ? err.message : String(err);
       return NextResponse.json(
         {
+          kind: "unreachable",
           error: "Could not reach forecast server",
           detail: `The server started but did not answer: ${message}`,
         },
@@ -77,6 +78,7 @@ export async function proxyPlanning(
     if (outdated) {
       return NextResponse.json(
         {
+          kind: "outdated",
           error: "Forecast server is out of date",
           detail:
             `The forecast server does not have the ${path} endpoint. It is running an older ` +
@@ -86,12 +88,39 @@ export async function proxyPlanning(
       );
     }
 
+    // A 500 from a server that answers /health is nearly always missing data
+    // rather than a bug: data/processed and outputs/reports are gitignored, so
+    // a fresh clone serves health and raises everywhere else. Ask before
+    // reporting, because "Internal Server Error" on its own sends the reader
+    // looking in the wrong place. Only on the error path, so the healthy case
+    // pays nothing.
+    if (upstream.status >= 500) {
+      const { forecastHealth } = await import("@/lib/forecast-server");
+      const health = await forecastHealth();
+      if (health.ready === false) {
+        return NextResponse.json(
+          {
+            kind: "no_data",
+            error: "Forecast server has no data to read",
+            detail:
+              `The server is running but is missing ${health.missingRequired.join(", ")}. ` +
+              `data/processed and outputs/reports are gitignored, so a fresh checkout has the ` +
+              `code and none of the files.`,
+            missingRequired: health.missingRequired,
+            files: health.files.filter((f) => !f.exists && f.required),
+            repoRoot: health.repoRoot,
+          },
+          { status: 503 },
+        );
+      }
+    }
+
     // Otherwise the status is passed through rather than flattened to 500. A
     // 404 from the SKU endpoint is meaningful: it distinguishes a SKU that is
     // not forecastable from one that does not exist, and the page words those
     // differently.
     return NextResponse.json(
-      { error: `Forecast server error (${upstream.status})`, detail: body },
+      { kind: "error", error: `Forecast server error (${upstream.status})`, detail: body },
       { status: upstream.status },
     );
   }

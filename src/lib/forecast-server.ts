@@ -32,6 +32,74 @@ export async function isRunning(): Promise<boolean> {
   }
 }
 
+export interface HealthFile {
+  name: string;
+  path: string;
+  exists: boolean;
+  required: boolean;
+  produced_by: string;
+}
+
+export interface ForecastHealth {
+  running: boolean;
+  /** True only when the server is up AND has the data it reads. Null when the
+   *  server is up but predates the readiness fields in /health. */
+  ready: boolean | null;
+  missingRequired: string[];
+  missingOptional: string[];
+  files: HealthFile[];
+  /** Where the server says it is reading from. Worth showing: the usual cause
+   *  of missing data is a server running against the wrong checkout. */
+  repoRoot: string | null;
+  url: string;
+  /** Whether this app could start the server itself if it is down. */
+  local: boolean;
+}
+
+/**
+ * One call describing everything the UI needs to say about the service.
+ *
+ * "Running" alone is not a useful signal here, because the failure that
+ * actually happens is a server that is up and has no data to serve. That looks
+ * healthy to a liveness check and returns 500 on every real request.
+ */
+export async function forecastHealth(): Promise<ForecastHealth> {
+  const base = forecastApiBase();
+  const shape = (over: Partial<ForecastHealth>): ForecastHealth => ({
+    running: false,
+    ready: null,
+    missingRequired: [],
+    missingOptional: [],
+    files: [],
+    repoRoot: null,
+    url: base,
+    local: usesLocalForecastServer(),
+    ...over,
+  });
+
+  try {
+    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5_000) });
+    if (!res.ok) return shape({ running: false });
+
+    const body = await res.json().catch(() => null);
+    if (!body || typeof body !== "object") return shape({ running: true });
+
+    const b = body as Record<string, unknown>;
+    return shape({
+      running: true,
+      // Absent on a server that predates this field, which is itself worth
+      // distinguishing from "ready": it means the Python side is outdated.
+      ready: typeof b.ready === "boolean" ? b.ready : null,
+      missingRequired: Array.isArray(b.missing_required) ? (b.missing_required as string[]) : [],
+      missingOptional: Array.isArray(b.missing_optional) ? (b.missing_optional as string[]) : [],
+      files: Array.isArray(b.files) ? (b.files as HealthFile[]) : [],
+      repoRoot: typeof b.repo_root === "string" ? b.repo_root : null,
+    });
+  } catch {
+    return shape({ running: false });
+  }
+}
+
 export async function startForecastServer(): Promise<"already_running" | "started"> {
   if (await isRunning()) return "already_running";
 

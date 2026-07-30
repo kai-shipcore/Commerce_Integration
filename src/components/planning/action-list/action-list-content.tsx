@@ -27,6 +27,12 @@ import {
   ActionListTable, DEFAULT_SORT, PRIORITY, nextSort, sortRows,
   type SortCriterion, type SortKey,
 } from "./action-list-table";
+import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
+import {
+  PlanningError,
+  planningErrorFrom,
+  type PlanningErrorBody,
+} from "@/components/planning/planning-error";
 import { NotForecastSection } from "./not-forecast-section";
 import { PortfolioChart } from "./portfolio-chart";
 import {
@@ -82,11 +88,14 @@ export function ActionListContent({
   // free of the synchronous setState that causes cascading renders, and gives
   // the better behaviour for free: while a new lead time is in flight the
   // previous table stays on screen instead of blanking to a spinner.
-  const paramsKey = `${lead}|${review}|${z}|${horizon}`;
+  // Bumped to refetch without changing any parameter, for the retry button and
+  // for the status indicator noticing the server came back.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const paramsKey = `${lead}|${review}|${z}|${horizon}|${reloadNonce}`;
   const [state, setState] = useState<{
     key: string;
     data: ActionListResponse | null;
-    error: string | null;
+    error: PlanningErrorBody | null;
   }>({ key: "", data: null, error: null });
 
   useEffect(() => {
@@ -100,7 +109,10 @@ export function ActionListContent({
     fetch(apiPath(`/api/planning/action-list?${qs}`), { signal: controller.signal })
       .then(async (res) => {
         const body = await res.json();
-        if (!res.ok) throw new Error(body?.detail || body?.error || `HTTP ${res.status}`);
+        // The whole body is carried through, not just a message. The proxy
+        // classifies the failure and names missing files, and flattening that
+        // to a string is what produced a card reading "Internal Server Error".
+        if (!res.ok) throw planningErrorFrom(body, `HTTP ${res.status}`);
         return body as ActionListResponse;
       })
       .then((body) => setState({ key: paramsKey, data: body, error: null }))
@@ -109,7 +121,7 @@ export function ActionListContent({
         setState({
           key: paramsKey,
           data: null,
-          error: err instanceof Error ? err.message : String(err),
+          error: planningErrorFrom(err, err instanceof Error ? err.message : String(err)),
         });
       });
     return () => controller.abort();
@@ -209,20 +221,12 @@ export function ActionListContent({
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="p-6 text-sm">
-          <p className="font-medium text-red-600 dark:text-red-400">
-            {pick("예측 서버에 연결할 수 없습니다.", "Could not reach the forecast server.")}
-          </p>
-          <p className="mt-1 text-muted-foreground">{error}</p>
-          <p className="mt-3 text-xs text-muted-foreground">
-            {pick(
-              "FastAPI 서비스가 AI_SERVICE_URL 주소에서 실행 중인지 확인하세요.",
-              "Check that the FastAPI service is running at AI_SERVICE_URL.",
-            )}
-          </p>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-3">
+        <div className="flex justify-end">
+          <ForecastServerStatus onRecovered={() => setReloadNonce((n) => n + 1)} />
+        </div>
+        <PlanningError body={error} onRetry={() => setReloadNonce((n) => n + 1)} />
+      </div>
     );
   }
 
@@ -247,6 +251,12 @@ export function ActionListContent({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
           {pick("학습 기준", "Trained through")}: <strong>{data.meta.trained_through ?? "—"}</strong>
+        </span>
+        {/* Kept visible on the success path too. The service can go down while
+            the page is open, and the next filter change would then fail with no
+            hint that the cause is external. */}
+        <span className="ml-auto">
+          <ForecastServerStatus onRecovered={() => setReloadNonce((n) => n + 1)} />
         </span>
         <span>
           {pick("예측 SKU", "SKUs")}: <strong>{nf.format(data.meta.sku_count)}</strong>
