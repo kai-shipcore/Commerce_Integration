@@ -2015,44 +2015,6 @@ export function getOpenApiDocument(baseUrl: string) {
           },
         },
       },
-      "/production/seat-cover-parts/{id}": {
-        patch: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-        delete: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
-      "/production/seat-cover-parts": {
-        get: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-        post: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
       "/production/vehicle-options": {
         get: {
           tags: ["Production"],

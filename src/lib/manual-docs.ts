@@ -16,7 +16,6 @@ export const MANUAL_DOC_BY_MENU_ID: Record<string, ManualDocEntry> = {
 
   // Dedicated standalone docs (admin-only feature areas)
   "invoice-price-control": { kind: "section", sectionId: "invoice-price-control" },
-  "seat-cover-sizes": { kind: "section", sectionId: "seat-cover-sizes" },
   "production-vehicles": { kind: "section", sectionId: "production-vehicles" },
   "production-parts-codes": { kind: "section", sectionId: "production-parts-codes" },
   "part-sku-generator": { kind: "section", sectionId: "part-sku-generator" },

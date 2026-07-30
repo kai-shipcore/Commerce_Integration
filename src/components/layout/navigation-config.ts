@@ -203,14 +203,6 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
-    id: "seat-cover-sizes",
-    name: "Seat Cover Parts",
-    href: "/production/seat-cover-parts",
-    icon: Package,
-    group: "Production",
-    hideable: true,
-  },
-  {
     id: "production-vehicles",
     name: "Vehicles",
     href: "/production/vehicles",
@@ -331,7 +323,6 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "sku-master":          ["sku-master"],
   "sku-forecasts":       ["sku-forecasts"],
   "container-timeline":  ["container-timeline"],
-  "seat-cover-parts":    ["seat-cover-sizes"],
   "production-vehicles": ["production-vehicles"],
   "invoice-price-control": ["invoice-price-control"],
   "parts-codes":         ["production-parts-codes"],
