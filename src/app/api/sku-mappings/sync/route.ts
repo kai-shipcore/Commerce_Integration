@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncSkuMappings } from "@/lib/db/primary-db";
+import { SkuMappingsSyncService } from "@/lib/sku-mappings-sync/service";
 
 export const maxDuration = 300;
 
@@ -9,7 +9,7 @@ function getErrorMessage(error: unknown): string {
 
 export async function POST() {
   try {
-    const result = await syncSkuMappings();
+    const result = await SkuMappingsSyncService.sync();
     return NextResponse.json({
       success: true,
       message: `Mapping sync completed — +${result.mappingsUpserted.toLocaleString()} / -${result.mappingsDeleted.toLocaleString()} mappings`,

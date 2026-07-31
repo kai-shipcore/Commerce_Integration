@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncProducts } from "@/lib/db/primary-db";
+import { ProductsSyncService } from "@/lib/products-sync/service";
 
 export const maxDuration = 300;
 
@@ -9,7 +9,7 @@ function getErrorMessage(error: unknown): string {
 
 export async function POST() {
   try {
-    const result = await syncProducts();
+    const result = await ProductsSyncService.sync();
     return NextResponse.json({
       success: true,
       message: `Sync completed — +${result.productsUpserted} / -${result.productsDeleted} products`,
