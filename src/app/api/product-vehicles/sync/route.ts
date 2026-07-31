@@ -1,5 +1,10 @@
+// Code Guide: POST /api/product-vehicles/sync — pulls size_chart.product_vehicle
+// from the Supabase lookup DB and upserts/deletes shipcore.sc_product_vehicle
+// to match. Delegates to VehiclesService.sync().
+
 import { NextResponse } from "next/server";
-import { syncProductVehicles } from "@/lib/db/primary-db";
+import { guardPermission } from "@/lib/permissions";
+import { VehiclesService } from "@/lib/vehicles/service";
 
 export const maxDuration = 300;
 
@@ -8,8 +13,11 @@ function getErrorMessage(error: unknown): string {
 }
 
 export async function POST() {
+  const denied = await guardPermission("production-vehicles", "edit");
+  if (denied) return denied;
+
   try {
-    const result = await syncProductVehicles();
+    const result = await VehiclesService.sync();
     return NextResponse.json({
       success: true,
       message: `Product vehicle sync completed — +${result.upserted.toLocaleString()} / -${result.deleted.toLocaleString()} vehicles`,
@@ -18,7 +26,7 @@ export async function POST() {
     console.error("Product vehicle sync failed:", error);
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
