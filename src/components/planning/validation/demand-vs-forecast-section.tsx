@@ -370,6 +370,22 @@ export function DemandVsForecastSection({ data }: { data: DemandVsForecastRespon
         </div>
       )}
 
+      {/* Loud on purpose. Seeded runs exist so this chart can be reviewed
+          before real ones accumulate, and a fabricated line that looks like
+          evidence is worse than no line. Disappears by itself: the endpoint
+          prefers the current model's rows the moment a real run lands. */}
+      {data.history_version && data.history_version !== data.version && (
+        <div className="rounded-md border border-amber-400 bg-amber-50 p-3 text-[11.5px] leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+          <span className="font-semibold">
+            {pick("샘플 데이터입니다.", "This is sample data.")}
+          </span>{" "}
+          {pick(
+            `과거 예측선은 ${data.history_version} 의 값이며, 현재 모델 ${data.version} 의 실제 실행 기록이 아닙니다. 차트 동작을 확인하기 위해 만들어 넣은 값이므로 정확도를 판단하는 데 쓰면 안 됩니다. 실제 실행이 저장되면 자동으로 대체됩니다.`,
+            `The predicted line comes from ${data.history_version}, not from real runs of the current model (${data.version}). It was fabricated so this chart could be reviewed before runs accumulate, and says nothing about accuracy. It is replaced automatically once a real run is stored.`,
+          )}
+        </div>
+      )}
+
       {data.runs_stored === 0 && (
         <div className="rounded-md border border-dashed bg-muted/20 p-3 text-[11.5px] leading-relaxed text-muted-foreground">
           <span className="font-medium text-foreground">

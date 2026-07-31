@@ -144,6 +144,10 @@ export interface DemandVsForecastResponse {
    *  because nothing has been served and scored yet, not because of a fault. */
   runs_stored: number;
   version: string | null;
+  /** Which model version the predicted line is drawn from. Differs from
+   *  `version` when the store holds nothing for the current model, which is the
+   *  case while seeded sample runs are standing in for real ones. */
+  history_version: string | null;
   /** False for the LightGBM track, which emits a point forecast and no bands.
    *  Stated rather than inferred from missing fields, so the chart can say why
    *  there is no interval instead of quietly omitting one. */
