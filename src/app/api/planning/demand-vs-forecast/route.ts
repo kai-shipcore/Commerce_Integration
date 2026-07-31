@@ -2,17 +2,12 @@
  * Code Guide:
  * Proxies the demand-versus-forecast series from the Python planning API.
  *
- * `window` selects one backtest window or all of them, matching the values in
- * the comparison grid.
+ * No parameters: every series carries its segment and lead, and the chart
+ * filters client-side, so switching either does not re-request.
  */
 
 import { proxyPlanning } from "@/lib/planning-api";
 
-export async function GET(request: Request) {
-  const window = new URL(request.url).searchParams.get("window");
-  return proxyPlanning(
-    "/planning/demand-vs-forecast",
-    window ? `window=${encodeURIComponent(window)}` : "",
-    60_000,
-  );
+export async function GET() {
+  return proxyPlanning("/planning/demand-vs-forecast", "", 60_000);
 }

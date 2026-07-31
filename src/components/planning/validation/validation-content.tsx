@@ -112,10 +112,12 @@ export function ValidationContent() {
   // slicing client-side. The server holds the weekly series; sending two years
   // of it to trim in the browser would ship the data to discard most of it.
   const [weeks, setWeeks] = useState<number>(DEFAULT_WEEKS);
-  const [trendWindow, setTrendWindow] = useState<string>("all");
   const validation = useEndpoint<ValidationResponse>("/api/planning/validation", reloadNonce);
+  // Fetched once. Every series carries its segment and the chart filters
+  // client-side, matching the old page, so changing segment or lead is instant
+  // rather than a round trip.
   const trend = useEndpoint<DemandVsForecastResponse>(
-    `/api/planning/demand-vs-forecast?window=${encodeURIComponent(trendWindow)}`,
+    "/api/planning/demand-vs-forecast",
     reloadNonce,
   );
   const patterns = useEndpoint<DemandPatternsResponse>(
@@ -142,14 +144,8 @@ export function ValidationContent() {
               rather than summarised. Absent if it fails: the grid above already
               carries the claim, and a second error card for one outage is
               noise. */}
-          {trend.data && trend.data.weekly.length > 0 && (
-            <div className={trend.stale ? "opacity-50 transition-opacity" : "transition-opacity"}>
-              <DemandVsForecastSection
-                data={trend.data}
-                window={trendWindow}
-                onWindowChange={setTrendWindow}
-              />
-            </div>
+          {trend.data && trend.data.predicted.length > 0 && (
+            <DemandVsForecastSection data={trend.data} />
           )}
 
           <OutliersSection
@@ -158,11 +154,17 @@ export function ValidationContent() {
             baseline={v.comparison.baseline}
           />
 
-          <OverTimeSection
-            runs={v.over_time.runs}
-            performance={v.over_time.performance}
-            lastCompleteWeek={v.over_time.last_complete_week}
-          />
+          {/* The chart above already explains an empty history store, so the
+              placeholder here would be the second panel on one page saying the
+              same thing. Once runs exist the two are complementary: the chart
+              is the trajectory, this is the per-run figure. */}
+          {!(trend.data && trend.data.runs_stored === 0) && (
+            <OverTimeSection
+              runs={v.over_time.runs}
+              performance={v.over_time.performance}
+              lastCompleteWeek={v.over_time.last_complete_week}
+            />
+          )}
 
           <section className="flex flex-col gap-3">
             <div>

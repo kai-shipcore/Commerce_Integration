@@ -101,37 +101,53 @@ export interface WeeklyPoint {
   units: number;
 }
 
-/** One backtest week. `actual` and `predicted` come from the same rows, so they
- *  cover the same SKUs by construction. `n_skus` is carried because that
- *  population is not constant: a SKU needs history reaching past a window's
- *  cutoff to be backtestable at all, so both lines step together at window
- *  boundaries. */
-export interface TrendWeek {
+/** Series carry their segment and the client filters, matching the old chart,
+ *  so switching segment does not refetch. Segments are taken as of each
+ *  window's cutoff rather than from today's profile, so a pill selects the same
+ *  population as the grid row of the same name. */
+export interface TrendActual {
   ds: string;
-  actual: number;
-  predicted: number;
+  segment: string;
+  y: number;
   n_skus: number;
-  lead: number;
 }
 
-export interface TrendBoundary {
-  window: string;
-  start: string;
-  end: string;
+/** One (week, lead) pair from the stored runs: what the run made `lead` weeks
+ *  before this week said this week would be. A week appears once per run that
+ *  covered it, which is what makes "most recent run" a choice. */
+export interface TrendPredicted {
+  ds: string;
+  segment: string;
+  yhat: number;
+  lead: number;
+  n_skus: number;
+  forecast_date: string;
+}
+
+export interface TrendForward {
+  ds: string;
+  segment: string;
+  yhat: number;
+  v1: number | null;
   n_skus: number;
 }
 
 export interface DemandVsForecastResponse {
-  weekly: TrendWeek[];
-  forward: { ds: string; value: number }[];
-  boundaries: TrendBoundary[];
-  windows: string[];
-  window: string;
-  /** The span between the last scored week and the first forward week. Left
-   *  empty on purpose: it is the quarantined final test window. */
-  quarantine: { start: string; end: string | null } | null;
-  sku_count: number;
+  actuals: TrendActual[];
+  predicted: TrendPredicted[];
+  forward: TrendForward[];
+  segments: string[];
+  leads: number[];
+  last_complete_week: string | null;
+  forward_run_date: string | null;
+  /** How many runs the history store holds. Zero means `predicted` is empty
+   *  because nothing has been served and scored yet, not because of a fault. */
+  runs_stored: number;
   version: string | null;
+  /** False for the LightGBM track, which emits a point forecast and no bands.
+   *  Stated rather than inferred from missing fields, so the chart can say why
+   *  there is no interval instead of quietly omitting one. */
+  has_intervals: boolean;
 }
 
 export interface DemandPatternsResponse {
