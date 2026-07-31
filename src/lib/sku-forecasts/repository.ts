@@ -40,6 +40,24 @@ export interface InboundRow {
   cbm: number;
 }
 
+export interface SalesHistoryDbRow {
+  bucket_label: string;
+  west: string | number | null;
+  east: string | number | null;
+  total: string | number | null;
+}
+
+export interface SalesHistoryQuery {
+  table: string;
+  skuColumn: string;
+  qtyColumn: string;
+  bucketSql: string;
+  labelSql: string;
+  sku: string;
+  from: string;
+  to: string;
+}
+
 export const SkuForecastsRepository = {
   async getInboundHistory(masterSku: string): Promise<InboundHistoryRow[]> {
     const result = await getPrimaryPool().query<{
@@ -141,5 +159,34 @@ export const SkuForecastsRepository = {
       `SELECT MIN(order_date)::text AS min_date FROM shipcore.fc_velocity_link_snapshot`,
     );
     return result.rows[0]?.min_date?.slice(0, 10) ?? null;
+  },
+
+  async getSalesHistory(query: SalesHistoryQuery): Promise<SalesHistoryDbRow[]> {
+    const { table, skuColumn, qtyColumn, bucketSql, labelSql, sku, from, to } = query;
+    const result = await getPrimaryPool().query<SalesHistoryDbRow>(
+      `
+        WITH bucketed AS (
+          SELECT
+            ${bucketSql} AS bucket_date,
+            SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' THEN ${qtyColumn} ELSE 0 END)::int AS west,
+            SUM(CASE WHEN order_type = 'ttm' THEN ${qtyColumn} ELSE 0 END)::int AS east
+          FROM ${table}
+          WHERE ${skuColumn} = $1
+            AND order_date >= $2::date
+            AND order_date <= $3::date
+            AND order_type IN ('sales', 'ttm')
+          GROUP BY bucket_date
+        )
+        SELECT
+          ${labelSql} AS bucket_label,
+          west,
+          east,
+          (west + east)::int AS total
+        FROM bucketed
+        ORDER BY bucket_date
+      `,
+      [sku, from, to],
+    );
+    return result.rows;
   },
 };
