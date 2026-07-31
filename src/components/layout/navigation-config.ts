@@ -192,7 +192,6 @@ export const navigationItems: NavigationItem[] = [
     icon: FileSpreadsheet,
     group: "Planning",
     hideable: true,
-    hidden: true,
   },
   {
     id: "sku-master",
