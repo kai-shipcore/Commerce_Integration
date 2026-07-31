@@ -110,3 +110,29 @@ transit-stock import dialog, so the parsing path is reachable.
 Consequence for deployment: whatever runs `npm install` needs network access to
 `cdn.sheetjs.com`. If a build host is locked down, vendor the tarball rather
 than reverting the version.
+
+### `nodemailer` was upgraded 7 to 9, and none of it was reachable
+
+The advisories against nodemailer 7 cover SMTP command injection via
+`envelope.size`, CRLF injection in the transport `name` and in `List-*` header
+comments, `jsonTransport` and `raw` bypassing `disableFileAccess`, and TLS
+validation during OAuth2 token fetch. `src/lib/email.ts` sets none of those
+options: it calls `createTransport({host, port, secure, auth})` and `sendMail`
+with a fixed subject and body.
+
+The one plausible vector, an attacker-controlled address reaching a header, is
+closed twice over in `src/app/api/auth/forgot-password/route.ts`: the address is
+validated by Zod `.email()`, then used only to look up a user, and the value
+passed to `sendMail` is `user.email` from the database rather than the request.
+
+Recorded so this is not re-litigated at the next audit. The upgrade was still
+correct, and it was not urgent.
+
+### Reading `npm audit` in this repo
+
+`npm audit fix --force` proposes `next@9.3.3` over the installed 16.x, and
+`exceljs@3.4.0` over 4.4.0. npm treats any version whose tree lacks the advisory
+as a fix and does not weigh that it is a downgrade of several years. Run
+`npm audit fix` without `--force`, then read `git diff package-lock.json` before
+committing. Most remaining findings sit under `eslint` or inside `next`'s own
+tree and never execute in production.
