@@ -1,27 +1,23 @@
 // Code Guide: CRUD API for pd_designer_initials table. GET lists all designer initials with
 // optional filters; POST creates a new designer initial record.
 
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
-import { logAudit, getIp } from "@/lib/audit";
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
-// BigInt fields (id) must be converted to string before JSON serialization.
-function serialize(d: object): object {
-  return JSON.parse(JSON.stringify(d, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
-}
+import { getIp } from "@/lib/audit";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
+import { MasterDataService, MASTER_DATA_CONFIGS } from "@/lib/parts-codes/service";
 
 const DesignerInitialCreateSchema = z.object({
   initial: z.string().min(1),
   designerName: z.string().min(1),
   isActive: z.boolean().default(true),
 });
+
+function serialize(d: object): object {
+  return JSON.parse(JSON.stringify(d, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
+}
 
 export async function GET(request: NextRequest) {
   const denied = await guardPermission("parts-codes", "read");
@@ -31,28 +27,11 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") ?? "";
     const activeParam = searchParams.get("active");
 
-    const initials = await prisma.designerInitial.findMany({
-      where: {
-        ...(search
-          ? {
-              OR: [
-                { initial: { contains: search, mode: "insensitive" } },
-                { designerName: { contains: search, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-        ...(activeParam !== null ? { isActive: activeParam === "true" } : {}),
-      },
-      orderBy: { initial: "asc" },
-    });
-
-    return NextResponse.json({ success: true, data: initials.map(serialize) });
-  } catch (error: unknown) {
+    const initials = await MasterDataService.list(MASTER_DATA_CONFIGS.designerInitial, search, activeParam !== null ? activeParam === "true" : null);
+    return apiSuccess({ data: initials.map(serialize) });
+  } catch (error) {
     console.error("Error fetching designer initials:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -62,47 +41,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validated = DesignerInitialCreateSchema.parse(body);
-
-    const initial = validated.initial.toUpperCase();
-
-    const existing = await prisma.designerInitial.findUnique({
-      where: { initial },
-    });
-    if (existing) {
-      return NextResponse.json(
-        { success: false, error: `Initial already exists: ${initial}` },
-        { status: 400 }
-      );
-    }
-
-    const created = await prisma.designerInitial.create({
-      data: { ...validated, initial },
-    });
-
     const session = await auth();
-    void logAudit({
-      entityType: "designer_initial",
-      entityId: String(created.id),
-      entityLabel: created.initial,
+
+    const created = await MasterDataService.create(MASTER_DATA_CONFIGS.designerInitial, validated, {
       userId: session?.user?.id ?? null,
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,
-      action: "create",
-      after: { designerName: created.designerName },
       ip: getIp(request.headers),
     });
-    return NextResponse.json({ success: true, data: serialize(created) }, { status: 201 });
-  } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: "Validation error", details: error.issues },
-        { status: 400 }
-      );
-    }
+
+    return apiSuccess({ data: serialize(created) }, 201);
+  } catch (error) {
     console.error("Error creating designer initial:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
