@@ -69,8 +69,8 @@ export function PlanningError({
       "Opening this page tries to start it. If that keeps failing, the detail below says why.",
     ),
     no_data: pick(
-      "서버 자체는 정상입니다. data/processed 와 outputs/reports 는 git에 포함되지 않으므로, 새로 클론한 저장소에는 코드만 있고 데이터 파일이 없습니다.",
-      "The service itself is fine. data/processed and outputs/reports are gitignored, so a fresh checkout has the code and none of the data files.",
+      "서버 자체는 정상입니다. data/processed 는 git에 포함되지 않으므로, 새로 클론한 저장소에는 코드만 있고 데이터 파일이 없습니다. 필요한 데이터는 이미 저장소 안에 있으니, Time_Series_Forecasting 에서 아래 명령 한 줄이면 됩니다.",
+      "The service itself is fine. data/processed is gitignored, so a fresh checkout has the code and none of the data. The data it needs is already in the repository, so one command in the Time_Series_Forecasting checkout is enough.",
     ),
     outdated: pick(
       "Time_Series_Forecasting 저장소에서 최신 코드를 받은 뒤 서버를 다시 시작하세요.",
@@ -98,6 +98,17 @@ export function PlanningError({
         </div>
 
         <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">{guidance[kind]}</p>
+
+        {/* The command, before the file list rather than after it. The list
+            names what is missing, which is diagnosis; this is the fix, and a
+            reader who trusts the card does not need to read the diagnosis to
+            act on it. It seeds from data already committed, so it needs no
+            database, no .env and no pipeline run. */}
+        {kind === "no_data" && (
+          <pre className="mt-3 overflow-x-auto rounded-md border bg-muted/50 px-3 py-2 font-mono text-[11px] leading-relaxed">
+            .venv/bin/python scripts/seed_dev_data.py
+          </pre>
+        )}
 
         {kind === "no_data" && body.files && body.files.length > 0 && (
           <ul className="mt-3 space-y-1 text-[11.5px] text-muted-foreground">

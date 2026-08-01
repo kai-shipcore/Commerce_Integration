@@ -24,7 +24,7 @@ import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
-const POLL_MS = 60_000;
+const POLL_MS = 5_000;
 
 export interface ForecastHealth {
   running: boolean;

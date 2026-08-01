@@ -64,6 +64,7 @@ export function OrderCard({
   errorUsed,
   leadWeeks,
   reviewWeeks,
+  draftInbound = 0,
 }: {
   total: number;
   band: { low: number; high: number } | null;
@@ -71,9 +72,17 @@ export function OrderCard({
   errorUsed: number | null;
   leadWeeks: number;
   reviewWeeks: number;
+  /** Units on a container still in draft. Not part of the sum below, so this is
+   *  only used to state what the requirement becomes if the draft stands. */
+  draftInbound?: number;
 }) {
   const { pick } = useI18n();
   const lines = useMemo(() => renderLines(breakdown), [breakdown]);
+  // The same subtraction a purchaser would otherwise do in their head, done
+  // here so it is not done wrongly. Deliberately not the headline: the model
+  // does not know whether the draft will ship, so the committed figure stays
+  // the recommendation and this is offered beside it as the other case.
+  const netOfDraft = Math.max(0, total - draftInbound);
 
   return (
     <div className="flex h-full flex-col rounded-md border p-4">
@@ -116,6 +125,29 @@ export function OrderCard({
           `units, covering a ${leadWeeks}-week lead time plus a ${reviewWeeks}-week reorder cycle`,
         )}
       </p>
+
+      {/* Sits under the caption rather than beside the headline, because it is a
+          conditional answer and the headline is not. Given its own box so it is
+          not read as another line of qualifying grey text, which is what
+          happened to the plausible band before it moved up. */}
+      {draftInbound > 0 && (
+        <div className="mt-2 rounded-md border border-sky-300/50 bg-sky-50 px-2 py-1.5 dark:border-sky-800/60 dark:bg-sky-950/40">
+          <div className="flex items-baseline gap-2">
+            <span className="text-[8.5px] uppercase tracking-wider text-muted-foreground">
+              {pick("초안 반영 시", "if the draft stands")}
+            </span>
+            <span className="text-[15px] font-semibold tabular-nums text-sky-700 dark:text-sky-300">
+              {nf.format(netOfDraft)}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+            {pick(
+              `${nf.format(total)} − 초안 ${nf.format(draftInbound)}. 초안은 확정이 아니므로 위 권장 수량에는 반영되어 있지 않습니다. 그 컨테이너가 예정대로 출고된다면 실제 필요량은 이 수치입니다.`,
+              `${nf.format(total)} less ${nf.format(draftInbound)} already drafted. The recommendation above does not assume that container ships, because a draft can be cancelled. If it does ship, this is the real requirement.`,
+            )}
+          </p>
+        </div>
+      )}
 
       <table className="mt-3 w-full border-collapse tabular-nums">
         <tbody>

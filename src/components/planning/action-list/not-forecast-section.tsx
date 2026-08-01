@@ -133,7 +133,7 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
   if (!data) return null;
 
   const m = data.metrics;
-  const chips: { key: NfFocus; label: string; value: number }[] = [
+  const filters: { key: NfFocus; label: string; value: number }[] = [
     { key: "all", label: pick("전체", "not forecast"), value: m.skus },
     { key: "selling", label: pick("최근 판매 있음", "selling"), value: m.selling },
     { key: "dormant", label: pick("판매 없음", "dormant"), value: m.dormant },
@@ -172,7 +172,7 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
       </p>
 
       <div className="flex flex-wrap gap-2">
-        {chips.map((c) => (
+        {filters.map((c) => (
           <button
             key={c.key}
             type="button"

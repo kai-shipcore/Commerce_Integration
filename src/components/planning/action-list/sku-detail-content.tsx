@@ -205,12 +205,19 @@ export function SkuDetailContent({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <h1 className="font-mono text-lg font-semibold">{r.unique_id}</h1>
+          {/* Matches the list's subtitle. The history group is deliberately not
+              here: a purchaser acts on the measured reliability below, not on
+              how many weeks of history produced it. */}
           <p className="text-xs text-muted-foreground">
-            {[r.product_category, r.history_group, r.product_name].filter(Boolean).join(" · ")}
+            {[r.product_category, r.product_name].filter(Boolean).join(" · ")}
           </p>
         </div>
+        {/* The training cutoff, from meta, not the first week of the horizon.
+            Those differ by exactly one week, so reading it off the forecast
+            made this page and the list disagree about how old the number is,
+            in the one place a purchaser looks to decide whether it is stale. */}
         <span className="text-[11px] text-muted-foreground">
-          {pick("학습 기준", "Trained through")} {d.forecast[0]?.ds ? d.forecast[0].ds : "—"}
+          {pick("학습 기준", "Trained through")} {d.meta.trained_through ?? "—"}
         </span>
       </div>
 
@@ -303,6 +310,34 @@ export function SkuDetailContent({
         </div>
       )}
 
+      {/* Above the order card with the other caveats, for the same reason they
+          are: it qualifies the number in that card and has to be read before
+          it. A purchaser arriving from the list has already seen the
+          recommendation and may be about to act on it, and this is the one
+          thing on the page that can say the action is already taken. */}
+      {r.draft_inbound > 0 && (
+        <div className="rounded-md border border-sky-300/60 bg-sky-50/60 p-3 text-[11.5px] leading-relaxed dark:border-sky-800/60 dark:bg-sky-950/30">
+          <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+          <strong>
+            {pick(
+              `이 SKU는 이미 초안 컨테이너에 ${nf.format(Math.round(r.draft_inbound))}개가 잡혀 있습니다.`,
+              `${nf.format(Math.round(r.draft_inbound))} units of this SKU are already on a draft container.`,
+            )}
+          </strong>{" "}
+          {r.draft_eta
+            ? pick(`예정 도착 ${r.draft_eta}. `, `Currently dated ${r.draft_eta}. `)
+            : pick("도착일은 아직 정해지지 않았습니다. ", "No arrival date has been set yet. ")}
+          {/* States the fact and stops. The order card below does the
+              subtraction and shows what the requirement becomes, so repeating
+              the figure here would put the same number on screen twice with
+              nothing to say which to act on. */}
+          {pick(
+            "초안은 확정 발주가 아니므로 아래 권장 수량에서 차감하지 않았습니다.",
+            "A draft is not a committed order, so it is not subtracted from the recommendation below.",
+          )}
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2">
         <OrderCard
           total={d.order.total}
@@ -311,6 +346,7 @@ export function SkuDetailContent({
           errorUsed={r.error_used ?? null}
           leadWeeks={d.params.lead_time_weeks}
           reviewWeeks={d.params.review_period_weeks}
+          draftInbound={Math.round(r.draft_inbound)}
         />
         <ReliabilityCard
           wape={r.wape}

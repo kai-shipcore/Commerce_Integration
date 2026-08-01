@@ -22,7 +22,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import { TABLE_WINDOW } from "./action-list-table";
+import {
+  BAND_ROW_H, BAND_ROW_RULE, NAME_ROW_TOP, TABLE_WINDOW, Z,
+} from "./action-list-table";
 import type { NotForecastRow } from "./types";
 
 const nf = new Intl.NumberFormat("en-US");
@@ -44,10 +46,11 @@ const NF_BAND = {
   },
 } as const;
 
-// Opaque backgrounds and the same four-layer stacking as the forecast table:
-// a translucent sticky header lets the rows underneath show through it.
-const BAND_ROW_H = "top-7";
-const Z = { headCorner: "z-40", head: "z-30", bodyLeft: "z-20" } as const;
+// Stacking order, band-row height and the rule beneath it are imported from the
+// forecast table rather than restated here. They were copied, and the copy went
+// stale: the fix for the hairline between the two sticky header rows landed on
+// one table and not the other, which is the failure mode a shared constant
+// exists to prevent.
 
 export type NfSortKey =
   | "unique_id" | "product_category" | "recent_units" | "weekly_rate"
@@ -137,7 +140,7 @@ export function NotForecastTable({
   const th = (key: NfSortKey, label: string, right = false, extra = "") => (
     <TableHead
       onClick={onSort ? (e) => onSort(key, e.shiftKey) : undefined}
-      className={`sticky ${BAND_ROW_H} ${Z.head} h-10 whitespace-nowrap ${
+      className={`sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${
         right ? "text-right" : ""
       } ${extra} ${onSort ? "cursor-pointer select-none hover:text-foreground" : ""}`}
     >
@@ -151,16 +154,16 @@ export function NotForecastTable({
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className={`sticky left-0 top-0 ${Z.headCorner} h-7 bg-background`} />
+            <TableHead className={`sticky left-0 top-0 ${Z.headCorner} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
             >
               {h.soldBand}
             </TableHead>
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
             >
               {h.stockBand}
             </TableHead>

@@ -148,11 +148,7 @@ export function ValidationContent() {
             <DemandVsForecastSection data={trend.data} />
           )}
 
-          <OutliersSection
-            best={v.outliers.best}
-            worst={v.outliers.worst}
-            baseline={v.comparison.baseline}
-          />
+          <OutliersSection outliers={v.outliers} baseline={v.comparison.baseline} />
 
           {/* The chart above already explains an empty history store, so the
               placeholder here would be the second panel on one page saying the

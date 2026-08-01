@@ -52,10 +52,29 @@ export interface ValidationCoverage {
 export interface OutlierRow {
   unique_id: string;
   window: string;
+  /** Units actually sold over the window. Both WAPEs below are divided by this,
+   *  so `delta` is bounded by it: a small denominator lets the difference swing
+   *  freely, which is why the list is filtered by volume before it is ranked. */
   y_total_cur: number;
   wape_cur: number;
   wape_base: number;
   delta: number;
+}
+
+/** Every scored SKU x window row, unranked.
+ *
+ *  The endpoint used to send the two ranked lists and nothing else, which fixed
+ *  the minimum volume at whatever it had chosen. The threshold is a judgement,
+ *  so it moves on the page, and the page therefore needs the pool rather than
+ *  someone else's extract of it. 572 rows on the current report. */
+export interface ValidationOutliers {
+  rows: OutlierRow[];
+  /** How many rows each list displays, not how many were sent. */
+  top_n: number;
+  default_min_units: number;
+  /** Units across the unfiltered pool. The denominator for what share of scored
+   *  demand a filtered list accounts for. */
+  scored_units: number;
 }
 
 export interface RunRow {
@@ -81,7 +100,7 @@ export interface PerformanceRow {
 export interface ValidationResponse {
   comparison: ValidationComparison;
   coverage: ValidationCoverage;
-  outliers: { best: OutlierRow[]; worst: OutlierRow[] };
+  outliers: ValidationOutliers;
   over_time: {
     runs: RunRow[];
     performance: PerformanceRow[];

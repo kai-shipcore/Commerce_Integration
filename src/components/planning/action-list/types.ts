@@ -20,6 +20,21 @@ export interface ActionListRow {
   preorder_backlog: number;
   confirmed_inbound: number;
   inbound_eta: string | null;
+  /** Units on containers still in draft: an order that exists but is not
+   *  committed. Read from the same fc_containers / fc_container_items tables the
+   *  Container Planning screens use, so the two cannot disagree about what has
+   *  been drafted.
+   *
+   *  Never subtracted from `recommended_order_qty`. A draft can be cancelled, so
+   *  crediting it would under-order exactly the SKUs someone has already acted
+   *  on. It is displayed beside the recommendation instead.
+   *
+   *  0 where nothing is drafted, which is a real answer rather than a missing
+   *  one: it comes from container line items, so no matching row means no units.
+   *  How far the inventory source as a whole can be trusted is reported once by
+   *  `meta.inventory_is_sample`, not per column. */
+  draft_inbound: number;
+  draft_eta: string | null;
   transit_stock: number | null;
 
   // Demand: what has sold recently and what is forecast.
@@ -69,6 +84,11 @@ export interface ActionListMetrics {
   forecasted_skus: number;
   preorder_priority: number;
   out_of_stock: number;
+  /** Flagged best sellers that are also stocking out soon. Served but no longer
+   *  displayed: it cuts across the priority labels, so a card showing it while
+   *  filtering on the `Best Seller` label reported one set and produced
+   *  another. Kept on the response because it is a real figure and the metrics
+   *  block is the forecast run's own summary, not a description of this screen. */
   best_sellers_at_risk: number;
   stockout_within_horizon: number;
   supply_gap: number;
@@ -257,7 +277,14 @@ export interface SkuDetailResponse {
   /** This SKU's index in that list. -1 if absent, which cannot happen for a
    *  successful response but keeps the consumer honest. */
   position: number;
-  meta: { inventory_is_sample: boolean; inventory_source: string };
+  meta: {
+    inventory_is_sample: boolean;
+    inventory_source: string;
+    /** Training cutoff of the forecast on screen, the same figure the list
+     *  shows. Not derivable from `forecast[0].ds`, which is the first week of
+     *  the horizon and therefore one week later. */
+    trained_through: string | null;
+  };
   row: ActionListRow & {
     /** Mean weekly units over the last 4 weeks, on raw demand. The figure the
      *  runs-high callout compares the forecast against. */

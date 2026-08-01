@@ -8,11 +8,19 @@
  * a different population from the table beneath it invites the reader to
  * reconcile two numbers that were never meant to agree.
  *
- * Open by default, and deliberately large. It was collapsed and small on the
- * argument that the table matters most, but a chart nobody notices teaches
- * nobody anything, and the portfolio shape is the context every row below should
- * be read against. Still collapsible, so anyone working the list daily can
- * reclaim the height.
+ * Collapsed by default. It was open, on the argument that a chart nobody
+ * notices teaches nobody anything. What that traded away was the top of the
+ * worklist: 460px of chart plus its controls put the first table row below the
+ * fold on a laptop, every morning, on the one screen whose entire job is "what
+ * do I order today". The same question is answered twice on Forecast Validation
+ * with better instruments, so this is a summary rather than the only place to
+ * see it, and a summary should not outrank the thing it summarises.
+ *
+ * Both spans are adjustable. The history window is a server parameter, since the
+ * weekly series lives there and sending two years of it to trim in the browser
+ * would ship the data in order to discard most of it. The forecast window is
+ * trimmed here, because the whole horizon is at most a few dozen points and is
+ * already in hand.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -38,19 +46,27 @@ interface TrendResponse {
 // from across the page rather than studied point by point.
 const COLOUR = { actual: "#5b5b5b", forecast: "#6366f1", v1: "#14b8a6" } as const;
 
+/** Selectable spans, in weeks. History is what the server slices; forecast is
+ *  trimmed from the horizon already returned. */
+const HISTORY_WEEKS = [13, 26, 52, 104] as const;
+const FORECAST_WEEKS = [4, 8, 13] as const;
+
 export function PortfolioChart({ skus }: { skus: string[] }) {
   const { pick } = useI18n();
-  // Open by default. Collapsed, it was easy to miss entirely, and the
-  // portfolio shape is the context every row below should be read against.
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [historyWeeks, setHistoryWeeks] = useState<number>(26);
+  const [forecastWeeks, setForecastWeeks] = useState<number | "all">("all");
   const [state, setState] = useState<{ key: string; data: TrendResponse | null; error: string | null }>(
     { key: "", data: null, error: null },
   );
 
-  // The SKU set identifies a response. Sorting first means two filters that
-  // select the same SKUs in a different order share a request rather than
-  // refetching identical data.
-  const key = useMemo(() => [...skus].sort().join(","), [skus]);
+  // The SKU set and the history window together identify a response. Sorting the
+  // ids first means two filters that select the same SKUs in a different order
+  // share a request rather than refetching identical data.
+  const key = useMemo(
+    () => `${historyWeeks}|${[...skus].sort().join(",")}`,
+    [skus, historyWeeks],
+  );
 
   useEffect(() => {
     if (!open || !skus.length) return;
@@ -58,7 +74,7 @@ export function PortfolioChart({ skus }: { skus: string[] }) {
     fetch(apiPath("/api/planning/demand-trend"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ skus, history_weeks: 26 }),
+      body: JSON.stringify({ skus, history_weeks: historyWeeks }),
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -72,13 +88,21 @@ export function PortfolioChart({ skus }: { skus: string[] }) {
         setState({ key, data: null, error: err instanceof Error ? err.message : String(err) });
       });
     return () => controller.abort();
-  }, [open, key, skus]);
+  }, [open, key, skus, historyWeeks]);
 
   const loading = open && state.key !== key;
   const d = state.data;
 
+  // How many forward weeks the run actually produced. The forecast presets are
+  // filtered against it rather than fixed, so a 13-week horizon does not offer a
+  // 26-week view that would silently show 13.
+  const horizon = d?.forecast.length ?? 0;
+
   const traces = useMemo<Data[]>(() => {
     if (!d) return [];
+    const cut = <T,>(arr: T[]) => (forecastWeeks === "all" ? arr : arr.slice(0, forecastWeeks));
+    const forecast = cut(d.forecast);
+    const v1 = cut(d.v1);
     const out: Data[] = [
       {
         x: d.actual.map((p) => p.ds),
@@ -91,26 +115,26 @@ export function PortfolioChart({ skus }: { skus: string[] }) {
     // Bridge from the last actual so the forecast continues the demand line
     // rather than starting detached from it.
     const bridge = d.actual.length ? [d.actual[d.actual.length - 1]] : [];
-    if (d.forecast.length) {
+    if (forecast.length) {
       out.push({
-        x: [...bridge.map((p) => p.ds), ...d.forecast.map((p) => p.ds)],
-        y: [...bridge.map((p) => p.value), ...d.forecast.map((p) => p.value)],
+        x: [...bridge.map((p) => p.ds), ...forecast.map((p) => p.ds)],
+        y: [...bridge.map((p) => p.value), ...forecast.map((p) => p.value)],
         type: "scatter", mode: "lines",
         name: pick("모델 예측", "Model forecast"),
         line: { color: COLOUR.forecast, width: 2.8, dash: "dash" },
       });
     }
-    if (d.v1.length) {
+    if (v1.length) {
       out.push({
-        x: [...bridge.map((p) => p.ds), ...d.v1.map((p) => p.ds)],
-        y: [...bridge.map((p) => p.value), ...d.v1.map((p) => p.value)],
+        x: [...bridge.map((p) => p.ds), ...v1.map((p) => p.ds)],
+        y: [...bridge.map((p) => p.value), ...v1.map((p) => p.value)],
         type: "scatter", mode: "lines",
         name: pick("스프레드시트 (V1)", "Spreadsheet (V1)"),
         line: { color: COLOUR.v1, width: 2.2, dash: "dot" },
       });
     }
     return out;
-  }, [d, pick]);
+  }, [d, forecastWeeks, pick]);
 
   const layout = useMemo<Partial<Layout>>(() => {
     const boundary = d?.actual.length ? d.actual[d.actual.length - 1].ds : null;
@@ -146,6 +170,61 @@ export function PortfolioChart({ skus }: { skus: string[] }) {
         )}
       </summary>
       <div className="border-t p-2">
+        {/* Two spans, labelled by what each one governs. Kept apart rather than
+            merged into one "range" control: the left of the marker is what
+            happened and the right of it is what the model claims will happen,
+            and a reader lengthening one is asking a different question from a
+            reader lengthening the other. */}
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11px]">
+          <span className="flex items-center gap-1">
+            <span className="text-muted-foreground">{pick("실적 기간", "History")}</span>
+            {HISTORY_WEEKS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setHistoryWeeks(w)}
+                aria-pressed={historyWeeks === w}
+                className={`rounded border px-1.5 py-0.5 tabular-nums transition-colors ${
+                  historyWeeks === w
+                    ? "border-sky-500 bg-sky-500/10 font-semibold text-sky-700 dark:text-sky-300"
+                    : "border-transparent text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {w === 104 ? pick("2년", "2y") : w === 52 ? pick("1년", "1y") : `${w}w`}
+              </button>
+            ))}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="text-muted-foreground">{pick("예측 기간", "Forecast")}</span>
+            {FORECAST_WEEKS.filter((w) => w < horizon).map((w) => (
+              <button
+                key={w}
+                type="button"
+                onClick={() => setForecastWeeks(w)}
+                aria-pressed={forecastWeeks === w}
+                className={`rounded border px-1.5 py-0.5 tabular-nums transition-colors ${
+                  forecastWeeks === w
+                    ? "border-sky-500 bg-sky-500/10 font-semibold text-sky-700 dark:text-sky-300"
+                    : "border-transparent text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {w}w
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setForecastWeeks("all")}
+              aria-pressed={forecastWeeks === "all"}
+              className={`rounded border px-1.5 py-0.5 tabular-nums transition-colors ${
+                forecastWeeks === "all"
+                  ? "border-sky-500 bg-sky-500/10 font-semibold text-sky-700 dark:text-sky-300"
+                  : "border-transparent text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {pick(`전체 ${horizon}w`, `all ${horizon}w`)}
+            </button>
+          </span>
+        </div>
         {loading && (
           <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />

@@ -3,7 +3,7 @@
 /**
  * Code Guide:
  * Action list page body — fetches /api/planning/action-list and renders the
- * summary chips, the planning controls, the filters and the table.
+ * summary counts, the planning controls, the filters and the table.
  *
  * The summary counts double as the primary filter rather than sitting on a
  * separate overview screen. A figure you can click is a way into the work; a
@@ -45,7 +45,15 @@ import {
 
 const nf = new Intl.NumberFormat("en-US");
 
-type Focus = "all" | "preorder" | "no-stock" | "best-seller" | "out-soon" | "supply-gap";
+type Focus =
+  | "all" | "preorder" | "no-stock" | "best-seller"
+  | "out-soon" | "supply-gap" | "drafted" | "routine";
+
+/** Sentinel for "any data-quality warning", as distinct from one named warning.
+ *  A sentinel rather than a second piece of state, because the two are mutually
+ *  exclusive and holding them apart would allow a combination that means
+ *  nothing. Not a string a warning label could collide with. */
+const ANY_FLAG = "__any__";
 
 const SERVICE_LEVELS: { label: string; z: number }[] = [
   { label: "84% (z=1.0)", z: 1.0 },
@@ -73,8 +81,26 @@ export function ActionListContent({
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [tier, setTier] = useState("all");
-  const [history, setHistory] = useState("all");
-  const [priority, setPriority] = useState("all");
+  // No history-length filter. "short" and "long" describe how much training
+  // data a SKU has, which is a fact about the model rather than about the
+  // product, and a purchaser does nothing differently on that basis. The
+  // operational consequence of thin history is already carried by the
+  // Reliability column, which is measured rather than assumed.
+  // No priority select either, and this one used to exist. It filtered on
+  // `priority_label` while the summary cards filtered the same field
+  // independently, so the two could be driven into combinations that return
+  // nothing and explain nothing: "Preorder" on a card with "Best Seller" in the
+  // select is empty by construction. It survived only because Routine had no
+  // card of its own, so Routine has one now and the select is gone. That is the
+  // same rule the flag filter above states for itself: two pieces of state that
+  // can contradict each other should be one.
+  // Data-quality selection. null is no filter, ANY_FLAG is every flagged row,
+  // anything else is one warning by its label. Applied after the other filters
+  // rather than alongside them, so the summary line can count warnings across
+  // the rows the other filters left and still offer the ones not currently
+  // selected. Folding it in with the rest would let the line describe only the
+  // flag already chosen, which is the one view from which you cannot switch.
+  const [flag, setFlag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortCriterion[]>(DEFAULT_SORT);
   // Which population is on screen. The non-forecast section fetches only once
   // opened, since it covers roughly seven times as many SKUs and most visits
@@ -138,13 +164,15 @@ export function ActionListContent({
     ).sort();
   }, [data]);
 
-  const view = useMemo<ActionListRow[]>(() => {
+  const scoped = useMemo<ActionListRow[]>(() => {
     if (!data) return [];
     let rows = data.rows;
     if (focus === "preorder") rows = rows.filter((r) => r.priority_label === PRIORITY.preorder);
     else if (focus === "no-stock") rows = rows.filter((r) => r.available_inventory <= 0);
     else if (focus === "best-seller") rows = rows.filter((r) => r.priority_label === PRIORITY.bestSeller);
     else if (focus === "supply-gap") rows = rows.filter((r) => r.has_supply_gap);
+    else if (focus === "drafted") rows = rows.filter((r) => r.draft_inbound > 0);
+    else if (focus === "routine") rows = rows.filter((r) => r.priority_label === PRIORITY.routine);
     else if (focus === "out-soon") {
       rows = rows.filter(
         (r) => r.days_to_stockout !== null && r.days_to_stockout <= data.params.stockout_horizon_days,
@@ -160,21 +188,34 @@ export function ActionListContent({
     }
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     if (tier !== "all") rows = rows.filter((r) => r.tier === tier);
-    if (history !== "all") rows = rows.filter((r) => r.history_group === history);
-    // Independent of the chips, which cover three of the four labels.
-    // Without this "Routine" is unreachable: it is the only priority with
-    // no chip, being the absence of a reason to hurry.
-    if (priority !== "all") rows = rows.filter((r) => r.priority_label === priority);
     // Sorted last, and on a copy: the server returns the worklist order, which
     // is what no criteria means, so it must not be mutated on the way through.
     return sortRows(rows, sort);
-  }, [data, focus, query, category, tier, history, priority, sort]);
+  }, [data, focus, query, category, tier, sort]);
+
+  /** Warning counts over the rows the other filters left, so the summary line
+   *  describes the same population the table would show if no warning were
+   *  selected, and every warning stays reachable while one is active. */
+  const quality = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of scoped) for (const f of r.flags) counts.set(f, (counts.get(f) ?? 0) + 1);
+    return {
+      byLabel: [...counts.entries()].sort((a, b) => b[1] - a[1]),
+      flagged: scoped.filter((r) => r.flags.length > 0).length,
+    };
+  }, [scoped]);
+
+  const view = useMemo<ActionListRow[]>(() => {
+    if (flag === null) return scoped;
+    if (flag === ANY_FLAG) return scoped.filter((r) => r.flags.length > 0);
+    return scoped.filter((r) => r.flags.includes(flag));
+  }, [scoped, flag]);
 
   // The page is tied to the filter set it was chosen under, so changing a filter
   // returns to page 1 without an effect resetting it. Narrowing the filters while
   // on page 5 would otherwise land on an empty page, which reads as "no results"
   // rather than "you are past the end".
-  const filterKey = `${focus}|${query}|${category}|${tier}|${history}|${priority}|${pageSize}`;
+  const filterKey = `${focus}|${query}|${category}|${tier}|${flag ?? ""}|${pageSize}`;
   const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(view.length / pageSize));
   const currentPage = page.key === filterKey ? Math.min(page.page, totalPages) : 1;
   const goToPage = (n: number) => setPage({ key: filterKey, page: n });
@@ -233,15 +274,63 @@ export function ActionListContent({
   if (!data) return null;
 
   const m = data.metrics;
-  const chips: { key: Focus; label: string; value: number }[] = [
-    { key: "all", label: pick("예측 대상", "forecasted"), value: m.forecasted_skus },
+  const viewUnits = view.reduce((s, r) => s + r.recommended_order_qty, 0);
+  const narrowed = view.length !== data.rows.length;
+
+  // The seven conditions, and now the only way to filter on priority: three of
+  // them are priority labels, the rest are situations that cut across them.
+  // "All" is rendered ahead of the group rather than being one of it: it carries
+  // the same total, but selecting it widens the view instead of narrowing it,
+  // and giving it an identical box made a reset look like another statistic.
+  // Separated by a rule, it reads as the neutral position of the group, which is
+  // what it is.
+  const filters: { key: Focus; label: string; value: number }[] = [
     { key: "preorder", label: pick("선주문", "preorder"), value: m.preorder_priority },
-    { key: "no-stock", label: pick("품절", "out of stock"), value: m.out_of_stock },
-    { key: "best-seller", label: pick("주력 위험", "best seller risk"), value: m.best_sellers_at_risk },
+    // "no stock on hand" rather than "out of stock", because "No Stock" is also
+    // a priority label shown on the row badges, and the two are not the same
+    // set. This is the raw condition, available_inventory <= 0; the label is a
+    // queue assigned by precedence, so a SKU with no stock AND preorder backlog
+    // is badged Preorder and is in this count but not that one. Two controls
+    // with near-identical names and different answers is what the priority
+    // select used to be, and the name is the half of it that survives.
+    { key: "no-stock", label: pick("보유 재고 없음", "no stock on hand"), value: m.out_of_stock },
+    // Counted from the label, not from m.best_sellers_at_risk. The card used to
+    // display that metric while filtering on the label, and they are different
+    // sets: `best_seller` is a flag on the top slice by recent units, 89 SKUs,
+    // while `Best Seller` is the label only the ones nothing outranks receive,
+    // 35 of them. The metric counts a third thing again, the flagged SKUs also
+    // stocking out soon, which cuts across every label. So the card showed 36
+    // and then produced 35 rows. It now counts what it selects.
+    // "risk" dropped from the name with the metric, since it described the set
+    // that is no longer being counted.
+    {
+      key: "best-seller",
+      label: pick("주력 상품", "best seller"),
+      value: data.rows.filter((r) => r.priority_label === PRIORITY.bestSeller).length,
+    },
     { key: "out-soon", label: pick(`${m.horizon_days}일 내 품절`, `out ≤${m.horizon_days}d`), value: m.stockout_within_horizon },
     // Reported apart from the stockout count because the action differs: these
     // already have stock booked and cannot be helped by ordering more.
     { key: "supply-gap", label: pick("입고 전 품절", "dry before inbound"), value: m.supply_gap },
+    // Already covered by a draft container, so a purchaser can set aside what
+    // they have handled and work the rest. Counted here rather than served as a
+    // metric, matching the data-quality warnings, which are also counted
+    // client-side; the population is data.rows, which is the same unfiltered set
+    // the server metrics above describe, so the two agree.
+    {
+      key: "drafted",
+      label: pick("초안 발주 있음", "already drafted"),
+      value: data.rows.filter((r) => r.draft_inbound > 0).length,
+    },
+    // Last, because it is the residual: the SKUs with no reason to hurry. It
+    // exists so every priority label is reachable from the cards, which is what
+    // the priority select was kept for. Counted client-side rather than served,
+    // like the one above, since it is a count of a label already on every row.
+    {
+      key: "routine",
+      label: pick("일반", "routine"),
+      value: data.rows.filter((r) => r.priority_label === PRIORITY.routine).length,
+    },
   ];
 
   return (
@@ -255,11 +344,13 @@ export function ActionListContent({
         {/* Kept visible on the success path too. The service can go down while
             the page is open, and the next filter change would then fail with no
             hint that the cause is external. */}
+        {/* The SKU count used to sit here as well. It is already the count on
+            the Forecast tab of the section toggle and the figure on the first
+            summary button, and three copies of one number crowded out the two
+            things in this bar that have to be read: how old the forecast is,
+            and whether the stock figures are real. */}
         <span className="ml-auto">
           <ForecastServerStatus onRecovered={() => setReloadNonce((n) => n + 1)} />
-        </span>
-        <span>
-          {pick("예측 SKU", "SKUs")}: <strong>{nf.format(data.meta.sku_count)}</strong>
         </span>
         {data.meta.demoted_since_forecast > 0 && (
           <span>
@@ -302,13 +393,36 @@ export function ActionListContent({
         <NotForecastSection planning={data.params} />
       ) : (
       <>
-      {/* Summary chips, doubling as the primary filter. */}
-      <div className="flex flex-wrap gap-2">
-        {chips.map((c) => (
+      {/* Summary counts, doubling as the primary filter. */}
+      <div className="flex flex-wrap items-stretch gap-2">
+        <button
+          type="button"
+          onClick={() => setFocus("all")}
+          aria-pressed={focus === "all"}
+          className={`rounded-md border px-3 py-1.5 text-left transition-colors ${
+            focus === "all"
+              ? "border-sky-400 bg-sky-50 dark:border-sky-700 dark:bg-sky-950"
+              : "hover:bg-muted/60"
+          }`}
+        >
+          <span className="block text-base font-semibold tabular-nums">
+            {nf.format(m.forecasted_skus)}
+          </span>
+          <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">
+            {pick("전체", "all")}
+          </span>
+        </button>
+        <span aria-hidden className="my-1 w-px self-stretch bg-border" />
+        {filters.map((c) => (
           <button
             key={c.key}
             type="button"
-            onClick={() => setFocus(c.key)}
+            // Selecting the active filter clears it. Without this the only way out
+            // of a filter was Reset, which also drops the search, the category,
+            // the reliability tier and the sort, so stepping back one decision
+            // cost the reader every other one they had made.
+            onClick={() => setFocus(focus === c.key ? "all" : c.key)}
+            aria-pressed={focus === c.key}
             className={`rounded-md border px-3 py-1.5 text-left transition-colors ${
               focus === c.key
                 ? "border-sky-400 bg-sky-50 dark:border-sky-700 dark:bg-sky-950"
@@ -321,13 +435,28 @@ export function ActionListContent({
             </span>
           </button>
         ))}
+        {/* The order total for what is on screen, not for the whole list.
+            Previously this showed the list total while a second copy, counting
+            the filtered view, sat in small grey text at the end of the filter
+            row. Two totals in two visual languages, and the one that answered
+            "what am I about to buy" was the one rendered as an aside. The list
+            total is kept as a secondary line whenever a filter is narrowing the
+            view, so the figure is still reconcilable against the run. */}
         <div className="rounded-md border border-dashed px-3 py-1.5">
           <span className="block text-base font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
-            {nf.format(m.total_recommended_order_qty)}
+            {nf.format(viewUnits)}
           </span>
           <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">
-            {pick("권장 수량", "units rec.")}
+            {narrowed ? pick("권장 수량 · 현재 목록", "units rec. · this view") : pick("권장 수량", "units rec.")}
           </span>
+          {narrowed && (
+            <span className="block text-[10px] text-muted-foreground/70">
+              {pick(
+                `전체 ${nf.format(m.total_recommended_order_qty)}`,
+                `of ${nf.format(m.total_recommended_order_qty)} in the full list`,
+              )}
+            </span>
+          )}
         </div>
       </div>
 
@@ -400,25 +529,6 @@ export function ActionListContent({
           <option value="none">{pick("미측정", "none")}</option>
         </select>
         <select
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
-          className="h-8 rounded-md border bg-background px-2 text-xs"
-        >
-          <option value="all">{pick("우선순위: 전체", "Priority: all")}</option>
-          {[PRIORITY.preorder, PRIORITY.noStock, PRIORITY.bestSeller, PRIORITY.routine].map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-        <select
-          value={history}
-          onChange={(e) => setHistory(e.target.value)}
-          className="h-8 rounded-md border bg-background px-2 text-xs"
-        >
-          <option value="all">{pick("이력: 전체", "History: all")}</option>
-          <option value="short">{pick("단기", "short")}</option>
-          <option value="long">{pick("장기", "long")}</option>
-        </select>
-        <select
           value={String(pageSize)}
           onChange={(e) =>
             setPageSize(e.target.value === "all" ? "all" : Number(e.target.value))
@@ -434,7 +544,7 @@ export function ActionListContent({
           type="button"
           onClick={() => {
             setFocus("all"); setQuery(""); setCategory("all");
-            setTier("all"); setHistory("all"); setPriority("all"); setSort(DEFAULT_SORT);
+            setTier("all"); setFlag(null); setSort(DEFAULT_SORT);
           }}
           className="flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted/60"
         >
@@ -455,10 +565,13 @@ export function ActionListContent({
                 `sorted by ${sort.length} column${sort.length === 1 ? "" : "s"} · shift-click to add`,
               )}
         </span>
+        {/* Row count only. The units figure that used to trail this line is now
+            the dashed card in the row of counts, where it reads as a quantity rather
+            than as a footnote. */}
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">
           {pick(
-            `${nf.format(data.rows.length)}개 중 ${nf.format(view.length)}개 · 이 목록 권장 ${nf.format(view.reduce((s, r) => s + r.recommended_order_qty, 0))}개`,
-            `${nf.format(view.length)} of ${nf.format(data.rows.length)} SKUs · ${nf.format(view.reduce((s, r) => s + r.recommended_order_qty, 0))} units recommended in this view`,
+            `${nf.format(data.rows.length)}개 중 ${nf.format(view.length)}개`,
+            `${nf.format(view.length)} of ${nf.format(data.rows.length)} SKUs`,
           )}
         </span>
       </div>
@@ -468,25 +581,49 @@ export function ActionListContent({
       {/* Data-quality summary for what is on screen, not the whole list. A count
           that ignores the filters describes a different population from the rows
           below it. */}
-      {(() => {
-        const counts = new Map<string, number>();
-        for (const r of view) for (const f of r.flags) counts.set(f, (counts.get(f) ?? 0) + 1);
-        const flagged = view.filter((r) => r.flags.length > 0).length;
-        if (!flagged) return null;
-        return (
-          <p className="text-[11px] text-muted-foreground">
-            <AlertTriangle className="mr-1 inline h-3 w-3 text-amber-500" />
+      {(quality.flagged > 0 || flag !== null) && (
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+          <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
+          <button
+            type="button"
+            onClick={() => setFlag(flag === ANY_FLAG ? null : ANY_FLAG)}
+            aria-pressed={flag === ANY_FLAG}
+            className={`rounded px-1 py-0.5 transition-colors hover:bg-muted ${
+              flag === ANY_FLAG ? "bg-amber-100 font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300" : ""
+            }`}
+          >
             {pick(
-              `이 목록의 ${nf.format(view.length)}개 중 ${nf.format(flagged)}개에 데이터 품질 경고가 있습니다: `,
-              `${nf.format(flagged)} of ${nf.format(view.length)} SKUs in this view carry a data-quality warning: `,
+              `${nf.format(scoped.length)}개 중 ${nf.format(quality.flagged)}개에 데이터 품질 경고`,
+              `${nf.format(quality.flagged)} of ${nf.format(scoped.length)} carry a data-quality warning`,
             )}
-            {[...counts.entries()]
-              .sort((a, b) => b[1] - a[1])
-              .map(([label, n]) => `${label} (${n})`)
-              .join(" · ")}
-          </p>
-        );
-      })()}
+          </button>
+          {quality.byLabel.map(([label, n]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setFlag(flag === label ? null : label)}
+              aria-pressed={flag === label}
+              className={`rounded px-1 py-0.5 transition-colors hover:bg-muted ${
+                flag === label ? "bg-amber-100 font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300" : ""
+              }`}
+            >
+              {label} <span className="tabular-nums opacity-70">({nf.format(n)})</span>
+            </button>
+          ))}
+          {/* Only reachable when the selected warning has no rows left after a
+              later filter change. Without it the selection is invisible and the
+              table looks empty for no stated reason. */}
+          {flag !== null && flag !== ANY_FLAG && !quality.byLabel.some(([l]) => l === flag) && (
+            <button
+              type="button"
+              onClick={() => setFlag(null)}
+              className="rounded bg-amber-100 px-1 py-0.5 font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+            >
+              {flag} <span className="opacity-70">(0) ✕</span>
+            </button>
+          )}
+        </p>
+      )}
 
       {view.length === 0 ? (
         <Card><CardContent className="p-6 text-sm text-muted-foreground">

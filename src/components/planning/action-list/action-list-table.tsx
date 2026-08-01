@@ -63,14 +63,38 @@ const BAND = {
  *  with an alpha: a translucent header lets the rows scrolling underneath show
  *  through it, which is worse than no header at all.
  *
- *  BAND_ROW_H must match the band row's height class, since the column-name row
- *  sticks directly beneath it and the offset is in pixels. */
-const BAND_ROW_H = "top-7";
-const Z = {
+ *  Every sticky header cell needs an opaque background of its own. A cell that
+ *  inherits nothing is transparent, and the rows scrolling underneath it stay
+ *  visible through the header, which is how the Priority column came to show
+ *  body content through it while scrolling. */
+export const Z = {
   headCorner: "z-40", // sticky in both axes
   head: "z-30", // sticky vertically
   bodyLeft: "z-20", // sticky horizontally
 } as const;
+
+/** The band row's height, and the offset the column-name row sticks at.
+ *
+ *  The second row is pinned one pixel higher than the first row is tall, so the
+ *  two overlap rather than abut. Abutting assumes the rendered height equals the
+ *  declared height, and it does not: the row's bottom border sits outside the
+ *  28px, so a hairline opened between the two sticky rows and body content was
+ *  visible through it on every scroll. Both rows are opaque, so a one-pixel
+ *  overlap cannot be seen, where the one-pixel gap plainly could.
+ *
+ *  Written as literals because Tailwind scans source text and cannot see a class
+ *  assembled from a number at runtime. Change one and change the other. */
+export const BAND_ROW_H = "h-[28px]";
+export const NAME_ROW_TOP = "top-[27px]";
+
+/** The rule under the band row.
+ *
+ *  A border is the obvious choice and is the wrong one here. The table collapses
+ *  its borders, and a collapsed border belongs to the table's border grid rather
+ *  than to the cell, so it does not travel with a cell that has been lifted out
+ *  of flow by `position: sticky`. An inset shadow is painted by the cell itself
+ *  and stays with it. */
+export const BAND_ROW_RULE = "shadow-[inset_0_-1px_0_var(--border)]";
 
 /** Height of the scrolling table window, shared by both planning tables.
  *
@@ -80,10 +104,10 @@ const Z = {
  *  is ~920px, and the two header rows add 68px, so ~62rem.
  *
  *  Capped by the viewport as well, because 62rem exceeds the usable height of a
- *  laptop screen once the page header, chips and filters are above it, and a
- *  table taller than the window makes the page itself scroll, which is the thing
- *  the sticky header exists to avoid. Tall monitors get twenty rows; shorter
- *  ones get as many as fit. */
+ *  laptop screen once the page header, summary counts and filters are above it,
+ *  and a table taller than the window makes the page itself scroll, which is the
+ *  thing the sticky header exists to avoid. Tall monitors get twenty rows;
+ *  shorter ones get as many as fit. */
 export const TABLE_WINDOW = "max-h-[min(62rem,78vh)]";
 
 /** Priority labels exactly as src/planning/calc.py emits them. The casing is
@@ -125,7 +149,7 @@ export type SortKey =
   | "unique_id" | "product_category" | "priority_label"
   | "available_inventory" | "preorder_backlog" | "confirmed_inbound"
   | "recent_units" | "forecast_total"
-  | "days_to_stockout" | "recommended_order_qty" | "error_used";
+  | "days_to_stockout" | "recommended_order_qty" | "wape";
 export type SortDir = "asc" | "desc";
 export interface SortCriterion { key: SortKey; dir: SortDir }
 
@@ -169,7 +193,18 @@ export function nextSort(
 /** Sort a copy by the given criteria, most significant first.
  *  Nulls always sort last regardless of direction: a SKU with no stockout date
  *  is not the most urgent one, and letting it lead an ascending sort would put
- *  the least informative rows at the top. */
+ *  the least informative rows at the top.
+ *
+ *  The reliability column sorts on `wape`, the SKU's own measured error, which
+ *  is the figure the cell prints. It previously sorted on `error_used`, the
+ *  value safety stock spends, which for an unmeasured SKU is a substituted
+ *  cohort or segment figure rather than anything observed about it. Those rows
+ *  print "n/a" but carried a real number to sort by, so they interleaved with
+ *  measured rows at whatever the substitute happened to be, and the rule above
+ *  never fired because the substitute is never null. Sorting on the printed
+ *  figure puts every unmeasured SKU at the end in both directions, which is
+ *  what "no measurement" should look like in an ordering. Do not point this
+ *  back at `error_used` without also displaying it. */
 export function sortRows(rows: ActionListRow[], criteria: SortCriterion[]): ActionListRow[] {
   if (!criteria.length) return rows;
   const out = [...rows];
@@ -196,12 +231,10 @@ function Urgency({
   days,
   date,
   gapDays,
-  inboundDays,
 }: {
   days: number | null;
   date: string | null;
   gapDays: number | null;
-  inboundDays: number | null;
 }) {
   const { pick } = useI18n();
   if (days === null || !Number.isFinite(days)) {
@@ -209,15 +242,23 @@ function Urgency({
   }
   const urgent = days <= 14;
   const label = days < 1 ? pick("오늘", "today") : `${Math.round(days)}d`;
+  const gap = gapDays === null ? null : gapDays < 1 ? "<1" : String(Math.round(gapDays));
   return (
     <span className={urgent ? "font-semibold text-red-600 dark:text-red-400" : ""}>
       {label}
-      {/* When stock runs out before the container lands, both dates are shown.
-          One number alone reads as "order 0 is fine" beside a stockout date, and
-          the days in between are the whole point. */}
-      {gapDays !== null && inboundDays !== null ? (
+      {/* The days at zero, not the container's arrival date. This used to print
+          the arrival, which the Inbound column now carries, so it was the same
+          number twice and the figure that actually matters, the span between
+          running dry and being refilled, was left for the reader to subtract.
+          Kept here rather than moved to Inbound because it qualifies the
+          stockout: it is the difference between "out in 12 days, and covered"
+          and "out in 12 days, then at zero for another 12". On the current table
+          none of the 128 rows carrying a gap can close it by ordering today, so
+          this is also the only mark on the row saying the recommended quantity
+          will not help. */}
+      {gap !== null ? (
         <span className="ml-1 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
-          {pick(`· ${Math.round(inboundDays)}일 후 입고`, `· lands ${Math.round(inboundDays)}d`)}
+          {pick(`· ${gap}일 공백`, `· ${gap}d dry`)}
         </span>
       ) : (
         date && <span className="ml-1 text-[10px] font-normal opacity-60">{date}</span>
@@ -284,7 +325,7 @@ export function ActionListTable({
   const th = (key: SortKey, label: string, right = false, extra = "") => (
     <TableHead
       onClick={onSort ? (e) => onSort(key, e.shiftKey) : undefined}
-      className={`sticky ${BAND_ROW_H} ${Z.head} h-10 whitespace-nowrap ${
+      className={`sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${
         right ? "text-right" : ""
       } ${extra} ${onSort ? "cursor-pointer select-none hover:text-foreground" : ""}`}
       aria-sort={
@@ -311,30 +352,32 @@ export function ActionListTable({
           {/* Band row. Sits above the column names so the three groups read as
               headings rather than as another row of labels. */}
           <TableRow className="hover:bg-transparent">
-            <TableHead className={`sticky left-0 top-0 ${Z.headCorner} h-7 bg-background`} />
-            <TableHead className={`sticky top-0 ${Z.head} h-7 bg-background`} />
+            <TableHead className={`sticky left-0 top-0 ${Z.headCorner} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
+            <TableHead className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
             >
               {headers.position}
             </TableHead>
             <TableHead
               colSpan={2}
-              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
             >
               {headers.demand}
             </TableHead>
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} h-7 text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
             >
               {headers.action}
             </TableHead>
           </TableRow>
           <TableRow className="hover:bg-transparent">
             {th("unique_id", headers.sku, false, `left-0 ${Z.headCorner} bg-background`)}
-            {th("priority_label", headers.priority)}
+            {/* Opaque, like every other cell in this row. Without it the rows
+                scrolling underneath show through the header. */}
+            {th("priority_label", headers.priority, false, "bg-background")}
             {th("available_inventory", headers.available, true, `${BAND.pos.sub} ${BAND.pos.edge}`)}
             {th("preorder_backlog", headers.preorder, true, BAND.pos.sub)}
             {th("confirmed_inbound", headers.inbound, true, BAND.pos.sub)}
@@ -342,14 +385,16 @@ export function ActionListTable({
             {th("forecast_total", headers.forecast, true, BAND.dem.sub)}
             {th("days_to_stockout", headers.stockout, true, `${BAND.act.sub} ${BAND.act.edge}`)}
             {th("recommended_order_qty", headers.order, true, BAND.act.sub)}
-            {th("error_used", headers.reliability, true, BAND.act.sub)}
+            {th("wape", headers.reliability, true, BAND.act.sub)}
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((r) => {
-            const sub = [r.product_category, r.history_group, r.product_name]
-              .filter(Boolean)
-              .join(" · ");
+            // Category and product name only. The history group ("short" /
+            // "long") used to sit between them: it is a statement about how
+            // much training data the model had, not about the product, and it
+            // spent a third of the one subtitle line on every row to say it.
+            const sub = [r.product_category, r.product_name].filter(Boolean).join(" · ");
             return (
               <TableRow key={r.unique_id} className="group">
                 <TableCell className={`sticky left-0 ${Z.bodyLeft} bg-background align-top group-hover:bg-muted/50`}>
@@ -386,7 +431,32 @@ export function ActionListTable({
                 </TableCell>
                 <TableCell className={`text-right tabular-nums ${BAND.pos.edge}`}>{nf.format(Math.round(r.available_inventory))}</TableCell>
                 <TableCell className="text-right tabular-nums">{r.preorder_backlog ? nf.format(Math.round(r.preorder_backlog)) : "—"}</TableCell>
-                <TableCell className="text-right tabular-nums">{r.confirmed_inbound ? nf.format(Math.round(r.confirmed_inbound)) : "—"}</TableCell>
+                {/* Quantity with the date it lands. The ETA used to appear only
+                    in the stockout cell, and only when the container arrives too
+                    late, so 248 of the 376 rows carrying inbound showed a
+                    quantity with no date anywhere: "500 units, at some point".
+                    Days rather than the calendar date, because the question
+                    being asked of this cell is whether it beats the stockout
+                    figure a few columns over, which is also in days. The date
+                    itself is on hover, for anyone coordinating against a
+                    specific week. */}
+                <TableCell className="text-right align-top tabular-nums">
+                  {r.confirmed_inbound ? (
+                    <>
+                      <span>{nf.format(Math.round(r.confirmed_inbound))}</span>
+                      {r.days_to_inbound !== null && Number.isFinite(r.days_to_inbound) && (
+                        <span
+                          className="block text-[10px] font-normal text-muted-foreground"
+                          title={r.inbound_eta ?? undefined}
+                        >
+                          {pick(`${Math.round(r.days_to_inbound)}일 후`, `in ${Math.round(r.days_to_inbound)}d`)}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
                 <TableCell className={`text-right tabular-nums ${BAND.dem.edge}`}>{nf.format(Math.round(r.recent_units))}</TableCell>
                 <TableCell className="text-right tabular-nums">{nf.format(Math.round(r.forecast_total))}</TableCell>
                 <TableCell className={`text-right tabular-nums ${BAND.act.edge}`}>
@@ -394,17 +464,59 @@ export function ActionListTable({
                     days={r.days_to_stockout}
                     date={r.estimated_stockout_date}
                     gapDays={r.supply_gap_days}
-                    inboundDays={r.days_to_inbound}
                   />
                 </TableCell>
-                <TableCell className="text-right text-[13px] font-semibold tabular-nums">
+                {/* Draft coverage sits under the recommendation rather than in
+                    the Position band with confirmed inbound, because it is a
+                    caveat about this number specifically: someone may already
+                    have ordered these units. Position is where committed supply
+                    lives, and a draft is not committed.
+                    Italic and muted, the same treatment the order breakdown
+                    gives its aside lines, because this figure is beside the
+                    arithmetic and not inside it: the recommendation continues to
+                    assume these units will not arrive. Partial coverage is the
+                    case that matters, so it is a quantity rather than a badge.
+                    A badge would read as "handled" on a SKU drafted for 300
+                    against a recommended 1,117, and stop someone looking. */}
+                <TableCell className="text-right align-top text-[13px] font-semibold tabular-nums">
                   {nf.format(r.recommended_order_qty)}
+                  {r.draft_inbound > 0 && (
+                    <span
+                      className="block text-[10px] font-normal italic text-muted-foreground"
+                      title={pick(
+                        `초안 상태 컨테이너에 ${nf.format(Math.round(r.draft_inbound))}개가 잡혀 있습니다${r.draft_eta ? ` (ETA ${r.draft_eta})` : ""}. 확정 전이므로 권장 수량에서 차감하지 않았습니다.`,
+                        `${nf.format(Math.round(r.draft_inbound))} units sit on a container still in draft${r.draft_eta ? `, ETA ${r.draft_eta}` : ""}. Not committed, so it is not subtracted from the recommendation.`,
+                      )}
+                    >
+                      {pick(
+                        `초안 ${nf.format(Math.round(r.draft_inbound))}`,
+                        `${nf.format(Math.round(r.draft_inbound))} drafted`,
+                      )}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   <span className={`font-mono text-[11px] ${TIER_STYLE[r.tier] ?? TIER_STYLE.none}`}>
                     {TIER_GLYPH[r.tier] ?? TIER_GLYPH.none}
                   </span>
-                  <span className="ml-1.5 text-[11px] text-muted-foreground">
+                  {/* The substituted figure is no longer reachable by sorting
+                      this column, so an unmeasured row says on hover what its
+                      safety stock was actually sized on. Without it the stand-in
+                      is invisible from the list entirely. */}
+                  <span
+                    className="ml-1.5 text-[11px] text-muted-foreground"
+                    title={
+                      r.wape === null
+                        ? pick(
+                            `백테스트 구간 없음 · 안전재고는 ${r.error_basis} ±${Math.round(r.error_used * 100)}% 사용`,
+                            `No backtest window covers this SKU · safety stock uses the ${r.error_basis}, ±${Math.round(r.error_used * 100)}%`,
+                          )
+                        : pick(
+                            `백테스트 ${r.n_windows}개 구간에서 측정`,
+                            `measured over ${r.n_windows} backtest window${r.n_windows === 1 ? "" : "s"}`,
+                          )
+                    }
+                  >
                     {r.wape === null ? pick("미측정", "n/a") : `±${Math.round(r.wape * 100)}%`}
                   </span>
                 </TableCell>

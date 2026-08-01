@@ -107,40 +107,63 @@ export async function startForecastServer(): Promise<"already_running" | "starte
     throw new Error(`Forecast service is not reachable at ${forecastApiBase()}`);
   }
 
-  const serverDir = process.env.FORECAST_SERVER_DIR;
-  if (!serverDir) throw new Error("FORECAST_SERVER_DIR is not set in .env");
-  // Checked before spawning because FORECAST_SERVER_DIR is an absolute path to
-  // one developer's checkout. Copied between machines it points at nothing, and
-  // spawn with a missing cwd fails asynchronously with stdio ignored, so the
-  // symptom is a server that never appears and never says why.
+  const serverDir = resolveServerDir();
+  if (!serverDir) {
+    throw new Error(
+      "Could not find a Time_Series_Forecasting checkout. Searched upwards from " +
+        `${process.cwd()}. Set FORECAST_SERVER_DIR in .env to its absolute path.`,
+    );
+  }
+  // Checked before spawning because an explicitly set FORECAST_SERVER_DIR is an
+  // absolute path to one developer's checkout. Copied between machines it points
+  // at nothing, and spawn with a missing cwd fails asynchronously, so without
+  // this the symptom is a server that never appears and never says why.
   if (!fs.existsSync(serverDir)) {
     throw new Error(
       `FORECAST_SERVER_DIR points at ${serverDir}, which does not exist on this machine. ` +
-        `Set it in .env to your own Time_Series_Forecasting checkout.`,
+        `Set it in .env to your own Time_Series_Forecasting checkout, or unset it and let ` +
+        `the app find the checkout itself.`,
     );
   }
 
   const uvicorn = resolveUvicorn(serverDir);
   const appModule = resolveAppModule(serverDir);
+  // stderr is piped rather than discarded. Every startup failure below the
+  // Node layer -- a missing dependency, an import error, a port already taken --
+  // is written there by Python and by uvicorn, and discarding it left every one
+  // of them looking identical: a server that did not appear within ten seconds.
   const child = spawn(uvicorn, [appModule, "--host", "0.0.0.0", "--port", "8000"], {
     cwd: serverDir,
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "pipe"],
     detached: false,
+  });
+  let stderr = "";
+  child.stderr?.on("data", (chunk: Buffer) => {
+    // Bounded: uvicorn logs every request once it is up, and this buffer lives
+    // as long as the dev server does.
+    if (stderr.length < 4000) stderr += chunk.toString();
   });
   setChild(child);
   child.on("exit", () => setChild(null));
   // Without a listener, a spawn failure raises an unhandled 'error' event on the
   // ChildProcess, which takes down the Next.js process rather than this request.
-  child.on("error", () => setChild(null));
+  let spawnError: string | null = null;
+  child.on("error", (err) => {
+    spawnError = err.message;
+    setChild(null);
+  });
 
   // Poll until ready (up to 10 seconds)
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
     if (await isRunning()) return "started";
   }
+
+  const detail = spawnError ?? stderr.trim().split("\n").slice(-6).join("\n");
   throw new Error(
     `Forecast server did not come up within 10 seconds. Try starting it by hand in ${serverDir}: ` +
-      `.venv/bin/uvicorn ${appModule} --host 0.0.0.0 --port 8000`,
+      `.venv/bin/uvicorn ${appModule} --host 0.0.0.0 --port 8000` +
+      (detail ? `\n\nIt said:\n${detail}` : ""),
   );
 }
 
@@ -169,19 +192,21 @@ export async function ensureForecastServer(): Promise<EnsureResult> {
       message: `The forecast server at ${forecastApiBase()} is not responding, and it is not a local server this app can start.`,
     };
   }
-  // Unset is also how the deployed box opts out. There the service is a systemd
-  // unit with Restart=always, and a second supervisor racing it to spawn
-  // uvicorn on the same port is worse than an honest outage. So this is not
+  // Unset AND undiscoverable. Unset alone is how the deployed box opts out:
+  // there the service is a systemd unit with Restart=always, and a second
+  // supervisor racing it to spawn uvicorn on the same port is worse than an
+  // honest outage, so discovery is disabled in production. This is therefore not
   // necessarily a misconfiguration, and the message must not assume it is.
-  if (!process.env.FORECAST_SERVER_DIR) {
+  if (!resolveServerDir()) {
     return {
       ok: false,
       reason: "not_configured",
       message:
         "The forecast server is not answering and this app is not configured to start it. " +
         "On a deployed server that is expected: systemd owns the service, so check " +
-        "`systemctl status coverland-forecast-api`. On a development machine, set " +
-        "FORECAST_SERVER_DIR in .env to your own Time_Series_Forecasting checkout.",
+        "`systemctl status coverland-forecast-api`. On a development machine, either clone " +
+        "Time_Series_Forecasting near this repository so it can be found automatically, or " +
+        "set FORECAST_SERVER_DIR in .env to its absolute path.",
     };
   }
 
@@ -228,6 +253,49 @@ function usesLocalForecastServer() {
   }
 }
 
+/**
+ * Where the forecasting checkout is.
+ *
+ * An explicit FORECAST_SERVER_DIR always wins. Absent it, and only outside
+ * production, the checkout is looked for by walking up from the working
+ * directory. The two repositories are normally cloned near each other but not
+ * necessarily as siblings, so this searches several levels rather than assuming
+ * `../`, and identifies a candidate by `api/main.py` rather than by name alone.
+ *
+ * Production is excluded deliberately, and this is the important part. There the
+ * service is a systemd unit with Restart=always, and an unset
+ * FORECAST_SERVER_DIR is how this app declines to compete with it. Discovering a
+ * checkout on the deployed box would turn that opt-out into a second supervisor
+ * racing systemd for port 8000, which is the failure the unset value exists to
+ * prevent.
+ */
+function resolveServerDir(): string | null {
+  const explicit = process.env.FORECAST_SERVER_DIR;
+  if (explicit) return explicit;
+  if (process.env.NODE_ENV === "production") return null;
+
+  let dir = process.cwd();
+  for (let depth = 0; depth < 5; depth++) {
+    for (const name of ["Time_Series_Forecasting", "time_series_forecasting"]) {
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(path.join(candidate, "api", "main.py"))) return candidate;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+/**
+ * The uvicorn to run, or a thrown explanation of why there isn't one.
+ *
+ * `.venv/` is gitignored, so a fresh clone has no virtualenv and therefore no
+ * uvicorn. This used to fall back to the bare string "uvicorn" and let the spawn
+ * fail, which was indistinguishable from a slow start: the caller waited ten
+ * seconds and reported a timeout. The bare fallback is kept for anyone who has
+ * uvicorn on PATH deliberately, but only when it is actually there.
+ */
 function resolveUvicorn(serverDir: string): string {
   const candidates = [
     path.join(serverDir, ".venv", "bin", "uvicorn"),
@@ -235,7 +303,21 @@ function resolveUvicorn(serverDir: string): string {
     path.join(serverDir, "venv", "bin", "uvicorn"),
     path.join(serverDir, "venv", "Scripts", "uvicorn.exe"),
   ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? "uvicorn";
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (found) return found;
+
+  try {
+    execSync(process.platform === "win32" ? "where uvicorn" : "command -v uvicorn", {
+      stdio: "ignore",
+    });
+    return "uvicorn";
+  } catch {
+    throw new Error(
+      `No virtualenv in ${serverDir} and no uvicorn on PATH, so the forecast server ` +
+        `cannot be started. In that directory run:\n` +
+        `  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`,
+    );
+  }
 }
 
 function resolveAppModule(serverDir: string): string {
