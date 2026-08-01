@@ -11,7 +11,7 @@ import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
 import { getIp } from "@/lib/audit";
 import { FactoriesService } from "@/lib/factories/service";
-import { apiSuccess, handleApiError } from "@/lib/api-response";
+import { apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 const FactoryCreateSchema = z.object({
   factoryName: z.string().trim().min(1),
@@ -22,32 +22,22 @@ const FactoryCreateSchema = z.object({
   phone: z.string().trim().optional(),
 });
 
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandler(async (request: NextRequest) => {
   const denied = await guardPermission("factory", "read");
   if (denied) return denied;
-  try {
-    const { searchParams } = new URL(request.url);
-    const data = await FactoriesService.listFactories({
-      active: searchParams.get("active"),
-      search: searchParams.get("search")?.trim() ?? "",
-    });
-    return apiSuccess({ data });
-  } catch (error) {
-    console.error("Error fetching factories:", error);
-    return handleApiError(error);
-  }
-}
+  const { searchParams } = new URL(request.url);
+  const data = await FactoriesService.listFactories({
+    active: searchParams.get("active"),
+    search: searchParams.get("search")?.trim() ?? "",
+  });
+  return apiSuccess({ data });
+});
 
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
   const denied = await guardPermission("factory", "create");
   if (denied) return denied;
-  try {
-    const body = await request.json();
-    const validated = FactoryCreateSchema.parse(body);
-    const data = await FactoriesService.createFactory(validated, getIp(request.headers));
-    return apiSuccess({ data }, 201);
-  } catch (error) {
-    console.error("Error creating factory:", error);
-    return handleApiError(error);
-  }
-}
+  const body = await request.json();
+  const validated = FactoryCreateSchema.parse(body);
+  const data = await FactoriesService.createFactory(validated, getIp(request.headers));
+  return apiSuccess({ data }, 201);
+});

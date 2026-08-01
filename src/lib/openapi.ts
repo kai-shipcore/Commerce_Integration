@@ -1315,39 +1315,6 @@ export function getOpenApiDocument(baseUrl: string) {
           },
         },
       },
-      "/planning/sku/{sku}/stock-mode": {
-        patch: {
-          tags: ["Planning"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          parameters: [
-            { name: "sku", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
-      "/planning/sku/{sku}/transit-stock": {
-        patch: {
-          tags: ["Planning"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          parameters: [
-            { name: "sku", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
-      "/planning/sku/stock-mode": {
-        patch: {
-          tags: ["Planning"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
       "/planning/stats/oos-lost-demand-weights": {
         get: {
           tags: ["Planning"],
@@ -1406,15 +1373,6 @@ export function getOpenApiDocument(baseUrl: string) {
           },
         },
         post: {
-          tags: ["Planning"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
-      "/planning/transit-stock/import": {
-        put: {
           tags: ["Planning"],
           summary: "TODO: undocumented (auto-generated stub)",
           responses: {
@@ -2052,44 +2010,6 @@ export function getOpenApiDocument(baseUrl: string) {
           parameters: [
             { name: "id", in: "path", required: true, schema: { type: "string" } },
           ],
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
-      "/production/seat-cover-parts/{id}": {
-        patch: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-        delete: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          parameters: [
-            { name: "id", in: "path", required: true, schema: { type: "string" } },
-          ],
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-      },
-      "/production/seat-cover-parts": {
-        get: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
-          responses: {
-            "200": { description: "Success" },
-          },
-        },
-        post: {
-          tags: ["Production"],
-          summary: "TODO: undocumented (auto-generated stub)",
           responses: {
             "200": { description: "Success" },
           },

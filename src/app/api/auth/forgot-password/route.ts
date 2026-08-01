@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db/prisma";
-import {
-  createPasswordResetToken,
-  getPasswordResetExpiry,
-  getPasswordResetIdentifier,
-  hashPasswordResetToken,
-} from "@/lib/auth/password-reset";
-import { sendPasswordResetEmail } from "@/lib/email";
-import { basePath, withBasePath } from "@/lib/api-path";
+import { AuthAccountService } from "@/lib/auth/service";
 
 const ForgotPasswordSchema = z.object({
   email: z
@@ -18,79 +10,13 @@ const ForgotPasswordSchema = z.object({
     .transform((value) => value.toLowerCase()),
 });
 
-const GENERIC_SUCCESS_MESSAGE =
-  "If an account exists for that email, a password reset link has been generated.";
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const data = ForgotPasswordSchema.parse(body);
 
-    const user = await prisma.user.findUnique({
-      where: { email: data.email },
-      select: {
-        email: true,
-        passwordHash: true,
-        accounts: { select: { provider: true } },
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({
-        success: true,
-        message: GENERIC_SUCCESS_MESSAGE,
-      });
-    }
-
-    if (!user.passwordHash) {
-      const oauthProvider = user.accounts[0]?.provider ?? null;
-      return NextResponse.json({
-        success: true,
-        message: GENERIC_SUCCESS_MESSAGE,
-        accountType: "oauth",
-        oauthProvider,
-      });
-    }
-
-    const rawToken = createPasswordResetToken();
-    const hashedToken = hashPasswordResetToken(rawToken);
-    const identifier = getPasswordResetIdentifier(user.email);
-    const expires = getPasswordResetExpiry();
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.NEXTAUTH_URL ||
-      "http://localhost:3000";
-    const resetPath = withBasePath(`/auth/reset-password?token=${encodeURIComponent(rawToken)}`);
-    const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
-    const resetUrl = normalizedBaseUrl.endsWith(basePath)
-      ? `${normalizedBaseUrl}${resetPath.slice(basePath.length)}`
-      : `${normalizedBaseUrl}${resetPath}`;
-
-    await prisma.verificationToken.deleteMany({
-      where: { identifier },
-    });
-
-    await prisma.verificationToken.create({
-      data: {
-        identifier,
-        token: hashedToken,
-        expires,
-      },
-    });
-
-    const delivery = await sendPasswordResetEmail({
-      email: user.email,
-      resetUrl,
-      expiresAt: expires,
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: GENERIC_SUCCESS_MESSAGE,
-      resetUrl: delivery.fallbackUrl,
-      emailDelivered: delivery.delivered,
-      expiresAt: expires.toISOString(),
-    });
+    const result = await AuthAccountService.requestPasswordReset(data.email);
+    return NextResponse.json(result);
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

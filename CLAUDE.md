@@ -40,6 +40,19 @@ Pages that depend on the lookup DB (Inventory, Orders) will fail gracefully if t
 | Business logic & DB | `src/lib/` | Database clients, auth, integrations, cache |
 | Data model | `prisma/schema.prisma` | All tables in `shipcore` schema |
 
+### Layered Architecture (Controller/Service/Repository)
+
+The codebase is being migrated domain-by-domain from logic embedded directly in `route.ts` files to a layered structure. When adding to or touching an existing domain, or refactoring one, follow this pattern:
+
+- **Controller** (`src/app/api/**/route.ts`) — thin. Parses/validates the request (Zod), calls one Service method, maps the result/error to a response. No SQL, no business logic.
+- **Service** (`src/lib/<domain>/service.ts`) — business logic, validation rules, cache read/write, orchestration across repository calls. Throws typed errors from `src/lib/errors.ts` (`ValidationError`, `NotFoundError`, `ConflictError`, `ForbiddenError`, `ServiceUnavailableError`) instead of building responses itself.
+- **Repository** (`src/lib/<domain>/repository.ts`) — raw SQL (`getPrimaryPool()`/`getLookupPool()`) or Prisma calls only. No business logic.
+- Controllers use `apiSuccess` / `apiError` / `handleApiError` from `src/lib/api-response.ts`; `handleApiError` maps the typed errors above to their status codes (400/404/409/403/503) plus a 500 fallback.
+- One `src/lib/<domain>/` folder per route group, named after the route path (e.g. `src/app/api/analytics/dashboard` → `src/lib/analytics/`). Don't merge unrelated route groups into one domain folder just because they share a table.
+- Tests live under `tests/lib/<domain>/` (Vitest), mocking the layer below (Service tests mock the Repository; Repository tests mock the DB pool).
+- **When migrating an existing route: preserve its exact behavior** — response shape, status codes, error message text, and even known bugs/quirks — unless the user explicitly approves a change. Flag anything surprising (broken contracts, dead code, missing auth checks) instead of silently fixing it.
+- Workflow for a new domain: scope it (read the route(s) in full), ask the user about any real design decisions (e.g. how to split shared/entangled routes, whether to add previously-missing permission checks), implement repository → service → controller, write tests, verify with `tsc --noEmit` + `eslint` + `vitest run`, then a GET-only live smoke test against the dev server (never live-test mutating methods). Commit/push only when explicitly asked.
+
 ### Integrations (Adapter Pattern)
 
 Marketplace integrations live in `src/lib/integrations/`. Each platform has an adapter implementing the interface in `integrations/core/adapter.ts`. **Shopify is the only platform with a full sync** (orders → `SalesRecord`). Amazon, eBay, and Walmart only store credentials in `PlatformIntegration.config`.

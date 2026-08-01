@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
+import { ConflictError } from "@/lib/errors";
+import { SettingsService } from "@/lib/settings/service";
 
 const UpdateProfileSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
@@ -27,25 +28,9 @@ export async function GET() {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true,
-        role: true,
-        createdAt: true,
-        passwordHash: true,
-      },
-    });
+    const data = await SettingsService.getProfile(session.user.id);
 
-    return NextResponse.json({
-      success: true,
-      data: user
-        ? { ...user, hasPassword: !!user.passwordHash, passwordHash: undefined }
-        : null,
-    });
+    return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
@@ -68,33 +53,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const data = UpdateProfileSchema.parse(body);
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email: data.email },
-      select: { id: true },
-    });
-
-    if (existingUser && existingUser.id !== session.user.id) {
-      return NextResponse.json(
-        { success: false, error: "That email is already in use" },
-        { status: 409 }
-      );
-    }
-
-    const user = await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        name: data.name,
-        email: data.email,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true,
-        role: true,
-        createdAt: true,
-      },
-    });
+    const user = await SettingsService.updateProfile(session.user.id, data);
 
     return NextResponse.json({
       success: true,
@@ -106,6 +65,10 @@ export async function PATCH(request: NextRequest) {
         { success: false, error: error.issues[0]?.message ?? "Invalid request" },
         { status: 400 }
       );
+    }
+
+    if (error instanceof ConflictError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 409 });
     }
 
     return NextResponse.json(

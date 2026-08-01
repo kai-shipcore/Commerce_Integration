@@ -1,0 +1,92 @@
+/**
+ * Business logic for the Demand Planning dashboard pieces this app owns:
+ * shared master-SKU notes, the CBM-per-unit inline editor (with its
+ * fc_container_items cascade + audit trail), and the OOS lost-demand-weight
+ * preview. Data access lives in src/lib/planning-dashboard/repository.ts.
+ */
+
+import { auth } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { ValidationError } from "@/lib/errors";
+import { OOS_LOST_DEMAND_CATEGORIES, OOS_LOST_DEMAND_MARKETPLACES, type CategoryKey } from "@/lib/planning/oos-lost-demand-weights";
+import { PlanningDashboardRepository, withTransaction } from "@/lib/planning-dashboard/repository";
+
+const MAX_NOTE_LENGTH = 5000;
+
+export const PlanningDashboardService = {
+  async getSkuNotes(): Promise<Record<string, string>> {
+    const rows = await PlanningDashboardRepository.listSkuNotes();
+    return Object.fromEntries(rows.map((row) => [row.masterSku, row.note]));
+  },
+
+  async setSkuNote(rawSku: unknown, rawNote: unknown, updatedBy: string | null) {
+    const sku = typeof rawSku === "string" ? rawSku.trim() : "";
+    const note = typeof rawNote === "string" ? rawNote.trim() : "";
+
+    if (!sku) throw new ValidationError("Invalid sku");
+    if (note.length > MAX_NOTE_LENGTH) throw new ValidationError("Note is too long");
+
+    if (!note) {
+      await PlanningDashboardRepository.deleteSkuNote(sku);
+      return { sku, note: "" };
+    }
+
+    await PlanningDashboardRepository.upsertSkuNote(sku, note, updatedBy);
+    return { sku, note };
+  },
+
+  async updateProductCbm(sku: string, rawCbm: unknown, ip: string | null) {
+    const cbm = parseFloat(String(rawCbm ?? ""));
+    if (!sku || isNaN(cbm) || cbm < 0) {
+      throw new ValidationError("Invalid sku or cbm_per_unit");
+    }
+
+    const { previousCbm, containerItems } = await withTransaction(async (client) => {
+      const previousCbm = await PlanningDashboardRepository.getProductCbmForUpdate(sku, client);
+      await PlanningDashboardRepository.updateProductCbm(sku, cbm, client);
+      const containerItems = await PlanningDashboardRepository.cascadeContainerItemsCbm(sku, cbm, client);
+      return { previousCbm, containerItems };
+    });
+
+    await invalidatePlanningDashboardCache();
+
+    if (previousCbm !== cbm) {
+      const session = await auth();
+      await logAudit({
+        entityType: "sku",
+        entityId: sku,
+        entityLabel: sku,
+        userId: session?.user?.id ?? null,
+        userName: session?.user?.name ?? null,
+        userEmail: session?.user?.email ?? null,
+        action: "update",
+        before: { cbmPerUnit: previousCbm },
+        after: { cbmPerUnit: cbm },
+        note: "Planning dashboard CBM inline edit",
+        ip,
+      });
+    }
+
+    return { cbmPerUnit: cbm, containerItems };
+  },
+
+  async getOosLostDemandWeights(): Promise<Record<CategoryKey, Record<string, number>>> {
+    const rows = await PlanningDashboardRepository.getOosLostDemandChannelTotals();
+    const byCategory = new Map(rows.map((row) => [row.category_code, row]));
+
+    return Object.fromEntries(
+      OOS_LOST_DEMAND_CATEGORIES.map(({ key }) => {
+        const row = byCategory.get(key);
+        const shopify90d = Math.max(Number(row?.shopify_90d ?? 0), 1);
+        const marketplaceWeights = Object.fromEntries(
+          OOS_LOST_DEMAND_MARKETPLACES.map(({ key: marketplace }) => {
+            const raw = row?.[`${marketplace}_90d` as "amazon_90d" | "ebay_90d" | "walmart_90d"] ?? "0";
+            return [marketplace, Number(raw) / shopify90d];
+          }),
+        );
+        return [key, marketplaceWeights];
+      }),
+    ) as Record<CategoryKey, Record<string, number>>;
+  },
+};

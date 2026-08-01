@@ -2,16 +2,13 @@
 // PATCH only supports toggling isActive (the generated fields are immutable once created).
 // DELETE soft-deletes by marking the Part SKU inactive.
 
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
-import { logAudit, getIp } from "@/lib/audit";
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
+import { getIp } from "@/lib/audit";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
+import { PartSkuGeneratorService } from "@/lib/part-sku-generator/service";
 
 function serialize(p: object): object {
   return JSON.parse(JSON.stringify(p, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
@@ -23,7 +20,7 @@ const PartSkuUpdateSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params;
@@ -33,88 +30,41 @@ export async function PATCH(
     const denied = await guardPermission("part-sku-generator", requiredAction);
     if (denied) return denied;
 
-    const existing = await prisma.partSku.findUnique({ where: { id: BigInt(id) } });
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: "Part SKU not found" },
-        { status: 404 }
-      );
-    }
-
-    const partSku = await prisma.partSku.update({
-      where: { id: BigInt(id) },
-      data: validated,
-    });
-
     const session = await auth();
-    void logAudit({
-      entityType: "part_sku",
-      entityId: id,
-      entityLabel: existing.sku,
+    const partSku = await PartSkuGeneratorService.setActive(BigInt(id), validated.isActive, {
       userId: session?.user?.id ?? null,
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,
-      action: validated.isActive ? "status_change" : "delete",
-      before: { isActive: existing.isActive },
-      after: { isActive: partSku.isActive },
       ip: getIp(request.headers),
     });
-    return NextResponse.json({ success: true, data: serialize(partSku) });
-  } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: "Validation error", details: error.issues },
-        { status: 400 }
-      );
-    }
+
+    return apiSuccess({ data: serialize(partSku) });
+  } catch (error) {
     console.error("Error updating part sku:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
 export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const denied = await guardPermission("part-sku-generator", "delete");
   if (denied) return denied;
   try {
     const { id } = await params;
-
-    const existing = await prisma.partSku.findUnique({ where: { id: BigInt(id) } });
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: "Part SKU not found" },
-        { status: 404 }
-      );
-    }
-
-    await prisma.partSku.update({
-      where: { id: BigInt(id) },
-      data: { isActive: false },
-    });
-
     const session = await auth();
-    void logAudit({
-      entityType: "part_sku",
-      entityId: id,
-      entityLabel: existing.sku,
+
+    await PartSkuGeneratorService.softDelete(BigInt(id), {
       userId: session?.user?.id ?? null,
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,
-      action: "delete",
-      before: { isActive: true },
-      ip: getIp(_request.headers),
+      ip: getIp(request.headers),
     });
-    return NextResponse.json({ success: true, message: "Part SKU deactivated successfully" });
-  } catch (error: unknown) {
+
+    return apiSuccess({ message: "Part SKU deactivated successfully" });
+  } catch (error) {
     console.error("Error deleting part sku:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

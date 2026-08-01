@@ -1,12 +1,15 @@
 // Code Guide: POST /api/planning/transit-records/import — bulk-create transit records from Excel upload.
 // Caller pre-selects source/dest warehouses; rows only carry masterSku, qty, notes.
 // After insert, syncs fc_stats.transit_stock for all affected SKUs.
+// Controller layer only: delegates to TransitStockService.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getPrimaryPool } from "@/lib/db/primary-db";
+import { getIp } from "@/lib/audit";
+import { auth } from "@/lib/auth";
 import { guardPermission } from "@/lib/permissions";
-import { syncTransitStock } from "@/lib/planning/transit-stock-sync";
+import { TransitStockService } from "@/lib/transit-stock/service";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
 
 const importSchema = z.object({
   sourceWarehouseCode: z.string().min(1),
@@ -23,30 +26,20 @@ const importSchema = z.object({
 export async function POST(req: NextRequest) {
   const denied = await guardPermission("transit-stock", "create");
   if (denied) return denied;
+
   try {
     const body = await req.json();
-    const parsed = importSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ success: false, error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
-    }
-    const { sourceWarehouseCode, destWarehouseCode, rows } = parsed.data;
-    const primary = getPrimaryPool();
-    await primary.query(
-      `INSERT INTO shipcore.fc_transit_records
-         (source_warehouse_code, dest_warehouse_code, master_sku, qty, status, notes)
-       SELECT $1, $2, UNNEST($3::text[]), UNNEST($4::int[]), 'in_transit', UNNEST($5::text[])`,
-      [
-        sourceWarehouseCode,
-        destWarehouseCode,
-        rows.map((r) => r.masterSku),
-        rows.map((r) => r.qty),
-        rows.map((r) => r.notes ?? ""),
-      ],
+    const parsed = importSchema.parse(body);
+    const session = await auth();
+
+    const inserted = await TransitStockService.importRecords(
+      parsed,
+      { userId: session?.user?.id ?? null, userName: session?.user?.name ?? null, userEmail: session?.user?.email ?? null },
+      getIp(req.headers),
     );
-    const skus = [...new Set(rows.map((r) => r.masterSku))];
-    await syncTransitStock(skus);
-    return NextResponse.json({ success: true, inserted: rows.length });
-  } catch (e) {
-    return NextResponse.json({ success: false, error: String(e) }, { status: 500 });
+
+    return apiSuccess({ inserted });
+  } catch (error) {
+    return handleApiError(error);
   }
 }

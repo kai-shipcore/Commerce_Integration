@@ -25,3 +25,17 @@ export class ServiceUnavailableError extends Error {
     this.name = "ServiceUnavailableError";
   }
 }
+
+export class ForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+export class GatewayTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GatewayTimeoutError";
+  }
+}

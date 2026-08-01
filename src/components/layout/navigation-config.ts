@@ -192,7 +192,6 @@ export const navigationItems: NavigationItem[] = [
     icon: FileSpreadsheet,
     group: "Planning",
     hideable: true,
-    hidden: true,
   },
   {
     id: "sku-master",
@@ -200,14 +199,6 @@ export const navigationItems: NavigationItem[] = [
     href: "/planning/sku-master",
     icon: Database,
     group: "Planning",
-    hideable: true,
-  },
-  {
-    id: "seat-cover-sizes",
-    name: "Seat Cover Parts",
-    href: "/production/seat-cover-parts",
-    icon: Package,
-    group: "Production",
     hideable: true,
   },
   {
@@ -331,7 +322,6 @@ export const permissionMenuIdsBySection: Record<PermSection, string[]> = {
   "sku-master":          ["sku-master"],
   "sku-forecasts":       ["sku-forecasts"],
   "container-timeline":  ["container-timeline"],
-  "seat-cover-parts":    ["seat-cover-sizes"],
   "production-vehicles": ["production-vehicles"],
   "invoice-price-control": ["invoice-price-control"],
   "parts-codes":         ["production-parts-codes"],

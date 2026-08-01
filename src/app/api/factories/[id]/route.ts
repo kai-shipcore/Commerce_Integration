@@ -11,7 +11,7 @@ import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
 import { getIp } from "@/lib/audit";
 import { FactoriesService } from "@/lib/factories/service";
-import { apiSuccess, handleApiError } from "@/lib/api-response";
+import { apiSuccess, withErrorHandler } from "@/lib/api-response";
 
 const FactoryUpdateSchema = z.object({
   factoryName: z.string().trim().min(1),
@@ -26,39 +26,29 @@ const FactoryPatchSchema = z.object({
   isActive: z.boolean(),
 });
 
-export async function PUT(
+export const PUT = withErrorHandler(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+) => {
   const denied = await guardPermission("factory", "edit");
   if (denied) return denied;
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const validated = FactoryUpdateSchema.parse(body);
-    const data = await FactoriesService.updateFactory(id, validated, getIp(request.headers));
-    return apiSuccess({ data });
-  } catch (error) {
-    console.error("Error updating factory:", error);
-    return handleApiError(error);
-  }
-}
+  const { id } = await params;
+  const body = await request.json();
+  const validated = FactoryUpdateSchema.parse(body);
+  const data = await FactoriesService.updateFactory(id, validated, getIp(request.headers));
+  return apiSuccess({ data });
+});
 
-export async function PATCH(
+export const PATCH = withErrorHandler(async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const validated = FactoryPatchSchema.parse(body);
-    const denied = await guardPermission("factory", validated.isActive ? "status" : "delete");
-    if (denied) return denied;
+) => {
+  const { id } = await params;
+  const body = await request.json();
+  const validated = FactoryPatchSchema.parse(body);
+  const denied = await guardPermission("factory", validated.isActive ? "status" : "delete");
+  if (denied) return denied;
 
-    const data = await FactoriesService.setActive(id, validated.isActive, getIp(request.headers));
-    return apiSuccess({ data });
-  } catch (error) {
-    console.error("Error patching factory:", error);
-    return handleApiError(error);
-  }
-}
+  const data = await FactoriesService.setActive(id, validated.isActive, getIp(request.headers));
+  return apiSuccess({ data });
+});

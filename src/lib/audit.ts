@@ -10,6 +10,8 @@ export type AuditEntityType =
   | "user_menu"
   | "role_permission"
   | "container_import"
+  | "transit_record"
+  | "available_stock"
   | "integration"
   | "production_part"
   | "production_code"

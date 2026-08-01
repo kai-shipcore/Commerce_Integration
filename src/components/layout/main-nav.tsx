@@ -37,7 +37,7 @@ const navigationGroups = [
   // items, but a group here decides which appear and in what order, so an item
   // missing from this array is invisible however it is registered there.
   { name: "Planning", labelKey: "nav.planning" as const, itemIds: ["demand-planning", "sku-forecasts", "demand-forecast", "oos-impact", "action-list", "forecast-validation", "container-planning", "container-timeline", "available-stock", "transit-stock"] },
-  { name: "Production", labelKey: "nav.production" as const, itemIds: ["seat-cover-sizes", "production-vehicles", "production-parts-codes", "part-sku-generator", "project-list"] },
+  { name: "Production", labelKey: "nav.production" as const, itemIds: ["production-vehicles", "production-parts-codes", "part-sku-generator", "project-list"] },
   { name: "Master Data", labelKey: "nav.masterData" as const, itemIds: ["sku-master", "factories", "warehouse-admin"] },
   { name: "Admin", labelKey: "nav.admin" as const, itemIds: ["integrations", "invoice-price-control", "audit-log", "user-access", "container-import"] },
 ];
@@ -62,7 +62,6 @@ const navigationLabelKeys: Record<string, MessageKey> = {
   "transit-stock": "nav.transitStock",
   "purchase-orders": "nav.purchaseOrders",
   "sku-master": "nav.skuMaster",
-  "seat-cover-sizes": "nav.seatCoverParts",
   "production-vehicles": "nav.vehicles",
   "production-parts-codes": "nav.partsCodes",
   "part-sku-generator": "nav.partSku",

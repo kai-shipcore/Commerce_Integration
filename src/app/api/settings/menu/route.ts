@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/prisma";
-import {
-  getDefaultVisibleMenuIds,
-  isAdminLikeRole,
-  mergeVisibleMenuIdsWithPermissions,
-  sanitizeVisibleMenuIds,
-} from "@/components/layout/navigation-config";
-import { getEffectivePermissions } from "@/lib/permissions";
+import { ForbiddenError } from "@/lib/errors";
+import { SettingsService } from "@/lib/settings/service";
 import { z } from "zod";
 
 const UpdateMenuVisibilitySchema = z.object({
@@ -29,30 +23,9 @@ export async function GET() {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { menuVisibility: true },
-    });
+    const data = await SettingsService.getMenuVisibility(session.user.id, session.user.role);
 
-    const permissions = await getEffectivePermissions(
-      session.user.id,
-      (session.user.role as string) ?? "user"
-    );
-    const visibleMenuIds = mergeVisibleMenuIdsWithPermissions(
-      user?.menuVisibility,
-      session.user.role,
-      permissions
-    );
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        role: session.user.role,
-        visibleMenuIds,
-        defaults: getDefaultVisibleMenuIds(session.user.role),
-        permissions,
-      },
-    });
+    return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
@@ -72,34 +45,22 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (!isAdminLikeRole(session.user.role)) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden" },
-        { status: 403 }
-      );
-    }
-
     const body = await request.json();
     const parsed = UpdateMenuVisibilitySchema.parse(body);
-    const visibleMenuIds = sanitizeVisibleMenuIds(parsed.visibleMenuIds, session.user.role);
 
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        menuVisibility: visibleMenuIds,
-      },
-    });
+    const data = await SettingsService.updateMenuVisibility(session.user.id, session.user.role, parsed.visibleMenuIds);
 
-    return NextResponse.json({
-      success: true,
-      data: { visibleMenuIds },
-    });
+    return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { success: false, error: error.issues[0]?.message ?? "Invalid request" },
         { status: 400 }
       );
+    }
+
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 403 });
     }
 
     return NextResponse.json(

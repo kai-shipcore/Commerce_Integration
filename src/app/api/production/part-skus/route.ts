@@ -1,18 +1,14 @@
 // Code Guide: CRUD API for pd_part_skus table. GET lists all generated Part SKUs with optional
 // filters; POST generates and saves a new Part SKU (Part-MakeAbbr-ModelAbbr-Code-Initial-Side).
 
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { guardPermission } from "@/lib/permissions";
 import { auth } from "@/lib/auth";
-import { logAudit, getIp } from "@/lib/audit";
+import { getIp } from "@/lib/audit";
+import { apiSuccess, handleApiError } from "@/lib/api-response";
+import { PartSkuGeneratorService } from "@/lib/part-sku-generator/service";
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Unknown error";
-}
-
-// BigInt fields (id) must be converted to string before JSON serialization.
 function serialize(p: object): object {
   return JSON.parse(JSON.stringify(p, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
 }
@@ -41,53 +37,18 @@ export async function GET(request: NextRequest) {
   if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get("search") ?? "";
-    const activeParam = searchParams.get("active");
-    const make = searchParams.get("make");
-    const model = searchParams.get("model");
 
-    // Universal SKUs have no make/model (they fit every vehicle), so they're always
-    // included alongside whatever Custom SKUs match the requested make/model.
-    const vehicleFilter =
-      make || model
-        ? {
-            OR: [
-              {
-                AND: [
-                  ...(make ? [{ make: { equals: make, mode: "insensitive" as const } }] : []),
-                  ...(model ? [{ model: { equals: model, mode: "insensitive" as const } }] : []),
-                ],
-              },
-              { skuType: "Universal" },
-            ],
-          }
-        : {};
-
-    const partSkus = await prisma.partSku.findMany({
-      where: {
-        AND: [
-          search
-            ? {
-                OR: [
-                  { sku: { contains: search, mode: "insensitive" } },
-                  { partName: { contains: search, mode: "insensitive" } },
-                ],
-              }
-            : {},
-          activeParam !== null ? { isActive: activeParam === "true" } : {},
-          vehicleFilter,
-        ],
-      },
-      orderBy: { createdAt: "desc" },
+    const partSkus = await PartSkuGeneratorService.list({
+      search: searchParams.get("search") ?? "",
+      active: searchParams.get("active") !== null ? searchParams.get("active") === "true" : null,
+      make: searchParams.get("make"),
+      model: searchParams.get("model"),
     });
 
-    return NextResponse.json({ success: true, data: partSkus.map(serialize) });
-  } catch (error: unknown) {
+    return apiSuccess({ data: partSkus.map(serialize) });
+  } catch (error) {
     console.error("Error fetching part skus:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
 
@@ -97,54 +58,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validated = PartSkuCreateSchema.parse(body);
-
-    const sku =
-      validated.skuType === "Universal"
-        ? validated.partName.trim()
-        : [validated.partName, validated.makeAbbr, validated.modelAbbr, validated.code, validated.initial]
-            .concat(validated.side !== "Universal" ? [validated.side] : [])
-            .join("-");
-
-    const existing = await prisma.partSku.findUnique({ where: { sku } });
-    if (existing) {
-      return NextResponse.json(
-        { success: false, error: `Part SKU already exists: ${sku}` },
-        { status: 400 }
-      );
-    }
-
     const session = await auth();
-    const partSku = await prisma.partSku.create({
-      data: {
-        ...validated,
-        sku,
-        createdByName: session?.user?.name ?? session?.user?.email ?? null,
-      },
-    });
 
-    void logAudit({
-      entityType: "part_sku",
-      entityId: String(partSku.id),
-      entityLabel: partSku.sku,
+    const partSku = await PartSkuGeneratorService.create(validated, {
       userId: session?.user?.id ?? null,
       userName: session?.user?.name ?? null,
       userEmail: session?.user?.email ?? null,
-      action: "create",
-      after: { sku: partSku.sku },
       ip: getIp(request.headers),
     });
-    return NextResponse.json({ success: true, data: serialize(partSku) }, { status: 201 });
-  } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, error: "Validation error", details: error.issues },
-        { status: 400 }
-      );
-    }
+
+    return apiSuccess({ data: serialize(partSku) }, 201);
+  } catch (error) {
     console.error("Error creating part sku:", error);
-    return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

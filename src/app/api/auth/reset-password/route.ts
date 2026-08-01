@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db/prisma";
-import { hashPassword } from "@/lib/auth/password";
-import { hashPasswordResetToken } from "@/lib/auth/password-reset";
+import { ValidationError } from "@/lib/errors";
+import { AuthAccountService } from "@/lib/auth/service";
 
 const ResetPasswordSchema = z
   .object({
@@ -22,41 +21,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const data = ResetPasswordSchema.parse(body);
-    const hashedToken = hashPasswordResetToken(data.token);
 
-    const verificationToken = await prisma.verificationToken.findUnique({
-      where: { token: hashedToken },
-    });
-
-    if (!verificationToken || verificationToken.expires < new Date()) {
-      if (verificationToken) {
-        await prisma.verificationToken.delete({
-          where: { token: hashedToken },
-        });
-      }
-
-      return NextResponse.json(
-        { success: false, error: "This reset link is invalid or has expired" },
-        { status: 400 }
-      );
-    }
-
-    const email = verificationToken.identifier.replace(/^password-reset:/, "");
-
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { email },
-        data: { passwordHash: hashPassword(data.password) },
-      }),
-      prisma.verificationToken.deleteMany({
-        where: { identifier: verificationToken.identifier },
-      }),
-      prisma.session.deleteMany({
-        where: {
-          user: { email },
-        },
-      }),
-    ]);
+    await AuthAccountService.resetPassword(data.token, data.password);
 
     return NextResponse.json({
       success: true,
@@ -68,6 +34,10 @@ export async function POST(request: NextRequest) {
         { success: false, error: error.issues[0]?.message ?? "Invalid input" },
         { status: 400 }
       );
+    }
+
+    if (error instanceof ValidationError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
     }
 
     return NextResponse.json(

@@ -5,32 +5,16 @@
 // DELETE /api/planning/containers/items/[id]
 // Removes the item and any remaining-stock allocations attached to it.
 
-import { NextRequest, NextResponse } from "next/server";
-import { getPrimaryPool } from "@/lib/db/primary-db";
-import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
-import {
-  deleteRemainingAllocationsForContainerItem,
-  syncRemainingAllocationForContainerItem,
-} from "@/lib/planning/available-stock-allocation";
-import { guardPlanningMutation } from "@/lib/planning/mutation-permission";
+import { NextRequest } from "next/server";
 import { z } from "zod";
+import { apiSuccess, apiError, handleApiError } from "@/lib/api-response";
+import { guardPlanningMutation } from "@/lib/planning/mutation-permission";
+import { ContainerPlanningService } from "@/lib/container-planning/service";
 
 const BodySchema = z.object({
   qty: z.number().int().min(0),
   sku_memo: z.string().optional(),
 });
-
-type ItemRow = {
-  id: number;
-  container_id: number;
-  master_sku: string;
-  cbm_unit: string;
-  total_cbm: string;
-};
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : "Unknown error";
-}
 
 function parseItemId(id: string) {
   const itemId = parseInt(id, 10);
@@ -45,44 +29,13 @@ export async function DELETE(
   if (denied) return denied;
   const { id } = await params;
   const itemId = parseItemId(id);
-  if (itemId == null) {
-    return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
-  }
+  if (itemId == null) return apiError("Invalid id", 400);
 
-  const client = await getPrimaryPool().connect();
   try {
-    await client.query("BEGIN");
-
-    const itemResult = await client.query<ItemRow>(
-      `SELECT id, container_id::int, master_sku, cbm_unit::float8, total_cbm::float8
-       FROM shipcore.fc_container_items
-       WHERE id = $1
-       FOR UPDATE`,
-      [itemId],
-    );
-
-    if (itemResult.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
-    }
-
-    const item = itemResult.rows[0];
-    await deleteRemainingAllocationsForContainerItem(client, {
-      containerId: item.container_id,
-      masterSku: item.master_sku,
-    });
-
-    await client.query(`DELETE FROM shipcore.fc_container_items WHERE id = $1`, [itemId]);
-
-    await client.query("COMMIT");
-    await invalidatePlanningDashboardCache();
-    return NextResponse.json({ success: true });
+    await ContainerPlanningService.deleteItem(itemId);
+    return apiSuccess({});
   } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Container item DELETE failed:", error);
-    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
-  } finally {
-    client.release();
+    return handleApiError(error);
   }
 }
 
@@ -94,67 +47,18 @@ export async function PATCH(
   if (denied) return denied;
   const { id } = await params;
   const itemId = parseItemId(id);
-  if (itemId == null) {
-    return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
-  }
+  if (itemId == null) return apiError("Invalid id", 400);
 
   const body = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ success: false, error: "qty must be a non-negative integer" }, { status: 400 });
-  }
+  if (!parsed.success) return apiError("qty must be a non-negative integer", 400);
 
   const { qty, sku_memo } = parsed.data;
-  const client = await getPrimaryPool().connect();
 
   try {
-    await client.query("BEGIN");
-
-    const existingResult = await client.query<ItemRow>(
-      `SELECT id, container_id::int, master_sku, cbm_unit::float8, total_cbm::float8
-       FROM shipcore.fc_container_items
-       WHERE id = $1
-       FOR UPDATE`,
-      [itemId],
-    );
-
-    if (existingResult.rowCount === 0) {
-      await client.query("ROLLBACK");
-      return NextResponse.json({ success: false, error: "Item not found" }, { status: 404 });
-    }
-
-    const existing = existingResult.rows[0];
-    const result = await client.query<{ id: number; cbm_unit: string; total_cbm: string }>(
-      `UPDATE shipcore.fc_container_items
-       SET qty = $1,
-           sku_memo = $3,
-           updated_at = NOW()
-       WHERE id = $2
-       RETURNING id, cbm_unit::float8, total_cbm::float8`,
-      [qty, itemId, sku_memo ?? null],
-    );
-
-    const allocatedQty = await syncRemainingAllocationForContainerItem(client, {
-      containerId: existing.container_id,
-      masterSku: existing.master_sku,
-      targetQty: qty,
-    });
-
-    await client.query("COMMIT");
-    await invalidatePlanningDashboardCache();
-
-    return NextResponse.json({
-      success: true,
-      qty,
-      allocated_qty: allocatedQty,
-      cbm_unit: parseFloat(result.rows[0].cbm_unit),
-      total_cbm: parseFloat(result.rows[0].total_cbm),
-    });
+    const result = await ContainerPlanningService.updateItem(itemId, qty, sku_memo ?? null);
+    return apiSuccess(result);
   } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("Container item PATCH failed:", error);
-    return NextResponse.json({ success: false, error: errorMessage(error) }, { status: 500 });
-  } finally {
-    client.release();
+    return handleApiError(error);
   }
 }
