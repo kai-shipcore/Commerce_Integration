@@ -397,6 +397,13 @@ export const DemandPlanningRepository = {
   async getOosEpisodes() {
     const lookup = getLookupPool();
     if (!lookup) return [];
+    // No trailing-window filter on snapshot_date: fc_inventory_history_snapshot
+    // is upsert-only (never deleted from, unlike the velocity snapshots), so
+    // an episode that never falls inside a "Sync" click's window is lost
+    // forever — it can never be backfilled once older data ages out of a
+    // fixed cutoff. Scanning full history (~380 days, ~550k base rows as of
+    // writing) only costs ~1s more than a 120-day window, so there's no
+    // performance reason to risk that permanent gap.
     const result = await lookup.query<{ master_sku: string; oos_started_on: string; back_in_stock_on: string | null }>(`
       WITH daily AS (
         SELECT
@@ -405,7 +412,6 @@ export const DemandPlanningRepository = {
           CASE WHEN COALESCE(available, 0) > 0 THEN 'IN STOCK' ELSE 'OUT OF STOCK' END AS status
         FROM ecommerce_data.vw_coverland_inventory_history
         WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
-          AND snapshot_date >= CURRENT_DATE - 120
       ),
       tagged AS (
         SELECT master_sku, snapshot_date, status,

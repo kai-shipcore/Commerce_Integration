@@ -528,7 +528,7 @@ export function RecoveryScreen() {
       <div className="planning-panel flex flex-col gap-2 rounded-xl border p-4">
         <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">설계 노트</h4>
         <ul className="list-disc space-y-1.5 pl-4 text-xs text-foreground/80">
-          <li>&quot;현재 품절중 제외&quot;가 기본 고정 — 대상 정의(과거 품절 → 재입고 완료 건만)를 필터가 아니라 규칙으로 강제.</li>
+          <li>&quot;현재 품절중 제외&quot;가 기본 고정 — 대상 정의(과거 품절 → 재입고 완료 건만)를 필터가 아니라 규칙으로 강제. SKU마다 가장 최근 품절 사이클 하나만 보고, 그게 아직 재입고 전(현재 품절중)이면 그 SKU는 통째로 제외 — 예전엔 SKU가 2번 이상 품절된 적 있으면 이미 지나간 예전 재입고 기록이 새어나와 지금 다시 품절중인 SKU도 표에 보이던 버그가 있었음.</li>
           <li>직전 품절 기간 필터 — &quot;장기 품절일수록 회복이 느리다&quot;는 가설을 화면에서 바로 검증할 수 있어야 발주 타이밍 논의가 됨.</li>
           <li>상태 pill은 항상 아이콘 + 텍스트 + 숫자를 같이 표시 — 색만으로 판단하지 않도록 함.</li>
           <li>

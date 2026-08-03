@@ -81,14 +81,14 @@ export const OosImpactRepository = {
         FROM shipcore.fc_velocity_link_snapshot v
         WHERE NOT EXISTS (
           SELECT 1 FROM shipcore.fc_products p
-          WHERE p.master_sku = v.link_master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
+          WHERE p.master_sku = v.link_master_sku AND p.category_code = 'SC'
         )
         UNION ALL
         SELECT v.order_date, v.custom_master_sku AS master_sku, v.custom_qty AS qty
         FROM shipcore.fc_velocity_custom_snapshot v
         WHERE EXISTS (
           SELECT 1 FROM shipcore.fc_products p
-          WHERE p.master_sku = v.custom_master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
+          WHERE p.master_sku = v.custom_master_sku AND p.category_code = 'SC'
         )
       )
       SELECT
@@ -109,24 +109,50 @@ export const OosImpactRepository = {
   async getRecoveryRows(): Promise<RecoveryDbRow[]> {
     const result = await getPrimaryPool().query<RecoveryDbRow>(`
       WITH episodes_raw AS (
+        -- Every episode for every SKU, open or closed. The old version of
+        -- this query pre-filtered to back_in_stock_on IS NOT NULL, so a SKU
+        -- that restocked once and then went OOS again kept surfacing its
+        -- OLD, already-superseded restock here — silently defeating the
+        -- "현재 품절중 제외" rule for any SKU with 2+ OOS cycles.
         SELECT
           ${normalizedMasterSkuSql("master_sku")} AS master_sku,
           oos_started_on,
           back_in_stock_on,
           synced_at
         FROM shipcore.fc_inventory_history_snapshot
-        WHERE back_in_stock_on IS NOT NULL
-          AND CURRENT_DATE - back_in_stock_on >= ${MIN_DAYS_SINCE_RESTOCK}
+      ),
+      episodes_deduped AS (
+        -- Same stale-duplicate handling as before (oos_started_on can drift
+        -- a day or two between syncs for the same real event) — group by the
+        -- more stable back_in_stock_on. NULL groups a SKU's stale open-
+        -- episode rows together too, since a SKU can only have one open
+        -- episode at a time.
+        SELECT DISTINCT ON (master_sku, back_in_stock_on)
+          master_sku, oos_started_on, back_in_stock_on
+        FROM episodes_raw
+        ORDER BY master_sku, back_in_stock_on, synced_at DESC
+      ),
+      latest_episode AS (
+        -- Only the SKU's single most recent OOS event is relevant to "how is
+        -- recovery going right now" — older cycles are superseded. If that
+        -- latest event is still open (back_in_stock_on IS NULL, i.e. the SKU
+        -- is OOS again as of the latest sync), it's dropped by the NOT NULL
+        -- filter below instead of falling through to an older completed one.
+        SELECT DISTINCT ON (master_sku)
+          master_sku, oos_started_on, back_in_stock_on
+        FROM episodes_deduped
+        ORDER BY master_sku, oos_started_on DESC
       ),
       episodes AS (
-        SELECT DISTINCT ON (master_sku, back_in_stock_on)
+        SELECT
           master_sku,
           oos_started_on,
           back_in_stock_on,
           (back_in_stock_on - oos_started_on)::int AS oos_days,
           (CURRENT_DATE - back_in_stock_on)::int AS days_since_restock
-        FROM episodes_raw
-        ORDER BY master_sku, back_in_stock_on, synced_at DESC
+        FROM latest_episode
+        WHERE back_in_stock_on IS NOT NULL
+          AND CURRENT_DATE - back_in_stock_on >= ${MIN_DAYS_SINCE_RESTOCK}
       ),
       velocity AS (
         SELECT v.order_date, v.channel, v.link_master_sku AS master_sku, v.link_qty AS qty
@@ -134,7 +160,7 @@ export const OosImpactRepository = {
         WHERE v.channel IN (${NON_SHOPIFY_CHANNELS})
           AND NOT EXISTS (
             SELECT 1 FROM shipcore.fc_products p
-            WHERE p.master_sku = v.link_master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
+            WHERE p.master_sku = v.link_master_sku AND p.category_code = 'SC'
           )
         UNION ALL
         SELECT v.order_date, v.channel, v.custom_master_sku AS master_sku, v.custom_qty AS qty
@@ -142,7 +168,7 @@ export const OosImpactRepository = {
         WHERE v.channel IN (${NON_SHOPIFY_CHANNELS})
           AND EXISTS (
             SELECT 1 FROM shipcore.fc_products p
-            WHERE p.master_sku = v.custom_master_sku AND p.category_code IN ('CC', 'FM', 'SWC')
+            WHERE p.master_sku = v.custom_master_sku AND p.category_code = 'SC'
           )
       ),
       daily_rolling AS (
@@ -237,11 +263,11 @@ export const OosImpactRepository = {
       `WITH velocity AS (
          SELECT v.order_date, v.link_qty AS qty FROM shipcore.fc_velocity_link_snapshot v
          WHERE v.link_master_sku = $1 AND v.channel = $2
-           AND NOT EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code IN ('CC', 'FM', 'SWC'))
+           AND NOT EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code = 'SC')
          UNION ALL
          SELECT v.order_date, v.custom_qty AS qty FROM shipcore.fc_velocity_custom_snapshot v
          WHERE v.custom_master_sku = $1 AND v.channel = $2
-           AND EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code IN ('CC', 'FM', 'SWC'))
+           AND EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code = 'SC')
        )
        SELECT
          COALESCE(SUM(qty) FILTER (WHERE order_date >= $3::date - 30 AND order_date < $3::date - 15), 0) / 15.0 AS pre1,

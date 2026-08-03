@@ -19,7 +19,7 @@ export interface TopSellerRow {
   avgDaily: number;
 }
 
-const TOP_SELLERS_CACHE_KEY = "oos-top-sellers:sku-list:v1";
+export const TOP_SELLERS_CACHE_KEY = "oos-top-sellers:sku-list:v1";
 const TOP_SELLERS_CACHE_TTL_SECONDS = 600;
 
 export type RecoverySeverity = "good" | "warning" | "serious" | "critical";
@@ -40,7 +40,7 @@ export interface RecoveryRow {
   label: string;
 }
 
-const RECOVERY_CACHE_KEY = "oos-recovery:sku-list:v3";
+export const RECOVERY_CACHE_KEY = "oos-recovery:sku-list:v3";
 const RECOVERY_CACHE_TTL_SECONDS = 600;
 const RECOVERY_HORIZON_DAYS = 90;
 
@@ -80,7 +80,7 @@ export interface PreorderDropRow {
   stage: "active" | "ended";
 }
 
-const PREORDER_CACHE_KEY = "oos-preorder:sku-list:v4";
+export const PREORDER_CACHE_KEY = "oos-preorder:sku-list:v4";
 const PREORDER_CACHE_TTL_SECONDS = 600;
 
 function preorderSeverityOf(dropRate: number): PreorderDropSeverity {
@@ -208,5 +208,16 @@ export const OosImpactService = {
 
     await CacheManager.set(PREORDER_CACHE_KEY, data, PREORDER_CACHE_TTL_SECONDS);
     return { data, cached: false };
+  },
+
+  // Called after stats/refresh repopulates fc_inventory_history_snapshot /
+  // fc_velocity_*_snapshot, so the three OOS Impact screens don't keep serving
+  // stale cached rows for up to CACHE_TTL_SECONDS.
+  async invalidateAll(): Promise<void> {
+    await Promise.all([
+      CacheManager.delete(TOP_SELLERS_CACHE_KEY),
+      CacheManager.delete(RECOVERY_CACHE_KEY),
+      CacheManager.delete(PREORDER_CACHE_KEY),
+    ]);
   },
 };
