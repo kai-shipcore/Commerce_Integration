@@ -35,7 +35,7 @@ import {
   type CategoryKey,
   type OosLostDemandWeights,
 } from "@/lib/planning/oos-lost-demand-weights";
-import { CacheManager } from "@/lib/redis";
+import { OosImpactService } from "@/lib/oos-impact/service";
 import { DemandPlanningRepository, type VelRow } from "@/lib/demand-planning/repository";
 import type { ContainerMeta, ContainerRowData, DemandPlanningData, DemandRow } from "@/types/demand-planning";
 
@@ -631,8 +631,7 @@ export const DemandPlanningService = {
 
     await Promise.all([
       invalidatePlanningDashboardCache(),
-      CacheManager.delete("oos-preorder:sku-list:v4"),
-      CacheManager.delete("oos-recovery:sku-list"),
+      OosImpactService.invalidateAll(),
     ]);
 
     return {
