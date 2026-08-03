@@ -23,12 +23,18 @@ export async function proxyPlanning(
    *  an argument that carries no meaning. */
   search: string = "",
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  /** Almost every planning endpoint is a GET. The one exception kicks off a
+   *  background job, and giving it its own proxy would have duplicated the
+   *  base-URL resolution, token header, auto-start and error mapping below,
+   *  which is what this helper exists to stop happening. */
+  method: "GET" | "POST" = "GET",
 ) {
   const { NextResponse } = await import("next/server");
   const url = `${forecastApiBase()}${path}${search ? `?${search}` : ""}`;
 
   const attempt = () =>
     fetch(url, {
+      method,
       signal: AbortSignal.timeout(timeoutMs),
       headers: { "x-forecast-token": process.env.FORECAST_API_TOKEN ?? "" },
     });
