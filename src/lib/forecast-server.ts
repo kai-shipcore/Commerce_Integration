@@ -21,10 +21,21 @@ function setChild(c: ChildProcess | null) {
   g._forecastChild = c;
 }
 
+/** How long to wait for /health.
+ *
+ *  A local server answers in single-digit milliseconds, so 5s was generous. A
+ *  remote one is a network round trip to a box that may be waking a worker, and
+ *  5s there is tight enough that an ordinary slow response reads as an outage.
+ *  Distinguished rather than raised for both, so a genuinely dead local server
+ *  is still reported quickly instead of stalling every page for 15 seconds. */
+function healthTimeoutMs(): number {
+  return usesLocalForecastServer() ? 5_000 : 15_000;
+}
+
 export async function isRunning(): Promise<boolean> {
   try {
     const res = await fetch(`${forecastApiBase()}/health`, {
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(healthTimeoutMs()),
     });
     return res.ok;
   } catch {
@@ -78,7 +89,7 @@ export async function forecastHealth(): Promise<ForecastHealth> {
   });
 
   try {
-    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5_000) });
+    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(healthTimeoutMs()) });
     if (!res.ok) return shape({ running: false });
 
     const body = await res.json().catch(() => null);
@@ -189,7 +200,10 @@ export async function ensureForecastServer(): Promise<EnsureResult> {
     return {
       ok: false,
       reason: "remote",
-      message: `The forecast server at ${forecastApiBase()} is not responding, and it is not a local server this app can start.`,
+      message:
+        `${forecastApiBase()} did not answer. That host runs the service; this app ` +
+        `only talks to it, so there is nothing here to start. Check the service is up ` +
+        `there, and that AI_SERVICE_URL and FORECAST_API_TOKEN match what it expects.`,
     };
   }
   // Unset AND undiscoverable. Unset alone is how the deployed box opts out:
