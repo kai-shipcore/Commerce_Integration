@@ -83,6 +83,13 @@ export interface DashboardResult {
 }
 
 export const DemandPlanningService = {
+  // Exposed standalone (not just as part of getDashboardData) for pages like
+  // OOS Impact that trigger the same refreshStats pipeline via its "Sync"
+  // button but don't otherwise need the full demand-planning dashboard payload.
+  async getLastSync(): Promise<string | null> {
+    return DemandPlanningRepository.getLastSync();
+  },
+
   async getDashboardData(query: DashboardQuery): Promise<DashboardResult> {
     const inboundStatuses = query.includeDrafts ? "('shipped', 'packing_received', 'draft')" : ACTIVE;
     const todayDefault = planningLocalDateString();

@@ -11,7 +11,12 @@ const repositoryMock = {
 const cacheGetMock = vi.fn();
 const cacheSetMock = vi.fn();
 
-vi.mock("@/lib/oos-impact/repository", () => ({ OosImpactRepository: repositoryMock }));
+vi.mock("@/lib/oos-impact/repository", () => ({
+  OosImpactRepository: repositoryMock,
+  DEFAULT_RECOVERY_THRESHOLD_PCT: 0.8,
+  DEFAULT_MIN_RECOVERY_DAYS: 13,
+  RECOVERY_HORIZON_DAYS: 90,
+}));
 vi.mock("@/lib/redis", () => ({ CacheManager: { get: cacheGetMock, set: cacheSetMock } }));
 
 const { OosImpactService } = await import("@/lib/oos-impact/service");
@@ -50,6 +55,7 @@ describe("OosImpactService.getRecovery", () => {
   const baseRow = {
     master_sku: "SKU-1",
     channel: "Amazon FBA",
+    item_category: "Car Cover",
     oos_started_on: "2026-01-01",
     oos_days: 10,
     back_in_stock_on: "2026-01-11",
@@ -111,10 +117,15 @@ describe("OosImpactService.getRecoveryDrilldown", () => {
     await expect(OosImpactService.getRecoveryDrilldown("SKU-1", "Amazon FBA", null)).rejects.toThrow(NotFoundError);
   });
 
-  it("passes restockDate through to disambiguate the episode and builds the 7-point series", async () => {
+  it("passes restockDate through to disambiguate the episode and rounds the daily trailing-average series", async () => {
     repositoryMock.findLatestEpisode.mockResolvedValue({ oos_started_on: "2026-01-01", back_in_stock_on: "2026-01-11" });
     repositoryMock.getDrilldownSeries.mockResolvedValue({
-      pre1: "1.0", pre2: "2.0", baseline: "1.5", d15: "3.0", d30: "4.0", d60: "5.0", d90: "6.0",
+      baseline: "1.5",
+      points: [
+        { day_offset: -10, trailing_avg: "1.04", qty: "2" },
+        { day_offset: 0, trailing_avg: "0", qty: "0" },
+        { day_offset: 13, trailing_avg: "1.26", qty: "3" },
+      ],
     });
 
     const result = await OosImpactService.getRecoveryDrilldown("SKU-1", "Amazon FBA", "2026-01-11");
@@ -122,7 +133,11 @@ describe("OosImpactService.getRecoveryDrilldown", () => {
     expect(repositoryMock.findLatestEpisode).toHaveBeenCalledWith("SKU-1", "2026-01-11");
     expect(repositoryMock.getDrilldownSeries).toHaveBeenCalledWith("SKU-1", "Amazon FBA", "2026-01-01", "2026-01-11");
     expect(result).toEqual({
-      points: [1, 2, 0, 3, 4, 5, 6],
+      points: [
+        { dayOffset: -10, value: 1, qty: 2 },
+        { dayOffset: 0, value: 0, qty: 0 },
+        { dayOffset: 13, value: 1.3, qty: 3 },
+      ],
       baseline: 1.5,
       restockDate: "2026-01-11",
     });

@@ -23,6 +23,7 @@ const getCacheMock = vi.fn();
 const setCacheMock = vi.fn();
 const invalidateCacheMock = vi.fn();
 const cacheManagerDeleteMock = vi.fn();
+const cacheManagerDeletePatternMock = vi.fn();
 
 vi.mock("@/lib/demand-planning/repository", () => ({ DemandPlanningRepository: repositoryMock }));
 vi.mock("@/lib/planning/dashboard-cache", () => ({
@@ -30,7 +31,9 @@ vi.mock("@/lib/planning/dashboard-cache", () => ({
   setPlanningDashboardCache: setCacheMock,
   invalidatePlanningDashboardCache: invalidateCacheMock,
 }));
-vi.mock("@/lib/redis", () => ({ CacheManager: { delete: cacheManagerDeleteMock } }));
+vi.mock("@/lib/redis", () => ({
+  CacheManager: { delete: cacheManagerDeleteMock, deletePattern: cacheManagerDeletePatternMock },
+}));
 
 const { DemandPlanningService } = await import("@/lib/demand-planning/service");
 

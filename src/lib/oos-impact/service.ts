@@ -7,7 +7,9 @@
 
 import { CacheManager } from "@/lib/redis";
 import { ValidationError, NotFoundError } from "@/lib/errors";
-import { OosImpactRepository } from "@/lib/oos-impact/repository";
+import { OosImpactRepository, DEFAULT_RECOVERY_THRESHOLD_PCT, DEFAULT_MIN_RECOVERY_DAYS, RECOVERY_HORIZON_DAYS } from "@/lib/oos-impact/repository";
+
+export { DEFAULT_RECOVERY_THRESHOLD_PCT, DEFAULT_MIN_RECOVERY_DAYS, RECOVERY_HORIZON_DAYS };
 
 const WINDOW_DAYS = 30;
 
@@ -27,6 +29,7 @@ export type RecoverySeverity = "good" | "warning" | "serious" | "critical";
 export interface RecoveryRow {
   sku: string;
   channel: string;
+  itemCategory: string;
   oosStartedOn: string;
   restockDate: string;
   oosDays: number;
@@ -42,7 +45,6 @@ export interface RecoveryRow {
 
 export const RECOVERY_CACHE_KEY = "oos-recovery:sku-list:v3";
 const RECOVERY_CACHE_TTL_SECONDS = 600;
-const RECOVERY_HORIZON_DAYS = 90;
 
 function recoverySeverityOf(daysToRecovery: number | null, daysSinceRestock: number): { severity: RecoverySeverity; label: string } {
   if (daysToRecovery !== null && daysToRecovery <= 30) return { severity: "good", label: "정상 회복" };
@@ -51,8 +53,14 @@ function recoverySeverityOf(daysToRecovery: number | null, daysSinceRestock: num
   return { severity: "critical", label: "미회복" };
 }
 
+export interface RecoveryDrilldownPoint {
+  dayOffset: number;
+  value: number;
+  qty: number;
+}
+
 export interface RecoveryDrilldownResult {
-  points: number[];
+  points: RecoveryDrilldownPoint[];
   baseline: number;
   restockDate: string;
 }
@@ -111,11 +119,18 @@ export const OosImpactService = {
     return { data, cached: false };
   },
 
-  async getRecovery(): Promise<{ data: RecoveryRow[]; cached: boolean }> {
-    const cached = await CacheManager.get<RecoveryRow[]>(RECOVERY_CACHE_KEY);
+  async getRecovery(
+    thresholdPct: number = DEFAULT_RECOVERY_THRESHOLD_PCT,
+    minRecoveryDays: number = DEFAULT_MIN_RECOVERY_DAYS,
+  ): Promise<{ data: RecoveryRow[]; cached: boolean }> {
+    // Cache key includes both knobs so a custom value never serves (or
+    // evicts) another combination's result — each distinct pair gets its own
+    // short-lived cache entry.
+    const cacheKey = `${RECOVERY_CACHE_KEY}:${thresholdPct}:${minRecoveryDays}`;
+    const cached = await CacheManager.get<RecoveryRow[]>(cacheKey);
     if (cached) return { data: cached, cached: true };
 
-    const rows = await OosImpactRepository.getRecoveryRows();
+    const rows = await OosImpactRepository.getRecoveryRows(thresholdPct, minRecoveryDays);
     const round1 = (avg: string | null) => (avg === null ? null : Math.round(Number(avg) * 10) / 10);
 
     const data: RecoveryRow[] = rows.map((r) => {
@@ -125,6 +140,7 @@ export const OosImpactService = {
       return {
         sku: r.master_sku,
         channel: r.channel,
+        itemCategory: r.item_category,
         oosStartedOn: r.oos_started_on,
         restockDate: r.back_in_stock_on,
         oosDays: r.oos_days,
@@ -139,7 +155,7 @@ export const OosImpactService = {
       };
     });
 
-    await CacheManager.set(RECOVERY_CACHE_KEY, data, RECOVERY_CACHE_TTL_SECONDS);
+    await CacheManager.set(cacheKey, data, RECOVERY_CACHE_TTL_SECONDS);
     return { data, cached: false };
   },
 
@@ -166,7 +182,7 @@ export const OosImpactService = {
     const round1 = (v: string) => Math.round(Number(v) * 10) / 10;
 
     return {
-      points: [round1(s.pre1), round1(s.pre2), 0, round1(s.d15), round1(s.d30), round1(s.d60), round1(s.d90)],
+      points: s.points.map((p) => ({ dayOffset: p.day_offset, value: round1(p.trailing_avg), qty: Number(p.qty) })),
       baseline: round1(s.baseline),
       restockDate: episode.back_in_stock_on,
     };
@@ -216,7 +232,9 @@ export const OosImpactService = {
   async invalidateAll(): Promise<void> {
     await Promise.all([
       CacheManager.delete(TOP_SELLERS_CACHE_KEY),
-      CacheManager.delete(RECOVERY_CACHE_KEY),
+      // Recovery is cached per threshold value (see getRecovery) — a plain
+      // delete(RECOVERY_CACHE_KEY) would miss every non-default threshold.
+      CacheManager.deletePattern(`${RECOVERY_CACHE_KEY}:*`),
       CacheManager.delete(PREORDER_CACHE_KEY),
     ]);
   },

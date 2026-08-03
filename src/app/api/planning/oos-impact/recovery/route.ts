@@ -8,11 +8,37 @@
 // caching to OosImpactService.
 
 import { apiSuccess, handleApiError } from "@/lib/api-response";
-import { OosImpactService } from "@/lib/oos-impact/service";
+import { ValidationError } from "@/lib/errors";
+import {
+  OosImpactService, DEFAULT_RECOVERY_THRESHOLD_PCT, DEFAULT_MIN_RECOVERY_DAYS, RECOVERY_HORIZON_DAYS,
+} from "@/lib/oos-impact/service";
 
-export async function GET() {
+function parseThreshold(raw: string | null): number {
+  if (raw === null) return DEFAULT_RECOVERY_THRESHOLD_PCT;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new ValidationError("threshold must be a number between 0 (exclusive) and 1 (inclusive)");
+  }
+  return value;
+}
+
+// Below DEFAULT_MIN_RECOVERY_DAYS the trailing window would reach before the
+// restock date; at/above the horizon there'd be no days left to search.
+function parseMinRecoveryDays(raw: string | null): number {
+  if (raw === null) return DEFAULT_MIN_RECOVERY_DAYS;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < DEFAULT_MIN_RECOVERY_DAYS || value >= RECOVERY_HORIZON_DAYS) {
+    throw new ValidationError(`minRecoveryDays must be an integer between ${DEFAULT_MIN_RECOVERY_DAYS} and ${RECOVERY_HORIZON_DAYS - 1}`);
+  }
+  return value;
+}
+
+export async function GET(request: Request) {
   try {
-    const { data } = await OosImpactService.getRecovery();
+    const { searchParams } = new URL(request.url);
+    const thresholdPct = parseThreshold(searchParams.get("threshold"));
+    const minRecoveryDays = parseMinRecoveryDays(searchParams.get("minRecoveryDays"));
+    const { data } = await OosImpactService.getRecovery(thresholdPct, minRecoveryDays);
     return apiSuccess({ data });
   } catch (error) {
     console.error("GET /api/planning/oos-impact/recovery failed:", error);
