@@ -165,9 +165,13 @@ export function PlanningError({
   };
 
   const guidance: Record<PlanningErrorKind, string> = {
+    // Wording that suits both arrangements. It used to say only "opening this
+    // page tries to start it", which is true of a localhost URL and misleading
+    // when AI_SERVICE_URL points at the box that runs the service, where there
+    // is nothing local to start and the detail below is the whole answer.
     unreachable: pick(
-      "이 페이지를 열면 자동으로 시작을 시도합니다. 계속 실패한다면 아래 내용을 확인하세요.",
-      "Opening this page tries to start it. If that keeps failing, the detail below says why.",
+      "로컬 서버라면 페이지를 열 때 자동으로 시작을 시도합니다. 원격 서버라면 해당 호스트에서 실행 중인지 확인해야 합니다. 아래에 어느 경우인지 표시됩니다.",
+      "If it is a local server, opening this page tries to start it. If AI_SERVICE_URL points at another host, that service has to be up there. The detail below says which case this is.",
     ),
     no_data: pick(
       "서버 자체는 정상입니다. data/processed 는 git에 포함되지 않으므로, 새로 클론한 저장소에는 코드만 있고 데이터 파일이 없습니다. 필요한 데이터는 이미 저장소 안에 있으니, Time_Series_Forecasting 에서 아래 명령 한 줄이면 됩니다.",
