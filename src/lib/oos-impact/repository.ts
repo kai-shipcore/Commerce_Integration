@@ -21,17 +21,13 @@ const MIN_DAYS_SINCE_RESTOCK = 7;
 // 1-decimal display, making them look like divide-by-nothing noise. 0.05 is
 // the exact cutoff where toFixed(1) starts showing "0.1" instead of "0.0".
 const MIN_BASELINE = 0.05;
+// Used only by getDrilldownSeries's chart line now — getRecoveryRows judges
+// recovery from 30-day block averages (day0_30_avg etc.), not a trailing
+// window, since a single-day sales blip could make a near-zero-baseline SKU's
+// trailing average cross threshold even though nothing sustained recovered.
 const ROLLING_WINDOW_DAYS = 14;
-export const DEFAULT_RECOVERY_THRESHOLD_PCT = 0.8;
+export const DEFAULT_RECOVERY_THRESHOLD_PCT = 0.9;
 export const RECOVERY_HORIZON_DAYS = 90;
-// The trailing-14-day window can't validly report a recovery before day
-// ROLLING_WINDOW_DAYS-1 (see recovery CTE below) — that's a hard data-integrity
-// floor, not a business choice. DEFAULT_MIN_RECOVERY_DAYS is the separate,
-// user-adjustable "grace period": a crossing detected before this many days
-// post-restock is a spike (e.g. backlogged orders shipping all at once), not
-// real recovery, so the search for daysToRecovery only starts here. Defaults
-// to the technical floor (no extra suppression) until raised.
-export const DEFAULT_MIN_RECOVERY_DAYS = ROLLING_WINDOW_DAYS - 1;
 
 const PREORDER_MAX_WINDOW_DAYS = 30;
 const PREORDER_DATA_LAG_DAYS = 2;
@@ -44,7 +40,6 @@ export interface TopSellerDbRow {
 
 export interface RecoveryDbRow {
   master_sku: string;
-  channel: string;
   item_category: string;
   oos_started_on: string;
   oos_days: number;
@@ -54,7 +49,6 @@ export interface RecoveryDbRow {
   day0_30_avg: string | null;
   day30_60_avg: string | null;
   day60_90_avg: string | null;
-  days_to_recovery: number | null;
 }
 
 export interface EpisodeDbRow {
@@ -116,7 +110,7 @@ export const OosImpactRepository = {
     return result.rows;
   },
 
-  async getRecoveryRows(thresholdPct: number, minRecoveryDays: number): Promise<RecoveryDbRow[]> {
+  async getRecoveryRows(): Promise<RecoveryDbRow[]> {
     const result = await getPrimaryPool().query<RecoveryDbRow>(`
       WITH episodes_raw AS (
         -- Every episode for every SKU, open or closed. The old version of
@@ -165,7 +159,13 @@ export const OosImpactRepository = {
           AND CURRENT_DATE - back_in_stock_on >= ${MIN_DAYS_SINCE_RESTOCK}
       ),
       velocity AS (
-        SELECT v.order_date, v.channel, v.link_master_sku AS master_sku, v.link_qty AS qty, v.item_category
+        -- No channel in the SELECT list — this screen tracks recovery per
+        -- Master SKU across all marketplace channels combined (a SKU restocks
+        -- once, physically, for every channel at the same time; splitting the
+        -- recovery trajectory by channel just fragmented one SKU's story into
+        -- up to 5 rows and inflated the "not recovered" KPI count 5x for a
+        -- SKU sold everywhere).
+        SELECT v.order_date, v.link_master_sku AS master_sku, v.link_qty AS qty, v.item_category
         FROM shipcore.fc_velocity_link_snapshot v
         WHERE v.channel IN (${NON_SHOPIFY_CHANNELS})
           AND NOT EXISTS (
@@ -173,7 +173,7 @@ export const OosImpactRepository = {
             WHERE p.master_sku = v.link_master_sku AND p.category_code = 'SC'
           )
         UNION ALL
-        SELECT v.order_date, v.channel, v.custom_master_sku AS master_sku, v.custom_qty AS qty, v.item_category
+        SELECT v.order_date, v.custom_master_sku AS master_sku, v.custom_qty AS qty, v.item_category
         FROM shipcore.fc_velocity_custom_snapshot v
         WHERE v.channel IN (${NON_SHOPIFY_CHANNELS})
           AND EXISTS (
@@ -181,31 +181,28 @@ export const OosImpactRepository = {
             WHERE p.master_sku = v.custom_master_sku AND p.category_code = 'SC'
           )
       ),
-      daily_rolling AS (
-        SELECT master_sku, channel, order_date,
-          SUM(qty) OVER (
-            PARTITION BY master_sku, channel ORDER BY order_date
-            RANGE BETWEEN INTERVAL '${ROLLING_WINDOW_DAYS - 1} days' PRECEDING AND CURRENT ROW
-          ) / ${ROLLING_WINDOW_DAYS}.0 AS trailing_avg
-        FROM velocity
-      ),
       joined AS (
         SELECT e.master_sku, e.oos_started_on, e.back_in_stock_on, e.oos_days, e.days_since_restock,
-               v.channel, v.order_date, v.qty, v.item_category
+               v.order_date, v.qty, v.item_category
         FROM episodes e
         JOIN velocity v
           ON v.master_sku = e.master_sku
          AND v.order_date >= e.oos_started_on - 30
          AND v.order_date < e.back_in_stock_on + ${RECOVERY_HORIZON_DAYS}
       ),
+      -- Recovery is judged from these same three 30-day block averages (not a
+      -- daily/trailing-average crossing) — see days_to_recovery in the final
+      -- SELECT below. A single spike day can no longer look like "recovery"
+      -- the way a trailing-14-day average could: a whole month of sales has
+      -- to sustain above threshold.
       agg AS (
         SELECT
-          master_sku, channel, oos_started_on, oos_days, back_in_stock_on, days_since_restock,
+          master_sku, oos_started_on, oos_days, back_in_stock_on, days_since_restock,
           -- Same convention as preorder/route.ts: fc_velocity_*_snapshot already
           -- carries a precomputed item_category per row (Car Cover/Seat Cover/
           -- Floor Mat/SWC/Miscellaneous) — pick one representative value per
-          -- (sku, channel) rather than adding it to GROUP BY, since it should be
-          -- constant for a given SKU anyway.
+          -- SKU rather than adding it to GROUP BY, since it should be constant
+          -- for a given SKU anyway.
           COALESCE(MAX(item_category) FILTER (WHERE item_category IN ('Car Cover', 'Seat Cover', 'Floor Mat', 'SWC')), 'Miscellaneous') AS item_category,
           COALESCE(SUM(qty) FILTER (
             WHERE order_date >= oos_started_on - 30 AND order_date < oos_started_on
@@ -220,41 +217,22 @@ export const OosImpactRepository = {
             COALESCE(SUM(qty) FILTER (WHERE order_date >= back_in_stock_on + 60 AND order_date < back_in_stock_on + 90), 0) / 30.0
           END AS day60_90_avg
         FROM joined
-        GROUP BY master_sku, channel, oos_started_on, oos_days, back_in_stock_on, days_since_restock
-      ),
-      recovery AS (
-        SELECT a.master_sku, a.channel, a.back_in_stock_on,
-          MIN(dr.order_date) AS first_recovered_on
-        FROM agg a
-        JOIN daily_rolling dr
-          ON dr.master_sku = a.master_sku
-         AND dr.channel = a.channel
-         -- GREATEST enforces the hard technical floor (window can't reach
-         -- before restock) even if a caller somehow passed a smaller grace
-         -- period than that; the API layer also clamps this before it gets here.
-         AND dr.order_date >= a.back_in_stock_on + GREATEST(${ROLLING_WINDOW_DAYS - 1}, $2::int)
-         AND dr.order_date <= a.back_in_stock_on + ${RECOVERY_HORIZON_DAYS}
-         AND dr.trailing_avg >= $1::numeric * a.baseline
-        WHERE a.baseline >= ${MIN_BASELINE}
-        GROUP BY a.master_sku, a.channel, a.back_in_stock_on
+        GROUP BY master_sku, oos_started_on, oos_days, back_in_stock_on, days_since_restock
       )
       SELECT
-        a.master_sku, a.channel, a.item_category,
-        a.oos_started_on::text AS oos_started_on,
-        a.oos_days,
-        a.back_in_stock_on::text AS back_in_stock_on,
-        a.days_since_restock,
-        a.baseline::text AS baseline,
-        a.day0_30_avg::text AS day0_30_avg,
-        a.day30_60_avg::text AS day30_60_avg,
-        a.day60_90_avg::text AS day60_90_avg,
-        (r.first_recovered_on - a.back_in_stock_on)::int AS days_to_recovery
-      FROM agg a
-      LEFT JOIN recovery r
-        ON r.master_sku = a.master_sku AND r.channel = a.channel AND r.back_in_stock_on = a.back_in_stock_on
-      WHERE a.baseline >= ${MIN_BASELINE}
-      ORDER BY a.days_since_restock ASC
-    `, [thresholdPct, minRecoveryDays]);
+        master_sku, item_category,
+        oos_started_on::text AS oos_started_on,
+        oos_days,
+        back_in_stock_on::text AS back_in_stock_on,
+        days_since_restock,
+        baseline::text AS baseline,
+        day0_30_avg::text AS day0_30_avg,
+        day30_60_avg::text AS day30_60_avg,
+        day60_90_avg::text AS day60_90_avg
+      FROM agg
+      WHERE baseline >= ${MIN_BASELINE}
+      ORDER BY days_since_restock ASC
+    `);
     return result.rows;
   },
 
@@ -274,22 +252,22 @@ export const OosImpactRepository = {
 
   async getDrilldownSeries(
     sku: string,
-    channel: string,
     oosStartedOn: string,
     backInStockOn: string,
   ): Promise<{ baseline: string; points: DrilldownPointDbRow[] }> {
     const pool = getPrimaryPool();
     // Same velocity source-selection as getRecoveryRows/getTopSellers (SC ->
-    // custom, else -> link) — duplicated per-call since each query binds its
-    // own $1/$2 sku/channel params rather than sharing a CTE across queries.
+    // custom, else -> link), and same all-marketplace-channels-combined scope
+    // as getRecoveryRows — this must match exactly, since the chart's
+    // "Recovery" marker is placed at the daysToRecovery value computed there.
     const velocityCte = `
       WITH velocity AS (
         SELECT v.order_date, v.link_qty AS qty FROM shipcore.fc_velocity_link_snapshot v
-        WHERE v.link_master_sku = $1 AND v.channel = $2
+        WHERE v.link_master_sku = $1 AND v.channel IN (${NON_SHOPIFY_CHANNELS})
           AND NOT EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code = 'SC')
         UNION ALL
         SELECT v.order_date, v.custom_qty AS qty FROM shipcore.fc_velocity_custom_snapshot v
-        WHERE v.custom_master_sku = $1 AND v.channel = $2
+        WHERE v.custom_master_sku = $1 AND v.channel IN (${NON_SHOPIFY_CHANNELS})
           AND EXISTS (SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = $1 AND p.category_code = 'SC')
       )`;
 
@@ -298,22 +276,23 @@ export const OosImpactRepository = {
         `${velocityCte}
          SELECT (COALESCE(SUM(qty), 0) / 30.0)::text AS baseline
          FROM velocity
-         WHERE order_date >= $3::date - 30 AND order_date < $3::date`,
-        [sku, channel, oosStartedOn],
+         WHERE order_date >= $2::date - 30 AND order_date < $2::date`,
+        [sku, oosStartedOn],
       ),
       // One row per day that actually had a sale, with both the raw daily qty
-      // and the trailing 14-calendar-day rolling average (the exact same
-      // value used to decide daysToRecovery in getRecoveryRows, so the chart
-      // and the table's recovery date line up — the old version plotted
-      // -30/-15/0/15/30/60/90 cumulative-from-restock averages instead, which
-      // don't correspond to any single day's actual recovery reading).
+      // (summed across all marketplace channels) and the trailing 14-calendar-
+      // day rolling average (the exact same value used to decide
+      // daysToRecovery in getRecoveryRows, so the chart and the table's
+      // recovery date line up — the old version plotted -30/-15/0/15/30/60/90
+      // cumulative-from-restock averages instead, which don't correspond to
+      // any single day's actual recovery reading).
       pool.query<DrilldownPointDbRow>(
         `${velocityCte},
          daily AS (
-           -- The source view splits one calendar day's orders into 2 rows
-           -- when UTC-day and LA-day (order_date_la) disagree near midnight;
-           -- collapsing to one qty per order_date here (rather than window-
-           -- averaging over the raw split rows) is what lets this query also
+           -- Collapses both the per-channel rows (one per marketplace channel
+           -- selling this SKU) and the UTC/LA timezone split (source view
+           -- splits one calendar day's orders into 2 rows near midnight) down
+           -- to one qty per order_date — this is what lets this query also
            -- expose the real per-day quantity, not just the rolling average.
            SELECT order_date, SUM(qty) AS qty
            FROM velocity
@@ -327,11 +306,11 @@ export const OosImpactRepository = {
              ) / ${ROLLING_WINDOW_DAYS}.0 AS trailing_avg
            FROM daily
          )
-         SELECT (order_date - $4::date)::int AS day_offset, trailing_avg::text AS trailing_avg, qty::text AS qty
+         SELECT (order_date - $3::date)::int AS day_offset, trailing_avg::text AS trailing_avg, qty::text AS qty
          FROM daily_rolling
-         WHERE order_date >= $3::date - 30 AND order_date <= $4::date + ${RECOVERY_HORIZON_DAYS}
+         WHERE order_date >= $2::date - 30 AND order_date <= $3::date + ${RECOVERY_HORIZON_DAYS}
          ORDER BY day_offset`,
-        [sku, channel, oosStartedOn, backInStockOn],
+        [sku, oosStartedOn, backInStockOn],
       ),
     ]);
 

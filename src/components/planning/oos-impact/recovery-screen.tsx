@@ -7,11 +7,25 @@
 // alongside this, but it only ever showed sample data (no real time-series
 // aggregation was built for it) — removed rather than shipping a fake chart.
 //
-// Core metric is daysToRecovery (days since restock until sales trailing-
-// average first reached 80% of baseline), NOT a live/current sales snapshot —
-// this screen exists to find SKUs whose post-restock recovery was slow or
-// never happened, which is a question about the past trajectory, not "is this
-// SKU selling well today." See recovery/route.ts for the SQL-side definition.
+// One row per Master SKU, not per SKU×channel — recovery is tracked with all
+// marketplace channels' sales summed together (see recovery/route.ts). A SKU
+// restocks once physically for every channel at the same time, so per-channel
+// rows just fragmented one SKU's recovery story into up to 5 rows and
+// inflated KPI counts.
+//
+// Core metric is daysToRecovery: the first of the three 30-day blocks (Month
+// 1/2/3, days 0-30/30-60/60-90 after restock) whose average sales reached
+// threshold% of baseline — always exactly 30, 60, 90, or null, NOT a precise
+// day count. It used to be based on a daily trailing-14-day-average crossing,
+// which could disagree with the Month 1/2/3 % columns shown right next to it
+// (a single-day sales blip can tip a near-zero-baseline SKU's trailing
+// average over threshold for a moment even though nothing sustained actually
+// recovered) — judging from the same monthly block averages the table
+// displays means the two can never contradict each other. This is NOT a live/
+// current sales snapshot — this screen exists to find SKUs whose post-restock
+// recovery was slow or never happened, a question about the past trajectory,
+// not "is this SKU selling well today." See recovery/route.ts for the
+// SQL-side definition.
 //
 // Only touch shared.tsx for things this file and preorder-screen.tsx both need.
 
@@ -27,7 +41,6 @@ import {
 
 interface RecoveryRow {
   sku: string;
-  channel: string;
   itemCategory: string;
   oosStartedOn: string;
   restockDate: string;
@@ -37,6 +50,9 @@ interface RecoveryRow {
   day0to30: number | null;
   day30to60: number | null;
   day60to90: number | null;
+  month1Pct: number | null;
+  month2Pct: number | null;
+  month3Pct: number | null;
   daysToRecovery: number | null;
   severity: Severity;
   label: string;
@@ -65,19 +81,6 @@ interface TopSellerRow {
   avgDaily: number;
 }
 
-// Raw channel column values (shipcore.fc_velocity_link/custom_snapshot) — eBay
-// rows are stored without an "eBay " prefix, so display labels are mapped
-// separately from the value used for filtering/queries.
-const MARKETPLACE_CHANNELS = ["Amazon FBA", "Amazon FBM", "Auto_Armor", "Advance_Parts", "Walmart"] as const;
-
-const CHANNEL_DISPLAY_LABELS: Record<string, string> = {
-  "Amazon FBA": "Amazon FBA",
-  "Amazon FBM": "Amazon FBM",
-  Auto_Armor: "eBay Auto_Armor",
-  Advance_Parts: "eBay Advance_Parts",
-  Walmart: "Walmart",
-};
-
 // Same 4 categories/values as preorder-screen.tsx's item filter (item_category
 // is precomputed onto every fc_velocity_*_snapshot row at sync time — see
 // ITEM_CATEGORY_CASE in velocity/repository.ts). Rows outside these 4
@@ -94,12 +97,18 @@ function num1(v: number | null): string {
   return v === null ? "—" : v.toFixed(1);
 }
 
+function pctLabel(v: number | null): string {
+  return v === null ? "—" : `${v.toFixed(1)}%`;
+}
+
 function daysToRecoveryLabel(r: RecoveryRow, pick: (ko: string, en: string) => string): string {
   if (r.daysToRecovery !== null) return pick(`${r.daysToRecovery}일`, `${r.daysToRecovery}d`);
   return r.severity === "critical" ? pick("미회복", "Not Recovered") : pick("관찰중", "Pending");
 }
 
-type SortKey = "sku" | "baseline" | "oosStartedOn" | "restockDate" | "oosDays" | "daysToRecovery" | "severity";
+type SortKey =
+  | "sku" | "baseline" | "oosStartedOn" | "restockDate" | "oosDays"
+  | "month1Pct" | "month2Pct" | "month3Pct" | "daysToRecovery" | "severity";
 
 // Columns whose first click sorts ascending (text/date-like); numeric columns
 // default to descending so the most extreme values surface first.
@@ -112,12 +121,15 @@ const TABLE_COLUMNS: { key: SortKey; ko: string; en: string; right?: boolean }[]
   { key: "oosStartedOn", ko: "품절일", en: "Stockout Date" },
   { key: "restockDate", ko: "재입고일", en: "Restock Date" },
   { key: "oosDays", ko: "품절기간", en: "Stockout Days", right: true },
+  { key: "month1Pct", ko: "1개월차 회복률", en: "Month 1 Recovery", right: true },
+  { key: "month2Pct", ko: "2개월차 회복률", en: "Month 2 Recovery", right: true },
+  { key: "month3Pct", ko: "3개월차 회복률", en: "Month 3 Recovery", right: true },
   { key: "daysToRecovery", ko: "회복까지 걸린 일수", en: "Days to Recovery", right: true },
   { key: "severity", ko: "상태", en: "Status" },
 ];
 
 function rowKey(r: RecoveryRow): string {
-  return `${r.sku}|${r.channel}|${r.restockDate}`;
+  return `${r.sku}|${r.restockDate}`;
 }
 
 // Distribution buckets for the "스큐 비교" histogram — categorical (days-to-
@@ -143,7 +155,6 @@ function bucketOf(r: RecoveryRow): RecoveryBucketKey {
 
 export function RecoveryScreen() {
   const { pick } = useI18n();
-  const [channels, setChannels] = useState<string[]>([...MARKETPLACE_CHANNELS]);
   const [items, setItems] = useState<string[]>([...ITEM_CATEGORIES]);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selectedBin, setSelectedBin] = useState<number | null>(null);
@@ -159,28 +170,14 @@ export function RecoveryScreen() {
   // 회복 판정 기준(기준선 대비 %) — 정수 퍼센트로 들고 있다가 fetch 시점에 0-1
   // 소수로 변환. 입력창은 별도 draft 상태로 받아 blur/Enter 시에만 커밋해서
   // 타이핑 중간값("8" 등)으로 매번 재조회가 일어나지 않도록 함.
-  const [thresholdPct, setThresholdPct] = useState(80);
-  const [thresholdDraft, setThresholdDraft] = useState("80");
+  const [thresholdPct, setThresholdPct] = useState(90);
+  const [thresholdDraft, setThresholdDraft] = useState("90");
 
   function commitThresholdDraft() {
     const parsed = Math.round(Number(thresholdDraft));
     const clamped = Number.isFinite(parsed) ? Math.min(100, Math.max(50, parsed)) : thresholdPct;
     setThresholdDraft(String(clamped));
     if (clamped !== thresholdPct) setThresholdPct(clamped);
-  }
-
-  // 재입고 후 이 일수가 지나기 전의 기준선 도달은 무시(재입고 직후 밀린 주문이
-  // 한꺼번에 풀리며 생기는 일시적 스파이크를 "회복"으로 오인하지 않기 위함).
-  // 13일 미만은 트레일링 14일 윈도우 자체가 재입고 이전 판매를 끌어오게 되므로
-  // 서버에서도 강제로 13일 이상으로 클램프하지만, 입력 단계에서도 막아둠.
-  const [minRecoveryDays, setMinRecoveryDays] = useState(13);
-  const [minRecoveryDaysDraft, setMinRecoveryDaysDraft] = useState("13");
-
-  function commitMinRecoveryDaysDraft() {
-    const parsed = Math.round(Number(minRecoveryDaysDraft));
-    const clamped = Number.isFinite(parsed) ? Math.min(89, Math.max(13, parsed)) : minRecoveryDays;
-    setMinRecoveryDaysDraft(String(clamped));
-    if (clamped !== minRecoveryDays) setMinRecoveryDays(clamped);
   }
 
   useEffect(() => {
@@ -193,7 +190,6 @@ export function RecoveryScreen() {
       setPage(1);
       const params = new URLSearchParams({
         threshold: (thresholdPct / 100).toFixed(2),
-        minRecoveryDays: String(minRecoveryDays),
       });
       try {
         const res = await fetch(apiPath(`/api/planning/oos-impact/recovery?${params}`));
@@ -206,7 +202,7 @@ export function RecoveryScreen() {
     }
     void run();
     return () => { cancelled = true; };
-  }, [thresholdPct, minRecoveryDays]);
+  }, [thresholdPct]);
 
   // "판매량 TOP 100 SKU만" filter — see /api/planning/oos-impact/top-sellers.
   const [topRows, setTopRows] = useState<TopSellerRow[] | null>(null);
@@ -234,12 +230,6 @@ export function RecoveryScreen() {
   // 직접 보고 싶을 때를 위해 둘 다 볼 수 있게 함.
   const [drilldownMode, setDrilldownMode] = useState<"trailing" | "daily">("trailing");
 
-  const toggle = (v: string) => {
-    setChannels((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
-    setSelectedBin(null);
-    setPage(1);
-  };
-
   const toggleItem = (item: string) => {
     setItems((current) => {
       if (item === "전체") {
@@ -255,10 +245,9 @@ export function RecoveryScreen() {
 
   const visibleRows = useMemo(
     () => (rows ?? [])
-      .filter((r) => channels.includes(r.channel))
       .filter((r) => items.includes(r.itemCategory))
       .filter((r) => !topSellersOnly || topSellerSkuSet.has(r.sku)),
-    [rows, channels, items, topSellersOnly, topSellerSkuSet],
+    [rows, items, topSellersOnly, topSellerSkuSet],
   );
 
   const tableRows = useMemo(() => {
@@ -283,6 +272,9 @@ export function RecoveryScreen() {
         case "oosStartedOn": return r.oosStartedOn;
         case "restockDate": return r.restockDate;
         case "oosDays": return r.oosDays;
+        case "month1Pct": return r.month1Pct ?? (sortDir === "asc" ? Infinity : -Infinity);
+        case "month2Pct": return r.month2Pct ?? (sortDir === "asc" ? Infinity : -Infinity);
+        case "month3Pct": return r.month3Pct ?? (sortDir === "asc" ? Infinity : -Infinity);
         case "daysToRecovery": return r.daysToRecovery ?? (sortDir === "asc" ? Infinity : -Infinity);
         case "severity": return SEVERITY_RANK[r.severity];
       }
@@ -323,7 +315,7 @@ export function RecoveryScreen() {
       if (!open) return;
       setDrilldownLoading(true);
       try {
-        const params = new URLSearchParams({ sku: open.sku, channel: open.channel, restockDate: open.restockDate });
+        const params = new URLSearchParams({ sku: open.sku, restockDate: open.restockDate });
         const res = await fetch(apiPath(`/api/planning/oos-impact/recovery/drilldown?${params}`));
         const json = await res.json() as { success: boolean; data?: Drilldown; error?: string };
         if (!json.success || !json.data) throw new Error(json.error ?? "Unknown error");
@@ -337,7 +329,7 @@ export function RecoveryScreen() {
     void run();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open?.sku, open?.channel, open?.restockDate]);
+  }, [open?.sku, open?.restockDate]);
 
   const recoveryBins = useMemo(
     () => RECOVERY_BUCKETS.map((def) => ({
@@ -357,15 +349,13 @@ export function RecoveryScreen() {
   return (
     <div className="flex flex-col gap-4">
       <div className="planning-panel flex flex-col gap-3 rounded-xl border p-4">
-        <FilterRow label={pick("채널", "Channel")}>
-          {MARKETPLACE_CHANNELS.map((ch) => (
-            <Chip key={ch} active={channels.includes(ch)} onClick={() => toggle(ch)}>{CHANNEL_DISPLAY_LABELS[ch]}</Chip>
-          ))}
-        </FilterRow>
         <FilterRow label={pick("대상", "Scope")}>
           <Chip active>{pick("과거 품절 → 재입고 완료", "Past Stockout → Restocked")}</Chip>
           <Chip ghost title={pick("현재 품절 중인 상품은 회복 추이 계산 자체가 불가능해 제외", "Currently out-of-stock items are excluded — a recovery trend can't be calculated for them")}>
             {pick("현재 품절중 제외", "Excludes Currently Out of Stock")}
+          </Chip>
+          <Chip ghost title={pick("SKU마다 재입고는 모든 채널에 동시에 반영되는 물리적 재고 이벤트라, 회복 추이는 채널별이 아니라 Amazon FBA/FBM · Walmart · eBay 판매량을 합산한 SKU 단위로 계산됩니다", "Restock is a single physical inventory event shared by every channel at once, so recovery is tracked per Master SKU with Amazon FBA/FBM, Walmart, and eBay sales summed together — not broken out by channel")}>
+            {pick("전 채널(Amazon·Walmart·eBay) 합산", "All Channels Combined")}
           </Chip>
           <Chip
             active={topSellersOnly}
@@ -399,10 +389,6 @@ export function RecoveryScreen() {
           <Loader2 className="h-4 w-4 animate-spin" />
           {pick("재입고 회복 데이터 불러오는 중…", "Loading restock recovery data…")}
         </div>
-      ) : channels.length === 0 ? (
-        <div className="planning-panel flex min-h-[240px] items-center justify-center rounded-xl border text-sm text-muted-foreground">
-          {pick("최소 하나의 채널을 선택하세요", "Select at least one channel")}
-        </div>
       ) : items.length === 0 ? (
         <div className="planning-panel flex min-h-[240px] items-center justify-center rounded-xl border text-sm text-muted-foreground">
           {pick("최소 하나의 아이템을 선택하세요", "Select at least one item")}
@@ -413,7 +399,7 @@ export function RecoveryScreen() {
         <Kpi
           label={pick("재입고 추적 SKU", "SKUs Tracked")}
           value={String(visibleRows.length)}
-          foot={topSellersOnly ? pick("선택된 채널 · 판매량 TOP 100 SKU 기준", "Selected channels · Top 100 sellers only") : pick("선택된 채널 기준", "Based on selected channels")}
+          foot={topSellersOnly ? pick("판매량 TOP 100 SKU 기준", "Top 100 sellers only") : pick("전 채널 합산 기준", "All channels combined")}
         />
         <Kpi
           label={pick("평균 회복 소요일", "Avg. Days to Recovery")}
@@ -451,8 +437,8 @@ export function RecoveryScreen() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_1fr]">
-      <div className="planning-panel overflow-hidden rounded-xl border">
+      <div className={cn("grid items-start gap-4", open && "lg:grid-cols-[1fr_1fr]")}>
+      <div className="planning-panel min-w-0 overflow-hidden rounded-xl border">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
           <span className="text-[12.5px] font-semibold">
             {pick("SKU별 상세", "SKU Details")} <span className="font-normal text-muted-foreground">— {pick(`${sortedRows.length}건 표시`, `${sortedRows.length} rows shown`)}</span>
@@ -472,8 +458,8 @@ export function RecoveryScreen() {
             "정상 회복: 재입고 후 30일 이내 회복 · 느린 회복: 30~90일 이내 회복 · 관찰중: 재입고 후 아직 90일 안 지남 · 미회복: 90일이 지나도 회복 못함",
             "Normal Recovery: recovered within 30 days of restock · Slow Recovery: recovered within 30–90 days · Pending: fewer than 90 days since restock · Not Recovered: still not recovered after 90 days",
           )}
-          <span className="ml-1 inline-flex items-center gap-1" title={pick("회복 = 트레일링 14일 평균 판매량이 품절 직전 기준선(baseline)의 이 % 이상에 도달", "Recovery = the trailing 14-day average sales reaches this % of the pre-stockout baseline")}>
-            ({pick("회복 기준: 기준선의", "Recovery threshold: reaches")}
+          <span className="ml-1 inline-flex items-center gap-1" title={pick("회복 = 1/2/3개월차(재입고 후 0~30/30~60/60~90일) 판매 평균 중 하나가 품절 직전 기준선(baseline)의 이 % 이상에 처음 도달", "Recovery = the first of the Month 1/2/3 (days 0–30/30–60/60–90 after restock) sales averages to reach this % of the pre-stockout baseline")}>
+            ({pick("회복 기준: 월별 평균이 기준선의", "Recovery threshold: a month's average reaches")}
             <input
               type="number"
               min={50}
@@ -486,21 +472,6 @@ export function RecoveryScreen() {
               className="w-11 rounded border border-border bg-background px-1 py-0.5 text-center text-[10.5px] font-semibold text-foreground outline-none focus:border-foreground/40"
             />
             {pick("% 도달)", "% of baseline)")}
-          </span>
-          <span className="ml-1 inline-flex items-center gap-1" title={pick("재입고 후 이 일수가 지나기 전에 기준선에 도달해도 회복으로 인정하지 않음 — 재입고 직후 밀린 주문이 한꺼번에 풀리며 생기는 일시적 스파이크를 걸러내기 위함(13일 미만은 트레일링 14일 윈도우 특성상 허용 안 됨)", "Reaching the threshold before this many days have passed since restock doesn't count as recovery — this filters out temporary spikes from backlogged orders shipping all at once right after restock (values below 13 aren't allowed, since the trailing 14-day window can't validly be shorter than that)")}>
-            ({pick("재입고 후", "Ignore recovery within")}
-            <input
-              type="number"
-              min={13}
-              max={89}
-              step={1}
-              value={minRecoveryDaysDraft}
-              onChange={(e) => setMinRecoveryDaysDraft(e.target.value)}
-              onBlur={commitMinRecoveryDaysDraft}
-              onKeyDown={(e) => { if (e.key === "Enter") { commitMinRecoveryDaysDraft(); (e.target as HTMLInputElement).blur(); } }}
-              className="w-11 rounded border border-border bg-background px-1 py-0.5 text-center text-[10.5px] font-semibold text-foreground outline-none focus:border-foreground/40"
-            />
-            {pick("일 이내 회복은 무시)", "days of restock)")}
           </span>
         </p>
         <div className="overflow-x-auto">
@@ -535,10 +506,28 @@ export function RecoveryScreen() {
                   <td className="whitespace-nowrap px-3.5 py-2.5 font-mono text-muted-foreground">{r.restockDate}</td>
                   <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums">{pick(`${r.oosDays}일`, `${r.oosDays}d`)}</td>
                   <td
+                    className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums text-muted-foreground"
+                    title={pick("재입고 후 1개월(0~30일)간 판매량이 품절 직전 기준선의 몇 %였는지", "Sales in the 1st month (days 0–30) after restock, as a % of the pre-stockout baseline")}
+                  >
+                    {pctLabel(r.month1Pct)}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums text-muted-foreground"
+                    title={pick("재입고 후 2개월(30~60일)간 판매량이 품절 직전 기준선의 몇 %였는지", "Sales in the 2nd month (days 30–60) after restock, as a % of the pre-stockout baseline")}
+                  >
+                    {pctLabel(r.month2Pct)}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono tabular-nums text-muted-foreground"
+                    title={pick("재입고 후 3개월(60~90일)간 판매량이 품절 직전 기준선의 몇 %였는지", "Sales in the 3rd month (days 60–90) after restock, as a % of the pre-stockout baseline")}
+                  >
+                    {pctLabel(r.month3Pct)}
+                  </td>
+                  <td
                     className="whitespace-nowrap px-3.5 py-2.5 text-right font-mono font-bold tabular-nums"
                     title={pick(
-                      `재입고 후 트레일링 14일 평균이 기준선의 ${thresholdPct}%에 처음 도달한 날 — 90일 안에 도달 못하면 미회복(또는 아직 90일 전이면 관찰중)`,
-                      `The first day the trailing 14-day average reached ${thresholdPct}% of baseline after restock — if not reached within 90 days it's Not Recovered (or Pending if still under 90 days)`,
+                      `1/2/3개월차 평균 중 기준선의 ${thresholdPct}%에 처음 도달한 달(왼쪽 회복률 컬럼과 동일한 기준) — 90일 안에 도달 못하면 미회복(또는 아직 90일 전이면 관찰중)`,
+                      `The first of the Month 1/2/3 averages (same basis as the recovery % columns to the left) to reach ${thresholdPct}% of baseline — if none does within 90 days it's Not Recovered (or Pending if still under 90 days)`,
                     )}
                   >
                     {daysToRecoveryLabel(r, pick)}
@@ -559,14 +548,8 @@ export function RecoveryScreen() {
         />
       </div>
 
-      <div className="planning-panel flex flex-col gap-3 rounded-xl border p-4 lg:sticky lg:top-4 lg:self-start">
-        {!open ? (
-          <div className="flex min-h-[240px] flex-col items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-            <span>{pick("SKU별 상세에서 행을 클릭하면", "Click a row in SKU Details")}</span>
-            <span>{pick("재입고 후 일별 판매량 그래프가 여기에 표시됩니다.", "and the daily post-restock sales chart will appear here.")}</span>
-          </div>
-        ) : (
-          <>
+      {open && (
+        <div className="planning-panel flex min-w-0 flex-col gap-3 rounded-xl border p-4 lg:sticky lg:top-4 lg:self-start">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <span className="font-mono text-sm font-semibold">{open.sku}</span>
@@ -603,7 +586,7 @@ export function RecoveryScreen() {
                   markers={[
                     { at: 0, label: pick("재입고", "Restock") },
                     ...(open.daysToRecovery !== null
-                      ? [{ at: open.daysToRecovery, label: pick(`회복(${open.daysToRecovery}일)`, `Recovery (${open.daysToRecovery}d)`), color: "var(--chart-aqua)" }]
+                      ? [{ at: open.daysToRecovery, label: pick(`회복 확인(${open.daysToRecovery}일)`, `Recovery confirmed (${open.daysToRecovery}d)`), color: "var(--chart-aqua)" }]
                       : []),
                   ]}
                   series={[{
@@ -618,12 +601,12 @@ export function RecoveryScreen() {
                 <p className="text-[11px] text-muted-foreground">
                   {drilldownMode === "trailing"
                     ? pick(
-                        "트레일링 14일 평균 판매량(실측, 판매 있었던 날짜만 표시) — 회복 판정에 쓰이는 것과 동일한 값이라 \"회복\" 마커가 실제로 기준선을 넘는 지점과 일치합니다.",
-                        "Trailing 14-day average sales (actual, shown only for days with a sale) — this is the exact value used to determine recovery, so the \"Recovery\" marker lines up with where the line actually crosses the baseline.",
+                        "트레일링 14일 평균 판매량(실측, 판매 있었던 날짜만 표시) — 참고용 시각화이며, 실제 회복 판정은 이 선이 기준선을 넘는 순간이 아니라 왼쪽 \"회복까지 걸린 일수\"와 동일한 월별(30/60/90일) 평균 기준으로 이뤄집니다.",
+                        "Trailing 14-day average sales (actual, shown only for days with a sale) — shown for context only. Recovery is judged the same way as \"Days to Recovery\" on the left: by the Month 1/2/3 (30/60/90-day) block averages, not by the moment this line crosses the baseline.",
                       )
                     : pick(
-                        "하루치 실측 판매량(판매 있었던 날짜만 표시) — 하루 단위라 주문이 몰리거나 0건인 날 때문에 들쭉날쭉할 수 있음. 회복 판정은 이 값이 아니라 왼쪽의 트레일링 14일 평균으로 계산됩니다.",
-                        "Actual daily sales quantity (shown only for days with a sale) — being day-by-day, it can swing due to order bursts or zero-sale days. Recovery itself is calculated from the trailing 14-day average, not this value.",
+                        "하루치 실측 판매량(판매 있었던 날짜만 표시) — 하루 단위라 주문이 몰리거나 0건인 날 때문에 들쭉날쭉할 수 있음. 회복 판정은 왼쪽의 월별(30/60/90일) 평균으로 계산됩니다.",
+                        "Actual daily sales quantity (shown only for days with a sale) — being day-by-day, it can swing due to order bursts or zero-sale days. Recovery itself is judged from the Month 1/2/3 (30/60/90-day) block averages on the left, not this value.",
                       )}
                 </p>
                 <div className="overflow-hidden rounded-lg border border-border">
@@ -649,9 +632,8 @@ export function RecoveryScreen() {
                 {pick("이 기간에 실제 판매 데이터가 없습니다.", "No actual sales data in this period.")}
               </div>
             ) : null}
-          </>
-        )}
-      </div>
+        </div>
+      )}
       </div>
       </>
       )}
