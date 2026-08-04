@@ -16,6 +16,11 @@ const NON_SHOPIFY_CHANNELS = `'Amazon FBA','Amazon FBM','Walmart','Auto_Armor','
 const SHOPIFY_CHANNELS = `'Coverland B2C','Coverland B2B','Icarcover'`;
 
 const MIN_DAYS_SINCE_RESTOCK = 7;
+// Rows with a technically-nonzero but negligible baseline (e.g. 1 unit sold in
+// the 30 days before stockout = 0.033/day) rounded to "0.0" in the UI's
+// 1-decimal display, making them look like divide-by-nothing noise. 0.05 is
+// the exact cutoff where toFixed(1) starts showing "0.1" instead of "0.0".
+const MIN_BASELINE = 0.05;
 const ROLLING_WINDOW_DAYS = 14;
 export const DEFAULT_RECOVERY_THRESHOLD_PCT = 0.8;
 export const RECOVERY_HORIZON_DAYS = 90;
@@ -230,7 +235,7 @@ export const OosImpactRepository = {
          AND dr.order_date >= a.back_in_stock_on + GREATEST(${ROLLING_WINDOW_DAYS - 1}, $2::int)
          AND dr.order_date <= a.back_in_stock_on + ${RECOVERY_HORIZON_DAYS}
          AND dr.trailing_avg >= $1::numeric * a.baseline
-        WHERE a.baseline > 0
+        WHERE a.baseline >= ${MIN_BASELINE}
         GROUP BY a.master_sku, a.channel, a.back_in_stock_on
       )
       SELECT
@@ -247,7 +252,7 @@ export const OosImpactRepository = {
       FROM agg a
       LEFT JOIN recovery r
         ON r.master_sku = a.master_sku AND r.channel = a.channel AND r.back_in_stock_on = a.back_in_stock_on
-      WHERE a.baseline > 0
+      WHERE a.baseline >= ${MIN_BASELINE}
       ORDER BY a.days_since_restock ASC
     `, [thresholdPct, minRecoveryDays]);
     return result.rows;
