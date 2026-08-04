@@ -9,7 +9,7 @@
 // pieces (Chip, Kpi, LineChart, etc.) live in shared.tsx.
 
 import { useEffect, useState } from "react";
-import { ChevronRight, Download, PackageX, RefreshCw } from "lucide-react";
+import { ChevronRight, PackageX, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -82,10 +82,6 @@ export function OosImpactContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted">
-            <Download className="h-3.5 w-3.5" />
-            {pick("내보내기", "Export")}
-          </button>
           <span suppressHydrationWarning className="font-mono text-[11px] text-muted-foreground">
             {lastSync ? pick(`동기화: ${lastSync}`, `Synced ${lastSync}`) : "—"}
           </span>
