@@ -8,8 +8,8 @@
 // people can each own one screen file without touching this one. Shared
 // pieces (Chip, Kpi, LineChart, etc.) live in shared.tsx.
 
-import { useState } from "react";
-import { ChevronRight, Download, PackageX, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronRight, PackageX, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -28,6 +28,21 @@ export function OosImpactContent() {
   // freshly-synced data instead of whatever was cached in state pre-sync.
   const [syncNonce, setSyncNonce] = useState(0);
   const canSync = permissionsReady && can("demand-planning", "edit");
+
+  // "언제 마지막으로 동기화됐는지" — this button triggers the same shared
+  // refreshStats pipeline as the Demand Planning dashboard's own Sync button,
+  // so it reads/refreshes the same MAX(fc_stats.calculated_at) timestamp
+  // rather than tracking a separate OOS-Impact-only concept of "last synced."
+  const [lastSync, setLastSync] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(apiPath("/api/planning/stats/last-sync"))
+      .then((r) => r.json())
+      .then((json: { success: boolean; lastSync?: string | null }) => {
+        if (json.success) setLastSync(json.lastSync ?? null);
+      })
+      .catch(() => {});
+  }, [syncNonce]);
 
   async function handleSync() {
     if (syncing) return;
@@ -67,10 +82,9 @@ export function OosImpactContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" className="flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted">
-            <Download className="h-3.5 w-3.5" />
-            {pick("내보내기", "Export")}
-          </button>
+          <span suppressHydrationWarning className="font-mono text-[11px] text-muted-foreground">
+            {lastSync ? pick(`동기화: ${lastSync}`, `Synced ${lastSync}`) : "—"}
+          </span>
           <button
             type="button"
             disabled={!canSync || syncing}

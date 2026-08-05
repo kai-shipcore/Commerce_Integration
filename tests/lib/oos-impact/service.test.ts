@@ -11,7 +11,11 @@ const repositoryMock = {
 const cacheGetMock = vi.fn();
 const cacheSetMock = vi.fn();
 
-vi.mock("@/lib/oos-impact/repository", () => ({ OosImpactRepository: repositoryMock }));
+vi.mock("@/lib/oos-impact/repository", () => ({
+  OosImpactRepository: repositoryMock,
+  DEFAULT_RECOVERY_THRESHOLD_PCT: 0.9,
+  RECOVERY_HORIZON_DAYS: 90,
+}));
 vi.mock("@/lib/redis", () => ({ CacheManager: { get: cacheGetMock, set: cacheSetMock } }));
 
 const { OosImpactService } = await import("@/lib/oos-impact/service");
@@ -47,82 +51,110 @@ describe("OosImpactService.getTopSellers", () => {
 });
 
 describe("OosImpactService.getRecovery", () => {
+  // daysToRecovery is derived entirely from day0_30_avg/day30_60_avg/day60_90_avg
+  // vs. baseline (the same Month 1/2/3 % shown in the table) — there is no
+  // separate days_to_recovery field from the repository anymore, precisely so
+  // the headline status can never disagree with those columns.
   const baseRow = {
     master_sku: "SKU-1",
-    channel: "Amazon FBA",
+    item_category: "Car Cover",
     oos_started_on: "2026-01-01",
     oos_days: 10,
     back_in_stock_on: "2026-01-11",
     days_since_restock: 40,
     baseline: "5.0",
-    day0_30_avg: "4.0",
+    day0_30_avg: "4.5", // 90% of baseline — exactly at the default threshold
     day30_60_avg: null,
     day60_90_avg: null,
   };
 
-  it("classifies as good when daysToRecovery is within 30 days", async () => {
-    repositoryMock.getRecoveryRows.mockResolvedValue([{ ...baseRow, days_to_recovery: 20 }]);
+  it("classifies as good when Month 1's average already reaches the threshold", async () => {
+    repositoryMock.getRecoveryRows.mockResolvedValue([baseRow]);
     const { data } = await OosImpactService.getRecovery();
+    expect(data[0].daysToRecovery).toBe(30);
     expect(data[0].severity).toBe("good");
     expect(data[0].label).toBe("정상 회복");
   });
 
-  it("classifies as warning when recovered but later than 30 days", async () => {
-    repositoryMock.getRecoveryRows.mockResolvedValue([{ ...baseRow, days_to_recovery: 45 }]);
+  it("classifies as warning when only Month 2 reaches the threshold", async () => {
+    repositoryMock.getRecoveryRows.mockResolvedValue([{
+      ...baseRow, days_since_restock: 65, day0_30_avg: "2.0", day30_60_avg: "4.5",
+    }]);
     const { data } = await OosImpactService.getRecovery();
+    expect(data[0].daysToRecovery).toBe(60);
     expect(data[0].severity).toBe("warning");
+    expect(data[0].label).toBe("느린 회복");
   });
 
-  it("classifies as serious when not yet recovered but still within the horizon", async () => {
-    repositoryMock.getRecoveryRows.mockResolvedValue([{ ...baseRow, days_since_restock: 50, days_to_recovery: null }]);
+  it("classifies as serious when no month has reached the threshold yet but still within the horizon", async () => {
+    repositoryMock.getRecoveryRows.mockResolvedValue([{
+      ...baseRow, days_since_restock: 50, day0_30_avg: "1.0", day30_60_avg: null,
+    }]);
     const { data } = await OosImpactService.getRecovery();
+    expect(data[0].daysToRecovery).toBeNull();
     expect(data[0].severity).toBe("serious");
     expect(data[0].label).toBe("관찰중");
   });
 
-  it("classifies as critical when never recovered past the horizon", async () => {
-    repositoryMock.getRecoveryRows.mockResolvedValue([{ ...baseRow, days_since_restock: 91, days_to_recovery: null }]);
+  it("classifies as critical when no month reaches the threshold past the horizon", async () => {
+    repositoryMock.getRecoveryRows.mockResolvedValue([{
+      ...baseRow, days_since_restock: 91, day0_30_avg: "1.0", day30_60_avg: "1.0", day60_90_avg: "1.0",
+    }]);
     const { data } = await OosImpactService.getRecovery();
+    expect(data[0].daysToRecovery).toBeNull();
     expect(data[0].severity).toBe("critical");
     expect(data[0].label).toBe("미회복");
   });
 
   it("rounds null day-window averages through as null", async () => {
-    repositoryMock.getRecoveryRows.mockResolvedValue([{ ...baseRow, days_to_recovery: 20 }]);
+    repositoryMock.getRecoveryRows.mockResolvedValue([baseRow]);
     const { data } = await OosImpactService.getRecovery();
     expect(data[0].day30to60).toBeNull();
     expect(data[0].day60to90).toBeNull();
-    expect(data[0].day0to30).toBe(4);
+    expect(data[0].day0to30).toBe(4.5);
+  });
+
+  it("computes month1/2/3 recovery % as a share of baseline, null when the window average is null", async () => {
+    repositoryMock.getRecoveryRows.mockResolvedValue([baseRow]);
+    const { data } = await OosImpactService.getRecovery();
+    expect(data[0].month1Pct).toBe(90); // 4.5 / 5.0 * 100
+    expect(data[0].month2Pct).toBeNull();
+    expect(data[0].month3Pct).toBeNull();
   });
 });
 
 describe("OosImpactService.getRecoveryDrilldown", () => {
   it("throws ValidationError when sku is missing", async () => {
-    await expect(OosImpactService.getRecoveryDrilldown(null, "Amazon FBA", null)).rejects.toThrow(ValidationError);
+    await expect(OosImpactService.getRecoveryDrilldown(null, null)).rejects.toThrow(ValidationError);
     expect(repositoryMock.findLatestEpisode).not.toHaveBeenCalled();
-  });
-
-  it("throws ValidationError when channel is missing", async () => {
-    await expect(OosImpactService.getRecoveryDrilldown("SKU-1", null, null)).rejects.toThrow(ValidationError);
   });
 
   it("throws NotFoundError when no resolved episode exists", async () => {
     repositoryMock.findLatestEpisode.mockResolvedValue(undefined);
-    await expect(OosImpactService.getRecoveryDrilldown("SKU-1", "Amazon FBA", null)).rejects.toThrow(NotFoundError);
+    await expect(OosImpactService.getRecoveryDrilldown("SKU-1", null)).rejects.toThrow(NotFoundError);
   });
 
-  it("passes restockDate through to disambiguate the episode and builds the 7-point series", async () => {
+  it("passes restockDate through to disambiguate the episode and rounds the daily trailing-average series", async () => {
     repositoryMock.findLatestEpisode.mockResolvedValue({ oos_started_on: "2026-01-01", back_in_stock_on: "2026-01-11" });
     repositoryMock.getDrilldownSeries.mockResolvedValue({
-      pre1: "1.0", pre2: "2.0", baseline: "1.5", d15: "3.0", d30: "4.0", d60: "5.0", d90: "6.0",
+      baseline: "1.5",
+      points: [
+        { day_offset: -10, trailing_avg: "1.04", qty: "2" },
+        { day_offset: 0, trailing_avg: "0", qty: "0" },
+        { day_offset: 13, trailing_avg: "1.26", qty: "3" },
+      ],
     });
 
-    const result = await OosImpactService.getRecoveryDrilldown("SKU-1", "Amazon FBA", "2026-01-11");
+    const result = await OosImpactService.getRecoveryDrilldown("SKU-1", "2026-01-11");
 
     expect(repositoryMock.findLatestEpisode).toHaveBeenCalledWith("SKU-1", "2026-01-11");
-    expect(repositoryMock.getDrilldownSeries).toHaveBeenCalledWith("SKU-1", "Amazon FBA", "2026-01-01", "2026-01-11");
+    expect(repositoryMock.getDrilldownSeries).toHaveBeenCalledWith("SKU-1", "2026-01-01", "2026-01-11");
     expect(result).toEqual({
-      points: [1, 2, 0, 3, 4, 5, 6],
+      points: [
+        { dayOffset: -10, value: 1, qty: 2 },
+        { dayOffset: 0, value: 0, qty: 0 },
+        { dayOffset: 13, value: 1.3, qty: 3 },
+      ],
       baseline: 1.5,
       restockDate: "2026-01-11",
     });

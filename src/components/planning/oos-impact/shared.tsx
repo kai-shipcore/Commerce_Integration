@@ -229,13 +229,19 @@ export interface LineSeries {
   endLabel?: string;
 }
 
+export interface ChartMarker {
+  at: number;
+  label?: string;
+  color?: string;
+}
+
 export function LineChart({
   xs, series, yMin, yMax, yTicks, xTicks, xUnit = "", yUnit = "",
-  refValue, refLabel, marker, markerLabel, height = 240, labelFontSize = 10,
+  refValue, refLabel, markers, height = 240, labelFontSize = 10,
 }: {
   xs: number[]; series: LineSeries[]; yMin: number; yMax: number; yTicks: number[];
   xTicks?: number[]; xUnit?: string; yUnit?: string;
-  refValue?: number; refLabel?: string; marker?: number; markerLabel?: string; height?: number; labelFontSize?: number;
+  refValue?: number; refLabel?: string; markers?: ChartMarker[]; height?: number; labelFontSize?: number;
 }) {
   const width = 900;
   const padL = labelFontSize > 10 ? 52 : 38;
@@ -270,12 +276,12 @@ export function LineChart({
           {refLabel && <text x={width - padR} y={Y(refValue) - 7} textAnchor="end" fontSize={labelFontSize} fill="var(--muted-foreground)" fontWeight={700}>{refLabel}</text>}
         </g>
       )}
-      {marker !== undefined && (
-        <g>
-          <line x1={X(marker)} x2={X(marker)} y1={padT} y2={height - padB} stroke="var(--foreground)" strokeWidth={1.25} strokeDasharray="3 3" opacity={0.55} />
-          {markerLabel && <text x={X(marker)} y={padT - 7} textAnchor="middle" fontSize={labelFontSize + 1} fontWeight={700} fill="var(--foreground)">{markerLabel}</text>}
+      {markers?.map((m, mi) => (
+        <g key={mi}>
+          <line x1={X(m.at)} x2={X(m.at)} y1={padT} y2={height - padB} stroke={m.color ?? "var(--foreground)"} strokeWidth={1.25} strokeDasharray="3 3" opacity={0.55} />
+          {m.label && <text x={X(m.at)} y={padT - 7} textAnchor="middle" fontSize={labelFontSize + 1} fontWeight={700} fill={m.color ?? "var(--foreground)"}>{m.label}</text>}
         </g>
-      )}
+      ))}
       {series.map((s, si) => {
         const pts = xs.map((x, i) => `${X(x)},${Y(s.data[i])}`).join(" ");
         const lastX = X(xs[xs.length - 1]);

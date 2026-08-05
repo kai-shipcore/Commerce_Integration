@@ -626,7 +626,7 @@ export function PreorderScreen() {
               yTicks={openChartScale?.ticks ?? [0, 0.5, 1]}
               xTicks={[-openChartDays, 0, openChartDays]}
               xUnit={pick("일", "d")}
-              marker={0} markerLabel={pick("품절 기준일", "Stockout Date")}
+              markers={[{ at: 0, label: pick("품절 기준일", "Stockout Date") }]}
               height={400}
               labelFontSize={18}
               series={[{ data: [open.pre, open.pre, open.pre, open.pre, open.post, open.post, open.post, open.post], color: "var(--chart-blue)", area: true, endLabel: pick(`${open.post.toFixed(2)}개 / 일`, `${open.post.toFixed(2)} / day`) }]}
