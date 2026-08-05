@@ -11,10 +11,12 @@
  * must be bought, red takes away from it. The total is left neutral, being
  * neither.
  *
- * The plausible band sits directly under the headline figure rather than below
- * the caption, because it qualifies that figure. Placed after the caption it
- * became the middle of three lines of small grey text and was read straight
- * past.
+ * There is no plausible band. It flexed coverage demand by the SKU's own error,
+ * which is the same quantity safety stock adds, so at the default service level
+ * its upper edge was the recommendation itself. It read as a range containing
+ * the decision while actually ending at it. Uncertainty belongs to the
+ * reliability card beside this one, where it is measured over the backtest
+ * windows rather than restated from the error term this card already spent.
  */
 
 import { useMemo } from "react";
@@ -59,17 +61,13 @@ function renderLines(breakdown: OrderBreakdownLine[]): RenderedLine[] {
 
 export function OrderCard({
   total,
-  band,
   breakdown,
-  errorUsed,
   leadWeeks,
   reviewWeeks,
   draftInbound = 0,
 }: {
   total: number;
-  band: { low: number; high: number } | null;
   breakdown: OrderBreakdownLine[];
-  errorUsed: number | null;
   leadWeeks: number;
   reviewWeeks: number;
   /** Units on a container still in draft. Not part of the sum below, so this is
@@ -86,7 +84,7 @@ export function OrderCard({
 
   return (
     <div className="flex h-full flex-col rounded-md border p-4">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
         {pick("권장 발주량", "Recommended order")}
       </div>
 
@@ -94,32 +92,14 @@ export function OrderCard({
         {nf.format(total)}
       </div>
 
-      {band && (
-        <div className="mt-2 inline-flex w-fit items-baseline gap-2 rounded-md border border-indigo-300/50 bg-indigo-50 px-2 py-1 dark:border-indigo-800/60 dark:bg-indigo-950/40">
-          <span className="text-[8.5px] uppercase tracking-wider text-muted-foreground">
-            {pick("타당 범위", "plausible")}
-          </span>
-          <span className="text-[13px] font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
-            {nf.format(band.low)}–{nf.format(band.high)}
-          </span>
-          {errorUsed !== null && (
-            <span className="text-[9.5px] text-muted-foreground">
-              ±{Math.round(errorUsed * 100)}% {pick("오차", "error")}
-            </span>
-          )}
-        </div>
-      )}
-
-      {band && total > band.high && (
-        <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-          {pick(
-            "선택한 서비스 수준을 유지하기 위해 이 범위보다 높게 권장됩니다.",
-            "Recommended above this band to hold the chosen service level.",
-          )}
-        </p>
-      )}
-
-      <p className="mt-1 text-[10.5px] text-muted-foreground">
+      {/* No plausible band. It flexed coverage demand by this SKU's error, which
+          is the same quantity safety stock adds, so at the default service level
+          its upper edge was the recommendation itself: one figure shown twice,
+          once as a decision and once as a range that appeared to contain it but
+          ended at it. The reliability card beside this one carries uncertainty,
+          measured over the backtest windows rather than restated from the same
+          error term. */}
+      <p className="mt-1 text-[11.5px] text-muted-foreground">
         {pick(
           `${leadWeeks}주 리드타임과 ${reviewWeeks}주 발주 주기를 포함한 수량`,
           `units, covering a ${leadWeeks}-week lead time plus a ${reviewWeeks}-week reorder cycle`,
@@ -133,14 +113,14 @@ export function OrderCard({
       {draftInbound > 0 && (
         <div className="mt-2 rounded-md border border-sky-300/50 bg-sky-50 px-2 py-1.5 dark:border-sky-800/60 dark:bg-sky-950/40">
           <div className="flex items-baseline gap-2">
-            <span className="text-[8.5px] uppercase tracking-wider text-muted-foreground">
+            <span className="text-[11.5px] uppercase tracking-wider text-muted-foreground">
               {pick("초안 반영 시", "if the draft stands")}
             </span>
-            <span className="text-[15px] font-semibold tabular-nums text-sky-700 dark:text-sky-300">
+            <span className="text-[16px] font-semibold tabular-nums text-sky-700 dark:text-sky-300">
               {nf.format(netOfDraft)}
             </span>
           </div>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+          <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
             {pick(
               `${nf.format(total)} − 초안 ${nf.format(draftInbound)}. 초안은 확정이 아니므로 위 권장 수량에는 반영되어 있지 않습니다. 그 컨테이너가 예정대로 출고된다면 실제 필요량은 이 수치입니다.`,
               `${nf.format(total)} less ${nf.format(draftInbound)} already drafted. The recommendation above does not assume that container ships, because a draft can be cancelled. If it does ship, this is the real requirement.`,
@@ -162,9 +142,9 @@ export function OrderCard({
                 key={line.component}
                 className={`${line.isTotal ? "border-t font-semibold" : ""} ${line.aside ? "italic opacity-55" : ""}`}
               >
-                <td className={`w-4 py-1.5 text-center text-[11.5px] ${colour || "opacity-70"}`}>{line.op}</td>
-                <td className="py-1.5 pl-1.5 text-[11.5px]">{line.component}</td>
-                <td className={`py-1.5 pr-1 text-right text-[11.5px] ${colour}`}>
+                <td className={`w-4 py-1.5 text-center text-[12.5px] ${colour || "opacity-70"}`}>{line.op}</td>
+                <td className="py-1.5 pl-1.5 text-[12.5px]">{line.component}</td>
+                <td className={`py-1.5 pr-1 text-right text-[12.5px] ${colour}`}>
                   {nf.format(Math.round(line.shown))}
                 </td>
               </tr>
@@ -173,7 +153,7 @@ export function OrderCard({
         </tbody>
       </table>
 
-      <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground opacity-80">
+      <p className="mt-2 text-[11.5px] leading-relaxed text-muted-foreground opacity-80">
         {pick(
           "발주량 = 미지급 수량 + 판매 예상 수량 + 예측 오차 대비 여유분 − 보유 재고 및 입고 예정분",
           "what to buy = what is owed + what will sell + a cushion for forecast error, less what is already here or on its way",

@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ModelCard } from "@/components/planning/model-card";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Download, Loader2, RotateCcw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
-  ActionListTable, DEFAULT_SORT, PRIORITY, nextSort, sortRows,
+  ActionListTable, DEFAULT_SORT, PRIORITY, describeSort, nextSort, sortRows,
   type SortCriterion, type SortKey,
 } from "./action-list-table";
 import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
@@ -34,7 +35,10 @@ import {
   type PlanningErrorBody,
 } from "@/components/planning/planning-error";
 import { NotForecastSection } from "./not-forecast-section";
+import { PlanningControls } from "./planning-controls";
 import { PortfolioChart } from "./portfolio-chart";
+import { RunForecast } from "./run-forecast";
+import { rememberSkuSequence } from "./sku-sequence";
 import {
   DEFAULT_PLANNING_PARAMS,
   planningQuery,
@@ -55,13 +59,6 @@ type Focus =
  *  nothing. Not a string a warning label could collide with. */
 const ANY_FLAG = "__any__";
 
-const SERVICE_LEVELS: { label: string; z: number }[] = [
-  { label: "84% (z=1.0)", z: 1.0 },
-  { label: "90% (z=1.28)", z: 1.28 },
-  { label: "95% (z=1.65)", z: 1.65 },
-  { label: "98% (z=2.05)", z: 2.05 },
-];
-
 export function ActionListContent({
   initialParams = DEFAULT_PLANNING_PARAMS,
 }: {
@@ -81,6 +78,13 @@ export function ActionListContent({
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [tier, setTier] = useState("all");
+  // Demand direction, given the same treatment as reliability: a filter here and
+  // a legend under the table stating its thresholds. It reached the SKU detail
+  // page first, where it was a single word with no definition and no way to
+  // find the other SKUs in the same state. Safe to sit alongside the summary
+  // cards rather than contradicting them, unlike the priority select below: it
+  // filters `demand_state`, which no card touches.
+  const [trend, setTrend] = useState("all");
   // No history-length filter. "short" and "long" describe how much training
   // data a SKU has, which is a fact about the model rather than about the
   // product, and a purchaser does nothing differently on that basis. The
@@ -188,10 +192,11 @@ export function ActionListContent({
     }
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     if (tier !== "all") rows = rows.filter((r) => r.tier === tier);
+    if (trend !== "all") rows = rows.filter((r) => r.demand_state === trend);
     // Sorted last, and on a copy: the server returns the worklist order, which
     // is what no criteria means, so it must not be mutated on the way through.
     return sortRows(rows, sort);
-  }, [data, focus, query, category, tier, sort]);
+  }, [data, focus, query, category, tier, trend, sort]);
 
   /** Warning counts over the rows the other filters left, so the summary line
    *  describes the same population the table would show if no warning were
@@ -215,7 +220,7 @@ export function ActionListContent({
   // returns to page 1 without an effect resetting it. Narrowing the filters while
   // on page 5 would otherwise land on an empty page, which reads as "no results"
   // rather than "you are past the end".
-  const filterKey = `${focus}|${query}|${category}|${tier}|${flag ?? ""}|${pageSize}`;
+  const filterKey = `${focus}|${query}|${category}|${tier}|${trend}|${flag ?? ""}|${pageSize}`;
   const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(view.length / pageSize));
   const currentPage = page.key === filterKey ? Math.min(page.page, totalPages) : 1;
   const goToPage = (n: number) => setPage({ key: filterKey, page: n });
@@ -338,9 +343,28 @@ export function ActionListContent({
       {/* Provenance. A planning screen that does not say how old its forecast is
           invites the reader to assume it is current. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {/* The vintage of what is on screen, in one line. It said when the
+            forecast was trained and nothing else, so a reader could not tell
+            which model produced it or how far it reaches. */}
         <span>
           {pick("학습 기준", "Trained through")}: <strong>{data.meta.trained_through ?? "—"}</strong>
         </span>
+        {/* The same card the validation page shows, opened here rather than
+            navigated to. Answering "what is v11" by sending a purchaser off the
+            worklist they were working through is not answering it.
+            No `source`: this payload does not carry the model block, so the
+            card fetches it when opened. The version string comes from this
+            page's own meta, so the trigger is correct before any fetch. */}
+        {data.meta.model_version && (
+          <span>
+            {pick("모델", "Model")}: <ModelCard version={data.meta.model_version} />
+          </span>
+        )}
+        {data.meta.horizon_end && (
+          <span>
+            {pick("예측 범위", "Horizon to")}: <strong>{data.meta.horizon_end}</strong>
+          </span>
+        )}
         {/* Kept visible on the success path too. The service can go down while
             the page is open, and the next filter change would then fail with no
             hint that the cause is external. */}
@@ -349,14 +373,27 @@ export function ActionListContent({
             summary button, and three copies of one number crowded out the two
             things in this bar that have to be read: how old the forecast is,
             and whether the stock figures are real. */}
-        <span className="ml-auto">
-          <ForecastServerStatus onRecovered={() => setReloadNonce((n) => n + 1)} />
-        </span>
+        {/* Moved back in front of the ml-auto spacer. It was rendered after it,
+            which pushed it to the far right of the bar, detached from the dates
+            it qualifies and reading as an unrelated aside.
+            It also said only that rows were dropped, not why, which is the part
+            that matters: these SKUs were classified smooth when the forecast
+            ran, so a forecast exists for them, and profiling has since demoted
+            them to intermittent. The run and the segmentation are computed at
+            different times and this is the visible seam between them. Without
+            the explanation a reader reconciling this screen against the run
+            finds a count that does not match and no account of the difference. */}
         {data.meta.demoted_since_forecast > 0 && (
-          <span>
+          <span
+            title={pick(
+              "예측 실행 시점에는 스무스로 분류되어 예측이 생성되었으나, 이후 프로파일링에서 비정기로 재분류된 SKU입니다. 예측 자체는 존재하지만 현재 분류를 신뢰해 목록에서 제외합니다.",
+              "These SKUs were classified smooth when the forecast ran, so predictions exist for them, but profiling has since reclassified them as intermittent. The list follows the current classification rather than the one the run was made under.",
+            )}
+            className="cursor-help underline decoration-dotted underline-offset-2"
+          >
             {pick(
-              `${data.meta.demoted_since_forecast}개는 비정기로 재분류되어 제외됨`,
-              `${data.meta.demoted_since_forecast} dropped as intermittent since the run`,
+              `${data.meta.demoted_since_forecast}개는 실행 이후 비정기로 재분류되어 제외됨`,
+              `${data.meta.demoted_since_forecast} reclassified intermittent since the run, so not listed`,
             )}
           </span>
         )}
@@ -365,7 +402,21 @@ export function ActionListContent({
             {pick("샘플 재고 데이터", "SAMPLE inventory data")}
           </span>
         )}
+        {/* Kept visible on the success path too. The service can go down while
+            the page is open, and the next filter change would then fail with no
+            hint that the cause is external. */}
+        <span className="ml-auto">
+          <ForecastServerStatus onRecovered={() => setReloadNonce((n) => n + 1)} />
+        </span>
       </div>
+
+      {/* Directly under the provenance bar, because the date in that bar is
+          what prompts anyone to open this. Collapsed by default: it is an
+          operational control on a screen built for purchasing decisions.
+          onComplete refetches, so a finished run replaces the figures on the
+          page without a reload and the "Trained through" date above moves to
+          the week that was just produced. */}
+      <RunForecast onComplete={() => setReloadNonce((n) => n + 1)} />
 
       {/* Which population. Kept above everything else, because the two sections
           answer different questions and every control below belongs to one of
@@ -408,7 +459,7 @@ export function ActionListContent({
           <span className="block text-base font-semibold tabular-nums">
             {nf.format(m.forecasted_skus)}
           </span>
-          <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="block text-[11.5px] uppercase tracking-wide text-muted-foreground">
             {pick("전체", "all")}
           </span>
         </button>
@@ -430,7 +481,7 @@ export function ActionListContent({
             }`}
           >
             <span className="block text-base font-semibold tabular-nums">{nf.format(c.value)}</span>
-            <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span className="block text-[11.5px] uppercase tracking-wide text-muted-foreground">
               {c.label}
             </span>
           </button>
@@ -446,11 +497,11 @@ export function ActionListContent({
           <span className="block text-base font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
             {nf.format(viewUnits)}
           </span>
-          <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="block text-[11.5px] uppercase tracking-wide text-muted-foreground">
             {narrowed ? pick("권장 수량 · 현재 목록", "units rec. · this view") : pick("권장 수량", "units rec.")}
           </span>
           {narrowed && (
-            <span className="block text-[10px] text-muted-foreground/70">
+            <span className="block text-[11.5px] text-muted-foreground/70">
               {pick(
                 `전체 ${nf.format(m.total_recommended_order_qty)}`,
                 `of ${nf.format(m.total_recommended_order_qty)} in the full list`,
@@ -460,46 +511,23 @@ export function ActionListContent({
         </div>
       </div>
 
-      {/* Planning assumptions. Server-side, so changing one refetches. */}
-      <div className="flex flex-wrap items-end gap-3 rounded-md border bg-muted/30 p-3 text-xs">
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground">{pick("리드타임(주)", "Lead time (wks)")}</span>
-          <Input
-            type="number" min={1} max={52} value={lead}
-            onChange={(e) => setLead(Math.max(1, Math.min(52, Number(e.target.value) || 1)))}
-            className="h-8 w-20"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground">{pick("발주 주기(주)", "Review (wks)")}</span>
-          <Input
-            type="number" min={1} max={13} value={review}
-            onChange={(e) => setReview(Math.max(1, Math.min(13, Number(e.target.value) || 1)))}
-            className="h-8 w-20"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground">{pick("서비스 수준", "Service level")}</span>
-          <select
-            value={z}
-            onChange={(e) => setZ(Number(e.target.value))}
-            className="h-8 rounded-md border bg-background px-2"
-          >
-            {SERVICE_LEVELS.map((s) => (
-              <option key={s.z} value={s.z}>{s.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground">{pick("품절 위험 기간(일)", "Risk window (days)")}</span>
-          <Input
-            type="number" min={1} max={365} value={horizon}
-            onChange={(e) => setHorizon(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
-            className="h-8 w-20"
-          />
-        </label>
-        {loading && <Loader2 className="mb-2 h-4 w-4 animate-spin text-muted-foreground" />}
-      </div>
+      {/* Planning assumptions. Server-side, so changing one refetches. Shared
+          with the SKU detail page so both screens explain them identically. */}
+      <PlanningControls
+        params={{
+          lead_time_weeks: lead,
+          review_period_weeks: review,
+          service_z: z,
+          stockout_horizon_days: horizon,
+        }}
+        onChange={(next) => {
+          setLead(next.lead_time_weeks);
+          setReview(next.review_period_weeks);
+          setZ(next.service_z);
+          setHorizon(next.stockout_horizon_days);
+        }}
+        busy={loading}
+      />
 
       {/* Filters. */}
       <div className="flex flex-wrap items-center gap-2">
@@ -529,6 +557,18 @@ export function ActionListContent({
           <option value="none">{pick("미측정", "none")}</option>
         </select>
         <select
+          value={trend}
+          onChange={(e) => setTrend(e.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-xs"
+        >
+          <option value="all">{pick("수요 추세: 전체", "Trend: all")}</option>
+          <option value="rising">{pick("상승", "rising")}</option>
+          <option value="steady">{pick("보합", "steady")}</option>
+          <option value="falling">{pick("하락", "falling")}</option>
+          <option value="collapsing">{pick("급감", "collapsing")}</option>
+          <option value="unknown">{pick("알 수 없음", "unknown")}</option>
+        </select>
+        <select
           value={String(pageSize)}
           onChange={(e) =>
             setPageSize(e.target.value === "all" ? "all" : Number(e.target.value))
@@ -544,7 +584,7 @@ export function ActionListContent({
           type="button"
           onClick={() => {
             setFocus("all"); setQuery(""); setCategory("all");
-            setTier("all"); setFlag(null); setSort(DEFAULT_SORT);
+            setTier("all"); setTrend("all"); setFlag(null); setSort(DEFAULT_SORT);
           }}
           className="flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted/60"
         >
@@ -557,13 +597,16 @@ export function ActionListContent({
         >
           <Download className="h-3 w-3" /> {pick("CSV 내보내기", "Export CSV")}
         </button>
-        <span className="text-[10px] text-muted-foreground">
-          {sort.length === 0
-            ? pick("우선순위 순", "worklist order")
-            : pick(
-                `${sort.length}개 기준 정렬 · Shift+클릭으로 추가`,
-                `sorted by ${sort.length} column${sort.length === 1 ? "" : "s"} · shift-click to add`,
-              )}
+        {/* The order in words, where a dropdown of named orders used to be. See
+            describeSort() for why the control went: every order it offered was
+            already a header click away, including the default. What it was
+            genuinely carrying was the default's name, and a sentence carries
+            that in every state rather than only while the default is chosen. */}
+        <span className="text-[12.5px] leading-tight text-muted-foreground">
+          {pick(
+            `정렬: ${describeSort(sort)[0]} · 열 제목을 클릭해 변경, Shift+클릭으로 추가`,
+            `Sorted by ${describeSort(sort)[1]} · click a column to change it, shift-click to add one`,
+          )}
         </span>
         {/* Row count only. The units figure that used to trail this line is now
             the dashed card in the row of counts, where it reads as a quantity rather
@@ -582,7 +625,7 @@ export function ActionListContent({
           that ignores the filters describes a different population from the rows
           below it. */}
       {(quality.flagged > 0 || flag !== null) && (
-        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-muted-foreground">
           <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
           <button
             type="button"
@@ -633,6 +676,7 @@ export function ActionListContent({
         <>
         <ActionListTable
           rows={pageRows}
+          coverageWeeks={data.params.lead_time_weeks + data.params.review_period_weeks}
           // The planning parameters travel with the link. Without them the
           // detail page answers at the default lead time while the row the user
           // clicked answers at theirs, and the two screens quietly disagree
@@ -640,11 +684,16 @@ export function ActionListContent({
           skuHref={(sku) =>
             `/planning/action-list/${encodeURIComponent(sku)}?${planningQuery(data.params)}`
           }
-          onOpenSku={(sku) =>
+          // The whole filtered and sorted view, not just the row clicked. The
+          // detail page steps between SKUs, and without this it stepped through
+          // the server's worklist order over every SKU rather than the sequence
+          // on screen.
+          onOpenSku={(sku) => {
+            rememberSkuSequence(view.map((r) => r.unique_id));
             router.push(
               `/planning/action-list/${encodeURIComponent(sku)}?${planningQuery(data.params)}`,
-            )
-          }
+            );
+          }}
           sort={sort}
           onSort={(key: SortKey, shiftKey: boolean) =>
             setSort((prev) => nextSort(prev, key, shiftKey))
@@ -653,7 +702,7 @@ export function ActionListContent({
         {/* Legend. The reliability column is three glyphs and a percentage, which
             means nothing without the thresholds behind it, and a tier is a
             judgement the reader should be able to check. */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
           <span className="font-medium">{pick("신뢰도", "Reliability")}:</span>
           {([
             ["good", "●●●", pick("좋음 · 오차 15% 이하", "good · error ≤15%")],
@@ -674,6 +723,40 @@ export function ActionListContent({
                 >
                   {glyph}
                 </span>
+                {label}
+                <span className="tabular-nums opacity-70">({nf.format(n)})</span>
+              </span>
+            );
+          })}
+        </div>
+
+        {/* Demand trend, defined where reliability is defined. A word like
+            "collapsing" on a SKU page means nothing without the rule behind it,
+            and this is the one place on either screen that states a threshold.
+            The ratio is the model's own ramp_4_12 feature, so what the dashboard
+            calls falling and what the model treats as falling cannot drift. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
+          <span className="font-medium">{pick("수요 추세", "Demand trend")}:</span>
+          <span className="opacity-80">
+            {pick(
+              "최근 4주 판매를 최근 12주 평균과 비교 (계절성 제거). 비율이므로 0.80과 1.25가 1.0에서 같은 거리입니다.",
+              "last 4 weeks against the last 12, seasonally adjusted. It is a ratio, so 0.80 and 1.25 are the same distance from 1.0",
+            )}
+          </span>
+          {([
+            ["rising", pick("상승 · 1.25배 초과", "rising · above 1.25×"), "text-emerald-600 dark:text-emerald-400"],
+            ["steady", pick("보합 · 0.80–1.25배", "steady · 0.80–1.25×"), ""],
+            ["falling", pick("하락 · 0.40–0.80배", "falling · 0.40–0.80×"), "text-amber-600 dark:text-amber-400"],
+            ["collapsing", pick("급감 · 0.40배 미만", "collapsing · under 0.40×"), "text-red-600 dark:text-red-400"],
+            // Listed because the filter offers it. It means the ratio could not
+            // be computed, which is a SKU with too little history rather than a
+            // SKU that is flat.
+            ["unknown", pick("알 수 없음 · 이력 부족", "unknown · not enough history"), ""],
+          ] as const).map(([key, label, colour]) => {
+            const n = view.filter((r) => r.demand_state === key).length;
+            return (
+              <span key={key} className="inline-flex items-center gap-1">
+                <span className={colour || "text-neutral-400"}>●</span>
                 {label}
                 <span className="tabular-nums opacity-70">({nf.format(n)})</span>
               </span>

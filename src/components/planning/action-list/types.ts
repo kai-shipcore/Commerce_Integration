@@ -73,6 +73,11 @@ export interface ActionListRow {
   n_windows: number;
 
   // Caveats.
+  /** Last 4 weeks over the last 12, on deseasonalized demand. The model's own
+   *  `ramp_4_12` feature, imported from src.ml.seasonal rather than
+   *  reimplemented, so the dashboard's notion of "falling" cannot drift from the
+   *  model's. `demand_state` is this number bucketed. */
+  ramp: number | null;
   demand_state: "collapsing" | "falling" | "steady" | "rising" | "unknown" | string;
   forecast_runs_high: boolean;
   forecast_over_recent: number | null;
@@ -108,6 +113,11 @@ export interface ActionListMeta {
    *  against the forecast run rather than appearing quietly short. */
   demoted_since_forecast: number;
   trained_through: string | null;
+  /** Which model produced the served forecast, and the last week it reaches.
+   *  Optional: the API and this app deploy independently, so a running API that
+   *  predates these fields must not blank the header. */
+  model_version?: string | null;
+  horizon_end?: string | null;
   inventory_is_sample: boolean;
 }
 
@@ -256,6 +266,34 @@ export interface BacktestWeek {
   y: number;
 }
 
+/** One method's record on this SKU, over the windows it was scored on. */
+export interface MethodScore {
+  version: string;
+  /** Pooled WAPE. Both methods divide by the same actual, so the two are
+   *  directly comparable rather than each measured against its own base. */
+  wape: number;
+  /** Percentage points. Positive means it forecast more than sold. */
+  bias_pct: number;
+  ae_units: number;
+  actual_units: number;
+  n_windows: number;
+}
+
+/** This SKU's model against the spreadsheet it replaces.
+ *
+ *  Null when either method has no scored window for the SKU, which is normal:
+ *  V1 does not cover every SKU, and 174 of 432 have no backtest history at all.
+ *  The portfolio comparison on the validation page does not answer this
+ *  question, because V1's error is season-dependent and an individual SKU can
+ *  run opposite to the aggregate. */
+export interface SkuComparison {
+  model: MethodScore;
+  baseline: MethodScore;
+  /** The windows both were scored on, named rather than counted so a reader can
+   *  see the two figures cover the same weeks. */
+  windows: string[];
+}
+
 export interface ForecastWeek {
   ds: string;
   yhat: number;
@@ -284,6 +322,10 @@ export interface SkuDetailResponse {
      *  shows. Not derivable from `forecast[0].ds`, which is the first week of
      *  the horizon and therefore one week later. */
     trained_through: string | null;
+    /** Trailing weeks the demand chart should draw. `history` may be longer:
+     *  it is extended back to cover the oldest backtest window, which the
+     *  backtest chart draws over and the demand chart does not need. */
+    history_weeks: number;
   };
   row: ActionListRow & {
     /** Mean weekly units over the last 4 weeks, on raw demand. The figure the
@@ -293,11 +335,11 @@ export interface SkuDetailResponse {
   flags: string[];
   order: {
     total: number;
-    band: { low: number; high: number };
     breakdown: OrderBreakdownLine[];
   };
   history: HistoryWeek[];
   forecast: ForecastWeek[];
+  comparison: SkuComparison | null;
   backtest: {
     windows: BacktestWindow[];
     weekly: BacktestWeek[];

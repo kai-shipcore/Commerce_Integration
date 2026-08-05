@@ -163,7 +163,7 @@ export function PortfolioChart({ skus }: { skus: string[] }) {
 
   return (
     <details className="rounded-md border" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="cursor-pointer select-none px-3 py-2.5 text-[12.5px] font-semibold hover:bg-muted/40">
+      <summary className="cursor-pointer select-none px-3 py-2.5 text-[13.5px] font-semibold hover:bg-muted/40">
         {pick(
           `이 ${skus.length.toLocaleString()}개 SKU의 수요`,
           `Demand across these ${skus.length.toLocaleString()} SKUs`,
@@ -175,7 +175,7 @@ export function PortfolioChart({ skus }: { skus: string[] }) {
             happened and the right of it is what the model claims will happen,
             and a reader lengthening one is asking a different question from a
             reader lengthening the other. */}
-        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11px]">
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[12.5px]">
           <span className="flex items-center gap-1">
             <span className="text-muted-foreground">{pick("실적 기간", "History")}</span>
             {HISTORY_WEEKS.map((w) => (
@@ -235,7 +235,7 @@ export function PortfolioChart({ skus }: { skus: string[] }) {
         {!loading && d && (
           <>
             <Plot data={traces} layout={layout} config={{ responsive: true, displayModeBar: false }} style={{ width: "100%" }} />
-            <p className="px-1 pt-1 text-[10.5px] leading-relaxed text-muted-foreground">
+            <p className="px-1 pt-1 text-[11.5px] leading-relaxed text-muted-foreground">
               {pick(
                 `최근 ${d.history_weeks}주 실판매와 이후 예측을, 현재 필터의 ${d.sku_count.toLocaleString()}개 SKU에 대해 합산했습니다. 점선은 실적이 끝나는 지점입니다.`,
                 `Last ${d.history_weeks} weeks of actual demand, then the forward forecast, summed across the ${d.sku_count.toLocaleString()} SKUs in the current filter. The dotted line marks where history ends.`,

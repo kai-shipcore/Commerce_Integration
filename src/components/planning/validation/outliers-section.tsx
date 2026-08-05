@@ -23,6 +23,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { SectionHeading } from "./section-heading";
 import type { OutlierRow, ValidationOutliers } from "./types";
 
 const nf = new Intl.NumberFormat("en-US");
@@ -52,18 +53,18 @@ function OutlierTable({
   return (
     <div className="flex min-w-0 flex-col rounded-md border">
       <div className="border-b px-3 py-2">
-        <p className="text-[11px] font-semibold">{title}</p>
-        <p className="mt-0.5 text-[10.5px] leading-relaxed text-muted-foreground">{note}</p>
+        <p className="text-[12.5px] font-semibold">{title}</p>
+        <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">{note}</p>
       </div>
       {rows.length === 0 ? (
-        <p className="p-4 text-[11.5px] text-muted-foreground">
+        <p className="p-4 text-[12.5px] text-muted-foreground">
           {pick("해당 SKU가 없습니다.", "No SKU falls in this group.")}
         </p>
       ) : (
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 z-10">
-              <tr className="bg-muted text-[9.5px] uppercase tracking-wide text-muted-foreground">
+              <tr className="bg-muted text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="py-1.5 pl-3 pr-2 text-left font-medium">SKU</th>
                 <th className="py-1.5 pr-2 text-left font-medium">{pick("구간", "Window")}</th>
                 <th className="py-1.5 pr-2 text-right font-medium">{pick("실판매", "Units")}</th>
@@ -74,7 +75,7 @@ function OutlierTable({
             <tbody>
               {rows.map((r) => (
                 <tr key={`${r.unique_id}-${r.window}`} className="border-t hover:bg-muted/40">
-                  <td className="py-1.5 pl-3 pr-2 text-[11px]">
+                  <td className="py-1.5 pl-3 pr-2 text-[12.5px]">
                     <Link
                       href={`/planning/action-list/${encodeURIComponent(r.unique_id)}`}
                       className="hover:text-sky-600 hover:underline dark:hover:text-sky-400"
@@ -82,16 +83,16 @@ function OutlierTable({
                       {r.unique_id}
                     </Link>
                   </td>
-                  <td className="py-1.5 pr-2 text-[11px] whitespace-nowrap text-muted-foreground">
+                  <td className="py-1.5 pr-2 text-[12.5px] whitespace-nowrap text-muted-foreground">
                     {r.window}
                   </td>
-                  <td className="py-1.5 pr-2 text-right text-[11px] tabular-nums text-muted-foreground">
+                  <td className="py-1.5 pr-2 text-right text-[12.5px] tabular-nums text-muted-foreground">
                     {nf.format(Math.round(r.y_total_cur))}
                   </td>
-                  <td className={`py-1.5 pr-2 text-right text-[11px] font-semibold tabular-nums ${accent}`}>
+                  <td className={`py-1.5 pr-2 text-right text-[12.5px] font-semibold tabular-nums ${accent}`}>
                     {pct(r.wape_cur)}
                   </td>
-                  <td className="py-1.5 pr-3 text-right text-[11px] tabular-nums text-muted-foreground">
+                  <td className="py-1.5 pr-3 text-right text-[12.5px] tabular-nums text-muted-foreground">
                     {pct(r.wape_base)}
                   </td>
                 </tr>
@@ -142,20 +143,19 @@ export function OutliersSection({
   const overlapping = eligible.length > 0 && eligible.length < topN * 2;
 
   return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-base font-semibold">{pick("SKU 단위 편차", "Where it breaks down")}</h2>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          {pick(
-            "합산 오차는 포트폴리오 전체에 대한 진술이며 개별 SKU를 보장하지 않습니다. 아래는 그 평균이 가장 크게 갈리는 지점입니다.",
-            `The pooled figure is a statement about the portfolio, not a promise about any SKU. These are the rows where it diverges most from ${baseline}.`,
-          )}
-        </p>
-      </div>
+    <section className="flex flex-col gap-4">
+      <SectionHeading
+        id="outliers"
+        title={pick("SKU 단위 편차", "Where it breaks down")}
+        description={pick(
+          "합산 오차는 포트폴리오 전체에 대한 진술이며 개별 SKU를 보장하지 않습니다. 아래는 그 평균이 가장 크게 갈리는 지점, 즉 새 모델이 가장 크게 이긴 SKU와 가장 크게 진 SKU입니다. 평균이 좋아도 개별 SKU에서 크게 지는 경우가 있다면 그것은 별개의 문제입니다.",
+          `The pooled figure is a statement about the portfolio, not a promise about any SKU. These are the rows where it diverges most from ${baseline}: the SKUs the model wins hardest on and the ones it loses hardest on. A better average can still contain individual losses worth knowing about, and those do not show up anywhere above.`,
+        )}
+      />
 
       <div className="flex flex-col gap-1.5 rounded-md border bg-muted/30 px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium">
+          <span className="text-[12.5px] font-medium">
             {pick("최소 판매량", "Minimum volume")}
           </span>
           <div className="flex flex-wrap gap-1">
@@ -165,7 +165,7 @@ export function OutliersSection({
                 type="button"
                 onClick={() => setMinUnits(v)}
                 aria-pressed={minUnits === v}
-                className={`rounded border px-2 py-0.5 text-[10.5px] tabular-nums transition-colors ${
+                className={`rounded border px-2 py-0.5 text-[11.5px] tabular-nums transition-colors ${
                   minUnits === v
                     ? "border-sky-500 bg-sky-500/10 font-semibold text-sky-700 dark:text-sky-300"
                     : "border-transparent text-muted-foreground hover:bg-muted"
@@ -176,7 +176,7 @@ export function OutliersSection({
             ))}
           </div>
         </div>
-        <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+        <p className="text-[11.5px] leading-relaxed text-muted-foreground">
           {pick(
             `구간별 실판매 ${nf.format(minUnits)}units 이상만 순위에 포함합니다. 대상 ${nf.format(eligible.length)}/${nf.format(rows.length)}행, 채점 수요의 ${(eligibleShare * 100).toFixed(0)}%. 아래 두 표는 채점 수요의 ${(listShare * 100).toFixed(1)}%를 차지합니다.`,
             `Ranking only rows that sold at least ${nf.format(minUnits)} units in their window: ${nf.format(eligible.length)} of ${nf.format(rows.length)} scored rows, ${(eligibleShare * 100).toFixed(0)}% of scored demand. The two lists below carry ${(listShare * 100).toFixed(1)}% of it.`,

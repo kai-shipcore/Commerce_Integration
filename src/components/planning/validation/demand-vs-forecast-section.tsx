@@ -32,6 +32,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Data, Layout, Shape } from "plotly.js";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { SectionHeading } from "./section-heading";
 import type { DemandVsForecastResponse } from "./types";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
@@ -253,12 +254,15 @@ export function DemandVsForecastSection({ data }: { data: DemandVsForecastRespon
   const segmentOptions = ["all", ...data.segments];
 
   return (
-    <section className="flex flex-col gap-2">
-      <div>
-        <h2 className="text-base font-semibold">
-          {pick("주간 실판매와 예측", "Demand vs forecast")}
-        </h2>
-      </div>
+    <section className="flex flex-col gap-3">
+      <SectionHeading
+        id="trajectory"
+        title={pick("주간 실판매와 예측", "Demand vs forecast")}
+        description={pick(
+          "위 표와 같은 증거를 그림으로 본 것입니다. 실제 주간 판매량 위에, 저장된 각 예측이 그 주에 대해 무엇을 예측했는지를 겹쳐 그립니다. 표는 오차를 하나의 숫자로 줄이지만, 여기서는 그 오차가 어느 시기에 어느 방향으로 발생했는지가 보입니다.",
+          "The same evidence as the table above, drawn. Actual weekly units with what each stored forecast said about those weeks laid over the top. The table reduces the error to one number; this shows when it happened and in which direction, which is the part a single figure cannot carry.",
+        )}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex gap-1">
@@ -375,7 +379,7 @@ export function DemandVsForecastSection({ data }: { data: DemandVsForecastRespon
           evidence is worse than no line. Disappears by itself: the endpoint
           prefers the current model's rows the moment a real run lands. */}
       {data.history_version && data.history_version !== data.version && (
-        <div className="rounded-md border border-amber-400 bg-amber-50 p-3 text-[11.5px] leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+        <div className="rounded-md border border-amber-400 bg-amber-50 p-3 text-[12.5px] leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
           <span className="font-semibold">
             {pick("샘플 데이터입니다.", "This is sample data.")}
           </span>{" "}
@@ -387,7 +391,7 @@ export function DemandVsForecastSection({ data }: { data: DemandVsForecastRespon
       )}
 
       {data.runs_stored === 0 && (
-        <div className="rounded-md border border-dashed bg-muted/20 p-3 text-[11.5px] leading-relaxed text-muted-foreground">
+        <div className="rounded-md border border-dashed bg-muted/20 p-3 text-[12.5px] leading-relaxed text-muted-foreground">
           <span className="font-medium text-foreground">
             {pick(
               "아직 저장된 예측 실행이 없어 과거 예측선이 비어 있습니다.",
@@ -401,7 +405,7 @@ export function DemandVsForecastSection({ data }: { data: DemandVsForecastRespon
         </div>
       )}
 
-      <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+      <p className="text-[11.5px] leading-relaxed text-muted-foreground">
         {!data.has_intervals && pick(
           "이 모델은 점 예측만 산출하므로 P85 같은 예측 구간 밴드가 없습니다. 기존 페이지의 차트에는 밴드가 있었고, 실제선이 밴드를 벗어나는지로 구간 보정을 눈으로 확인할 수 있었습니다. 대신 발주 목록의 안전재고는 SKU별 측정 오차를 사용합니다. ",
           "This model emits a point forecast only, so there is no prediction band. The old page's chart drew one and used it as a calibration check: the actual line leaving the band meant the interval missed. The Action List's safety stock uses measured per-SKU error instead, which is a different instrument. ",

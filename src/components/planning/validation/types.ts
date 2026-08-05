@@ -97,7 +97,36 @@ export interface PerformanceRow {
   bias_pct: number;
 }
 
+/** What the served version is, read off the registered model class rather than
+ *  restated here, so the page cannot describe a version it is not serving.
+ *  Null for a version with no registered class, which is the case for the V1
+ *  spreadsheet baseline: a formula rather than a fitted model. */
+export interface ModelCardMeta {
+  version: string;
+  description: string | null;
+  /** Feature names per segment, for versions that fit one model per segment.
+   *  Null for a single-model version. Raw names on purpose: they match the
+   *  design doc and the experiment scripts. */
+  features: { short: string[]; long: string[] } | null;
+}
+
+/** Where the figures on this page came from, and when.
+ *
+ *  Two dates because they answer different questions. `snapshot` is pinned, so
+ *  the accuracy figures deliberately do not move week to week; a reader seeing
+ *  the same numbers twice should know that is by design. `trained_through` is
+ *  the served forecast's own training week, which does move, and the gap
+ *  between them is how you see whether the model being validated is the one
+ *  being served. */
+export interface ValidationMeta {
+  model: ModelCardMeta | null;
+  snapshot: string | null;
+  accuracy_computed: string | null;
+  trained_through: string | null;
+}
+
 export interface ValidationResponse {
+  meta: ValidationMeta;
   comparison: ValidationComparison;
   coverage: ValidationCoverage;
   outliers: ValidationOutliers;

@@ -25,13 +25,13 @@ export function EmptySection({
   const { pick } = useI18n();
   return (
     <div className="rounded-md border border-dashed bg-muted/20 p-6">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <p className="text-[12.5px] font-semibold uppercase tracking-wider text-muted-foreground">
         {pick("데이터 대기 중", "Nothing to show yet")}
       </p>
       <p className="mt-1.5 text-sm font-medium">{title}</p>
-      <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{waitingOn}</p>
+      <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{waitingOn}</p>
       {detail && (
-        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{detail}</p>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">{detail}</p>
       )}
     </div>
   );

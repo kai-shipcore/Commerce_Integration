@@ -12,7 +12,6 @@ interface SkuForecastTabsProps {
   inventory: ReactNode;
   history: ReactNode;
   purchase: ReactNode;
-  forecast: ReactNode;
   language: SkuForecastLanguage;
   defaultTab?: SkuForecastTab;
 }
@@ -25,7 +24,6 @@ export function SkuForecastTabs({
   inventory,
   history,
   purchase,
-  forecast,
   language,
   defaultTab = "sales",
 }: SkuForecastTabsProps) {
@@ -63,26 +61,32 @@ export function SkuForecastTabs({
         <TabsTrigger value="purchase" className={triggerClassName}>
           {pick(language, "발주 추천", "Order Recommendation")}
         </TabsTrigger>
-        <TabsTrigger value="forecast" className={triggerClassName}>
-          {pick(language, "수요 예측", "Demand Forecast")}
-        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="sales">{sales}</TabsContent>
       <TabsContent value="inventory">{inventory}</TabsContent>
       <TabsContent value="history">{history}</TabsContent>
       <TabsContent value="purchase">{purchase}</TabsContent>
-      <TabsContent value="forecast">{forecast}</TabsContent>
     </Tabs>
   );
 }
 
+/** `?tab=forecast` resolves to Sales rather than 404ing.
+ *
+ *  The Demand Forecast tab was removed in August 2026: it drew the legacy
+ *  statsforecast pipeline's per-SKU forecast, which is a different model on
+ *  different tables from the one the Action List and Forecast Validation report
+ *  on, and the same SKU read differently depending on which screen you opened.
+ *  The per-SKU view of the served model lives at /planning/action-list/[sku].
+ *
+ *  "forecast" stays in the union and in this parser because links to it exist,
+ *  in bookmarks and in anything that built a URL by hand. Dropping it from the
+ *  parser makes those land on a tab strip with nothing selected. */
 function parseSkuForecastTab(value: string): SkuForecastTab {
   if (
     value === "inventory" ||
     value === "history" ||
-    value === "purchase" ||
-    value === "forecast"
+    value === "purchase"
   ) return value;
   return "sales";
 }

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { DemandRow } from "@/types/demand-planning";
-import { DemandForecastTab } from "../demand-forecast/demand-forecast-tab";
 import { InboundHistoryTab } from "../inbound-history/inbound-history-tab";
 import { InventoryInboundTab } from "../inventory-inbound/inventory-inbound-tab";
 import { PurchaseRecommendationTab } from "../purchase-recommendation/purchase-recommendation-tab";
@@ -71,28 +70,21 @@ export function SkuForecastsShell({
 }: SkuForecastsShellProps) {
   const { locale: language } = useI18n();
 
-  const [forecastServerError, setForecastServerError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(apiPath("/api/forecast-server/start"), { method: "POST" })
-      .then(async (res) => {
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({})) as { error?: string };
-          setForecastServerError(json.error ?? `Server error ${res.status}`);
-        }
-      })
-      .catch((err: Error) => setForecastServerError(err.message));
-
-    const handleBeforeUnload = () => {
-      navigator.sendBeacon(apiPath("/api/forecast-server/stop"));
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      // Do not stop on navigation — keep the server alive while the browser is open
-    };
-  }, []);
+  // The forecast server lifecycle used to be driven from here: start it on
+  // mount, and stop it via a beforeunload beacon when this page closed. Both
+  // existed for the Demand Forecast tab, which has been removed.
+  //
+  // Removed rather than left dormant, because the stop half became actively
+  // harmful the moment the tab went. Closing this page fired a beacon that shut
+  // down the same FastAPI process the Action List and Forecast Validation pages
+  // proxy to, so one tab closing could take down the screens in another. That
+  // was survivable while this page was the reason the server was running; it is
+  // not now that nothing here uses it.
+  //
+  // Nothing else under sku-forecasts touches the forecast API: Sales Analysis,
+  // Inventory & Inbound, Inbound History and Order Recommendation all read the
+  // primary and lookup databases directly. The remaining consumers manage the
+  // server themselves through ForecastServerStatus.
 
   const normalizedInitialSku = initialSku.trim().toUpperCase();
   const [product, setProduct] = useState<ProductKey>(() => normalizedInitialSku ? productKeyForSku(normalizedInitialSku) : "fm");
@@ -360,7 +352,6 @@ export function SkuForecastsShell({
                 inventory={<InventoryInboundTab sku={selectedRow} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} highlightedContainerId={initialHighlightedContainerId} highlightedContainerName={initialHighlightedContainerName} />}
                 history={<InboundHistoryTab sku={selectedRow} language={language} />}
                 purchase={<PurchaseRecommendationTab sku={selectedRow} master={selectedMaster} language={language} targetInventoryDays={targetInventoryDays} includeDraftContainers={includeDraftContainers} />}
-                forecast={<DemandForecastTab sku={selectedRow} language={language} serverError={forecastServerError} />}
               />
             </div>
           ) : (

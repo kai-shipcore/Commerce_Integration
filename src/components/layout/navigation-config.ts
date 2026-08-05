@@ -116,12 +116,29 @@ export const navigationItems: NavigationItem[] = [
     hideable: true,
   },
   {
+    // Retired from the menu (August 2026), superseded by Action List and
+    // Forecast Validation.
+    //
+    // It reported on the legacy statsforecast pipeline, which reads the fc_*
+    // tables, while the two screens that replaced it report on the LightGBM
+    // track and read the ml_* tables. Both were reachable from the same menu
+    // group under names that all read as "the forecast", and the same SKU
+    // showed a different number depending on which one you opened, with
+    // nothing on either screen saying why. That is the failure mode this
+    // removal is about: not that the old page was bad, but that having two
+    // answers in one menu makes neither trustworthy.
+    //
+    // `hidden` rather than deleted. The route and its components still exist
+    // and still work if visited directly; this only takes it out of the
+    // sidebar. Deleting them is the follow-up once the new screens have run a
+    // few weeks without anyone reaching for this one.
     id: "demand-forecast",
     name: "Demand Forecast",
     href: "/planning/demand-forecast",
     icon: BarChart3,
     group: "Planning",
     hideable: true,
+    hidden: true,
   },
   {
     id: "oos-impact",
@@ -298,7 +315,10 @@ export const userDefaultVisibleMenuIds = [
   "velocity",
   "demand-planning",
   "sku-forecasts",
-  "demand-forecast",
+  // "demand-forecast" retired from the sidebar; see the item definition above.
+  // Removed here too, because this list is applied to new users directly and a
+  // hidden item left in it would come back the moment someone edited their menu
+  // preferences.
   "oos-impact",
   "action-list",
   "forecast-validation",

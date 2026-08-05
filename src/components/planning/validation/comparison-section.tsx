@@ -14,6 +14,7 @@
  */
 
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { SectionHeading } from "./section-heading";
 import type { ValidationCell, ValidationComparison, ValidationCoverage } from "./types";
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -57,7 +58,7 @@ function MatrixCell({
 }) {
   const { pick } = useI18n();
   if (!cell) {
-    return <td className="border-l p-2 text-center text-[11px] text-muted-foreground">—</td>;
+    return <td className="border-l p-2 text-center text-[12.5px] text-muted-foreground">—</td>;
   }
 
   const value = cell[current];
@@ -76,7 +77,7 @@ function MatrixCell({
           {typeof value === "number" ? pct(value) : "—"}
         </span>
         {typeof delta === "number" && (
-          <span className={`text-[11px] font-medium tabular-nums ${deltaStyle(delta)}`}>
+          <span className={`text-[12.5px] font-medium tabular-nums ${deltaStyle(delta)}`}>
             {delta > 0 ? "+" : ""}
             {(delta * 100).toFixed(1)}
             <span className="ml-0.5 font-normal opacity-70">pp</span>
@@ -84,7 +85,7 @@ function MatrixCell({
         )}
       </div>
 
-      <div className="mt-1 space-y-0.5 text-[10px] leading-tight text-muted-foreground">
+      <div className="mt-1 space-y-0.5 text-[11.5px] leading-tight text-muted-foreground">
         <div>
           {baseline} {typeof cell[baseline] === "number" ? pct(cell[baseline] as number) : "—"}
         </div>
@@ -140,51 +141,48 @@ export function ComparisonSection({
   );
 
   return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-base font-semibold">
-          {pick("모델 대 스프레드시트", "Model versus spreadsheet")}
-        </h2>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          {pick(
-            "가중 절대 백분율 오차(WAPE), 낮을수록 좋습니다. SKU별 오차를 먼저 합산한 뒤 나누므로 수요가 큰 SKU가 더 크게 반영됩니다.",
-            "Pooled WAPE, lower is better. Errors are summed across SKUs before dividing, so heavier-demand SKUs count more.",
-          )}
-        </p>
-      </div>
+    <section className="flex flex-col gap-4">
+      <SectionHeading
+        id="comparison"
+        title={pick("모델 대 스프레드시트", "Model versus spreadsheet")}
+        description={pick(
+          "가중 절대 백분율 오차(WAPE), 낮을수록 좋습니다. SKU별 오차를 먼저 합산한 뒤 나누므로 수요가 큰 SKU가 더 크게 반영됩니다. 아래 수치는 모두 고정된 백테스트 구간에서 두 방식을 같은 주에 대해 채점한 결과입니다.",
+          "Pooled WAPE, lower is better. Errors are summed across SKUs before dividing, so heavier-demand SKUs count more. Both methods are scored on the same weeks of the same backtest windows, so the two figures are directly comparable rather than each measured against its own base.",
+        )}
+      />
 
       {headline && (
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md border p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               {pick("현재 모델", "Current model")} · {current}
             </div>
             <div className="mt-1 text-3xl font-bold leading-none tabular-nums">
               {pct(headline.current)}
             </div>
-            <p className="mt-1 text-[10.5px] text-muted-foreground">
+            <p className="mt-1 text-[11.5px] text-muted-foreground">
               {pick("평균 오차", "average error, demand-weighted")}
             </p>
           </div>
           <div className="rounded-md border p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               {pick("기존 방식", "Spreadsheet")} · {baseline}
             </div>
             <div className="mt-1 text-3xl font-bold leading-none tabular-nums text-muted-foreground">
               {pct(headline.baseline)}
             </div>
-            <p className="mt-1 text-[10.5px] text-muted-foreground">
+            <p className="mt-1 text-[11.5px] text-muted-foreground">
               {pick("동일 SKU, 동일 구간", "same SKUs, same windows")}
             </p>
           </div>
           <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/40">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+            <div className="text-[11.5px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
               {pick("오차 감소", "Error reduced by")}
             </div>
             <div className="mt-1 text-3xl font-bold leading-none tabular-nums text-emerald-700 dark:text-emerald-400">
               {(headline.improvement * 100).toFixed(0)}%
             </div>
-            <p className="mt-1 text-[10.5px] text-emerald-700/80 dark:text-emerald-400/80">
+            <p className="mt-1 text-[11.5px] text-emerald-700/80 dark:text-emerald-400/80">
               {pick(
                 `${headline.cells_total}개 구간 중 ${headline.cells_won}개에서 우세`,
                 `ahead in ${headline.cells_won} of ${headline.cells_total} cells`,
@@ -193,7 +191,7 @@ export function ComparisonSection({
             {/* The caveat travels with the number. This is the card that gets
                 screenshotted, and three cards away from its coverage note it
                 reads as a claim about the whole catalogue. */}
-            <p className="mt-1.5 border-t border-emerald-300/60 pt-1.5 text-[10px] leading-snug text-emerald-700/70 dark:border-emerald-800/60 dark:text-emerald-400/70">
+            <p className="mt-1.5 border-t border-emerald-300/60 pt-1.5 text-[11.5px] leading-snug text-emerald-700/70 dark:border-emerald-800/60 dark:text-emerald-400/70">
               {pick(
                 `예측 대상 ${nf.format(coverage.served)}개 중 측정 가능한 ${nf.format(coverage.scored)}개(${Math.round(coverage.share * 100)}%) 기준`,
                 `measured on ${nf.format(coverage.scored)} of ${nf.format(coverage.served)} forecast SKUs (${Math.round(coverage.share * 100)}%)`,
@@ -207,13 +205,13 @@ export function ComparisonSection({
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-muted/60">
-              <th className="w-40 py-2 pl-3 pr-2 text-left text-[9.5px] font-medium uppercase tracking-wide text-muted-foreground">
+              <th className="w-40 py-2 pl-3 pr-2 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {pick("세그먼트", "Segment")}
               </th>
               {comparison.windows.map((w) => (
                 <th
                   key={w}
-                  className="border-l py-2 px-2 text-left text-[11px] font-semibold whitespace-nowrap"
+                  className="border-l py-2 px-2 text-left text-[12.5px] font-semibold whitespace-nowrap"
                 >
                   {w}
                 </th>
@@ -227,7 +225,7 @@ export function ComparisonSection({
                 <tr key={seg} className={`border-t ${total ? "bg-muted/40" : ""}`}>
                   <th
                     scope="row"
-                    className={`py-2 pl-3 pr-2 text-left align-top text-[11.5px] ${
+                    className={`py-2 pl-3 pr-2 text-left align-top text-[12.5px] ${
                       total ? "font-semibold" : "font-medium"
                     }`}
                   >
@@ -248,7 +246,7 @@ export function ComparisonSection({
         </table>
       </div>
 
-      <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+      <p className="text-[11.5px] leading-relaxed text-muted-foreground">
         {pick(
           `각 칸의 큰 숫자는 ${current} 의 오차이고, 옆의 pp 는 ${baseline} 대비 차이입니다(음수가 개선). 그 아래는 ${baseline} 의 오차와 편향입니다. 편향은 방향이 다르므로 색을 나눴습니다. 과다 예측은 재고가 남고, 과소 예측은 판매를 놓칩니다. 붉은 칸은 ${baseline} 가 앞선 구간입니다.`,
           `The large figure is ${current}'s error; the pp beside it is the difference against ${baseline}, where negative is better. Underneath: ${baseline}'s error, then bias. Bias is coloured by direction rather than size, because over-forecasting leaves stock on the shelf and under-forecasting loses the sale. Shaded cells are where ${baseline} is ahead.`,
@@ -257,15 +255,15 @@ export function ComparisonSection({
 
       <div className="grid gap-3 md:grid-cols-2">
         <div className="rounded-md border border-dashed p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
             {pick("기존 방식이 앞서는 곳", "Where the spreadsheet still wins")}
           </p>
           {lost.length === 0 ? (
-            <p className="mt-1 text-[11.5px] text-muted-foreground">
+            <p className="mt-1 text-[12.5px] text-muted-foreground">
               {pick("없습니다.", "No cell, on the windows measured.")}
             </p>
           ) : (
-            <ul className="mt-1 space-y-1 text-[11.5px] leading-relaxed text-muted-foreground">
+            <ul className="mt-1 space-y-1 text-[12.5px] leading-relaxed text-muted-foreground">
               {lost.map((r) => (
                 <li key={`${r.segment}-${r.window}`}>
                   <span className="font-medium text-foreground">{r.segment} · {r.window}</span>
@@ -281,10 +279,10 @@ export function ComparisonSection({
         </div>
 
         <div className="rounded-md border border-dashed p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
             {pick("이 비교가 포함하는 범위", "What this comparison covers")}
           </p>
-          <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
             {pick(
               `예측 대상 ${nf.format(coverage.served)}개 SKU 중 ${nf.format(coverage.scored)}개(${Math.round(coverage.share * 100)}%)만 위 수치에 반영되어 있습니다. 나머지 ${nf.format(coverage.unscored)}개는 대부분 간헐 판매에서 승격된 SKU로, 승격 시 학습 시작일이 다시 잡혀 고정된 백테스트 구간에 들어오지 못합니다. 아직 측정되지 않은 것이 아니라 이 방식으로는 측정할 수 없습니다.`,
               `${nf.format(coverage.scored)} of the ${nf.format(coverage.served)} forecast SKUs (${Math.round(coverage.share * 100)}%) are in the figures above. The other ${nf.format(coverage.unscored)} are mostly SKUs promoted out of intermittent, which resets their training start and leaves them ineligible for windows pinned to a fixed cutoff. That is not measured yet, it is not measurable this way.`,

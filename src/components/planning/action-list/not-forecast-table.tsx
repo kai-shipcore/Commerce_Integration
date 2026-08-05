@@ -17,6 +17,7 @@
  */
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -99,10 +100,15 @@ export function nfSortRows(rows: NotForecastRow[], criteria: NfSort[]): NotForec
 
 export function NotForecastTable({
   rows,
+  skuHref,
   sort = NF_DEFAULT_SORT,
   onSort,
 }: {
   rows: NotForecastRow[];
+  /** Builds the detail URL for a row, including the planning parameters the
+   *  section is showing. Passed in for the same reason the forecast table takes
+   *  it: the table stays unaware of what those parameters are. */
+  skuHref: (sku: string) => string;
   sort?: NfSort[];
   onSort?: (key: NfSortKey, shiftKey: boolean) => void;
 }) {
@@ -131,7 +137,7 @@ export function NotForecastTable({
       <span className="ml-1 inline-flex items-center gap-px align-middle">
         <Arrow className="h-3 w-3" />
         {sort.length > 1 && (
-          <span className="text-[9px] font-semibold leading-none text-primary/70">{idx + 1}</span>
+          <span className="text-[10.5px] font-semibold leading-none text-primary/70">{idx + 1}</span>
         )}
       </span>
     );
@@ -157,13 +163,13 @@ export function NotForecastTable({
             <TableHead className={`sticky left-0 top-0 ${Z.headCorner} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
             >
               {h.soldBand}
             </TableHead>
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
             >
               {h.stockBand}
             </TableHead>
@@ -183,15 +189,24 @@ export function NotForecastTable({
             const sub = [r.product_category, r.product_name].filter(Boolean).join(" · ");
             return (
               <TableRow key={r.unique_id} className="group">
+                {/* Linked, like the forecast table's rows. The detail page has
+                    no planning figures for these SKUs and says so, then draws
+                    their sales history, which is the only honest thing it can
+                    show. Unlinked, that page was reachable only by typing a
+                    URL. */}
                 <TableCell className={`sticky left-0 ${Z.bodyLeft} bg-background align-top group-hover:bg-muted/50`}>
-                  <span className="font-mono text-[11px]">{r.unique_id}</span>
-                  {r.reorder_signal && (
-                    <AlertTriangle
-                      className="ml-1 inline h-3 w-3 text-amber-500"
-                      aria-label={pick("리드타임 내 소진", "runs out inside the lead time")}
-                    />
-                  )}
-                  {sub && <span className="block text-[10px] text-muted-foreground">{sub}</span>}
+                  <Link href={skuHref(r.unique_id)} className="block">
+                    <span className="font-mono text-[12.5px] underline-offset-2 group-hover:text-sky-600 group-hover:underline dark:group-hover:text-sky-400">
+                      {r.unique_id}
+                    </span>
+                    {r.reorder_signal && (
+                      <AlertTriangle
+                        className="ml-1 inline h-3 w-3 text-amber-500"
+                        aria-label={pick("리드타임 내 소진", "runs out inside the lead time")}
+                      />
+                    )}
+                    {sub && <span className="block text-[11.5px] text-muted-foreground">{sub}</span>}
+                  </Link>
                 </TableCell>
                 <TableCell className={`text-right tabular-nums ${NF_BAND.sold.edge}`}>
                   {r.recent_units ? nf.format(Math.round(r.recent_units)) : "—"}
@@ -199,7 +214,7 @@ export function NotForecastTable({
                 <TableCell className="text-right tabular-nums text-muted-foreground">
                   {r.recent_units ? r.weekly_rate.toFixed(1) : "—"}
                 </TableCell>
-                <TableCell className="text-right text-[11px] tabular-nums text-muted-foreground">
+                <TableCell className="text-right text-[12.5px] tabular-nums text-muted-foreground">
                   {r.last_sale_week ?? "—"}
                 </TableCell>
                 {/* Null and zero are shown differently on purpose: an em dash

@@ -164,7 +164,7 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="rounded-md border border-dashed bg-muted/30 p-3 text-[11.5px] leading-relaxed text-muted-foreground">
+      <p className="rounded-md border border-dashed bg-muted/30 p-3 text-[12.5px] leading-relaxed text-muted-foreground">
         {pick(
           `이 SKU들은 판매가 불규칙해 주간 예측 대상이 아닙니다. 아래 수치는 예측이 아니라 최근 ${data.meta.window_weeks}주 실판매에서 계산한 것으로, 예측 오차 개념이 없습니다. 발주 권장 수량이 없는 것은 누락이 아니라, 예측 없이는 산출할 수 없기 때문입니다. "재고 여유"는 최근 판매 속도가 유지된다는 가정하의 값입니다.`,
           `These SKUs sell too irregularly to forecast weekly, so nothing below comes from the model. The figures are computed from the last ${data.meta.window_weeks} weeks of actual sales and carry no forecast error. There is no recommended order quantity, which is the honest answer rather than an omission: it cannot be derived without a demand model. "Cover" assumes the recent rate holds.`,
@@ -182,12 +182,12 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
             }`}
           >
             <span className="block text-base font-semibold tabular-nums">{nf.format(c.value)}</span>
-            <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{c.label}</span>
+            <span className="block text-[11.5px] uppercase tracking-wide text-muted-foreground">{c.label}</span>
           </button>
         ))}
         <div className="rounded-md border border-dashed px-3 py-1.5">
           <span className="block text-base font-semibold tabular-nums">{nf.format(m.recent_units)}</span>
-          <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="block text-[11.5px] uppercase tracking-wide text-muted-foreground">
             {pick(`${data.meta.window_weeks}주 판매`, `units, ${data.meta.window_weeks}w`)}
           </span>
         </div>
@@ -250,6 +250,9 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
         <>
           <NotForecastTable
             rows={pageRows}
+            skuHref={(sku) =>
+              `/planning/action-list/${encodeURIComponent(sku)}?${planningQuery(planning)}`
+            }
             sort={sort}
             onSort={(key: NfSortKey, shiftKey: boolean) => setSort((prev) => nfNextSort(prev, key, shiftKey))}
           />

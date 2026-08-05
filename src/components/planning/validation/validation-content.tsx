@@ -25,7 +25,9 @@ import { DemandVsForecastSection } from "./demand-vs-forecast-section";
 import { DEFAULT_WEEKS, DemandPatternsSection } from "./demand-patterns-section";
 import { EmptySection } from "./empty-section";
 import { OutliersSection } from "./outliers-section";
+import { ModelCard } from "@/components/planning/model-card";
 import { OverTimeSection } from "./over-time-section";
+import { SectionHeading, ValidationContents } from "./section-heading";
 import type {
   DemandPatternsResponse,
   DemandVsForecastResponse,
@@ -128,13 +130,93 @@ export function ValidationContent() {
   const v = validation.data;
 
   return (
-    <div className="flex flex-col gap-8">
+    // gap-12 rather than gap-8. Six sections of dense tables and charts ran
+    // together at the old spacing: the gap between two sections was barely
+    // larger than the gap between a heading and its own table, so the page read
+    // as one continuous scroll rather than as six arguments. Each heading also
+    // carries a top rule now, which needs room above it to separate rather than
+    // to crowd.
+    <div className="flex flex-col gap-12">
       <div className="flex justify-end">
         <ForecastServerStatus onRecovered={reload} />
       </div>
 
       {!validation.done && <Loading />}
       {validation.error && <PlanningError body={validation.error} onRetry={reload} />}
+
+      {/* Provenance. This is the screen whose purpose is evidence, and it was
+          the only one of the three not dating its own: the Action List says
+          "Trained through" in its header and this said nothing, which is how a
+          forecast three weeks stale went unnoticed while this page reported on
+          it. Two dates because they answer different questions. The snapshot is
+          pinned, so the accuracy figures deliberately do not move week to week
+          and a reader seeing identical numbers twice should know that is by
+          design. The training week does move, and the gap between the two is
+          how you see whether the model being validated is the one being
+          served. */}
+      {v && (
+        <div className="-mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {/* Clickable: the page named a model and never said what the name
+              meant, on the one screen where that detail belongs. */}
+          <span>
+            {pick("모델", "Model")}:{" "}
+            {v.meta?.model ? (
+              // This page already holds the payload, so the card is given it
+              // rather than fetching a second copy of what is on screen.
+              <ModelCard
+                version={v.meta.model?.version ?? v.comparison.current}
+                source={{
+                  meta: v.meta,
+                  baseline: v.comparison.baseline,
+                  finalTestCutoff: v.final_test.cutoff,
+                  windows: v.comparison.windows,
+                }}
+              />
+            ) : (
+              // An API that predates the model card still names its version.
+              <strong>{v.comparison.current}</strong>
+            )}
+          </span>
+          {v.meta?.snapshot && (
+            <span title={pick(
+              "평가에 사용한 데이터 스냅샷입니다. 고정되어 있어 기록된 정확도 수치가 주마다 달라지지 않습니다.",
+              "The data snapshot the evaluation used. Pinned, so recorded accuracy figures cannot drift week to week.",
+            )}>
+              {pick("평가 데이터", "Evaluated on")}: <strong>{v.meta.snapshot}</strong>
+            </span>
+          )}
+          {v.meta?.accuracy_computed && (
+            <span>
+              {pick("정확도 산출일", "Scored")}: <strong>{v.meta.accuracy_computed}</strong>
+            </span>
+          )}
+          {v.meta?.trained_through && (
+            <span title={pick(
+              "현재 제공 중인 예측의 학습 기준 주입니다. 위 평가 스냅샷과 다르면, 검증한 모델과 제공 중인 예측의 시점이 다르다는 뜻입니다.",
+              "The training week of the forecast currently served. When this differs from the snapshot above, the figures on this page describe a different week's data than the forecast in use.",
+            )}>
+              {pick("서비스 중 예측 학습 기준", "Forecast trained through")}:{" "}
+              <strong>{v.meta.trained_through}</strong>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Below the provenance line, not above it. The dates qualify everything
+          on the page and belong with the title; the contents bar is navigation
+          and sticks to the top of the viewport once scrolled past. */}
+      {v && (
+        <ValidationContents
+          ready={{
+            comparison: true,
+            trajectory: Boolean(trend.data && trend.data.predicted.length > 0),
+            outliers: true,
+            "over-time": !(trend.data && trend.data.runs_stored === 0),
+            "final-test": true,
+            demand: Boolean(patterns.data),
+          }}
+        />
+      )}
 
       {v && (
         <>
@@ -159,21 +241,22 @@ export function ValidationContent() {
               runs={v.over_time.runs}
               performance={v.over_time.performance}
               lastCompleteWeek={v.over_time.last_complete_week}
+              // So the table can say when its rows are not the served model's,
+              // which is what the seeded fixture is. The chart above already
+              // does this; the table did not.
+              currentVersion={v.comparison.current}
             />
           )}
 
-          <section className="flex flex-col gap-3">
-            <div>
-              <h2 className="text-base font-semibold">
-                {pick("최종 테스트 구간", "Final test window")}
-              </h2>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">
-                {pick(
-                  `개발 중에는 사용하지 않도록 격리해 둔 구간입니다. 기준일 ${v.final_test.cutoff}.`,
-                  `Quarantined from development so it can settle the question once. Cutoff ${v.final_test.cutoff}.`,
-                )}
-              </p>
-            </div>
+          <section className="flex flex-col gap-4">
+            <SectionHeading
+              id="final-test"
+              title={pick("최종 테스트 구간", "Final test window")}
+              description={pick(
+                `개발 중에는 사용하지 않도록 격리해 둔 구간입니다. 기준일 ${v.final_test.cutoff}. 위의 모든 수치는 모델을 만드는 과정에서 반복해 확인한 구간에서 나온 것이므로, 그만큼 낙관적일 수 있습니다. 이 구간은 그 편향이 없는 단 한 번의 판정을 위해 남겨 둔 것입니다.`,
+                `Quarantined from development so it can settle the question once. Cutoff ${v.final_test.cutoff}. Every figure above comes from windows that were looked at repeatedly while the model was being built, which is exactly the thing that makes a result optimistic. This window is held back so there is one measurement that has not been influenced that way.`,
+              )}
+            />
             {v.final_test.evaluated ? (
               <EmptySection
                 title={pick("결과 표시 준비 중", "Results not rendered yet")}

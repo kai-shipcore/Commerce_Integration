@@ -84,8 +84,8 @@ export const Z = {
  *
  *  Written as literals because Tailwind scans source text and cannot see a class
  *  assembled from a number at runtime. Change one and change the other. */
-export const BAND_ROW_H = "h-[28px]";
-export const NAME_ROW_TOP = "top-[27px]";
+export const BAND_ROW_H = "h-[30px]";
+export const NAME_ROW_TOP = "top-[29px]";
 
 /** The rule under the band row.
  *
@@ -122,17 +122,22 @@ export const PRIORITY = {
   routine: "Routine",
 } as const;
 
-const PRIORITY_STYLE: Record<string, string> = {
+export const PRIORITY_STYLE: Record<string, string> = {
   [PRIORITY.preorder]: "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300",
   [PRIORITY.noStock]: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
   [PRIORITY.bestSeller]: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
   [PRIORITY.routine]: "border-neutral-300 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400",
 };
-const PRIORITY_GLYPH: Record<string, string> = {
+export const PRIORITY_GLYPH: Record<string, string> = {
   [PRIORITY.preorder]: "◆",
   [PRIORITY.noStock]: "●",
   [PRIORITY.bestSeller]: "★",
   [PRIORITY.routine]: "○",
+};
+
+/** Direction as a glyph, so trend is never carried by colour alone. */
+const TREND_GLYPH: Record<string, string> = {
+  rising: "\u2197", steady: "\u2192", falling: "\u2198", collapsing: "\u21ca",
 };
 
 const TIER_STYLE: Record<string, string> = {
@@ -148,7 +153,7 @@ const TIER_GLYPH: Record<string, string> = {
 export type SortKey =
   | "unique_id" | "product_category" | "priority_label"
   | "available_inventory" | "preorder_backlog" | "confirmed_inbound"
-  | "recent_units" | "forecast_total"
+  | "recent_units" | "coverage_demand" | "ramp"
   | "days_to_stockout" | "recommended_order_qty" | "wape";
 export type SortDir = "asc" | "desc";
 export interface SortCriterion { key: SortKey; dir: SortDir }
@@ -164,6 +169,66 @@ const DEFAULT_ASC: SortKey[] = ["unique_id", "product_category", "days_to_stocko
  *  single column, so it is represented as the absence of a sort rather than as
  *  an entry in this list. */
 export const DEFAULT_SORT: SortCriterion[] = [];
+
+/** Column names as they read inside a sentence, for the line that states the
+ *  table's current order.
+ *
+ *  Deliberately not reused from the header labels. A header is a noun squeezed
+ *  into a narrow column ("Order", "Trend"); a sentence needs the unabbreviated
+ *  phrase, and sharing one string would force one of the two to read badly. */
+const SORT_LABEL: Record<SortKey, [string, string]> = {
+  unique_id: ["SKU", "SKU"],
+  product_category: ["카테고리", "category"],
+  priority_label: ["우선순위", "priority"],
+  available_inventory: ["가용 재고", "available stock"],
+  preorder_backlog: ["예약 주문", "preorder backlog"],
+  confirmed_inbound: ["입고 예정", "confirmed inbound"],
+  recent_units: ["최근 판매량", "recent units"],
+  coverage_demand: ["기간 수요", "demand in the window"],
+  ramp: ["수요 추세", "demand trend"],
+  days_to_stockout: ["품절까지 일수", "days to stockout"],
+  recommended_order_qty: ["권장 발주량", "order quantity"],
+  wape: ["예측 신뢰도", "forecast reliability"],
+};
+
+const DIR_LABEL: Record<SortDir, [string, string]> = {
+  asc: ["오름차순", "low to high"],
+  desc: ["내림차순", "high to low"],
+};
+
+/** The table's current order, written out.
+ *
+ *  This replaced a dropdown of named orders. Every entry in that list was also
+ *  reachable by clicking a header, including the default: nextSort() clears a
+ *  single-sorted column back to it on the third click. So the control offered
+ *  no ordering the columns did not already give, while occupying the width of
+ *  one and implying it was the way sorting was done.
+ *
+ *  What was worth keeping is the naming, and only the naming. The default is
+ *  the server's priority-then-quantity sequence, is not reproducible from any
+ *  one column, and was previously described on screen only as "worklist order"
+ *  while being the most load-bearing ordering on the page. A sentence also
+ *  covers the case the dropdown could not: a shift-clicked multi-sort had no
+ *  entry and displayed as "custom (2 columns)", which names how many criteria
+ *  are in force and not one of them.
+ */
+export function describeSort(sort: SortCriterion[]): [string, string] {
+  if (!sort.length) {
+    return ["우선순위, 그다음 발주량", "priority, then order quantity"];
+  }
+  // Direction is spelled out for the first criterion only. Past that it is a
+  // tie-break, and naming every direction makes the line longer than the table
+  // state it describes.
+  const parts = sort.map((c, i): [string, string] => {
+    const [ko, en] = SORT_LABEL[c.key];
+    const [dirKo, dirEn] = DIR_LABEL[c.dir];
+    return i === 0 ? [`${ko} ${dirKo}`, `${en}, ${dirEn}`] : [ko, en];
+  });
+  return [
+    parts.map((p) => p[0]).join(", 그다음 "),
+    parts.map((p) => p[1]).join(", then "),
+  ];
+}
 
 export function nextSort(
   prev: SortCriterion[],
@@ -257,11 +322,11 @@ function Urgency({
           this is also the only mark on the row saying the recommended quantity
           will not help. */}
       {gap !== null ? (
-        <span className="ml-1 whitespace-nowrap text-[10px] font-normal text-amber-600 dark:text-amber-400">
+        <span className="ml-1 whitespace-nowrap text-[11.5px] font-normal text-amber-600 dark:text-amber-400">
           {pick(`· ${gap}일 공백`, `· ${gap}d dry`)}
         </span>
       ) : (
-        date && <span className="ml-1 text-[10px] font-normal opacity-60">{date}</span>
+        date && <span className="ml-1 text-[11.5px] font-normal opacity-60">{date}</span>
       )}
     </span>
   );
@@ -269,12 +334,17 @@ function Urgency({
 
 export function ActionListTable({
   rows,
+  coverageWeeks,
   skuHref,
   onOpenSku,
   sort = DEFAULT_SORT,
   onSort,
 }: {
   rows: ActionListRow[];
+  /** Lead time plus reorder cycle, for labelling the demand column. The figure
+   *  in it is the demand the recommendation is actually built on, so the header
+   *  has to name the window rather than the forecast horizon. */
+  coverageWeeks: number;
   /** Builds the detail URL for a row, including the planning parameters the
    *  list is currently showing. Passed in rather than built here so the table
    *  stays unaware of what those parameters are. */
@@ -292,8 +362,12 @@ export function ActionListTable({
       available: pick("가용", "Available"),
       preorder: pick("선주문", "Preord."),
       inbound: pick("입고예정", "Inbound"),
-      recent: pick("30일", "30d"),
-      forecast: pick("13주 예측", "13w fcst"),
+      // Four weeks, not 30 days. `recent_units` sums four W-MON buckets, and the
+      // column header said 30d while the SKU detail page said "30-day sales" for
+      // the same 28-day figure.
+      recent: pick("4주", "4wk"),
+      trend: pick("추세", "Trend"),
+      forecast: pick(`${coverageWeeks}주 수요`, `${coverageWeeks}w demand`),
       stockout: pick("품절 시점", "Stocks out"),
       order: pick("발주", "Order"),
       reliability: pick("신뢰도", "Reliability"),
@@ -301,7 +375,7 @@ export function ActionListTable({
       demand: pick("수요", "DEMAND"),
       action: pick("조치", "ACTION"),
     }),
-    [pick],
+    [pick, coverageWeeks],
   );
 
   const sortIcon = (key: SortKey) => {
@@ -316,7 +390,7 @@ export function ActionListTable({
         {/* Position marker, shown only when more than one criterion is active,
             so a single sort is not cluttered by a permanent "1". */}
         {sort.length > 1 && (
-          <span className="text-[9px] font-semibold leading-none text-primary/70">{idx + 1}</span>
+          <span className="text-[10.5px] font-semibold leading-none text-primary/70">{idx + 1}</span>
         )}
       </span>
     );
@@ -356,19 +430,19 @@ export function ActionListTable({
             <TableHead className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
             >
               {headers.position}
             </TableHead>
             <TableHead
-              colSpan={2}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
+              colSpan={3}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
             >
               {headers.demand}
             </TableHead>
             <TableHead
               colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[10px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
+              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
             >
               {headers.action}
             </TableHead>
@@ -382,7 +456,8 @@ export function ActionListTable({
             {th("preorder_backlog", headers.preorder, true, BAND.pos.sub)}
             {th("confirmed_inbound", headers.inbound, true, BAND.pos.sub)}
             {th("recent_units", headers.recent, true, `${BAND.dem.sub} ${BAND.dem.edge}`)}
-            {th("forecast_total", headers.forecast, true, BAND.dem.sub)}
+            {th("ramp", headers.trend, true, BAND.dem.sub)}
+            {th("coverage_demand", headers.forecast, true, BAND.dem.sub)}
             {th("days_to_stockout", headers.stockout, true, `${BAND.act.sub} ${BAND.act.edge}`)}
             {th("recommended_order_qty", headers.order, true, BAND.act.sub)}
             {th("wape", headers.reliability, true, BAND.act.sub)}
@@ -408,7 +483,7 @@ export function ActionListTable({
                     }}
                     className="block"
                   >
-                    <span className="font-mono text-[11px] underline-offset-2 group-hover:text-sky-600 group-hover:underline dark:group-hover:text-sky-400">
+                    <span className="font-mono text-[12.5px] underline-offset-2 group-hover:text-sky-600 group-hover:underline dark:group-hover:text-sky-400">
                       {r.unique_id}
                     </span>
                     {r.flags.length > 0 && (
@@ -417,12 +492,12 @@ export function ActionListTable({
                         aria-label={r.flags.join("; ")}
                       />
                     )}
-                    {sub && <span className="block text-[10px] text-muted-foreground">{sub}</span>}
+                    {sub && <span className="block text-[11.5px] text-muted-foreground">{sub}</span>}
                   </Link>
                 </TableCell>
                 <TableCell className="align-top">
                   <span
-                    className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] ${
+                    className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11.5px] ${
                       PRIORITY_STYLE[r.priority_label] ?? PRIORITY_STYLE.Routine
                     }`}
                   >
@@ -446,7 +521,7 @@ export function ActionListTable({
                       <span>{nf.format(Math.round(r.confirmed_inbound))}</span>
                       {r.days_to_inbound !== null && Number.isFinite(r.days_to_inbound) && (
                         <span
-                          className="block text-[10px] font-normal text-muted-foreground"
+                          className="block text-[11.5px] font-normal text-muted-foreground"
                           title={r.inbound_eta ?? undefined}
                         >
                           {pick(`${Math.round(r.days_to_inbound)}일 후`, `in ${Math.round(r.days_to_inbound)}d`)}
@@ -458,7 +533,33 @@ export function ActionListTable({
                   )}
                 </TableCell>
                 <TableCell className={`text-right tabular-nums ${BAND.dem.edge}`}>{nf.format(Math.round(r.recent_units))}</TableCell>
-                <TableCell className="text-right tabular-nums">{nf.format(Math.round(r.forecast_total))}</TableCell>
+                {/* The list could filter on trend but never showed it, so a
+                    reader could select "falling" and see nothing on the rows
+                    saying which way anything was moving. Glyph as well as
+                    colour, and the ratio itself, matching the SKU page. */}
+                <TableCell className="text-right tabular-nums">
+                  <span
+                    className={`mr-1 ${
+                      r.demand_state === "rising" ? "text-emerald-600 dark:text-emerald-400"
+                        : r.demand_state === "falling" ? "text-amber-600 dark:text-amber-400"
+                        : r.demand_state === "collapsing" ? "text-red-600 dark:text-red-400"
+                        : "text-muted-foreground"
+                    }`}
+                    aria-label={r.demand_state}
+                  >
+                    {TREND_GLYPH[r.demand_state] ?? "·"}
+                  </span>
+                  <span className="text-[12.5px] text-muted-foreground">
+                    {r.ramp === null || !Number.isFinite(r.ramp) ? "—" : r.ramp.toFixed(2)}
+                  </span>
+                </TableCell>
+                {/* Demand over the window the order actually covers, not the
+                    whole 13-week horizon. The recommendation is built from this
+                    figure, so showing the horizon total put a number on the row
+                    that nothing else on it adds up to. */}
+                <TableCell className="text-right tabular-nums">
+                  {nf.format(Math.round(r.coverage_demand))}
+                </TableCell>
                 <TableCell className={`text-right tabular-nums ${BAND.act.edge}`}>
                   <Urgency
                     days={r.days_to_stockout}
@@ -478,11 +579,11 @@ export function ActionListTable({
                     case that matters, so it is a quantity rather than a badge.
                     A badge would read as "handled" on a SKU drafted for 300
                     against a recommended 1,117, and stop someone looking. */}
-                <TableCell className="text-right align-top text-[13px] font-semibold tabular-nums">
+                <TableCell className="text-right align-top text-[14px] font-semibold tabular-nums">
                   {nf.format(r.recommended_order_qty)}
                   {r.draft_inbound > 0 && (
                     <span
-                      className="block text-[10px] font-normal italic text-muted-foreground"
+                      className="block text-[11.5px] font-normal italic text-muted-foreground"
                       title={pick(
                         `초안 상태 컨테이너에 ${nf.format(Math.round(r.draft_inbound))}개가 잡혀 있습니다${r.draft_eta ? ` (ETA ${r.draft_eta})` : ""}. 확정 전이므로 권장 수량에서 차감하지 않았습니다.`,
                         `${nf.format(Math.round(r.draft_inbound))} units sit on a container still in draft${r.draft_eta ? `, ETA ${r.draft_eta}` : ""}. Not committed, so it is not subtracted from the recommendation.`,
@@ -496,7 +597,7 @@ export function ActionListTable({
                   )}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  <span className={`font-mono text-[11px] ${TIER_STYLE[r.tier] ?? TIER_STYLE.none}`}>
+                  <span className={`font-mono text-[12.5px] ${TIER_STYLE[r.tier] ?? TIER_STYLE.none}`}>
                     {TIER_GLYPH[r.tier] ?? TIER_GLYPH.none}
                   </span>
                   {/* The substituted figure is no longer reachable by sorting
@@ -504,7 +605,7 @@ export function ActionListTable({
                       safety stock was actually sized on. Without it the stand-in
                       is invisible from the list entirely. */}
                   <span
-                    className="ml-1.5 text-[11px] text-muted-foreground"
+                    className="ml-1.5 text-[12.5px] text-muted-foreground"
                     title={
                       r.wape === null
                         ? pick(

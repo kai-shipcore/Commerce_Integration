@@ -99,7 +99,25 @@ Inngest (`src/lib/inngest/`) handles event-driven background workflows. The clie
 
 Auto-start only applies to a local service. If `AI_SERVICE_URL` points at another host, that server is not this app's to manage and an outage is reported rather than worked around.
 
-The project uses a `.env` file (not `.env.local`).
+**Both `.env` and `.env.local` exist here, and `.env.local` wins.** That is Next.js
+precedence, not a project convention, and this file previously claimed the opposite
+("uses a `.env` file, not `.env.local`"), which cost a full afternoon: two people edited
+`AI_SERVICE_URL` in `.env` on separate machines and neither edit had any effect, because
+`.env.local` was setting it to something else on one machine and not existing on the other.
+
+Both are gitignored (`.env*`), so neither travels between machines and the two can disagree
+indefinitely without anything saying so.
+
+Before changing any variable, check which file is actually supplying it:
+
+```bash
+grep -n AI_SERVICE_URL .env .env.local     # macOS / Linux
+findstr /C:"AI_SERVICE_URL" .env .env.local  # Windows
+```
+
+Edit whichever one is winning, and restart `npm run dev` afterwards: env is read at
+startup, so a change to a running dev server does nothing and looks like the change
+failed.
 
 ## Dependency notes
 
