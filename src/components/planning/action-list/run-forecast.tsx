@@ -24,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, Loader2, Play, Square, X } from "lucide-react";
+import { Check, ChevronRight, Loader2, Play, X } from "lucide-react";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
@@ -36,7 +36,7 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
  *  Sync is the slow one and the one that looks broken: the app upserts the
  *  order-line table and holds the connection for minutes, so the step sits
  *  spinning with nothing to show. Saying how long it takes, at the moment it is
- *  taking that long, is the difference between waiting and pressing Stop. */
+ *  taking that long, is the difference between waiting and assuming it hung. */
 const STEPS: [string, string, [string, string]?][] = [
   ["동기화", "Sync", ["보통 몇 분 걸립니다", "usually a few minutes"]],
   ["수집", "Ingest"],
@@ -133,16 +133,10 @@ export function RunForecast({ onComplete }: { onComplete?: () => void }) {
     }
   }, [horizon]);
 
-  const cancel = useCallback(async () => {
-    if (!jobId) return;
-    try {
-      await fetch(apiPath(`/api/forecast/cancel/${jobId}`), { method: "POST" });
-    } catch {
-      // The request to stop failing is not itself worth reporting: the poll
-      // above reports what the job actually did, which is the answer that
-      // matters and arrives within two seconds either way.
-    }
-  }, [jobId]);
+  // No cancel handler. The API's /cancel-forecast endpoint still exists and is
+  // still generic, but this panel deliberately does not call it; see the note
+  // beside the running indicator for why stopping this pipeline partway is
+  // worse than letting it finish.
 
   const running = status === "running";
 
@@ -187,13 +181,27 @@ export function RunForecast({ onComplete }: { onComplete?: () => void }) {
           </label>
 
           {running ? (
-            <button
-              type="button"
-              onClick={cancel}
-              className="flex h-8 items-center gap-1.5 rounded-md border px-3 text-[12.5px] hover:bg-muted/60"
-            >
-              <Square className="h-3 w-3" /> {pick("중지", "Stop")}
-            </button>
+            /* Deliberately not a Stop button.
+             *
+             * ml_prepare_data.py writes three artifacts in sequence -- sales,
+             * then profiles, then the forecast -- with no transaction and no
+             * rollback. Cancelling between any two leaves them describing
+             * different weeks: fresh sales against stale segmentation, or fresh
+             * segmentation against a stale forecast, which is exactly the drift
+             * `demoted_since_forecast` exists to detect. A cancel that worked
+             * would leave the data worse than one that did not.
+             *
+             * The first version of this panel had a Stop, and the first time it
+             * was pressed the run continued to completion anyway. That was the
+             * safe outcome reached by accident; this makes it the intended one.
+             *
+             * See BACKLOG for the real fix: write to temp paths and move them
+             * into place together, after which cancelling is safe and the
+             * button can come back. */
+            <span className="flex h-8 items-center gap-1.5 rounded-md border border-dashed px-3 text-[12.5px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {pick("실행 중 · 중단할 수 없습니다", "running · cannot be interrupted")}
+            </span>
           ) : (
             <button
               type="button"
@@ -267,15 +275,15 @@ export function RunForecast({ onComplete }: { onComplete?: () => void }) {
             )}
           </p>
         )}
-        {/* The sync caveat is here rather than in general help because this is
-            the only moment it matters. Stopping kills the forecast process; the
-            velocity sync is a request already delivered to the app, which
-            finishes it whether or not anything is still listening. */}
+        {/* Still handled, because a job can be cancelled from outside this
+            panel: the API's /cancel-forecast endpoint is generic and the legacy
+            Run Forecast screen can reach the same job type. If that happens the
+            artifacts are mid-sequence and a reader needs telling. */}
         {status === "cancelled" && (
-          <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+          <p className="rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-[12.5px] leading-relaxed text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
             {pick(
-              "중지했습니다. 마지막으로 완료된 단계까지의 파일만 갱신되었습니다. 다만 동기화 단계는 앱 서버에서 실행되므로, 이미 시작된 동기화는 중지와 무관하게 완료됩니다.",
-              "Stopped. Only the steps that finished were written. The sync is the exception: it runs on the app server, so one that had already started will finish regardless.",
+              "실행이 외부에서 중단되었습니다. 이 파이프라인은 판매 데이터, 분류, 예측을 순서대로 기록하므로 중간에 멈추면 세 파일이 서로 다른 주를 가리킬 수 있습니다. 다시 실행해 완료하는 것을 권장합니다.",
+              "The run was cancelled from outside this panel. This pipeline writes sales, then segmentation, then the forecast in sequence, so stopping partway can leave the three describing different weeks. Re-run it to completion.",
             )}
           </p>
         )}

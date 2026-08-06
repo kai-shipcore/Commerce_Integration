@@ -4,10 +4,17 @@
  * Code Guide:
  * Fetches both validation payloads and lays out the page.
  *
- * The two requests are independent and issued together. Demand patterns scans
- * full sales history and is the slower of the two, so chaining them would make
- * the comparison wait on data it does not need. Each section renders as its own
- * data arrives, and a failure in one does not blank the other.
+ * The three requests are independent and issued together, so each section
+ * renders as its own data arrives and a failure in one does not blank the
+ * others. That holds whatever their relative speed, which is the point of
+ * issuing them in parallel rather than a claim about any one of them.
+ *
+ * This comment previously asserted that demand patterns was the slowest,
+ * because it scans full sales history. Observed behaviour is the opposite: it
+ * is the quickest of the three. The inference was plausible and wrong, and it
+ * had been repeated into two other files before anyone checked it against the
+ * page. Left recorded here rather than quietly deleted, since the same
+ * reasoning would produce the same wrong answer again.
  */
 
 import { useEffect, useState } from "react";
@@ -27,7 +34,7 @@ import { EmptySection } from "./empty-section";
 import { OutliersSection } from "./outliers-section";
 import { ModelCard } from "@/components/planning/model-card";
 import { OverTimeSection } from "./over-time-section";
-import { SectionHeading, ValidationContents } from "./section-heading";
+import { SectionHeading } from "./section-heading";
 import type {
   DemandPatternsResponse,
   DemandVsForecastResponse,
@@ -202,35 +209,36 @@ export function ValidationContent() {
         </div>
       )}
 
-      {/* Below the provenance line, not above it. The dates qualify everything
-          on the page and belong with the title; the contents bar is navigation
-          and sticks to the top of the viewport once scrolled past. */}
-      {v && (
-        <ValidationContents
-          ready={{
-            comparison: true,
-            trajectory: Boolean(trend.data && trend.data.predicted.length > 0),
-            outliers: true,
-            "over-time": !(trend.data && trend.data.runs_stored === 0),
-            "final-test": true,
-            demand: Boolean(patterns.data),
-          }}
-        />
-      )}
-
       {v && (
         <>
           <ComparisonSection comparison={v.comparison} coverage={v.coverage} />
 
-          {/* Directly under the grid, because it is the same evidence drawn
-              rather than summarised. Absent if it fails: the grid above already
-              carries the claim, and a second error card for one outage is
-              noise. */}
+          {/* Second, not last. This is the scope of the claim above it: which
+              SKUs the model speaks for and how much of the volume they carry.
+              It sat at the bottom of the page because it was built last, which
+              meant the context for every figure above arrived after all of
+              them. It renders its own loader in place, so however long it
+              takes it cannot hold up the sections below it. */}
+          {!patterns.done && !patterns.stale && !patterns.error && <Loading />}
+          {patterns.error && !validation.error && (
+            <PlanningError body={patterns.error} onRetry={reload} />
+          )}
+          {patterns.data && (
+            <div className={patterns.stale ? "opacity-50 transition-opacity" : "transition-opacity"}>
+              <DemandPatternsSection
+                data={patterns.data}
+                weeks={weeks}
+                onWeeksChange={setWeeks}
+              />
+            </div>
+          )}
+
+          {/* The claim drawn over time, after the claim and its scope. Absent if
+              it fails: the grid above already carries the claim, and a second
+              error card for one outage is noise. */}
           {trend.data && trend.data.predicted.length > 0 && (
             <DemandVsForecastSection data={trend.data} />
           )}
-
-          <OutliersSection outliers={v.outliers} baseline={v.comparison.baseline} />
 
           {/* The chart above already explains an empty history store, so the
               placeholder here would be the second panel on one page saying the
@@ -247,6 +255,11 @@ export function ValidationContent() {
               currentVersion={v.comparison.current}
             />
           )}
+
+          {/* Per-SKU detail after the aggregate evidence, not before it. The
+              pooled figure has to be on the page before "where it diverges
+              from the pooled figure" means anything. */}
+          <OutliersSection outliers={v.outliers} baseline={v.comparison.baseline} />
 
           <section className="flex flex-col gap-4">
             <SectionHeading
@@ -285,21 +298,6 @@ export function ValidationContent() {
         </>
       )}
 
-      {!patterns.done && !patterns.stale && !patterns.error && validation.done && <Loading />}
-      {/* Only shown when the section above succeeded. Two identical cards for
-          one outage is noise, and the first already carries the fix. */}
-      {patterns.error && !validation.error && (
-        <PlanningError body={patterns.error} onRetry={reload} />
-      )}
-      {patterns.data && (
-        <div className={patterns.stale ? "opacity-50 transition-opacity" : "transition-opacity"}>
-          <DemandPatternsSection
-            data={patterns.data}
-            weeks={weeks}
-            onWeeksChange={setWeeks}
-          />
-        </div>
-      )}
     </div>
   );
 }

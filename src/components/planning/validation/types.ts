@@ -52,6 +52,11 @@ export interface ValidationCoverage {
 export interface OutlierRow {
   unique_id: string;
   window: string;
+  /** bucket/history_length, collapsed to the vocabulary every other section
+   *  reports in. Optional: this app and the API deploy independently, and a
+   *  running API that predates the field should thin the breakdown rather than
+   *  blank the section. */
+  segment?: string;
   /** Units actually sold over the window. Both WAPEs below are divided by this,
    *  so `delta` is bounded by it: a small denominator lets the difference swing
    *  freely, which is why the list is filtered by volume before it is ranked. */
@@ -204,7 +209,17 @@ export interface DemandVsForecastResponse {
 
 export interface DemandPatternsResponse {
   weekly: WeeklyPoint[];
+  /** The breakpoints the curve is annotated with. Kept alongside `pareto`
+   *  rather than derived from it: the curve is downsampled to ~200 points, so a
+   *  figure read off it could sit a sample interval away from the true one, and
+   *  this section states those figures in words. */
   concentration: { sku_share: number; n_skus: number; demand_share: number }[];
+  /** Cumulative share of demand against cumulative share of SKUs, ranked by
+   *  demand. Optional: this app and the forecast API deploy independently, so a
+   *  running API that predates the curve must fall back rather than blank the
+   *  section. */
+  pareto?: { sku_pct: number; demand_pct: number }[];
+  n_skus?: number;
   segments: { group: string; n_skus: number; units: number }[];
   weeks: number;
 }

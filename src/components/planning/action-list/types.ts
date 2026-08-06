@@ -64,6 +64,24 @@ export interface ActionListRow {
   inbound_in_window: number;
   recommended_order_qty: number;
   priority_label: string;
+  /** One of the smallest set of SKUs that together carry
+   *  `best_seller_demand_share` of recent units. 50% by default, which on the
+   *  current data is 46 of 432 SKUs.
+   *
+   *  A demand share rather than a percentile, because a percentile describes
+   *  the list rather than the business: "top 20%" names a fifth of the SKUs
+   *  whatever demand does, and its count moves when SKUs enter or leave the
+   *  forecastable set for reasons unrelated to selling well. A share
+   *  self-adjusts in the right direction, shrinking as demand concentrates.
+   *
+   *  An attribute of the product, not a queue. It used to be the third rung of
+   *  `priority_label` and was moved out (BACKLOG.md item 14): a SKU has a
+   *  supply state and an importance simultaneously, and one field could only
+   *  carry one of them. The label consistently lost to Preorder and No Stock,
+   *  which is where top sellers most often are, so the badge thinned out
+   *  exactly where importance mattered most. Always sent; the payload has
+   *  carried this column all along, the type simply never declared it. */
+  best_seller: boolean;
 
   // Confidence: how wrong this SKU's forecast has been, and on what basis.
   wape: number | null;
@@ -89,12 +107,6 @@ export interface ActionListMetrics {
   forecasted_skus: number;
   preorder_priority: number;
   out_of_stock: number;
-  /** Flagged best sellers that are also stocking out soon. Served but no longer
-   *  displayed: it cuts across the priority labels, so a card showing it while
-   *  filtering on the `Best Seller` label reported one set and produced
-   *  another. Kept on the response because it is a real figure and the metrics
-   *  block is the forecast run's own summary, not a description of this screen. */
-  best_sellers_at_risk: number;
   stockout_within_horizon: number;
   supply_gap: number;
   supply_gap_backlog: number;

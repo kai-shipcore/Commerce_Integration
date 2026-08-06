@@ -2,7 +2,7 @@
 
 /**
  * Code Guide:
- * Shared heading and contents bar for the validation page.
+ * Numbered section headings for the validation page.
  *
  * This page is six sections of evidence read top to bottom, and it had no way
  * to see its own shape: every heading was the same size as the sub-headings
@@ -18,25 +18,26 @@
  * to know whether they have seen all of it.
  *
  * Headings own their anchor id rather than the page wrapping them in one, so a
- * section cannot be linked in the contents bar without also being labelled
- * where it lands.
+ * section stays linkable from outside the page even now that nothing inside it
+ * links to them.
  */
 
-import { useI18n } from "@/lib/i18n/i18n-provider";
 
-/** The page's sections, in the order they render.
+/** The page's sections, in the order they render, which is the order the
+ *  argument is made in: the claim, its scope, the claim drawn over time, the
+ *  out-of-sample record, where it is weakest, and what is deliberately not
+ *  claimed yet.
  *
- *  Held here rather than in the page so the contents bar and the headings
- *  cannot disagree about what exists or what it is called. Adding a section
- *  means adding it here, which is the reminder to give it a number and a name
- *  that reads as part of the sequence. */
+ *  This list is what assigns the numbers, so it has to match the order the page
+ *  actually renders in. A heading numbered 03 sitting fourth is worse than no
+ *  numbering at all. Adding a section means adding it here, in its place. */
 export const VALIDATION_SECTIONS = [
   { id: "comparison", label: ["모델 대 스프레드시트", "Model versus spreadsheet"] },
-  { id: "trajectory", label: ["주간 실판매와 예측", "Demand vs forecast"] },
-  { id: "outliers", label: ["SKU 단위 편차", "Where it breaks down"] },
-  { id: "over-time", label: ["실제 운영 성적", "Forecasts actually served"] },
-  { id: "final-test", label: ["최종 테스트 구간", "Final test window"] },
   { id: "demand", label: ["수요 구조", "How demand is shaped"] },
+  { id: "trajectory", label: ["주간 실판매와 예측", "Demand vs forecast"] },
+  { id: "over-time", label: ["실제 운영 성적", "Forecasts actually served"] },
+  { id: "outliers", label: ["SKU 단위 분석", "SKU-level breakdown"] },
+  { id: "final-test", label: ["최종 테스트 구간", "Final test window"] },
 ] as const;
 
 export type ValidationSectionId = (typeof VALIDATION_SECTIONS)[number]["id"];
@@ -95,53 +96,13 @@ export function SectionHeading({
   );
 }
 
-/**
- * Contents bar. Sticky, so it stays available in a page that is several
- * screens tall.
+/* The contents bar that used to live here was removed on 2026-08-05.
  *
- * Sections that failed to load or have no data are dimmed and unclickable
- * rather than hidden. A contents list that silently shortens itself tells the
- * reader the page has five parts when it has six, which on an evidence page is
- * the wrong lie to tell: a section that is missing is itself information.
- */
-export function ValidationContents({ ready }: { ready: Record<string, boolean> }) {
-  const { pick } = useI18n();
-  return (
-    <nav
-      aria-label={pick("페이지 목차", "Page contents")}
-      className="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-x-1 gap-y-1 border-b bg-background/95 px-1 py-2 backdrop-blur"
-    >
-      <span className="mr-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {pick("목차", "Contents")}
-      </span>
-      {VALIDATION_SECTIONS.map((s, i) => {
-        const label = pick(s.label[0], s.label[1]);
-        const isReady = ready[s.id] !== false;
-        if (!isReady) {
-          return (
-            <span
-              key={s.id}
-              className="cursor-default rounded px-2 py-1 text-[12.5px] text-muted-foreground/40"
-              title={pick("아직 불러오지 않았습니다.", "Not loaded.")}
-            >
-              <span className="mr-1 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
-              {label}
-            </span>
-          );
-        }
-        return (
-          <a
-            key={s.id}
-            href={`#${s.id}`}
-            className="rounded px-2 py-1 text-[12.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <span className="mr-1 tabular-nums opacity-60">
-              {String(i + 1).padStart(2, "0")}
-            </span>
-            {label}
-          </a>
-        );
-      })}
-    </nav>
-  );
-}
+ * Six sections listed one-for-one is navigation the scrollbar already provides,
+ * which was the objection recorded against it in BACKLOG.md 13.2 before it was
+ * built. What it was actually contributing was the numbering, and the numbering
+ * belongs to the headings: it survives here, and the bar does not.
+ *
+ * `VALIDATION_SECTIONS` stays because it is still what assigns those numbers,
+ * and keeping the order in one place is what stops a heading claiming to be
+ * section three while sitting fourth on the page. */

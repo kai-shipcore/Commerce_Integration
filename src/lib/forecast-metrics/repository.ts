@@ -31,9 +31,30 @@ export const ForecastMetricsRepository = {
     return rows[0];
   },
 
+  /**
+   * The most recent week that has actually FINISHED, as its W-MON label.
+   *
+   * A week runs Tuesday through Monday and is labelled by the Monday it ends
+   * on, so the week labelled Monday L is still running for the whole of
+   * Monday L. This previously returned `CURRENT_DATE - (ISODOW - 1)`, which is
+   * the most recent Monday and is today when today is a Monday. Every Monday,
+   * therefore, the accuracy view included a week whose actuals were still being
+   * accumulated: `getAccuracyRows` sums orders over `(ds - 7, ds]`, so it
+   * picked up a part-day of Monday's sales and scored the forecast against it.
+   * The week always looked under-sold and accuracy always looked worse, once a
+   * week, for one day.
+   *
+   * Offset by ISODOW: Mon 7, Tue 1, Wed 2, Thu 3, Fri 4, Sat 5, Sun 6. Written
+   * as `((ISODOW + 5) % 7) + 1` so both operands of the modulo stay positive;
+   * Postgres truncates rather than floors, so the more obvious
+   * `((ISODOW - 2) % 7) + 1` returns 0 on a Monday instead of 7.
+   *
+   * This is the SQL twin of `last_complete_week` in the forecasting repo's
+   * src/weeks.py, and the two must agree.
+   */
   async getLastCompletedMonday(): Promise<string> {
     const result = await getPrimaryPool().query<{ last_monday: string }>(
-      `SELECT (CURRENT_DATE - (EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1) * interval '1 day')::date::text AS last_monday`,
+      `SELECT (CURRENT_DATE - (((EXTRACT(ISODOW FROM CURRENT_DATE)::int + 5) % 7) + 1) * interval '1 day')::date::text AS last_monday`,
     );
     return result.rows[0].last_monday;
   },

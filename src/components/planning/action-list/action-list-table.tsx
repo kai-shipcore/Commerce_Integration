@@ -110,28 +110,67 @@ export const BAND_ROW_RULE = "shadow-[inset_0_-1px_0_var(--border)]";
  *  shorter ones get as many as fit. */
 export const TABLE_WINDOW = "max-h-[min(62rem,78vh)]";
 
+/** The optional columns, in render order, grouped by the band they sit under.
+ *
+ *  SKU and Priority are absent on purpose: SKU is the row's identity and the
+ *  pinned column the horizontal scroll is anchored to, and Priority is the
+ *  order the worklist is built around. Neither is a detail a reader chooses to
+ *  see, so offering to hide them would be offering to break the screen.
+ *
+ *  Eleven columns do not fit a laptop, which is what forced the horizontal
+ *  scroll this exists to relieve. Hiding rather than dropping, because every
+ *  one of these was added for a reason and which three matter depends on what
+ *  the reader is doing: someone checking coverage wants demand and trend,
+ *  someone placing an order wants position and quantity, and the screen cannot
+ *  know which. */
+export const OPTIONAL_COLUMNS: {
+  key: SortKey;
+  band: "pos" | "dem" | "act";
+  label: [string, string];
+}[] = [
+  { key: "available_inventory", band: "pos", label: ["가용", "Available"] },
+  { key: "preorder_backlog", band: "pos", label: ["선주문", "Preorder"] },
+  { key: "confirmed_inbound", band: "pos", label: ["입고예정", "Inbound"] },
+  { key: "recent_units", band: "dem", label: ["4주 판매", "4-week sales"] },
+  { key: "ramp", band: "dem", label: ["추세", "Trend"] },
+  { key: "coverage_demand", band: "dem", label: ["기간 수요", "Demand in window"] },
+  { key: "days_to_stockout", band: "act", label: ["품절 시점", "Stocks out"] },
+  { key: "recommended_order_qty", band: "act", label: ["발주", "Order"] },
+  { key: "wape", band: "act", label: ["신뢰도", "Reliability"] },
+];
+
+/** Shown when nothing has been chosen. Everything: the table has always shown
+ *  every column, and starting people somewhere narrower would hide figures they
+ *  are used to without saying so. The control is the opt-in. */
+export const ALL_COLUMNS: SortKey[] = OPTIONAL_COLUMNS.map((c) => c.key);
+
 /** Priority labels exactly as src/planning/calc.py emits them. The casing is
- *  load-bearing: these are dictionary keys, so "Best seller" instead of
- *  "Best Seller" does not fail, it silently falls through to the Routine style
- *  and the badge looks deliberate. Kept in one place and imported by the filter
- *  so the two cannot drift apart. */
+ *  load-bearing: these are dictionary keys, so "No stock" instead of "No Stock"
+ *  does not fail, it silently falls through to the Routine style and the badge
+ *  looks deliberate. Kept in one place and imported by the filter so the two
+ *  cannot drift apart.
+ *
+ *  Three values of one variable: what the stock situation is. "Best Seller"
+ *  used to sit between No Stock and Routine and was removed (BACKLOG.md item
+ *  14), because it answers a different question, how much the SKU matters, and
+ *  every SKU has both a supply state and an importance at once. One slot could
+ *  hold only one of them, and importance always lost, to exactly the queues a
+ *  top seller is most likely to be in. Importance is now `best_seller` on the
+ *  row, drawn as a star beside the badge, so it is legible in every queue. */
 export const PRIORITY = {
   preorder: "Preorder",
   noStock: "No Stock",
-  bestSeller: "Best Seller",
   routine: "Routine",
 } as const;
 
 export const PRIORITY_STYLE: Record<string, string> = {
   [PRIORITY.preorder]: "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300",
   [PRIORITY.noStock]: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
-  [PRIORITY.bestSeller]: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
   [PRIORITY.routine]: "border-neutral-300 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400",
 };
 export const PRIORITY_GLYPH: Record<string, string> = {
   [PRIORITY.preorder]: "◆",
   [PRIORITY.noStock]: "●",
-  [PRIORITY.bestSeller]: "★",
   [PRIORITY.routine]: "○",
 };
 
@@ -339,6 +378,7 @@ export function ActionListTable({
   onOpenSku,
   sort = DEFAULT_SORT,
   onSort,
+  visible,
 }: {
   rows: ActionListRow[];
   /** Lead time plus reorder cycle, for labelling the demand column. The figure
@@ -352,6 +392,9 @@ export function ActionListTable({
   onOpenSku?: (sku: string) => void;
   sort?: SortCriterion[];
   onSort?: (key: SortKey, shiftKey: boolean) => void;
+  /** Optional columns to render. Undefined shows every one, so a caller that
+   *  does not care about column visibility gets the table as it always was. */
+  visible?: Set<SortKey>;
 }) {
   const { pick } = useI18n();
 
@@ -367,7 +410,16 @@ export function ActionListTable({
       // the same 28-day figure.
       recent: pick("4주", "4wk"),
       trend: pick("추세", "Trend"),
-      forecast: pick(`${coverageWeeks}주 수요`, `${coverageWeeks}w demand`),
+      // "Next 9w" rather than "9w demand". The band above already says DEMAND,
+      // so the word was repeating its own heading, and it was the widest header
+      // on the table for a column of four-digit numbers. "Next" is what the
+      // column adds over the "4wk" beside it, which is the same measure looking
+      // backwards; the exact phrase is on hover.
+      forecast: pick(`향후 ${coverageWeeks}주`, `Next ${coverageWeeks}w`),
+      forecastHint: pick(
+        `발주가 감당해야 할 ${coverageWeeks}주(리드타임 + 발주 주기) 동안의 예측 수요입니다.`,
+        `Forecast demand over the ${coverageWeeks} weeks an order has to cover, lead time plus reorder cycle.`,
+      ),
       stockout: pick("품절 시점", "Stocks out"),
       order: pick("발주", "Order"),
       reliability: pick("신뢰도", "Reliability"),
@@ -377,6 +429,20 @@ export function ActionListTable({
     }),
     [pick, coverageWeeks],
   );
+
+  // Undefined means "no opinion", which is every column, rather than none.
+  const vis = (key: SortKey) => !visible || visible.has(key);
+
+  // Columns still showing in each band, so the band header spans the right
+  // number and disappears entirely when its last column is hidden.
+  const bandKeys = (band: "pos" | "dem" | "act") =>
+    OPTIONAL_COLUMNS.filter((c) => c.band === band && vis(c.key)).map((c) => c.key);
+
+  // The vertical rule that separates bands is drawn on the first column of
+  // each, so it has to move when that column is hidden rather than vanishing
+  // with it.
+  const edge = (band: "pos" | "dem" | "act", key: SortKey) =>
+    bandKeys(band)[0] === key ? BAND[band].edge : "";
 
   const sortIcon = (key: SortKey) => {
     const idx = sort.findIndex((c) => c.key === key);
@@ -396,8 +462,9 @@ export function ActionListTable({
     );
   };
 
-  const th = (key: SortKey, label: string, right = false, extra = "") => (
+  const th = (key: SortKey, label: string, right = false, extra = "", hint?: string) => (
     <TableHead
+      title={hint}
       onClick={onSort ? (e) => onSort(key, e.shiftKey) : undefined}
       className={`sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${
         right ? "text-right" : ""
@@ -428,39 +495,45 @@ export function ActionListTable({
           <TableRow className="hover:bg-transparent">
             <TableHead className={`sticky left-0 top-0 ${Z.headCorner} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
             <TableHead className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
-            <TableHead
-              colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
-            >
-              {headers.position}
-            </TableHead>
-            <TableHead
-              colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
-            >
-              {headers.demand}
-            </TableHead>
-            <TableHead
-              colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
-            >
-              {headers.action}
-            </TableHead>
+            {bandKeys("pos").length > 0 && (
+              <TableHead
+                colSpan={bandKeys("pos").length}
+                className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.pos.head} ${BAND.pos.edge}`}
+              >
+                {headers.position}
+              </TableHead>
+            )}
+            {bandKeys("dem").length > 0 && (
+              <TableHead
+                colSpan={bandKeys("dem").length}
+                className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.dem.head} ${BAND.dem.edge}`}
+              >
+                {headers.demand}
+              </TableHead>
+            )}
+            {bandKeys("act").length > 0 && (
+              <TableHead
+                colSpan={bandKeys("act").length}
+                className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${BAND.act.head} ${BAND.act.edge}`}
+              >
+                {headers.action}
+              </TableHead>
+            )}
           </TableRow>
           <TableRow className="hover:bg-transparent">
             {th("unique_id", headers.sku, false, `left-0 ${Z.headCorner} bg-background`)}
             {/* Opaque, like every other cell in this row. Without it the rows
                 scrolling underneath show through the header. */}
             {th("priority_label", headers.priority, false, "bg-background")}
-            {th("available_inventory", headers.available, true, `${BAND.pos.sub} ${BAND.pos.edge}`)}
-            {th("preorder_backlog", headers.preorder, true, BAND.pos.sub)}
-            {th("confirmed_inbound", headers.inbound, true, BAND.pos.sub)}
-            {th("recent_units", headers.recent, true, `${BAND.dem.sub} ${BAND.dem.edge}`)}
-            {th("ramp", headers.trend, true, BAND.dem.sub)}
-            {th("coverage_demand", headers.forecast, true, BAND.dem.sub)}
-            {th("days_to_stockout", headers.stockout, true, `${BAND.act.sub} ${BAND.act.edge}`)}
-            {th("recommended_order_qty", headers.order, true, BAND.act.sub)}
-            {th("wape", headers.reliability, true, BAND.act.sub)}
+            {vis("available_inventory") && th("available_inventory", headers.available, true, `${BAND.pos.sub} ${edge("pos", "available_inventory")}`)}
+            {vis("preorder_backlog") && th("preorder_backlog", headers.preorder, true, `${BAND.pos.sub} ${edge("pos", "preorder_backlog")}`)}
+            {vis("confirmed_inbound") && th("confirmed_inbound", headers.inbound, true, `${BAND.pos.sub} ${edge("pos", "confirmed_inbound")}`)}
+            {vis("recent_units") && th("recent_units", headers.recent, true, `${BAND.dem.sub} ${edge("dem", "recent_units")}`)}
+            {vis("ramp") && th("ramp", headers.trend, true, `${BAND.dem.sub} ${edge("dem", "ramp")}`)}
+            {vis("coverage_demand") && th("coverage_demand", headers.forecast, true, `${BAND.dem.sub} ${edge("dem", "coverage_demand")}`, headers.forecastHint)}
+            {vis("days_to_stockout") && th("days_to_stockout", headers.stockout, true, `${BAND.act.sub} ${edge("act", "days_to_stockout")}`)}
+            {vis("recommended_order_qty") && th("recommended_order_qty", headers.order, true, `${BAND.act.sub} ${edge("act", "recommended_order_qty")}`)}
+            {vis("wape") && th("wape", headers.reliability, true, `${BAND.act.sub} ${edge("act", "wape")}`)}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -492,7 +565,19 @@ export function ActionListTable({
                         aria-label={r.flags.join("; ")}
                       />
                     )}
-                    {sub && <span className="block text-[11.5px] text-muted-foreground">{sub}</span>}
+                    {/* Capped and truncated. Uncapped, this column was the widest on the
+                        table and the reason the other eleven were pushed off the
+                        right edge: a product name has no length limit, so one long
+                        one set the width for every row. The full text is on hover,
+                        and the SKU above it is never truncated. */}
+                    {sub && (
+                      <span
+                        className="block max-w-[15rem] truncate text-[11.5px] text-muted-foreground"
+                        title={sub}
+                      >
+                        {sub}
+                      </span>
+                    )}
                   </Link>
                 </TableCell>
                 <TableCell className="align-top">
@@ -503,9 +588,28 @@ export function ActionListTable({
                   >
                     {PRIORITY_GLYPH[r.priority_label] ?? "○"} {r.priority_label}
                   </span>
+                  {/* Beside the badge rather than inside it: a second fact about
+                      the row, not another value of the first. This is what item
+                      14 bought. The star now appears on Preorder and No Stock
+                      rows, where the old ladder could never show it. */}
+                  {r.best_seller && (
+                    <span
+                      className="ml-1 text-[13px] text-amber-500"
+                      title={pick(
+                        "최근 4주 판매량의 절반을 차지하는 소수 SKU에 속합니다. 재고 상태와는 별개의 속성입니다.",
+                        "One of the products that together make up half of recent demand. An attribute of the product, independent of its stock situation.",
+                      )}
+                    >
+                      ★
+                    </span>
+                  )}
                 </TableCell>
-                <TableCell className={`text-right tabular-nums ${BAND.pos.edge}`}>{nf.format(Math.round(r.available_inventory))}</TableCell>
-                <TableCell className="text-right tabular-nums">{r.preorder_backlog ? nf.format(Math.round(r.preorder_backlog)) : "—"}</TableCell>
+                {vis("available_inventory") && (
+                  <TableCell className={`text-right tabular-nums ${edge("pos", "available_inventory")}`}>{nf.format(Math.round(r.available_inventory))}</TableCell>
+                )}
+                {vis("preorder_backlog") && (
+                  <TableCell className={`text-right tabular-nums ${edge("pos", "preorder_backlog")}`}>{r.preorder_backlog ? nf.format(Math.round(r.preorder_backlog)) : "—"}</TableCell>
+                )}
                 {/* Quantity with the date it lands. The ETA used to appear only
                     in the stockout cell, and only when the container arrives too
                     late, so 248 of the 376 rows carrying inbound showed a
@@ -515,7 +619,8 @@ export function ActionListTable({
                     figure a few columns over, which is also in days. The date
                     itself is on hover, for anyone coordinating against a
                     specific week. */}
-                <TableCell className="text-right align-top tabular-nums">
+                {vis("confirmed_inbound") && (
+                <TableCell className={`text-right align-top tabular-nums ${edge("pos", "confirmed_inbound")}`}>
                   {r.confirmed_inbound ? (
                     <>
                       <span>{nf.format(Math.round(r.confirmed_inbound))}</span>
@@ -532,12 +637,16 @@ export function ActionListTable({
                     "—"
                   )}
                 </TableCell>
-                <TableCell className={`text-right tabular-nums ${BAND.dem.edge}`}>{nf.format(Math.round(r.recent_units))}</TableCell>
+                )}
+                {vis("recent_units") && (
+                  <TableCell className={`text-right tabular-nums ${edge("dem", "recent_units")}`}>{nf.format(Math.round(r.recent_units))}</TableCell>
+                )}
                 {/* The list could filter on trend but never showed it, so a
                     reader could select "falling" and see nothing on the rows
                     saying which way anything was moving. Glyph as well as
                     colour, and the ratio itself, matching the SKU page. */}
-                <TableCell className="text-right tabular-nums">
+                {vis("ramp") && (
+                <TableCell className={`text-right tabular-nums ${edge("dem", "ramp")}`}>
                   <span
                     className={`mr-1 ${
                       r.demand_state === "rising" ? "text-emerald-600 dark:text-emerald-400"
@@ -553,20 +662,25 @@ export function ActionListTable({
                     {r.ramp === null || !Number.isFinite(r.ramp) ? "—" : r.ramp.toFixed(2)}
                   </span>
                 </TableCell>
+                )}
                 {/* Demand over the window the order actually covers, not the
                     whole 13-week horizon. The recommendation is built from this
                     figure, so showing the horizon total put a number on the row
                     that nothing else on it adds up to. */}
-                <TableCell className="text-right tabular-nums">
-                  {nf.format(Math.round(r.coverage_demand))}
-                </TableCell>
-                <TableCell className={`text-right tabular-nums ${BAND.act.edge}`}>
+                {vis("coverage_demand") && (
+                  <TableCell className={`text-right tabular-nums ${edge("dem", "coverage_demand")}`}>
+                    {nf.format(Math.round(r.coverage_demand))}
+                  </TableCell>
+                )}
+                {vis("days_to_stockout") && (
+                <TableCell className={`text-right tabular-nums ${edge("act", "days_to_stockout")}`}>
                   <Urgency
                     days={r.days_to_stockout}
                     date={r.estimated_stockout_date}
                     gapDays={r.supply_gap_days}
                   />
                 </TableCell>
+                )}
                 {/* Draft coverage sits under the recommendation rather than in
                     the Position band with confirmed inbound, because it is a
                     caveat about this number specifically: someone may already
@@ -579,7 +693,8 @@ export function ActionListTable({
                     case that matters, so it is a quantity rather than a badge.
                     A badge would read as "handled" on a SKU drafted for 300
                     against a recommended 1,117, and stop someone looking. */}
-                <TableCell className="text-right align-top text-[14px] font-semibold tabular-nums">
+                {vis("recommended_order_qty") && (
+                <TableCell className={`text-right align-top text-[14px] font-semibold tabular-nums ${edge("act", "recommended_order_qty")}`}>
                   {nf.format(r.recommended_order_qty)}
                   {r.draft_inbound > 0 && (
                     <span
@@ -596,7 +711,9 @@ export function ActionListTable({
                     </span>
                   )}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                )}
+                {vis("wape") && (
+                <TableCell className={`text-right tabular-nums ${edge("act", "wape")}`}>
                   <span className={`font-mono text-[12.5px] ${TIER_STYLE[r.tier] ?? TIER_STYLE.none}`}>
                     {TIER_GLYPH[r.tier] ?? TIER_GLYPH.none}
                   </span>
@@ -621,6 +738,7 @@ export function ActionListTable({
                     {r.wape === null ? pick("미측정", "n/a") : `±${Math.round(r.wape * 100)}%`}
                   </span>
                 </TableCell>
+                )}
               </TableRow>
             );
           })}

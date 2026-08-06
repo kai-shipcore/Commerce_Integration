@@ -25,9 +25,11 @@ import { Input } from "@/components/ui/input";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
-  ActionListTable, DEFAULT_SORT, PRIORITY, describeSort, nextSort, sortRows,
+  ActionListTable, ALL_COLUMNS, DEFAULT_SORT, PRIORITY, PRIORITY_GLYPH, PRIORITY_STYLE,
+  describeSort, nextSort, sortRows,
   type SortCriterion, type SortKey,
 } from "./action-list-table";
+import { ColumnPicker } from "./column-picker";
 import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
 import {
   PlanningError,
@@ -58,6 +60,10 @@ type Focus =
  *  exclusive and holding them apart would allow a combination that means
  *  nothing. Not a string a warning label could collide with. */
 const ANY_FLAG = "__any__";
+
+/** Where the chosen columns are remembered. Namespaced by screen, so the SKU
+ *  detail page or a future table cannot collide with it. */
+const COLUMNS_STORAGE_KEY = "planning:action-list:columns";
 
 export function ActionListContent({
   initialParams = DEFAULT_PLANNING_PARAMS,
@@ -106,6 +112,11 @@ export function ActionListContent({
   // flag already chosen, which is the one view from which you cannot switch.
   const [flag, setFlag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortCriterion[]>(DEFAULT_SORT);
+  // Which optional columns are shown. Persisted, because it is a statement
+  // about this reader's monitor and job rather than about the data, and asking
+  // them to re-hide the same three columns every Monday is how a control like
+  // this ends up unused.
+  const [visible, setVisible] = useState<Set<SortKey>>(() => new Set(ALL_COLUMNS));
   // Which population is on screen. The non-forecast section fetches only once
   // opened, since it covers roughly seven times as many SKUs and most visits
   // never need it.
@@ -127,6 +138,36 @@ export function ActionListContent({
     data: ActionListResponse | null;
     error: PlanningErrorBody | null;
   }>({ key: "", data: null, error: null });
+
+  // Read after mount rather than in the initialiser: localStorage does not
+  // exist while this renders on the server, and seeding state from it directly
+  // produces markup that disagrees with the client's first paint.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLUMNS_STORAGE_KEY);
+      if (!raw) return;
+      const saved = (JSON.parse(raw) as string[]).filter((k) =>
+        (ALL_COLUMNS as string[]).includes(k),
+      ) as SortKey[];
+      // An empty or unrecognisable list falls back to everything. A stored set
+      // naming only columns that have since been renamed would otherwise render
+      // a table with no columns and no way to recover from it.
+      if (saved.length > 0) queueMicrotask(() => setVisible(new Set(saved)));
+    } catch {
+      // A corrupt or unavailable store is not worth reporting: the default is
+      // every column, which is what this screen showed before the control.
+    }
+  }, []);
+
+  const changeVisible = useCallback((next: Set<SortKey>) => {
+    setVisible(next);
+    try {
+      window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+    } catch {
+      // Ignored for the same reason as above. Losing the preference is a smaller
+      // problem than failing the interaction that set it.
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -173,7 +214,7 @@ export function ActionListContent({
     let rows = data.rows;
     if (focus === "preorder") rows = rows.filter((r) => r.priority_label === PRIORITY.preorder);
     else if (focus === "no-stock") rows = rows.filter((r) => r.available_inventory <= 0);
-    else if (focus === "best-seller") rows = rows.filter((r) => r.priority_label === PRIORITY.bestSeller);
+    else if (focus === "best-seller") rows = rows.filter((r) => r.best_seller);
     else if (focus === "supply-gap") rows = rows.filter((r) => r.has_supply_gap);
     else if (focus === "drafted") rows = rows.filter((r) => r.draft_inbound > 0);
     else if (focus === "routine") rows = rows.filter((r) => r.priority_label === PRIORITY.routine);
@@ -299,19 +340,24 @@ export function ActionListContent({
     // with near-identical names and different answers is what the priority
     // select used to be, and the name is the half of it that survives.
     { key: "no-stock", label: pick("보유 재고 없음", "no stock on hand"), value: m.out_of_stock },
-    // Counted from the label, not from m.best_sellers_at_risk. The card used to
-    // display that metric while filtering on the label, and they are different
-    // sets: `best_seller` is a flag on the top slice by recent units, 89 SKUs,
-    // while `Best Seller` is the label only the ones nothing outranks receive,
-    // 35 of them. The metric counts a third thing again, the flagged SKUs also
-    // stocking out soon, which cuts across every label. So the card showed 36
-    // and then produced 35 rows. It now counts what it selects.
-    // "risk" dropped from the name with the metric, since it described the set
-    // that is no longer being counted.
+    // An attribute filter sitting in a row of supply-state filters, and that is
+    // now a deliberate difference rather than a muddle. Before item 14 this
+    // counted the `Best Seller` label -- the top sellers that nothing outranked,
+    // 35 of 89 -- so the card silently excluded every top seller that happened
+    // to be on preorder or out of stock. It counts all of them now, which is a
+    // change in kind and not only in number: selecting it no longer narrows to
+    // a queue, it narrows to a property, and the rows it returns will span
+    // Preorder, No Stock and Routine.
+    //
+    // Counted from the rows, which is now the only way: the old
+    // best_sellers_at_risk metric was deleted with this change. It counted a
+    // third set again -- flagged SKUs also stocking out soon -- was never
+    // displayed, and an intersection of two filters the screen already offers
+    // separately does not need a metric of its own.
     {
       key: "best-seller",
       label: pick("주력 상품", "best seller"),
-      value: data.rows.filter((r) => r.priority_label === PRIORITY.bestSeller).length,
+      value: data.rows.filter((r) => r.best_seller).length,
     },
     { key: "out-soon", label: pick(`${m.horizon_days}일 내 품절`, `out ≤${m.horizon_days}d`), value: m.stockout_within_horizon },
     // Reported apart from the stockout count because the action differs: these
@@ -590,6 +636,9 @@ export function ActionListContent({
         >
           <RotateCcw className="h-3 w-3" /> {pick("초기화", "Reset")}
         </button>
+        {/* Beside Reset and Export rather than in the sort line, because it
+            changes what the table contains rather than how it is ordered. */}
+        <ColumnPicker visible={visible} onChange={changeVisible} />
         <button
           type="button"
           onClick={exportCsv}
@@ -676,6 +725,7 @@ export function ActionListContent({
         <>
         <ActionListTable
           rows={pageRows}
+          visible={visible}
           coverageWeeks={data.params.lead_time_weeks + data.params.review_period_weeks}
           // The planning parameters travel with the link. Without them the
           // detail page answers at the default lead time while the row the user
@@ -699,6 +749,56 @@ export function ActionListContent({
             setSort((prev) => nextSort(prev, key, shiftKey))
           }
         />
+        {/* Priority, defined first because it is the column the worklist is
+            ordered by and the leftmost thing a reader meets. Nothing on the page
+            said what earned each badge; the Streamlit prototype carried this and
+            the port dropped it (BACKLOG.md 13.5).
+            Glyphs and colours come from the same constants the badges use, so
+            the legend cannot describe a badge that renders differently.
+            The star is listed apart rather than as a fourth rung, because after
+            item 14 it is a different kind of thing: the three labels are values
+            of one variable and exclude each other, the star is an attribute and
+            can sit on any of them. Stating that is most of the explanation. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
+          <span className="font-medium">{pick("우선순위", "Priority")}:</span>
+          <span className="opacity-80">
+            {pick(
+              "재고 상태를 나타내며, 위에서부터 먼저 해당되는 하나만 붙습니다.",
+              "the stock situation, first match wins, so a SKU carries one label even when more than one is true",
+            )}
+          </span>
+          {([
+            [PRIORITY.preorder, pick("고객에게 이미 판매된 수량이 있음", "units already owed to customers")],
+            [PRIORITY.noStock, pick("판매 가능한 재고가 없음", "nothing free to sell")],
+            [PRIORITY.routine, pick("둘 다 아님 · 평상시 주기로 발주", "neither, order on the normal cycle")],
+          ] as const).map(([label, meaning]) => {
+            const n = view.filter((r) => r.priority_label === label).length;
+            return (
+              <span key={label} className="inline-flex items-center gap-1">
+                <span
+                  className={`rounded-full border px-1.5 ${
+                    PRIORITY_STYLE[label] ?? PRIORITY_STYLE.Routine
+                  }`}
+                >
+                  {PRIORITY_GLYPH[label]} {label}
+                </span>
+                {meaning}
+                <span className="tabular-nums opacity-70">({nf.format(n)})</span>
+              </span>
+            );
+          })}
+          <span className="inline-flex items-center gap-1">
+            <span className="text-[13px] text-amber-500">★</span>
+            {pick(
+              "최근 4주 판매의 절반을 차지하는 소수 SKU. 재고 상태와 무관한 속성이므로 어느 행에나 붙을 수 있습니다",
+              "one of the products making up half of recent demand. An attribute, not a queue, so it can appear on any row",
+            )}
+            <span className="tabular-nums opacity-70">
+              ({nf.format(view.filter((r) => r.best_seller).length)})
+            </span>
+          </span>
+        </div>
+
         {/* Legend. The reliability column is three glyphs and a percentage, which
             means nothing without the thresholds behind it, and a tier is a
             judgement the reader should be able to check. */}
