@@ -4,134 +4,156 @@
     <div>
       <div class="menu-path">Planning › OOS Impact</div>
       <h2>OOS Impact Analysis</h2>
-      <p class="subtitle">Analyze the sales change around a Shopify Pre-Order conversion and the time required for marketplace sales to recover after restocking.</p>
+      <p class="subtitle">Use actual inventory and sales history to understand how stockouts changed demand and whether sales returned to their former level after restocking.</p>
     </div>
   </div>
 
   <div class="callout info">
-    <span class="callout-icon">✅</span>
-    <div><strong>This screen uses actual data.</strong> The Pre-Order SKU analysis and marketplace SKU recovery analysis read stockout and sales history from the database. The only exception is the <strong>Channel Comparison line chart on the marketplace tab, which still uses sample data</strong> and is labeled accordingly.</div>
+    <span class="callout-icon">💡</span>
+    <div><strong>The page in one sentence:</strong> the first tab asks “How much did Shopify demand fall or rise after conversion to Pre-Order?” and the second asks “How many months did marketplace sales take to recover after restocking?”</div>
   </div>
 
-  <h3>What each tab answers</h3>
-  <div class="card-grid col2">
-    <div class="card" style="border-left:4px solid #2563eb">
-      <h4>① Shopify · Pre-Order Conversion Drop</h4>
-      <p>Compare normal sales immediately before stockout with Pre-Order demand over an equal-length window. The analysis identifies both lost sales and products that sell more strongly while on Pre-Order.</p>
-    </div>
-    <div class="card" style="border-left:4px solid #10b981">
-      <h4>② Marketplaces · Restock Recovery</h4>
-      <p>Measure how many days Amazon, eBay, and Walmart products take to recover to 80% of their pre-stockout sales baseline after restocking.</p>
-    </div>
+  <h3>Recommended first-time workflow</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Check the data timestamp</h4><p>Review the <strong>Synced</strong> timestamp in the upper-right corner. If fresher data is required and you have edit permission, click <span class="btn-label">Sync</span>. Both tabs reload after a successful sync.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Choose the tab that matches your question</h4><p>Use <strong>Shopify · Pre-Order Conversion Drop</strong> for demand during stockout, or <strong>Marketplaces · Restock Recovery</strong> for post-restock marketplace performance.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Narrow the scope</h4><p>Select product categories, Shopify channels, stage, or the Top 100 seller condition. Clicking a distribution bar filters the detail table to the same range.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Move from summary to evidence</h4><p>Start with KPIs and distributions, then click a Master SKU row. The detail panel shows the quantities, dates, baseline, and actual sales trajectory behind the result.</p></div></div>
   </div>
 
-  <h3>Data sources</h3>
+  <h3>Features shared by both tabs</h3>
   <table class="feat-table">
-    <tr><th style="width:210px">Data</th><th>How it is used</th></tr>
-    <tr><td class="label">fc_inventory_history_snapshot</td><td>Provides the stockout start and actual restock date for each SKU. A SKU with repeated stockouts appears as multiple episode rows.</td></tr>
-    <tr><td class="label">fc_velocity_custom_snapshot</td><td>Provides Shopify normal-sale and Pre-Order quantities.</td></tr>
-    <tr><td class="label">Link / Custom velocity snapshots</td><td>The marketplace recovery analysis selects one sales source according to product category. It does not add both sources and double-count sales.</td></tr>
-    <tr><td class="label">Cache</td><td>Query results may be cached for about 10 minutes. A velocity sync or planning-data refresh invalidates the related cache.</td></tr>
+    <tr><th style="width:210px">Feature</th><th>Meaning</th><th>How to use it</th></tr>
+    <tr><td class="label">Sync timestamp</td><td>The last refresh time of the shared Demand Planning data.</td><td>Users with Demand Planning edit permission can click <span class="btn-label">Sync</span>. The button is disabled without permission.</td></tr>
+    <tr><td class="label">Item filter</td><td>Limits results to Car Cover, Seat Cover, Floor Mat, or SWC.</td><td>Multiple categories can be active. Clicking <strong>All</strong> selects or clears every category. No results are shown when none is selected.</td></tr>
+    <tr><td class="label">Distribution bars</td><td>Groups similar outcomes into ranges.</td><td>Click a bar or count to filter the table. Click the same bar again to clear it.</td></tr>
+    <tr><td class="label">Search and sort</td><td>Finds a Master SKU or brings the largest values to the top.</td><td>A partial SKU is enough. Click a column heading to sort and click it again to reverse direction.</td></tr>
+    <tr><td class="label">Row detail</td><td>Opens the evidence for one result.</td><td>Click a row to open it, then click the row again or <span class="btn-label">Close</span>. On narrow screens the panel appears below the table.</td></tr>
+    <tr><td class="label">Cache</td><td>Temporarily stores query results for faster loading.</td><td>Results may remain cached for about 10 minutes. A successful sync invalidates related caches and reloads the page data.</td></tr>
   </table>
 
   <h3 id="oos-tab1">1. Shopify · Pre-Order Conversion Drop</h3>
-  <p>Shopify can continue accepting Pre-Orders while inventory is unavailable. The useful question is therefore not only whether sales became zero, but <strong>how the order rate changed compared with normal sales</strong>.</p>
+  <p>Shopify can continue accepting Pre-Orders while an item is unavailable. The tab therefore compares <strong>normal demand immediately before stockout with Pre-Order demand after stockout</strong> over equal-length windows.</p>
 
-  <div class="steps">
-    <div class="step"><div class="step-num">1</div><div><h4>Select item, channel, and status</h4><p>Multi-select Car Cover, Seat Cover, Floor Mat, or SWC and the Coverland B2C/B2B or Icarcover Shopify channels. Status options are All, Pre-Order Active, and Restocked.</p></div></div>
-    <div class="step"><div class="step-num">2</div><div><h4>Review reliable-analysis KPIs</h4><p>KPIs, averages, medians, and the distribution include only episodes with at least 14 comparison days and a normal baseline of at least 1 unit per day.</p></div></div>
-    <div class="step"><div class="step-num">3</div><div><h4>Select a distribution range</h4><p>Click a bar or its count to filter the detail grid to that range. Click the same bar again to clear the range filter.</p></div></div>
-    <div class="step"><div class="step-num">4</div><div><h4>Open an SKU episode</h4><p>Click a row to open the comparison chart and its exact quantities, stockout date, restock date, and comparison window. On narrower screens, the detail panel is placed below the grid.</p></div></div>
-  </div>
+  <h3 class="sub">Filters</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">Filter</th><th>Description</th></tr>
+    <tr><td class="label">Item</td><td>Multi-select Car Cover, Seat Cover, Floor Mat, and SWC.</td></tr>
+    <tr><td class="label">Channel</td><td>Multi-select Coverland B2C, Coverland B2B, and Icarcover. Amazon, eBay, and Walmart do not apply because this tab measures Shopify Pre-Orders.</td></tr>
+    <tr><td class="label">Status</td><td><strong>Pre-Order Active</strong> is a preliminary result that can change until restock. <strong>Restocked</strong> is a finalized Pre-Order window.</td></tr>
+  </table>
 
-  <h3 class="sub">How is the comparison window selected?</h3>
+  <h3 class="sub">How the comparison window is chosen</h3>
   <ul>
-    <li>The stockout start date is used as the Pre-Order conversion anchor.</li>
-    <li>The normal window ends immediately before the anchor; the Pre-Order window begins on the anchor.</li>
-    <li>The before and after windows always have the same length and are capped at 30 days.</li>
-    <li>If the item was restocked in fewer than 30 days, both sides use the actual Pre-Order duration. Example: restocked after 18 days → compare 18 days before with 18 days after.</li>
-    <li>The 30-day cap focuses on the immediate Pre-Order effect and limits contamination from longer-term seasonality, advertising, and promotions.</li>
+    <li>The inventory-history <strong>stockout start date</strong> is the Pre-Order conversion anchor.</li>
+    <li>The normal window ends immediately before the anchor; the Pre-Order window starts on the anchor.</li>
+    <li>The before and after windows always have equal length and are capped at 30 days.</li>
+    <li>If restock occurred sooner, the actual Pre-Order duration is used on both sides. Example: restocked after 18 days → compare 18 days before with 18 days after.</li>
+    <li>Active episodes are preliminary because the available window can still grow. Only the latest settled data window is used to avoid very recent data lag.</li>
   </ul>
 
-  <h3 class="sub">Drop-rate formula and negative values</h3>
+  <h3 class="sub">Drop-rate formula</h3>
   <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
     <p style="margin:0 0 8px"><strong>Sales drop rate = (Normal daily average − Pre-Order daily average) ÷ Normal daily average × 100</strong></p>
-    <p style="margin:0 0 6px">Example: 10 units/day normally → 6 units/day on Pre-Order = <strong>40% drop</strong></p>
-    <p style="margin:0">Example: 1.28 units/day normally → 2.06 units/day on Pre-Order = <strong>-61% drop (61% sales increase)</strong></p>
+    <p style="margin:0 0 6px">Example 1: 10 units/day normally → 6 units/day on Pre-Order = <strong>40% drop</strong></p>
+    <p style="margin:0">Example 2: 1.28 units/day normally → 2.06 units/day on Pre-Order = <strong>-61% drop, or a 61% sales increase</strong></p>
   </div>
   <div class="callout tip">
     <span class="callout-icon">📈</span>
-    <div><strong>A negative drop rate is not an error.</strong> It means sales increased after the product moved to Pre-Order. The screen identifies these episodes with a blue Sales Increase badge and a separate histogram bucket. Strong demand during stockout may justify faster replenishment, substitution planning, or a higher purchase priority.</div>
+    <div><strong>A negative result is not an error.</strong> It means demand increased after conversion to Pre-Order. The screen uses a blue <strong>Sales increase</strong> badge. Strong demand while unavailable may justify higher replenishment priority.</div>
   </div>
 
-  <h3 class="sub">How to read the KPIs</h3>
+  <h3 class="sub">Reading the KPI cards</h3>
   <table class="feat-table">
-    <tr><th style="width:230px">KPI</th><th>Meaning</th></tr>
-    <tr><td class="label">Reliable SKUs Analyzed</td><td>The number of stockout episodes with at least 14 comparison days and a normal baseline of at least 1 unit/day. Repeated stockouts for one SKU count as separate episodes.</td></tr>
-    <tr><td class="label">Restocked Average · Final</td><td>Average and median drop for reliable episodes whose Pre-Order duration is finalized by an actual restock.</td></tr>
-    <tr><td class="label">Active Pre-Order Average · Preliminary</td><td>Average and median drop for episodes that have not yet restocked. Values may change as more comparison days are added.</td></tr>
-    <tr><td class="label">Highest Sales-Impact SKU</td><td>Ranks reliable episodes by daily units lost, calculated as <strong>normal daily average − PO daily average</strong>, instead of selecting a low-volume SKU merely because it has a 100% rate.</td></tr>
+    <tr><th style="width:240px">KPI</th><th>Meaning</th><th>When clicked</th></tr>
+    <tr><td class="label">Reliable SKUs Analyzed</td><td>Stockout episodes with at least 14 comparison days and a normal baseline of at least 1 unit/day.</td><td>Only episodes passing the reliability criteria remain in the distribution and details.</td></tr>
+    <tr><td class="label">Restocked Average · Final</td><td>The average drop among reliable, completed episodes. The record count and median appear below it.</td><td>Filters to restocked episodes and updates the Status filter.</td></tr>
+    <tr><td class="label">Active Pre-Order Average · Preliminary</td><td>The current average for reliable episodes that have not restocked. It can change as days are added.</td><td>Filters to active episodes and updates the Status filter.</td></tr>
+    <tr><td class="label">Highest Sales-Impact SKU</td><td>The reliable episode with the largest daily units lost, calculated as <strong>normal daily average − PO daily average</strong>, rather than the highest percentage alone.</td><td>Keeps that episode and opens its detail panel automatically.</td></tr>
   </table>
-  <div class="callout tip">
-    <span class="callout-icon">🖱️</span>
-    <div><strong>Each KPI card is also a filter.</strong> Click a card to apply the same condition to both the drop-rate chart and SKU Details. Clicking the Restocked or Active card also selects the matching Status button at the top. Click the same card again to clear the filter and return Status to All. Clicking Highest Sales-Impact SKU keeps only that stockout episode and automatically opens its detail chart.</div>
-  </div>
+  <p>Click the active KPI again to clear its filter. The median on the histogram represents the middle episode and is less affected by one extreme value; the calculation explanation is shown under the chart.</p>
 
   <div class="callout warn">
     <span class="callout-icon">🔎</span>
-    <div><strong>Why the KPI count and detail count differ:</strong> KPIs and the histogram include reliable episodes only. SKU Details retains every raw stockout episode, including one-day cases, for review. A “row” is a stockout episode, not necessarily a unique SKU.</div>
+    <div><strong>KPI and detail counts may differ.</strong> KPIs and the distribution use only reliable episodes. Without a KPI filter, the detail table keeps short raw episodes for verification. One SKU may also appear in multiple channels or stockout episodes, so a row is not always a unique SKU.</div>
   </div>
 
-  <h3 class="sub">SKU detail grid</h3>
+  <h3 class="sub">Detail table and chart</h3>
   <table class="feat-table">
-    <tr><th style="width:210px">Element</th><th>How to use it</th></tr>
-    <tr><td class="label">Normal Sales Period / Window</td><td>Shows the dates immediately before stockout and the number of comparison days.</td></tr>
-    <tr><td class="label">Normal / PO Daily Avg.</td><td>Displayed to two decimal places. The detail panel also shows the exact numerator and denominator, such as “23 units ÷ 18 days.”</td></tr>
-    <tr><td class="label">Pre-Order Period</td><td>The equal-length window beginning on the stockout anchor. Its displayed end date is not necessarily the actual restock date.</td></tr>
-    <tr><td class="label">Stage</td><td>Shows Pre-Order Active or Restocked. The detail panel displays the actual restock date, or Not restocked for an active episode.</td></tr>
-    <tr><td class="label">Sorting</td><td>Click a column header to sort; click it again to reverse the direction.</td></tr>
-    <tr><td class="label">Search and X</td><td>Enter any part of a Master SKU. Once text is entered, use the X button on the right to clear the search.</td></tr>
-    <tr><td class="label">Rows per page</td><td>Choose 25, 50, or 100 rows from the pagination control.</td></tr>
+    <tr><th style="width:220px">Element</th><th>How to interpret it</th></tr>
+    <tr><td class="label">Normal period / Window</td><td>The dates before stockout and number of days used in the calculation.</td></tr>
+    <tr><td class="label">Normal / PO daily average</td><td>Total quantity divided by window days. The open panel also shows the numerator and denominator, such as “23 units ÷ 18 days.”</td></tr>
+    <tr><td class="label">Pre-Order period</td><td>The equal-length period beginning on the stockout date. Its displayed end is not necessarily the actual restock date.</td></tr>
+    <tr><td class="label">Stage</td><td>Active or Restocked. The detail panel also shows the anchor and actual restock date.</td></tr>
+    <tr><td class="label">Detail chart</td><td>Compares the two period averages around day 0. It is not a daily-sales curve.</td></tr>
+    <tr><td class="label">Rows per page</td><td>Choose 25, 50, or 100.</td></tr>
   </table>
 
   <h3 id="oos-tab2">2. Marketplaces · Restock Recovery</h3>
-  <p>For Amazon, eBay, and Walmart, an out-of-stock product normally records no sales. This tab measures whether and when sales recovered after inventory returned. Products that are still out of stock are excluded because post-restock recovery cannot yet be measured.</p>
+  <p>This tab combines Amazon, Walmart, and eBay-related marketplace sales to determine whether a previously unavailable Master SKU returned to its pre-stockout sales level. It shows <strong>one row per Master SKU, using only its latest stockout episode</strong>, rather than one row per channel.</p>
 
-  <h3 class="sub">Core recovery rules</h3>
-  <table class="feat-table">
-    <tr><th style="width:220px">Rule</th><th>Definition</th></tr>
-    <tr><td class="label">Pre-stockout baseline</td><td>The daily average during the 30 days immediately before the stockout began.</td></tr>
-    <tr><td class="label">Recovery event</td><td>The first day when the trailing 14-calendar-day daily average reaches at least 80% of the baseline. The elapsed days become Days to Recovery.</td></tr>
-    <tr><td class="label">Minimum age</td><td>Only episodes at least 7 days past restock are analyzed because very recent daily averages are too unstable.</td></tr>
-    <tr><td class="label">Normal Recovery</td><td>Reached the 80% threshold within 30 days.</td></tr>
-    <tr><td class="label">Slow Recovery</td><td>Reached the threshold after 30 days but within the 90-day horizon.</td></tr>
-    <tr><td class="label">Pending</td><td>Has not reached 80%, but fewer than 90 days have passed since restock.</td></tr>
-    <tr><td class="label">Not Recovered</td><td>Did not reach 80% within 90 days after restock.</td></tr>
-  </table>
-
-  <h3 class="sub">Using the recovery screen</h3>
-  <ul>
-    <li>Multi-select marketplace channels to change the analysis scope.</li>
-    <li>The Prior OOS 14/30/60-day choices are visible but are not wired to filtering yet. The current result uses All durations.</li>
-    <li>The SKU Comparison bars group episodes into 0–30 days, 30–60 days, 60–90 days, Pending, and Not Recovered. Click a bar or count to filter the grid.</li>
-    <li>Click a detail row to review the pre-stockout baseline, actual post-restock sales chart, and the non-overlapping 0–30, 30–60, and 60–90-day daily averages.</li>
-    <li><strong>The Channel Comparison line chart still uses sample data.</strong> Use SKU Comparison and the row detail data for operational decisions.</li>
-  </ul>
   <div class="callout info">
     <span class="callout-icon">ℹ️</span>
-    <div><strong>Current functional scope:</strong> SKU Comparison, bar filtering, sorting, search, pagination, and row-level detail charts use actual data. The Prior OOS duration filter and actual Channel Comparison aggregation remain follow-up work.</div>
+    <div><strong>Eligible SKUs:</strong> the latest stockout episode must be restocked and at least 7 days old. A SKU that is currently out of stock again is excluded because recovery cannot be measured. Near-zero baselines that would display as 0.0 are also excluded to reduce noise.</div>
   </div>
 
-  <h3>Operational decisions</h3>
+  <h3 class="sub">Filters and KPIs</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">Element</th><th>Description</th></tr>
+    <tr><td class="label">All Channels Combined</td><td>Restock is one physical inventory event, so marketplace demand is summed and evaluated per Master SKU.</td></tr>
+    <tr><td class="label">Top 100 Sellers Only</td><td>Keeps the top 100 Master SKUs by trailing-30-day sales across <strong>all channels, including Shopify</strong>. Use it to review core products first.</td></tr>
+    <tr><td class="label">Item</td><td>Multi-select Car Cover, Seat Cover, Floor Mat, and SWC.</td></tr>
+    <tr><td class="label">SKUs Tracked</td><td>Master SKU count remaining under the current filters.</td></tr>
+    <tr><td class="label">Avg. Days to Recovery</td><td>The average of confirmed 30-, 60-, and 90-day classifications. It is not an average of exact daily crossing dates.</td></tr>
+    <tr><td class="label">Not Recovered</td><td>SKUs older than 90 days whose Month 1, 2, and 3 averages all missed the threshold.</td></tr>
+    <tr><td class="label">Pending</td><td>SKUs that have not reached the threshold but are not yet 90 days past restock.</td></tr>
+  </table>
+
+  <h3 class="sub">Recovery calculation</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">Value</th><th>Definition</th></tr>
+    <tr><td class="label">Pre-stockout baseline</td><td>Combined marketplace daily average during the 30 days immediately before stockout.</td></tr>
+    <tr><td class="label">Month 1 recovery</td><td>Days 0–30 average ÷ baseline × 100. It remains <strong>—</strong> until the full 30 days have elapsed.</td></tr>
+    <tr><td class="label">Month 2 recovery</td><td>Days 30–60 average ÷ baseline × 100. It remains <strong>—</strong> until 60 days have elapsed.</td></tr>
+    <tr><td class="label">Month 3 recovery</td><td>Days 60–90 average ÷ baseline × 100. It remains <strong>—</strong> until 90 days have elapsed.</td></tr>
+    <tr><td class="label">Recovery threshold</td><td>Defaults to <strong>90%</strong>. Enter an integer from 50 to 100, then press Enter or leave the field to recalculate.</td></tr>
+    <tr><td class="label">Days to Recovery</td><td>Displays 30, 60, or 90 according to the first completed month that reaches the threshold. It is not the exact day of crossing.</td></tr>
+  </table>
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
+    <p style="margin:0 0 8px"><strong>Example: baseline 10 units/day, threshold 90%</strong></p>
+    <p style="margin:0 0 6px">Month 1: 7 units/day = 70% → not recovered</p>
+    <p style="margin:0">Month 2: 9.5 units/day = 95% → <strong>Slow Recovery at 60 days</strong></p>
+  </div>
+
+  <h3 class="sub">Status definitions</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">Status</th><th>Meaning</th></tr>
+    <tr><td class="label">Normal Recovery</td><td>Month 1 reached the threshold, producing a 30-day result.</td></tr>
+    <tr><td class="label">Slow Recovery</td><td>Month 2 or Month 3 first reached the threshold, producing a 60- or 90-day result.</td></tr>
+    <tr><td class="label">Pending</td><td>No completed month has reached the threshold, but fewer than 90 days have elapsed.</td></tr>
+    <tr><td class="label">Not Recovered</td><td>All three month blocks missed the threshold after 90 days.</td></tr>
+  </table>
+
+  <h3 class="sub">Distribution, table, and detail chart</h3>
   <ul>
-    <li><strong>Purchase priority:</strong> review SKUs with the largest daily Pre-Order loss or unusually strong demand while out of stock.</li>
-    <li><strong>Safety stock:</strong> products with both a large Pre-Order drop and slow post-restock recovery may need more protection inventory.</li>
-    <li><strong>Marketplace follow-up:</strong> for Not Recovered products, check price, ads, search visibility, reviews, competing listings, and listing health.</li>
-    <li><strong>Repeated stockouts:</strong> compare the stockout and actual restock dates for each episode when one SKU appears more than once.</li>
+    <li><strong>Recovery distribution:</strong> groups results into 0–30 days, 30–60 days, 60–90 days, Pending, and Not Recovered. Click a bar to filter the table.</li>
+    <li><strong>Detail table:</strong> compare stockout date, restock date, stockout duration, monthly recovery rates, and status. The default is 10 rows; options are 10, 25, 50, and 100.</li>
+    <li><strong>Trailing 14-Day Avg.:</strong> a smoothed, contextual view of actual sales. It may plot only dates with sales. Crossing the baseline on this line does not determine recovery.</li>
+    <li><strong>Daily Sales:</strong> actual day-level quantity. It can be volatile because of order bursts and zero-sale days, so use it to inspect the raw pattern.</li>
+    <li><strong>Recovery marker:</strong> the 30-, 60-, or 90-day marker corresponds to the monthly classification in the table. Recovery is always judged from the same monthly averages.</li>
+  </ul>
+
+  <h3>Operational examples</h3>
+  <ul>
+    <li><strong>Purchase priority:</strong> review SKUs with the largest daily Pre-Order loss or stronger demand while unavailable.</li>
+    <li><strong>Protect core products:</strong> enable <strong>Top 100 Sellers Only</strong> and review Slow Recovery or Not Recovered products for safety stock and lead-time changes.</li>
+    <li><strong>Marketplace follow-up:</strong> for Not Recovered products, check price, ads, search visibility, reviews, competitors, and listing health—not inventory alone.</li>
+    <li><strong>Scenario comparison:</strong> compare thresholds such as 80%, 90%, and 100% to distinguish minimum recovery from full recovery.</li>
   </ul>
 
   <div class="callout warn">
     <span class="callout-icon">⚠️</span>
-    <div><strong>Interpretation caution:</strong> A before/after change does not prove that stockout or Pre-Order was the only cause. Review price, promotions, advertising, seasonality, competition, and listing visibility before making a final decision.</div>
+    <div><strong>Interpret with care.</strong> This page shows changes associated with stockout timing; it does not prove stockout or Pre-Order was the only cause. Review price, promotions, advertising, seasonality, competition, listing visibility, and channel-policy changes before making a final decision.</div>
   </div>
 </section>

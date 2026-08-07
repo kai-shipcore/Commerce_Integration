@@ -1,0 +1,183 @@
+<section class="page-section" id="forecast-validation">
+  <div class="section-header">
+    <div class="section-icon" style="background:#ecfdf5;font-size:28px">🔎</div>
+    <div>
+      <div class="menu-path">계획 › 예측 검증</div>
+      <h2>예측 검증 (Forecast Validation)</h2>
+      <p class="subtitle">현재 모델이 Spreadsheet V1보다 실제로 나은지, 개선이 여러 SKU에 넓게 나타나는지, 운영 중에도 정확도가 유지되는지를 확인하는 근거 화면입니다.</p>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">💡</span>
+    <div><strong>Action List와의 차이:</strong> Action List는 “무엇을 얼마나 발주할까?”를 보여주고, 예측 검증은 “그 판단에 사용한 예측을 얼마나 믿을 수 있는가?”를 보여줍니다. 이 페이지의 수치는 발주 지시가 아니라 <strong>모델을 채택하고 감시하기 위한 증거</strong>입니다.</div>
+  </div>
+
+  <h3>처음 볼 때 권장 순서</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>데이터와 모델 기준 확인</h4><p>Forecast Server 상태와 상단의 모델, 평가 데이터, 정확도 산출일, 서비스 중 예측 학습 기준을 확인합니다.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>전체 비교와 적용 범위 함께 보기</h4><p><strong>모델 대 스프레드시트</strong>에서 WAPE를 비교한 뒤 바로 아래 <strong>수요 구조</strong>에서 그 정확도 수치가 전체 카탈로그와 수요의 어느 범위를 설명하는지 확인합니다.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>오차가 발생한 시기와 방향 보기</h4><p><strong>주간 실판매와 예측</strong>에서 실제선과 예측선을 비교하고, 리드별 결과와 과다·과소 예측 흐름을 확인합니다.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>실제 운영 기록 확인</h4><p><strong>실제 운영 성적</strong>에서 결과를 모른 채 미리 제공했던 예측이 시간이 지나 어떻게 채점됐는지 확인합니다.</p></div></div>
+    <div class="step"><div class="step-num">5</div><div><h4>SKU 개선이 넓게 나타나는지 검증</h4><p><strong>SKU 단위 분석</strong>에서 최소 실판매량을 설정하고 SKU 기준 승률, 수요 기준 승률, 악화 사례와 전체 행을 조사합니다.</p></div></div>
+    <div class="step"><div class="step-num">6</div><div><h4>최종 독립 시험 상태 확인</h4><p>마지막으로 개발 중 보지 않고 격리한 최종 테스트가 아직 보존되어 있는지 확인합니다.</p></div></div>
+  </div>
+
+  <h3>상단의 데이터 출처 표시</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">항목</th><th>의미</th></tr>
+    <tr><td class="label">모델</td><td>검증 대상 모델 버전입니다. 버전을 누르면 모델의 목적, 입력과 평가 기준을 화면 안에서 확인할 수 있습니다.</td></tr>
+    <tr><td class="label">평가 데이터</td><td>정확도 평가에 사용한 고정 스냅샷입니다. 기록된 검증 수치가 매주 임의로 바뀌지 않도록 고정합니다.</td></tr>
+    <tr><td class="label">정확도 산출일</td><td>현재 보이는 정확도 결과가 계산된 날짜입니다.</td></tr>
+    <tr><td class="label">서비스 중 예측 학습 기준</td><td>현재 실제 화면에 제공 중인 예측이 학습한 마지막 주입니다. 평가 데이터와 다르면 검증 수치와 서비스 중 예측의 데이터 시점이 다르다는 뜻입니다.</td></tr>
+    <tr><td class="label">Forecast Server</td><td>Python 예측 서비스 연결 상태입니다. 실패 시 검증 결과 또는 수요 구조 중 일부만 표시되지 않을 수 있습니다.</td></tr>
+  </table>
+
+  <h3>먼저 알아둘 용어</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">용어</th><th>쉬운 설명</th></tr>
+    <tr><td class="label">Spreadsheet / V1</td><td>새 모델과 비교하는 기존 스프레드시트 예측 방식입니다. 같은 SKU와 같은 주를 사용해 비교합니다.</td></tr>
+    <tr><td class="label">세그먼트</td><td>판매 이력과 수요 특성이 비슷한 SKU 그룹입니다. 전체는 좋아도 특정 세그먼트는 약할 수 있습니다.</td></tr>
+    <tr><td class="label">백테스트 구간</td><td>과거 기준일까지의 정보만 모델에 보여주고, 그 뒤 실제 판매를 맞히게 한 시험 기간입니다.</td></tr>
+    <tr><td class="label">SKU-구간 행</td><td>한 SKU를 한 백테스트 구간에서 채점한 한 건입니다. 같은 SKU가 여러 구간에 있으면 여러 행으로 계산됩니다.</td></tr>
+    <tr><td class="label">실제 운영 예측</td><td>결과를 알기 전에 실제로 저장·제공한 미래 예측입니다. 해당 주가 끝나야 채점할 수 있습니다.</td></tr>
+    <tr><td class="label">실판매량(개)</td><td>평가 구간에 실제로 판매된 제품 수량입니다. 오차율이 아닙니다.</td></tr>
+    <tr><td class="label">퍼센트포인트(pp)</td><td>두 WAPE 비율의 단순 차이입니다. 예: 40% − 25% = 15%p입니다. 판매 수량과 혼동하지 마세요.</td></tr>
+  </table>
+
+  <h3>WAPE와 편향 이해하기</h3>
+  <p><strong>WAPE(가중 절대 백분율 오차)</strong>는 전체 예측 오차 크기를 실제 판매량으로 나눈 비율이며 낮을수록 좋습니다.</p>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
+    <p style="margin:0 0 8px"><strong>WAPE = 모든 절대 오차의 합 ÷ 모든 실제 판매의 합 × 100</strong></p>
+    <p style="margin:0 0 6px">실제 1,000개, 절대 오차 합계 180개 → WAPE <strong>18%</strong></p>
+    <p style="margin:0"><strong>차이 = 모델 WAPE − V1 WAPE</strong>. 음수면 모델 개선, 양수면 모델 악화입니다.</p>
+  </div>
+  <ul>
+    <li>합산 WAPE는 수요가 큰 SKU에 더 큰 영향을 받습니다. 좋은 전체 WAPE가 모든 SKU의 승리를 뜻하지 않습니다.</li>
+    <li>WAPE는 오차의 방향을 없앤 값입니다. <strong>편향</strong>이 양수면 과다 예측, 음수면 과소 예측이며 0에 가까울수록 방향 치우침이 적습니다.</li>
+    <li>과다 예측은 재고가 남는 위험, 과소 예측은 판매 기회를 놓치는 위험이므로 같은 크기라도 업무 영향이 다릅니다.</li>
+  </ul>
+
+  <h3 id="fv-comparison">1. 모델 대 스프레드시트</h3>
+  <p>고정된 백테스트 구간에서 현재 모델과 V1을 같은 SKU·같은 주·같은 실제 판매량으로 비교합니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:230px">화면 요소</th><th>읽는 방법</th></tr>
+    <tr><td class="label">현재 모델 / 기존 방식</td><td>전체 수요를 합산한 WAPE입니다. 낮은 값이 더 정확합니다.</td></tr>
+    <tr><td class="label">오차 감소</td><td>V1 오차에 비해 모델 오차가 상대적으로 얼마나 줄었는지 보여줍니다. 예: V1 30%, 모델 21%는 9%p 차이이자 상대적으로 30% 감소입니다.</td></tr>
+    <tr><td class="label">N개 구간 중 M개 우세</td><td>세그먼트×구간 셀 중 모델이 이긴 셀 수입니다. 포트폴리오 WAPE가 좋아도 일부 셀에서 질 수 있습니다.</td></tr>
+    <tr><td class="label">측정 가능한 SKU 비율</td><td>예측 대상 중 고정 백테스트에 들어갈 수 있었던 SKU 수입니다. 승격되어 학습 시작일이 늦은 SKU 등은 이 방식으로 채점할 수 없습니다.</td></tr>
+    <tr><td class="label">비교 매트릭스</td><td>행은 세그먼트, 열은 백테스트 구간입니다. 큰 숫자는 현재 모델 WAPE, 옆 pp는 V1 대비 차이, 아래에는 V1 WAPE·편향·SKU 수·실판매량이 표시됩니다.</td></tr>
+    <tr><td class="label">붉은 셀</td><td>V1이 더 정확한 세그먼트·구간입니다. 하단 <strong>기존 방식이 앞서는 곳</strong>에도 따로 정리됩니다.</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>범위를 확대 해석하지 마세요.</strong> 측정 가능한 SKU만으로 계산한 수치를 전체 예측 SKU 또는 전체 카탈로그의 정확도라고 부르면 안 됩니다. 바로 다음 수요 구조와 함께 보세요.</div>
+  </div>
+
+  <h3 id="fv-demand">2. 수요 구조</h3>
+  <p>정확도 결과의 적용 범위를 보여주는 <strong>실제 판매</strong> 화면입니다. 26주, 1년(52주), 2년(104주)을 선택하면 해당 기간 데이터로 다시 조회합니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:230px">항목</th><th>읽는 방법</th></tr>
+    <tr><td class="label">예측 대상 SKU</td><td>전체 카탈로그 중 주간 예측을 받는 SKU 수와 비율입니다.</td></tr>
+    <tr><td class="label">예측이 설명하는 수요</td><td>예측 대상 SKU가 선택 기간 실제 판매에서 차지한 비율입니다. SKU 비율보다 수요 비율이 크면 모델이 핵심 판매량을 넓게 커버합니다.</td></tr>
+    <tr><td class="label">예측이 없는 수요</td><td>간헐 SKU가 만든 실제 판매량입니다. 이 수요에는 모델 예측이 없으므로 이 페이지의 정확도 수치가 적용되지 않습니다.</td></tr>
+    <tr><td class="label">초반 대비 최근 비중</td><td>선택 기간의 첫 분기와 마지막 분기를 비교해 예측 없는 수요 비중이 늘었는지 줄었는지 보여줍니다.</td></tr>
+    <tr><td class="label">주간 누적 그래프</td><td>예측 대상 실제 판매와 간헐 SKU 실제 판매를 주별로 쌓아 보여줍니다. 둘 다 예측선이 아니라 실제 판매입니다.</td></tr>
+    <tr><td class="label">수요 집중도 곡선</td><td>SKU를 판매량 순으로 정렬했을 때 상위 몇 %가 수요의 몇 %를 만드는지 보여줍니다. 균등 분포 점선보다 위로 많이 휠수록 소수 SKU에 집중된 것입니다.</td></tr>
+    <tr><td class="label">집중도 표·요약</td><td>상위 SKU 그룹의 수요 비중과, 전체 수요의 절반 이상을 만드는 핵심 SKU 수를 보여줍니다. 합산 WAPE가 사실상 어느 SKU에 크게 좌우되는지 판단할 수 있습니다.</td></tr>
+  </table>
+
+  <h3 id="fv-trajectory">3. 주간 실판매와 예측</h3>
+  <p>저장된 실제 운영 예측을 주간 실판매 위에 겹쳐, 오차가 <strong>언제 어떤 방향</strong>으로 발생했는지 보여줍니다.</p>
+  <table class="feat-table">
+    <tr><th style="width:230px">기능</th><th>사용 방법</th></tr>
+    <tr><td class="label">세그먼트</td><td>전체 또는 특정 세그먼트의 주간 수요 흐름을 선택합니다.</td></tr>
+    <tr><td class="label">예측 시점 · 전체</td><td>각 주에 대해 가장 최근에 만들어진 예측을 사용합니다. 보통 리드가 가장 짧은 예측입니다.</td></tr>
+    <tr><td class="label">1·2·4·8·13주 전</td><td>각 주를 정확히 N주 전에 예측한 값만 보여줍니다. 비활성 버튼은 해당 리드에서 아직 채점 가능한 주가 없다는 뜻입니다.</td></tr>
+    <tr><td class="label">V1</td><td>켜면 최신 실행의 향후 구간에 V1 비교선을 추가합니다. 과거 V1 비교의 공식 결과는 1번 백테스트 매트릭스입니다.</td></tr>
+    <tr><td class="label">요약 줄</td><td>지난주 실제·예측, 선택 기간 편향, 합산 오차, 향후 예측 합계를 보여줍니다.</td></tr>
+    <tr><td class="label">마지막 완료 주</td><td>이 선 이전은 실판매가 확정되어 채점 가능한 과거, 이후는 최신 실행의 향후 예측입니다.</td></tr>
+  </table>
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div><strong>그래프의 합산 오차는 위 WAPE와 다를 수 있습니다.</strong> 그래프는 SKU를 먼저 합쳐 과다·과소 오차가 서로 상쇄될 수 있습니다. 공식 정확도 판단에는 1번의 SKU별 합산 WAPE를 사용하고, 이 그래프는 포트폴리오 흐름을 보는 용도로 사용하세요. 현재 모델은 점 예측만 만들기 때문에 P85 같은 예측 구간 밴드는 없습니다.</div>
+  </div>
+  <div class="callout warn">
+    <span class="callout-icon">🧪</span>
+    <div><strong>샘플 데이터 경고가 보이면 정확도 판단에 사용하지 마세요.</strong> 현재 모델의 실제 실행 기록이 쌓이기 전 UI 확인을 위해 만든 과거 예측선이며, 실제 실행이 저장되면 자동으로 대체됩니다.</div>
+  </div>
+
+  <h3 id="fv-live">4. 실제 운영 성적</h3>
+  <p>실제 제공했던 예측을 완료된 주에 대해서만 채점합니다. 결과를 본 뒤 만든 백테스트가 아니므로 충분히 쌓이면 더 강한 근거가 됩니다.</p>
+  <ul>
+    <li>실행 목록은 최신순이며, 각 행에 실행일, 채점된 주, 전체 WAPE, 편향, SKU 수가 표시됩니다.</li>
+    <li>행을 누르면 아래에 해당 실행의 세그먼트별 WAPE·편향·SKU 수·실판매량이 열립니다.</li>
+    <li>채점된 주가 1~2주처럼 적으면 화면에도 근거가 얕다는 경고가 표시됩니다. WAPE 숫자만 보고 결론 내리지 마세요.</li>
+    <li>현재 모델과 다른 버전의 행은 샘플일 수 있으며 화면의 경고에 따라 운영 판단에서 제외합니다.</li>
+    <li>저장된 실행이 없거나 아직 완료된 주가 없으면 빈 화면이 정상입니다. 첫 실행 후 최소 한 주가 끝나야 첫 점수가 생깁니다.</li>
+  </ul>
+
+  <h3 id="fv-sku">5. SKU 단위 분석</h3>
+  <p>기존의 “가장 좋은 5개·나쁜 5개” 목록 대신, 개선이 전체에 넓게 나타나는지 아니면 소수의 큰 성공이 전체 평균을 끌어올리는지 확인합니다.</p>
+
+  <h3 class="sub">분석 범위 설정</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">필터</th><th>사용 방법</th></tr>
+    <tr><td class="label">최소 실판매량</td><td>한 채점 구간에서 실제 판매가 0, 100, 200, 300, 500개 이상인 행만 남깁니다. 판매가 적으면 WAPE 분모가 작아 작은 수량 차이도 큰 비율로 보이므로, 주요 물량을 평가할 때 기준을 높입니다.</td></tr>
+    <tr><td class="label">구간</td><td>전체 또는 특정 백테스트 구간만 선택합니다.</td></tr>
+    <tr><td class="label">세그먼트</td><td>전체 또는 특정 수요 그룹만 선택합니다.</td></tr>
+    <tr><td class="label">범위 설명</td><td>필터 후 남은 SKU-구간 행 수, 실판매 수량, 전체 채점 수요 중 비중과 제외된 행 수를 보여줍니다. 이 문장을 읽어야 선택한 결과의 규모를 알 수 있습니다.</td></tr>
+  </table>
+
+  <h3 class="sub">네 가지 핵심 지표</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">지표</th><th>뜻</th></tr>
+    <tr><td class="label">SKU 기준 승률</td><td>선택 범위의 SKU-구간 행 중 모델 WAPE가 V1보다 낮은 행의 비율입니다.</td></tr>
+    <tr><td class="label">수요 기준 승률</td><td>모델이 이긴 행의 실판매량이 선택 범위 전체 실판매량에서 차지하는 비율입니다. SKU 승률보다 높으면 물량이 큰 곳에서 더 많이 이긴다는 뜻입니다.</td></tr>
+    <tr><td class="label">합산 WAPE</td><td>현재 필터 범위에서 다시 계산한 모델과 V1의 수요 가중 오차입니다.</td></tr>
+    <tr><td class="label">뚜렷한 악화</td><td>모델 WAPE가 V1보다 <strong>25%p 이상</strong> 나쁜 행 수와 그 행들이 차지한 실판매 비중입니다.</td></tr>
+  </table>
+
+  <h3 class="sub">분포와 세부 표</h3>
+  <ul>
+    <li><strong>SKU별 오차 차이 분포:</strong> 가로축은 모델 WAPE − V1 WAPE입니다. 왼쪽 음수는 모델 개선, 오른쪽 양수는 모델 악화이며 단위는 판매 개수가 아니라 퍼센트포인트입니다.</li>
+    <li><strong>백테스트 구간별·세그먼트별:</strong> 각 그룹의 행 수, 승률, 모델 합산 WAPE와 V1 WAPE를 함께 보여줍니다. 승률은 낮아도 대형 SKU에서 이겨 합산 WAPE가 좋을 수 있으므로 두 값을 같이 봅니다.</li>
+    <li><strong>전체 채점 결과:</strong> 필터 범위의 모든 SKU-구간 행을 검색하고 SKU, 실판매, 두 WAPE, 차이로 정렬할 수 있습니다. 처음 50개가 표시되며 <strong>더 보기</strong>로 50개씩 추가합니다.</li>
+    <li><strong>차이 부호:</strong> 음수·초록색은 모델이 더 정확하고, 양수·주황색은 V1보다 덜 정확합니다.</li>
+    <li><strong>SKU 링크:</strong> 누르면 Action List 상세로 이동합니다. 고판매·큰 악화·큰 권장 발주량이 겹치는 SKU부터 원인을 조사합니다.</li>
+  </ul>
+
+  <h3 id="fv-final">6. 최종 테스트 구간</h3>
+  <p>모델 개발 중에는 한 번도 보지 않고 격리한 기간입니다. 개발 결과를 반복 확인하며 모델을 수정하면 낙관적 편향이 생길 수 있으므로, 개발이 끝난 뒤 채택 판단을 위해 한 번 사용합니다.</p>
+  <ul>
+    <li><strong>아직 평가하지 않았습니다:</strong> 의도적으로 독립 시험을 보존한 상태이며 오류가 아닙니다.</li>
+    <li><strong>결과 표시 준비 중:</strong> 평가는 실행됐지만 결과 표 렌더링이 아직 준비되지 않았습니다.</li>
+    <li>최종 결과가 준비되면 1번 비교와 같은 형태로 확인하고 개발 백테스트·운영 성적과 방향이 일치하는지 판단합니다.</li>
+  </ul>
+
+  <h3>판단 예시</h3>
+  <ul>
+    <li><strong>긍정적:</strong> 전체 WAPE가 V1보다 낮고, SKU 승률과 수요 승률이 모두 높으며, 주요 세그먼트·운영 실행·최종 테스트가 같은 방향입니다.</li>
+    <li><strong>소수 대형 SKU 중심 개선:</strong> SKU 승률은 낮지만 수요 승률과 합산 WAPE가 좋습니다. 포트폴리오에는 유리할 수 있지만 지는 SKU에 수동 검토 규칙이 필요합니다.</li>
+    <li><strong>작은 SKU 중심 개선:</strong> SKU 승률은 높지만 수요 승률이 낮습니다. 이긴 행은 많아도 주요 판매량에서는 V1이 더 좋을 수 있습니다.</li>
+    <li><strong>근거 부족:</strong> 측정 가능한 SKU, 채점 수요 비중 또는 완료된 운영 주가 적습니다. 데이터를 더 쌓습니다.</li>
+    <li><strong>재검토:</strong> 고판매 SKU의 뚜렷한 악화가 많고 운영 WAPE·편향·최종 테스트도 나쁩니다.</li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>해석 주의:</strong> 백테스트는 과거 조건에 대한 결과입니다. 프로모션, 가격 변경, 품절, 신규 출시, 단종과 시장 변화는 별도로 확인해야 합니다. 필터로 좋은 범위만 선택한 수치를 전체 성능처럼 보고하지 말고, 항상 남은 행 수와 채점 수요 비중을 함께 기록하세요.</div>
+  </div>
+
+  <h3>문제가 있을 때</h3>
+  <table class="feat-table">
+    <tr><th style="width:260px">증상</th><th>확인 사항</th></tr>
+    <tr><td class="label">일부 영역만 안 열림</td><td>Forecast Server 상태를 확인합니다. 검증, 수요 구조, 주간 예측 그래프는 독립적으로 요청되므로 한 영역만 실패할 수 있습니다.</td></tr>
+    <tr><td class="label">기간 변경 후 화면이 흐려짐</td><td>새 수요 구조를 불러오는 동안 이전 결과를 흐리게 표시합니다. 요청이 끝나면 선택 기간 결과로 바뀝니다.</td></tr>
+    <tr><td class="label">예측선 또는 운영 성적이 없음</td><td>저장된 실제 예측 실행이 있는지, 실행 후 완료된 판매 주가 있는지 확인합니다.</td></tr>
+    <tr><td class="label">샘플 데이터 경고</td><td>현재 모델의 실제 운영 기록이 아닙니다. 정확도 판단에서 제외하고 실제 실행이 쌓일 때까지 기다립니다.</td></tr>
+    <tr><td class="label">SKU 분석 결과가 없음</td><td>최소 실판매량, 구간, 세그먼트 필터를 전체로 돌려 범위를 넓힙니다.</td></tr>
+    <tr><td class="label">504 Gateway Timeout</td><td>잠시 후 다시 시도합니다. 반복되면 FastAPI 서비스와 전체 판매 이력 DB 쿼리 로그를 확인합니다.</td></tr>
+    <tr><td class="label">SKU 링크가 안 열림</td><td>해당 SKU가 현재 Action List 예측 대상인지와 사용자의 Action List 읽기 권한을 확인합니다.</td></tr>
+  </table>
+</section>

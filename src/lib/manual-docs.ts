@@ -28,6 +28,8 @@ export const MANUAL_DOC_BY_MENU_ID: Record<string, ManualDocEntry> = {
   "demand-planning": { kind: "section", sectionId: "demand-planning" },
   "sku-forecasts": { kind: "section", sectionId: "sku-planning" },
   "demand-forecast": { kind: "section", sectionId: "demand-forecast-page" },
+  "action-list": { kind: "section", sectionId: "action-list" },
+  "forecast-validation": { kind: "section", sectionId: "forecast-validation" },
   "oos-impact": { kind: "section", sectionId: "oos-impact" },
   "container-planning": { kind: "section", sectionId: "container-planning" },
   "container-timeline": { kind: "section", sectionId: "container-timeline" },

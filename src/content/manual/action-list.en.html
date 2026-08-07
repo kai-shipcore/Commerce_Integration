@@ -1,0 +1,169 @@
+<section class="page-section" id="action-list">
+  <div class="section-header">
+    <div class="section-icon" style="background:#eef2ff;font-size:28px">📋</div>
+    <div>
+      <div class="menu-path">Planning › Action List</div>
+      <h2>Action List</h2>
+      <p class="subtitle">Combine forecast demand, available inventory, preorder backlog, and confirmed inbound stock to find the SKUs that need attention now and review their recommended order quantities.</p>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">💡</span>
+    <div><strong>What this page is for:</strong> It turns the SKU population into a prioritized worklist based on demand and inventory risk. A recommended order is <strong>a starting point for planner review</strong>, not an automatic purchase order or final approval.</div>
+  </div>
+
+  <h3>The easiest workflow</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Check the data and model</h4><p>Start with <strong>Trained through, Model, Horizon to</strong>, and Forecast Server status. If the forecast is stale, open <strong>Run forecast</strong> to refresh it.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Set the planning assumptions</h4><p>Match lead time, review period, service level, and risk window to the current supply conditions. Changing a value asks the server to recalculate the list and recommendations.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Choose a worklist card</h4><p>Narrow the list with <strong>Preorder, No stock on hand, Best seller, Out within N days, Dry before inbound, Already drafted,</strong> or <strong>Routine</strong>. Click the active card again to return to All.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Check the evidence</h4><p>Do not read the order quantity alone. Check available stock, inbound, stockout timing, and reliability. Open a SKU to see the arithmetic, sales and forecast charts, and backtest evidence.</p></div></div>
+    <div class="step"><div class="step-num">5</div><div><h4>Export a working list</h4><p>Apply the filters and sort you need, then select <strong>Export CSV</strong>. The export contains all rows in the filtered view.</p></div></div>
+  </div>
+
+  <h3>Information at the top</h3>
+  <table class="feat-table">
+    <tr><th style="width:220px">Item</th><th>Meaning</th></tr>
+    <tr><td class="label">Trained through</td><td>The last actual-sales date available to the forecast model when it was trained. It may not be today, so check it before making a purchase decision.</td></tr>
+    <tr><td class="label">Model</td><td>The model version that produced this list. Select the version to review its purpose and main characteristics without leaving the worklist.</td></tr>
+    <tr><td class="label">Horizon to</td><td>The last date reached by the current forecast. Confirm it extends beyond the coverage window used by your planning assumptions.</td></tr>
+    <tr><td class="label">Forecast Server</td><td>The connection status of the forecasting service. If it is unavailable, loading the list, changing assumptions, or opening details may fail.</td></tr>
+    <tr><td class="label">SKUs</td><td>The number of SKUs covered by the forecast and still classified as forecastable.</td></tr>
+    <tr><td class="label">Dropped as intermittent</td><td>SKUs covered by the forecast run but reclassified as intermittent afterward, so they are not included in the current forecast worklist.</td></tr>
+    <tr><td class="label">SAMPLE inventory data</td><td>If this warning is present, the inventory values are not live operating stock and must not be used for a real purchase decision.</td></tr>
+  </table>
+
+  <h3>Run forecast</h3>
+  <p>When <strong>Trained through</strong> is stale or new orders must be included, expand the <strong>Run forecast</strong> section.</p>
+  <table class="feat-table">
+    <tr><th style="width:210px">Element</th><th>How to use it</th></tr>
+    <tr><td class="label">Horizon</td><td>Choose 13, 26, or 52 weeks. A longer horizon produces forecasts farther into the future.</td></tr>
+    <tr><td class="label">Pipeline stages</td><td>The run proceeds through <strong>Sync → Ingest → Profile → Forecast</strong>. Sync commonly takes several minutes.</td></tr>
+    <tr><td class="label">Screens updated</td><td>A successful run refreshes Action List and Forecast Validation. SKU Planning continues using the weekly scheduled forecast.</td></tr>
+    <tr><td class="label">Cannot be interrupted</td><td>The panel deliberately has no Stop button while running. Interrupting between sales, profile, and forecast writes could leave their reference weeks inconsistent, so wait for completion.</td></tr>
+    <tr><td class="label">Failure or external cancellation</td><td>A failure leaves the previous forecast in place. If an external cancellation warning appears, rerun to completion because the three datasets may describe different weeks.</td></tr>
+    <tr><td class="label">Run log</td><td>Expand the log after completion or failure when you need the stage counts and warnings.</td></tr>
+  </table>
+
+  <h3>Forecast and Not forecast</h3>
+  <div class="card-grid col2">
+    <div class="card" style="border-left:4px solid #4f46e5">
+      <h4>Forecast</h4>
+      <p>These SKUs have a weekly demand forecast. Forecast demand and error are combined with stock, preorder backlog, and inbound supply to calculate stockout timing and a recommended order.</p>
+    </div>
+    <div class="card" style="border-left:4px solid #64748b">
+      <h4>Not forecast</h4>
+      <p>These SKUs sell too irregularly for a weekly forecast. The page shows cover based on the last 13 weeks of actual sales, but does not invent a model-based order recommendation or reliability score.</p>
+    </div>
+  </div>
+
+  <h3>Forecast summary cards</h3>
+  <p>Each card is both a count and a filter.</p>
+  <table class="feat-table">
+    <tr><th style="width:190px">Card</th><th>What it shows</th></tr>
+    <tr><td class="label">All</td><td>All currently forecastable SKUs. Use it to return from another worklist card.</td></tr>
+    <tr><td class="label">Preorder</td><td>SKUs that require priority attention because they carry preorder backlog.</td></tr>
+    <tr><td class="label">No stock on hand</td><td>Every SKU whose available inventory is at or below zero. This can differ from the row's <strong>No Stock</strong> priority: a SKU with both no stock and backlog is badged Preorder but still belongs to this card.</td></tr>
+    <tr><td class="label">Best seller</td><td>The smallest group of SKUs that together contributes half of trailing four-week demand. It represents product importance, not inventory risk, so its star can appear on Preorder, No Stock, or Routine rows.</td></tr>
+    <tr><td class="label">Out ≤N days</td><td>SKUs expected to exhaust current stock inside the selected <strong>Risk window</strong>.</td></tr>
+    <tr><td class="label">Dry before inbound</td><td>SKUs that have confirmed inbound supply but are expected to run out before it lands. Expediting or reallocating existing stock may be faster than placing another order.</td></tr>
+    <tr><td class="label">Already drafted</td><td>SKUs with units on a draft container. Use it to review items that may already be in progress. Draft units are not committed inbound and are not subtracted from the recommendation.</td></tr>
+    <tr><td class="label">Routine</td><td>SKUs with neither preorder backlog nor a no-stock condition, reviewed on the normal ordering cycle.</td></tr>
+    <tr><td class="label">Units rec.</td><td>The recommendation total for the SKUs currently left on screen. When narrowed it reads <strong>units rec. · this view</strong> and shows the full-list total underneath.</td></tr>
+  </table>
+
+  <h3>Planning assumptions</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Setting</th><th>Plain-language meaning</th><th style="width:160px">Range / default</th></tr>
+    <tr><td class="label">Lead time (weeks)</td><td>How long a new order takes to become available. A longer lead time usually means protecting more future demand and can increase the recommendation.</td><td>1–52 / 8 weeks</td></tr>
+    <tr><td class="label">Review (weeks)</td><td>How long inventory must last after the order arrives until the next order review. If ordering is reviewed weekly, use 1.</td><td>1–13 / 1 week</td></tr>
+    <tr><td class="label">Service level</td><td>How much protection to hold against forecast error. Choose 84%, 90%, 95%, or 98%. A higher level can increase safety stock and the recommendation.</td><td>84% / default</td></tr>
+    <tr><td class="label">Risk window (days)</td><td>The horizon used by the “Out ≤N days” focus card. It is a review filter, separate from the order-coverage period.</td><td>1–365 / 30 days</td></tr>
+  </table>
+  <div class="callout tip">
+    <span class="callout-icon">🔗</span>
+    <div><strong>Assumptions carry into detail.</strong> When you open a SKU, the current assumptions are included in its URL. The list and detail therefore answer under the same conditions, and a shared link reproduces those conditions.</div>
+  </div>
+
+  <h3>Filters, columns, sorting, and export</h3>
+  <ul>
+    <li><strong>Search:</strong> Enter any part of a SKU or product name.</li>
+    <li><strong>Category:</strong> Keep one product category.</li>
+    <li><strong>Reliability:</strong> Filter to good, fair, poor, or not measured.</li>
+    <li><strong>Demand trend:</strong> Filter to rising, steady, falling, collapsing, or unknown. It compares the latest four weeks with the seasonally adjusted trailing-12-week average.</li>
+    <li><strong>Data-quality warnings:</strong> A line above the table shows the number of flagged SKUs and each warning type. Select the overall warning count or a specific warning label to filter, and select it again to clear.</li>
+    <li><strong>Rows:</strong> Show 25, 50, 100, 200, or all rows. The table scrolls vertically and horizontally while the headers and SKU column remain pinned.</li>
+    <li><strong>Columns:</strong> Show only the Position, Demand, or Action columns needed for the task. Toggle an individual column or a whole group. SKU and Priority remain visible, and at least one optional column must remain.</li>
+    <li><strong>Saved column preference:</strong> The selection is stored in the current browser and restored on later visits. “N hidden” means columns were previously hidden. Use <strong>Show every column</strong> to restore them.</li>
+    <li><strong>Sort:</strong> Click a column heading to sort. Click again to reverse it and a third time to return to worklist order. <strong>Shift-click another heading</strong> to add a secondary sort.</li>
+    <li><strong>Reset:</strong> Clears the worklist card, search, category, reliability, demand trend, quality warning, and manual sorting. It does not reset planning assumptions or saved columns.</li>
+    <li><strong>Export CSV:</strong> Downloads all rows in the current filtered and sorted view, not only the visible page.</li>
+  </ul>
+
+  <h3>Portfolio demand chart</h3>
+  <p><strong>“Demand across these N SKUs”</strong> totals the last 26 weeks of actual sales and the forward forecast for the SKUs left by the current filters. Changing a filter also changes the chart population. Actual sales and the model forecast use different line styles; Spreadsheet V1 appears when available. If V1 coverage is below 100%, do not compare the line totals directly. Select the heading to collapse or expand the chart.</p>
+
+  <h3>How to read the Forecast table</h3>
+  <p>The table reads from <strong>Position → Demand → Action</strong>. SKU and Priority are fixed; use <strong>Columns</strong> to show or hide the remaining columns.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Column</th><th>Meaning</th></tr>
+    <tr><td class="label">SKU</td><td>The Master SKU. Category and product name appear below it; long names are truncated and available on hover. A warning triangle indicates a data-quality flag.</td></tr>
+    <tr><td class="label">Priority</td><td>The stock situation: Preorder, No Stock, or Routine. When conditions overlap, the first match wins in that order. The ★ beside it is not another priority; it marks a product in the group generating half of four-week demand.</td></tr>
+    <tr><td class="label">Available</td><td>Current available inventory used by the planning calculation.</td></tr>
+    <tr><td class="label">Preord.</td><td>Preorder backlog still owed to customers.</td></tr>
+    <tr><td class="label">Inbound</td><td>Confirmed inbound units. “In N days” shows time to the earliest inbound; hover for its ETA date.</td></tr>
+    <tr><td class="label">4wk</td><td>Actual units sold in the latest four weekly buckets, approximately 28 days.</td></tr>
+    <tr><td class="label">Trend</td><td>Latest four weeks divided by the trailing-12-week average: rising &gt;1.25, steady 0.80–1.25, falling 0.40–0.80, collapsing &lt;0.40, or a dash when history is insufficient.</td></tr>
+    <tr><td class="label">Next Nw</td><td>Forecast demand over <strong>lead time + reorder cycle</strong>. Changing the assumptions changes both N and this quantity. It is the demand directly used by the recommendation.</td></tr>
+    <tr><td class="label">Stocks out</td><td>Estimated days until current stock is exhausted. Values inside 14 days are emphasized in red. If stock runs dry before inbound lands, the inbound timing is shown too.</td></tr>
+    <tr><td class="label">Order</td><td>The recommended quantity under the current assumptions. “N drafted” underneath means that many units sit on a draft container; because they are not committed, they are not subtracted.</td></tr>
+    <tr><td class="label">Reliability</td><td>Forecast error measured by backtesting: ●●● good (≤15%), ●●○ fair (15–30%), ●○○ poor (&gt;30%), or ○○○ not measured.</td></tr>
+  </table>
+
+  <h3>SKU detail</h3>
+  <p>Select a SKU in the Forecast table to open its detail. Use Previous, Next, or the SKU selector to move through the worklist order.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">Area</th><th>What to check</th></tr>
+    <tr><td class="label">Supply-gap warning</td><td>Shows the gap between stock exhaustion and confirmed inbound arrival. If a new order cannot arrive sooner, the page directs attention to expediting or reallocating rather than buying more.</td></tr>
+    <tr><td class="label">Recommended order</td><td>Shows the calculation line by line: demand owed, expected sales, and an error cushion are added; available stock and qualifying inbound are subtracted. It also shows a plausible range and explains when the service level pushes the recommendation above it.</td></tr>
+    <tr><td class="label">Forecast reliability</td><td>Shows average backtest error and predicted-versus-actual results by window. If the SKU has no measured error, the substitute basis—such as a promoted-SKU cohort or segment median—is named.</td></tr>
+    <tr><td class="label">Weekly demand</td><td>Compares actual sales and model forecast over time. A separate warning may appear when the model runs materially above the recent selling rate.</td></tr>
+    <tr><td class="label">Weekly figures</td><td>Expand to inspect model forecast and Spreadsheet V1 week by week. A dash means V1 does not cover that week; it does not mean zero.</td></tr>
+    <tr><td class="label">How the forecast was tested</td><td>Shows how the model performed on historical 10-week periods it had not seen when producing each test forecast.</td></tr>
+  </table>
+
+  <h3>How to read Not forecast</h3>
+  <p>Not-forecast SKUs use the last 13 weeks of actual sales. Filter with <strong>Selling, Dormant, Runs out in lead time,</strong> or <strong>No stock</strong>, and use SKU/product search, category, sorting, pagination, and CSV export.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Column</th><th>Meaning</th></tr>
+    <tr><td class="label">13w demand</td><td>Actual sales over the trailing 13 weeks, not a forecast.</td></tr>
+    <tr><td class="label">Per week</td><td>The weekly selling rate implied by those actual sales.</td></tr>
+    <tr><td class="label">Last sale</td><td>The most recent week with recorded sales.</td></tr>
+    <tr><td class="label">Available / Inbound</td><td>Current available inventory and confirmed inbound. A dash may mean there is no record or that the value does not apply; it is not automatically zero.</td></tr>
+    <tr><td class="label">Cover</td><td>Estimated days of cover if the recent selling rate continues. It is highlighted with a warning when shorter than lead time.</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>Not-forecast SKUs have no recommended order.</strong> This is intentional, not missing output: the application avoids applying a demand model to irregular sales. Review recent actual sales, open orders, MOQ, supply constraints, and planner judgment instead.</div>
+  </div>
+
+  <h3>Checklist before approving an order</h3>
+  <ul>
+    <li>Confirm that inventory is not sample data and reflects the latest synchronization.</li>
+    <li>Confirm inbound quantities and ETAs against the real PO or container records.</li>
+    <li>Apply MOQ, order multiples, container capacity, supplier closures, and the real lead time.</li>
+    <li>For poor or unmeasured reliability, separately review recent sales, promotions, seasonality, and discontinuation plans.</li>
+    <li>If stock runs dry before inbound and a new order would arrive even later, review expediting, emergency freight, or stock reallocation before increasing the order.</li>
+  </ul>
+
+  <h3>Troubleshooting</h3>
+  <table class="feat-table">
+    <tr><th style="width:240px">Symptom</th><th>What to check</th></tr>
+    <tr><td class="label">The list cannot load</td><td>Check Forecast Server status and confirm that the FastAPI service configured by AI_SERVICE_URL is running, then retry.</td></tr>
+    <tr><td class="label">Loading continues after a change</td><td>Each planning-setting change starts a server recalculation. Avoid changing several values rapidly and wait for the last request. If it remains stuck, review server logs and any 502, 503, or 504 error record.</td></tr>
+    <tr><td class="label">List and detail quantities differ</td><td>Confirm that lead time, review period, service level, and risk window in the detail URL match those used in the list.</td></tr>
+    <tr><td class="label">No rows match</td><td>Select <strong>Reset</strong> to clear the focus card and filters, and confirm whether you are viewing Forecast or Not forecast.</td></tr>
+    <tr><td class="label">A dash appears instead of zero stock</td><td>In Not forecast, a dash means no inventory record; zero means the record explicitly reports no stock.</td></tr>
+  </table>
+</section>

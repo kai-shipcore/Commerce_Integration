@@ -1,0 +1,183 @@
+<section class="page-section" id="forecast-validation">
+  <div class="section-header">
+    <div class="section-icon" style="background:#ecfdf5;font-size:28px">🔎</div>
+    <div>
+      <div class="menu-path">Planning › Forecast Validation</div>
+      <h2>Forecast Validation</h2>
+      <p class="subtitle">Evidence showing whether the current model improves on Spreadsheet V1, whether the improvement is broad across SKUs, and whether accuracy holds up in live operation.</p>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <span class="callout-icon">💡</span>
+    <div><strong>How this differs from Action List:</strong> Action List asks “What should we review and order?” Forecast Validation asks “How much evidence have we earned for trusting the forecast behind that decision?” These figures are <strong>model adoption and monitoring evidence</strong>, not purchase instructions.</div>
+  </div>
+
+  <h3>Recommended review order</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Check provenance</h4><p>Confirm Forecast Server status and review Model, Evaluated on, Scored, and Forecast trained through.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Read performance and scope together</h4><p>Compare WAPE in <strong>Model versus spreadsheet</strong>, then use <strong>How demand is shaped</strong> to see how much of the catalogue and demand that claim covers.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>See when and how errors happened</h4><p>Use <strong>Demand vs forecast</strong> to compare actual and predicted lines by lead and inspect over- or under-forecasting over time.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Review live evidence</h4><p>Check how forecasts issued before outcomes were known scored as their weeks completed.</p></div></div>
+    <div class="step"><div class="step-num">5</div><div><h4>Test the breadth of improvement</h4><p>In <strong>SKU-level breakdown</strong>, set a minimum volume and compare win rate by SKU, win rate by demand, regressions, and every scored row.</p></div></div>
+    <div class="step"><div class="step-num">6</div><div><h4>Preserve the independent test</h4><p>Confirm the quarantined final window has not been spent during development.</p></div></div>
+  </div>
+
+  <h3>Provenance at the top</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">Element</th><th>Meaning</th></tr>
+    <tr><td class="label">Model</td><td>The version under evaluation. Select it to review the model purpose, inputs, and evaluation design without leaving the page.</td></tr>
+    <tr><td class="label">Evaluated on</td><td>The pinned data snapshot used for accuracy evaluation, so the recorded evidence does not drift from week to week.</td></tr>
+    <tr><td class="label">Scored</td><td>The date when the displayed accuracy results were calculated.</td></tr>
+    <tr><td class="label">Forecast trained through</td><td>The last training week of the forecast currently served. A difference from the evaluation snapshot means the validation and live forecast describe different data vintages.</td></tr>
+    <tr><td class="label">Forecast Server</td><td>Connection to the Python forecasting service. Independent requests mean one section can fail while another still appears.</td></tr>
+  </table>
+
+  <h3>Key terms</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">Term</th><th>Plain-language meaning</th></tr>
+    <tr><td class="label">Spreadsheet / V1</td><td>The previous forecasting method used as the baseline, scored on the same SKUs and weeks.</td></tr>
+    <tr><td class="label">Segment</td><td>A group of SKUs with similar demand behavior. A model can win overall while losing in one segment.</td></tr>
+    <tr><td class="label">Backtest window</td><td>A historical test where the model sees only information available at a past cutoff and forecasts what happened afterward.</td></tr>
+    <tr><td class="label">SKU-window row</td><td>One SKU scored on one backtest window. A SKU tested on several windows contributes several rows.</td></tr>
+    <tr><td class="label">Served forecast</td><td>A forecast stored and issued before its outcome was known. It becomes scorable only after the target week finishes.</td></tr>
+    <tr><td class="label">Units sold</td><td>Actual product quantity sold in a scored window—not an error rate.</td></tr>
+    <tr><td class="label">Percentage points (pp)</td><td>The direct difference between two percentage rates. For example, 40% − 25% = 15pp. It is not a unit quantity.</td></tr>
+  </table>
+
+  <h3>Understanding WAPE and bias</h3>
+  <p><strong>WAPE (Weighted Absolute Percentage Error)</strong> expresses total forecast miss as a share of actual demand. Lower is better.</p>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin:12px 0">
+    <p style="margin:0 0 8px"><strong>WAPE = sum of absolute errors ÷ sum of actual units × 100</strong></p>
+    <p style="margin:0 0 6px">1,000 actual units and 180 units of absolute error → WAPE <strong>18%</strong></p>
+    <p style="margin:0"><strong>Difference = Model WAPE − V1 WAPE.</strong> Negative is improvement; positive is regression.</p>
+  </div>
+  <ul>
+    <li>Pooled WAPE gives high-demand SKUs more influence. A good pooled figure does not mean every SKU won.</li>
+    <li>WAPE removes direction. Positive <strong>Bias</strong> means over-forecasting, negative means under-forecasting, and near zero is more balanced.</li>
+    <li>Over-forecasting leaves inventory; under-forecasting loses sales. Equal-sized bias can therefore have different operating costs.</li>
+  </ul>
+
+  <h3 id="fv-comparison">1. Model versus spreadsheet</h3>
+  <p>The current model and V1 are scored on the same SKUs, weeks, and actual demand in fixed backtest windows.</p>
+  <table class="feat-table">
+    <tr><th style="width:230px">Element</th><th>How to read it</th></tr>
+    <tr><td class="label">Current model / Spreadsheet</td><td>Pooled portfolio WAPE. The lower figure is more accurate.</td></tr>
+    <tr><td class="label">Error reduced by</td><td>Relative reduction against V1. V1 at 30% and model at 21% is a 9pp gap and a 30% relative reduction.</td></tr>
+    <tr><td class="label">Ahead in M of N cells</td><td>How many segment×window cells the model wins. The pooled figure can improve while some cells lose.</td></tr>
+    <tr><td class="label">Measurable SKU coverage</td><td>Forecast SKUs eligible for the fixed backtest. Promoted SKUs with later training starts may be impossible to score in this design.</td></tr>
+    <tr><td class="label">Comparison matrix</td><td>Rows are segments and columns are windows. The large value is model WAPE; the pp beside it is versus V1; below are V1 WAPE, bias, SKU count, and actual units.</td></tr>
+    <tr><td class="label">Red cells</td><td>Segment-window cells where V1 wins, also summarized under <strong>Where the spreadsheet still wins</strong>.</td></tr>
+  </table>
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>Do not overstate the scope.</strong> Accuracy calculated on eligible SKUs is not automatically accuracy for every forecast SKU or the full catalogue. Read the next section with it.</div>
+  </div>
+
+  <h3 id="fv-demand">2. How demand is shaped</h3>
+  <p>This is <strong>actual sales</strong> that establishes the scope of the accuracy claim. Select 26 weeks, 1 year (52 weeks), or 2 years (104 weeks) to refetch the chosen period.</p>
+  <table class="feat-table">
+    <tr><th style="width:230px">Element</th><th>How to read it</th></tr>
+    <tr><td class="label">Forecast SKUs</td><td>Number and catalogue share receiving weekly forecasts.</td></tr>
+    <tr><td class="label">Demand the forecast covers</td><td>Share of actual units sold by forecast SKUs. A demand share above the SKU share means the model covers the business core.</td></tr>
+    <tr><td class="label">Demand with no forecast</td><td>Actual sales from intermittent SKUs. No accuracy figure on this page applies to those units.</td></tr>
+    <tr><td class="label">Early versus recent share</td><td>Compares the first and last quarter of the selected period to show whether unforecast demand is growing.</td></tr>
+    <tr><td class="label">Weekly stacked chart</td><td>Actual sales split into forecast and intermittent SKUs. Both areas are actuals, not forecasts.</td></tr>
+    <tr><td class="label">Demand concentration curve</td><td>SKUs ranked by sales, showing what share of demand the top share of SKUs produces. Greater bow above the even-distribution line means stronger concentration.</td></tr>
+    <tr><td class="label">Concentration table and summary</td><td>Shows demand carried by top SKU groups and the small core producing at least half of demand—the products that most influence pooled WAPE.</td></tr>
+  </table>
+
+  <h3 id="fv-trajectory">3. Demand vs forecast</h3>
+  <p>Overlays stored live forecasts on weekly actuals to show <strong>when</strong> errors occurred and in which direction.</p>
+  <table class="feat-table">
+    <tr><th style="width:230px">Control</th><th>How to use it</th></tr>
+    <tr><td class="label">Segment</td><td>Select All or one demand segment.</td></tr>
+    <tr><td class="label">Predicted · All weeks</td><td>Uses the most recent forecast made for each week, normally the shortest available lead.</td></tr>
+    <tr><td class="label">1, 2, 4, 8, or 13w ahead</td><td>Shows values issued exactly that many weeks before each target. A disabled choice has no scored weeks at that lead.</td></tr>
+    <tr><td class="label">V1</td><td>Adds the V1 line on the latest forward horizon. The official historical V1 comparison remains the backtest matrix.</td></tr>
+    <tr><td class="label">Summary row</td><td>Shows last-week actual versus forecast, bias, aggregate error, and forward total.</td></tr>
+    <tr><td class="label">Last complete week</td><td>Earlier points have settled actuals; later points are the latest run's forward forecast.</td></tr>
+  </table>
+  <div class="callout info">
+    <span class="callout-icon">ℹ️</span>
+    <div><strong>Aggregate chart error can differ from pooled WAPE.</strong> Summing SKUs first allows over- and under-forecast errors to cancel. Use section 1 for the accuracy claim and this chart for portfolio shape. This model emits point forecasts only, so no P85 interval band is available.</div>
+  </div>
+  <div class="callout warn">
+    <span class="callout-icon">🧪</span>
+    <div><strong>Do not use a sample-data line for accuracy decisions.</strong> It is a fabricated history used to review the UI before real current-model runs accumulate and is replaced automatically.</div>
+  </div>
+
+  <h3 id="fv-live">4. Performance on forecasts actually served</h3>
+  <p>Scores forecasts that were issued before outcomes were known, using only weeks that have completed. Once enough history accumulates, this is stronger evidence than a development backtest.</p>
+  <ul>
+    <li>Runs are newest first, with run date, weeks scored, overall WAPE, bias, and SKU count.</li>
+    <li>Select a row to open per-segment WAPE, bias, SKU count, and actual units below.</li>
+    <li>One or two scored weeks are shallow evidence; the screen warns when that is the case.</li>
+    <li>Rows from another model version may be sample data and must be excluded according to the displayed warning.</li>
+    <li>No runs or no completed weeks is a valid early state. The first score appears at least one week after the first stored run.</li>
+  </ul>
+
+  <h3 id="fv-sku">5. SKU-level breakdown</h3>
+  <p>This replaces the old “five best and five worst” lists. It tests whether improvement is broad or whether a few large wins carry the average.</p>
+
+  <h3 class="sub">Set the scope</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">Filter</th><th>How to use it</th></tr>
+    <tr><td class="label">Minimum units sold</td><td>Keep rows with at least 0, 100, 200, 300, or 500 actual units in a scored window. Raising it reduces percentage swings caused by tiny denominators and focuses on material demand.</td></tr>
+    <tr><td class="label">Window</td><td>Select All or one backtest window.</td></tr>
+    <tr><td class="label">Segment</td><td>Select All or one demand segment.</td></tr>
+    <tr><td class="label">Scope statement</td><td>Reports remaining SKU-window rows, units sold, share of all scored demand, and excluded row count. Keep this statement with any reported result.</td></tr>
+  </table>
+
+  <h3 class="sub">Four headline measures</h3>
+  <table class="feat-table">
+    <tr><th style="width:230px">Measure</th><th>Meaning</th></tr>
+    <tr><td class="label">Win rate, by SKU</td><td>Share of selected SKU-window rows where model WAPE is below V1.</td></tr>
+    <tr><td class="label">Win rate, by demand</td><td>Share of selected actual units sitting on rows the model wins. Above the SKU rate means wins are concentrated in larger-volume rows.</td></tr>
+    <tr><td class="label">Pooled WAPE</td><td>Model and V1 demand-weighted error recalculated over the current scope.</td></tr>
+    <tr><td class="label">Material regressions</td><td>Rows where model WAPE is at least <strong>25pp worse</strong> than V1, plus their share of units sold.</td></tr>
+  </table>
+
+  <h3 class="sub">Distribution and detail</h3>
+  <ul>
+    <li><strong>Distribution of per-SKU differences:</strong> x-axis is Model WAPE − V1 WAPE. Negative/left is improvement; positive/right is regression. Units are percentage points, not products sold.</li>
+    <li><strong>By window and by segment:</strong> compare row count, win rate, model pooled WAPE, and V1 WAPE. A group can lose on row count but win on large-volume error, so read both measures.</li>
+    <li><strong>Every scored SKU-window:</strong> search and sort every row by SKU, units sold, either WAPE, or difference. The table starts with 50 and <strong>Show more</strong> adds 50.</li>
+    <li><strong>Difference sign:</strong> negative/green means the model is closer; positive/amber means V1 is closer.</li>
+    <li><strong>SKU link:</strong> opens Action List detail. Investigate rows combining high volume, large regression, and a large recommendation first.</li>
+  </ul>
+
+  <h3 id="fv-final">6. Final test window</h3>
+  <p>A period quarantined throughout development. Repeatedly viewing and tuning against it would introduce optimism, so it is reserved for one adoption decision after development.</p>
+  <ul>
+    <li><strong>Not evaluated yet:</strong> the independent test is intentionally preserved; this is not an error.</li>
+    <li><strong>Results not rendered yet:</strong> evaluation has run but the result view is not ready.</li>
+    <li>When available, compare it in the same form as section 1 and check agreement with development backtests and live performance.</li>
+  </ul>
+
+  <h3>Decision examples</h3>
+  <ul>
+    <li><strong>Positive:</strong> pooled WAPE beats V1, both win rates are high, and key segments, live runs, and the final test agree.</li>
+    <li><strong>Improvement carried by large SKUs:</strong> SKU win rate is low but demand win rate and pooled WAPE are good. This can help the portfolio while losing SKUs still need manual review.</li>
+    <li><strong>Improvement carried by small SKUs:</strong> SKU win rate is high but demand win rate is low. Many rows win, but V1 may remain better on core volume.</li>
+    <li><strong>Insufficient evidence:</strong> too few eligible SKUs, too little scored demand, or too few completed live weeks.</li>
+    <li><strong>Reconsider:</strong> material regressions carry high volume and live WAPE, bias, and the final test also deteriorate.</li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>Interpret with care.</strong> Backtests describe historical conditions and cannot guarantee promotions, price changes, stockouts, launches, discontinuations, or market shifts. Never report a favorable filtered subset as overall performance; include its remaining row count and share of scored demand.</div>
+  </div>
+
+  <h3>Troubleshooting</h3>
+  <table class="feat-table">
+    <tr><th style="width:260px">Symptom</th><th>What to check</th></tr>
+    <tr><td class="label">Only one section fails</td><td>Check Forecast Server. Validation, demand patterns, and the trajectory use independent requests.</td></tr>
+    <tr><td class="label">Page dims after period change</td><td>The old demand-pattern result is dimmed while the selected period loads, then replaced.</td></tr>
+    <tr><td class="label">No predicted line or live performance</td><td>Confirm that real forecast runs are stored and at least one target sales week has completed.</td></tr>
+    <tr><td class="label">Sample-data warning</td><td>Exclude those rows or lines from accuracy decisions and wait for real current-model runs.</td></tr>
+    <tr><td class="label">No SKU rows match</td><td>Reset Minimum units sold, Window, and Segment to widen the scope.</td></tr>
+    <tr><td class="label">504 Gateway Timeout</td><td>Retry after a short wait. If repeated, inspect the FastAPI service and full-history database query logs.</td></tr>
+    <tr><td class="label">SKU link does not open</td><td>Confirm the SKU remains forecastable and the user has Action List read permission.</td></tr>
+  </table>
+</section>
