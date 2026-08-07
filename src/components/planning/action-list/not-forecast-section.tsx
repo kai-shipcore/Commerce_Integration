@@ -88,9 +88,7 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
     else if (focus === "no-stock") rows = rows.filter((r) => r.available_inventory === 0);
     const q = search.trim().toLowerCase();
     if (q) {
-      rows = rows.filter(
-        (r) => r.unique_id.toLowerCase().includes(q) || (r.product_name ?? "").toLowerCase().includes(q),
-      );
+      rows = rows.filter((r) => r.unique_id.toLowerCase().includes(q));
     }
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     return nfSortRows(rows, sort);

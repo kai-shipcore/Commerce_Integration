@@ -423,9 +423,7 @@ export function SkuDetailContent({
               here: a purchaser acts on the measured reliability below, not on
               how many weeks of history produced it, and the same reasoning keeps
               which of the hybrid's two models served this SKU off the page. */}
-          <p className="text-xs text-muted-foreground">
-            {[r.product_category, r.product_name].filter(Boolean).join(" · ")}
-          </p>
+          <p className="text-xs text-muted-foreground">{r.product_category ?? ""}</p>
           {/* Why this SKU is on the list at all. The row carried it, the list
               shows it, and arriving here from a filtered worklist without it
               meant the reason for being here was the one thing left behind. */}

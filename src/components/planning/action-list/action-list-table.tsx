@@ -538,11 +538,7 @@ export function ActionListTable({
         </TableHeader>
         <TableBody>
           {rows.map((r) => {
-            // Category and product name only. The history group ("short" /
-            // "long") used to sit between them: it is a statement about how
-            // much training data the model had, not about the product, and it
-            // spent a third of the one subtitle line on every row to say it.
-            const sub = [r.product_category, r.product_name].filter(Boolean).join(" · ");
+            const sub = r.product_category ?? "";
             return (
               <TableRow key={r.unique_id} className="group">
                 <TableCell className={`sticky left-0 ${Z.bodyLeft} bg-background align-top group-hover:bg-muted/50`}>

@@ -225,11 +225,7 @@ export function ActionListContent({
     }
     const q = query.trim().toLowerCase();
     if (q) {
-      rows = rows.filter(
-        (r) =>
-          r.unique_id.toLowerCase().includes(q) ||
-          (r.product_name ?? "").toLowerCase().includes(q),
-      );
+      rows = rows.filter((r) => r.unique_id.toLowerCase().includes(q));
     }
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     if (tier !== "all") rows = rows.filter((r) => r.tier === tier);

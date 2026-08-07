@@ -11,7 +11,6 @@
 /** One forecastable SKU with its order recommendation and the inputs to it. */
 export interface ActionListRow {
   unique_id: string;
-  product_name: string | null;
   product_category: string | null;
   history_group: "short" | "long" | string;
 
@@ -202,7 +201,6 @@ export interface ActionListResponse {
  *  two are not read as the same kind of figure. */
 export interface NotForecastRow {
   unique_id: string;
-  product_name: string | null;
   product_category: string | null;
   bucket: string;
   /** Units sold over the trailing window, and the rates implied by it. */

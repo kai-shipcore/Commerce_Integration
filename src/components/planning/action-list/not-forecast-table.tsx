@@ -186,7 +186,7 @@ export function NotForecastTable({
         </TableHeader>
         <TableBody>
           {rows.map((r) => {
-            const sub = [r.product_category, r.product_name].filter(Boolean).join(" · ");
+            const sub = r.product_category ?? "";
             return (
               <TableRow key={r.unique_id} className="group">
                 {/* Linked, like the forecast table's rows. The detail page has
