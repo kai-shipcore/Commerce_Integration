@@ -106,3 +106,20 @@ describe("TransitStockRepository.syncStats", () => {
     expect(sql2).toContain("fc_stats_custom s SET transit_stock");
   });
 });
+
+describe("TransitStockRepository.syncAllStats", () => {
+  it("reconciles both stats tables from all in-transit records", async () => {
+    poolQueryMock.mockResolvedValue({});
+
+    await TransitStockRepository.syncAllStats();
+
+    expect(poolQueryMock).toHaveBeenCalledTimes(2);
+    const [linkSql] = poolQueryMock.mock.calls[0];
+    const [customSql] = poolQueryMock.mock.calls[1];
+    expect(linkSql).toContain("UPDATE shipcore.fc_stats s");
+    expect(customSql).toContain("UPDATE shipcore.fc_stats_custom s");
+    expect(linkSql).toContain("FROM shipcore.fc_transit_records");
+    expect(linkSql).toContain("status = 'in_transit'");
+    expect(linkSql).toContain("IS DISTINCT FROM");
+  });
+});

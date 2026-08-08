@@ -37,6 +37,7 @@ import {
 } from "@/lib/planning/oos-lost-demand-weights";
 import { OosImpactService } from "@/lib/oos-impact/service";
 import { DemandPlanningRepository, type VelRow } from "@/lib/demand-planning/repository";
+import { TransitStockRepository } from "@/lib/transit-stock/repository";
 import type { ContainerMeta, ContainerRowData, DemandPlanningData, DemandRow } from "@/types/demand-planning";
 
 // ─── Shared parsing helpers ─────────────────────────────────────────────
@@ -461,6 +462,11 @@ export const DemandPlanningService = {
       DemandPlanningRepository.batchUpsert("shipcore.fc_stats", invRows, invCols, invUpdate),
       DemandPlanningRepository.batchUpsert("shipcore.fc_stats_custom", invRows, invCols, invUpdate),
     ]);
+
+    // Reconcile the denormalized dashboard values on every manual Sync. The
+    // targeted transit-record APIs keep individual SKUs current, while this
+    // full pass repairs historical drift or out-of-band database changes.
+    await TransitStockRepository.syncAllStats();
 
     // ── Step 1b: OOS episodes ────────────────────────────────────────
     const oosEpisodeRows = (await DemandPlanningRepository.getOosEpisodes()).map((r) => ({

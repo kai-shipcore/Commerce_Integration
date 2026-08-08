@@ -107,4 +107,31 @@ export const TransitStockRepository = {
       ),
     ]);
   },
+
+  async syncAllStats(): Promise<void> {
+    const pool = getPrimaryPool();
+    const updateSql = (table: "fc_stats" | "fc_stats_custom") => `
+      WITH actual AS (
+        SELECT master_sku, SUM(qty)::int AS qty
+        FROM shipcore.fc_transit_records
+        WHERE status = 'in_transit'
+        GROUP BY master_sku
+      )
+      UPDATE shipcore.${table} s
+      SET transit_stock = COALESCE(source.qty, 0),
+          updated_at = NOW()
+      FROM (
+        SELECT stats.master_sku, actual.qty
+        FROM shipcore.${table} stats
+        LEFT JOIN actual USING (master_sku)
+      ) source
+      WHERE s.master_sku = source.master_sku
+        AND s.transit_stock IS DISTINCT FROM COALESCE(source.qty, 0)
+    `;
+
+    await Promise.all([
+      pool.query(updateSql("fc_stats")),
+      pool.query(updateSql("fc_stats_custom")),
+    ]);
+  },
 };

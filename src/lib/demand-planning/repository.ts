@@ -483,7 +483,7 @@ export const DemandPlanningRepository = {
       shopify_qty: number; amazon_qty: number; ebay_qty: number; walmart_qty: number;
     }>(`
       WITH episode_clip AS (
-        SELECT master_sku,
+        SELECT id AS episode_id, master_sku,
           GREATEST(oos_started_on, CURRENT_DATE - 89) AS clip_start,
           LEAST(COALESCE(back_in_stock_on, CURRENT_DATE), CURRENT_DATE) AS clip_end
         FROM shipcore.fc_inventory_history_snapshot
@@ -496,21 +496,30 @@ export const DemandPlanningRepository = {
         ed.master_sku,
         COALESCE(p.category_code, 'SC') AS category_code,
         ed.clipped_days::int AS clipped_days,
-        COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
-          WHERE v.${skuCol} = ed.master_sku AND v.channel IN (${SHOPIFY_CHANNELS})
-            AND v.order_type = 'preorder'
-            AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS shopify_qty,
-        COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
-          WHERE v.${skuCol} = ed.master_sku AND v.channel IN (${AMAZON_CHANNELS})
-            AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS amazon_qty,
-        COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
-          WHERE v.${skuCol} = ed.master_sku AND v.channel IN (${EBAY_CHANNELS})
-            AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS ebay_qty,
-        COALESCE((SELECT SUM(v.${qtyCol}) FROM ${table} v
-          WHERE v.${skuCol} = ed.master_sku AND v.channel = 'Walmart'
-            AND v.order_date BETWEEN ed.clip_start AND ed.clip_end), 0)::numeric AS walmart_qty
+        COALESCE(SUM(v.${qtyCol}) FILTER (
+          WHERE v.channel IN (${SHOPIFY_CHANNELS}) AND v.order_type = 'preorder'
+        ), 0)::numeric AS shopify_qty,
+        COALESCE(SUM(v.${qtyCol}) FILTER (
+          WHERE v.channel IN (${AMAZON_CHANNELS})
+        ), 0)::numeric AS amazon_qty,
+        COALESCE(SUM(v.${qtyCol}) FILTER (
+          WHERE v.channel IN (${EBAY_CHANNELS})
+        ), 0)::numeric AS ebay_qty,
+        COALESCE(SUM(v.${qtyCol}) FILTER (
+          WHERE v.channel = 'Walmart'
+        ), 0)::numeric AS walmart_qty
       FROM episode_days ed
       LEFT JOIN shipcore.fc_products p ON p.master_sku = ed.master_sku
+      LEFT JOIN ${table} v
+        ON v.${skuCol} = ed.master_sku
+       AND v.order_date BETWEEN ed.clip_start AND ed.clip_end
+      GROUP BY
+        ed.episode_id,
+        ed.master_sku,
+        ed.clip_start,
+        ed.clip_end,
+        ed.clipped_days,
+        COALESCE(p.category_code, 'SC')
     `);
     return result.rows;
   },

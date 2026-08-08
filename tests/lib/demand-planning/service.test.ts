@@ -24,8 +24,12 @@ const setCacheMock = vi.fn();
 const invalidateCacheMock = vi.fn();
 const cacheManagerDeleteMock = vi.fn();
 const cacheManagerDeletePatternMock = vi.fn();
+const syncAllTransitStatsMock = vi.fn();
 
 vi.mock("@/lib/demand-planning/repository", () => ({ DemandPlanningRepository: repositoryMock }));
+vi.mock("@/lib/transit-stock/repository", () => ({
+  TransitStockRepository: { syncAllStats: syncAllTransitStatsMock },
+}));
 vi.mock("@/lib/planning/dashboard-cache", () => ({
   getPlanningDashboardCache: getCacheMock,
   setPlanningDashboardCache: setCacheMock,
@@ -132,6 +136,7 @@ describe("DemandPlanningService.refreshStats", () => {
     const result = await DemandPlanningService.refreshStats({});
 
     expect(result).toEqual({ inventoryUpserted: 1, linkSalesUpserted: 1, customSalesUpserted: 0 });
+    expect(syncAllTransitStatsMock).toHaveBeenCalledTimes(1);
     expect(repositoryMock.upsertSwcProducts).toHaveBeenCalled();
     expect(invalidateCacheMock).toHaveBeenCalled();
     expect(cacheManagerDeleteMock).toHaveBeenCalledWith("oos-preorder:sku-list:v4");

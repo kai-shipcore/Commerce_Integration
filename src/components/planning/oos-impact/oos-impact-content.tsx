@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
+import { runPlanningStatsRefresh } from "@/features/planning/planning-stats-refresh";
 import { PreorderScreen } from "./preorder-screen";
 import { RecoveryScreen } from "./recovery-screen";
 
@@ -49,13 +50,7 @@ export function OosImpactContent() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const res = await fetch(apiPath("/api/planning/stats/refresh"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const json = await res.json() as { success: boolean; error?: string };
-      if (!res.ok || !json.success) throw new Error(json.error ?? `HTTP ${res.status}`);
+      await runPlanningStatsRefresh({});
       setSyncNonce((n) => n + 1);
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : String(err));

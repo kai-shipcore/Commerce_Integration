@@ -5,6 +5,7 @@ import type { BaseCategoryFilter, CategoryFilter, DemandPlanningData } from "@/t
 import { apiPath } from "@/lib/api-path";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, salesWindowWeightsParam, type SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
+import { runPlanningStatsRefresh } from "@/features/planning/planning-stats-refresh";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], pinned_rows: [], last_sync: null };
 const dashboardMemoryCache = new Map<string, DemandPlanningData>();
@@ -73,14 +74,10 @@ export function useDemandPlanningData(
     const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(salesWindowWeights)}`;
     const dashUrl = apiPath(`/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}${salesWeightsSuffix}`);
     const dashFetch = withRefresh
-      ? fetch(apiPath("/api/planning/stats/refresh"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ salesWindowWeights, oosLostDemandWeights }),
-        }).then((res) => {
-          if (!res.ok) throw new Error(`Stats refresh failed: HTTP ${res.status}`);
-          return fetch(dashUrl);
-        })
+      ? runPlanningStatsRefresh(
+          { salesWindowWeights, oosLostDemandWeights },
+          { isCancelled: () => cancelled },
+        ).then(() => fetch(dashUrl))
       : fetch(dashUrl);
 
     dashFetch

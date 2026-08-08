@@ -104,6 +104,25 @@ describe("DemandPlanningRepository.getOosEpisodes", () => {
   });
 });
 
+describe("DemandPlanningRepository.getOosLostDemandRaw", () => {
+  it.each([
+    ["link", "shipcore.fc_velocity_link_snapshot", "link_master_sku", "link_qty"],
+    ["custom", "shipcore.fc_velocity_custom_snapshot", "custom_master_sku", "custom_qty"],
+  ] as const)("aggregates %s marketplace quantities from one joined snapshot scan", async (source, table, skuColumn, qtyColumn) => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+
+    await DemandPlanningRepository.getOosLostDemandRaw(source);
+
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain(`LEFT JOIN ${table} v`);
+    expect(sql).toContain(`ON v.${skuColumn} = ed.master_sku`);
+    expect(sql).toContain(`SUM(v.${qtyColumn}) FILTER`);
+    expect(sql).toContain("ed.episode_id");
+    expect(sql).toContain("GROUP BY");
+    expect(sql).not.toContain("SELECT SUM(v.");
+  });
+});
+
 describe("DemandPlanningRepository.getSalesVelocity", () => {
   it("substitutes $1::date for CURRENT_DATE and passes planningDate", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
