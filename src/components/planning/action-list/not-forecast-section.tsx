@@ -26,6 +26,7 @@ import {
   type NfSort, type NfSortKey,
 } from "./not-forecast-table";
 import { planningQuery, type ActionListParams, type NotForecastResponse } from "./types";
+import { downloadCsv, NOT_FORECAST_COLUMNS } from "./csv-export";
 
 const nf = new Intl.NumberFormat("en-US");
 
@@ -139,25 +140,12 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
     { key: "no-stock", label: pick("재고 없음", "no stock"), value: m.out_of_stock },
   ];
 
+  // Same treatment as the forecast table above it, in the same pass and for the
+  // same reason: the two files are read side by side, so deriving one from the
+  // row shape and choosing the other would make them disagree about what a
+  // column is called.
   const exportCsv = () => {
-    if (!view.length) return;
-    const cols = Object.keys(view[0]);
-    const csv = [
-      cols.join(","),
-      ...view.map((r) =>
-        cols.map((c) => {
-          const v = (r as unknown as Record<string, unknown>)[c];
-          const s = v === null || v === undefined ? "" : String(v);
-          return s.includes(",") ? `"${s.replace(/"/g, '""')}"` : s;
-        }).join(","),
-      ),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "not-forecast.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(view, NOT_FORECAST_COLUMNS, "not-forecast", pick);
   };
 
   return (

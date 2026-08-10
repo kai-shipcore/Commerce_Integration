@@ -30,6 +30,7 @@ import {
   type SortCriterion, type SortKey,
 } from "./action-list-table";
 import { ColumnPicker } from "./column-picker";
+import { downloadCsv, ACTION_LIST_COLUMNS } from "./csv-export";
 import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
 import {
   PlanningError,
@@ -269,29 +270,12 @@ export function ActionListContent({
     [view, pageSize, currentPage],
   );
 
+  // Columns are named in csv-export.ts rather than derived from the row, so the
+  // file matches what was on screen instead of the API's wire format. See the
+  // module header for what is included and what is deliberately not.
   const exportCsv = useCallback(() => {
-    if (!view.length) return;
-    const cols = Object.keys(view[0]).filter((c) => c !== "flags");
-    const csv = [
-      [...cols, "flags"].join(","),
-      ...view.map((r) =>
-        [
-          ...cols.map((c) => {
-            const v = (r as unknown as Record<string, unknown>)[c];
-            const s = v === null || v === undefined ? "" : String(v);
-            return s.includes(",") ? `"${s.replace(/"/g, '""')}"` : s;
-          }),
-          `"${r.flags.join("; ")}"`,
-        ].join(","),
-      ),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "action-list.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [view]);
+    downloadCsv(view, ACTION_LIST_COLUMNS, "action-list", pick);
+  }, [view, pick]);
 
   if (loading && !data) {
     return (
