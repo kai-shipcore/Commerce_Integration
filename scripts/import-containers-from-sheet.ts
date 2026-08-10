@@ -24,6 +24,7 @@
 // entire workbook into memory (ExcelJS OOMed on this 57MB file with 90MB+ sheets).
 
 import { getPrimaryPool } from "../src/lib/db/primary-db";
+import { inferProduct } from "../src/lib/sku-master/repository";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
@@ -47,6 +48,13 @@ if (!input) {
 }
 
 const CBM_CAPACITY_DEFAULT = 80;
+
+function colorVariantModelKey(masterSku: string): string | null {
+  const parts = masterSku.split("-");
+  if (parts.length < 3) return null;
+  parts.splice(parts.length - 2, 1);
+  return parts.join("-");
+}
 
 // ─── Python extraction script ─────────────────────────────────────────────────
 // Parses the xlsx as a zip (stdlib only), extracts only the target sheet,
@@ -544,6 +552,7 @@ async function main() {
   }
 
   const skuRows = extracted.skuRows;
+  const uniqueSkuRows = [...new Map(skuRows.map((row) => [row.masterSku, row])).values()];
   const totalItems = skuRows.reduce((sum, r) => sum + Object.keys(r.qtys).length, 0);
   console.log(
     `\nParsed ${skuRows.length} SKU rows | ${totalItems} container-item entries | ${skuRows.filter((r) => r.cbmUnit !== null).length} CBM updates`
@@ -571,31 +580,90 @@ async function main() {
   try {
     await client.query("BEGIN");
 
-    // 1. Update cbm_per_unit on fc_products for every SKU with a CBM value
+    // 1. Create products that exist in the sheet but not yet in fc_products.
+    //    Without this, stats-only SKUs are skipped and show a blank CBM in planning.
+    const siblingCbmResult = await client.query<{
+      master_sku: string;
+      cbm_per_unit: string;
+      updated_at: Date;
+    }>(
+      `SELECT master_sku, cbm_per_unit, updated_at
+       FROM shipcore.fc_products
+       WHERE cbm_per_unit IS NOT NULL
+       ORDER BY updated_at DESC, master_sku`
+    );
+    const latestCbmByModel = new Map<string, string>();
+    for (const product of siblingCbmResult.rows) {
+      const modelKey = colorVariantModelKey(product.master_sku);
+      if (modelKey && !latestCbmByModel.has(modelKey)) {
+        latestCbmByModel.set(modelKey, product.cbm_per_unit);
+      }
+    }
+    const resolvedCbmBySku = new Map<string, number | string>();
+    const inferredProducts = uniqueSkuRows.map((row) => {
+      const defaults = inferProduct(row.masterSku);
+      const modelKey = colorVariantModelKey(row.masterSku);
+      const resolvedCbm = row.cbmUnit ?? (modelKey ? latestCbmByModel.get(modelKey) : null) ?? defaults.cbmPerUnit;
+      resolvedCbmBySku.set(row.masterSku, resolvedCbm);
+      return { masterSku: row.masterSku, resolvedCbm, ...defaults };
+    });
+    const insertedProducts = await client.query(
+      `INSERT INTO shipcore.fc_products
+         (master_sku, product_name, category, category_code, moq, order_multiple,
+          cbm_per_unit, case_qty, weight_kg, created_at, updated_at)
+       SELECT source.master_sku::varchar(128), source.master_sku::varchar(255),
+              source.category::varchar, source.category_code::varchar,
+              source.moq, source.moq, source.resolved_cbm,
+              source.case_qty, source.weight_kg, NOW(), NOW()
+       FROM UNNEST(
+         $1::text[], $2::text[], $3::text[], $4::int[],
+         $5::numeric[], $6::int[], $7::numeric[]
+       ) AS source(
+         master_sku, category, category_code, moq, resolved_cbm,
+         case_qty, weight_kg
+       )
+       ON CONFLICT (master_sku) DO NOTHING`,
+      [
+        inferredProducts.map((row) => row.masterSku),
+        inferredProducts.map((row) => row.category),
+        inferredProducts.map((row) => row.categoryCode),
+        inferredProducts.map((row) => row.moq),
+        inferredProducts.map((row) => row.resolvedCbm),
+        inferredProducts.map((row) => row.caseQty),
+        inferredProducts.map((row) => row.weightKg),
+      ]
+    );
+    console.log(`\nCreated ${insertedProducts.rowCount ?? 0} missing SKUs in fc_products.`);
+
+    // 2. Update cbm_per_unit on fc_products for every SKU with a CBM value
     let cbmUpdated = 0;
-    for (const r of skuRows) {
-      if (r.cbmUnit === null) continue;
+    for (const r of uniqueSkuRows) {
+      const resolvedCbm = resolvedCbmBySku.get(r.masterSku);
+      if (resolvedCbm == null) continue;
       const res = await client.query(
         `UPDATE shipcore.fc_products SET cbm_per_unit = $1, updated_at = NOW() WHERE master_sku = $2`,
-        [r.cbmUnit, r.masterSku]
+        [resolvedCbm, r.masterSku]
       );
       if ((res.rowCount ?? 0) > 0) cbmUpdated++;
     }
     console.log(`\nUpdated cbm_per_unit for ${cbmUpdated} SKUs in fc_products.`);
 
-    // 2. Validate SKUs — only insert items for SKUs that exist in fc_products
-    const allSkus = [...new Set(skuRows.map((r) => r.masterSku))];
-    const skuResult = await client.query<{ master_sku: string }>(
-      `SELECT master_sku FROM shipcore.fc_products WHERE master_sku = ANY($1::text[])`,
+    // 3. Validate SKUs — only insert items for SKUs that exist in fc_products
+    const allSkus = uniqueSkuRows.map((r) => r.masterSku);
+    const skuResult = await client.query<{ master_sku: string; cbm_per_unit: string | null }>(
+      `SELECT master_sku, cbm_per_unit
+       FROM shipcore.fc_products
+       WHERE master_sku = ANY($1::text[])`,
       [allSkus]
     );
     const validSkus = new Set(skuResult.rows.map((r) => r.master_sku));
+    const productCbms = new Map(skuResult.rows.map((r) => [r.master_sku, r.cbm_per_unit]));
     const skippedSkus = allSkus.filter((s) => !validSkus.has(s));
     if (skippedSkus.length > 0) {
       console.log(`Skipping ${skippedSkus.length} SKU(s) not in fc_products: ${skippedSkus.join(", ")}`);
     }
 
-    // 3. Upsert containers by container_number; collect their IDs
+    // 4. Upsert containers by container_number; collect their IDs
     const containerIds = new Map<string, string>();
     let insertedContainers = 0;
     let updatedContainers = 0;
@@ -618,7 +686,7 @@ async function main() {
     }
     console.log(`\nContainers: ${insertedContainers} inserted, ${updatedContainers} updated.`);
 
-    // 4. Load existing items for these containers so we can upsert without a unique constraint
+    // 5. Load existing items for these containers so we can upsert without a unique constraint
     const containerIdList = [...containerIds.values()];
     const containerIdToName = new Map([...containerIds.entries()].map(([name, id]) => [id, name]));
     const existingItemsRes = await client.query<{ id: string; container_id: string; master_sku: string }>(
@@ -636,7 +704,7 @@ async function main() {
       existingMap.get(cName)!.set(row.master_sku, row.id);
     }
 
-    // 5. Upsert container items — update qty/cbm if row exists, insert otherwise
+    // 6. Upsert container items — update qty/cbm if row exists, insert otherwise
     let inserted = 0;
     let itemsUpdated = 0;
     for (const r of skuRows) {
@@ -644,21 +712,22 @@ async function main() {
       for (const [containerName, qty] of Object.entries(r.qtys)) {
         const containerId = containerIds.get(containerName);
         if (!containerId) continue;
+        const effectiveCbm = r.cbmUnit ?? productCbms.get(r.masterSku) ?? null;
         const existingId = existingMap.get(containerName)?.get(r.masterSku);
         if (existingId) {
           await client.query(
             `UPDATE shipcore.fc_container_items
-             SET qty = $1, cbm_unit = $2, updated_at = NOW()
+             SET qty = $1, cbm_unit = COALESCE($2::numeric, cbm_unit), updated_at = NOW()
              WHERE id = $3::bigint`,
-            [qty, r.cbmUnit, existingId]
+            [qty, effectiveCbm, existingId]
           );
           itemsUpdated++;
         } else {
           await client.query(
-            `INSERT INTO shipcore.fc_container_items
+             `INSERT INTO shipcore.fc_container_items
                (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-             VALUES ($1::bigint, $2, $3::int, $4::numeric, NOW(), NOW())`,
-            [containerId, r.masterSku, qty, r.cbmUnit]
+             VALUES ($1::bigint, $2::varchar(128), $3::int, $4::numeric, NOW(), NOW())`,
+            [containerId, r.masterSku, qty, effectiveCbm]
           );
           inserted++;
         }
@@ -667,7 +736,7 @@ async function main() {
 
     await client.query("COMMIT");
     console.log(
-      `\nDone. ${insertedContainers} containers inserted, ${updatedContainers} updated, ${inserted} items inserted, ${itemsUpdated} items updated, ${cbmUpdated} CBM values updated.`
+      `\nDone. ${insertedProducts.rowCount ?? 0} products created, ${insertedContainers} containers inserted, ${updatedContainers} updated, ${inserted} items inserted, ${itemsUpdated} items updated, ${cbmUpdated} CBM values updated.`
     );
   } catch (err) {
     await client.query("ROLLBACK");

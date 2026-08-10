@@ -18,6 +18,7 @@
 import { spawn, ChildProcess } from "child_process";
 import * as path from "path";
 import { logAudit } from "@/lib/audit";
+import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 
 export type LogEntry = { line: string; isError?: boolean };
 export type RunPayload = LogEntry | { done: true; exitCode: number; cancelled?: boolean };
@@ -150,6 +151,9 @@ function startImportJob(run: ActiveRun, tab: string | undefined, forceDownload: 
   child.on("close", (code) => {
     if (run.cancelled) return;
     emit(run, { done: true, exitCode: code ?? 1 });
+    if (code === 0 && !run.dryRun) {
+      void invalidatePlanningDashboardCache();
+    }
     void logAudit({
       entityType: "container_import",
       entityId: run.startedAt,

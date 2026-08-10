@@ -186,8 +186,9 @@ export function ContainerImport() {
   const isRunning = runState === "running";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <div>
+    <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
+      <header className="border-b border-[#e2dfd8] bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="mx-auto w-full max-w-3xl">
         <h1 className="text-2xl font-semibold">{pick("컨테이너 데이터 가져오기", "Container Data Import")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {pick(
@@ -197,9 +198,11 @@ export function ContainerImport() {
           <span className="font-medium">{pick('"링크가 있는 모든 사용자 보기"', '"Anyone with the link can view"')}</span>
           {pick(" 로 공유되어야 합니다.", ".")}
         </p>
-      </div>
+        </div>
+      </header>
 
-      <div className="rounded-lg border bg-card p-5 space-y-4">
+      <div className="mx-auto w-full max-w-3xl flex-1 space-y-6 overflow-y-auto p-6">
+        <div className="rounded-lg border bg-card p-5 space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="sheet-url">{pick("Google Sheets URL", "Google Sheet URL")}</Label>
           <Input
@@ -324,6 +327,7 @@ export function ContainerImport() {
           </pre>
         </div>
       )}
-    </div>
+      </div>
+    </section>
   );
 }
