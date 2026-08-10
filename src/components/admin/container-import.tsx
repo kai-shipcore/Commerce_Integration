@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Play, RotateCcw, X } from "lucide-react";
+import { Container, Loader2, Play, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -186,10 +186,12 @@ export function ContainerImport() {
   const isRunning = runState === "running";
 
   return (
-    <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-[#f5f4f0] text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
-      <header className="border-b border-[#e2dfd8] bg-white px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
-        <div className="mx-auto w-full max-w-3xl">
-        <h1 className="text-2xl font-semibold">{pick("컨테이너 데이터 가져오기", "Container Data Import")}</h1>
+    <section className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-2xl border border-[#e2dfd8] bg-white text-foreground shadow-sm dark:border-slate-700 dark:bg-slate-950">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e2dfd8] bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-start gap-2">
+          <Container className="mt-1 h-5 w-5" />
+          <div>
+        <h1 className="text-lg font-semibold">{pick("컨테이너 데이터 가져오기", "Container Data Import")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {pick(
             "Google Sheets에서 컨테이너 및 SKU 데이터를 가져옵니다. 시트는",
@@ -198,6 +200,7 @@ export function ContainerImport() {
           <span className="font-medium">{pick('"링크가 있는 모든 사용자 보기"', '"Anyone with the link can view"')}</span>
           {pick(" 로 공유되어야 합니다.", ".")}
         </p>
+          </div>
         </div>
       </header>
 
