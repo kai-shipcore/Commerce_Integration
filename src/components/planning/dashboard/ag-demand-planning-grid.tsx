@@ -3081,11 +3081,48 @@ autoFilling3: autoFillingContainers3.has(container.name),
     collectColumnIds(columnDefs);
     const availableIds = new Set((api.getColumns() ?? []).map((column) => column.getColId()));
     const requestedOrder = columnOrder.length ? columnOrder : defaultOrder;
-    const desiredOrder = [
-      ...requestedOrder.filter((id) => availableIds.has(id)),
-      ...defaultOrder.filter((id) => availableIds.has(id) && !requestedOrder.includes(id)),
-      ...Array.from(availableIds).filter((id) => !requestedOrder.includes(id) && !defaultOrder.includes(id)),
+
+    // Hidden-run restore indicators (colId contains "hidegap:") are synthetic
+    // and rebuilt every time the hidden set changes, so a saved `columnOrder`
+    // — captured before this run existed, or before the user hid anything —
+    // never mentions them. Reordering by `requestedOrder` alone would then
+    // fall through to the "everything else" bucket and dump every indicator
+    // at the tail of the known columns, nowhere near the gap it's supposed to
+    // mark. Keep each indicator anchored to whichever real column precedes it
+    // in `defaultOrder` (its structurally correct neighbor) and only reorder
+    // the real columns by `requestedOrder`.
+    const isIndicatorId = (id: string) => id.includes("hidegap:");
+    const indicatorsAfter = new Map<string, string[]>();
+    const leadingIndicators: string[] = [];
+    let lastRealId: string | null = null;
+    for (const id of defaultOrder) {
+      if (isIndicatorId(id)) {
+        if (lastRealId === null) leadingIndicators.push(id);
+        else indicatorsAfter.set(lastRealId, [...(indicatorsAfter.get(lastRealId) ?? []), id]);
+        continue;
+      }
+      lastRealId = id;
+    }
+
+    const defaultOrderReal = defaultOrder.filter((id) => !isIndicatorId(id));
+    const requestedOrderReal = requestedOrder.filter((id) => !isIndicatorId(id));
+    const availableRealIds = new Set(Array.from(availableIds).filter((id) => !isIndicatorId(id)));
+    const desiredRealOrder = [
+      ...requestedOrderReal.filter((id) => availableRealIds.has(id)),
+      ...defaultOrderReal.filter((id) => availableRealIds.has(id) && !requestedOrderReal.includes(id)),
+      ...Array.from(availableRealIds).filter((id) => !requestedOrderReal.includes(id) && !defaultOrderReal.includes(id)),
     ];
+
+    const desiredOrder: string[] = [...leadingIndicators];
+    for (const id of desiredRealOrder) {
+      desiredOrder.push(id);
+      const trailing = indicatorsAfter.get(id);
+      if (trailing) desiredOrder.push(...trailing);
+    }
+    const placedIds = new Set(desiredOrder);
+    for (const id of defaultOrder) {
+      if (isIndicatorId(id) && !placedIds.has(id)) desiredOrder.push(id);
+    }
     api.applyColumnState({
       state: desiredOrder.map((columnId) => ({
         colId: columnId,
