@@ -859,7 +859,7 @@ function SelectableHeader(params: IHeaderParams & {
         tabIndex={0}
         aria-pressed={params.selected}
         aria-label={`${params.displayName} header, ${params.selected ? "selected" : "not selected"}`}
-        title="Click to select the header. Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
+        title="Drag to move. Click to select the header. Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
         onClick={(event) => {
           event.stopPropagation();
           params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
@@ -1470,6 +1470,8 @@ export function AgDemandPlanningGrid({
   freezeUntil,
   columnWidths,
   onColumnWidthsChange,
+  columnOrder = [],
+  onColumnOrderChange,
   seasonalFactors,
   columnColors = {},
   cellColors = {},
@@ -2547,14 +2549,33 @@ autoFilling3: autoFillingContainers3.has(container.name),
     }
 
     const pinnedSet = new Set(pinnedBaseColumnLayout.ids);
+    const defaultOrder: string[] = [];
+    const collectColumnIds = (definitions: Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>) => {
+      for (const definition of definitions) {
+        if ("children" in definition) {
+          collectColumnIds(definition.children as Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>);
+          continue;
+        }
+        const columnId = definition.colId ?? definition.field;
+        if (columnId) defaultOrder.push(String(columnId));
+      }
+    };
+    collectColumnIds(columnDefs);
+    const availableIds = new Set((api.getColumns() ?? []).map((column) => column.getColId()));
+    const requestedOrder = columnOrder.length ? columnOrder : defaultOrder;
+    const desiredOrder = [
+      ...requestedOrder.filter((id) => availableIds.has(id)),
+      ...defaultOrder.filter((id) => availableIds.has(id) && !requestedOrder.includes(id)),
+      ...Array.from(availableIds).filter((id) => !requestedOrder.includes(id) && !defaultOrder.includes(id)),
+    ];
     api.applyColumnState({
-      state: (api.getColumns() ?? []).map((column) => ({
-        colId: column.getColId(),
-        pinned: pinnedSet.has(column.getColId()) ? "left" : null,
+      state: desiredOrder.map((columnId) => ({
+        colId: columnId,
+        pinned: pinnedSet.has(columnId) ? "left" : null,
       })),
-      applyOrder: false,
+      applyOrder: true,
     });
-  }, [columnDefs, pinnedBaseColumnLayout]);
+  }, [columnDefs, columnOrder, pinnedBaseColumnLayout]);
 
   const exportCurrentView = useCallback(async () => {
     const api = gridRef.current?.api;
@@ -2746,7 +2767,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
             animateRows={false}
             singleClickEdit
             suppressCellFocus
-            suppressMovableColumns
+            maintainColumnOrder
+            suppressDragLeaveHidesColumns
+            onColumnMoved={(event) => {
+              if (!event.finished || event.source !== "uiColumnMoved") return;
+              onColumnOrderChange?.(event.api.getColumnState().map((state) => state.colId));
+            }}
             onColumnResized={(event) => {
               if (!event.finished || !event.column || event.source !== "uiColumnResized") return;
               const id = event.column.getColId();
