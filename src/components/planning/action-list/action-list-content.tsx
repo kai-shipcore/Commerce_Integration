@@ -25,11 +25,12 @@ import { Input } from "@/components/ui/input";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
-  ActionListTable, ALL_COLUMNS, DEFAULT_SORT, PRIORITY, PRIORITY_GLYPH, PRIORITY_STYLE,
-  describeSort, nextSort, sortRows,
-  type SortCriterion, type SortKey,
+  ACCESSORS, ActionListTable, ALL_COLUMNS, DEFAULT_SORT, FORMATTERS, OPTIONAL_COLUMNS, PRIORITY, PRIORITY_GLYPH, PRIORITY_STYLE,
+  describeSort, sortRows,
+  type SortCriterion, type SortDir, type SortKey,
 } from "./action-list-table";
-import { ColumnPicker } from "./column-picker";
+import { ColumnPicker } from "@/components/planning/column-picker";
+import { applyColumnFilters, distinctColumnValuesExcluding } from "@/lib/planning/column-filter";
 import { downloadCsv, ACTION_LIST_COLUMNS } from "./csv-export";
 import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
 import {
@@ -65,6 +66,12 @@ const ANY_FLAG = "__any__";
 /** Where the chosen columns are remembered. Namespaced by screen, so the SKU
  *  detail page or a future table cannot collide with it. */
 const COLUMNS_STORAGE_KEY = "planning:action-list:columns";
+
+const BAND_LABEL: Record<"pos" | "dem" | "act", [string, string]> = {
+  pos: ["재고 현황", "Position"],
+  dem: ["수요", "Demand"],
+  act: ["조치", "Action"],
+};
 
 export function ActionListContent({
   initialParams = DEFAULT_PLANNING_PARAMS,
@@ -113,6 +120,15 @@ export function ActionListContent({
   // flag already chosen, which is the one view from which you cannot switch.
   const [flag, setFlag] = useState<string | null>(null);
   const [sort, setSort] = useState<SortCriterion[]>(DEFAULT_SORT);
+  // Per-column checkbox filters from each header's right-click menu. Compose
+  // with the filters above (AND) rather than sitting outside them, so a
+  // column filter narrows the same population the summary counts, the
+  // portfolio chart and CSV export describe.
+  const [columnFilters, setColumnFilters] = useState<Map<SortKey, Set<string>>>(new Map());
+  // Which column's Filter submenu is open right now, so its distinct-value
+  // list can be computed from the full row set on demand rather than on
+  // every render.
+  const [openFilterKey, setOpenFilterKey] = useState<SortKey | null>(null);
   // Which optional columns are shown. Persisted, because it is a statement
   // about this reader's monitor and job rather than about the data, and asking
   // them to re-hide the same three columns every Monday is how a control like
@@ -170,6 +186,32 @@ export function ActionListContent({
     }
   }, []);
 
+  // Hide column, from a header's own right-click menu. Same "cannot remove
+  // the last one" guard ColumnPicker enforces, since both write to the same
+  // `visible` set.
+  const hideColumn = useCallback((key: SortKey) => {
+    setVisible((prev) => {
+      if (prev.size <= 1) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      try {
+        window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // See changeVisible above.
+      }
+      return next;
+    });
+  }, []);
+
+  const onColumnFilterChange = useCallback((key: SortKey, next: Set<string> | null) => {
+    setColumnFilters((prev) => {
+      const m = new Map(prev);
+      if (next === null) m.delete(key);
+      else m.set(key, next);
+      return m;
+    });
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     const qs = new URLSearchParams({
@@ -210,7 +252,12 @@ export function ActionListContent({
     ).sort();
   }, [data]);
 
-  const scoped = useMemo<ActionListRow[]>(() => {
+  // Every filter above the column headers, applied but not yet sorted. This is
+  // the population a column's own Filter submenu computes its distinct values
+  // against (minus that column's own filter — see columnValuesForOpenKey
+  // below), so the checkbox list reflects what every OTHER active filter
+  // already left rather than the full unfiltered table.
+  const bespokeFilteredRows = useMemo<ActionListRow[]>(() => {
     if (!data) return [];
     let rows = data.rows;
     if (focus === "preorder") rows = rows.filter((r) => r.priority_label === PRIORITY.preorder);
@@ -231,10 +278,27 @@ export function ActionListContent({
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
     if (tier !== "all") rows = rows.filter((r) => r.tier === tier);
     if (trend !== "all") rows = rows.filter((r) => r.demand_state === trend);
+    return rows;
+  }, [data, focus, query, category, tier, trend]);
+
+  const scoped = useMemo<ActionListRow[]>(() => {
+    const filtered = applyColumnFilters(bespokeFilteredRows, columnFilters, ACCESSORS);
     // Sorted last, and on a copy: the server returns the worklist order, which
     // is what no criteria means, so it must not be mutated on the way through.
-    return sortRows(rows, sort);
-  }, [data, focus, query, category, tier, trend, sort]);
+    return sortRows(filtered, sort);
+  }, [bespokeFilteredRows, columnFilters, sort]);
+
+  const columnValuesForOpenKey = useMemo(() => {
+    if (!openFilterKey) return [];
+    return distinctColumnValuesExcluding(
+      bespokeFilteredRows,
+      columnFilters,
+      ACCESSORS,
+      FORMATTERS,
+      openFilterKey,
+      pick("(공백)", "(Blank)"),
+    );
+  }, [openFilterKey, bespokeFilteredRows, columnFilters, pick]);
 
   /** Warning counts over the rows the other filters left, so the summary line
    *  describes the same population the table would show if no warning were
@@ -611,6 +675,7 @@ export function ActionListContent({
           onClick={() => {
             setFocus("all"); setQuery(""); setCategory("all");
             setTier("all"); setTrend("all"); setFlag(null); setSort(DEFAULT_SORT);
+            setColumnFilters(new Map());
           }}
           className="flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted/60"
         >
@@ -618,7 +683,7 @@ export function ActionListContent({
         </button>
         {/* Beside Reset and Export rather than in the sort line, because it
             changes what the table contains rather than how it is ordered. */}
-        <ColumnPicker visible={visible} onChange={changeVisible} />
+        <ColumnPicker columns={OPTIONAL_COLUMNS} bandLabels={BAND_LABEL} visible={visible} onChange={changeVisible} />
         <button
           type="button"
           onClick={exportCsv}
@@ -633,8 +698,8 @@ export function ActionListContent({
             that in every state rather than only while the default is chosen. */}
         <span className="text-[12.5px] leading-tight text-muted-foreground">
           {pick(
-            `정렬: ${describeSort(sort)[0]} · 열 제목을 클릭해 변경, Shift+클릭으로 추가`,
-            `Sorted by ${describeSort(sort)[1]} · click a column to change it, shift-click to add one`,
+            `정렬: ${describeSort(sort)[0]} · 열 제목을 우클릭해 정렬·필터·숨기기`,
+            `Sorted by ${describeSort(sort)[1]} · right-click a column header to sort, filter, or hide it`,
           )}
         </span>
         {/* Row count only. The units figure that used to trail this line is now
@@ -725,9 +790,13 @@ export function ActionListContent({
             );
           }}
           sort={sort}
-          onSort={(key: SortKey, shiftKey: boolean) =>
-            setSort((prev) => nextSort(prev, key, shiftKey))
-          }
+          onSort={(key: SortKey, dir: SortDir) => setSort([{ key, dir }])}
+          onHideColumn={hideColumn}
+          columnFilters={columnFilters}
+          openFilterKey={openFilterKey}
+          onOpenFilterKeyChange={setOpenFilterKey}
+          getColumnValues={() => columnValuesForOpenKey}
+          onColumnFilterChange={onColumnFilterChange}
         />
         {/* Priority, defined first because it is the column the worklist is
             ordered by and the leftmost thing a reader meets. Nothing on the page

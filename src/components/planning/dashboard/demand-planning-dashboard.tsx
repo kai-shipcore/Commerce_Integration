@@ -2513,6 +2513,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           hiddenContainers={hiddenContainers}
           hiddenBases={hiddenBases}
           salesWindowWeights={salesWindowWeights}
+          onHideColumn={handleToggleColumn}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}

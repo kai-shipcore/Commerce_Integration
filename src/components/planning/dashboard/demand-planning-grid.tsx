@@ -83,6 +83,10 @@ export interface DemandPlanningGridProps {
   hiddenContainers?: Set<string>;
   hiddenBases?: Set<string>;
   salesWindowWeights?: SalesWindowWeights;
+  /** Hides a column by the same id `columnVis` already keys on: a base
+   *  column's own id, or `con:<subColumnId>` for a container sub-column.
+   *  Only consumed by the AG Grid variant's right-click column menu today. */
+  onHideColumn?: (columnId: string) => void;
 }
 
 const ROW_HEIGHT = 28;

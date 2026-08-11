@@ -8,12 +8,17 @@
  * per-segment detail tables (which keep segment-specific diagnostics) by
  * making cross-segment sorting, filtering, and CSV export possible.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2, RotateCcw, Search } from "lucide-react";
+import { Download, Loader2, RotateCcw, Search } from "lucide-react";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
+import { ColumnPicker, type ColumnPickerColumn } from "@/components/planning/column-picker";
+import {
+  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+} from "@/lib/planning/column-filter";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
@@ -41,13 +46,63 @@ interface AllSkusData {
   skus: AllSkuRow[];
 }
 
-type SortKey = "unique_id" | "segment" | "model" | "active_weeks" | "demand_total" | "trend_pct" | "last_sale_week" | "forecast_total";
+type SortKey =
+  | "unique_id" | "segment" | "model" | "active_weeks" | "avg_weekly"
+  | "demand_total" | "trend_pct" | "last_sale_week" | "forecast_total";
 type SortDir = "asc" | "desc";
 type SortCriterion = { key: SortKey; dir: SortDir };
 
 const DEFAULT_SORT: SortCriterion[] = [{ key: "demand_total", dir: "desc" }];
-// Columns whose first click sorts ascending (text/date-like)
-const DEFAULT_ASC: SortKey[] = ["unique_id", "segment", "model", "last_sale_week"];
+
+/** Only SKU is non-hideable: it is the row's identity and the row's own
+ *  click target navigates from it. */
+const NON_HIDEABLE = new Set<SortKey>(["unique_id"]);
+
+/** Every column a header's own menu can hide. No bands: unlike the Action
+ *  List worklist this table isn't organised into position/demand/action
+ *  groups, so the picker renders it as one flat list. */
+const OPTIONAL_COLUMNS: ColumnPickerColumn<SortKey>[] = [
+  { key: "unique_id", label: ["SKU", "SKU"] },
+  { key: "segment", label: ["세그먼트", "Segment"] },
+  { key: "model", label: ["모델", "Model"] },
+  { key: "active_weeks", label: ["이력 주 수", "Weeks of history"] },
+  { key: "demand_total", label: ["기간 수요", "Demand"] },
+  { key: "avg_weekly", label: ["주 평균", "Avg/week"] },
+  { key: "trend_pct", label: ["4주 추세", "4W trend"] },
+  { key: "last_sale_week", label: ["마지막 판매", "Last sale"] },
+  { key: "forecast_total", label: ["예측", "Forecast"] },
+];
+const ALL_COLUMNS: SortKey[] = OPTIONAL_COLUMNS.map((c) => c.key);
+
+const ACCESSORS: Record<SortKey, (r: AllSkuRow) => unknown> = {
+  unique_id: (r) => r.unique_id,
+  segment: (r) => r.segment,
+  model: (r) => r.model,
+  active_weeks: (r) => r.active_weeks,
+  avg_weekly: (r) => r.avg_weekly,
+  demand_total: (r) => r.demand_total,
+  trend_pct: (r) => r.trend_pct,
+  last_sale_week: (r) => r.last_sale_week,
+  forecast_total: (r) => r.forecast_total,
+};
+
+const FORMATTERS: Record<SortKey, (r: AllSkuRow) => string> = {
+  unique_id: (r) => r.unique_id,
+  segment: (r) => SEGMENT_BADGES[r.segment]?.en ?? r.segment,
+  model: (r) => r.model ?? "",
+  active_weeks: (r) => String(r.active_weeks),
+  avg_weekly: (r) => String(r.avg_weekly),
+  demand_total: (r) => fmt.format(r.demand_total),
+  trend_pct: (r) => (r.trend_pct == null ? "" : `${r.trend_pct}%`),
+  last_sale_week: (r) => r.last_sale_week ?? "",
+  forecast_total: (r) => (r.forecast_total != null ? fmt.format(r.forecast_total) : ""),
+};
+
+/** `ColumnHeaderMenu` renders a bare `<th>`, not the styled `TableHead`
+ *  primitive it replaces on sortable columns, so this table's headers carry
+ *  the same base look `TableHead` would otherwise have supplied. */
+const TABLE_HEAD_BASE =
+  "text-foreground px-2 text-left align-middle font-medium [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]";
 
 const WEEK_OPTIONS = [4, 8, 10, 13, 26, 52];
 const PRODUCT_TYPES = ["Car Cover", "Seat Cover", "Floor Mat"];
@@ -68,6 +123,10 @@ const SEGMENT_FILTERS = [
 
 const fmt = new Intl.NumberFormat("en-US");
 
+/** Where the chosen columns are remembered. Namespaced by screen, so another
+ *  table's picker cannot collide with it. */
+const COLUMNS_STORAGE_KEY = "planning:demand-forecast:all-skus:columns";
+
 export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
   const { pick } = useI18n();
   const router = useRouter();
@@ -83,6 +142,55 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
   const [sortCriteria, setSortCriteria] = useState<SortCriterion[]>(DEFAULT_SORT);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [visible, setVisible] = useState<Set<SortKey>>(() => new Set(ALL_COLUMNS));
+  const [columnFilters, setColumnFilters] = useState<Map<SortKey, Set<string>>>(new Map());
+  const [openFilterKey, setOpenFilterKey] = useState<SortKey | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLUMNS_STORAGE_KEY);
+      if (!raw) return;
+      const saved = (JSON.parse(raw) as string[]).filter((k) =>
+        (ALL_COLUMNS as string[]).includes(k),
+      ) as SortKey[];
+      if (saved.length > 0) queueMicrotask(() => setVisible(new Set(saved)));
+    } catch {
+      // Corrupt or unavailable store: default to every column, unchanged.
+    }
+  }, []);
+
+  const changeVisible = useCallback((next: Set<SortKey>) => {
+    setVisible(next);
+    try {
+      window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+    } catch {
+      // Losing the preference is a smaller problem than failing the
+      // interaction that set it.
+    }
+  }, []);
+
+  const hideColumn = useCallback((key: SortKey) => {
+    setVisible((prev) => {
+      if (prev.size <= 1) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      try {
+        window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // See changeVisible above.
+      }
+      return next;
+    });
+  }, []);
+
+  const onColumnFilterChange = useCallback((key: SortKey, next: Set<string> | null) => {
+    setColumnFilters((prev) => {
+      const m = new Map(prev);
+      if (next === null) m.delete(key);
+      else m.set(key, next);
+      return m;
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,11 +234,19 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
     return () => { cancelled = true; };
   }, [weeks, selectedTypes, retryCount]);
 
-  const filteredRows = useMemo(() => {
+  // Segment/search filters, applied but not yet sorted — the population a
+  // column's own Filter submenu computes its distinct values against (minus
+  // that column's own filter, see columnValuesForOpenKey below).
+  const bespokeFilteredRows = useMemo(() => {
     let rows = data?.skus ?? [];
     if (segFilter !== "all") rows = rows.filter((r) => r.segment === segFilter);
     const q = search.trim().toUpperCase();
     if (q) rows = rows.filter((r) => r.unique_id.toUpperCase().includes(q));
+    return rows;
+  }, [data, segFilter, search]);
+
+  const filteredRows = useMemo(() => {
+    const rows = applyColumnFilters(bespokeFilteredRows, columnFilters, ACCESSORS);
 
     const val = (r: AllSkuRow, key: SortKey, dir: SortDir): string | number => {
       switch (key) {
@@ -138,6 +254,7 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
         case "segment":        return r.segment;
         case "model":          return r.model ?? "";
         case "active_weeks":   return r.active_weeks;
+        case "avg_weekly":     return r.avg_weekly;
         case "demand_total":   return r.demand_total;
         case "trend_pct":      return r.trend_pct ?? (dir === "asc" ? Infinity : -Infinity);
         case "last_sale_week": return r.last_sale_week ?? "";
@@ -155,7 +272,19 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
       }
       return 0;
     });
-  }, [data, segFilter, search, sortCriteria]);
+  }, [bespokeFilteredRows, columnFilters, sortCriteria]);
+
+  const columnValuesForOpenKey = useMemo((): DistinctValue[] => {
+    if (!openFilterKey) return [];
+    return distinctColumnValuesExcluding(
+      bespokeFilteredRows,
+      columnFilters,
+      ACCESSORS,
+      FORMATTERS,
+      openFilterKey,
+      pick("(공백)", "(Blank)"),
+    );
+  }, [openFilterKey, bespokeFilteredRows, columnFilters, pick]);
 
   // Aggregate stats over the filtered set — noise cancels at this level, and
   // the YoY comparison handles seasonality that the per-SKU 4w trend can't.
@@ -183,22 +312,15 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
   const clampedPage = Math.min(page, totalPages);
   const pageRows = filteredRows.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
 
-  const handleSort = (key: SortKey, shiftKey: boolean) => {
-    setSortCriteria((prev) => {
-      const idx = prev.findIndex((c) => c.key === key);
-      if (shiftKey) {
-        if (idx !== -1) return prev.map((c, i) => i === idx ? { ...c, dir: c.dir === "asc" ? "desc" as const : "asc" as const } : c);
-        return [...prev, { key, dir: DEFAULT_ASC.includes(key) ? "asc" : "desc" }];
-      }
-      if (idx !== -1) return [{ key, dir: prev[idx].dir === "asc" ? "desc" : "asc" }];
-      return [{ key, dir: DEFAULT_ASC.includes(key) ? "asc" : "desc" }];
-    });
+  const handleSort = (key: SortKey, dir: SortDir) => {
+    setSortCriteria([{ key, dir }]);
     setPage(1);
   };
 
   const isDefaultSort = sortCriteria.length === 1
     && sortCriteria[0].key === DEFAULT_SORT[0].key
-    && sortCriteria[0].dir === DEFAULT_SORT[0].dir;
+    && sortCriteria[0].dir === DEFAULT_SORT[0].dir
+    && columnFilters.size === 0;
 
   const exportCsv = () => {
     if (!data) return;
@@ -221,29 +343,29 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
       active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
     }`;
 
-  const renderSortIcon = (col: SortKey) => {
-    const idx = sortCriteria.findIndex((c) => c.key === col);
-    if (idx === -1) return <ArrowUpDown className="ml-1 inline h-3 w-3 text-muted-foreground/50" />;
-    const Arrow = sortCriteria[idx].dir === "asc" ? ArrowUp : ArrowDown;
+  const vis = (key: SortKey) => visible.has(key);
+
+  const renderTh = (col: SortKey, label: string, right?: boolean, width?: string) => {
+    const filterSet = columnFilters.get(col) ?? null;
     return (
-      <span className="ml-1 inline-flex items-center gap-px align-middle">
-        <Arrow className="h-3 w-3 text-foreground" />
-        {sortCriteria.length > 1 && (
-          <span className="text-[9px] font-semibold leading-none text-primary/60">{idx + 1}</span>
-        )}
-      </span>
+      <ColumnHeaderMenu
+        className={`${TABLE_HEAD_BASE} whitespace-nowrap text-xs ${right ? "text-right" : ""} ${width ?? ""}`}
+        sortDir={sortCriteria.find((c) => c.key === col)?.dir ?? null}
+        onSortAsc={() => handleSort(col, "asc")}
+        onSortDesc={() => handleSort(col, "desc")}
+        filter={{
+          active: filterSet !== null,
+          committed: filterSet,
+          getValues: () => (openFilterKey === col ? columnValuesForOpenKey : []),
+          onApply: (next) => onColumnFilterChange(col, next),
+          onOpenChange: (open) => setOpenFilterKey(open ? col : null),
+        }}
+        hide={{ canHide: !NON_HIDEABLE.has(col), onHide: () => hideColumn(col) }}
+      >
+        {label}
+      </ColumnHeaderMenu>
     );
   };
-
-  const renderTh = (col: SortKey, label: string, right?: boolean, width?: string) => (
-    <TableHead
-      onClick={(e) => handleSort(col, e.shiftKey)}
-      className={`cursor-pointer select-none whitespace-nowrap text-xs ${right ? "text-right" : ""} ${width ?? ""}`}
-    >
-      {label}
-      {renderSortIcon(col)}
-    </TableHead>
-  );
 
   if (loading) {
     return (
@@ -317,13 +439,14 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
           </div>
           {!isDefaultSort && (
             <button
-              onClick={() => { setSortCriteria(DEFAULT_SORT); setPage(1); }}
+              onClick={() => { setSortCriteria(DEFAULT_SORT); setColumnFilters(new Map()); setPage(1); }}
               className="flex items-center gap-1.5 rounded border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              {pick("정렬 초기화", "Reset sort")}
+              {pick("정렬·필터 초기화", "Reset sort & filters")}
             </button>
           )}
+          <ColumnPicker columns={OPTIONAL_COLUMNS} visible={visible} onChange={changeVisible} />
           <button
             onClick={exportCsv}
             className="flex items-center gap-1.5 rounded border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -389,9 +512,7 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
             `${fmt.format(filteredRows.length)} SKUs · ${data.period_start} – ${data.period_end}`,
           )}
           <span className="text-muted-foreground/60">
-            {sortCriteria.length > 1
-              ? pick(`· ${sortCriteria.length}개 열 정렬 중`, `· ${sortCriteria.length} columns sorted`)
-              : pick("· Shift+클릭으로 여러 열 동시 정렬", "· Shift+click headers to sort by multiple columns")}
+            {pick("· 열 제목을 우클릭해 정렬·필터·숨기기", "· right-click a column header to sort, filter, or hide it")}
           </span>
         </span>
         <div className="flex items-center gap-2">
@@ -414,15 +535,15 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
         <Table className="table-fixed">
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
-              {renderTh("unique_id", "SKU", false, "w-52")}
-              {renderTh("segment", pick("세그먼트", "Segment"), false, "w-28")}
-              {renderTh("model", pick("모델", "Model"))}
-              {renderTh("active_weeks", pick("이력 주 수", "Weeks of history"), true, "w-32")}
-              {renderTh("demand_total", pick(`${data.weeks}주 수요`, `${data.weeks}W Demand`), true, "w-28")}
-              <TableHead className="w-20 whitespace-nowrap text-right text-xs">{pick("주 평균", "Avg/wk")}</TableHead>
-              {renderTh("trend_pct", pick("4주 추세", "4W Trend"), true, "w-28")}
-              {renderTh("last_sale_week", pick("마지막 판매", "Last sale"), true, "w-40")}
-              {renderTh("forecast_total", pick(`${data.forecast_horizon_weeks}주 예측`, `${data.forecast_horizon_weeks}W Forecast`), true, "w-28")}
+              {vis("unique_id") && renderTh("unique_id", "SKU", false, "w-52")}
+              {vis("segment") && renderTh("segment", pick("세그먼트", "Segment"), false, "w-28")}
+              {vis("model") && renderTh("model", pick("모델", "Model"))}
+              {vis("active_weeks") && renderTh("active_weeks", pick("이력 주 수", "Weeks of history"), true, "w-32")}
+              {vis("demand_total") && renderTh("demand_total", pick(`${data.weeks}주 수요`, `${data.weeks}W Demand`), true, "w-28")}
+              {vis("avg_weekly") && renderTh("avg_weekly", pick("주 평균", "Avg/wk"), true, "w-20")}
+              {vis("trend_pct") && renderTh("trend_pct", pick("4주 추세", "4W Trend"), true, "w-28")}
+              {vis("last_sale_week") && renderTh("last_sale_week", pick("마지막 판매", "Last sale"), true, "w-40")}
+              {vis("forecast_total") && renderTh("forecast_total", pick(`${data.forecast_horizon_weeks}주 예측`, `${data.forecast_horizon_weeks}W Forecast`), true, "w-28")}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -434,39 +555,49 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
                   className="cursor-pointer"
                   onClick={() => router.push(`/planning/sku-forecasts?sku=${encodeURIComponent(row.unique_id)}`)}
                 >
-                  <TableCell className="truncate font-mono text-xs text-primary" title={row.unique_id}>{row.unique_id}</TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${badge.cls}`}>
-                      {pick(badge.ko, badge.en)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{row.model ?? "—"}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.active_weeks}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{fmt.format(row.demand_total)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">{row.avg_weekly}</TableCell>
-                  <TableCell
-                    className={`text-right tabular-nums text-sm ${
-                      row.trend_pct == null ? "text-muted-foreground/50"
-                      : row.trend_pct > 5 ? "text-emerald-600"
-                      : row.trend_pct < -5 ? "text-red-600"
-                      : "text-muted-foreground"
-                    }`}
-                    title={pick(
-                      `최근 4주 ${fmt.format(row.recent_4w)} vs 이전 4주 ${fmt.format(row.prior_4w)}`,
-                      `Recent 4w ${fmt.format(row.recent_4w)} vs prior 4w ${fmt.format(row.prior_4w)}`,
-                    )}
-                  >
-                    {row.trend_pct == null ? "—" : `${row.trend_pct > 0 ? "▲" : row.trend_pct < 0 ? "▼" : ""} ${row.trend_pct > 0 ? "+" : ""}${row.trend_pct}%`}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
-                    {row.last_sale_week ?? "—"}
-                    {row.weeks_since_last_sale != null && row.weeks_since_last_sale > 8 && (
-                      <span className="ml-1 text-amber-600">({row.weeks_since_last_sale}{pick("주 전", "w ago")})</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">
-                    {row.forecast_total != null ? fmt.format(row.forecast_total) : <span className="text-muted-foreground/50">—</span>}
-                  </TableCell>
+                  {vis("unique_id") && (
+                    <TableCell className="truncate font-mono text-xs text-primary" title={row.unique_id}>{row.unique_id}</TableCell>
+                  )}
+                  {vis("segment") && (
+                    <TableCell>
+                      <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${badge.cls}`}>
+                        {pick(badge.ko, badge.en)}
+                      </span>
+                    </TableCell>
+                  )}
+                  {vis("model") && <TableCell className="text-xs text-muted-foreground">{row.model ?? "—"}</TableCell>}
+                  {vis("active_weeks") && <TableCell className="text-right tabular-nums text-sm">{row.active_weeks}</TableCell>}
+                  {vis("demand_total") && <TableCell className="text-right tabular-nums text-sm">{fmt.format(row.demand_total)}</TableCell>}
+                  {vis("avg_weekly") && <TableCell className="text-right tabular-nums text-sm text-muted-foreground">{row.avg_weekly}</TableCell>}
+                  {vis("trend_pct") && (
+                    <TableCell
+                      className={`text-right tabular-nums text-sm ${
+                        row.trend_pct == null ? "text-muted-foreground/50"
+                        : row.trend_pct > 5 ? "text-emerald-600"
+                        : row.trend_pct < -5 ? "text-red-600"
+                        : "text-muted-foreground"
+                      }`}
+                      title={pick(
+                        `최근 4주 ${fmt.format(row.recent_4w)} vs 이전 4주 ${fmt.format(row.prior_4w)}`,
+                        `Recent 4w ${fmt.format(row.recent_4w)} vs prior 4w ${fmt.format(row.prior_4w)}`,
+                      )}
+                    >
+                      {row.trend_pct == null ? "—" : `${row.trend_pct > 0 ? "▲" : row.trend_pct < 0 ? "▼" : ""} ${row.trend_pct > 0 ? "+" : ""}${row.trend_pct}%`}
+                    </TableCell>
+                  )}
+                  {vis("last_sale_week") && (
+                    <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
+                      {row.last_sale_week ?? "—"}
+                      {row.weeks_since_last_sale != null && row.weeks_since_last_sale > 8 && (
+                        <span className="ml-1 text-amber-600">({row.weeks_since_last_sale}{pick("주 전", "w ago")})</span>
+                      )}
+                    </TableCell>
+                  )}
+                  {vis("forecast_total") && (
+                    <TableCell className="text-right tabular-nums text-sm">
+                      {row.forecast_total != null ? fmt.format(row.forecast_total) : <span className="text-muted-foreground/50">—</span>}
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })}

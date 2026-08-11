@@ -15,22 +15,34 @@
  * will read the cover figure as though it carried the same weight.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2, RotateCcw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { ColumnPicker } from "@/components/planning/column-picker";
+import { applyColumnFilters, distinctColumnValuesExcluding } from "@/lib/planning/column-filter";
 import {
-  NF_DEFAULT_SORT, NotForecastTable, nfNextSort, nfSortRows,
+  NF_ACCESSORS, NF_ALL_COLUMNS, NF_DEFAULT_SORT, NF_FORMATTERS, NF_OPTIONAL_COLUMNS, NotForecastTable, nfSortRows,
   type NfSort, type NfSortKey,
 } from "./not-forecast-table";
 import { planningQuery, type ActionListParams, type NotForecastResponse } from "./types";
 import { downloadCsv, NOT_FORECAST_COLUMNS } from "./csv-export";
+import type { SortDir } from "@/components/planning/column-header-menu";
 
 const nf = new Intl.NumberFormat("en-US");
 
 type NfFocus = "all" | "selling" | "dormant" | "reorder" | "no-stock";
+
+const NF_BAND_LABEL: Record<"sold" | "stock", [string, string]> = {
+  sold: ["최근 판매", "Recent sales"],
+  stock: ["재고 현황", "Stock position"],
+};
+
+/** Where the chosen columns are remembered. Namespaced from the forecast
+ *  table's own key, since the two tables have different optional columns. */
+const NF_COLUMNS_STORAGE_KEY = "planning:action-list:not-forecast:columns";
 
 export function NotForecastSection({ planning }: { planning: ActionListParams }) {
   const { pick } = useI18n();
@@ -46,6 +58,9 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<NfSort[]>(NF_DEFAULT_SORT);
+  const [visible, setVisible] = useState<Set<NfSortKey>>(() => new Set(NF_ALL_COLUMNS));
+  const [columnFilters, setColumnFilters] = useState<Map<NfSortKey, Set<string>>>(new Map());
+  const [openFilterKey, setOpenFilterKey] = useState<NfSortKey | null>(null);
   // Paginated the same way as the forecast table. It was originally capped with
   // a "show more" button on the argument that nobody pages through an
   // intermittent tail, but that was a guess about behaviour, and two adjacent
@@ -53,6 +68,55 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
   // uncertain benefit.
   const [pageSize, setPageSize] = useState<number | "all">(100);
   const [page, setPage] = useState<{ key: string; page: number }>({ key: "", page: 1 });
+
+  // Read after mount, same reason as the forecast table: localStorage does not
+  // exist on the server, and seeding state from it in the initialiser would
+  // make the client's first paint disagree with what was rendered there.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(NF_COLUMNS_STORAGE_KEY);
+      if (!raw) return;
+      const saved = (JSON.parse(raw) as string[]).filter((k) =>
+        (NF_ALL_COLUMNS as string[]).includes(k),
+      ) as NfSortKey[];
+      if (saved.length > 0) queueMicrotask(() => setVisible(new Set(saved)));
+    } catch {
+      // Corrupt or unavailable store: default to every column, unchanged.
+    }
+  }, []);
+
+  const changeVisible = useCallback((next: Set<NfSortKey>) => {
+    setVisible(next);
+    try {
+      window.localStorage.setItem(NF_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+    } catch {
+      // Losing the preference is a smaller problem than failing the
+      // interaction that set it.
+    }
+  }, []);
+
+  const hideColumn = useCallback((key: NfSortKey) => {
+    setVisible((prev) => {
+      if (prev.size <= 1) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      try {
+        window.localStorage.setItem(NF_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // See changeVisible above.
+      }
+      return next;
+    });
+  }, []);
+
+  const onColumnFilterChange = useCallback((key: NfSortKey, next: Set<string> | null) => {
+    setColumnFilters((prev) => {
+      const m = new Map(prev);
+      if (next === null) m.delete(key);
+      else m.set(key, next);
+      return m;
+    });
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,7 +144,10 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
     ).sort();
   }, [data]);
 
-  const view = useMemo(() => {
+  // Every filter above the column headers, applied but not yet sorted — the
+  // population a column's own Filter submenu computes its distinct values
+  // against, minus that column's own filter (see columnValuesForOpenKey).
+  const bespokeFilteredRows = useMemo(() => {
     if (!data) return [];
     let rows = data.rows;
     if (focus === "selling") rows = rows.filter((r) => r.recent_units > 0);
@@ -92,8 +159,25 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
       rows = rows.filter((r) => r.unique_id.toLowerCase().includes(q));
     }
     if (category !== "all") rows = rows.filter((r) => r.product_category === category);
-    return nfSortRows(rows, sort);
-  }, [data, focus, search, category, sort]);
+    return rows;
+  }, [data, focus, search, category]);
+
+  const view = useMemo(() => {
+    const filtered = applyColumnFilters(bespokeFilteredRows, columnFilters, NF_ACCESSORS);
+    return nfSortRows(filtered, sort);
+  }, [bespokeFilteredRows, columnFilters, sort]);
+
+  const columnValuesForOpenKey = useMemo(() => {
+    if (!openFilterKey) return [];
+    return distinctColumnValuesExcluding(
+      bespokeFilteredRows,
+      columnFilters,
+      NF_ACCESSORS,
+      NF_FORMATTERS,
+      openFilterKey,
+      pick("(공백)", "(Blank)"),
+    );
+  }, [openFilterKey, bespokeFilteredRows, columnFilters, pick]);
 
   // Page tied to the filter set it was chosen under, so narrowing a filter
   // returns to page 1 rather than stranding the reader past the end.
@@ -208,11 +292,15 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
         </select>
         <button
           type="button"
-          onClick={() => { setFocus("all"); setSearch(""); setCategory("all"); setSort(NF_DEFAULT_SORT); }}
+          onClick={() => {
+            setFocus("all"); setSearch(""); setCategory("all"); setSort(NF_DEFAULT_SORT);
+            setColumnFilters(new Map());
+          }}
           className="flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted/60"
         >
           <RotateCcw className="h-3 w-3" /> {pick("초기화", "Reset")}
         </button>
+        <ColumnPicker columns={NF_OPTIONAL_COLUMNS} bandLabels={NF_BAND_LABEL} visible={visible} onChange={changeVisible} />
         <button
           type="button"
           onClick={exportCsv}
@@ -220,6 +308,9 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
         >
           <Download className="h-3 w-3" /> {pick("CSV 내보내기", "Export CSV")}
         </button>
+        <span className="text-[12.5px] leading-tight text-muted-foreground">
+          {pick("열 제목을 우클릭해 정렬·필터·숨기기", "Right-click a column header to sort, filter, or hide it")}
+        </span>
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">
           {pick(
             `${nf.format(data.rows.length)}개 중 ${nf.format(view.length)}개`,
@@ -240,7 +331,14 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
               `/planning/action-list/${encodeURIComponent(sku)}?${planningQuery(planning)}`
             }
             sort={sort}
-            onSort={(key: NfSortKey, shiftKey: boolean) => setSort((prev) => nfNextSort(prev, key, shiftKey))}
+            onSort={(key: NfSortKey, dir: SortDir) => setSort([{ key, dir }])}
+            visible={visible}
+            onHideColumn={hideColumn}
+            columnFilters={columnFilters}
+            openFilterKey={openFilterKey}
+            onOpenFilterKeyChange={setOpenFilterKey}
+            getColumnValues={() => columnValuesForOpenKey}
+            onColumnFilterChange={onColumnFilterChange}
           />
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-3 text-xs">

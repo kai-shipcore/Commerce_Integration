@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { CalendarDays, ChartColumn, ExternalLink } from "lucide-react";
+import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import {
   AllCommunityModule,
   themeQuartz,
@@ -18,7 +18,6 @@ import {
 import {
   ALL_COLS,
   COLUMN_WIDTHS_STORAGE_KEY,
-  COMPACT_COLUMN_IDS,
   CON_SUBCOLS,
   GROUP_LABELS,
   TINT_COLORS,
@@ -53,6 +52,9 @@ import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import {
+  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+} from "@/lib/planning/column-filter";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -140,6 +142,207 @@ function headerStyleForColor(backgroundColor: string | undefined) {
         color: readableTextColor(backgroundColor),
       }
     : undefined;
+}
+
+/** Every header's right-click menu identifies its column by one of these keys:
+ *  a base column's own id, or `<containerName>::<subColumnId>` for a
+ *  container sub-column — matching the `colId` AG Grid already uses for that
+ *  cell, so it composes with `qtyOverrides`/`cellColorKey` without a second
+ *  id scheme. */
+type ColumnMenuKey =
+  | { kind: "base"; id: string }
+  | { kind: "con"; container: string; sub: string };
+
+function parseColumnMenuKey(key: string): ColumnMenuKey {
+  const sep = key.indexOf("::");
+  return sep === -1
+    ? { kind: "base", id: key }
+    : { kind: "con", container: key.slice(0, sep), sub: key.slice(sep + 2) };
+}
+
+/** The key `columnVis` (owned by the parent dashboard) already uses to hide a
+ *  column: a base column's own id, or `con:<subColumnId>` for a container
+ *  sub-column. Hiding a sub-column this way hides it on every container at
+ *  once — the existing convention, reused rather than replaced, since Sort
+ *  and Filter are the only menu items that need a specific container. */
+function hideKeyForColumnMenuKey(key: string): string {
+  const parsed = parseColumnMenuKey(key);
+  return parsed.kind === "base" ? parsed.id : `con:${parsed.sub}`;
+}
+
+/** Raw, comparable value for a base column: `sortVal` when the column
+ *  defines one, otherwise its own display value. Every base column without a
+ *  `sortVal` prints a plain string or number already (never markup) — see
+ *  `columns.ts`, where the two never disagree. */
+function baseColumnValue(colId: string, row: DemandRow): unknown {
+  const column = ALL_COLS.find((c) => c.id === colId);
+  if (!column) return null;
+  if (column.sortVal) return column.sortVal(row) ?? null;
+  const value = column.val(row, 0, urgStatus(row));
+  return typeof value === "object" && value !== null ? null : value;
+}
+
+const MENU_ITEM_STYLE: CSSProperties = {
+  display: "block", width: "100%", padding: "7px 14px", textAlign: "left",
+  fontSize: 12, fontWeight: 600, color: "#1A1917", background: "transparent",
+  border: "none", cursor: "pointer",
+};
+
+function MenuItem({
+  children, onClick, disabled, danger,
+}: { children: ReactNode; onClick?: () => void; disabled?: boolean; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        ...MENU_ITEM_STYLE,
+        color: disabled ? "#B8B5AE" : danger ? "#C42020" : "#1A1917",
+        cursor: disabled ? "default" : "pointer",
+      }}
+      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The right-click column menu: Sort A→Z, Sort Z→A, Filter, Hide column.
+ *  A plain positioned popup, like the single-column "Con. Qty" menu this
+ *  generalizes, rather than a Radix menu — the rest of this file's floating
+ *  UI (dialogs aside) already uses this pattern, and a Radix dropdown's own
+ *  focus/portal handling would be one more thing to reconcile with AG Grid's
+ *  own DOM. Filter has no hover flyout for the same reason: clicking it
+ *  swaps the panel to a checkbox list with a back arrow instead. */
+function GridColumnMenu({
+  x, y, label, sortDir, onSortAsc, onSortDesc, canHide, onHide, filterActive, committed, getValues, onFilterViewOpen, onApplyFilter, onClose,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  sortDir: "asc" | "desc" | null;
+  onSortAsc: () => void;
+  onSortDesc: () => void;
+  canHide: boolean;
+  onHide: () => void;
+  filterActive: boolean;
+  committed: Set<string> | null;
+  getValues: () => DistinctValue[];
+  /** Fires when the Filter panel opens, so the caller can populate `getValues`
+   *  for this specific column before it's called. */
+  onFilterViewOpen: () => void;
+  onApplyFilter: (next: Set<string> | null) => void;
+  onClose: () => void;
+}) {
+  const [view, setView] = useState<"menu" | "filter">("menu");
+  const values = useMemo(() => (view === "filter" ? getValues() : []), [view, getValues]);
+  const [staged, setStaged] = useState<Set<string>>(() => new Set(committed ?? []));
+  const [search, setSearch] = useState("");
+  const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
+
+  // `values` only becomes available a render after the Filter panel opens —
+  // `getValues` is answered by the parent, which needs to learn which column
+  // is open first. Seeded once per visit to the panel, from whatever became
+  // available, rather than at the click that opened it.
+  const seededForView = useRef(false);
+  useEffect(() => {
+    if (view !== "filter") { seededForView.current = false; return; }
+    if (seededForView.current || values.length === 0) return;
+    setStaged(new Set(committed ?? values.map((v) => v.value)));
+    seededForView.current = true;
+  }, [view, values, committed]);
+
+  return (
+    <>
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 999 }}
+        onClick={onClose}
+        onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+      />
+      <div
+        style={{
+          position: "fixed", top: y, left: x, zIndex: 1000, background: "#fff",
+          border: "1px solid #E2E8F0", borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
+          minWidth: 200, maxWidth: 260, overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #F1F5F9" }}>
+          {label}
+        </div>
+        {view === "menu" ? (
+          <>
+            <MenuItem onClick={() => { onSortAsc(); onClose(); }}>
+              {sortDir === "asc" ? "✓ " : ""}오름차순 정렬 (A→Z)
+            </MenuItem>
+            <MenuItem onClick={() => { onSortDesc(); onClose(); }}>
+              {sortDir === "desc" ? "✓ " : ""}내림차순 정렬 (Z→A)
+            </MenuItem>
+            <MenuItem onClick={() => { onFilterViewOpen(); setView("filter"); }}>
+              {filterActive ? "▼ 필터 (적용됨)" : "필터"}
+            </MenuItem>
+            <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
+              열 숨기기
+            </MenuItem>
+          </>
+        ) : (
+          <div style={{ padding: 6, width: 240 }}>
+            <button
+              type="button"
+              onClick={() => setView("menu")}
+              style={{ ...MENU_ITEM_STYLE, padding: "4px 4px 8px", fontSize: 11, color: "#64748B" }}
+            >
+              ← 뒤로
+            </button>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="값 검색…"
+              style={{ width: "100%", height: 28, boxSizing: "border-box", padding: "0 8px", marginBottom: 4, fontSize: 12, border: "1px solid #E2E8F0", borderRadius: 4, outline: "none" }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
+              <button type="button" onClick={() => setStaged(new Set(values.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>모두 선택</button>
+              <button type="button" onClick={() => setStaged(new Set())} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>모두 지우기</button>
+            </div>
+            <div style={{ maxHeight: 200, overflow: "auto" }}>
+              {shown.map((v) => (
+                <label key={v.value} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", fontSize: 12, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={staged.has(v.value)}
+                    onChange={(e) => setStaged((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) next.add(v.value); else next.delete(v.value);
+                      return next;
+                    })}
+                  />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.label || "(공백)"}</span>
+                  <span style={{ color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{v.count}</span>
+                </label>
+              ))}
+              {shown.length === 0 && (
+                <p style={{ padding: "6px 4px", fontSize: 11, color: "#94A3B8" }}>일치하는 값 없음</p>
+              )}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 6, borderTop: "1px solid #F1F5F9", marginTop: 4 }}>
+              <button type="button" onClick={onClose} style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12 }}>취소</button>
+              <button
+                type="button"
+                onClick={() => {
+                  onApplyFilter(staged.size === values.length ? null : staged);
+                  onClose();
+                }}
+                style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12, fontWeight: 700, color: "#1A4FC0" }}
+              >
+                적용
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
 }
 
 function selectedCellsBetween(
@@ -908,6 +1111,37 @@ function SelectableHeader(params: IHeaderParams & {
   );
 }
 
+/** The header of a synthetic 18px "seam" column standing in for one or more
+ *  columns hidden via the right-click menu — Google Sheets' own hidden-column
+ *  sliver. Clicking it restores every column in the run at once, matching
+ *  Sheets rather than requiring one click per column. There is no matching
+ *  cell content or right-click menu: it isn't a real column, just a place to
+ *  undo a hide without opening the separate "Columns" toolbar list. */
+function HideGapIndicatorHeader(params: IHeaderParams & {
+  hiddenLabels: string[];
+  onRestore: () => void;
+}) {
+  const { pick } = useI18n();
+  return (
+    <button
+      type="button"
+      title={pick(`숨김: ${params.hiddenLabels.join(", ")}`, `Hidden: ${params.hiddenLabels.join(", ")}`)}
+      aria-label={pick("숨긴 열 다시 보기", "Restore hidden columns")}
+      onClick={(event) => { event.stopPropagation(); params.onRestore(); }}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: "100%", height: "100%", padding: 0, border: "none", cursor: "pointer",
+        background: "rgba(255,255,255,.06)",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.18)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.06)"; }}
+    >
+      <ChevronLeft size={9} strokeWidth={3} style={{ color: "rgba(255,255,255,.55)", marginRight: -3 }} />
+      <ChevronRight size={9} strokeWidth={3} style={{ color: "rgba(255,255,255,.55)" }} />
+    </button>
+  );
+}
+
 function targetDaysForAverage(avgSales: number, tiers: SalesTargetTier[]): number {
   const sorted = [...tiers]
     .filter((tier) => Number.isFinite(tier.minSales) && Number.isFinite(tier.targetDays) && tier.targetDays > 0)
@@ -1465,7 +1699,6 @@ export function AgDemandPlanningGrid({
   containerDetailsLoaded,
   groupVis,
   columnVis,
-  compactMode,
   showZeroSales,
   freezeUntil,
   columnWidths,
@@ -1491,6 +1724,7 @@ export function AgDemandPlanningGrid({
   hiddenContainers = new Set<string>(),
   hiddenBases = new Set<string>(),
   salesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
+  onHideColumn,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -1506,8 +1740,13 @@ export function AgDemandPlanningGrid({
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const [rowOverrides, setRowOverrides] = useState<Map<string, Partial<DemandRow>>>(new Map());
   const [gridWidth, setGridWidth] = useState(0);
-  const [conQtyFilter, setConQtyFilter] = useState<string | null>(null);
-  const [qtyCtxMenu, setQtyCtxMenu] = useState<{ x: number; y: number; containerName: string } | null>(null);
+  // Right-click column menu (Sort A→Z, Sort Z→A, Filter, Hide), keyed the
+  // same way `colId` already is: a base column's own id, or
+  // `<containerName>::<subColumnId>` for a container sub-column.
+  const [columnFilters, setColumnFilters] = useState<Map<string, Set<string>>>(new Map());
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
+  const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
+  const [filterOpenKey, setFilterOpenKey] = useState<string | null>(null);
   const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers2, setAutoFillingContainers2] = useState<Set<string>>(new Set());
@@ -1545,7 +1784,54 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return filtered;
   }, [categoryFilter, data.containers, etaOverrides, hiddenContainers]);
 
-  const visibleRows = useMemo(() => {
+  // Raw, comparable value for a container sub-column, mirroring the "merged"
+  // object each cell already builds from base data + qty override + chain
+  // calc. "Rem. Qty" reads the ROW rather than the container on purpose —
+  // that matches its cell renderer in columns.ts, which does the same.
+  const containerSubColumnValue = useCallback((containerName: string, subId: string, row: DemandRow): unknown => {
+    if (subId === "remaining") return (row.remaining ?? 0) + (row.mistake ?? 0);
+    const key = `${row.sku}::${containerName}`;
+    const raw = row.containers?.[containerName];
+    const chain = chainMap.get(row.sku)?.get(containerName);
+    const override = qtyOverrides.get(key);
+    const merged = { ...raw, ...override, ...chain };
+    switch (subId) {
+      case "inb_qty": return override?.inbound_qty ?? raw?.inbound_qty ?? 0;
+      case "oo": return Math.round(merged.open_orders || 0);
+      case "avail": return merged.avail_qty ?? null;
+      case "est": return Math.round(merged.est_sales ?? 0) || 0;
+      case "cbo": return Math.round(merged.backorder || 0);
+      case "carry": return merged.carryover ?? null;
+      case "life": return merged.inv_life ?? null;
+      case "esod": return merged.est_sod ?? null;
+      case "psod": return merged.plan_sod ?? null;
+      case "ccbm": {
+        const qty = merged.inbound_qty ?? 0;
+        const cbmUnit = row.cbm_per_unit ?? 0;
+        return qty && cbmUnit ? Math.round(qty * cbmUnit * 100) / 100 : null;
+      }
+      default: return null;
+    }
+  }, [chainMap, qtyOverrides]);
+
+  const columnMenuValue = useCallback((key: string, row: DemandRow): unknown => {
+    const parsed = parseColumnMenuKey(key);
+    return parsed.kind === "base" ? baseColumnValue(parsed.id, row) : containerSubColumnValue(parsed.container, parsed.sub, row);
+  }, [containerSubColumnValue]);
+
+  const columnMenuAccessors = useCallback((keys: Iterable<string>): Record<string, (row: DemandRow) => unknown> =>
+    Object.fromEntries([...new Set(keys)].map((key) => [key, (row: DemandRow) => columnMenuValue(key, row)])),
+  [columnMenuValue]);
+
+  const columnMenuLabel = useCallback((key: string, row: DemandRow): string => {
+    const value = columnMenuValue(key, row);
+    return value === null || value === undefined ? "" : String(value);
+  }, [columnMenuValue]);
+
+  // Every filter above the column headers, applied but not yet sorted. This is
+  // the population a column's own Filter submenu computes its distinct values
+  // against (minus that column's own filter — see columnValuesForOpenKey).
+  const bespokeFilteredRows = useMemo(() => {
     const query = search.toLowerCase();
     const filtered = data.rows.filter((row) => {
       if (!matchesCategorySelection(row, categoryFilter)) return false;
@@ -1561,12 +1847,6 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (urgencyFilter === "warn") return urgency === "warn";
       if (urgencyFilter === "bo") return (row.back ?? 0) < 0;
       if (urgencyFilter === "over") return urgency === "over";
-      if (conQtyFilter) {
-        const qty = qtyOverrides.get(`${row.sku}::${conQtyFilter}`)?.inbound_qty
-          ?? row.containers?.[conQtyFilter]?.inbound_qty
-          ?? 0;
-        if ((qty ?? 0) <= 0) return false;
-      }
       return true;
     });
     return filtered.map((row) => {
@@ -1578,7 +1858,52 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       merged.stock_mode = "available";
       return merged;
     });
-  }, [categoryFilter, cbmOverrides, conQtyFilter, data.rows, productFilter, qtyOverrides, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
+
+  const visibleRows = useMemo(
+    () => applyColumnFilters(bespokeFilteredRows, columnFilters, columnMenuAccessors(columnFilters.keys())),
+    [bespokeFilteredRows, columnFilters, columnMenuAccessors],
+  );
+
+  // The right-clicked column's distinct values, computed from every OTHER
+  // active column filter but not its own — the sequential behaviour
+  // Sheets/Excel use, so the checkbox list still shows values this column's
+  // own filter has already hidden rather than only the ones left over.
+  const columnValuesForOpenKey = useMemo((): DistinctValue[] => {
+    if (!filterOpenKey) return [];
+    const relevantKeys = new Set([...columnFilters.keys(), filterOpenKey]);
+    return distinctColumnValuesExcluding(
+      bespokeFilteredRows,
+      columnFilters,
+      columnMenuAccessors(relevantKeys),
+      Object.fromEntries([...relevantKeys].map((key) => [key, (row: DemandRow) => columnMenuLabel(key, row)])),
+      filterOpenKey,
+      pick("(공백)", "(Blank)"),
+    );
+  }, [filterOpenKey, bespokeFilteredRows, columnFilters, columnMenuAccessors, columnMenuLabel, pick]);
+
+  // Sorted, for display only — order-fill and chain calculations read
+  // `visibleRows` directly, since which rows are in scope should not depend
+  // on how they're currently displayed.
+  const sortedRows = useMemo(() => {
+    if (!sort) return visibleRows;
+    const accessor = (row: DemandRow) => columnMenuValue(sort.key, row);
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...visibleRows].sort((a, b) => {
+      const av = accessor(a);
+      const bv = accessor(b);
+      const aEmpty = av === null || av === undefined || av === "";
+      const bEmpty = bv === null || bv === undefined || bv === "";
+      if (aEmpty || bEmpty) {
+        if (aEmpty && bEmpty) return 0;
+        return (aEmpty ? 1 : -1) * dir;
+      }
+      const cmp = typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+      return cmp * dir;
+    });
+  }, [visibleRows, sort, columnMenuValue]);
 
   useEffect(() => {
     onFilteredRowsChange(visibleRows);
@@ -1621,17 +1946,43 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return () => window.clearTimeout(timer);
   }, [containerDetailsLoaded, containerDetailsLoading, groupVis.con, onLoadContainerDetails]);
 
-  const subColumns = useMemo(
-    () => {
-      const visibleColumns = CON_SUBCOLS.filter((column) =>
-        columnVis[`con:${column.id}`] !== false);
-      const cbmColumn = visibleColumns.find((column) => column.id === "ccbm");
-      return cbmColumn
-        ? [cbmColumn, ...visibleColumns.filter((column) => column.id !== "ccbm")]
-        : visibleColumns;
-    },
-    [columnVis],
-  );
+  // CON_SUBCOLS reordered with "ccbm" moved to the front — the same reorder
+  // `subColumns` used to apply only after filtering. Doing it unconditionally
+  // here keeps hidden-run detection consistent regardless of whether "ccbm"
+  // itself happens to be hidden: its canonical rendered position is always
+  // the front of whatever's visible, so that's also where its gap belongs
+  // when it's the one hidden.
+  const conCandidates = useMemo(() => {
+    const ccbm = CON_SUBCOLS.find((column) => column.id === "ccbm");
+    const rest = CON_SUBCOLS.filter((column) => column.id !== "ccbm");
+    return ccbm ? [ccbm, ...rest] : rest;
+  }, []);
+
+  // Sub-column visibility (`con:<id>`) has no per-container override, so this
+  // is computed once and reused identically inside every container's own
+  // column group below.
+  const conHiddenRuns = useMemo(() => {
+    const runs: { indicatorId: string; hiddenIds: string[]; hiddenLabels: string[] }[] = [];
+    let pending: typeof conCandidates = [];
+    const flush = () => {
+      if (!pending.length) return;
+      runs.push({
+        indicatorId: `hidegap:${pending[0].id}`,
+        hiddenIds: pending.map((c) => c.id),
+        hiddenLabels: pending.map((c) => c.label.replace("\n", " ")),
+      });
+      pending = [];
+    };
+    conCandidates.forEach((column) => {
+      if (columnVis[`con:${column.id}`] === false) {
+        pending.push(column);
+        return;
+      }
+      flush();
+    });
+    flush();
+    return runs;
+  }, [conCandidates, columnVis]);
 
   const containerColumnTotals = useMemo(() => {
     const totals = new Map<string, ContainerColumnTotals>();
@@ -2193,60 +2544,95 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     }
   }, [canEditPlanning, qtyOverrides]);
 
+  // The full base-column list minus only the group-visibility filter.
+  // Compact mode is deliberately NOT filtered out here: turning it on
+  // (`handleCompact` in the dashboard) sets `columnVis[id] = false` for
+  // every non-compact column directly, the same way individually hiding a
+  // column does — so from this component's side, "hidden by the Compact
+  // preset" and "hidden via the right-click menu" are the same state, and
+  // both get a restore indicator. Shared by pinning and columnDefs below so
+  // the two can't disagree about where a hidden run falls.
+  const baseCandidates = useMemo(
+    () => ALL_COLS.filter((column) => column.grp === "fix" || groupVis[column.grp]),
+    [groupVis],
+  );
+
+  const baseHiddenRuns = useMemo(() => {
+    const runs: { indicatorColId: string; hiddenIds: string[]; hiddenLabels: string[]; grp: string | null; startIndex: number }[] = [];
+    let pending: typeof baseCandidates = [];
+    let startIndex = -1;
+    const flush = () => {
+      if (!pending.length) return;
+      const allSameGrp = pending.every((c) => c.grp === pending[0].grp);
+      runs.push({
+        indicatorColId: `hidegap:${pending[0].id}`,
+        hiddenIds: pending.map((c) => c.id),
+        hiddenLabels: pending.map((c) => c.label.replace("\n", " ")),
+        grp: allSameGrp ? pending[0].grp : null,
+        startIndex,
+      });
+      pending = [];
+    };
+    baseCandidates.forEach((column, index) => {
+      if (columnVis[column.id] === false) {
+        if (!pending.length) startIndex = index;
+        pending.push(column);
+        return;
+      }
+      flush();
+    });
+    flush();
+    return runs;
+  }, [baseCandidates, columnVis]);
+
   const pinnedBaseColumnLayout = useMemo(() => {
-    const visibleBaseColumns = ALL_COLS
-      .filter((column) => column.grp === "fix" || groupVis[column.grp])
-      .filter((column) => columnVis[column.id] !== false)
-      .filter((column) => !compactMode || COMPACT_COLUMN_IDS.has(column.id));
+    const visibleBaseColumns = baseCandidates.filter((column) => columnVis[column.id] !== false);
     const freezeIndex = visibleBaseColumns.findIndex((column) => column.id === freezeUntil);
     if (freezeIndex < 0) return { ids: [] as string[], widths: {} as Record<string, number>, width: 0 };
+    const freezeIndexInCandidates = baseCandidates.findIndex((column) => column.id === freezeUntil);
 
     const pinnedColumns = visibleBaseColumns.slice(0, freezeIndex + 1);
-    const desiredWidths = Object.fromEntries(
-      pinnedColumns.map((column) => [
+    const pinnedRuns = baseHiddenRuns.filter((run) => run.startIndex <= freezeIndexInCandidates);
+    const desiredWidths = Object.fromEntries([
+      ...pinnedColumns.map((column) => [
         column.id,
         columnWidths[column.id] ?? baseColumnWidth(column),
-      ]),
-    ) as Record<string, number>;
+      ] as const),
+      ...pinnedRuns.map((run) => [run.indicatorColId, 18] as const),
+    ]) as Record<string, number>;
     const desiredPinnedWidth = Object.values(desiredWidths).reduce((total, width) => total + width, 0);
 
     return {
-      ids: pinnedColumns.map((column) => column.id),
+      ids: [...pinnedColumns.map((column) => column.id), ...pinnedRuns.map((run) => run.indicatorColId)],
       widths: desiredWidths,
       width: desiredPinnedWidth,
     };
-  }, [columnVis, columnWidths, compactMode, freezeUntil, groupVis]);
+  }, [baseCandidates, baseHiddenRuns, columnVis, columnWidths, freezeUntil]);
 
   const gridMinWidth = Math.max(
     gridWidth,
     pinnedBaseColumnLayout.width + MIN_SCROLLABLE_CENTER_WIDTH,
   );
   const columnDefs = useMemo<Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>>(() => {
-    const visibleBaseColumns = ALL_COLS
-      .filter((column) => column.grp === "fix" || groupVis[column.grp])
-      .filter((column) => columnVis[column.id] !== false)
-      .filter((column) => !compactMode || COMPACT_COLUMN_IDS.has(column.id));
     const pinnedBaseColumnIdSet = new Set(pinnedBaseColumnLayout.ids);
-    const baseGroups = new Map<string, AgColDef<DemandRow>[]>();
 
-  visibleBaseColumns.forEach((column) => {
-    const columns = baseGroups.get(column.grp) ?? [];
-    const isCopyable = column.id === "sku" || column.id === "inb_lst";
-    const shouldPin = pinnedBaseColumnIdSet.has(column.id);
-    const width = shouldPin
-      ? pinnedBaseColumnLayout.widths[column.id]
-      : columnWidths[column.id] ?? baseColumnWidth(column);
-    const defaultHeaderName = column.id === "tavg_p"
-      ? "T. Avg 이전"
-      : column.id === "tavg_r"
-        ? "T. Avg 실제"
-        : column.id === "tavg_c"
-          ? "T. Avg 현재"
-          : column.label.replace("\n", " ");
-    const headerName = columnHeaderNames[column.id] ?? defaultHeaderName;
-    columns.push({
-      colId: column.id,
-      headerName,
+    const buildRealBaseColDef = (column: (typeof baseCandidates)[number]): AgColDef<DemandRow> => {
+      const isCopyable = column.id === "sku" || column.id === "inb_lst";
+      const shouldPin = pinnedBaseColumnIdSet.has(column.id);
+      const width = shouldPin
+        ? pinnedBaseColumnLayout.widths[column.id]
+        : columnWidths[column.id] ?? baseColumnWidth(column);
+      const defaultHeaderName = column.id === "tavg_p"
+        ? "T. Avg 이전"
+        : column.id === "tavg_r"
+          ? "T. Avg 실제"
+          : column.id === "tavg_c"
+            ? "T. Avg 현재"
+            : column.label.replace("\n", " ");
+      const headerName = columnHeaderNames[column.id] ?? defaultHeaderName;
+      return {
+        colId: column.id,
+        headerName,
         headerTooltip: labelWithSalesWindowWeight(column.id, column.label.replace("\n", " "), salesWindowWeights),
         width,
         minWidth: Math.min(36, column.w),
@@ -2262,68 +2648,129 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               return String(a).localeCompare(String(b));
             }
           : undefined,
-      pinned: shouldPin ? "left" : undefined,
-      valueGetter: (params) => {
-        if (!params.data) return "";
-        if (column.id === "cbm") {
-          return params.data.cbm_per_unit ? params.data.cbm_per_unit.toFixed(6) : "";
-        }
-        return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
-      },
-      cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" && canEditPlanning ? CbmCellRenderer : CellRenderer,
-      cellRendererParams: isCopyable
-        ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
-            copyValue: column.id === "sku"
-              ? (params.data?.sku ?? "")
-              : params.data?.containers_list ?? "",
-            label: column.id === "sku" ? "Master SKU" : "Containers List",
-            skuPlanningSku: column.id === "sku" ? (params.data?.sku ?? "") : undefined,
-            memo: column.id === "sku" && params.data ? (skuCellNotes[params.data.sku] ?? params.data.memo ?? null) : undefined,
-            onMemoSave: column.id === "sku" && params.data && onSkuCellNoteChange
-              ? (memo: string) => saveMemo(params.data!, memo)
-              : undefined,
-          })
-        : column.id === "cbm" && canEditPlanning
+        pinned: shouldPin ? "left" : undefined,
+        valueGetter: (params) => {
+          if (!params.data) return "";
+          if (column.id === "cbm") {
+            return params.data.cbm_per_unit ? params.data.cbm_per_unit.toFixed(6) : "";
+          }
+          return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
+        },
+        cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" && canEditPlanning ? CbmCellRenderer : CellRenderer,
+        cellRendererParams: isCopyable
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
-              onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
+              copyValue: column.id === "sku"
+                ? (params.data?.sku ?? "")
+                : params.data?.containers_list ?? "",
+              label: column.id === "sku" ? "Master SKU" : "Containers List",
+              skuPlanningSku: column.id === "sku" ? (params.data?.sku ?? "") : undefined,
+              memo: column.id === "sku" && params.data ? (skuCellNotes[params.data.sku] ?? params.data.memo ?? null) : undefined,
+              onMemoSave: column.id === "sku" && params.data && onSkuCellNoteChange
+                ? (memo: string) => saveMemo(params.data!, memo)
+                : undefined,
             })
-        : undefined,
-      headerStyle: headerStyleForColor(columnColors[column.id]?.header),
-      headerComponent: SelectableHeader,
+          : column.id === "cbm" && canEditPlanning
+            ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
+                onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
+              })
+          : undefined,
+        headerStyle: headerStyleForColor(columnColors[column.id]?.header),
+        headerComponent: SelectableHeader,
+        headerComponentParams: {
+          selectionId: column.id,
+          selected: selectedColumnIds.includes(column.id),
+          onSelect: onColumnHeaderSelect ?? (() => {}),
+          fullColumnSelected: selectedFullColumnIds.includes(column.id),
+          onFullColumnSelect: onFullColumnSelect ?? (() => {}),
+          onRename: onColumnHeaderRename ?? (() => {}),
+          isFiltered: columnFilters.has(column.id),
+          onRightClick: (x: number, y: number) => setColumnMenu({ x, y, key: column.id, label: headerName }),
+        },
+        cellStyle: (params) => {
+          const key = cellColorKey(params.data?.sku, column.id);
+          const selected = selectedCellsRef.current.has(key);
+          const fullColumnSelected = selectedFullColumnIds.includes(column.id);
+          return {
+            backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
+            fontWeight: column.bold ? 700 : 400,
+            textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
+            ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
+            ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
+          };
+        },
+      };
+    };
+
+    const buildBaseIndicatorColDef = (run: (typeof baseHiddenRuns)[number]): AgColDef<DemandRow> => ({
+      colId: run.indicatorColId,
+      headerName: "",
+      width: 18,
+      minWidth: 18,
+      maxWidth: 18,
+      resizable: false,
+      sortable: false,
+      suppressHeaderContextMenu: true,
+      pinned: pinnedBaseColumnIdSet.has(run.indicatorColId) ? "left" : undefined,
+      valueGetter: () => "",
+      cellStyle: { backgroundColor: "#F1F0EC", borderLeft: "1px solid #D8D6CE", borderRight: "1px solid #D8D6CE" },
+      headerComponent: HideGapIndicatorHeader,
       headerComponentParams: {
-        selectionId: column.id,
-        selected: selectedColumnIds.includes(column.id),
-        onSelect: onColumnHeaderSelect ?? (() => {}),
-        fullColumnSelected: selectedFullColumnIds.includes(column.id),
-        onFullColumnSelect: onFullColumnSelect ?? (() => {}),
-        onRename: onColumnHeaderRename ?? (() => {}),
+        hiddenLabels: run.hiddenLabels,
+        onRestore: () => run.hiddenIds.forEach((id) => onHideColumn?.(id)),
       },
-      cellStyle: (params) => {
-        const key = cellColorKey(params.data?.sku, column.id);
-        const selected = selectedCellsRef.current.has(key);
-        const fullColumnSelected = selectedFullColumnIds.includes(column.id);
-        return {
-          backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
-          fontWeight: column.bold ? 700 : 400,
-          textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
-          ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-          ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
-        };
-      },
-      });
-      baseGroups.set(column.grp, columns);
     });
 
-    const groups: Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>> = [...baseGroups.entries()].map(([groupId, children]) => ({
-      groupId,
-      headerName: columnHeaderNames[`group:${groupId}`] ?? GROUP_LABELS[groupId] ?? groupId,
-      headerGroupComponent: EditableGroupHeader,
-      headerGroupComponentParams: {
-        selectionId: `group:${groupId}`,
-        onRename: onColumnHeaderRename ?? (() => {}),
-      },
-      children,
-    }));
+    const groups: Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>> = [];
+    let currentGroupId: string | null = null;
+    let currentGroupChildren: AgColDef<DemandRow>[] = [];
+
+    const flushGroup = () => {
+      if (currentGroupId === null || currentGroupChildren.length === 0) return;
+      groups.push({
+        groupId: currentGroupId,
+        headerName: columnHeaderNames[`group:${currentGroupId}`] ?? GROUP_LABELS[currentGroupId] ?? currentGroupId,
+        headerGroupComponent: EditableGroupHeader,
+        headerGroupComponentParams: {
+          selectionId: `group:${currentGroupId}`,
+          onRename: onColumnHeaderRename ?? (() => {}),
+        },
+        children: currentGroupChildren,
+      });
+      currentGroupChildren = [];
+    };
+
+    // Base columns and their hidden-run indicators, in one forward pass —
+    // `baseHiddenRuns` was computed over the exact same `baseCandidates`
+    // order, so its `startIndex` values line up with this walk directly,
+    // no re-detection needed.
+    const runsByStart = new Map(baseHiddenRuns.map((run) => [run.startIndex, run]));
+    let index = 0;
+    while (index < baseCandidates.length) {
+      const run = runsByStart.get(index);
+      if (run) {
+        // The run's own grp is only a placement hint when it's uniform; a run
+        // spanning two grps (or sitting where no grp is open yet and the
+        // next real column belongs elsewhere) gets a plain top-level column
+        // instead of being forced into either neighbor's group.
+        const nextGrp = baseCandidates[index + run.hiddenIds.length]?.grp ?? null;
+        const indicator = buildBaseIndicatorColDef(run);
+        if (run.grp !== null && (run.grp === nextGrp || run.grp === currentGroupId)) {
+          if (currentGroupId !== run.grp) { flushGroup(); currentGroupId = run.grp; }
+          currentGroupChildren.push(indicator);
+        } else {
+          flushGroup();
+          currentGroupId = null;
+          groups.push(indicator);
+        }
+        index += run.hiddenIds.length;
+        continue;
+      }
+      const column = baseCandidates[index];
+      if (column.grp !== currentGroupId) { flushGroup(); currentGroupId = column.grp; }
+      currentGroupChildren.push(buildRealBaseColDef(column));
+      index += 1;
+    }
+    flushGroup();
 
     if (groupVis.con) {
       // Render order: baseline first, then all real containers.
@@ -2335,6 +2782,155 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         if (container.status === "baseline" && hiddenBases.has("Base")) continue;
         const baseline = container.status === "baseline";
         const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
+
+        const buildRealSubColDef = (column: (typeof conCandidates)[number]): AgColDef<DemandRow> => ({
+          headerStyle: headerStyleForColor(columnColors[`con:${column.id}`]?.header),
+          colId: `${container.name}::${column.id}`,
+          headerName: columnHeaderNames[`con:${column.id}`] ?? (column.id === "oo"
+            ? "Open Ord"
+            : column.id === "remaining"
+              ? "Rem. Qty"
+              : column.label.replace("\n", " ")),
+          headerTooltip: column.label.replace("\n", " "),
+          headerComponent: SelectableHeader,
+          headerComponentParams: {
+            selectionId: `con:${column.id}`,
+            selected: selectedColumnIds.includes(`con:${column.id}`),
+            onSelect: onColumnHeaderSelect ?? (() => {}),
+            fullColumnSelected: selectedFullColumnIds.includes(`con:${column.id}`),
+            onFullColumnSelect: onFullColumnSelect ?? (() => {}),
+            onRename: onColumnHeaderRename ?? (() => {}),
+            isFiltered: columnFilters.has(`${container.name}::${column.id}`),
+            onRightClick: (x: number, y: number) => setColumnMenu({
+              x, y,
+              key: `${container.name}::${column.id}`,
+              label: `${container.name} · ${column.label.replace("\n", " ")}`,
+            }),
+          },
+          sortable: false,
+          width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
+          valueGetter: (params) => {
+            if (!params.data) return "";
+            const key = `${params.data.sku}::${container.name}`;
+            const raw = params.data.containers?.[container.name] ?? {
+              item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
+              allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
+              inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
+            };
+            const value = { ...raw, ...(qtyOverrides.get(key) ?? {}), ...(params.data.pinned ? {} : (chainMap.get(params.data.sku)?.get(container.name) ?? {})) };
+            return column.val(value, container, params.data);
+          },
+          comparator: column.id === "life" || column.id === "inb_qty" || column.id === "avail" || column.id === "est" || column.id === "cbo" || column.id === "carry" || column.id === "remaining"
+            ? (_a, _b, nodeA, nodeB) => {
+                const getNum = (node: typeof nodeA): number => {
+                  if (!node.data) return -1;
+                  const key = `${node.data.sku}::${container.name}`;
+                  const raw = node.data.containers?.[container.name];
+                  const chain = chainMap.get(node.data.sku)?.get(container.name);
+                  const override = qtyOverrides.get(key);
+                  const merged = { ...raw, ...override, ...chain };
+                  if (column.id === "life") return merged.inv_life ?? -1;
+                  if (column.id === "inb_qty") return override?.inbound_qty ?? raw?.inbound_qty ?? 0;
+                  if (column.id === "avail") return merged.avail_qty ?? -1;
+                  if (column.id === "est") return merged.est_sales ?? -1;
+                  if (column.id === "cbo") return merged.backorder ?? -1;
+                  if (column.id === "carry") return merged.carryover ?? -1;
+                  if (column.id === "remaining") return (raw as { remaining?: number })?.remaining ?? -1;
+                  return -1;
+                };
+                return getNum(nodeA) - getNum(nodeB);
+              }
+            : undefined,
+          cellRenderer: column.id === "inb_qty" && qtyEditable ? QtyCellRenderer : CellRenderer,
+          cellRendererParams: column.id === "inb_qty" && qtyEditable ? (params: ICellRendererParams<DemandRow, CellContent>) => {
+            const row = params.data;
+            if (!row) return { onSave: async () => false };
+            const raw = row.containers?.[container.name] ?? {
+              item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
+              allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
+              inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
+            };
+            return { onSave: (qty: number) => saveQty(row, container, raw, qty) };
+          } : undefined,
+          cellStyle: (params) => {
+            const columnId = `${container.name}::${column.id}`;
+            const key = cellColorKey(params.data?.sku, columnId);
+            const selected = selectedCellsRef.current.has(key);
+            const fullColumnSelected = selectedFullColumnIds.includes(`con:${column.id}`);
+            return {
+              backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
+              textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
+              ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
+              ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
+            };
+          },
+        });
+
+        const buildConIndicatorColDef = (run: (typeof conHiddenRuns)[number]): AgColDef<DemandRow> => ({
+          colId: `${container.name}::${run.indicatorId}`,
+          headerName: "",
+          width: 18,
+          minWidth: 18,
+          maxWidth: 18,
+          resizable: false,
+          sortable: false,
+          suppressHeaderContextMenu: true,
+          valueGetter: () => "",
+          cellStyle: { backgroundColor: "#F1F0EC", borderLeft: "1px solid #D8D6CE", borderRight: "1px solid #D8D6CE" },
+          headerComponent: HideGapIndicatorHeader,
+          headerComponentParams: {
+            hiddenLabels: run.hiddenLabels,
+            onRestore: () => run.hiddenIds.forEach((id) => onHideColumn?.(`con:${id}`)),
+          },
+        });
+
+        // One combined walk per container: real sub-columns and hidden-run
+        // indicators, plus a `totalColumns` entry kept index-aligned with
+        // `children` so ContainerGroupHeader's totals strip never desyncs
+        // from the header/cells it sits under.
+        const children: AgColDef<DemandRow>[] = [];
+        const totalColumns: ContainerTotalColumn[] = [];
+        const runsById = new Map(conHiddenRuns.map((run) => [run.hiddenIds[0], run]));
+        let skipUntilId: string | null = null;
+        for (const column of conCandidates) {
+          if (skipUntilId !== null) {
+            if (column.id === skipUntilId) skipUntilId = null;
+            continue;
+          }
+          if (columnVis[`con:${column.id}`] === false) {
+            const run = runsById.get(column.id);
+            if (!run) continue; // defensive: should always be found
+            children.push(buildConIndicatorColDef(run));
+            totalColumns.push({ id: run.indicatorId, width: 18, total: undefined });
+            if (run.hiddenIds.length > 1) skipUntilId = run.hiddenIds[run.hiddenIds.length - 1];
+            continue;
+          }
+          children.push(buildRealSubColDef(column));
+          totalColumns.push({
+            id: column.id,
+            width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
+            total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
+          });
+        }
+        // Boundary styling (the 2px block-edge border and the start/end
+        // header classes) is assigned after the fact, against the combined
+        // list's actual first/last entries — so a hidden first or last
+        // sub-column hands its boundary styling to the indicator standing in
+        // for it, instead of losing it.
+        children.forEach((child, columnIndex) => {
+          child.headerClass = [
+            columnIndex === 0 ? "container-column-start" : "",
+            columnIndex === children.length - 1 ? "container-column-end" : "",
+          ].filter(Boolean).join(" ");
+          if (columnIndex === 0) {
+            const baseCellStyle = child.cellStyle;
+            child.cellStyle = (params) => ({
+              ...(typeof baseCellStyle === "function" ? baseCellStyle(params) : baseCellStyle),
+              borderLeft: "2px solid #5A5750",
+            });
+          }
+        });
+
         groups.push({
           groupId: `container-${container.name}`,
           headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
@@ -2350,11 +2946,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             editable: canEditPlanning,
             qtyEditable,
             status: container.status,
-            totalColumns: subColumns.map((column) => ({
-              id: column.id,
-              width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
-              total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
-            })),
+            totalColumns,
             onEtaChange: (eta: string) => updateEta(container, eta),
             onAutoFill: () => {
               setAutoFillingContainers((s) => new Set(s).add(container.name));
@@ -2389,98 +2981,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
             saving: savingContainers.has(container.name),
             dirty: dirtyContainers.has(container.name),
           },
-          children: subColumns.map((column, columnIndex) => ({
-            headerStyle: headerStyleForColor(columnColors[`con:${column.id}`]?.header),
-            headerClass: [
-              columnIndex === 0 ? "container-column-start" : "",
-              columnIndex === subColumns.length - 1 ? "container-column-end" : "",
-            ].filter(Boolean).join(" "),
-            colId: `${container.name}::${column.id}`,
-            headerName: columnHeaderNames[`con:${column.id}`] ?? (column.id === "oo"
-              ? "Open Ord"
-              : column.id === "remaining"
-                ? "Rem. Qty"
-                : column.label.replace("\n", " ")),
-            headerTooltip: column.id === "inb_qty" && qtyEditable
-              ? "Right-click to filter Qty > 0"
-              : column.label.replace("\n", " "),
-            headerComponent: SelectableHeader,
-            headerComponentParams: {
-              selectionId: `con:${column.id}`,
-              selected: selectedColumnIds.includes(`con:${column.id}`),
-              onSelect: onColumnHeaderSelect ?? (() => {}),
-              fullColumnSelected: selectedFullColumnIds.includes(`con:${column.id}`),
-              onFullColumnSelect: onFullColumnSelect ?? (() => {}),
-              onRename: onColumnHeaderRename ?? (() => {}),
-              ...(column.id === "inb_qty" && qtyEditable ? {
-                isFiltered: conQtyFilter === container.name,
-                onRightClick: (x: number, y: number) => setQtyCtxMenu({ x, y, containerName: container.name }),
-              } : {}),
-            },
-            sortable: false,
-            width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
-            valueGetter: (params) => {
-              if (!params.data) return "";
-              const key = `${params.data.sku}::${container.name}`;
-              const raw = params.data.containers?.[container.name] ?? {
-                item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
-                allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
-                inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
-              };
-              const value = { ...raw, ...(qtyOverrides.get(key) ?? {}), ...(params.data.pinned ? {} : (chainMap.get(params.data.sku)?.get(container.name) ?? {})) };
-              return column.val(value, container, params.data);
-            },
-            comparator: column.id === "life" || column.id === "inb_qty" || column.id === "avail" || column.id === "est" || column.id === "cbo" || column.id === "carry" || column.id === "remaining"
-              ? (_a, _b, nodeA, nodeB) => {
-                  const getNum = (node: typeof nodeA): number => {
-                    if (!node.data) return -1;
-                    const key = `${node.data.sku}::${container.name}`;
-                    const raw = node.data.containers?.[container.name];
-                    const chain = chainMap.get(node.data.sku)?.get(container.name);
-                    const override = qtyOverrides.get(key);
-                    const merged = { ...raw, ...override, ...chain };
-                    if (column.id === "life") return merged.inv_life ?? -1;
-                    if (column.id === "inb_qty") return override?.inbound_qty ?? raw?.inbound_qty ?? 0;
-                    if (column.id === "avail") return merged.avail_qty ?? -1;
-                    if (column.id === "est") return merged.est_sales ?? -1;
-                    if (column.id === "cbo") return merged.backorder ?? -1;
-                    if (column.id === "carry") return merged.carryover ?? -1;
-                    if (column.id === "remaining") return (raw as { remaining?: number })?.remaining ?? -1;
-                    return -1;
-                  };
-                  return getNum(nodeA) - getNum(nodeB);
-                }
-              : undefined,
-            cellRenderer: column.id === "inb_qty" && qtyEditable ? QtyCellRenderer : CellRenderer,
-            cellRendererParams: column.id === "inb_qty" && qtyEditable ? (params: ICellRendererParams<DemandRow, CellContent>) => {
-              const row = params.data;
-              if (!row) return { onSave: async () => false };
-              const raw = row.containers?.[container.name] ?? {
-                item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
-                allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
-                inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
-              };
-              return { onSave: (qty: number) => saveQty(row, container, raw, qty) };
-            } : undefined,
-            cellStyle: (params) => {
-              const columnId = `${container.name}::${column.id}`;
-              const key = cellColorKey(params.data?.sku, columnId);
-              const selected = selectedCellsRef.current.has(key);
-              const fullColumnSelected = selectedFullColumnIds.includes(`con:${column.id}`);
-              return {
-                backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
-                ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
-                textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
-                ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-                ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
-              };
-            },
-          })),
+          children,
         });
       }
     }
     return groups;
-  }, [buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnHeaderNames, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, subColumns, updateEta]);
+  }, [baseCandidates, baseHiddenRuns, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conHiddenRuns, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onHideColumn, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -2517,8 +3023,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
     const api = gridRef.current?.api;
     if (!api) return;
 
-    const columns = api.getAllDisplayedColumns();
+    // Hidden-column restore indicators are synthetic, not real data — they
+    // must not add a blank column to the export.
+    const columns = api.getAllDisplayedColumns()
+      .filter((column) => !column.getColId().includes("hidegap:"));
     const csv = api.getDataAsCsv({
+      columnKeys: columns.map((column) => column.getColId()),
       exportedRows: "filteredAndSorted",
       valueFrom: "edit",
       processCellCallback: (params) => String(exportCellValue(params.value)),
@@ -2616,7 +3126,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
             ref={gridRef}
             theme={planningTheme}
             loading={loading}
-            rowData={visibleRows}
+            rowData={sortedRows}
             pinnedTopRowData={data.pinned_rows}
             columnDefs={columnDefs}
             defaultColDef={{
@@ -2697,54 +3207,29 @@ autoFilling3: autoFillingContainers3.has(container.name),
         </AgGridProvider>
       </div>
 
-      {/* Con. Qty right-click context menu */}
-      {qtyCtxMenu && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setQtyCtxMenu(null)}
-            onContextMenu={(e) => { e.preventDefault(); setQtyCtxMenu(null); }}
-          />
-          <div
-            style={{
-              position: "fixed",
-              top: qtyCtxMenu.y,
-              left: qtyCtxMenu.x,
-              zIndex: 1000,
-              background: "#fff",
-              border: "1px solid #E2E8F0",
-              borderRadius: 6,
-              boxShadow: "0 4px 16px rgba(15,23,42,.16)",
-              minWidth: 180,
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              {qtyCtxMenu.containerName}
-            </div>
-            {conQtyFilter === qtyCtxMenu.containerName ? (
-              <button
-                type="button"
-                onClick={() => { setConQtyFilter(null); setQtyCtxMenu(null); }}
-                style={{ display: "block", width: "100%", padding: "7px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "#C42020", background: "transparent", border: "none", cursor: "pointer", borderTop: "1px solid #F1F5F9" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#FFF5F5"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-              >
-                ✕ 필터 해제
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => { setConQtyFilter(qtyCtxMenu.containerName); setQtyCtxMenu(null); }}
-                style={{ display: "block", width: "100%", padding: "7px 14px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "#1A1917", background: "transparent", border: "none", cursor: "pointer", borderTop: "1px solid #F1F5F9" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-              >
-                ▼ Qty &gt; 0 만 표시
-              </button>
-            )}
-          </div>
-        </>
+      {/* Column header right-click menu: Sort A→Z, Sort Z→A, Filter, Hide. */}
+      {columnMenu && (
+        <GridColumnMenu
+          x={columnMenu.x}
+          y={columnMenu.y}
+          label={columnMenu.label}
+          sortDir={sort?.key === columnMenu.key ? sort.dir : null}
+          onSortAsc={() => setSort({ key: columnMenu.key, dir: "asc" })}
+          onSortDesc={() => setSort({ key: columnMenu.key, dir: "desc" })}
+          canHide={onHideColumn !== undefined}
+          onHide={() => onHideColumn?.(hideKeyForColumnMenuKey(columnMenu.key))}
+          filterActive={columnFilters.has(columnMenu.key)}
+          committed={columnFilters.get(columnMenu.key) ?? null}
+          getValues={() => (filterOpenKey === columnMenu.key ? columnValuesForOpenKey : [])}
+          onFilterViewOpen={() => setFilterOpenKey(columnMenu.key)}
+          onApplyFilter={(next) => setColumnFilters((prev) => {
+            const nextMap = new Map(prev);
+            if (next === null) nextMap.delete(columnMenu.key);
+            else nextMap.set(columnMenu.key, next);
+            return nextMap;
+          })}
+          onClose={() => { setColumnMenu(null); setFilterOpenKey(null); }}
+        />
       )}
     </div>
     <FixedTargetDialog

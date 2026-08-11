@@ -53,10 +53,14 @@
  * leaves out.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
+import { ColumnPicker, type ColumnPickerColumn } from "@/components/planning/column-picker";
+import {
+  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+} from "@/lib/planning/column-filter";
 import { SectionHeading } from "./section-heading";
 import type { OutlierRow, ValidationOutliers } from "./types";
 
@@ -91,7 +95,40 @@ const pillClass = (active: boolean) =>
       : "text-muted-foreground hover:bg-muted/60"
   }`;
 
-type SortKey = "delta" | "y_total_cur" | "wape_cur" | "wape_base" | "unique_id";
+type SortKey = "delta" | "y_total_cur" | "wape_cur" | "wape_base" | "unique_id" | "window";
+
+/** Only SKU is non-hideable: it is the row's identity and link target. */
+const NON_HIDEABLE = new Set<SortKey>(["unique_id"]);
+
+/** Every column a header's own menu can hide, in render order. */
+const OPTIONAL_COLUMNS: ColumnPickerColumn<SortKey>[] = [
+  { key: "window", label: ["구간", "Window"] },
+  { key: "y_total_cur", label: ["실판매", "Units sold"] },
+  { key: "wape_cur", label: ["모델 WAPE", "Model WAPE"] },
+  { key: "wape_base", label: ["기준 WAPE", "Baseline WAPE"] },
+  { key: "delta", label: ["차이", "Diff"] },
+];
+const ALL_COLUMNS: SortKey[] = ["unique_id", ...OPTIONAL_COLUMNS.map((c) => c.key)];
+
+const ACCESSORS: Record<SortKey, (r: OutlierRow) => unknown> = {
+  unique_id: (r) => r.unique_id,
+  window: (r) => r.window,
+  y_total_cur: (r) => Math.round(r.y_total_cur),
+  wape_cur: (r) => Math.round(r.wape_cur * 100),
+  wape_base: (r) => Math.round(r.wape_base * 100),
+  delta: (r) => Math.round(r.delta * 100),
+};
+
+const FORMATTERS: Record<SortKey, (r: OutlierRow) => string> = {
+  unique_id: (r) => r.unique_id,
+  window: (r) => r.window,
+  y_total_cur: (r) => nf.format(Math.round(r.y_total_cur)),
+  wape_cur: (r) => pct(r.wape_cur),
+  wape_base: (r) => pct(r.wape_base),
+  delta: (r) => `${r.delta > 0 ? "+" : ""}${(r.delta * 100).toFixed(0)}pp`,
+};
+
+const OUTLIERS_COLUMNS_STORAGE_KEY = "planning:forecast-validation:outliers:columns";
 
 /** Win rate and the figures beside it, over whatever rows are in scope. */
 function summarise(rows: OutlierRow[]) {
@@ -166,6 +203,61 @@ export function OutliersSection({
     dir: "desc",
   });
   const [limit, setLimit] = useState(25);
+  const [visible, setVisible] = useState<Set<SortKey>>(() => new Set(ALL_COLUMNS));
+  const [columnFilters, setColumnFilters] = useState<Map<SortKey, Set<string>>>(new Map());
+  const [openFilterKey, setOpenFilterKey] = useState<SortKey | null>(null);
+
+  // Read after mount: localStorage does not exist on the server, and seeding
+  // state from it in the initialiser would make the client's first paint
+  // disagree with what was rendered there. `window` here would shadow the
+  // browser global, hence `globalThis`.
+  useEffect(() => {
+    try {
+      const raw = globalThis.localStorage.getItem(OUTLIERS_COLUMNS_STORAGE_KEY);
+      if (!raw) return;
+      const saved = (JSON.parse(raw) as string[]).filter((k) =>
+        (ALL_COLUMNS as string[]).includes(k),
+      ) as SortKey[];
+      if (saved.length > 0) queueMicrotask(() => setVisible(new Set(saved)));
+    } catch {
+      // Corrupt or unavailable store: default to every column, unchanged.
+    }
+  }, []);
+
+  const changeVisible = useCallback((next: Set<SortKey>) => {
+    setVisible(next);
+    try {
+      globalThis.localStorage.setItem(OUTLIERS_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+    } catch {
+      // Losing the preference is a smaller problem than failing the
+      // interaction that set it.
+    }
+  }, []);
+
+  const hideColumn = useCallback((key: SortKey) => {
+    setVisible((prev) => {
+      if (prev.size <= 1) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      try {
+        globalThis.localStorage.setItem(OUTLIERS_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // See changeVisible above.
+      }
+      return next;
+    });
+  }, []);
+
+  const onColumnFilterChange = useCallback((key: SortKey, next: Set<string> | null) => {
+    setColumnFilters((prev) => {
+      const m = new Map(prev);
+      if (next === null) m.delete(key);
+      else m.set(key, next);
+      return m;
+    });
+  }, []);
+
+  const vis = (key: SortKey) => visible.has(key);
 
   const windows = useMemo(
     () => [...new Set(outliers.rows.map((r) => r.window))].sort(),
@@ -231,43 +323,60 @@ export function OutliersSection({
     [segments, scoped],
   );
 
-  const table = useMemo(() => {
+  // Search-filtered but not yet column-filtered or sorted — the population a
+  // column's own Filter submenu computes its distinct values against (minus
+  // that column's own filter, see columnValuesForOpenKey).
+  const searchedRows = useMemo(() => {
     const q = query.trim().toUpperCase();
-    const rows = q ? scoped.filter((r) => r.unique_id.toUpperCase().includes(q)) : scoped;
+    return q ? scoped.filter((r) => r.unique_id.toUpperCase().includes(q)) : scoped;
+  }, [scoped, query]);
+
+  const table = useMemo(() => {
+    const rows = applyColumnFilters(searchedRows, columnFilters, ACCESSORS);
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...rows].sort((a, b) => {
-      if (sort.key === "unique_id") return dir * a.unique_id.localeCompare(b.unique_id);
+      if (sort.key === "unique_id" || sort.key === "window") {
+        return dir * a[sort.key].localeCompare(b[sort.key]);
+      }
       return dir * ((a[sort.key] as number) - (b[sort.key] as number));
     });
-  }, [scoped, query, sort]);
+  }, [searchedRows, columnFilters, sort]);
+
+  const columnValuesForOpenKey = useMemo((): DistinctValue[] => {
+    if (!openFilterKey) return [];
+    return distinctColumnValuesExcluding(
+      searchedRows,
+      columnFilters,
+      ACCESSORS,
+      FORMATTERS,
+      openFilterKey,
+      pick("(공백)", "(Blank)"),
+    );
+  }, [openFilterKey, searchedRows, columnFilters, pick]);
 
   const excluded = outliers.rows.length - scoped.length;
 
-  const th = (key: SortKey, label: string, right = false) => (
-    <th
-      onClick={() =>
-        setSort((s) =>
-          s.key === key
-            ? { key, dir: s.dir === "asc" ? "desc" : "asc" }
-            : { key, dir: key === "unique_id" ? "asc" : "desc" },
-        )
-      }
-      className={`cursor-pointer select-none py-1.5 pr-3 font-medium hover:text-foreground ${
-        right ? "text-right" : "pl-3 text-left"
-      }`}
-    >
-      {label}
-      {sort.key === key ? (
-        sort.dir === "asc" ? (
-          <ArrowUp className="ml-1 inline h-3 w-3" />
-        ) : (
-          <ArrowDown className="ml-1 inline h-3 w-3" />
-        )
-      ) : (
-        <ArrowUpDown className="ml-1 inline h-3 w-3 text-muted-foreground/40" />
-      )}
-    </th>
-  );
+  const th = (key: SortKey, label: string, right = false) => {
+    const filterSet = columnFilters.get(key) ?? null;
+    return (
+      <ColumnHeaderMenu
+        className={`py-1.5 pr-3 font-medium ${right ? "text-right" : "pl-3 text-left"}`}
+        sortDir={sort.key === key ? sort.dir : null}
+        onSortAsc={() => setSort({ key, dir: "asc" })}
+        onSortDesc={() => setSort({ key, dir: "desc" })}
+        filter={{
+          active: filterSet !== null,
+          committed: filterSet,
+          getValues: () => (openFilterKey === key ? columnValuesForOpenKey : []),
+          onApply: (next) => onColumnFilterChange(key, next),
+          onOpenChange: (open) => setOpenFilterKey(open ? key : null),
+        }}
+        hide={{ canHide: !NON_HIDEABLE.has(key), onHide: () => hideColumn(key) }}
+      >
+        {label}
+      </ColumnHeaderMenu>
+    );
+  };
 
   return (
     <section className="flex flex-col gap-4">
@@ -486,17 +595,21 @@ export function OutliersSection({
             placeholder={pick("SKU 검색…", "Search SKU…")}
             className="h-8 w-52 rounded-md border bg-background px-2 font-mono text-[12.5px] outline-none focus:ring-2 focus:ring-ring"
           />
+          <ColumnPicker columns={OPTIONAL_COLUMNS} visible={visible} onChange={changeVisible} />
+          <span className="text-[11.5px] text-muted-foreground">
+            {pick("열 제목을 우클릭해 정렬·필터·숨기기", "Right-click a column header to sort, filter, or hide it")}
+          </span>
         </div>
         <div className="max-h-[32rem] overflow-auto">
           <table className="w-full border-collapse">
             <thead className="sticky top-0 bg-muted/95 backdrop-blur">
               <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
                 {th("unique_id", "SKU")}
-                <th className="py-1.5 pr-3 text-left font-medium">{pick("구간", "Window")}</th>
-                {th("y_total_cur", pick("실판매 (개)", "Units sold"), true)}
-                {th("wape_cur", pick("모델 WAPE", "Model WAPE"), true)}
-                {th("wape_base", `${baseline} WAPE`, true)}
-                {th("delta", pick("차이 (%p)", "Diff (pp)"), true)}
+                {vis("window") && th("window", pick("구간", "Window"))}
+                {vis("y_total_cur") && th("y_total_cur", pick("실판매 (개)", "Units sold"), true)}
+                {vis("wape_cur") && th("wape_cur", pick("모델 WAPE", "Model WAPE"), true)}
+                {vis("wape_base") && th("wape_base", `${baseline} WAPE`, true)}
+                {vis("delta") && th("delta", pick("차이 (%p)", "Diff (pp)"), true)}
               </tr>
             </thead>
             <tbody>
@@ -510,26 +623,36 @@ export function OutliersSection({
                       {r.unique_id}
                     </Link>
                   </td>
-                  <td className="py-1.5 pr-3 text-[12.5px] text-muted-foreground">{r.window}</td>
-                  <td className="py-1.5 pr-3 text-right text-[12.5px] tabular-nums text-muted-foreground">
-                    {nf.format(Math.round(r.y_total_cur))}
-                  </td>
-                  <td className="py-1.5 pr-3 text-right text-[12.5px] tabular-nums">{pct(r.wape_cur)}</td>
-                  <td className="py-1.5 pr-3 text-right text-[12.5px] tabular-nums text-muted-foreground">
-                    {pct(r.wape_base)}
-                  </td>
+                  {vis("window") && (
+                    <td className="py-1.5 pr-3 text-[12.5px] text-muted-foreground">{r.window}</td>
+                  )}
+                  {vis("y_total_cur") && (
+                    <td className="py-1.5 pr-3 text-right text-[12.5px] tabular-nums text-muted-foreground">
+                      {nf.format(Math.round(r.y_total_cur))}
+                    </td>
+                  )}
+                  {vis("wape_cur") && (
+                    <td className="py-1.5 pr-3 text-right text-[12.5px] tabular-nums">{pct(r.wape_cur)}</td>
+                  )}
+                  {vis("wape_base") && (
+                    <td className="py-1.5 pr-3 text-right text-[12.5px] tabular-nums text-muted-foreground">
+                      {pct(r.wape_base)}
+                    </td>
+                  )}
                   {/* The one place a raw delta is printed, and it carries a sign
                       and a colour so the direction cannot be misread. */}
-                  <td
-                    className={`py-1.5 pr-3 text-right text-[12.5px] font-semibold tabular-nums ${
-                      r.delta < 0
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-amber-600 dark:text-amber-400"
-                    }`}
-                  >
-                    {r.delta > 0 ? "+" : ""}{(r.delta * 100).toFixed(0)}
-                    <span className="ml-0.5 text-[10.5px] font-normal opacity-70">pp</span>
-                  </td>
+                  {vis("delta") && (
+                    <td
+                      className={`py-1.5 pr-3 text-right text-[12.5px] font-semibold tabular-nums ${
+                        r.delta < 0
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {r.delta > 0 ? "+" : ""}{(r.delta * 100).toFixed(0)}
+                      <span className="ml-0.5 text-[10.5px] font-normal opacity-70">pp</span>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

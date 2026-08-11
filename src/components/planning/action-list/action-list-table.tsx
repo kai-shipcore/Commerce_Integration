@@ -19,14 +19,23 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
+import type { DistinctValue } from "@/lib/planning/column-filter";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { ActionListRow } from "./types";
 
 const nf = new Intl.NumberFormat("en-US");
+
+/** `ColumnHeaderMenu` renders a bare `<th>`, not the styled `TableHead`
+ *  primitive it replaces on sortable columns, so this table's headers carry
+ *  the same base look `TableHead` would otherwise have supplied (copied from
+ *  `src/components/ui/table.tsx`). */
+const TABLE_HEAD_BASE =
+  "text-foreground px-2 text-left align-middle font-medium [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]";
 
 /** Column bands: what is here, what will sell, what to do about it.
  *
@@ -197,11 +206,46 @@ export type SortKey =
 export type SortDir = "asc" | "desc";
 export interface SortCriterion { key: SortKey; dir: SortDir }
 
-/** Columns whose first click should sort ascending. Text sorts A-Z, and
- *  days-to-stockout sorts soonest-first, because "which runs out next" is the
- *  question being asked of it. Everything else is a quantity, where the
- *  interesting end is the large one. */
-const DEFAULT_ASC: SortKey[] = ["unique_id", "product_category", "days_to_stockout"];
+/** Columns that can never be hidden: SKU is the row's identity, priority is
+ *  the order the worklist is built around. Same rule `OPTIONAL_COLUMNS`
+ *  already encodes by omission. */
+export const NON_HIDEABLE = new Set<SortKey>(["unique_id", "priority_label"]);
+
+/** Raw value each column filters and sorts on. Rounded to match what the
+ *  cell displays, so two rows that render identically also filter as the
+ *  same value rather than as two single-row entries apart by float noise. */
+export const ACCESSORS: Record<SortKey, (r: ActionListRow) => unknown> = {
+  unique_id: (r) => r.unique_id,
+  product_category: (r) => r.product_category,
+  priority_label: (r) => r.priority_label,
+  available_inventory: (r) => Math.round(r.available_inventory),
+  preorder_backlog: (r) => Math.round(r.preorder_backlog),
+  confirmed_inbound: (r) => Math.round(r.confirmed_inbound),
+  recent_units: (r) => Math.round(r.recent_units),
+  coverage_demand: (r) => Math.round(r.coverage_demand),
+  ramp: (r) => (r.ramp === null || !Number.isFinite(r.ramp) ? null : Number(r.ramp.toFixed(2))),
+  days_to_stockout: (r) =>
+    r.days_to_stockout === null || !Number.isFinite(r.days_to_stockout) ? null : Math.round(r.days_to_stockout),
+  recommended_order_qty: (r) => r.recommended_order_qty,
+  wape: (r) => (r.wape === null ? null : Math.round(r.wape * 100)),
+};
+
+/** Same figure as the cell prints, for the filter checkbox list's labels. */
+export const FORMATTERS: Record<SortKey, (r: ActionListRow) => string> = {
+  unique_id: (r) => r.unique_id,
+  product_category: (r) => r.product_category ?? "",
+  priority_label: (r) => r.priority_label,
+  available_inventory: (r) => nf.format(Math.round(r.available_inventory)),
+  preorder_backlog: (r) => nf.format(Math.round(r.preorder_backlog)),
+  confirmed_inbound: (r) => nf.format(Math.round(r.confirmed_inbound)),
+  recent_units: (r) => nf.format(Math.round(r.recent_units)),
+  coverage_demand: (r) => nf.format(Math.round(r.coverage_demand)),
+  ramp: (r) => (r.ramp === null || !Number.isFinite(r.ramp) ? "" : r.ramp.toFixed(2)),
+  days_to_stockout: (r) =>
+    r.days_to_stockout === null || !Number.isFinite(r.days_to_stockout) ? "" : String(Math.round(r.days_to_stockout)),
+  recommended_order_qty: (r) => nf.format(r.recommended_order_qty),
+  wape: (r) => (r.wape === null ? "" : `±${Math.round(r.wape * 100)}%`),
+};
 
 /** No criteria means the server's own order: priority, then order quantity
  *  within it. That is the worklist order, and it is not reproducible from any
@@ -238,10 +282,10 @@ const DIR_LABEL: Record<SortDir, [string, string]> = {
 /** The table's current order, written out.
  *
  *  This replaced a dropdown of named orders. Every entry in that list was also
- *  reachable by clicking a header, including the default: nextSort() clears a
- *  single-sorted column back to it on the third click. So the control offered
- *  no ordering the columns did not already give, while occupying the width of
- *  one and implying it was the way sorting was done.
+ *  reachable from a header's own sort menu, including the default: choosing
+ *  the opposite direction on an already-sorted column just re-sorts it. So the
+ *  control offered no ordering the columns did not already give, while
+ *  occupying the width of one and implying it was the way sorting was done.
  *
  *  What was worth keeping is the naming, and only the naming. The default is
  *  the server's priority-then-quantity sequence, is not reproducible from any
@@ -267,31 +311,6 @@ export function describeSort(sort: SortCriterion[]): [string, string] {
     parts.map((p) => p[0]).join(", 그다음 "),
     parts.map((p) => p[1]).join(", then "),
   ];
-}
-
-export function nextSort(
-  prev: SortCriterion[],
-  key: SortKey,
-  shiftKey: boolean,
-): SortCriterion[] {
-  const idx = prev.findIndex((c) => c.key === key);
-  const firstDir: SortDir = DEFAULT_ASC.includes(key) ? "asc" : "desc";
-  if (shiftKey) {
-    if (idx !== -1) {
-      return prev.map((c, i) =>
-        i === idx ? { ...c, dir: c.dir === "asc" ? "desc" : "asc" } : c,
-      );
-    }
-    return [...prev, { key, dir: firstDir }];
-  }
-  // Third click on a single-sorted column clears back to the worklist order,
-  // so the default is reachable without hunting for a reset control.
-  if (idx !== -1 && prev.length === 1) {
-    return prev[0].dir === firstDir
-      ? [{ key, dir: firstDir === "asc" ? "desc" : "asc" }]
-      : [];
-  }
-  return [{ key, dir: firstDir }];
 }
 
 /** Sort a copy by the given criteria, most significant first.
@@ -379,6 +398,12 @@ export function ActionListTable({
   sort = DEFAULT_SORT,
   onSort,
   visible,
+  onHideColumn,
+  columnFilters = new Map(),
+  openFilterKey = null,
+  onOpenFilterKeyChange,
+  getColumnValues,
+  onColumnFilterChange,
 }: {
   rows: ActionListRow[];
   /** Lead time plus reorder cycle, for labelling the demand column. The figure
@@ -391,10 +416,19 @@ export function ActionListTable({
   skuHref: (sku: string) => string;
   onOpenSku?: (sku: string) => void;
   sort?: SortCriterion[];
-  onSort?: (key: SortKey, shiftKey: boolean) => void;
+  onSort?: (key: SortKey, dir: SortDir) => void;
   /** Optional columns to render. Undefined shows every one, so a caller that
    *  does not care about column visibility gets the table as it always was. */
   visible?: Set<SortKey>;
+  onHideColumn?: (key: SortKey) => void;
+  columnFilters?: Map<SortKey, Set<string>>;
+  /** The one column whose Filter submenu is currently open, so the caller can
+   *  compute its distinct values from the full row set rather than this
+   *  table's already-paginated `rows`. */
+  openFilterKey?: SortKey | null;
+  onOpenFilterKeyChange?: (key: SortKey | null) => void;
+  getColumnValues?: () => DistinctValue[];
+  onColumnFilterChange?: (key: SortKey, next: Set<string> | null) => void;
 }) {
   const { pick } = useI18n();
 
@@ -444,43 +478,50 @@ export function ActionListTable({
   const edge = (band: "pos" | "dem" | "act", key: SortKey) =>
     bandKeys(band)[0] === key ? BAND[band].edge : "";
 
-  const sortIcon = (key: SortKey) => {
-    const idx = sort.findIndex((c) => c.key === key);
-    if (idx === -1) {
-      return <ArrowUpDown className="ml-1 inline h-3 w-3 text-muted-foreground/40" />;
+  const th = (key: SortKey, label: string, right = false, extra = "", hint?: string) => {
+    // ColumnHeaderMenu renders a bare <th>, not the styled TableHead
+    // primitive, so its base look has to travel in the className passed to
+    // it rather than coming from the component itself.
+    const cls = `${TABLE_HEAD_BASE} sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${right ? "text-right" : ""} ${extra}`;
+    if (!onSort) {
+      return (
+        <TableHead
+          title={hint}
+          className={`sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${right ? "text-right" : ""} ${extra}`}
+        >
+          {label}
+        </TableHead>
+      );
     }
-    const Arrow = sort[idx].dir === "asc" ? ArrowUp : ArrowDown;
+    const filterSet = columnFilters.get(key) ?? null;
     return (
-      <span className="ml-1 inline-flex items-center gap-px align-middle">
-        <Arrow className="h-3 w-3" />
-        {/* Position marker, shown only when more than one criterion is active,
-            so a single sort is not cluttered by a permanent "1". */}
-        {sort.length > 1 && (
-          <span className="text-[10.5px] font-semibold leading-none text-primary/70">{idx + 1}</span>
-        )}
-      </span>
+      <ColumnHeaderMenu
+        title={hint}
+        className={cls}
+        sortDir={sort.find((c) => c.key === key)?.dir ?? null}
+        onSortAsc={() => onSort(key, "asc")}
+        onSortDesc={() => onSort(key, "desc")}
+        filter={
+          onColumnFilterChange && onOpenFilterKeyChange && getColumnValues
+            ? {
+                active: filterSet !== null,
+                committed: filterSet,
+                getValues: () => (openFilterKey === key ? getColumnValues() : []),
+                onApply: (next) => onColumnFilterChange(key, next),
+                onOpenChange: (open) => onOpenFilterKeyChange(open ? key : null),
+              }
+            : undefined
+        }
+        hide={
+          onHideColumn
+            ? { canHide: !NON_HIDEABLE.has(key), onHide: () => onHideColumn(key) }
+            : undefined
+        }
+      >
+        {label}
+      </ColumnHeaderMenu>
     );
   };
-
-  const th = (key: SortKey, label: string, right = false, extra = "", hint?: string) => (
-    <TableHead
-      title={hint}
-      onClick={onSort ? (e) => onSort(key, e.shiftKey) : undefined}
-      className={`sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${
-        right ? "text-right" : ""
-      } ${extra} ${onSort ? "cursor-pointer select-none hover:text-foreground" : ""}`}
-      aria-sort={
-        sort.find((c) => c.key === key)
-          ? sort.find((c) => c.key === key)!.dir === "asc"
-            ? "ascending"
-            : "descending"
-          : "none"
-      }
-    >
-      {label}
-      {onSort && sortIcon(key)}
-    </TableHead>
-  );
 
   return (
     // Scrolls in both axes with the header and the SKU column pinned. Height is

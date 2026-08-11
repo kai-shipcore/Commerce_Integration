@@ -18,10 +18,12 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { ColumnHeaderMenu, type SortDir } from "@/components/planning/column-header-menu";
+import type { DistinctValue } from "@/lib/planning/column-filter";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
   BAND_ROW_H, BAND_ROW_RULE, NAME_ROW_TOP, TABLE_WINDOW, Z,
@@ -29,6 +31,12 @@ import {
 import type { NotForecastRow } from "./types";
 
 const nf = new Intl.NumberFormat("en-US");
+
+/** `ColumnHeaderMenu` renders a bare `<th>`, not the styled `TableHead`
+ *  primitive it replaces on sortable columns, so this table's headers carry
+ *  the same base look `TableHead` would otherwise have supplied. */
+const TABLE_HEAD_BASE =
+  "text-foreground px-2 text-left align-middle font-medium [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]";
 
 /** Two bands here rather than the forecast table's three: what it has sold, and
  *  where its stock stands. Deliberately different colours from that table, so
@@ -58,23 +66,49 @@ export type NfSortKey =
   | "available_inventory" | "days_of_cover" | "last_sale_week" | "confirmed_inbound";
 export interface NfSort { key: NfSortKey; dir: "asc" | "desc" }
 
-const NF_DEFAULT_ASC: NfSortKey[] = ["unique_id", "product_category", "days_of_cover"];
 export const NF_DEFAULT_SORT: NfSort[] = [];
 
-export function nfNextSort(prev: NfSort[], key: NfSortKey, shiftKey: boolean): NfSort[] {
-  const idx = prev.findIndex((c) => c.key === key);
-  const firstDir: "asc" | "desc" = NF_DEFAULT_ASC.includes(key) ? "asc" : "desc";
-  if (shiftKey) {
-    if (idx !== -1) {
-      return prev.map((c, i) => (i === idx ? { ...c, dir: c.dir === "asc" ? "desc" : "asc" } : c));
-    }
-    return [...prev, { key, dir: firstDir }];
-  }
-  if (idx !== -1 && prev.length === 1) {
-    return prev[0].dir === firstDir ? [{ key, dir: firstDir === "asc" ? "desc" : "asc" }] : [];
-  }
-  return [{ key, dir: firstDir }];
-}
+/** Only SKU is non-hideable: it is the row's identity and link target.
+ *  `product_category` never gets a header cell of its own (it prints as the
+ *  SKU cell's subtitle), so it never reaches the menu that would need this
+ *  rule anyway. */
+export const NF_NON_HIDEABLE = new Set<NfSortKey>(["unique_id"]);
+
+/** The columns a header's own menu can hide, in render order, banded the same
+ *  way the table itself is: what it has sold, and where its stock stands. */
+export const NF_OPTIONAL_COLUMNS: { key: NfSortKey; band: "sold" | "stock"; label: [string, string] }[] = [
+  { key: "recent_units", band: "sold", label: ["13주 판매", "13w demand"] },
+  { key: "weekly_rate", band: "sold", label: ["주당", "per week"] },
+  { key: "last_sale_week", band: "sold", label: ["최근 판매", "Last sale"] },
+  { key: "available_inventory", band: "stock", label: ["가용", "Available"] },
+  { key: "confirmed_inbound", band: "stock", label: ["입고예정", "Inbound"] },
+  { key: "days_of_cover", band: "stock", label: ["재고 여유", "Cover"] },
+];
+export const NF_ALL_COLUMNS: NfSortKey[] = NF_OPTIONAL_COLUMNS.map((c) => c.key);
+
+/** Raw value each column filters and sorts on, rounded to match the cell. */
+export const NF_ACCESSORS: Record<NfSortKey, (r: NotForecastRow) => unknown> = {
+  unique_id: (r) => r.unique_id,
+  product_category: (r) => r.product_category,
+  recent_units: (r) => (r.recent_units ? Math.round(r.recent_units) : 0),
+  weekly_rate: (r) => (r.recent_units ? Number(r.weekly_rate.toFixed(1)) : null),
+  last_sale_week: (r) => r.last_sale_week,
+  available_inventory: (r) => (r.available_inventory === null ? null : Math.round(r.available_inventory)),
+  confirmed_inbound: (r) => (r.confirmed_inbound ? Math.round(r.confirmed_inbound) : 0),
+  days_of_cover: (r) => (r.days_of_cover === null ? null : Math.round(r.days_of_cover)),
+};
+
+/** Same figure as the cell prints, for the filter checkbox list's labels. */
+export const NF_FORMATTERS: Record<NfSortKey, (r: NotForecastRow) => string> = {
+  unique_id: (r) => r.unique_id,
+  product_category: (r) => r.product_category ?? "",
+  recent_units: (r) => (r.recent_units ? nf.format(Math.round(r.recent_units)) : ""),
+  weekly_rate: (r) => (r.recent_units ? r.weekly_rate.toFixed(1) : ""),
+  last_sale_week: (r) => r.last_sale_week ?? "",
+  available_inventory: (r) => (r.available_inventory === null ? "" : nf.format(Math.round(r.available_inventory))),
+  confirmed_inbound: (r) => (r.confirmed_inbound ? nf.format(Math.round(r.confirmed_inbound)) : ""),
+  days_of_cover: (r) => (r.days_of_cover === null ? "" : `${Math.round(r.days_of_cover)}d`),
+};
 
 export function nfSortRows(rows: NotForecastRow[], criteria: NfSort[]): NotForecastRow[] {
   if (!criteria.length) return rows;
@@ -103,6 +137,13 @@ export function NotForecastTable({
   skuHref,
   sort = NF_DEFAULT_SORT,
   onSort,
+  visible,
+  onHideColumn,
+  columnFilters = new Map(),
+  openFilterKey = null,
+  onOpenFilterKeyChange,
+  getColumnValues,
+  onColumnFilterChange,
 }: {
   rows: NotForecastRow[];
   /** Builds the detail URL for a row, including the planning parameters the
@@ -110,7 +151,15 @@ export function NotForecastTable({
    *  it: the table stays unaware of what those parameters are. */
   skuHref: (sku: string) => string;
   sort?: NfSort[];
-  onSort?: (key: NfSortKey, shiftKey: boolean) => void;
+  onSort?: (key: NfSortKey, dir: SortDir) => void;
+  /** Optional columns to render. Undefined shows every one. */
+  visible?: Set<NfSortKey>;
+  onHideColumn?: (key: NfSortKey) => void;
+  columnFilters?: Map<NfSortKey, Set<string>>;
+  openFilterKey?: NfSortKey | null;
+  onOpenFilterKeyChange?: (key: NfSortKey | null) => void;
+  getColumnValues?: () => DistinctValue[];
+  onColumnFilterChange?: (key: NfSortKey, next: Set<string> | null) => void;
 }) {
   const { pick } = useI18n();
 
@@ -129,31 +178,50 @@ export function NotForecastTable({
     [pick],
   );
 
-  const icon = (key: NfSortKey) => {
-    const idx = sort.findIndex((c) => c.key === key);
-    if (idx === -1) return <ArrowUpDown className="ml-1 inline h-3 w-3 text-muted-foreground/40" />;
-    const Arrow = sort[idx].dir === "asc" ? ArrowUp : ArrowDown;
+  // Undefined means "no opinion", which is every column, rather than none.
+  const vis = (key: NfSortKey) => !visible || visible.has(key);
+  const bandKeys = (band: "sold" | "stock") =>
+    NF_OPTIONAL_COLUMNS.filter((c) => c.band === band && vis(c.key)).map((c) => c.key);
+  const edge = (band: "sold" | "stock", key: NfSortKey) =>
+    bandKeys(band)[0] === key ? NF_BAND[band].edge : "";
+
+  const th = (key: NfSortKey, label: string, right = false, extra = "") => {
+    const cls = `${TABLE_HEAD_BASE} sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${right ? "text-right" : ""} ${extra}`;
+    if (!onSort) {
+      return (
+        <TableHead className={`sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${right ? "text-right" : ""} ${extra}`}>
+          {label}
+        </TableHead>
+      );
+    }
+    const filterSet = columnFilters.get(key) ?? null;
     return (
-      <span className="ml-1 inline-flex items-center gap-px align-middle">
-        <Arrow className="h-3 w-3" />
-        {sort.length > 1 && (
-          <span className="text-[10.5px] font-semibold leading-none text-primary/70">{idx + 1}</span>
-        )}
-      </span>
+      <ColumnHeaderMenu
+        className={cls}
+        sortDir={sort.find((c) => c.key === key)?.dir ?? null}
+        onSortAsc={() => onSort(key, "asc")}
+        onSortDesc={() => onSort(key, "desc")}
+        filter={
+          onColumnFilterChange && onOpenFilterKeyChange && getColumnValues
+            ? {
+                active: filterSet !== null,
+                committed: filterSet,
+                getValues: () => (openFilterKey === key ? getColumnValues() : []),
+                onApply: (next) => onColumnFilterChange(key, next),
+                onOpenChange: (open) => onOpenFilterKeyChange(open ? key : null),
+              }
+            : undefined
+        }
+        hide={
+          onHideColumn
+            ? { canHide: !NF_NON_HIDEABLE.has(key), onHide: () => onHideColumn(key) }
+            : undefined
+        }
+      >
+        {label}
+      </ColumnHeaderMenu>
     );
   };
-
-  const th = (key: NfSortKey, label: string, right = false, extra = "") => (
-    <TableHead
-      onClick={onSort ? (e) => onSort(key, e.shiftKey) : undefined}
-      className={`sticky ${NAME_ROW_TOP} ${Z.head} h-10 whitespace-nowrap ${
-        right ? "text-right" : ""
-      } ${extra} ${onSort ? "cursor-pointer select-none hover:text-foreground" : ""}`}
-    >
-      {label}
-      {onSort && icon(key)}
-    </TableHead>
-  );
 
   return (
     <div className={`relative ${TABLE_WINDOW} overflow-auto rounded-md border`}>
@@ -161,27 +229,31 @@ export function NotForecastTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className={`sticky left-0 top-0 ${Z.headCorner} ${BAND_ROW_H} ${BAND_ROW_RULE} bg-background`} />
-            <TableHead
-              colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
-            >
-              {h.soldBand}
-            </TableHead>
-            <TableHead
-              colSpan={3}
-              className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
-            >
-              {h.stockBand}
-            </TableHead>
+            {bandKeys("sold").length > 0 && (
+              <TableHead
+                colSpan={bandKeys("sold").length}
+                className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${NF_BAND.sold.head} ${NF_BAND.sold.edge}`}
+              >
+                {h.soldBand}
+              </TableHead>
+            )}
+            {bandKeys("stock").length > 0 && (
+              <TableHead
+                colSpan={bandKeys("stock").length}
+                className={`sticky top-0 ${Z.head} ${BAND_ROW_H} ${BAND_ROW_RULE} text-center text-[11.5px] font-semibold uppercase tracking-wider ${NF_BAND.stock.head} ${NF_BAND.stock.edge}`}
+              >
+                {h.stockBand}
+              </TableHead>
+            )}
           </TableRow>
           <TableRow className="hover:bg-transparent">
             {th("unique_id", h.sku, false, `left-0 ${Z.headCorner} bg-background`)}
-            {th("recent_units", h.demand, true, `${NF_BAND.sold.sub} ${NF_BAND.sold.edge}`)}
-            {th("weekly_rate", h.rate, true, NF_BAND.sold.sub)}
-            {th("last_sale_week", h.lastSale, true, NF_BAND.sold.sub)}
-            {th("available_inventory", h.stock, true, `${NF_BAND.stock.sub} ${NF_BAND.stock.edge}`)}
-            {th("confirmed_inbound", h.inbound, true, NF_BAND.stock.sub)}
-            {th("days_of_cover", h.cover, true, NF_BAND.stock.sub)}
+            {vis("recent_units") && th("recent_units", h.demand, true, `${NF_BAND.sold.sub} ${edge("sold", "recent_units")}`)}
+            {vis("weekly_rate") && th("weekly_rate", h.rate, true, NF_BAND.sold.sub)}
+            {vis("last_sale_week") && th("last_sale_week", h.lastSale, true, NF_BAND.sold.sub)}
+            {vis("available_inventory") && th("available_inventory", h.stock, true, `${NF_BAND.stock.sub} ${edge("stock", "available_inventory")}`)}
+            {vis("confirmed_inbound") && th("confirmed_inbound", h.inbound, true, NF_BAND.stock.sub)}
+            {vis("days_of_cover") && th("days_of_cover", h.cover, true, NF_BAND.stock.sub)}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -208,33 +280,45 @@ export function NotForecastTable({
                     {sub && <span className="block text-[11.5px] text-muted-foreground">{sub}</span>}
                   </Link>
                 </TableCell>
-                <TableCell className={`text-right tabular-nums ${NF_BAND.sold.edge}`}>
-                  {r.recent_units ? nf.format(Math.round(r.recent_units)) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">
-                  {r.recent_units ? r.weekly_rate.toFixed(1) : "—"}
-                </TableCell>
-                <TableCell className="text-right text-[12.5px] tabular-nums text-muted-foreground">
-                  {r.last_sale_week ?? "—"}
-                </TableCell>
+                {vis("recent_units") && (
+                  <TableCell className={`text-right tabular-nums ${edge("sold", "recent_units")}`}>
+                    {r.recent_units ? nf.format(Math.round(r.recent_units)) : "—"}
+                  </TableCell>
+                )}
+                {vis("weekly_rate") && (
+                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                    {r.recent_units ? r.weekly_rate.toFixed(1) : "—"}
+                  </TableCell>
+                )}
+                {vis("last_sale_week") && (
+                  <TableCell className="text-right text-[12.5px] tabular-nums text-muted-foreground">
+                    {r.last_sale_week ?? "—"}
+                  </TableCell>
+                )}
                 {/* Null and zero are shown differently on purpose: an em dash
                     means no inventory record exists, 0 means the record says
                     none. Collapsing them would turn missing data into a fact. */}
-                <TableCell className={`text-right tabular-nums ${NF_BAND.stock.edge}`}>
-                  {r.available_inventory === null ? "—" : nf.format(Math.round(r.available_inventory))}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {r.confirmed_inbound ? nf.format(Math.round(r.confirmed_inbound)) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {r.days_of_cover === null ? (
-                    <span className="text-muted-foreground">—</span>
-                  ) : (
-                    <span className={r.reorder_signal ? "font-semibold text-amber-600 dark:text-amber-400" : ""}>
-                      {Math.round(r.days_of_cover)}d
-                    </span>
-                  )}
-                </TableCell>
+                {vis("available_inventory") && (
+                  <TableCell className={`text-right tabular-nums ${edge("stock", "available_inventory")}`}>
+                    {r.available_inventory === null ? "—" : nf.format(Math.round(r.available_inventory))}
+                  </TableCell>
+                )}
+                {vis("confirmed_inbound") && (
+                  <TableCell className="text-right tabular-nums">
+                    {r.confirmed_inbound ? nf.format(Math.round(r.confirmed_inbound)) : "—"}
+                  </TableCell>
+                )}
+                {vis("days_of_cover") && (
+                  <TableCell className="text-right tabular-nums">
+                    {r.days_of_cover === null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className={r.reorder_signal ? "font-semibold text-amber-600 dark:text-amber-400" : ""}>
+                        {Math.round(r.days_of_cover)}d
+                      </span>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}

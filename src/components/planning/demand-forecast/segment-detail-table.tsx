@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUpDown, ArrowUp, ArrowDown, Check, HelpCircle, Loader2, Square } from "lucide-react";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
@@ -22,6 +21,11 @@ import { apiPath } from "@/lib/api-path";
 import { ModelInfoButton } from "./model-details";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
+import { ColumnPicker, type ColumnPickerColumn } from "@/components/planning/column-picker";
+import {
+  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+} from "@/lib/planning/column-filter";
 
 // ── Smooth row ──────────────────────────────────────────────────────────────
 interface SmoothRow {
@@ -277,34 +281,6 @@ function SimStepProgress({ lines, status }: { lines: string[]; status: SimStatus
 }
 
 type SortCriterion<K> = { key: K; dir: SortDir };
-
-function SortIconSmooth({ col, criteria }: { col: SmoothSortKey; criteria: SortCriterion<SmoothSortKey>[] }) {
-  const idx = criteria.findIndex((c) => c.key === col);
-  if (idx === -1) return <ArrowUpDown className="ml-1 inline h-3 w-3 text-muted-foreground/50" />;
-  const Arrow = criteria[idx].dir === "asc" ? ArrowUp : ArrowDown;
-  return (
-    <span className="ml-1 inline-flex items-center gap-px align-middle">
-      <Arrow className="h-3 w-3 text-foreground" />
-      {criteria.length > 1 && (
-        <span className="text-[9px] font-semibold leading-none text-primary/60">{idx + 1}</span>
-      )}
-    </span>
-  );
-}
-
-function SortIconInter({ col, criteria }: { col: IntermittentSortKey; criteria: SortCriterion<IntermittentSortKey>[] }) {
-  const idx = criteria.findIndex((c) => c.key === col);
-  if (idx === -1) return <ArrowUpDown className="ml-1 inline h-3 w-3 text-muted-foreground/50" />;
-  const Arrow = criteria[idx].dir === "asc" ? ArrowUp : ArrowDown;
-  return (
-    <span className="ml-1 inline-flex items-center gap-px align-middle">
-      <Arrow className="h-3 w-3 text-foreground" />
-      {criteria.length > 1 && (
-        <span className="text-[9px] font-semibold leading-none text-primary/60">{idx + 1}</span>
-      )}
-    </span>
-  );
-}
 
 // ── Week selector (shared) ──────────────────────────────────────────────────
 function WeekSelector({
@@ -832,6 +808,82 @@ function ConfidenceHeaderTip() {
 }
 
 // ── Smooth table ────────────────────────────────────────────────────────────
+
+/** `ColumnHeaderMenu` renders a bare `<th>`, not the styled `TableHead`
+ *  primitive it replaces on sortable columns, so this table's headers carry
+ *  the same base look `TableHead` would otherwise have supplied. */
+const TABLE_HEAD_BASE =
+  "text-foreground px-2 text-left align-middle font-medium [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]";
+
+/** Only SKU is non-hideable: it is the row's identity and click target. */
+const SMOOTH_NON_HIDEABLE = new Set<SmoothSortKey>(["unique_id"]);
+
+/** Columns the new generic Hide-column menu can act on: the ones that always
+ *  render for a given segment/mode. The forecast-range columns (Low/Mid/High,
+ *  all keyed `yhat_total`) and the V1-comparison columns are left out on
+ *  purpose — they're already controlled by the "열 표시" Popover above the
+ *  table, and giving them a second, independent visibility switch would let
+ *  the two disagree about whether a column is shown. */
+const SMOOTH_OPTIONAL_COLUMNS: ColumnPickerColumn<SmoothSortKey>[] = [
+  { key: "selected_model", label: ["모델", "Model"] },
+  { key: "confidence", label: ["신뢰도", "Confidence"] },
+  { key: "train_wape", label: ["학습 WAPE", "Train WAPE"] },
+  { key: "active_weeks", label: ["이력 주 수", "Weeks of history"] },
+  { key: "weeks_to_graduation", label: ["전체 이력까지", "Weeks to full history"] },
+  { key: "demand_total", label: ["수요", "Demand"] },
+  { key: "wape", label: ["WAPE", "WAPE"] },
+];
+const SMOOTH_ALL_COLUMNS: SmoothSortKey[] = [
+  "unique_id",
+  ...SMOOTH_OPTIONAL_COLUMNS.map((c) => c.key),
+];
+
+const SMOOTH_ACCESSORS: Record<SmoothSortKey, (r: SmoothRow) => unknown> = {
+  unique_id: (r) => r.unique_id,
+  selected_model: (r) => r.selected_model,
+  confidence: (r) => r.confidence,
+  train_wape: (r) => r.train_wape,
+  yhat_total: (r) => r.yhat_total,
+  demand_total: (r) => r.demand_total,
+  active_weeks: (r) => r.active_weeks,
+  weeks_to_graduation: (r) => r.weeks_to_graduation,
+  wape: (r) => (r.demand_total > 0 ? Number((Math.abs(r.yhat_total - r.demand_total) / r.demand_total).toFixed(3)) : null),
+  v1_yhat_total: (r) => r.v1_yhat_total,
+  v1_wape: (r) =>
+    r.v1_yhat_total != null && r.demand_total > 0
+      ? Number((Math.abs(r.v1_yhat_total - r.demand_total) / r.demand_total).toFixed(3))
+      : null,
+  wape_diff: (r) => {
+    const mw = r.demand_total > 0 ? Math.abs(r.yhat_total - r.demand_total) / r.demand_total : null;
+    const vw = r.v1_yhat_total != null && r.demand_total > 0 ? Math.abs(r.v1_yhat_total - r.demand_total) / r.demand_total : null;
+    return mw != null && vw != null ? Number((mw - vw).toFixed(3)) : null;
+  },
+};
+
+const SMOOTH_FORMATTERS: Record<SmoothSortKey, (r: SmoothRow) => string> = {
+  unique_id: (r) => r.unique_id,
+  selected_model: (r) => r.selected_model,
+  confidence: (r) => r.confidence,
+  train_wape: (r) => (r.train_wape !== null ? `${(r.train_wape * 100).toFixed(1)}%` : ""),
+  yhat_total: (r) => fmt.format(r.yhat_total),
+  demand_total: (r) => fmt.format(r.demand_total),
+  active_weeks: (r) => (r.active_weeks !== null ? String(r.active_weeks) : ""),
+  weeks_to_graduation: (r) => (r.weeks_to_graduation !== null ? String(r.weeks_to_graduation) : ""),
+  wape: (r) =>
+    r.demand_total > 0 ? `${(Math.abs(r.yhat_total - r.demand_total) / r.demand_total * 100).toFixed(0)}%` : "",
+  v1_yhat_total: (r) => (r.v1_yhat_total !== null ? fmt.format(r.v1_yhat_total) : ""),
+  v1_wape: (r) =>
+    r.v1_yhat_total != null && r.demand_total > 0
+      ? `${(Math.abs(r.v1_yhat_total - r.demand_total) / r.demand_total * 100).toFixed(0)}%`
+      : "",
+  wape_diff: (r) => {
+    const mw = r.demand_total > 0 ? Math.abs(r.yhat_total - r.demand_total) / r.demand_total : null;
+    const vw = r.v1_yhat_total != null && r.demand_total > 0 ? Math.abs(r.v1_yhat_total - r.demand_total) / r.demand_total : null;
+    const diff = mw != null && vw != null ? mw - vw : null;
+    return diff != null ? `${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(0)}%` : "";
+  },
+};
+
 function SmoothTable({
   segment,
   rows,
@@ -863,7 +915,6 @@ function SmoothTable({
   const { pick } = useI18n();
   const isShortHistory = segment === "smooth_short";
 
-  const defaultAscSmooth: SmoothSortKey[] = ["unique_id", "selected_model", "weeks_to_graduation", "confidence"];
   const [sortCriteria, setSortCriteria] = useState<SortCriterion<SmoothSortKey>[]>([
     { key: isShortHistory ? "weeks_to_graduation" : "yhat_total", dir: isShortHistory ? "asc" : "desc" },
   ]);
@@ -871,25 +922,85 @@ function SmoothTable({
   const [page, setPage]         = useState(0);
   const [skuSearch, setSkuSearch] = useState(initialSku ?? "");
   const [colsOpen, setColsOpen]   = useState(false);
+  const [visible, setVisible] = useState<Set<SmoothSortKey>>(() => new Set(SMOOTH_ALL_COLUMNS));
+  const [columnFilters, setColumnFilters] = useState<Map<SmoothSortKey, Set<string>>>(new Map());
+  const [openFilterKey, setOpenFilterKey] = useState<SmoothSortKey | null>(null);
 
   useEffect(() => {
     if (initialSku) { setSkuSearch(initialSku); setPage(0); }
   }, [initialSku]);
 
-  const filteredRows = skuSearch.trim()
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("planning:demand-forecast:segment-detail:smooth:columns");
+      if (!raw) return;
+      const saved = (JSON.parse(raw) as string[]).filter((k) =>
+        (SMOOTH_ALL_COLUMNS as string[]).includes(k),
+      ) as SmoothSortKey[];
+      if (saved.length > 0) queueMicrotask(() => setVisible(new Set(saved)));
+    } catch {
+      // Corrupt or unavailable store: default to every column, unchanged.
+    }
+  }, []);
+
+  const changeVisible = useCallback((next: Set<SmoothSortKey>) => {
+    setVisible(next);
+    try {
+      window.localStorage.setItem("planning:demand-forecast:segment-detail:smooth:columns", JSON.stringify([...next]));
+    } catch {
+      // Losing the preference is a smaller problem than failing the
+      // interaction that set it.
+    }
+  }, []);
+
+  const hideColumn = useCallback((key: SmoothSortKey) => {
+    setVisible((prev) => {
+      if (prev.size <= 1) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      try {
+        window.localStorage.setItem("planning:demand-forecast:segment-detail:smooth:columns", JSON.stringify([...next]));
+      } catch {
+        // See changeVisible above.
+      }
+      return next;
+    });
+  }, []);
+
+  const onColumnFilterChange = useCallback((key: SmoothSortKey, next: Set<string> | null) => {
+    setColumnFilters((prev) => {
+      const m = new Map(prev);
+      if (next === null) m.delete(key);
+      else m.set(key, next);
+      return m;
+    });
+  }, []);
+
+  const vis = (key: SmoothSortKey) => visible.has(key);
+
+  const searchedRows = skuSearch.trim()
     ? rows.filter((r) => r.unique_id.toLowerCase().includes(skuSearch.trim().toLowerCase()))
     : rows;
 
-  function handleSort(key: SmoothSortKey, shiftKey: boolean) {
-    setSortCriteria((prev) => {
-      const idx = prev.findIndex((c) => c.key === key);
-      if (shiftKey) {
-        if (idx !== -1) return prev.map((c, i) => i === idx ? { ...c, dir: c.dir === "asc" ? "desc" : "asc" } : c);
-        return [...prev, { key, dir: defaultAscSmooth.includes(key) ? "asc" : "desc" }];
-      }
-      if (idx !== -1) return [{ key, dir: prev[idx].dir === "asc" ? "desc" : "asc" }];
-      return [{ key, dir: defaultAscSmooth.includes(key) ? "asc" : "desc" }];
-    });
+  const filteredRows = useMemo(
+    () => applyColumnFilters(searchedRows, columnFilters, SMOOTH_ACCESSORS),
+    [searchedRows, columnFilters],
+  );
+
+  const columnValuesForOpenKey = useMemo((): DistinctValue[] => {
+    if (!openFilterKey) return [];
+    return distinctColumnValuesExcluding(
+      searchedRows,
+      columnFilters,
+      SMOOTH_ACCESSORS,
+      SMOOTH_FORMATTERS,
+      openFilterKey,
+      pick("(공백)", "(Blank)"),
+    );
+  }, [openFilterKey, searchedRows, columnFilters, pick]);
+
+  function handleSort(key: SmoothSortKey, dir: SortDir) {
+    setSortCriteria([{ key, dir }]);
     setPage(() => 0);
   }
 
@@ -929,14 +1040,28 @@ function SmoothTable({
   const pageRows   = sorted.slice(page * pageSize, (page + 1) * pageSize);
 
   function Th({ col, label, right, width }: { col: SmoothSortKey; label: React.ReactNode; right?: boolean; width?: string }) {
+    const filterSet = columnFilters.get(col) ?? null;
     return (
-      <TableHead
-        className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""} ${width ?? ""}`}
-        onClick={(e) => handleSort(col, e.shiftKey)}
+      <ColumnHeaderMenu
+        className={`${TABLE_HEAD_BASE} whitespace-nowrap ${right ? "text-right" : ""} ${width ?? ""}`}
+        sortDir={sortCriteria.find((c) => c.key === col)?.dir ?? null}
+        onSortAsc={() => handleSort(col, "asc")}
+        onSortDesc={() => handleSort(col, "desc")}
+        filter={{
+          active: filterSet !== null,
+          committed: filterSet,
+          getValues: () => (openFilterKey === col ? columnValuesForOpenKey : []),
+          onApply: (next) => onColumnFilterChange(col, next),
+          onOpenChange: (open) => setOpenFilterKey(open ? col : null),
+        }}
+        hide={
+          SMOOTH_ALL_COLUMNS.includes(col)
+            ? { canHide: !SMOOTH_NON_HIDEABLE.has(col), onHide: () => hideColumn(col) }
+            : undefined
+        }
       >
         {label}
-        <SortIconSmooth col={col} criteria={sortCriteria} />
-      </TableHead>
+      </ColumnHeaderMenu>
     );
   }
 
@@ -954,11 +1079,9 @@ function SmoothTable({
           {skuSearch.trim() && (
             <span className="text-xs text-muted-foreground">{pick(`${rows.length}개 중 ${filteredRows.length}개`, `${filteredRows.length} of ${rows.length} SKUs`)}</span>
           )}
-          {sortCriteria.length > 1 && (
-            <span className="text-[10px] text-muted-foreground/60">{pick(`${sortCriteria.length}개 열 정렬 중`, `${sortCriteria.length} columns sorted`)}</span>
-          )}
         </div>
         <div className="flex items-center gap-2">
+          <ColumnPicker columns={SMOOTH_OPTIONAL_COLUMNS} visible={visible} onChange={changeVisible} />
           {<Popover open={colsOpen} onOpenChange={setColsOpen}>
             <PopoverTrigger asChild>
               <button className="rounded border bg-background px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
@@ -1009,7 +1132,7 @@ function SmoothTable({
 
       <div className="flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground/70 select-none">
-          {pick("Shift+클릭으로 여러 열 동시 정렬", "Shift+click column headers to sort by multiple columns")}
+          {pick("열 제목을 우클릭해 정렬·필터·숨기기", "Right-click a column header to sort, filter, or hide it")}
         </p>
         {forecastRunDate && (
           <p className="text-[11px] text-muted-foreground/70 select-none">
@@ -1024,8 +1147,8 @@ function SmoothTable({
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
               <Th col="unique_id"      label="SKU" width="w-52" />
-              {(!isShortHistory || mode === "simulation") && <Th col="selected_model" label={pick("모델", "Model")} />}
-              {!isShortHistory && mode === "forward" && (
+              {(!isShortHistory || mode === "simulation") && vis("selected_model") && <Th col="selected_model" label={pick("모델", "Model")} />}
+              {!isShortHistory && mode === "forward" && vis("confidence") && (
                 <Th col="confidence" width="w-32" label={
                   <span className="inline-flex items-center gap-1">
                     {pick("신뢰도", "Confidence")}
@@ -1035,17 +1158,17 @@ function SmoothTable({
                   </span>
                 } />
               )}
-              {!isShortHistory && mode === "forward" && (
+              {!isShortHistory && mode === "forward" && vis("train_wape") && (
                 <Th col="train_wape" label={pick("학습 WAPE", "Train WAPE")} right width="w-28" />
               )}
-              <Th col="active_weeks" label={pick("이력 주 수", "Weeks of history")} right width="w-36" />
-              {isShortHistory && <Th col="weeks_to_graduation" label={pick("전체 이력까지", "Weeks to full history")} right width="w-44" />}
-              <Th col="demand_total" label={(mode === "backtest" || mode === "simulation") ? pick("실제", "Actual") : pick(`${weeks}주 수요`, `${weeks}W Demand`)}   right width="w-28" />
+              {vis("active_weeks") && <Th col="active_weeks" label={pick("이력 주 수", "Weeks of history")} right width="w-36" />}
+              {isShortHistory && vis("weeks_to_graduation") && <Th col="weeks_to_graduation" label={pick("전체 이력까지", "Weeks to full history")} right width="w-44" />}
+              {vis("demand_total") && <Th col="demand_total" label={(mode === "backtest" || mode === "simulation") ? pick("실제", "Actual") : pick(`${weeks}주 수요`, `${weeks}W Demand`)}   right width="w-28" />}
               {showLo && <Th col="yhat_total" label={pick("하한", "Low")} right width="w-24" />}
               {showPt && <Th col="yhat_total" label={(mode === "backtest" || mode === "simulation") ? pick("예측", "Forecast") : pick(`${weeks}주 예측`, `${weeks}W Forecast`)} right width="w-32" />}
               {showHi && <Th col="yhat_total" label={pick("상한", "High")} right width="w-24" />}
               {(mode === "backtest" || mode === "simulation") && showV1Forecast && <Th col="v1_yhat_total" label={pick("V1 예측", "V1 Forecast")} right width="w-28" />}
-              {(mode === "backtest" || mode === "simulation") && <Th col="wape" label="WAPE" right width="w-24" />}
+              {(mode === "backtest" || mode === "simulation") && vis("wape") && <Th col="wape" label="WAPE" right width="w-24" />}
               {(mode === "backtest" || mode === "simulation") && showV1Wape && <Th col="v1_wape" label="V1 WAPE" right width="w-28" />}
               {(mode === "backtest" || mode === "simulation") && showV1Diff && <Th col="wape_diff" label={pick("차이", "Diff")} right width="w-24" />}
             </TableRow>
@@ -1060,19 +1183,19 @@ function SmoothTable({
                 <TableCell className="truncate font-mono text-xs text-primary">
                   {row.unique_id}
                 </TableCell>
-                {(!isShortHistory || mode === "simulation") && (
+                {(!isShortHistory || mode === "simulation") && vis("selected_model") && (
                   <TableCell className="text-xs text-muted-foreground">
                     {row.selected_model}
                   </TableCell>
                 )}
-                {!isShortHistory && mode === "forward" && (
+                {!isShortHistory && mode === "forward" && vis("confidence") && (
                   <TableCell>
                     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${CONF_STYLES[row.confidence] ?? "bg-muted text-muted-foreground border"}`}>
                       {row.confidence}
                     </span>
                   </TableCell>
                 )}
-                {!isShortHistory && mode === "forward" && (
+                {!isShortHistory && mode === "forward" && vis("train_wape") && (
                   <TableCell className="text-right tabular-nums text-xs">
                     {row.train_wape !== null
                       ? <span className={row.confidence === "low" ? "text-red-600 font-medium" : "text-foreground"}>
@@ -1081,10 +1204,12 @@ function SmoothTable({
                       : <span className="text-muted-foreground/50">—</span>}
                   </TableCell>
                 )}
-                <TableCell className="text-right tabular-nums text-sm">
-                  {row.active_weeks ?? "—"}
-                </TableCell>
-                {isShortHistory && (
+                {vis("active_weeks") && (
+                  <TableCell className="text-right tabular-nums text-sm">
+                    {row.active_weeks ?? "—"}
+                  </TableCell>
+                )}
+                {isShortHistory && vis("weeks_to_graduation") && (
                   <TableCell className="text-right tabular-nums text-sm">
                     {row.weeks_to_graduation !== null ? (
                       row.weeks_to_graduation === 0 ? (
@@ -1099,9 +1224,11 @@ function SmoothTable({
                     ) : "—"}
                   </TableCell>
                 )}
-                <TableCell className="text-right tabular-nums text-sm">
-                  {fmt.format(row.demand_total)}
-                </TableCell>
+                {vis("demand_total") && (
+                  <TableCell className="text-right tabular-nums text-sm">
+                    {fmt.format(row.demand_total)}
+                  </TableCell>
+                )}
                 {showLo && (
                   <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
                     {row.yhat_lo_total !== null ? fmt.format(row.yhat_lo_total) : "—"}
@@ -1130,7 +1257,7 @@ function SmoothTable({
                     {row.v1_yhat_total !== null ? fmt.format(row.v1_yhat_total) : "—"}
                   </TableCell>
                 )}
-                {(mode === "backtest" || mode === "simulation") && (
+                {(mode === "backtest" || mode === "simulation") && vis("wape") && (
                   <TableCell className="text-right tabular-nums text-sm">
                     {row.demand_total > 0
                       ? `${(Math.abs(row.yhat_total - row.demand_total) / row.demand_total * 100).toFixed(0)}%`
@@ -1174,6 +1301,39 @@ function SmoothTable({
 }
 
 // ── Intermittent table ──────────────────────────────────────────────────────
+
+const INTER_NON_HIDEABLE = new Set<IntermittentSortKey>(["unique_id"]);
+
+const INTER_OPTIONAL_COLUMNS: ColumnPickerColumn<IntermittentSortKey>[] = [
+  { key: "units_recent", label: ["기간 수량", "Units"] },
+  { key: "last_sale_week", label: ["마지막 판매일", "Last sale date"] },
+  { key: "weeks_since_last_sale", label: ["마지막 판매 이후 주 수", "Weeks since last sale"] },
+  { key: "event_count", label: ["이벤트 횟수", "Event count"] },
+  { key: "avg_units_per_event", label: ["이벤트당 평균 수량", "Avg units / event"] },
+];
+const INTER_ALL_COLUMNS: IntermittentSortKey[] = [
+  "unique_id",
+  ...INTER_OPTIONAL_COLUMNS.map((c) => c.key),
+];
+
+const INTER_ACCESSORS: Record<IntermittentSortKey, (r: IntermittentRow) => unknown> = {
+  unique_id: (r) => r.unique_id,
+  units_recent: (r) => r.units_recent,
+  last_sale_week: (r) => r.last_sale_week,
+  weeks_since_last_sale: (r) => r.weeks_since_last_sale,
+  event_count: (r) => r.event_count,
+  avg_units_per_event: (r) => (r.avg_units_per_event !== null ? Number(r.avg_units_per_event.toFixed(1)) : null),
+};
+
+const INTER_FORMATTERS: Record<IntermittentSortKey, (r: IntermittentRow) => string> = {
+  unique_id: (r) => r.unique_id,
+  units_recent: (r) => fmt.format(r.units_recent),
+  last_sale_week: (r) => (r.last_sale_week ? fmtDate(r.last_sale_week) : ""),
+  weeks_since_last_sale: (r) => (r.weeks_since_last_sale !== null ? String(r.weeks_since_last_sale) : ""),
+  event_count: (r) => (r.event_count !== null ? fmt.format(r.event_count) : ""),
+  avg_units_per_event: (r) => (r.avg_units_per_event !== null ? fmtDec.format(r.avg_units_per_event) : ""),
+};
+
 function IntermittentTable({
   rows,
   weeks,
@@ -1194,26 +1354,85 @@ function IntermittentTable({
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage]         = useState(0);
   const [skuSearch, setSkuSearch] = useState(initialSku ?? "");
+  const [visible, setVisible] = useState<Set<IntermittentSortKey>>(() => new Set(INTER_ALL_COLUMNS));
+  const [columnFilters, setColumnFilters] = useState<Map<IntermittentSortKey, Set<string>>>(new Map());
+  const [openFilterKey, setOpenFilterKey] = useState<IntermittentSortKey | null>(null);
 
   useEffect(() => {
     if (initialSku) { setSkuSearch(initialSku); setPage(0); }
   }, [initialSku]);
 
-  const filteredRows = skuSearch.trim()
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("planning:demand-forecast:segment-detail:intermittent:columns");
+      if (!raw) return;
+      const saved = (JSON.parse(raw) as string[]).filter((k) =>
+        (INTER_ALL_COLUMNS as string[]).includes(k),
+      ) as IntermittentSortKey[];
+      if (saved.length > 0) queueMicrotask(() => setVisible(new Set(saved)));
+    } catch {
+      // Corrupt or unavailable store: default to every column, unchanged.
+    }
+  }, []);
+
+  const changeVisible = useCallback((next: Set<IntermittentSortKey>) => {
+    setVisible(next);
+    try {
+      window.localStorage.setItem("planning:demand-forecast:segment-detail:intermittent:columns", JSON.stringify([...next]));
+    } catch {
+      // Losing the preference is a smaller problem than failing the
+      // interaction that set it.
+    }
+  }, []);
+
+  const hideColumn = useCallback((key: IntermittentSortKey) => {
+    setVisible((prev) => {
+      if (prev.size <= 1) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      try {
+        window.localStorage.setItem("planning:demand-forecast:segment-detail:intermittent:columns", JSON.stringify([...next]));
+      } catch {
+        // See changeVisible above.
+      }
+      return next;
+    });
+  }, []);
+
+  const onColumnFilterChange = useCallback((key: IntermittentSortKey, next: Set<string> | null) => {
+    setColumnFilters((prev) => {
+      const m = new Map(prev);
+      if (next === null) m.delete(key);
+      else m.set(key, next);
+      return m;
+    });
+  }, []);
+
+  const vis = (key: IntermittentSortKey) => visible.has(key);
+
+  const searchedRows = skuSearch.trim()
     ? rows.filter((r) => r.unique_id.toLowerCase().includes(skuSearch.trim().toLowerCase()))
     : rows;
 
-  function handleSort(key: IntermittentSortKey, shiftKey: boolean) {
-    setSortCriteria((prev) => {
-      const idx = prev.findIndex((c) => c.key === key);
-      const defaultDir: SortDir = key === "unique_id" ? "asc" : "desc";
-      if (shiftKey) {
-        if (idx !== -1) return prev.map((c, i) => i === idx ? { ...c, dir: c.dir === "asc" ? "desc" : "asc" } : c);
-        return [...prev, { key, dir: defaultDir }];
-      }
-      if (idx !== -1) return [{ key, dir: prev[idx].dir === "asc" ? "desc" : "asc" }];
-      return [{ key, dir: defaultDir }];
-    });
+  const filteredRows = useMemo(
+    () => applyColumnFilters(searchedRows, columnFilters, INTER_ACCESSORS),
+    [searchedRows, columnFilters],
+  );
+
+  const columnValuesForOpenKey = useMemo((): DistinctValue[] => {
+    if (!openFilterKey) return [];
+    return distinctColumnValuesExcluding(
+      searchedRows,
+      columnFilters,
+      INTER_ACCESSORS,
+      INTER_FORMATTERS,
+      openFilterKey,
+      pick("(공백)", "(Blank)"),
+    );
+  }, [openFilterKey, searchedRows, columnFilters, pick]);
+
+  function handleSort(key: IntermittentSortKey, dir: SortDir) {
+    setSortCriteria([{ key, dir }]);
     setPage(() => 0);
   }
 
@@ -1243,14 +1462,24 @@ function IntermittentTable({
   const pageRows   = sorted.slice(page * pageSize, (page + 1) * pageSize);
 
   function Th({ col, label, right, width }: { col: IntermittentSortKey; label: string; right?: boolean; width?: string }) {
+    const filterSet = columnFilters.get(col) ?? null;
     return (
-      <TableHead
-        className={`cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : ""} ${width ?? ""}`}
-        onClick={(e) => handleSort(col, e.shiftKey)}
+      <ColumnHeaderMenu
+        className={`${TABLE_HEAD_BASE} whitespace-nowrap ${right ? "text-right" : ""} ${width ?? ""}`}
+        sortDir={sortCriteria.find((c) => c.key === col)?.dir ?? null}
+        onSortAsc={() => handleSort(col, "asc")}
+        onSortDesc={() => handleSort(col, "desc")}
+        filter={{
+          active: filterSet !== null,
+          committed: filterSet,
+          getValues: () => (openFilterKey === col ? columnValuesForOpenKey : []),
+          onApply: (next) => onColumnFilterChange(col, next),
+          onOpenChange: (open) => setOpenFilterKey(open ? col : null),
+        }}
+        hide={{ canHide: !INTER_NON_HIDEABLE.has(col), onHide: () => hideColumn(col) }}
       >
         {label}
-        <SortIconInter col={col} criteria={sortCriteria} />
-      </TableHead>
+      </ColumnHeaderMenu>
     );
   }
 
@@ -1267,9 +1496,7 @@ function IntermittentTable({
         {skuSearch.trim() && (
           <span className="text-xs text-muted-foreground">{pick(`${rows.length}개 중 ${filteredRows.length}개`, `${filteredRows.length} of ${rows.length} SKUs`)}</span>
         )}
-        {sortCriteria.length > 1 && (
-          <span className="text-[10px] text-muted-foreground/60">{pick(`${sortCriteria.length}개 열 정렬 중`, `${sortCriteria.length} columns sorted`)}</span>
-        )}
+        <ColumnPicker columns={INTER_OPTIONAL_COLUMNS} visible={visible} onChange={changeVisible} />
       </div>
 
       <Pagination
@@ -1283,7 +1510,7 @@ function IntermittentTable({
 
       <div className="flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground/70 select-none">
-          {pick("Shift+클릭으로 여러 열 동시 정렬", "Shift+click column headers to sort by multiple columns")}
+          {pick("열 제목을 우클릭해 정렬·필터·숨기기", "Right-click a column header to sort, filter, or hide it")}
         </p>
         {forecastRunDate && (
           <p className="text-[11px] text-muted-foreground/70 select-none">
@@ -1298,11 +1525,11 @@ function IntermittentTable({
           <TableHeader className="sticky top-14 z-10 bg-background">
             <TableRow>
               <Th col="unique_id"             label="SKU" width="w-52" />
-              <Th col="units_recent"          label={pick(`${weeks}주 수량`, `${weeks}W Units`)} right width="w-28" />
-              <Th col="last_sale_week"        label={pick("마지막 판매일", "Last sale date")} right width="w-36" />
-              <Th col="weeks_since_last_sale" label={pick("마지막 판매 이후 주 수", "Weeks since last sale")} right width="w-48" />
-              <Th col="event_count"           label={pick("이벤트 횟수", "Event count")} right width="w-32" />
-              <Th col="avg_units_per_event"   label={pick("이벤트당 평균 수량", "Avg units / event")} right width="w-40" />
+              {vis("units_recent") && <Th col="units_recent"          label={pick(`${weeks}주 수량`, `${weeks}W Units`)} right width="w-28" />}
+              {vis("last_sale_week") && <Th col="last_sale_week"        label={pick("마지막 판매일", "Last sale date")} right width="w-36" />}
+              {vis("weeks_since_last_sale") && <Th col="weeks_since_last_sale" label={pick("마지막 판매 이후 주 수", "Weeks since last sale")} right width="w-48" />}
+              {vis("event_count") && <Th col="event_count"           label={pick("이벤트 횟수", "Event count")} right width="w-32" />}
+              {vis("avg_units_per_event") && <Th col="avg_units_per_event"   label={pick("이벤트당 평균 수량", "Avg units / event")} right width="w-40" />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1315,25 +1542,35 @@ function IntermittentTable({
                 <TableCell className="truncate font-mono text-xs text-primary">
                   {row.unique_id}
                 </TableCell>
-                <TableCell className="text-right tabular-nums text-sm">
-                  {fmt.format(row.units_recent)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                  {row.last_sale_week ? fmtDate(row.last_sale_week) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-sm">
-                  {row.weeks_since_last_sale !== null ? (
-                    <span className={row.weeks_since_last_sale > 26 ? "text-red-600 font-medium" : row.weeks_since_last_sale > 13 ? "text-amber-600" : ""}>
-                      {row.weeks_since_last_sale}
-                    </span>
-                  ) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                  {row.event_count !== null ? fmt.format(row.event_count) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                  {row.avg_units_per_event !== null ? fmtDec.format(row.avg_units_per_event) : "—"}
-                </TableCell>
+                {vis("units_recent") && (
+                  <TableCell className="text-right tabular-nums text-sm">
+                    {fmt.format(row.units_recent)}
+                  </TableCell>
+                )}
+                {vis("last_sale_week") && (
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {row.last_sale_week ? fmtDate(row.last_sale_week) : "—"}
+                  </TableCell>
+                )}
+                {vis("weeks_since_last_sale") && (
+                  <TableCell className="text-right tabular-nums text-sm">
+                    {row.weeks_since_last_sale !== null ? (
+                      <span className={row.weeks_since_last_sale > 26 ? "text-red-600 font-medium" : row.weeks_since_last_sale > 13 ? "text-amber-600" : ""}>
+                        {row.weeks_since_last_sale}
+                      </span>
+                    ) : "—"}
+                  </TableCell>
+                )}
+                {vis("event_count") && (
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {row.event_count !== null ? fmt.format(row.event_count) : "—"}
+                  </TableCell>
+                )}
+                {vis("avg_units_per_event") && (
+                  <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+                    {row.avg_units_per_event !== null ? fmtDec.format(row.avg_units_per_event) : "—"}
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
