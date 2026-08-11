@@ -36,6 +36,23 @@ describe("PlanningDashboardRepository.listSkuNotes", () => {
   });
 });
 
+describe("PlanningDashboardRepository SKU work notes", () => {
+  it("reads shared workflow labels from their separate table", async () => {
+    poolQueryMock.mockResolvedValue({ rows: [{ master_sku: "SKU-1", note: "Checked" }] });
+    await expect(PlanningDashboardRepository.listSkuWorkNotes())
+      .resolves.toEqual([{ masterSku: "SKU-1", note: "Checked" }]);
+    expect(poolQueryMock.mock.calls[0][0]).toContain("fc_planning_sku_work_notes");
+  });
+
+  it("upserts and deletes a work note by SKU", async () => {
+    poolQueryMock.mockResolvedValue({ rows: [] });
+    await PlanningDashboardRepository.upsertSkuWorkNote("SKU-1", "Hold", "u1");
+    expect(poolQueryMock.mock.calls[0][0]).toContain("ON CONFLICT (master_sku)");
+    await PlanningDashboardRepository.deleteSkuWorkNote("SKU-1");
+    expect(poolQueryMock.mock.calls[1][0]).toContain("DELETE FROM shipcore.fc_planning_sku_work_notes");
+  });
+});
+
 describe("PlanningDashboardRepository.getProductCbmForUpdate", () => {
   it("returns null when the product has no cbm on file", async () => {
     clientQueryMock.mockResolvedValue({ rows: [{ cbm_per_unit: null }] });

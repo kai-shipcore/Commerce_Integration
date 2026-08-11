@@ -140,6 +140,7 @@ export const ALL_COLS: ColDef[] = [
   { id: "row_num",   grp: "fix", label: "#",                w: 36,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
   { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 190, align: "left", tint: "",        gh: "gh-fix",    fontSize: 10, val: (r) => r.container_info || "" },
   { id: "cbm",       grp: "fix", label: "CBM",              w: 56,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "", sortVal: (r) => r.cbm_per_unit ?? -1 },
+  { id: "workflow_note", grp: "fix", label: "Note",          w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note ?? "", sortVal: (r) => r.workflow_note ?? "" },
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }), sortVal: (r) => r.sku },
@@ -219,7 +220,7 @@ export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
 ];
 
 export const COMPACT_COLUMN_IDS = new Set<string>([
-  "back","status","sku","west","east","total",
+  "workflow_note","back","status","sku","west","east","total",
   "tavg_p","tavg_r","tavg_c","inb_qty","inb_lst","next_eta","sod",
 ]);
 

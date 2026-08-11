@@ -70,6 +70,8 @@ export interface DemandPlanningGridProps {
   cellTextFormats?: CellTextFormatSettings;
   skuCellNotes?: Record<string, string>;
   onSkuCellNoteChange?: (sku: string, note: string) => void | Promise<void>;
+  skuWorkNotes?: Record<string, string>;
+  onSkuWorkNoteChange?: (sku: string, note: string) => void | Promise<void>;
   canEditSkuNotes?: boolean;
   canEditPlanning?: boolean;
   selectedCellKeys?: string[];

@@ -5,6 +5,9 @@ const repositoryMock = {
   listSkuNotes: vi.fn(),
   deleteSkuNote: vi.fn(),
   upsertSkuNote: vi.fn(),
+  listSkuWorkNotes: vi.fn(),
+  deleteSkuWorkNote: vi.fn(),
+  upsertSkuWorkNote: vi.fn(),
   getProductCbmForUpdate: vi.fn(),
   updateProductCbm: vi.fn(),
   cascadeContainerItemsCbm: vi.fn(),
@@ -56,6 +59,27 @@ describe("PlanningDashboardService.setSkuNote", () => {
     const result = await PlanningDashboardService.setSkuNote("SKU-1", " hello ", "u1");
     expect(repositoryMock.upsertSkuNote).toHaveBeenCalledWith("SKU-1", "hello", "u1");
     expect(result).toEqual({ sku: "SKU-1", note: "hello" });
+  });
+});
+
+describe("PlanningDashboardService SKU work notes", () => {
+  it("maps work notes by master SKU", async () => {
+    repositoryMock.listSkuWorkNotes.mockResolvedValue([{ masterSku: "SKU-1", note: "Checked" }]);
+    await expect(PlanningDashboardService.getSkuWorkNotes()).resolves.toEqual({ "SKU-1": "Checked" });
+  });
+
+  it("normalizes a work note to one line before saving", async () => {
+    const result = await PlanningDashboardService.setSkuWorkNote(" SKU-1 ", " Hold\nRecheck ", "u1");
+    expect(repositoryMock.upsertSkuWorkNote).toHaveBeenCalledWith("SKU-1", "Hold Recheck", "u1");
+    expect(result).toEqual({ sku: "SKU-1", note: "Hold Recheck" });
+  });
+
+  it("deletes an empty work note and limits its length", async () => {
+    await expect(PlanningDashboardService.setSkuWorkNote("SKU-1", " ", "u1"))
+      .resolves.toEqual({ sku: "SKU-1", note: "" });
+    expect(repositoryMock.deleteSkuWorkNote).toHaveBeenCalledWith("SKU-1");
+    await expect(PlanningDashboardService.setSkuWorkNote("SKU-1", "x".repeat(201), "u1"))
+      .rejects.toThrow("Work note is too long");
   });
 });
 

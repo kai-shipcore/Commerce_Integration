@@ -1,9 +1,10 @@
 /**
  * Pure data access for the pieces of the Demand Planning dashboard
  * (`/planning/dashboard-ag-grid`) that this app owns outright: shared
- * master-SKU notes (fc_planning_sku_notes), the CBM-per-unit inline editor
- * (fc_products, cascading to fc_container_items), and the read-only OOS
- * lost-demand-weight preview (fc_velocity_link_snapshot).
+ * master-SKU notes (fc_planning_sku_notes), short workflow labels
+ * (fc_planning_sku_work_notes), the CBM-per-unit inline editor (fc_products,
+ * cascading to fc_container_items), and the read-only OOS lost-demand-weight
+ * preview (fc_velocity_link_snapshot).
  *
  * The dashboard also calls several container-planning-owned endpoints
  * (containers/items*, containers/[id]/auto-fill, and the PATCH branch of
@@ -64,6 +65,32 @@ export const PlanningDashboardRepository = {
   async upsertSkuNote(sku: string, note: string, updatedBy: string | null): Promise<void> {
     await pool().query(
       `INSERT INTO shipcore.fc_planning_sku_notes (master_sku, note, updated_by, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (master_sku) DO UPDATE
+         SET note = EXCLUDED.note,
+             updated_by = EXCLUDED.updated_by,
+             updated_at = NOW()`,
+      [sku, note, updatedBy],
+    );
+  },
+
+  async listSkuWorkNotes(): Promise<Array<{ masterSku: string; note: string }>> {
+    const result = await pool().query<{ master_sku: string; note: string }>(
+      `SELECT master_sku, note
+       FROM shipcore.fc_planning_sku_work_notes
+       WHERE NULLIF(BTRIM(note), '') IS NOT NULL
+       ORDER BY master_sku`,
+    );
+    return result.rows.map((row) => ({ masterSku: row.master_sku, note: row.note }));
+  },
+
+  async deleteSkuWorkNote(sku: string): Promise<void> {
+    await pool().query(`DELETE FROM shipcore.fc_planning_sku_work_notes WHERE master_sku = $1`, [sku]);
+  },
+
+  async upsertSkuWorkNote(sku: string, note: string, updatedBy: string | null): Promise<void> {
+    await pool().query(
+      `INSERT INTO shipcore.fc_planning_sku_work_notes (master_sku, note, updated_by, created_at, updated_at)
        VALUES ($1, $2, $3, NOW(), NOW())
        ON CONFLICT (master_sku) DO UPDATE
          SET note = EXCLUDED.note,
