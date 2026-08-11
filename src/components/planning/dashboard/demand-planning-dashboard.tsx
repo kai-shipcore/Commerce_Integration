@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Search } from "lucide-react";
+import { PaintBucket, Pipette, RotateCcw, Search } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
 import {
@@ -97,6 +97,110 @@ const SETTINGS_SECTION_TITLE_STYLE = {
   textTransform: "uppercase" as const,
   letterSpacing: "0.06em",
 };
+
+const FILL_COLOR_ROWS = [
+  ["#000000", "#434343", "#666666", "#999999", "#B7B7B7", "#CCCCCC", "#D9D9D9", "#EFEFEF", "#F3F3F3", "#FFFFFF"],
+  ["#980000", "#FF0000", "#FF9900", "#FFFF00", "#00FF00", "#00FFFF", "#4A86E8", "#0000FF", "#9900FF", "#FF00FF"],
+  ["#E6B8AF", "#F4CCCC", "#FCE5CD", "#FFF2CC", "#D9EAD3", "#D0E0E3", "#C9DAF8", "#CFE2F3", "#D9D2E9", "#EAD1DC"],
+  ["#DD7E6B", "#EA9999", "#F9CB9C", "#FFE599", "#B6D7A8", "#A2C4C9", "#A4C2F4", "#9FC5E8", "#B4A7D6", "#D5A6BD"],
+  ["#CC4125", "#E06666", "#F6B26B", "#FFD966", "#93C47D", "#76A5AF", "#6D9EEB", "#6FA8DC", "#8E7CC3", "#C27BA0"],
+  ["#A61C00", "#CC0000", "#E69138", "#F1C232", "#6AA84F", "#45818E", "#3C78D8", "#3D85C6", "#674EA7", "#A64D79"],
+  ["#85200C", "#990000", "#B45F06", "#BF9000", "#38761D", "#134F5C", "#1155CC", "#0B5394", "#351C75", "#741B47"],
+  ["#5B0F00", "#660000", "#783F04", "#7F6000", "#274E13", "#0C343D", "#1C4587", "#073763", "#20124D", "#4C1130"],
+] as const;
+
+const STANDARD_FILL_COLORS = ["#000000", "#FFFFFF", "#EA4335", "#FB8C00", "#FABB05", "#34A853", "#24C1E0", "#4285F4", "#7E57C2", "#EC407A"] as const;
+
+function FillColorPopover({
+  enabled,
+  currentColor,
+  targetLabel,
+  onApply,
+  onReset,
+}: {
+  enabled: boolean;
+  currentColor: string;
+  targetLabel: string;
+  onApply: (color: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={!enabled}
+          aria-label="Fill color"
+          title={enabled ? `Fill color: ${targetLabel}` : "Select column headers or grid cells first"}
+          style={{
+            alignItems: "center",
+            background: enabled ? "#fff" : "#F5F4EF",
+            border: "1px solid #C2BFB5",
+            borderRadius: 4,
+            color: enabled ? "#1A1917" : "#A8A49E",
+            cursor: enabled ? "pointer" : "default",
+            display: "inline-flex",
+            flexDirection: "column",
+            flexShrink: 0,
+            height: 30,
+            justifyContent: "center",
+            padding: "3px 7px 2px",
+            width: 32,
+          }}
+        >
+          <PaintBucket size={15} aria-hidden="true" />
+          <span aria-hidden="true" style={{ background: enabled ? currentColor : "#A8A49E", height: 3, marginTop: 1, width: 18 }} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={4} style={{ background: "#FFFFFF", boxShadow: "0 10px 28px rgba(15,23,42,.2)", opacity: 1, width: 244, padding: 10 }}>
+        <div style={{ color: "#64748B", fontSize: 10, fontWeight: 700, marginBottom: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={targetLabel}>
+          {targetLabel}
+        </div>
+        <button
+          type="button"
+          onClick={onReset}
+          style={{ alignItems: "center", background: "transparent", border: "none", color: "#334155", cursor: "pointer", display: "flex", fontSize: 12, gap: 7, marginBottom: 8, padding: "2px 0" }}
+        >
+          <RotateCcw size={14} aria-hidden="true" /> Reset
+        </button>
+        <div style={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(10, 19px)" }}>
+          {FILL_COLOR_ROWS.flat().map((color, index) => (
+            <button
+              key={`${color}-${index}`}
+              type="button"
+              aria-label={`Set fill color ${color}`}
+              title={color}
+              onClick={() => onApply(color)}
+              style={{
+                background: color,
+                border: currentColor.toUpperCase() === color ? "2px solid #2563EB" : color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent",
+                borderRadius: "50%",
+                boxShadow: currentColor.toUpperCase() === color ? "0 0 0 1px #fff inset" : undefined,
+                cursor: "pointer",
+                height: 19,
+                padding: 0,
+                width: 19,
+              }}
+            />
+          ))}
+        </div>
+        <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>STANDARD</div>
+        <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
+          {STANDARD_FILL_COLORS.map((color) => (
+            <button key={color} type="button" aria-label={`Set standard fill color ${color}`} onClick={() => onApply(color)} style={{ background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", cursor: "pointer", height: 19, padding: 0, width: 19 }} />
+          ))}
+        </div>
+        <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>CUSTOM</div>
+        <label title="Choose custom color" style={{ alignItems: "center", cursor: "pointer", display: "inline-flex", gap: 6, marginTop: 6 }}>
+          <span aria-hidden="true" style={{ background: currentColor, border: "1px solid #CBD5E1", borderRadius: "50%", height: 19, width: 19 }} />
+          <Pipette size={15} aria-hidden="true" />
+          <span style={{ color: "#475569", fontSize: 11 }}>Custom color</span>
+          <input type="color" value={currentColor} onChange={(event) => onApply(event.target.value.toUpperCase())} style={{ height: 1, opacity: 0, position: "absolute", width: 1 }} />
+        </label>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 type ColumnSettings = {
   groupVis: Record<ColumnGroupKey, boolean>;
@@ -362,7 +466,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [categoryDropdownPos, setCategoryDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>([]);
+  const [selectedFullColumnIds, setSelectedFullColumnIds] = useState<string[]>([]);
   const [columnHeaderNames, setColumnHeaderNames] = useState<Record<string, string>>({});
+  const [activeColorTarget, setActiveColorTarget] = useState<"headers" | "columns" | "cells">("headers");
   const canEditDemandPlanning = permissionsReady && can("demand-planning", "edit");
   const canEditSkuNotes = canEditDemandPlanning;
 
@@ -738,11 +844,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   const handleGridColumnSelect = useCallback((columnId: string, additive: boolean) => {
+    setActiveColorTarget("headers");
+    setSelectedFullColumnIds([]);
     setSelectedColorColumns((current) => {
-      if (!additive) return [columnId];
-      return current.includes(columnId)
-        ? current.filter((id) => id !== columnId)
-        : [...current, columnId];
+      if (current.includes(columnId)) {
+        return current.filter((id) => id !== columnId);
+      }
+      return additive ? [...current, columnId] : [columnId];
+    });
+  }, []);
+
+  const handleFullColumnSelect = useCallback((columnId: string, additive: boolean) => {
+    setActiveColorTarget("columns");
+    setSelectedColorColumns([]);
+    setSelectedFullColumnIds((current) => {
+      if (current.includes(columnId)) return current.filter((id) => id !== columnId);
+      return additive ? [...current, columnId] : [columnId];
     });
   }, []);
 
@@ -775,6 +892,21 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const resetColumnColors = useCallback(() => {
     setColumnColors({});
     window.localStorage.removeItem(COLUMN_COLORS_STORAGE_KEY);
+  }, []);
+
+  const resetColumnColorTarget = useCallback((columnIds: string[], target: "cell" | "header") => {
+    setColumnColors((current) => {
+      const next = { ...current };
+      for (const id of columnIds) {
+        const setting = { ...(next[id] ?? {}) };
+        delete setting[target];
+        if (Object.keys(setting).length) next[id] = setting;
+        else delete next[id];
+      }
+      if (Object.keys(next).length) window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(COLUMN_COLORS_STORAGE_KEY);
+      return next;
+    });
   }, []);
 
   const handleSelectedCellColorChange = useCallback((color: string) => {
@@ -826,6 +958,63 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       ? { color: unique[0], label: unique[0] === "#FFFFFF" ? "Default" : unique[0].toUpperCase() }
       : { color: "#FFFFFF", label: "Mixed" };
   }, [cellColors, selectedAgCell, selectedCellKeys]);
+
+  const selectedHeaderColorInfo = useMemo(() => {
+    if (!selectedColorColumns.length) return { color: "#FFFFFF", mixed: false };
+    const colors = selectedColorColumns.map((id) => columnColors[id]?.header ?? "#2A2825");
+    const uniqueColors = Array.from(new Set(colors.map((color) => color.toUpperCase())));
+    return { color: uniqueColors[0] ?? "#2A2825", mixed: uniqueColors.length > 1 };
+  }, [columnColors, selectedColorColumns]);
+
+  const selectedFullColumnColorInfo = useMemo(() => {
+    if (!selectedFullColumnIds.length) return { color: "#FFFFFF", mixed: false };
+    const colors = selectedFullColumnIds.map((id) => columnColors[id]?.cell ?? "#FFFFFF");
+    const uniqueColors = Array.from(new Set(colors.map((color) => color.toUpperCase())));
+    return { color: uniqueColors[0] ?? "#FFFFFF", mixed: uniqueColors.length > 1 };
+  }, [columnColors, selectedFullColumnIds]);
+
+  const fillPaletteEnabled = activeColorTarget === "headers"
+    ? selectedColorColumns.length > 0
+    : activeColorTarget === "columns"
+      ? selectedFullColumnIds.length > 0
+      : Boolean(selectedAgCell);
+  const fillPaletteColor = activeColorTarget === "headers"
+    ? selectedHeaderColorInfo.color
+    : activeColorTarget === "columns"
+      ? selectedFullColumnColorInfo.color
+      : selectedCellColorInfo.color;
+  const cellSelectionCount = selectedAgCells.length || (selectedAgCell ? 1 : 0);
+  const fillPaletteTargetLabel = activeColorTarget === "headers"
+    ? pick(`선택 헤더 ${selectedColorColumns.length}개`, `${selectedColorColumns.length} selected header${selectedColorColumns.length === 1 ? "" : "s"}`)
+    : activeColorTarget === "columns"
+      ? pick(`전체 컬럼 ${selectedFullColumnIds.length}개`, `${selectedFullColumnIds.length} entire column${selectedFullColumnIds.length === 1 ? "" : "s"}`)
+      : pick(`선택 셀 ${cellSelectionCount}개`, `${cellSelectionCount} selected cell${cellSelectionCount === 1 ? "" : "s"}`);
+
+  const handleFillColorApply = useCallback((color: string) => {
+    if (activeColorTarget === "headers") {
+      if (!selectedColorColumns.length) return;
+      handleColumnColorChange(selectedColorColumns, "header", color);
+      return;
+    }
+    if (activeColorTarget === "columns") {
+      if (!selectedFullColumnIds.length) return;
+      handleColumnColorChange(selectedFullColumnIds, "cell", color);
+      return;
+    }
+    handleSelectedCellColorChange(color);
+  }, [activeColorTarget, handleColumnColorChange, handleSelectedCellColorChange, selectedColorColumns, selectedFullColumnIds]);
+
+  const handleFillColorReset = useCallback(() => {
+    if (activeColorTarget === "headers") {
+      resetColumnColorTarget(selectedColorColumns, "header");
+      return;
+    }
+    if (activeColorTarget === "columns") {
+      resetColumnColorTarget(selectedFullColumnIds, "cell");
+      return;
+    }
+    resetSelectedCellColor();
+  }, [activeColorTarget, resetColumnColorTarget, resetSelectedCellColor, selectedColorColumns, selectedFullColumnIds]);
 
   const handleSeasonalFactorsChange = useCallback((next: SeasonalFactors) => {
     setSeasonalFactors(next);
@@ -1337,6 +1526,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         </div>
 
         {hasData && (
+          <>
           <Popover>
             <PopoverTrigger asChild>
               <button
@@ -1692,7 +1882,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                     {gridMode === "ag-grid" && (
                       <div style={{ fontSize: 10, color: "#64748B" }}>
-                        {pick("Ctrl/Cmd/Shift + 클릭: 다중 선택 · 더블 클릭: 이름 변경", "Ctrl/Cmd/Shift + click: multi-select · Double-click: rename")}
+                        {pick("제목 클릭: 헤더 · 헤더 상단 클릭: 전체 컬럼 · Ctrl/Cmd/Shift: 다중 선택 · 더블 클릭: 이름 변경", "Title: header · Header top edge: entire column · Ctrl/Cmd/Shift: multi-select · Double-click: rename")}
                       </div>
                     )}
                     <select
@@ -2050,6 +2240,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               ) : null}
             </PopoverContent>
           </Popover>
+          <FillColorPopover
+            enabled={fillPaletteEnabled}
+            currentColor={fillPaletteColor}
+            targetLabel={fillPaletteTargetLabel}
+            onApply={handleFillColorApply}
+            onReset={handleFillColorReset}
+          />
+          </>
         )}
 
         <StatusBar
@@ -2291,12 +2489,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           selectedCellKeys={selectedCellKeys}
           selectedColumnIds={selectedColorColumns}
           onColumnHeaderSelect={handleGridColumnSelect}
+          selectedFullColumnIds={selectedFullColumnIds}
+          onFullColumnSelect={handleFullColumnSelect}
           columnHeaderNames={columnHeaderNames}
           onColumnHeaderRename={handleGridColumnRename}
           onAgCellSelected={(selection) => {
+            setActiveColorTarget("cells");
+            setSelectedColorColumns([]);
+            setSelectedFullColumnIds([]);
             setSelectedAgCell({ rowId: selection.rowId, columnId: selection.columnId, label: selection.label });
           }}
           onCellSelectionChange={(keys) => {
+            setActiveColorTarget("cells");
             const cells = keys.map((key) => {
               const sep = key.indexOf("::");
               const rowId = key.substring(0, sep);

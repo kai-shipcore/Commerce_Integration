@@ -71,6 +71,8 @@ export interface DemandPlanningGridProps {
   selectedCellKeys?: string[];
   selectedColumnIds?: string[];
   onColumnHeaderSelect?: (columnId: string, additive: boolean) => void;
+  selectedFullColumnIds?: string[];
+  onFullColumnSelect?: (columnId: string, additive: boolean) => void;
   columnHeaderNames?: Record<string, string>;
   onColumnHeaderRename?: (columnId: string, name: string) => void;
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;

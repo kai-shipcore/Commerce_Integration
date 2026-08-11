@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { CalendarDays, ChartColumn, ExternalLink } from "lucide-react";
 import {
@@ -719,12 +720,15 @@ function SelectableHeader(params: IHeaderParams & {
   selectionId: string;
   selected: boolean;
   onSelect: (columnId: string, additive: boolean) => void;
+  fullColumnSelected: boolean;
+  onFullColumnSelect: (columnId: string, additive: boolean) => void;
   onRename: (columnId: string, name: string) => void;
   isFiltered?: boolean;
   onRightClick?: (x: number, y: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(params.displayName);
+  const [editorAnchor, setEditorAnchor] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -738,8 +742,19 @@ function SelectableHeader(params: IHeaderParams & {
     setEditing(false);
   };
 
-  if (editing) {
-    return (
+  if (editing && editorAnchor) {
+    const maxEditorWidth = Math.min(1200, Math.max(160, window.innerWidth - 16));
+    const editorWidth = Math.min(
+      Math.max(editorAnchor.width, Math.min(480, maxEditorWidth), draft.length * 14 + 48),
+      maxEditorWidth,
+    );
+    const editorLeft = Math.min(
+      Math.max(8, editorAnchor.left + editorAnchor.width / 2 - editorWidth / 2),
+      Math.max(8, window.innerWidth - editorWidth - 8),
+    );
+    const editorTop = Math.max(8, editorAnchor.top + editorAnchor.height / 2 - 21);
+
+    return createPortal(
       <input
         ref={inputRef}
         value={draft}
@@ -758,59 +773,77 @@ function SelectableHeader(params: IHeaderParams & {
             setEditing(false);
           }
         }}
-        className="h-7 w-[calc(100%-4px)] rounded border-2 border-blue-400 bg-white px-1 text-center text-[11px] font-semibold text-slate-900 outline-none"
-      />
+        className="fixed h-[42px] rounded-lg border-2 border-blue-500 bg-white px-4 text-left text-sm font-semibold text-slate-900 shadow-2xl outline-none ring-4 ring-blue-500/20"
+        style={{ left: editorLeft, top: editorTop, width: editorWidth, zIndex: 10000 }}
+      />,
+      document.body,
     );
   }
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={params.selected}
-      aria-label={`${params.displayName}, ${params.selected ? "selected" : "not selected"}`}
-      title="Click to select; Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
-      onClick={(event) => {
-        event.stopPropagation();
-        params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        event.stopPropagation();
-        params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
-      }}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        setDraft(params.displayName);
-        setEditing(true);
-      }}
-      onContextMenu={params.onRightClick ? (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        params.onRightClick?.(event.clientX, event.clientY);
-      } : undefined}
-      style={{
-        alignItems: "center",
-        background: params.selected ? "rgba(96,165,250,.28)" : undefined,
-        boxShadow: params.selected ? "inset 0 0 0 3px #60A5FA" : undefined,
-        cursor: "pointer",
-        display: "flex",
-        fontWeight: params.selected ? 800 : undefined,
-        gap: 3,
-        height: "100%",
-        justifyContent: "center",
-        padding: "0 3px",
-        textAlign: "center",
-        userSelect: "none",
-        whiteSpace: "normal",
-        width: "100%",
-      }}
-    >
-      {params.selected && <span aria-hidden="true" style={{ color: "#93C5FD", flexShrink: 0, fontWeight: 900 }}>✓</span>}
-      <span>{params.displayName}</span>
-      {params.isFiltered && <span aria-hidden="true" style={{ color: "#60A5FA", fontSize: 9, lineHeight: 1 }}>▼</span>}
+    <div style={{ display: "flex", height: "100%", position: "relative", width: "100%", boxShadow: params.fullColumnSelected ? "inset 2px 0 #2563EB, inset -2px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
+      <button
+        type="button"
+        aria-label={`Select entire ${params.displayName} column`}
+        aria-pressed={params.fullColumnSelected}
+        title="Select entire column"
+        onClick={(event) => {
+          event.stopPropagation();
+          params.onFullColumnSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+        }}
+        style={{ background: params.fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: -8, padding: 0, position: "absolute", right: -8, top: 0, zIndex: 2 }}
+      />
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={params.selected}
+        aria-label={`${params.displayName} header, ${params.selected ? "selected" : "not selected"}`}
+        title="Click to select the header. Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
+        onClick={(event) => {
+          event.stopPropagation();
+          params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          setEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+          setDraft(params.displayName);
+          setEditing(true);
+        }}
+        onContextMenu={params.onRightClick ? (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          params.onRightClick?.(event.clientX, event.clientY);
+        } : undefined}
+        style={{
+          alignItems: "center",
+          background: params.selected ? "rgba(96,165,250,.28)" : undefined,
+          boxShadow: params.selected ? "inset 0 0 0 3px #60A5FA" : undefined,
+          cursor: "pointer",
+          display: "flex",
+          flex: 1,
+          fontWeight: params.selected ? 800 : undefined,
+          gap: 3,
+          height: "100%",
+          justifyContent: "center",
+          minWidth: 0,
+          padding: "7px 3px 0",
+          textAlign: "center",
+          userSelect: "none",
+          whiteSpace: "normal",
+        }}
+      >
+        {params.selected && <span aria-hidden="true" style={{ color: "#93C5FD", flexShrink: 0, fontWeight: 900 }}>✓</span>}
+        <span style={{ minWidth: 0, overflow: "hidden" }}>{params.displayName}</span>
+        {params.isFiltered && <span aria-hidden="true" style={{ color: "#60A5FA", fontSize: 9, lineHeight: 1 }}>▼</span>}
+      </div>
     </div>
   );
 }
@@ -1355,6 +1388,8 @@ export function AgDemandPlanningGrid({
   onCellSelectionChange,
   selectedColumnIds = [],
   onColumnHeaderSelect,
+  selectedFullColumnIds = [],
+  onFullColumnSelect,
   columnHeaderNames = {},
   onColumnHeaderRename,
   onExportReady,
@@ -2166,16 +2201,20 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         selectionId: column.id,
         selected: selectedColumnIds.includes(column.id),
         onSelect: onColumnHeaderSelect ?? (() => {}),
+        fullColumnSelected: selectedFullColumnIds.includes(column.id),
+        onFullColumnSelect: onFullColumnSelect ?? (() => {}),
         onRename: onColumnHeaderRename ?? (() => {}),
       },
       cellStyle: (params) => {
         const key = cellColorKey(params.data?.sku, column.id);
         const selected = selectedCellsRef.current.has(key);
+        const fullColumnSelected = selectedFullColumnIds.includes(column.id);
         return {
           backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
           fontWeight: column.bold ? 700 : 400,
           textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
           ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
+          ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
         };
       },
       });
@@ -2271,6 +2310,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
               selectionId: `con:${column.id}`,
               selected: selectedColumnIds.includes(`con:${column.id}`),
               onSelect: onColumnHeaderSelect ?? (() => {}),
+              fullColumnSelected: selectedFullColumnIds.includes(`con:${column.id}`),
+              onFullColumnSelect: onFullColumnSelect ?? (() => {}),
               onRename: onColumnHeaderRename ?? (() => {}),
               ...(column.id === "inb_qty" && qtyEditable ? {
                 isFiltered: conQtyFilter === container.name,
@@ -2326,11 +2367,13 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const columnId = `${container.name}::${column.id}`;
               const key = cellColorKey(params.data?.sku, columnId);
               const selected = selectedCellsRef.current.has(key);
+              const fullColumnSelected = selectedFullColumnIds.includes(`con:${column.id}`);
               return {
                 backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
                 ...(columnIndex === 0 ? { borderLeft: "2px solid #5A5750" } : {}),
                 textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
                 ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
+                ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
               };
             },
           })),
@@ -2338,7 +2381,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnHeaderNames, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, skuCellNotes, subColumns, updateEta]);
+  }, [buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnHeaderNames, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
