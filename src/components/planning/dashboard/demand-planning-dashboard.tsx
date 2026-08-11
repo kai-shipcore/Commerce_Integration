@@ -12,7 +12,9 @@ import {
   COMPACT_COLUMN_IDS,
   CON_SUBCOLS,
   CELL_COLORS_STORAGE_KEY,
+  CELL_TEXT_FORMATS_STORAGE_KEY,
   COLUMN_COLORS_STORAGE_KEY,
+  COLUMN_TEXT_FORMATS_STORAGE_KEY,
   GROUP_BTN_LABELS,
   GROUP_LABELS,
   DEFAULT_FREEZE,
@@ -21,11 +23,13 @@ import {
   EMPTY_SKU_PART_FILTERS,
   loadSavedColumnColors,
   loadSavedCellColors,
+  loadSavedColumnTextFormats,
+  loadSavedCellTextFormats,
   loadSavedColumnWidths,
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, ColumnColorSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
@@ -111,6 +115,144 @@ const FILL_COLOR_ROWS = [
 
 const STANDARD_FILL_COLORS = ["#000000", "#FFFFFF", "#EA4335", "#FB8C00", "#FABB05", "#34A853", "#24C1E0", "#4285F4", "#7E57C2", "#EC407A"] as const;
 
+function defaultCellTextFontSize(columnId: string | undefined) {
+  if (!columnId) return 11;
+  return columnId === "next_eta" || /(?:^con:|::)(?:esod|psod)$/.test(columnId) ? 10 : 11;
+}
+
+function DeferredColorInput({
+  value,
+  ariaLabel,
+  onCommit,
+}: {
+  value: string;
+  ariaLabel: string;
+  onCommit: (color: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pendingColorRef = useRef(value.toUpperCase());
+  const committedColorRef = useRef(value.toUpperCase());
+  const commitTimerRef = useRef<number | null>(null);
+  const onCommitRef = useRef(onCommit);
+
+  useEffect(() => {
+    onCommitRef.current = onCommit;
+  }, [onCommit]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    const commit = () => {
+      if (commitTimerRef.current !== null) {
+        window.clearTimeout(commitTimerRef.current);
+        commitTimerRef.current = null;
+      }
+      const next = pendingColorRef.current.toUpperCase();
+      if (next === committedColorRef.current) return;
+      committedColorRef.current = next;
+      onCommitRef.current(next);
+    };
+    const scheduleCommit = () => {
+      pendingColorRef.current = input.value.toUpperCase();
+      if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current);
+      // React's color-input onChange tracks the native `input` event and can fire
+      // dozens of times while the OS picker is dragged. Listening to the native
+      // committed `change` event and coalescing it keeps the picker responsive.
+      commitTimerRef.current = window.setTimeout(commit, 120);
+    };
+    const handleInput = () => {
+      pendingColorRef.current = input.value.toUpperCase();
+    };
+
+    input.addEventListener("input", handleInput);
+    input.addEventListener("change", scheduleCommit);
+    input.addEventListener("blur", commit);
+    return () => {
+      input.removeEventListener("input", handleInput);
+      input.removeEventListener("change", scheduleCommit);
+      input.removeEventListener("blur", commit);
+      if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current);
+    };
+  }, []);
+
+  return (
+    <input
+      ref={inputRef}
+      type="color"
+      defaultValue={value}
+      aria-label={ariaLabel}
+      style={{ height: 1, opacity: 0, position: "absolute", width: 1 }}
+    />
+  );
+}
+
+function DeferredFontSizeControl({ value, onCommit }: { value: number; onCommit: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  const pendingValueRef = useRef(value);
+  const committedValueRef = useRef(value);
+  const commitTimerRef = useRef<number | null>(null);
+  const onCommitRef = useRef(onCommit);
+
+  useEffect(() => {
+    onCommitRef.current = onCommit;
+  }, [onCommit]);
+
+  useEffect(() => () => {
+    if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current);
+  }, []);
+
+  const normalized = (next: number) => Math.min(48, Math.max(6, Math.round(next)));
+  const commit = (next = pendingValueRef.current) => {
+    if (commitTimerRef.current !== null) {
+      window.clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+    const finalValue = normalized(next);
+    pendingValueRef.current = finalValue;
+    setDraft(String(finalValue));
+    if (finalValue === committedValueRef.current) return;
+    committedValueRef.current = finalValue;
+    onCommitRef.current(finalValue);
+  };
+  const updateDraft = (next: number) => {
+    const finalValue = normalized(next);
+    pendingValueRef.current = finalValue;
+    setDraft(String(finalValue));
+    if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current);
+    // Keep rapid typing/spinner/button repeats local to this small control, then
+    // refresh and persist the grid once with the final value.
+    commitTimerRef.current = window.setTimeout(() => commit(finalValue), 140);
+  };
+
+  return (
+    <div style={{ alignItems: "center", display: "flex", gap: 5 }}>
+      <button type="button" aria-label="Decrease font size" onClick={() => updateDraft(pendingValueRef.current - 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>−</button>
+      <input
+        type="number"
+        min={6}
+        max={48}
+        aria-label="Font size"
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          const next = Number(event.target.value);
+          if (Number.isFinite(next)) updateDraft(next);
+        }}
+        onBlur={() => commit()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commit();
+            event.currentTarget.blur();
+          }
+        }}
+        style={{ border: "1px solid #94A3B8", borderRadius: 4, fontSize: 12, height: 27, padding: "2px 3px", textAlign: "center", width: 44 }}
+      />
+      <button type="button" aria-label="Increase font size" onClick={() => updateDraft(pendingValueRef.current + 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>+</button>
+    </div>
+  );
+}
+
 function FillColorPopover({
   enabled,
   currentColor,
@@ -195,7 +337,78 @@ function FillColorPopover({
           <span aria-hidden="true" style={{ background: currentColor, border: "1px solid #CBD5E1", borderRadius: "50%", height: 19, width: 19 }} />
           <Pipette size={15} aria-hidden="true" />
           <span style={{ color: "#475569", fontSize: 11 }}>Custom color</span>
-          <input type="color" value={currentColor} onChange={(event) => onApply(event.target.value.toUpperCase())} style={{ height: 1, opacity: 0, position: "absolute", width: 1 }} />
+          <DeferredColorInput key={currentColor} value={currentColor} ariaLabel="Custom fill color" onCommit={onApply} />
+        </label>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function TextFormatPopover({
+  enabled,
+  format,
+  targetLabel,
+  onChange,
+  onReset,
+}: {
+  enabled: boolean;
+  format: Required<TextFormatSettings>;
+  targetLabel: string;
+  onChange: (patch: TextFormatSettings) => void;
+  onReset: () => void;
+}) {
+  const currentColor = format.color.toUpperCase();
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={!enabled}
+          aria-label="Text formatting"
+          title={enabled ? `Text formatting: ${targetLabel}` : "Select column headers or grid cells first"}
+          style={{ alignItems: "center", background: enabled ? "#fff" : "#F5F4EF", border: "1px solid #C2BFB5", borderRadius: 4, color: enabled ? "#1A1917" : "#A8A49E", cursor: enabled ? "pointer" : "default", display: "inline-flex", flexDirection: "column", flexShrink: 0, fontFamily: "Arial, sans-serif", fontSize: 15, fontWeight: format.bold ? 800 : 500, height: 30, justifyContent: "center", padding: "2px 7px 1px", width: 32 }}
+        >
+          <span aria-hidden="true" style={{ lineHeight: 15 }}>A</span>
+          <span aria-hidden="true" style={{ background: enabled ? currentColor : "#A8A49E", height: 3, marginTop: 1, width: 18 }} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" sideOffset={4} style={{ background: "#FFFFFF", boxShadow: "0 10px 28px rgba(15,23,42,.2)", opacity: 1, padding: 10, width: 244 }}>
+        <div style={{ color: "#64748B", fontSize: 10, fontWeight: 700, marginBottom: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={targetLabel}>
+          {targetLabel}
+        </div>
+        <button type="button" onClick={onReset} style={{ alignItems: "center", background: "transparent", border: "none", color: "#334155", cursor: "pointer", display: "flex", fontSize: 12, gap: 7, marginBottom: 8, padding: "2px 0" }}>
+          <RotateCcw size={14} aria-hidden="true" /> Reset
+        </button>
+        <div style={{ alignItems: "center", display: "flex", gap: 8, marginBottom: 10 }}>
+          <DeferredFontSizeControl key={`${targetLabel}:${format.fontSize}`} value={format.fontSize} onCommit={(fontSize) => onChange({ fontSize })} />
+          <button type="button" aria-label="Bold" aria-pressed={format.bold} onClick={() => onChange({ bold: !format.bold })} style={{ background: format.bold ? "#DBEAFE" : "#fff", border: format.bold ? "1px solid #60A5FA" : "1px solid #CBD5E1", borderRadius: 4, color: format.bold ? "#1D4ED8" : "#1E293B", cursor: "pointer", fontSize: 14, fontWeight: 800, height: 27, marginLeft: 3, padding: 0, width: 29 }}>B</button>
+        </div>
+        <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", paddingTop: 7 }}>FONT COLOR</div>
+        <div style={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(10, 19px)", marginTop: 6 }}>
+          {FILL_COLOR_ROWS.flat().map((color, index) => (
+            <button
+              key={`${color}-${index}`}
+              type="button"
+              aria-label={`Set font color ${color}`}
+              title={color}
+              onClick={() => onChange({ color })}
+              style={{ background: color, border: currentColor === color ? "2px solid #2563EB" : color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", boxShadow: currentColor === color ? "0 0 0 1px #fff inset" : undefined, cursor: "pointer", height: 19, padding: 0, width: 19 }}
+            />
+          ))}
+        </div>
+        <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>STANDARD</div>
+        <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
+          {STANDARD_FILL_COLORS.map((color) => (
+            <button key={color} type="button" aria-label={`Set standard font color ${color}`} onClick={() => onChange({ color })} style={{ background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", cursor: "pointer", height: 19, padding: 0, width: 19 }} />
+          ))}
+        </div>
+        <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>CUSTOM</div>
+        <label title="Choose custom font color" style={{ alignItems: "center", cursor: "pointer", display: "inline-flex", gap: 6, marginTop: 6 }}>
+          <span aria-hidden="true" style={{ background: currentColor, border: "1px solid #CBD5E1", borderRadius: "50%", height: 19, width: 19 }} />
+          <Pipette size={15} aria-hidden="true" />
+          <span style={{ color: "#475569", fontSize: 11 }}>Custom color</span>
+          <DeferredColorInput key={currentColor} value={currentColor} ariaLabel="Custom font color" onCommit={(color) => onChange({ color })} />
         </label>
       </PopoverContent>
     </Popover>
@@ -435,6 +648,12 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
 
 export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "native" | "ag-grid" }) {
   const { pick } = useI18n();
+  const confirmReset = useCallback((koreanTarget: string, englishTarget: string) => window.confirm(
+    pick(
+      `${koreanTarget} 설정을 초기화하시겠습니까?\n\n확인을 누르면 즉시 초기화됩니다.`,
+      `Reset ${englishTarget}?\n\nClick OK to apply the reset.`,
+    ),
+  ), [pick]);
   const { can, ready: permissionsReady } = usePermissions();
   const router = useRouter();
   const [velocityMode, setVelocityMode] = useState<VelocityMode>("custom");
@@ -567,6 +786,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN);
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
+  const [columnTextFormats, setColumnTextFormats] = useState<ColumnTextFormatSettings>({});
+  const [cellTextFormats, setCellTextFormats] = useState<CellTextFormatSettings>({});
   const [isColorSettingsOpen, setIsColorSettingsOpen] = useState(true);
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
   const [selectedAgCells, setSelectedAgCells] = useState<{ rowId: string; columnId: string; label: string }[]>([]);
@@ -610,6 +831,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setCellColors(loadSavedCellColors());
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setColumnTextFormats(loadSavedColumnTextFormats());
+    setCellTextFormats(loadSavedCellTextFormats());
   }, []);
 
   useEffect(() => {
@@ -708,6 +935,24 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         if (cc && typeof cc === "object" && !Array.isArray(cc)) {
           window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(cc));
           setColumnColors(cc as ColumnColorSettings);
+        }
+
+        const columnFormats = d[COLUMN_TEXT_FORMATS_STORAGE_KEY];
+        if (columnFormats && typeof columnFormats === "object" && !Array.isArray(columnFormats)) {
+          window.localStorage.setItem(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(columnFormats));
+          setColumnTextFormats(columnFormats as ColumnTextFormatSettings);
+        } else {
+          window.localStorage.removeItem(COLUMN_TEXT_FORMATS_STORAGE_KEY);
+          setColumnTextFormats({});
+        }
+
+        const cellFormats = d[CELL_TEXT_FORMATS_STORAGE_KEY];
+        if (cellFormats && typeof cellFormats === "object" && !Array.isArray(cellFormats)) {
+          window.localStorage.setItem(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(cellFormats));
+          setCellTextFormats(cellFormats as CellTextFormatSettings);
+        } else {
+          window.localStorage.removeItem(CELL_TEXT_FORMATS_STORAGE_KEY);
+          setCellTextFormats({});
         }
 
         // Per-user custom column header names
@@ -809,6 +1054,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
       [COLUMN_HEADER_NAMES_STORAGE_KEY]: columnHeaderNames,
       [CELL_COLORS_STORAGE_KEY]: cellColors,
+      [COLUMN_TEXT_FORMATS_STORAGE_KEY]: columnTextFormats,
+      [CELL_TEXT_FORMATS_STORAGE_KEY]: cellTextFormats,
       [CONTAINER_VISIBILITY_STORAGE_KEY]: {
         hiddenContainers: Array.from(hiddenContainers).sort(),
         hiddenBases: Array.from(hiddenBases).sort(),
@@ -819,7 +1066,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, columnHeaderNames, cellColors, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -944,6 +1191,117 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     window.localStorage.removeItem(CELL_COLORS_STORAGE_KEY);
   }, []);
 
+  const handleColumnTextFormatChange = useCallback((columnIds: string[], target: "cell" | "header", patch: TextFormatSettings) => {
+    setColumnTextFormats((current) => {
+      const next = { ...current };
+      for (const id of columnIds) {
+        next[id] = {
+          ...(next[id] ?? {}),
+          [target]: { ...(next[id]?.[target] ?? {}), ...patch },
+        };
+      }
+      window.localStorage.setItem(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleSelectedCellTextFormatChange = useCallback((patch: TextFormatSettings) => {
+    if (!selectedAgCell) return;
+    const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    setCellTextFormats((current) => {
+      const next = { ...current };
+      for (const cell of targets) {
+        const key = `${cell.rowId}::${cell.columnId}`;
+        next[key] = { ...(next[key] ?? {}), ...patch };
+      }
+      window.localStorage.setItem(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [selectedAgCell, selectedAgCells]);
+
+  const resetColumnTextFormatTarget = useCallback((columnIds: string[], target: "cell" | "header") => {
+    setColumnTextFormats((current) => {
+      const next = { ...current };
+      for (const id of columnIds) {
+        const setting = { ...(next[id] ?? {}) };
+        delete setting[target];
+        if (Object.keys(setting).length) next[id] = setting;
+        else delete next[id];
+      }
+      if (Object.keys(next).length) window.localStorage.setItem(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(COLUMN_TEXT_FORMATS_STORAGE_KEY);
+      return next;
+    });
+  }, []);
+
+  const resetSelectedCellTextFormat = useCallback(() => {
+    if (!selectedAgCell) return;
+    const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    setCellTextFormats((current) => {
+      const next = { ...current };
+      for (const cell of targets) delete next[`${cell.rowId}::${cell.columnId}`];
+      if (Object.keys(next).length) window.localStorage.setItem(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(CELL_TEXT_FORMATS_STORAGE_KEY);
+      return next;
+    });
+  }, [selectedAgCell, selectedAgCells]);
+
+  const resetSelectedCellTextColor = useCallback(() => {
+    if (!selectedAgCell) return;
+    const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    setCellTextFormats((current) => {
+      const next = { ...current };
+      for (const cell of targets) {
+        const key = `${cell.rowId}::${cell.columnId}`;
+        const format = { ...(next[key] ?? {}) };
+        delete format.color;
+        if (Object.keys(format).length) next[key] = format;
+        else delete next[key];
+      }
+      if (Object.keys(next).length) window.localStorage.setItem(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(CELL_TEXT_FORMATS_STORAGE_KEY);
+      return next;
+    });
+  }, [selectedAgCell, selectedAgCells]);
+
+  const resetAllTextColors = useCallback(() => {
+    setColumnTextFormats((current) => {
+      const next: ColumnTextFormatSettings = {};
+      for (const [key, setting] of Object.entries(current)) {
+        const strippedSetting: { cell?: TextFormatSettings; header?: TextFormatSettings } = {};
+        for (const target of ["cell", "header"] as const) {
+          const format = setting[target];
+          if (!format) continue;
+          const stripped = { ...format };
+          delete stripped.color;
+          if (Object.keys(stripped).length) strippedSetting[target] = stripped;
+        }
+        if (Object.keys(strippedSetting).length) next[key] = strippedSetting;
+      }
+      if (Object.keys(next).length) window.localStorage.setItem(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(COLUMN_TEXT_FORMATS_STORAGE_KEY);
+      return next;
+    });
+    setCellTextFormats((current) => {
+      const next: CellTextFormatSettings = {};
+      for (const [key, format] of Object.entries(current)) {
+        const stripped = { ...format };
+        delete stripped.color;
+        if (Object.keys(stripped).length) next[key] = stripped;
+      }
+      if (Object.keys(next).length) window.localStorage.setItem(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(CELL_TEXT_FORMATS_STORAGE_KEY);
+      return next;
+    });
+  }, []);
+
+  const resetAllTextFormatting = useCallback(() => {
+    setColumnTextFormats({});
+    setCellTextFormats({});
+    window.localStorage.removeItem(COLUMN_TEXT_FORMATS_STORAGE_KEY);
+    window.localStorage.removeItem(CELL_TEXT_FORMATS_STORAGE_KEY);
+  }, []);
+
   const selectedCellKeys = useMemo(
     () => selectedAgCells.map((cell) => `${cell.rowId}::${cell.columnId}`),
     [selectedAgCells],
@@ -1005,6 +1363,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [activeColorTarget, handleColumnColorChange, handleSelectedCellColorChange, selectedColorColumns, selectedFullColumnIds]);
 
   const handleFillColorReset = useCallback(() => {
+    if (!confirmReset("선택한 채우기 색상", "the selected fill color")) return;
     if (activeColorTarget === "headers") {
       resetColumnColorTarget(selectedColorColumns, "header");
       return;
@@ -1014,7 +1373,50 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       return;
     }
     resetSelectedCellColor();
-  }, [activeColorTarget, resetColumnColorTarget, resetSelectedCellColor, selectedColorColumns, selectedFullColumnIds]);
+  }, [activeColorTarget, confirmReset, resetColumnColorTarget, resetSelectedCellColor, selectedColorColumns, selectedFullColumnIds]);
+
+  const currentTextFormat = useMemo<Required<TextFormatSettings>>(() => {
+    const selectedCellColumnId = activeColorTarget === "columns"
+      ? selectedFullColumnIds[0]
+      : selectedAgCell?.columnId;
+    const defaultFormat = activeColorTarget === "headers"
+      ? { fontSize: 10, bold: false, color: "#FFFFFF" }
+      : { fontSize: defaultCellTextFontSize(selectedCellColumnId), bold: false, color: "#1A1917" };
+    let selectedFormat: TextFormatSettings | undefined;
+    if (activeColorTarget === "headers") {
+      selectedFormat = columnTextFormats[selectedColorColumns[0] ?? ""]?.header;
+    } else if (activeColorTarget === "columns") {
+      selectedFormat = columnTextFormats[selectedFullColumnIds[0] ?? ""]?.cell;
+    } else if (selectedAgCell) {
+      selectedFormat = cellTextFormats[`${selectedAgCell.rowId}::${selectedAgCell.columnId}`];
+    }
+    return { ...defaultFormat, ...(selectedFormat ?? {}) };
+  }, [activeColorTarget, cellTextFormats, columnTextFormats, selectedAgCell, selectedColorColumns, selectedFullColumnIds]);
+
+  const handleTextFormatApply = useCallback((patch: TextFormatSettings) => {
+    if (activeColorTarget === "headers") {
+      if (selectedColorColumns.length) handleColumnTextFormatChange(selectedColorColumns, "header", patch);
+      return;
+    }
+    if (activeColorTarget === "columns") {
+      if (selectedFullColumnIds.length) handleColumnTextFormatChange(selectedFullColumnIds, "cell", patch);
+      return;
+    }
+    handleSelectedCellTextFormatChange(patch);
+  }, [activeColorTarget, handleColumnTextFormatChange, handleSelectedCellTextFormatChange, selectedColorColumns, selectedFullColumnIds]);
+
+  const handleTextFormatReset = useCallback(() => {
+    if (!confirmReset("선택한 텍스트 서식", "the selected text formatting")) return;
+    if (activeColorTarget === "headers") {
+      resetColumnTextFormatTarget(selectedColorColumns, "header");
+      return;
+    }
+    if (activeColorTarget === "columns") {
+      resetColumnTextFormatTarget(selectedFullColumnIds, "cell");
+      return;
+    }
+    resetSelectedCellTextFormat();
+  }, [activeColorTarget, confirmReset, resetColumnTextFormatTarget, resetSelectedCellTextFormat, selectedColorColumns, selectedFullColumnIds]);
 
   const handleSeasonalFactorsChange = useCallback((next: SeasonalFactors) => {
     setSeasonalFactors(next);
@@ -1156,24 +1558,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       .filter((c) => columnVis[c.id] !== false),
     [columnVis],
   );
-
-  const colorableColumns = useMemo(
-    () => [
-      ...BASE_COLORABLE_COLUMNS.map((column) => ({
-        ...column,
-        label: columnHeaderNames[column.id] ?? column.label,
-      })),
-      ...data.containers
-        .filter((container) => containerMatchesCategory(container, categoryFilter))
-        .map((container) => ({
-          id: `container:${container.name}`,
-          label: `Container Header: ${columnHeaderNames[`container:${container.name}`] ?? container.name}`,
-        })),
-    ],
-    [categoryFilter, columnHeaderNames, data.containers],
-  );
-  const selectedColorColumnIsContainerHeader = selectedColorColumns.length > 0 &&
-    selectedColorColumns.every((id) => id.startsWith("container:"));
 
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1326,6 +1710,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           gap: 5,
           padding: "0 12px",
           overflowX: "auto",
+          overflowY: "hidden",
         }}
       >
 <div ref={categoryFilterRef} style={{ position: "relative", flexShrink: 0 }}>
@@ -1501,7 +1886,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               type="button"
               aria-label="Reset search"
               title="Reset search"
-              onClick={() => setSearch("")}
+              onClick={() => {
+                if (confirmReset("검색어", "the search")) setSearch("");
+              }}
               style={{
                 position: "absolute",
                 right: 5,
@@ -1594,7 +1981,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   </button>
                 </PopoverClose>
               </div>
-              <div style={{ gridColumn: 1, gridRow: "2 / 5", minWidth: 0 }}>
+              <div style={{ gridColumn: 1, gridRow: "2 / 5", minWidth: 0, maxHeight: "min(700px, calc(100vh - 200px))", overflowY: "auto" }}>
               {/* Quick Presets */}
               <div style={{ padding: "8px 14px", borderBottom: "1px solid #E2E8F0" }}>
                 <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
@@ -1673,7 +2060,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       <button
                         type="button"
                         disabled={!hasSkuPartFilters}
-                        onClick={() => setSkuPartFilters(EMPTY_SKU_PART_FILTERS)}
+                        onClick={() => {
+                          if (confirmReset("SKU 필터", "the SKU filters")) setSkuPartFilters(EMPTY_SKU_PART_FILTERS);
+                        }}
                         style={{
                           fontSize: 10,
                           padding: "2px 7px",
@@ -1828,7 +2217,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </select>
                       <button
                         type="button"
-                        onClick={() => setFreezeUntil(DEFAULT_FREEZE)}
+                        onClick={() => {
+                          if (confirmReset("컬럼 고정", "the frozen columns")) setFreezeUntil(DEFAULT_FREEZE);
+                        }}
                         style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B", whiteSpace: "nowrap" }}
                       >
                         {pick("초기화", "Reset")}
@@ -1841,7 +2232,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                     <button
                       type="button"
-                      onClick={resetColumnWidths}
+                      onClick={() => {
+                        if (confirmReset("컬럼 너비", "all column widths")) resetColumnWidths();
+                      }}
                       style={{ width: "100%", fontSize: 11, padding: "6px 10px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
                     >
                       {pick("너비 초기화", "Reset Widths")}
@@ -1873,63 +2266,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   {isColorSettingsOpen ? (
                     <>
                   <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 9 }}>
-                    <div style={{ fontSize: 11, color: selectedColorColumns.length ? "#2563EB" : "#64748B", fontWeight: selectedColorColumns.length ? 700 : 400 }}>
-                      {selectedColorColumns.length
-                        ? pick(`${selectedColorColumns.length}개 컬럼 선택됨`, `${selectedColorColumns.length} columns selected`)
-                        : gridMode === "ag-grid"
-                          ? pick("그리드 제목을 클릭하여 컬럼을 선택하세요", "Click a grid header to select a column")
-                          : pick("아래 목록에서 컬럼을 선택하세요", "Select columns from the list below")}
-                    </div>
-                    {gridMode === "ag-grid" && (
-                      <div style={{ fontSize: 10, color: "#64748B" }}>
-                        {pick("제목 클릭: 헤더 · 헤더 상단 클릭: 전체 컬럼 · Ctrl/Cmd/Shift: 다중 선택 · 더블 클릭: 이름 변경", "Title: header · Header top edge: entire column · Ctrl/Cmd/Shift: multi-select · Double-click: rename")}
-                      </div>
-                    )}
-                    <select
-                      multiple
-                      size={6}
-                      value={selectedColorColumns}
-                      onChange={(event) =>
-                        setSelectedColorColumns(Array.from(event.target.selectedOptions, (o) => o.value))
-                      }
-                      style={{ width: "100%", fontSize: 12, padding: "2px 4px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B" }}
-                    >
-                      {colorableColumns.map((column) => (
-                        <option key={column.id} value={column.id}>
-                          {column.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      {(["cell", "header"] as const).map((target) => {
-                        const firstSelected = selectedColorColumns[0] ?? "";
-                        const current = columnColors[firstSelected]?.[target] ?? (target === "cell" ? "#FFFFFF" : "#2A2825");
-                        return (
-                          <label key={target} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                            {target === "cell" ? pick("셀", "Cell") : pick("헤더", "Header")}
-                            <input
-                              type="color"
-                              disabled={!selectedColorColumns.length || (target === "cell" && selectedColorColumnIsContainerHeader)}
-                              value={current}
-                              onChange={(event) => handleColumnColorChange(selectedColorColumns, target, event.target.value)}
-                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: !selectedColorColumns.length || (target === "cell" && selectedColorColumnIsContainerHeader) ? "default" : "pointer", opacity: !selectedColorColumns.length || (target === "cell" && selectedColorColumnIsContainerHeader) ? 0.45 : 1 }}
-                            />
-                          </label>
-                        );
-                      })}
-                    </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                       <button
                         type="button"
                         disabled={!selectedColorColumns.length}
-                        onClick={resetSelectedColumnColor}
+                        onClick={() => {
+                          if (confirmReset("선택한 컬럼 색상", "the selected column colors")) resetSelectedColumnColor();
+                        }}
                         style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedColorColumns.length ? "pointer" : "default", background: "#F1F5F9", color: "#64748B", opacity: selectedColorColumns.length ? 1 : 0.5 }}
                       >
                         {pick("선택 초기화", "Reset Selected")}
                       </button>
                       <button
                         type="button"
-                        onClick={resetColumnColors}
+                        onClick={() => {
+                          if (confirmReset("모든 컬럼 색상", "all column colors")) resetColumnColors();
+                        }}
                         style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
                       >
                         {pick("전체 초기화", "Reset All")}
@@ -1942,66 +2294,57 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                       {pick("선택 셀 색상", "Selected Cell Color")}
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      <div
-                        title={selectedAgCells.length > 1 ? `${selectedAgCells.length} cells selected` : selectedAgCell?.label}
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          borderRadius: 5,
-                          border: "1px solid #CBD5E1",
-                          background: selectedAgCell ? "#F8FAFC" : "#F1F5F9",
-                          color: selectedAgCell ? "#1E293B" : "#94A3B8",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          padding: "5px 8px",
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <button
+                        type="button"
+                        disabled={!selectedAgCell}
+                        onClick={() => {
+                          if (confirmReset("선택한 셀 색상", "the selected cell colors")) resetSelectedCellColor();
                         }}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
                       >
-                        {selectedAgCells.length > 1 ? pick(`${selectedAgCells.length}개 셀 선택됨`, `${selectedAgCells.length} cells selected`) : selectedAgCell ? selectedAgCell.label : pick("먼저 그리드 셀을 선택하세요", "Click a grid cell first")}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              width: 14,
-                              height: 14,
-                              borderRadius: 3,
-                              border: "1px solid #CBD5E1",
-                              background: selectedCellColorInfo.label === "Mixed"
-                                ? "linear-gradient(135deg, #F87171 0 33%, #FACC15 33% 66%, #60A5FA 66% 100%)"
-                                : selectedCellColorInfo.color,
-                            }}
-                          />
-                          {selectedCellColorInfo.label}
-                        </span>
-                        <input
-                          type="color"
-                          disabled={!selectedAgCell}
-                          value={selectedAgCell ? selectedCellColorInfo.color : "#FFFFFF"}
-                          onChange={(event) => handleSelectedCellColorChange(event.target.value)}
-                          style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: selectedAgCell ? "pointer" : "default" }}
-                        />
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                        <button
-                          type="button"
-                          disabled={!selectedAgCell}
-                          onClick={resetSelectedCellColor}
-                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
-                        >
-                          {pick("선택 초기화", "Reset Selected")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={resetCellColors}
-                          style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
-                        >
-                          {pick("모든 셀 초기화", "Reset All Cells")}
-                        </button>
-                      </div>
+                        {pick("선택 초기화", "Reset Selected")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirmReset("모든 셀 색상", "all cell colors")) resetCellColors();
+                        }}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
+                      >
+                        {pick("모든 셀 초기화", "Reset All Cells")}
+                      </button>
                     </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 }}>
+                      <button
+                        type="button"
+                        disabled={!selectedAgCell}
+                        onClick={() => {
+                          if (confirmReset("선택한 셀의 텍스트 색상", "the selected cell text colors")) resetSelectedCellTextColor();
+                        }}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedAgCell ? "pointer" : "default", background: "#F1F5F9", color: selectedAgCell ? "#64748B" : "#A8B0BA" }}
+                      >
+                        {pick("텍스트 색상 선택 초기화", "Reset Selected Text Color")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirmReset("모든 텍스트 색상", "all text colors")) resetAllTextColors();
+                        }}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569" }}
+                      >
+                        {pick("모든 텍스트 색상 초기화", "Reset All Text Colors")}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirmReset("모든 텍스트 서식", "all text formatting")) resetAllTextFormatting();
+                      }}
+                      style={{ width: "100%", marginTop: 6, fontSize: 11, fontWeight: 600, padding: "5px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#334155" }}
+                    >
+                      {pick("모든 텍스트 서식 초기화", "Reset All Text Formatting")}
+                    </button>
                   </div>
                     </>
                   ) : null}
@@ -2011,11 +2354,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               </div>
 
               {/* Columns */}
-              <div style={{ gridColumn: 2, gridRow: "2 / 4", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+              <div style={{ gridColumn: 2, gridRow: "2 / 4", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0", maxHeight: "min(700px, calc(100vh - 200px))", overflowY: "auto" }}>
                 <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                   {pick("컬럼 표시", "Column Visibility")}
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: "min(700px, calc(100vh - 200px))", overflow: "auto", paddingRight: 4 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 }}>
                   {COLUMN_VISIBILITY_GROUP_KEYS.map((group) => {
                     const groupItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
                     const checkedCount = groupItems.filter((item) => columnVis[item.id] !== false).length;
@@ -2113,7 +2456,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     ];
 
                     return (
-                      <div style={{ gridColumn: 3, gridRow: "2 / 5", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
+                      <div style={{ gridColumn: 3, gridRow: "2 / 5", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0", maxHeight: "min(700px, calc(100vh - 200px))", overflowY: "auto" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                           <div style={SETTINGS_SECTION_TITLE_STYLE}>
                             {pick("컨테이너 표시", "Container Visibility")}
@@ -2153,7 +2496,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           })}
                         </div>
                         <div style={{ borderTop: "1px solid #E2E8F0", marginBottom: 8 }} />
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "min(700px, calc(100vh - 200px))", overflowY: "auto", paddingRight: 2 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingRight: 2 }}>
                           {STATUS_GROUPS.map(({ status, label, color, accentColor }) => {
                             const group = allContainers.filter((c) => c.status === status);
                             if (!group.length) return null;
@@ -2240,6 +2583,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               ) : null}
             </PopoverContent>
           </Popover>
+          <TextFormatPopover
+            enabled={fillPaletteEnabled}
+            format={currentTextFormat}
+            targetLabel={fillPaletteTargetLabel}
+            onChange={handleTextFormatApply}
+            onReset={handleTextFormatReset}
+          />
           <FillColorPopover
             enabled={fillPaletteEnabled}
             currentColor={fillPaletteColor}
@@ -2294,7 +2644,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             {isHistoricalDate && (
               <button
                 type="button"
-                onClick={() => setAsOfDate(todayStr)}
+                onClick={() => {
+                  if (confirmReset("기준 날짜", "the date to today")) setAsOfDate(todayStr);
+                }}
                 title="Reset to today"
                 style={{
                   fontSize: 10,
@@ -2482,6 +2834,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           gradientSC={gradientSC}
           columnColors={columnColors}
           cellColors={cellColors}
+          columnTextFormats={columnTextFormats}
+          cellTextFormats={cellTextFormats}
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
           canEditSkuNotes={canEditSkuNotes}
@@ -2537,6 +2891,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           seasonalFactors={seasonalFactors}
           columnColors={columnColors}
           cellColors={cellColors}
+          columnTextFormats={columnTextFormats}
+          cellTextFormats={cellTextFormats}
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
           canEditSkuNotes={canEditSkuNotes}

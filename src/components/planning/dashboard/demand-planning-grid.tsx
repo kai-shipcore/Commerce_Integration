@@ -22,7 +22,7 @@ import {
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
-import type { CellColorSettings, CellContent, ColDef, ColumnColorSettings, ColumnVisibility, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
+import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -64,6 +64,8 @@ export interface DemandPlanningGridProps {
   seasonalFactors: SeasonalFactors;
   columnColors?: ColumnColorSettings;
   cellColors?: CellColorSettings;
+  columnTextFormats?: ColumnTextFormatSettings;
+  cellTextFormats?: CellTextFormatSettings;
   skuCellNotes?: Record<string, string>;
   onSkuCellNoteChange?: (sku: string, note: string) => void | Promise<void>;
   canEditSkuNotes?: boolean;
@@ -578,9 +580,9 @@ export function DemandPlanningGrid({
         .lv-ok   { color: #0A6A45; font-weight: 500; }
         .lv-over { color: #6B3DB8; font-size: 10px; }
         .lv-dim  { color: #9A9790; }
-        .sod-crit { color: #C42020; font-weight: 700; font-size: 10px; }
-        .sod-warn { color: #9A5200; font-weight: 600; font-size: 10px; }
-        .sod-ok   { color: #5A5750; font-size: 10px; }
+        .sod-crit { color: #C42020; font-weight: 700; }
+        .sod-warn { color: #9A5200; font-weight: 600; }
+        .sod-ok   { color: #5A5750; }
         .sc { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; white-space: nowrap; }
         .sc-orig { background: #E5EEFF; color: #1238A0; }
         .sc-cust { background: #E3F5EC; color: #0A6A45; }
@@ -1098,7 +1100,7 @@ export function DemandPlanningGrid({
                         const commitSave = async (val: string) => {
                           if (saveStarted) return;
                           saveStarted = true;
-                          const newQty = parseInt(val);
+                          const newQty = val.trim() === "" ? 0 : parseInt(val, 10);
                           console.log("[commitSave]", { sku: r.sku, container: c.name, container_id: c.container_id, val, newQty, inbound_qty: cd.inbound_qty, item_id: rawCd.item_id ?? override?.item_id });
                           setEditingKey(null);
                           if (isNaN(newQty) || newQty === cd.inbound_qty) {
@@ -1226,9 +1228,12 @@ export function DemandPlanningGrid({
                               color: isDraft ? "#9A9790" : isEditable ? "#1A4FC0" : undefined,
                               textAlign: sc.align === "num" ? "right" : sc.align === "ctr" ? "center" : "left",
                               fontFamily: sc.align === "num" ? "ui-monospace, SFMono-Regular, Consolas, monospace" : undefined,
-                              fontSize: 11,
+                              fontSize: sc.fontSize ?? 11,
                               fontWeight: isEditable ? 600 : undefined,
                               cursor: isEditable ? "pointer" : undefined,
+                              overflow: isEditing ? "visible" : undefined,
+                              position: isEditing ? "relative" : undefined,
+                              zIndex: isEditing ? 30 : undefined,
                             }}
                           >
                             {isEditing ? (
@@ -1244,16 +1249,24 @@ export function DemandPlanningGrid({
                                 }}
                                 onBlur={() => void commitSave(editingValRef.current)}
                                 style={{
-                                  width: "100%",
-                                  height: 28,
-                                  padding: "2px 7px",
-                                  border: "none",
-                                  background: "transparent",
+                                  height: 40,
+                                  padding: "4px 12px",
+                                  border: "2px solid #1A5CDB",
+                                  borderRadius: 6,
+                                  background: "#FFFDE7",
                                   fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-                                  fontSize: 11,
+                                  fontSize: 14,
+                                  fontWeight: 600,
                                   textAlign: "right",
                                   outline: "none",
                                   boxSizing: "border-box",
+                                  boxShadow: "0 8px 20px rgba(15,23,42,.2)",
+                                  left: "50%",
+                                  position: "absolute",
+                                  top: "50%",
+                                  transform: "translate(-50%, -50%)",
+                                  width: 144,
+                                  zIndex: 100,
                                 }}
                               />
                             ) : isSaving ? (

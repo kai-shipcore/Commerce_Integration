@@ -131,6 +131,7 @@ export interface ConSubColDef {
   w: number;
   align: "num" | "ctr" | "left";
   tint: string;
+  fontSize?: number;
   val: (cd: ContainerRowData, container: ContainerMeta, row: DemandRow) => CellContent;
 }
 
@@ -201,10 +202,10 @@ export const ALL_COLS: ColDef[] = [
     return v > 0 ? { html: `<span class="inb-pos">+${v}</span>` } : { html: `<span class="lv-dim">0</span>` };
   }, sortVal: (r) => r.total_inbound_qty ?? 0 },
   { id: "inb_lst",  grp: "inb", label: "Containers\nList",   w: 152, align: "left", tint: "t-inb", gh: "gh-inb", val: (r) => compactContainerList(r.containers_list) },
-  { id: "next_eta", grp: "inb", label: "Next\nETA",          w: 78,  align: "ctr",  tint: "t-inb", gh: "gh-inb", val: (r) => {
+  { id: "next_eta", grp: "inb", label: "Next\nETA",          w: 92,  align: "ctr",  tint: "t-inb", gh: "gh-inb", fontSize: 10, val: (r) => {
     const d = daysTo(r.next_eta);
     const color = d !== null && d < 0 ? "#C42020" : d !== null && d <= 14 ? "#9A5200" : "#1A4FC0";
-    return { html: `<span style="font-family:monospace;font-size:9px;color:${color};font-weight:${d !== null && d <= 14 ? 600 : 400}">${r.next_eta || "—"}</span>` };
+    return { html: `<span style="font-family:monospace;color:${color};font-weight:${d !== null && d <= 14 ? 600 : 400}">${r.next_eta || "—"}</span>` };
   }, sortVal: (r) => r.next_eta ?? "" },
   { id: "sod",      grp: "inb", label: "S.O.D\n품절예상일", w: 82,  align: "ctr",  tint: "t-inb", gh: "gh-inb", val: (r, _i, u) => ({
     html: `<span class="${u === "crit" ? "sod-crit" : u === "warn" ? "sod-warn" : "sod-ok"}">${r.sod || "—"}</span>`,
@@ -240,12 +241,17 @@ export const DEFAULT_FREEZE = "sod";
 export const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
 export const COLUMN_COLORS_STORAGE_KEY = "planning-dashboard-column-colors";
 export const CELL_COLORS_STORAGE_KEY = "planning-dashboard-cell-colors";
+export const COLUMN_TEXT_FORMATS_STORAGE_KEY = "planning-dashboard-column-text-formats";
+export const CELL_TEXT_FORMATS_STORAGE_KEY = "planning-dashboard-cell-text-formats";
 
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
 export type ColumnWidths = Record<string, number>;
 export type ColumnVisibility = Record<string, boolean>;
 export type ColumnColorSettings = Record<string, { cell?: string; header?: string }>;
 export type CellColorSettings = Record<string, string>;
+export type TextFormatSettings = { fontSize?: number; bold?: boolean; color?: string };
+export type ColumnTextFormatSettings = Record<string, { cell?: TextFormatSettings; header?: TextFormatSettings }>;
+export type CellTextFormatSettings = Record<string, TextFormatSettings>;
 export type SkuPartFilterKey = "formula" | "fabric" | "seat" | "no" | "size" | "color" | "tone" | "type" | "prefix" | "productCode" | "surface" | "material" | "vehiclePosition" | "make" | "model";
 export type SkuParts = Record<SkuPartFilterKey, string>;
 export type SkuPartFilters = Record<SkuPartFilterKey, string[]>;
@@ -341,6 +347,56 @@ export function loadSavedColumnColors(): ColumnColorSettings {
           return next.cell || next.header ? [key, next] : null;
         })
         .filter((entry): entry is [string, { cell?: string; header?: string }] => entry !== null),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function normalizeTextFormat(value: unknown): TextFormatSettings | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entry = value as Record<string, unknown>;
+  const normalized: TextFormatSettings = {
+    ...(typeof entry.fontSize === "number" && Number.isFinite(entry.fontSize)
+      ? { fontSize: Math.min(48, Math.max(6, Math.round(entry.fontSize))) }
+      : {}),
+    ...(typeof entry.bold === "boolean" ? { bold: entry.bold } : {}),
+    ...(isValidHexColor(entry.color) ? { color: entry.color.toUpperCase() } : {}),
+  };
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+export function loadSavedColumnTextFormats(): ColumnTextFormatSettings {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMN_TEXT_FORMATS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(stored)
+        .map(([key, value]) => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+          const entry = value as Record<string, unknown>;
+          const cell = normalizeTextFormat(entry.cell);
+          const header = normalizeTextFormat(entry.header);
+          return cell || header ? [key, { ...(cell ? { cell } : {}), ...(header ? { header } : {}) }] : null;
+        })
+        .filter((entry): entry is [string, { cell?: TextFormatSettings; header?: TextFormatSettings }] => entry !== null),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function loadSavedCellTextFormats(): CellTextFormatSettings {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(CELL_TEXT_FORMATS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(stored)
+        .map(([key, value]) => {
+          const format = normalizeTextFormat(value);
+          return format ? [key, format] : null;
+        })
+        .filter((entry): entry is [string, TextFormatSettings] => entry !== null),
     );
   } catch {
     return {};
@@ -457,13 +513,13 @@ export const CON_SUBCOLS: ConSubColDef[] = [
     if (v === null || v === undefined) return "";
     return { html: `<span class="${lifeCls(v)}">${Math.round(v)}</span>` };
   }},
-  { id: "esod",  label: "EST.\nSOD",    w: 84, align: "ctr", tint: "t-cn-sod",  val: (cd) => {
+  { id: "esod",  label: "EST.\nSOD",    w: 92, align: "ctr", tint: "t-cn-sod", fontSize: 10, val: (cd) => {
     if (!cd.est_sod) return "";
     const d = daysTo(cd.est_sod);
     const cls = d !== null && d <= 30 ? "sod-crit" : d !== null && d <= 60 ? "sod-warn" : "sod-ok";
     return { html: `<span class="${cls}">${cd.est_sod}</span>` };
   }},
-  { id: "psod",  label: "Plan\nSOD",    w: 84, align: "ctr", tint: "t-cn-sod",  val: (cd) => cd.plan_sod ? { html: `<span style="font-size:9px;color:#9A9790">${cd.plan_sod}</span>` } : "" },
+  { id: "psod",  label: "Plan\nSOD",    w: 92, align: "ctr", tint: "t-cn-sod", fontSize: 10, val: (cd) => cd.plan_sod ? { html: `<span style="color:#9A9790">${cd.plan_sod}</span>` } : "" },
   { id: "ccbm",  label: "CBM",          w: 58, align: "num", tint: "t-cn",      val: (cd, _c, row) => {
     const qty = cd.inbound_qty ?? 0;
     const cbmUnit = row?.cbm_per_unit ?? 0;
