@@ -105,6 +105,10 @@ type ContainerTotalColumn = {
   total?: number;
 };
 
+/** A hidden run's restore arrow, anchored to a real neighboring column's
+ *  header rather than a column of its own — see `HideGapRestoreMarker`. */
+type HideGapRestoreInfo = { hiddenLabels: string[]; onRestore: () => void };
+
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
 type SalesTargetTier = { minSales: number; targetDays: number };
@@ -1128,6 +1132,10 @@ function SelectableHeader(params: IHeaderParams & {
   onRename: (columnId: string, name: string) => void;
   isFiltered?: boolean;
   onRightClick?: (x: number, y: number) => void;
+  /** Set when a hidden run's restore arrow anchors to this column — see
+   *  `HideGapRestoreMarker`. At most one of these two is set per column. */
+  restoreMarkerLeft?: HideGapRestoreInfo;
+  restoreMarkerRight?: HideGapRestoreInfo;
 }) {
   const [editing, setEditing] = useState(false);
   const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
@@ -1209,38 +1217,56 @@ function SelectableHeader(params: IHeaderParams & {
         <span style={{ minWidth: 0, overflow: "hidden" }}>{params.displayName}</span>
         {params.isFiltered && <span aria-hidden="true" style={{ color: "#60A5FA", fontSize: 9, lineHeight: 1 }}>▼</span>}
       </div>
+      {params.restoreMarkerLeft && <HideGapRestoreMarker side="left" info={params.restoreMarkerLeft} />}
+      {params.restoreMarkerRight && <HideGapRestoreMarker side="right" info={params.restoreMarkerRight} />}
     </div>
   );
 }
 
-/** The header of a synthetic 18px "seam" column standing in for one or more
- *  columns hidden via the right-click menu — Google Sheets' own hidden-column
- *  sliver. Clicking it restores every column in the run at once, matching
- *  Sheets rather than requiring one click per column. There is no matching
- *  cell content or right-click menu: it isn't a real column, just a place to
- *  undo a hide without opening the separate "Columns" toolbar list. */
-function HideGapIndicatorHeader(params: IHeaderParams & {
-  hiddenLabels: string[];
-  onRestore: () => void;
-}) {
+/** A hidden run's restore arrow — Google Sheets' own hidden-column sliver,
+ *  but anchored to a real neighboring column's header instead of reserving a
+ *  column of its own (an earlier version did that; hiding a column still
+ *  showed a visible gap, just a narrower one — not what Sheets does). Clicking
+ *  it restores every column in the run at once. At rest it's just a thin line
+ *  hanging off the anchor column's edge; on hover it pops into a wider pill
+ *  that overlaps both neighbors, via `position: absolute` escaping past the
+ *  anchor cell's own `overflow: hidden` (enabled by the `planning-hidegap-header`
+ *  CSS override applied to that cell only). The pill stays a DOM descendant
+ *  of the hover-tracked wrapper even though it paints over the neighboring
+ *  cell, so moving the pointer onto the pill doesn't fire `onMouseLeave`. */
+function HideGapRestoreMarker({ side, info }: { side: "left" | "right"; info: HideGapRestoreInfo }) {
   const { pick } = useI18n();
+  const [hovered, setHovered] = useState(false);
   return (
-    <button
-      type="button"
-      title={pick(`숨김: ${params.hiddenLabels.join(", ")}`, `Hidden: ${params.hiddenLabels.join(", ")}`)}
-      aria-label={pick("숨긴 열 다시 보기", "Restore hidden columns")}
-      onClick={(event) => { event.stopPropagation(); params.onRestore(); }}
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
+        position: "absolute", top: 0, bottom: 0, width: 22, zIndex: 3,
         display: "flex", alignItems: "center", justifyContent: "center",
-        width: "100%", height: "100%", padding: 0, border: "none", cursor: "pointer",
-        background: "rgba(255,255,255,.06)",
+        [side]: -18,
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.18)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,.06)"; }}
     >
-      <ChevronLeft size={9} strokeWidth={3} style={{ color: "rgba(255,255,255,.55)", marginRight: -3 }} />
-      <ChevronRight size={9} strokeWidth={3} style={{ color: "rgba(255,255,255,.55)" }} />
-    </button>
+      {!hovered && (
+        <div style={{ width: 2, height: 18, background: "rgba(255,255,255,.35)", borderRadius: 1 }} />
+      )}
+      {hovered && (
+        <button
+          type="button"
+          title={pick(`숨김: ${info.hiddenLabels.join(", ")}`, `Hidden: ${info.hiddenLabels.join(", ")}`)}
+          aria-label={pick("숨긴 열 다시 보기", "Restore hidden columns")}
+          onClick={(event) => { event.stopPropagation(); info.onRestore(); }}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 2,
+            width: 28, height: 20, padding: 0, border: "1px solid rgba(255,255,255,.35)", borderRadius: 4,
+            cursor: "pointer", background: "#3A3733", boxShadow: "0 2px 6px rgba(0,0,0,.35)",
+          }}
+        >
+          <ChevronLeft size={10} strokeWidth={3} style={{ color: "rgba(255,255,255,.85)" }} />
+          <ChevronRight size={10} strokeWidth={3} style={{ color: "rgba(255,255,255,.85)" }} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -2071,19 +2097,21 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   // is computed once and reused identically inside every container's own
   // column group below.
   const conHiddenRuns = useMemo(() => {
-    const runs: { indicatorId: string; hiddenIds: string[]; hiddenLabels: string[] }[] = [];
+    const runs: { hiddenIds: string[]; hiddenLabels: string[]; startIndex: number }[] = [];
     let pending: typeof conCandidates = [];
+    let startIndex = -1;
     const flush = () => {
       if (!pending.length) return;
       runs.push({
-        indicatorId: `hidegap:${pending[0].id}`,
         hiddenIds: pending.map((c) => c.id),
         hiddenLabels: pending.map((c) => c.label.replace("\n", " ")),
+        startIndex,
       });
       pending = [];
     };
-    conCandidates.forEach((column) => {
+    conCandidates.forEach((column, index) => {
       if (columnVis[`con:${column.id}`] === false) {
+        if (!pending.length) startIndex = index;
         pending.push(column);
         return;
       }
@@ -2092,6 +2120,22 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     flush();
     return runs;
   }, [conCandidates, columnVis]);
+
+  // Same anchoring idea as `baseRestoreMarkers`, but global (sub-column
+  // visibility has no per-container override) — reused identically inside
+  // every container's own column group below.
+  const conRestoreMarkers = useMemo(() => {
+    const left = new Map<string, HideGapRestoreInfo>();
+    const right = new Map<string, HideGapRestoreInfo>();
+    for (const run of conHiddenRuns) {
+      const onRestore = () => run.hiddenIds.forEach((id) => onHideColumn?.(`con:${id}`));
+      const afterId = conCandidates[run.startIndex + run.hiddenIds.length]?.id;
+      if (afterId) { left.set(afterId, { hiddenLabels: run.hiddenLabels, onRestore }); continue; }
+      const beforeId = conCandidates[run.startIndex - 1]?.id;
+      if (beforeId) right.set(beforeId, { hiddenLabels: run.hiddenLabels, onRestore });
+    }
+    return { left, right };
+  }, [conCandidates, conHiddenRuns, onHideColumn]);
 
   const containerColumnTotals = useMemo(() => {
     const totals = new Map<string, ContainerColumnTotals>();
@@ -2678,17 +2722,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   );
 
   const baseHiddenRuns = useMemo(() => {
-    const runs: { indicatorColId: string; hiddenIds: string[]; hiddenLabels: string[]; grp: string | null; startIndex: number }[] = [];
+    const runs: { hiddenIds: string[]; hiddenLabels: string[]; startIndex: number }[] = [];
     let pending: typeof baseCandidates = [];
     let startIndex = -1;
     const flush = () => {
       if (!pending.length) return;
-      const allSameGrp = pending.every((c) => c.grp === pending[0].grp);
       runs.push({
-        indicatorColId: `hidegap:${pending[0].id}`,
         hiddenIds: pending.map((c) => c.id),
         hiddenLabels: pending.map((c) => c.label.replace("\n", " ")),
-        grp: allSameGrp ? pending[0].grp : null,
         startIndex,
       });
       pending = [];
@@ -2709,25 +2750,41 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const visibleBaseColumns = baseCandidates.filter((column) => columnVis[column.id] !== false);
     const freezeIndex = visibleBaseColumns.findIndex((column) => column.id === freezeUntil);
     if (freezeIndex < 0) return { ids: [] as string[], widths: {} as Record<string, number>, width: 0 };
-    const freezeIndexInCandidates = baseCandidates.findIndex((column) => column.id === freezeUntil);
 
     const pinnedColumns = visibleBaseColumns.slice(0, freezeIndex + 1);
-    const pinnedRuns = baseHiddenRuns.filter((run) => run.startIndex <= freezeIndexInCandidates);
-    const desiredWidths = Object.fromEntries([
-      ...pinnedColumns.map((column) => [
+    const desiredWidths = Object.fromEntries(
+      pinnedColumns.map((column) => [
         column.id,
         columnWidths[column.id] ?? baseColumnWidth(column),
       ] as const),
-      ...pinnedRuns.map((run) => [run.indicatorColId, 18] as const),
-    ]) as Record<string, number>;
+    ) as Record<string, number>;
     const desiredPinnedWidth = Object.values(desiredWidths).reduce((total, width) => total + width, 0);
 
     return {
-      ids: [...pinnedColumns.map((column) => column.id), ...pinnedRuns.map((run) => run.indicatorColId)],
+      ids: pinnedColumns.map((column) => column.id),
       widths: desiredWidths,
       width: desiredPinnedWidth,
     };
-  }, [baseCandidates, baseHiddenRuns, columnVis, columnWidths, freezeUntil]);
+  }, [baseCandidates, columnVis, columnWidths, freezeUntil]);
+
+  // Restore-arrow anchors: rather than reserving a column of its own, a
+  // hidden run's restore arrow rides on the header of the real column right
+  // after it (or, for a run with nothing after — hiding the last columns —
+  // the real column right before it). At most one marker per side per real
+  // column; two runs separated by exactly one visible column both anchor to
+  // that column, one on each side.
+  const baseRestoreMarkers = useMemo(() => {
+    const left = new Map<string, HideGapRestoreInfo>();
+    const right = new Map<string, HideGapRestoreInfo>();
+    for (const run of baseHiddenRuns) {
+      const onRestore = () => run.hiddenIds.forEach((id) => onHideColumn?.(id));
+      const afterId = baseCandidates[run.startIndex + run.hiddenIds.length]?.id;
+      if (afterId) { left.set(afterId, { hiddenLabels: run.hiddenLabels, onRestore }); continue; }
+      const beforeId = baseCandidates[run.startIndex - 1]?.id;
+      if (beforeId) right.set(beforeId, { hiddenLabels: run.hiddenLabels, onRestore });
+    }
+    return { left, right };
+  }, [baseCandidates, baseHiddenRuns, onHideColumn]);
 
   const gridMinWidth = Math.max(
     gridWidth,
@@ -2795,7 +2852,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               })
           : undefined,
         headerStyle: () => headerStyleForColor(columnColors[column.id]?.header, columnTextFormatsRef.current[column.id]?.header),
-        headerClass: () => columnTextFormatsRef.current[column.id]?.header?.color ? "planning-user-header-text-color" : "",
+        headerClass: () => [
+          columnTextFormatsRef.current[column.id]?.header?.color ? "planning-user-header-text-color" : "",
+          baseRestoreMarkers.left.has(column.id) || baseRestoreMarkers.right.has(column.id) ? "planning-hidegap-header" : "",
+        ].filter(Boolean).join(" "),
         headerComponent: SelectableHeader,
         headerComponentParams: {
           selectionId: column.id,
@@ -2806,6 +2866,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           onRename: onColumnHeaderRename ?? (() => {}),
           isFiltered: columnFilters.has(column.id),
           onRightClick: (x: number, y: number) => setColumnMenu({ x, y, key: column.id, label: headerName }),
+          restoreMarkerLeft: baseRestoreMarkers.left.get(column.id),
+          restoreMarkerRight: baseRestoreMarkers.right.get(column.id),
         },
         cellClassRules: {
           "planning-user-text-color": (params) => {
@@ -2831,25 +2893,6 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       };
     };
 
-    const buildBaseIndicatorColDef = (run: (typeof baseHiddenRuns)[number]): AgColDef<DemandRow> => ({
-      colId: run.indicatorColId,
-      headerName: "",
-      width: 18,
-      minWidth: 18,
-      maxWidth: 18,
-      resizable: false,
-      sortable: false,
-      suppressHeaderContextMenu: true,
-      pinned: pinnedBaseColumnIdSet.has(run.indicatorColId) ? "left" : undefined,
-      valueGetter: () => "",
-      cellStyle: { backgroundColor: "#F1F0EC", borderLeft: "1px solid #D8D6CE", borderRight: "1px solid #D8D6CE" },
-      headerComponent: HideGapIndicatorHeader,
-      headerComponentParams: {
-        hiddenLabels: run.hiddenLabels,
-        onRestore: () => run.hiddenIds.forEach((id) => onHideColumn?.(id)),
-      },
-    });
-
     const groups: Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>> = [];
     let currentGroupId: string | null = null;
     let currentGroupChildren: AgColDef<DemandRow>[] = [];
@@ -2869,36 +2912,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       currentGroupChildren = [];
     };
 
-    // Base columns and their hidden-run indicators, in one forward pass —
-    // `baseHiddenRuns` was computed over the exact same `baseCandidates`
-    // order, so its `startIndex` values line up with this walk directly,
-    // no re-detection needed.
-    const runsByStart = new Map(baseHiddenRuns.map((run) => [run.startIndex, run]));
-    let index = 0;
-    while (index < baseCandidates.length) {
-      const run = runsByStart.get(index);
-      if (run) {
-        // The run's own grp is only a placement hint when it's uniform; a run
-        // spanning two grps (or sitting where no grp is open yet and the
-        // next real column belongs elsewhere) gets a plain top-level column
-        // instead of being forced into either neighbor's group.
-        const nextGrp = baseCandidates[index + run.hiddenIds.length]?.grp ?? null;
-        const indicator = buildBaseIndicatorColDef(run);
-        if (run.grp !== null && (run.grp === nextGrp || run.grp === currentGroupId)) {
-          if (currentGroupId !== run.grp) { flushGroup(); currentGroupId = run.grp; }
-          currentGroupChildren.push(indicator);
-        } else {
-          flushGroup();
-          currentGroupId = null;
-          groups.push(indicator);
-        }
-        index += run.hiddenIds.length;
-        continue;
-      }
-      const column = baseCandidates[index];
+    for (const column of baseCandidates) {
+      if (columnVis[column.id] === false) continue;
       if (column.grp !== currentGroupId) { flushGroup(); currentGroupId = column.grp; }
       currentGroupChildren.push(buildRealBaseColDef(column));
-      index += 1;
     }
     flushGroup();
 
@@ -2939,6 +2956,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               key: `${container.name}::${column.id}`,
               label: `${container.name} · ${column.label.replace("\n", " ")}`,
             }),
+            restoreMarkerLeft: conRestoreMarkers.left.get(column.id),
+            restoreMarkerRight: conRestoreMarkers.right.get(column.id),
           },
           sortable: false,
           width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
@@ -3010,68 +3029,22 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           },
         });
 
-        const buildConIndicatorColDef = (run: (typeof conHiddenRuns)[number]): AgColDef<DemandRow> => ({
-          colId: `${container.name}::${run.indicatorId}`,
-          headerName: "",
-          width: 18,
-          minWidth: 18,
-          maxWidth: 18,
-          resizable: false,
-          sortable: false,
-          suppressHeaderContextMenu: true,
-          valueGetter: () => "",
-          cellStyle: { backgroundColor: "#F1F0EC", borderLeft: "1px solid #D8D6CE", borderRight: "1px solid #D8D6CE" },
-          headerComponent: HideGapIndicatorHeader,
-          headerComponentParams: {
-            hiddenLabels: run.hiddenLabels,
-            onRestore: () => run.hiddenIds.forEach((id) => onHideColumn?.(`con:${id}`)),
-          },
-        });
-
-        // One combined walk per container: real sub-columns and hidden-run
-        // indicators, plus a `totalColumns` entry kept index-aligned with
-        // `children` so ContainerGroupHeader's totals strip never desyncs
-        // from the header/cells it sits under.
-        const children: AgColDef<DemandRow>[] = [];
-        const totalColumns: ContainerTotalColumn[] = [];
-        // Parallel to `children` — the real sub-column id behind each entry,
-        // or null for a hidden-run indicator. Used below to re-derive the
-        // text-color header class without calling a headerClass function
-        // (which expects a real AG Grid params object) with a fake one.
-        const childRealIds: (string | null)[] = [];
-        const runsById = new Map(conHiddenRuns.map((run) => [run.hiddenIds[0], run]));
-        let skipUntilId: string | null = null;
-        for (const column of conCandidates) {
-          if (skipUntilId !== null) {
-            if (column.id === skipUntilId) skipUntilId = null;
-            continue;
-          }
-          if (columnVis[`con:${column.id}`] === false) {
-            const run = runsById.get(column.id);
-            if (!run) continue; // defensive: should always be found
-            children.push(buildConIndicatorColDef(run));
-            totalColumns.push({ id: run.indicatorId, width: 18, total: undefined });
-            childRealIds.push(null);
-            if (run.hiddenIds.length > 1) skipUntilId = run.hiddenIds[run.hiddenIds.length - 1];
-            continue;
-          }
-          children.push(buildRealSubColDef(column));
-          totalColumns.push({
-            id: column.id,
-            width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
-            total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
-          });
-          childRealIds.push(column.id);
-        }
+        const visibleSubColumns = conCandidates.filter((column) => columnVis[`con:${column.id}`] !== false);
+        const children = visibleSubColumns.map((column) => buildRealSubColDef(column));
+        const totalColumns: ContainerTotalColumn[] = visibleSubColumns.map((column) => ({
+          id: column.id,
+          width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
+          total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
+        }));
         // Boundary styling (the 2px block-edge border and the start/end
-        // header classes) is assigned after the fact, against the combined
-        // list's actual first/last entries — so a hidden first or last
-        // sub-column hands its boundary styling to the indicator standing in
-        // for it, instead of losing it.
+        // header classes) needs each column's final index among its visible
+        // siblings, so it's assigned after the fact rather than inside
+        // `buildRealSubColDef` itself.
         children.forEach((child, columnIndex) => {
-          const realId = childRealIds[columnIndex];
+          const realId = visibleSubColumns[columnIndex].id;
           child.headerClass = () => [
-            realId && columnTextFormatsRef.current[`con:${realId}`]?.header?.color ? "planning-user-header-text-color" : "",
+            columnTextFormatsRef.current[`con:${realId}`]?.header?.color ? "planning-user-header-text-color" : "",
+            conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
             columnIndex === 0 ? "container-column-start" : "",
             columnIndex === children.length - 1 ? "container-column-end" : "",
           ].filter(Boolean).join(" ");
@@ -3144,7 +3117,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseHiddenRuns, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conHiddenRuns, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onHideColumn, onSkuCellNoteChange, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onHideColumn, onSkuCellNoteChange, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -3182,48 +3155,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
     collectColumnIds(columnDefs);
     const availableIds = new Set((api.getColumns() ?? []).map((column) => column.getColId()));
     const requestedOrder = columnOrder.length ? columnOrder : defaultOrder;
-
-    // Hidden-run restore indicators (colId contains "hidegap:") are synthetic
-    // and rebuilt every time the hidden set changes, so a saved `columnOrder`
-    // — captured before this run existed, or before the user hid anything —
-    // never mentions them. Reordering by `requestedOrder` alone would then
-    // fall through to the "everything else" bucket and dump every indicator
-    // at the tail of the known columns, nowhere near the gap it's supposed to
-    // mark. Keep each indicator anchored to whichever real column precedes it
-    // in `defaultOrder` (its structurally correct neighbor) and only reorder
-    // the real columns by `requestedOrder`.
-    const isIndicatorId = (id: string) => id.includes("hidegap:");
-    const indicatorsAfter = new Map<string, string[]>();
-    const leadingIndicators: string[] = [];
-    let lastRealId: string | null = null;
-    for (const id of defaultOrder) {
-      if (isIndicatorId(id)) {
-        if (lastRealId === null) leadingIndicators.push(id);
-        else indicatorsAfter.set(lastRealId, [...(indicatorsAfter.get(lastRealId) ?? []), id]);
-        continue;
-      }
-      lastRealId = id;
-    }
-
-    const defaultOrderReal = defaultOrder.filter((id) => !isIndicatorId(id));
-    const requestedOrderReal = requestedOrder.filter((id) => !isIndicatorId(id));
-    const availableRealIds = new Set(Array.from(availableIds).filter((id) => !isIndicatorId(id)));
-    const desiredRealOrder = [
-      ...requestedOrderReal.filter((id) => availableRealIds.has(id)),
-      ...defaultOrderReal.filter((id) => availableRealIds.has(id) && !requestedOrderReal.includes(id)),
-      ...Array.from(availableRealIds).filter((id) => !requestedOrderReal.includes(id) && !defaultOrderReal.includes(id)),
+    const desiredOrder = [
+      ...requestedOrder.filter((id) => availableIds.has(id)),
+      ...defaultOrder.filter((id) => availableIds.has(id) && !requestedOrder.includes(id)),
+      ...Array.from(availableIds).filter((id) => !requestedOrder.includes(id) && !defaultOrder.includes(id)),
     ];
-
-    const desiredOrder: string[] = [...leadingIndicators];
-    for (const id of desiredRealOrder) {
-      desiredOrder.push(id);
-      const trailing = indicatorsAfter.get(id);
-      if (trailing) desiredOrder.push(...trailing);
-    }
-    const placedIds = new Set(desiredOrder);
-    for (const id of defaultOrder) {
-      if (isIndicatorId(id) && !placedIds.has(id)) desiredOrder.push(id);
-    }
     api.applyColumnState({
       state: desiredOrder.map((columnId) => ({
         colId: columnId,
@@ -3237,10 +3173,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
     const api = gridRef.current?.api;
     if (!api) return;
 
-    // Hidden-column restore indicators are synthetic, not real data — they
-    // must not add a blank column to the export.
-    const columns = api.getAllDisplayedColumns()
-      .filter((column) => !column.getColId().includes("hidegap:"));
+    const columns = api.getAllDisplayedColumns();
     const csv = api.getDataAsCsv({
       columnKeys: columns.map((column) => column.getColId()),
       exportedRows: "filteredAndSorted",
@@ -3351,6 +3284,10 @@ autoFilling3: autoFillingContainers3.has(container.name),
         .planning-ag-grid .ag-row-pinned {
           font-style: italic;
           border-bottom: 2px solid #93c5fd !important;
+        }
+        .planning-ag-grid .ag-header-cell.planning-hidegap-header {
+          overflow: visible !important;
+          z-index: 5;
         }
       `}</style>
       <div className="h-full min-h-0" style={{ minWidth: gridMinWidth }}>
