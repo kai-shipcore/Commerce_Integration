@@ -59,7 +59,7 @@ import { useI18n } from "@/lib/i18n/i18n-provider";
 import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
 import { ColumnPicker, type ColumnPickerColumn } from "@/components/planning/column-picker";
 import {
-  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+  applyColumnFilters, distinctColumnValuesExcluding, type ColumnFilter, type DistinctValue,
 } from "@/lib/planning/column-filter";
 import { SectionHeading } from "./section-heading";
 import type { OutlierRow, ValidationOutliers } from "./types";
@@ -204,7 +204,7 @@ export function OutliersSection({
   });
   const [limit, setLimit] = useState(25);
   const [visible, setVisible] = useState<Set<SortKey>>(() => new Set(ALL_COLUMNS));
-  const [columnFilters, setColumnFilters] = useState<Map<SortKey, Set<string>>>(new Map());
+  const [columnFilters, setColumnFilters] = useState<Map<SortKey, ColumnFilter>>(new Map());
   const [openFilterKey, setOpenFilterKey] = useState<SortKey | null>(null);
 
   // Read after mount: localStorage does not exist on the server, and seeding
@@ -248,7 +248,7 @@ export function OutliersSection({
     });
   }, []);
 
-  const onColumnFilterChange = useCallback((key: SortKey, next: Set<string> | null) => {
+  const onColumnFilterChange = useCallback((key: SortKey, next: ColumnFilter | null) => {
     setColumnFilters((prev) => {
       const m = new Map(prev);
       if (next === null) m.delete(key);

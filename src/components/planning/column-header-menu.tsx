@@ -27,25 +27,97 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/lib/i18n/i18n-provider";
-import type { DistinctValue } from "@/lib/planning/column-filter";
+import {
+  CONDITION_OPERATORS, type ColumnFilter, type ConditionFilter, type DistinctValue,
+} from "@/lib/planning/column-filter";
 
 export type SortDir = "asc" | "desc";
 
 export interface ColumnFilterProps {
-  /** True when a proper, non-null subset is checked — drives the funnel icon. */
+  /** True when a filter (either mode) is committed — drives the funnel icon. */
   active: boolean;
-  /** Currently committed set, or null for "everything" (no filter). Seeds the
-   *  submenu's checkboxes when it opens. */
-  committed: Set<string> | null;
+  /** Currently committed filter, or null for "everything". Seeds the
+   *  submenu when it opens. */
+  committed: ColumnFilter | null;
   /** Computed lazily by the caller, only while this column's submenu is open —
-   *  see the container components for why this must stay lazy. */
+   *  see the container components for why this must stay lazy. Only used by
+   *  the "Filter by values" tab. */
   getValues: () => DistinctValue[];
-  /** null clears the filter (equivalent to every value checked). */
-  onApply: (next: Set<string> | null) => void;
+  /** null clears the filter. */
+  onApply: (next: ColumnFilter | null) => void;
   /** Fires as the Filter submenu opens and closes, so the caller knows which
    *  column's distinct values `getValues` needs to be able to answer for
    *  before this submenu actually mounts and calls it. */
   onOpenChange?: (open: boolean) => void;
+}
+
+const TEXT_CONDITION_GROUP = CONDITION_OPERATORS.filter((o) => o.group === 2);
+const NUMBER_CONDITION_GROUP = CONDITION_OPERATORS.filter((o) => o.group === 3);
+const NO_INPUT_CONDITIONS = CONDITION_OPERATORS.filter((o) => o.group === 1);
+
+function ConditionFilterFields({
+  condition,
+  onChange,
+}: {
+  condition: ConditionFilter | null;
+  onChange: (next: ConditionFilter | null) => void;
+}) {
+  const { pick } = useI18n();
+  const meta = condition ? CONDITION_OPERATORS.find((o) => o.operator === condition.operator) : undefined;
+
+  return (
+    <div className="space-y-1.5 px-1">
+      <select
+        value={condition?.operator ?? "none"}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === "none") { onChange(null); return; }
+          onChange({ operator: next as ConditionFilter["operator"], value: "", value2: "" });
+        }}
+        className="h-7 w-full rounded border bg-background px-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
+      >
+        <option value="none">{pick("없음", "None")}</option>
+        {NO_INPUT_CONDITIONS.map((o) => (
+          <option key={o.operator} value={o.operator}>{pick(o.label[0], o.label[1])}</option>
+        ))}
+        <optgroup label={pick("텍스트", "Text")}>
+          {TEXT_CONDITION_GROUP.map((o) => (
+            <option key={o.operator} value={o.operator}>{pick(o.label[0], o.label[1])}</option>
+          ))}
+        </optgroup>
+        <optgroup label={pick("숫자", "Number")}>
+          {NUMBER_CONDITION_GROUP.map((o) => (
+            <option key={o.operator} value={o.operator}>{pick(o.label[0], o.label[1])}</option>
+          ))}
+        </optgroup>
+      </select>
+      {meta && meta.inputs > 0 && (
+        <div className="flex items-center gap-1">
+          <input
+            type={meta.inputType}
+            value={condition?.value ?? ""}
+            onChange={(e) => onChange({ ...(condition as ConditionFilter), value: e.target.value })}
+            placeholder={pick("값", "Value")}
+            className="h-7 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          {meta.inputs === 2 && (
+            <>
+              <span className="text-xs text-muted-foreground">~</span>
+              <input
+                type={meta.inputType}
+                value={condition?.value2 ?? ""}
+                onChange={(e) => onChange({ ...(condition as ConditionFilter), value2: e.target.value })}
+                placeholder={pick("값", "Value")}
+                className="h-7 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ColumnFilterBody({
@@ -55,70 +127,100 @@ function ColumnFilterBody({
   onDone,
 }: ColumnFilterProps & { onDone: () => void }) {
   const { pick } = useI18n();
+  const [mode, setMode] = useState<"values" | "condition">(committed?.mode ?? "values");
   // Computed once per mount, i.e. once per time the submenu opens — not on
   // every keystroke of the search box below.
   const values = useMemo(() => getValues(), [getValues]);
   const [staged, setStaged] = useState<Set<string>>(
-    () => new Set(committed ?? values.map((v) => v.value)),
+    () => new Set(committed?.mode === "values" ? committed.values : values.map((v) => v.value)),
+  );
+  const [condition, setCondition] = useState<ConditionFilter | null>(
+    committed?.mode === "condition" ? committed.condition : null,
   );
   const [search, setSearch] = useState("");
   const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
     <div className="w-64 p-1">
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder={pick("값 검색…", "Search values…")}
-        className="mb-1 h-7 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-        onKeyDown={(e) => e.stopPropagation()}
-      />
-      <div className="flex justify-between px-1 pb-1 text-[11px] text-muted-foreground">
+      <div className="mb-1 flex gap-1 border-b pb-1 text-[11px]">
         <button
           type="button"
-          className="hover:text-foreground"
-          onClick={() => setStaged(new Set(values.map((v) => v.value)))}
+          onClick={() => setMode("condition")}
+          className={`rounded px-1.5 py-0.5 ${mode === "condition" ? "bg-muted font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          {pick("모두 선택", "Select all")}
+          {pick("조건별 필터", "Filter by condition")}
         </button>
         <button
           type="button"
-          className="hover:text-foreground"
-          onClick={() => setStaged(new Set())}
+          onClick={() => setMode("values")}
+          className={`rounded px-1.5 py-0.5 ${mode === "values" ? "bg-muted font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
-          {pick("모두 지우기", "Clear")}
+          {pick("값별 필터", "Filter by values")}
         </button>
       </div>
-      <div className="max-h-56 overflow-auto">
-        {shown.map((v) => (
-          <DropdownMenuCheckboxItem
-            key={v.value}
-            checked={staged.has(v.value)}
-            onSelect={(e) => e.preventDefault()}
-            onCheckedChange={(checked) =>
-              setStaged((prev) => {
-                const next = new Set(prev);
-                if (checked) next.add(v.value);
-                else next.delete(v.value);
-                return next;
-              })
-            }
-          >
-            <span className="truncate">{v.label}</span>
-            <span className="ml-auto tabular-nums text-muted-foreground/70">{v.count}</span>
-          </DropdownMenuCheckboxItem>
-        ))}
-        {shown.length === 0 && (
-          <p className="px-2 py-1 text-xs text-muted-foreground">
-            {pick("일치하는 값 없음", "No matching values")}
-          </p>
-        )}
-      </div>
+      {mode === "condition" ? (
+        <ConditionFilterFields condition={condition} onChange={setCondition} />
+      ) : (
+        <>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={pick("값 검색…", "Search values…")}
+            className="mb-1 h-7 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          <div className="flex justify-between px-1 pb-1 text-[11px] text-muted-foreground">
+            <button
+              type="button"
+              className="hover:text-foreground"
+              onClick={() => setStaged(new Set(values.map((v) => v.value)))}
+            >
+              {pick("모두 선택", "Select all")}
+            </button>
+            <button
+              type="button"
+              className="hover:text-foreground"
+              onClick={() => setStaged(new Set())}
+            >
+              {pick("모두 지우기", "Clear")}
+            </button>
+          </div>
+          <div className="max-h-56 overflow-auto">
+            {shown.map((v) => (
+              <DropdownMenuCheckboxItem
+                key={v.value}
+                checked={staged.has(v.value)}
+                onSelect={(e) => e.preventDefault()}
+                onCheckedChange={(checked) =>
+                  setStaged((prev) => {
+                    const next = new Set(prev);
+                    if (checked) next.add(v.value);
+                    else next.delete(v.value);
+                    return next;
+                  })
+                }
+              >
+                <span className="truncate">{v.label}</span>
+                <span className="ml-auto tabular-nums text-muted-foreground/70">{v.count}</span>
+              </DropdownMenuCheckboxItem>
+            ))}
+            {shown.length === 0 && (
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                {pick("일치하는 값 없음", "No matching values")}
+              </p>
+            )}
+          </div>
+        </>
+      )}
       <div className="mt-1 flex justify-end gap-1 border-t pt-1">
         <DropdownMenuItem onSelect={onDone}>{pick("취소", "Cancel")}</DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            onApply(staged.size === values.length ? null : staged);
+            if (mode === "condition") {
+              onApply(condition === null ? null : { mode: "condition", condition });
+            } else {
+              onApply(staged.size === values.length ? null : { mode: "values", values: staged });
+            }
             onDone();
           }}
         >

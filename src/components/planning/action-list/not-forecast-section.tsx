@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { ColumnPicker } from "@/components/planning/column-picker";
-import { applyColumnFilters, distinctColumnValuesExcluding } from "@/lib/planning/column-filter";
+import { applyColumnFilters, distinctColumnValuesExcluding, type ColumnFilter } from "@/lib/planning/column-filter";
 import {
   NF_ACCESSORS, NF_ALL_COLUMNS, NF_DEFAULT_SORT, NF_FORMATTERS, NF_OPTIONAL_COLUMNS, NotForecastTable, nfSortRows,
   type NfSort, type NfSortKey,
@@ -59,7 +59,7 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<NfSort[]>(NF_DEFAULT_SORT);
   const [visible, setVisible] = useState<Set<NfSortKey>>(() => new Set(NF_ALL_COLUMNS));
-  const [columnFilters, setColumnFilters] = useState<Map<NfSortKey, Set<string>>>(new Map());
+  const [columnFilters, setColumnFilters] = useState<Map<NfSortKey, ColumnFilter>>(new Map());
   const [openFilterKey, setOpenFilterKey] = useState<NfSortKey | null>(null);
   // Paginated the same way as the forecast table. It was originally capped with
   // a "show more" button on the argument that nobody pages through an
@@ -109,7 +109,7 @@ export function NotForecastSection({ planning }: { planning: ActionListParams })
     });
   }, []);
 
-  const onColumnFilterChange = useCallback((key: NfSortKey, next: Set<string> | null) => {
+  const onColumnFilterChange = useCallback((key: NfSortKey, next: ColumnFilter | null) => {
     setColumnFilters((prev) => {
       const m = new Map(prev);
       if (next === null) m.delete(key);

@@ -17,7 +17,7 @@ import {
 import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
 import { ColumnPicker, type ColumnPickerColumn } from "@/components/planning/column-picker";
 import {
-  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+  applyColumnFilters, distinctColumnValuesExcluding, type ColumnFilter, type DistinctValue,
 } from "@/lib/planning/column-filter";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -143,7 +143,7 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [visible, setVisible] = useState<Set<SortKey>>(() => new Set(ALL_COLUMNS));
-  const [columnFilters, setColumnFilters] = useState<Map<SortKey, Set<string>>>(new Map());
+  const [columnFilters, setColumnFilters] = useState<Map<SortKey, ColumnFilter>>(new Map());
   const [openFilterKey, setOpenFilterKey] = useState<SortKey | null>(null);
 
   useEffect(() => {
@@ -183,7 +183,7 @@ export function AllSkusTable({ initialTypes }: { initialTypes: string[] }) {
     });
   }, []);
 
-  const onColumnFilterChange = useCallback((key: SortKey, next: Set<string> | null) => {
+  const onColumnFilterChange = useCallback((key: SortKey, next: ColumnFilter | null) => {
     setColumnFilters((prev) => {
       const m = new Map(prev);
       if (next === null) m.delete(key);

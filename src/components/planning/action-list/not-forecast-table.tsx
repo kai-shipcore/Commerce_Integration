@@ -23,7 +23,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { ColumnHeaderMenu, type SortDir } from "@/components/planning/column-header-menu";
-import type { DistinctValue } from "@/lib/planning/column-filter";
+import type { ColumnFilter, DistinctValue } from "@/lib/planning/column-filter";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
   BAND_ROW_H, BAND_ROW_RULE, NAME_ROW_TOP, TABLE_WINDOW, Z,
@@ -155,11 +155,11 @@ export function NotForecastTable({
   /** Optional columns to render. Undefined shows every one. */
   visible?: Set<NfSortKey>;
   onHideColumn?: (key: NfSortKey) => void;
-  columnFilters?: Map<NfSortKey, Set<string>>;
+  columnFilters?: Map<NfSortKey, ColumnFilter>;
   openFilterKey?: NfSortKey | null;
   onOpenFilterKeyChange?: (key: NfSortKey | null) => void;
   getColumnValues?: () => DistinctValue[];
-  onColumnFilterChange?: (key: NfSortKey, next: Set<string> | null) => void;
+  onColumnFilterChange?: (key: NfSortKey, next: ColumnFilter | null) => void;
 }) {
   const { pick } = useI18n();
 

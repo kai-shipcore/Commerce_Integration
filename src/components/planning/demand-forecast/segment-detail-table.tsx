@@ -24,7 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
 import { ColumnPicker, type ColumnPickerColumn } from "@/components/planning/column-picker";
 import {
-  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+  applyColumnFilters, distinctColumnValuesExcluding, type ColumnFilter, type DistinctValue,
 } from "@/lib/planning/column-filter";
 
 // ── Smooth row ──────────────────────────────────────────────────────────────
@@ -923,7 +923,7 @@ function SmoothTable({
   const [skuSearch, setSkuSearch] = useState(initialSku ?? "");
   const [colsOpen, setColsOpen]   = useState(false);
   const [visible, setVisible] = useState<Set<SmoothSortKey>>(() => new Set(SMOOTH_ALL_COLUMNS));
-  const [columnFilters, setColumnFilters] = useState<Map<SmoothSortKey, Set<string>>>(new Map());
+  const [columnFilters, setColumnFilters] = useState<Map<SmoothSortKey, ColumnFilter>>(new Map());
   const [openFilterKey, setOpenFilterKey] = useState<SmoothSortKey | null>(null);
 
   useEffect(() => {
@@ -967,7 +967,7 @@ function SmoothTable({
     });
   }, []);
 
-  const onColumnFilterChange = useCallback((key: SmoothSortKey, next: Set<string> | null) => {
+  const onColumnFilterChange = useCallback((key: SmoothSortKey, next: ColumnFilter | null) => {
     setColumnFilters((prev) => {
       const m = new Map(prev);
       if (next === null) m.delete(key);
@@ -1355,7 +1355,7 @@ function IntermittentTable({
   const [page, setPage]         = useState(0);
   const [skuSearch, setSkuSearch] = useState(initialSku ?? "");
   const [visible, setVisible] = useState<Set<IntermittentSortKey>>(() => new Set(INTER_ALL_COLUMNS));
-  const [columnFilters, setColumnFilters] = useState<Map<IntermittentSortKey, Set<string>>>(new Map());
+  const [columnFilters, setColumnFilters] = useState<Map<IntermittentSortKey, ColumnFilter>>(new Map());
   const [openFilterKey, setOpenFilterKey] = useState<IntermittentSortKey | null>(null);
 
   useEffect(() => {
@@ -1399,7 +1399,7 @@ function IntermittentTable({
     });
   }, []);
 
-  const onColumnFilterChange = useCallback((key: IntermittentSortKey, next: Set<string> | null) => {
+  const onColumnFilterChange = useCallback((key: IntermittentSortKey, next: ColumnFilter | null) => {
     setColumnFilters((prev) => {
       const m = new Map(prev);
       if (next === null) m.delete(key);

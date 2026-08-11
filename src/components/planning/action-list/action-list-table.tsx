@@ -24,7 +24,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { ColumnHeaderMenu } from "@/components/planning/column-header-menu";
-import type { DistinctValue } from "@/lib/planning/column-filter";
+import type { ColumnFilter, DistinctValue } from "@/lib/planning/column-filter";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import type { ActionListRow } from "./types";
 
@@ -421,14 +421,14 @@ export function ActionListTable({
    *  does not care about column visibility gets the table as it always was. */
   visible?: Set<SortKey>;
   onHideColumn?: (key: SortKey) => void;
-  columnFilters?: Map<SortKey, Set<string>>;
+  columnFilters?: Map<SortKey, ColumnFilter>;
   /** The one column whose Filter submenu is currently open, so the caller can
    *  compute its distinct values from the full row set rather than this
    *  table's already-paginated `rows`. */
   openFilterKey?: SortKey | null;
   onOpenFilterKeyChange?: (key: SortKey | null) => void;
   getColumnValues?: () => DistinctValue[];
-  onColumnFilterChange?: (key: SortKey, next: Set<string> | null) => void;
+  onColumnFilterChange?: (key: SortKey, next: ColumnFilter | null) => void;
 }) {
   const { pick } = useI18n();
 

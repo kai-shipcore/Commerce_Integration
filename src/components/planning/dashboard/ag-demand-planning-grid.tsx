@@ -53,7 +53,8 @@ import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from 
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
-  applyColumnFilters, distinctColumnValuesExcluding, type DistinctValue,
+  applyColumnFilters, distinctColumnValuesExcluding, CONDITION_OPERATORS,
+  type ColumnFilter, type ConditionFilter, type DistinctValue,
 } from "@/lib/planning/column-filter";
 
 const modules = [AllCommunityModule];
@@ -190,6 +191,73 @@ const MENU_ITEM_STYLE: CSSProperties = {
   border: "none", cursor: "pointer",
 };
 
+function GridConditionFields({
+  condition, onChange,
+}: { condition: ConditionFilter | null; onChange: (next: ConditionFilter | null) => void }) {
+  const { pick } = useI18n();
+  const meta = condition ? CONDITION_OPERATORS.find((o) => o.operator === condition.operator) : undefined;
+  const selectStyle: CSSProperties = {
+    width: "100%", height: 28, boxSizing: "border-box", padding: "0 6px", fontSize: 12,
+    border: "1px solid #E2E8F0", borderRadius: 4, outline: "none",
+    marginBottom: meta && meta.inputs > 0 ? 4 : 0,
+  };
+  const inputStyle: CSSProperties = {
+    flex: 1, height: 26, boxSizing: "border-box", padding: "0 6px", fontSize: 12,
+    border: "1px solid #E2E8F0", borderRadius: 4, outline: "none",
+  };
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <select
+        value={condition?.operator ?? "none"}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === "none") { onChange(null); return; }
+          onChange({ operator: next as ConditionFilter["operator"], value: "", value2: "" });
+        }}
+        style={selectStyle}
+      >
+        <option value="none">{pick("없음", "None")}</option>
+        {CONDITION_OPERATORS.filter((o) => o.group === 1).map((o) => (
+          <option key={o.operator} value={o.operator}>{pick(o.label[0], o.label[1])}</option>
+        ))}
+        <optgroup label={pick("텍스트", "Text")}>
+          {CONDITION_OPERATORS.filter((o) => o.group === 2).map((o) => (
+            <option key={o.operator} value={o.operator}>{pick(o.label[0], o.label[1])}</option>
+          ))}
+        </optgroup>
+        <optgroup label={pick("숫자", "Number")}>
+          {CONDITION_OPERATORS.filter((o) => o.group === 3).map((o) => (
+            <option key={o.operator} value={o.operator}>{pick(o.label[0], o.label[1])}</option>
+          ))}
+        </optgroup>
+      </select>
+      {meta && meta.inputs > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input
+            type={meta.inputType}
+            value={condition?.value ?? ""}
+            onChange={(e) => onChange({ ...(condition as ConditionFilter), value: e.target.value })}
+            placeholder={pick("값", "Value")}
+            style={inputStyle}
+          />
+          {meta.inputs === 2 && (
+            <>
+              <span style={{ fontSize: 11, color: "#94A3B8" }}>~</span>
+              <input
+                type={meta.inputType}
+                value={condition?.value2 ?? ""}
+                onChange={(e) => onChange({ ...(condition as ConditionFilter), value2: e.target.value })}
+                placeholder={pick("값", "Value")}
+                style={inputStyle}
+              />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MenuItem({
   children, onClick, disabled, danger,
 }: { children: ReactNode; onClick?: () => void; disabled?: boolean; danger?: boolean }) {
@@ -230,17 +298,24 @@ function GridColumnMenu({
   canHide: boolean;
   onHide: () => void;
   filterActive: boolean;
-  committed: Set<string> | null;
+  committed: ColumnFilter | null;
   getValues: () => DistinctValue[];
   /** Fires when the Filter panel opens, so the caller can populate `getValues`
    *  for this specific column before it's called. */
   onFilterViewOpen: () => void;
-  onApplyFilter: (next: Set<string> | null) => void;
+  onApplyFilter: (next: ColumnFilter | null) => void;
   onClose: () => void;
 }) {
+  const { pick } = useI18n();
   const [view, setView] = useState<"menu" | "filter">("menu");
+  const [mode, setMode] = useState<"values" | "condition">(committed?.mode ?? "values");
+  const [condition, setCondition] = useState<ConditionFilter | null>(
+    committed?.mode === "condition" ? committed.condition : null,
+  );
   const values = useMemo(() => (view === "filter" ? getValues() : []), [view, getValues]);
-  const [staged, setStaged] = useState<Set<string>>(() => new Set(committed ?? []));
+  const [staged, setStaged] = useState<Set<string>>(
+    () => new Set(committed?.mode === "values" ? committed.values : []),
+  );
   const [search, setSearch] = useState("");
   const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
 
@@ -252,7 +327,7 @@ function GridColumnMenu({
   useEffect(() => {
     if (view !== "filter") { seededForView.current = false; return; }
     if (seededForView.current || values.length === 0) return;
-    setStaged(new Set(committed ?? values.map((v) => v.value)));
+    setStaged(new Set(committed?.mode === "values" ? committed.values : values.map((v) => v.value)));
     seededForView.current = true;
   }, [view, values, committed]);
 
@@ -276,16 +351,16 @@ function GridColumnMenu({
         {view === "menu" ? (
           <>
             <MenuItem onClick={() => { onSortAsc(); onClose(); }}>
-              {sortDir === "asc" ? "✓ " : ""}오름차순 정렬 (A→Z)
+              {sortDir === "asc" ? "✓ " : ""}{pick("오름차순 정렬 (A→Z)", "Sort A → Z")}
             </MenuItem>
             <MenuItem onClick={() => { onSortDesc(); onClose(); }}>
-              {sortDir === "desc" ? "✓ " : ""}내림차순 정렬 (Z→A)
+              {sortDir === "desc" ? "✓ " : ""}{pick("내림차순 정렬 (Z→A)", "Sort Z → A")}
             </MenuItem>
             <MenuItem onClick={() => { onFilterViewOpen(); setView("filter"); }}>
-              {filterActive ? "▼ 필터 (적용됨)" : "필터"}
+              {filterActive ? pick("▼ 필터 (적용됨)", "▼ Filter (applied)") : pick("필터", "Filter")}
             </MenuItem>
             <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
-              열 숨기기
+              {pick("열 숨기기", "Hide column")}
             </MenuItem>
           </>
         ) : (
@@ -295,49 +370,75 @@ function GridColumnMenu({
               onClick={() => setView("menu")}
               style={{ ...MENU_ITEM_STYLE, padding: "4px 4px 8px", fontSize: 11, color: "#64748B" }}
             >
-              ← 뒤로
+              {pick("← 뒤로", "← Back")}
             </button>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="값 검색…"
-              style={{ width: "100%", height: 28, boxSizing: "border-box", padding: "0 8px", marginBottom: 4, fontSize: 12, border: "1px solid #E2E8F0", borderRadius: 4, outline: "none" }}
-            />
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
-              <button type="button" onClick={() => setStaged(new Set(values.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>모두 선택</button>
-              <button type="button" onClick={() => setStaged(new Set())} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>모두 지우기</button>
+            <div style={{ display: "flex", gap: 4, marginBottom: 6, borderBottom: "1px solid #F1F5F9", paddingBottom: 6 }}>
+              <button
+                type="button"
+                onClick={() => setMode("condition")}
+                style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "3px 8px", fontSize: 11, borderRadius: 4, fontWeight: mode === "condition" ? 700 : 600, color: mode === "condition" ? "#1A4FC0" : "#64748B", background: mode === "condition" ? "#EFF6FF" : "transparent" }}
+              >
+                {pick("조건별 필터", "Filter by condition")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("values")}
+                style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "3px 8px", fontSize: 11, borderRadius: 4, fontWeight: mode === "values" ? 700 : 600, color: mode === "values" ? "#1A4FC0" : "#64748B", background: mode === "values" ? "#EFF6FF" : "transparent" }}
+              >
+                {pick("값별 필터", "Filter by values")}
+              </button>
             </div>
-            <div style={{ maxHeight: 200, overflow: "auto" }}>
-              {shown.map((v) => (
-                <label key={v.value} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", fontSize: 12, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={staged.has(v.value)}
-                    onChange={(e) => setStaged((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) next.add(v.value); else next.delete(v.value);
-                      return next;
-                    })}
-                  />
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.label || "(공백)"}</span>
-                  <span style={{ color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{v.count}</span>
-                </label>
-              ))}
-              {shown.length === 0 && (
-                <p style={{ padding: "6px 4px", fontSize: 11, color: "#94A3B8" }}>일치하는 값 없음</p>
-              )}
-            </div>
+            {mode === "condition" ? (
+              <GridConditionFields condition={condition} onChange={setCondition} />
+            ) : (
+              <>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={pick("값 검색…", "Search values…")}
+                  style={{ width: "100%", height: 28, boxSizing: "border-box", padding: "0 8px", marginBottom: 4, fontSize: 12, border: "1px solid #E2E8F0", borderRadius: 4, outline: "none" }}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
+                  <button type="button" onClick={() => setStaged(new Set(values.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 선택", "Select all")}</button>
+                  <button type="button" onClick={() => setStaged(new Set())} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 지우기", "Clear")}</button>
+                </div>
+                <div style={{ maxHeight: 200, overflow: "auto" }}>
+                  {shown.map((v) => (
+                    <label key={v.value} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", fontSize: 12, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={staged.has(v.value)}
+                        onChange={(e) => setStaged((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(v.value); else next.delete(v.value);
+                          return next;
+                        })}
+                      />
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.label || pick("(공백)", "(blank)")}</span>
+                      <span style={{ color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{v.count}</span>
+                    </label>
+                  ))}
+                  {shown.length === 0 && (
+                    <p style={{ padding: "6px 4px", fontSize: 11, color: "#94A3B8" }}>{pick("일치하는 값 없음", "No matching values")}</p>
+                  )}
+                </div>
+              </>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 6, borderTop: "1px solid #F1F5F9", marginTop: 4 }}>
-              <button type="button" onClick={onClose} style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12 }}>취소</button>
+              <button type="button" onClick={onClose} style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12 }}>{pick("취소", "Cancel")}</button>
               <button
                 type="button"
                 onClick={() => {
-                  onApplyFilter(staged.size === values.length ? null : staged);
+                  if (mode === "condition") {
+                    onApplyFilter(condition === null ? null : { mode: "condition", condition });
+                  } else {
+                    onApplyFilter(staged.size === values.length ? null : { mode: "values", values: staged });
+                  }
                   onClose();
                 }}
                 style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12, fontWeight: 700, color: "#1A4FC0" }}
               >
-                적용
+                {pick("적용", "Apply")}
               </button>
             </div>
           </div>
@@ -1751,7 +1852,7 @@ export function AgDemandPlanningGrid({
   // Right-click column menu (Sort A→Z, Sort Z→A, Filter, Hide), keyed the
   // same way `colId` already is: a base column's own id, or
   // `<containerName>::<subColumnId>` for a container sub-column.
-  const [columnFilters, setColumnFilters] = useState<Map<string, Set<string>>>(new Map());
+  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
   const [filterOpenKey, setFilterOpenKey] = useState<string | null>(null);

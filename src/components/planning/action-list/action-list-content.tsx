@@ -30,7 +30,7 @@ import {
   type SortCriterion, type SortDir, type SortKey,
 } from "./action-list-table";
 import { ColumnPicker } from "@/components/planning/column-picker";
-import { applyColumnFilters, distinctColumnValuesExcluding } from "@/lib/planning/column-filter";
+import { applyColumnFilters, distinctColumnValuesExcluding, type ColumnFilter } from "@/lib/planning/column-filter";
 import { downloadCsv, ACTION_LIST_COLUMNS } from "./csv-export";
 import { ForecastServerStatus } from "@/components/planning/forecast-server-status";
 import {
@@ -124,7 +124,7 @@ export function ActionListContent({
   // with the filters above (AND) rather than sitting outside them, so a
   // column filter narrows the same population the summary counts, the
   // portfolio chart and CSV export describe.
-  const [columnFilters, setColumnFilters] = useState<Map<SortKey, Set<string>>>(new Map());
+  const [columnFilters, setColumnFilters] = useState<Map<SortKey, ColumnFilter>>(new Map());
   // Which column's Filter submenu is open right now, so its distinct-value
   // list can be computed from the full row set on demand rather than on
   // every render.
@@ -203,7 +203,7 @@ export function ActionListContent({
     });
   }, []);
 
-  const onColumnFilterChange = useCallback((key: SortKey, next: Set<string> | null) => {
+  const onColumnFilterChange = useCallback((key: SortKey, next: ColumnFilter | null) => {
     setColumnFilters((prev) => {
       const m = new Map(prev);
       if (next === null) m.delete(key);
