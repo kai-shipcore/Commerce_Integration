@@ -47,7 +47,7 @@ import {
   getTier,
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
-import type { CellContent } from "./columns";
+import type { CellContent, TextFormatSettings } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
@@ -136,13 +136,14 @@ function readableTextColor(backgroundColor: string) {
   return luminance > 150 ? "#1A1917" : "#fff";
 }
 
-function headerStyleForColor(backgroundColor: string | undefined) {
-  return backgroundColor
-    ? {
-        backgroundColor,
-        color: readableTextColor(backgroundColor),
-      }
-    : undefined;
+function headerStyleForColor(backgroundColor: string | undefined, textFormat?: TextFormatSettings) {
+  if (!backgroundColor && !textFormat) return undefined;
+  return {
+    ...(backgroundColor ? { backgroundColor, color: readableTextColor(backgroundColor) } : {}),
+    ...(textFormat?.fontSize ? { fontSize: textFormat.fontSize } : {}),
+    ...(textFormat?.bold !== undefined ? { fontWeight: textFormat.bold ? 700 : 400 } : {}),
+    ...(textFormat?.color ? { color: textFormat.color } : {}),
+  };
 }
 
 /** Every header's right-click menu identifies its column by one of these keys:
@@ -390,7 +391,6 @@ function containerColumnWidth(column: { id: string; w: number }) {
   if (column.id === "ccbm") return 48;
   if (column.id === "inb_qty") return 42;
   if (column.id === "remaining") return 42;
-  if (column.id === "esod" || column.id === "psod") return 70;
   return column.w;
 }
 
@@ -505,9 +505,9 @@ function computeContainerChain(
 function renderCellValue(value: CellContent | undefined) {
   if (value === null || value === undefined) return null;
   if (typeof value === "object" && "html" in value) {
-    return <span dangerouslySetInnerHTML={{ __html: value.html }} />;
+    return <span className="planning-rendered-cell-value" dangerouslySetInnerHTML={{ __html: value.html }} />;
   }
-  return <span>{String(value)}</span>;
+  return <span className="planning-rendered-cell-value">{String(value)}</span>;
 }
 
 function exportCellValue(value: unknown): string | number | boolean {
@@ -753,7 +753,7 @@ function QtyCellRenderer({
 
   async function commit() {
     if (savingRef.current) return;
-    const nextQty = Number.parseInt(inputValue, 10);
+    const nextQty = inputValue.trim() === "" ? 0 : Number.parseInt(inputValue, 10);
     if (!Number.isFinite(nextQty) || nextQty < 0) {
       setInputValue(displayValue);
       setEditing(false);
@@ -780,11 +780,12 @@ function QtyCellRenderer({
 
   if (editing) {
     return (
-      <div className="relative h-full w-full">
+      <div className="relative h-full w-full overflow-visible">
         <input
           autoFocus
           type="number"
           min={0}
+          aria-label="Edit Con. Qty"
           value={inputValue}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => setInputValue(event.target.value)}
@@ -799,8 +800,7 @@ function QtyCellRenderer({
             }
           }}
           onBlur={() => void commit()}
-          className="absolute right-0 top-0 h-full min-w-[88px] border border-[#1a5cdb] bg-[#FFFDE7] px-2 text-right font-mono text-[11px] outline-none"
-          style={{ zIndex: 100 }}
+          className="planning-cbm-edit-input planning-qty-edit-input absolute left-1/2 top-1/2 z-30 h-10 w-36 -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 text-right font-mono text-sm font-semibold shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
         />
       </div>
     );
@@ -1046,7 +1046,7 @@ function SelectableHeader(params: IHeaderParams & {
   }
 
   return (
-    <div style={{ display: "flex", height: "100%", position: "relative", width: "100%", boxShadow: params.fullColumnSelected ? "inset 2px 0 #2563EB, inset -2px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
+    <div style={{ display: "flex", height: "100%", position: "relative", width: "calc(100% + 16px)", marginLeft: -8, marginRight: -8, boxShadow: params.fullColumnSelected ? "inset 2px 0 #2563EB, inset -2px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
       <button
         type="button"
         aria-label={`Select entire ${params.displayName} column`}
@@ -1056,7 +1056,7 @@ function SelectableHeader(params: IHeaderParams & {
           event.stopPropagation();
           params.onFullColumnSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
         }}
-        style={{ background: params.fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: -8, padding: 0, position: "absolute", right: -8, top: 0, zIndex: 2 }}
+        style={{ background: params.fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: 0, padding: 0, position: "absolute", right: 0, top: 0, zIndex: 2 }}
       />
       <div
         role="button"
@@ -1707,6 +1707,8 @@ export function AgDemandPlanningGrid({
   seasonalFactors,
   columnColors = {},
   cellColors = {},
+  columnTextFormats = {},
+  cellTextFormats = {},
   skuCellNotes = {},
   canEditSkuNotes = false,
   canEditPlanning = false,
@@ -1731,9 +1733,12 @@ export function AgDemandPlanningGrid({
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const gridHostRef = useRef<HTMLDivElement>(null);
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
+  const dragMovedRef = useRef(false);
   const selectedCellsRef = useRef<Set<string>>(new Set());
   const lastSelectedRef = useRef<string | null>(null);
   const appliedColumnStructureRef = useRef<string | null>(null);
+  const columnTextFormatsRef = useRef(columnTextFormats);
+  const cellTextFormatsRef = useRef(cellTextFormats);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
@@ -2057,6 +2062,17 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     api.refreshCells({ force: true });
     api.refreshHeader();
   }, [cbmOverrides, cellColors, chainMap, columnColors, qtyOverrides, rowOverrides]);
+
+  useEffect(() => {
+    columnTextFormatsRef.current = columnTextFormats;
+    cellTextFormatsRef.current = cellTextFormats;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    // Text formatting does not change column structure. Refresh the rendered
+    // cells/header in place instead of rebuilding every column definition.
+    api.refreshCells({ force: true });
+    api.refreshHeader();
+  }, [cellTextFormats, columnTextFormats]);
 
   useEffect(() => {
     gridRef.current?.api?.refreshHeader();
@@ -2675,7 +2691,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
               })
           : undefined,
-        headerStyle: headerStyleForColor(columnColors[column.id]?.header),
+        headerStyle: () => headerStyleForColor(columnColors[column.id]?.header, columnTextFormatsRef.current[column.id]?.header),
+        headerClass: () => columnTextFormatsRef.current[column.id]?.header?.color ? "planning-user-header-text-color" : "",
         headerComponent: SelectableHeader,
         headerComponentParams: {
           selectionId: column.id,
@@ -2687,13 +2704,22 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           isFiltered: columnFilters.has(column.id),
           onRightClick: (x: number, y: number) => setColumnMenu({ x, y, key: column.id, label: headerName }),
         },
+        cellClassRules: {
+          "planning-user-text-color": (params) => {
+            const key = cellColorKey(params.data?.sku, column.id);
+            return Boolean(cellTextFormatsRef.current[key]?.color ?? columnTextFormatsRef.current[column.id]?.cell?.color);
+          },
+        },
         cellStyle: (params) => {
           const key = cellColorKey(params.data?.sku, column.id);
           const selected = selectedCellsRef.current.has(key);
           const fullColumnSelected = selectedFullColumnIds.includes(column.id);
+          const textFormat = { ...(columnTextFormatsRef.current[column.id]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
           return {
             backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
-            fontWeight: column.bold ? 700 : 400,
+            ...(textFormat.color ? { color: textFormat.color } : {}),
+            ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
+            fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : column.bold ? 700 : 400,
             textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
             ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
             ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
@@ -2785,7 +2811,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
 
         const buildRealSubColDef = (column: (typeof conCandidates)[number]): AgColDef<DemandRow> => ({
-          headerStyle: headerStyleForColor(columnColors[`con:${column.id}`]?.header),
+          // headerClass (text-color + start/end boundary) is assigned in the
+          // combined post-pass below, once each column's final index in the
+          // real+indicator list is known.
+          headerStyle: () => headerStyleForColor(columnColors[`con:${column.id}`]?.header, columnTextFormatsRef.current[`con:${column.id}`]?.header),
           colId: `${container.name}::${column.id}`,
           headerName: columnHeaderNames[`con:${column.id}`] ?? (column.id === "oo"
             ? "Open Ord"
@@ -2853,13 +2882,24 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             };
             return { onSave: (qty: number) => saveQty(row, container, raw, qty) };
           } : undefined,
+          cellClassRules: {
+            "planning-user-text-color": (params) => {
+              const columnId = `${container.name}::${column.id}`;
+              const key = cellColorKey(params.data?.sku, columnId);
+              return Boolean(cellTextFormatsRef.current[key]?.color ?? columnTextFormatsRef.current[`con:${column.id}`]?.cell?.color);
+            },
+          },
           cellStyle: (params) => {
             const columnId = `${container.name}::${column.id}`;
             const key = cellColorKey(params.data?.sku, columnId);
             const selected = selectedCellsRef.current.has(key);
             const fullColumnSelected = selectedFullColumnIds.includes(`con:${column.id}`);
+            const textFormat = { ...(columnTextFormatsRef.current[`con:${column.id}`]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
             return {
               backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
+              ...(textFormat.color ? { color: textFormat.color } : {}),
+              ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
+              ...(textFormat.bold !== undefined ? { fontWeight: textFormat.bold ? 700 : 400 } : {}),
               textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
               ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
               ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
@@ -2891,6 +2931,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         // from the header/cells it sits under.
         const children: AgColDef<DemandRow>[] = [];
         const totalColumns: ContainerTotalColumn[] = [];
+        // Parallel to `children` — the real sub-column id behind each entry,
+        // or null for a hidden-run indicator. Used below to re-derive the
+        // text-color header class without calling a headerClass function
+        // (which expects a real AG Grid params object) with a fake one.
+        const childRealIds: (string | null)[] = [];
         const runsById = new Map(conHiddenRuns.map((run) => [run.hiddenIds[0], run]));
         let skipUntilId: string | null = null;
         for (const column of conCandidates) {
@@ -2903,6 +2948,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             if (!run) continue; // defensive: should always be found
             children.push(buildConIndicatorColDef(run));
             totalColumns.push({ id: run.indicatorId, width: 18, total: undefined });
+            childRealIds.push(null);
             if (run.hiddenIds.length > 1) skipUntilId = run.hiddenIds[run.hiddenIds.length - 1];
             continue;
           }
@@ -2912,6 +2958,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
             total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
           });
+          childRealIds.push(column.id);
         }
         // Boundary styling (the 2px block-edge border and the start/end
         // header classes) is assigned after the fact, against the combined
@@ -2919,7 +2966,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         // sub-column hands its boundary styling to the indicator standing in
         // for it, instead of losing it.
         children.forEach((child, columnIndex) => {
-          child.headerClass = [
+          const realId = childRealIds[columnIndex];
+          child.headerClass = () => [
+            realId && columnTextFormatsRef.current[`con:${realId}`]?.header?.color ? "planning-user-header-text-color" : "",
             columnIndex === 0 ? "container-column-start" : "",
             columnIndex === children.length - 1 ? "container-column-end" : "",
           ].filter(Boolean).join(" ");
@@ -2935,7 +2984,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         groups.push({
           groupId: `container-${container.name}`,
           headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
-          headerStyle: headerStyleForColor(columnColors[`container:${container.name}`]?.header),
+          headerStyle: () => headerStyleForColor(columnColors[`container:${container.name}`]?.header, columnTextFormatsRef.current[`container:${container.name}`]?.header),
+          headerClass: () => columnTextFormatsRef.current[`container:${container.name}`]?.header?.color ? "planning-user-header-text-color" : "",
           headerGroupComponent: ContainerGroupHeader,
           headerGroupComponentParams: {
             selectionId: `container:${container.name}`,
@@ -2967,6 +3017,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               void saveContainer(container);
             },
             onReset: () => {
+              if (!window.confirm(pick(
+                "이 컨테이너의 저장하지 않은 수량을 DB 저장값으로 초기화하시겠습니까?",
+                "Reset this container's unsaved quantities to the saved database values?",
+              ))) return;
               setQtyOverrides((prev) => {
                 const next = new Map(prev);
                 for (const key of next.keys()) {
@@ -2987,7 +3041,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseHiddenRuns, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conHiddenRuns, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onHideColumn, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, updateEta]);
+  }, [baseCandidates, baseHiddenRuns, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conHiddenRuns, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onHideColumn, onSkuCellNoteChange, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -3100,11 +3154,30 @@ autoFilling3: autoFillingContainers3.has(container.name),
         .planning-ag-grid .ag-cell-focus:not(.ag-cell-range-selected):focus-within {
           border-color: transparent;
         }
+        .planning-ag-grid .planning-rendered-cell-value,
+        .planning-ag-grid .planning-rendered-cell-value * {
+          font-size: inherit !important;
+        }
+        .planning-ag-grid .ag-cell.planning-user-text-color * {
+          color: inherit !important;
+        }
+        .planning-ag-grid .ag-header-cell.planning-user-header-text-color *,
+        .planning-ag-grid .ag-header-group-cell.planning-user-header-text-color * {
+          color: inherit !important;
+        }
         .planning-ag-grid .ag-cell:has(.planning-cbm-edit-input),
         .planning-ag-grid .ag-cell-wrapper:has(.planning-cbm-edit-input),
-        .planning-ag-grid .ag-cell-value:has(.planning-cbm-edit-input) {
+        .planning-ag-grid .ag-cell-value:has(.planning-cbm-edit-input),
+        .planning-ag-grid .ag-cell:has(.planning-qty-edit-input),
+        .planning-ag-grid .ag-cell-wrapper:has(.planning-qty-edit-input),
+        .planning-ag-grid .ag-cell-value:has(.planning-qty-edit-input) {
           overflow: visible !important;
           z-index: 30;
+        }
+        .planning-ag-grid .ag-row:has(.planning-cbm-edit-input),
+        .planning-ag-grid .ag-row:has(.planning-qty-edit-input) {
+          overflow: visible !important;
+          z-index: 40 !important;
         }
         .planning-ag-grid .container-column-start {
           border-left: 2px solid #5A5750 !important;
@@ -3144,24 +3217,30 @@ autoFilling3: autoFillingContainers3.has(container.name),
             }}
             onCellMouseDown={(event) => {
               if (!event.data || event.rowIndex === null) return;
+              const nativeEvt = event.event as MouseEvent | undefined;
+              if (nativeEvt && nativeEvt.button !== 0) return;
               dragCellAnchorRef.current = { rowIndex: event.rowIndex, columnId: event.column.getColId() };
-              const cells = selectedCellsBetween(event, dragCellAnchorRef.current);
-              if (!cells.length) return;
-              onAgCellSelected?.({
-                ...cells[0],
-                cells,
-              });
+              dragMovedRef.current = false;
             }}
             onCellMouseOver={(event) => {
               const anchor = dragCellAnchorRef.current;
-              if (!anchor) return;
+              if (!anchor || !event.data || event.rowIndex === null) return;
               const cells = selectedCellsBetween(event, anchor);
               if (!cells.length) return;
+              dragMovedRef.current = true;
+              selectedCellsRef.current = new Set(cells.map((c) => `${c.rowId}::${c.columnId}`));
+              lastSelectedRef.current = `${event.data.sku}::${event.column.getColId()}`;
+              gridRef.current?.api.refreshCells({ force: true });
+              onCellSelectionChange?.([...selectedCellsRef.current]);
               onAgCellSelected?.({ ...cells[0], cells });
             }}
             onCellClicked={(event) => {
               event.node.setSelected(true, true);
               if (!event.data) return;
+              if (dragMovedRef.current) {
+                dragMovedRef.current = false;
+                return;
+              }
               const columnId = event.column.getColId();
               const key = `${event.data.sku}::${columnId}`;
               const nativeEvt = event.event as MouseEvent | undefined;

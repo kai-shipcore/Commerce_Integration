@@ -991,9 +991,9 @@ td.t-cn-sod { background: #e5f3ff; }
 .lv-dim  { color: #9a9790; }
 .bo-pos  { color: #c42020; font-weight: 600; }
 .inb-pos { color: #1a4fc0; font-weight: 600; }
-.sod-crit { color: #c42020; font-weight: 700; font-size: 9px; }
-.sod-warn { color: #9a5200; font-weight: 600; font-size: 9px; }
-.sod-ok   { color: #5a5750; font-size: 9px; }
+.sod-crit { color: #c42020; font-weight: 700; font-size: inherit; }
+.sod-warn { color: #9a5200; font-weight: 600; font-size: inherit; }
+.sod-ok   { color: #5a5750; font-size: inherit; }
 .sc-badge,
 .sc       { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; white-space: nowrap; display: inline-block; }
 .sc-orig  { background: #e5eeff; color: #1238a0; }
