@@ -124,6 +124,19 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_planning_sku_notes (
 CREATE INDEX IF NOT EXISTS idx_fc_planning_sku_notes_updated_at
     ON shipcore.fc_planning_sku_notes (updated_at DESC);
 
+-- Short workflow labels displayed in the editable Note column. These are
+-- intentionally separate from the long-form shared SKU memo above.
+CREATE TABLE IF NOT EXISTS shipcore.fc_planning_sku_work_notes (
+    master_sku  TEXT PRIMARY KEY,
+    note        TEXT NOT NULL,
+    updated_by  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fc_planning_sku_work_notes_updated_at
+    ON shipcore.fc_planning_sku_work_notes (updated_at DESC);
+
 -- ─────────────────────────────────────────────────────────────
 -- 3. Per-SKU × per-container cross data
 --    Joins to tables 1 and 2 via integer IDs.

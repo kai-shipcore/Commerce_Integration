@@ -86,7 +86,6 @@ export function StatusBar({
     >
       {SHOW_STATS && (
         <>
-          <SbItem label="SKU"     value={rows.length.toLocaleString()} color="#1D4ED8" />
           <SbItem label={pick("🔴긴급", "🔴Critical")}  value={crit}                     color="#DC2626" />
           <SbItem label={pick("⚠주의", "⚠Warning")}    value={warn}                     color="#B45309" />
           <SbItem label="Stock"                          value={stock.toLocaleString()}   color="#1D4ED8" />
@@ -104,6 +103,7 @@ export function StatusBar({
         onOosLostDemandWeightsChange={onOosLostDemandWeightsChange}
         onApplyAndSync={onApplyAndSync}
       />
+      <SbItem label="SKU" value={rows.length.toLocaleString()} color="#1D4ED8" />
     </div>
   );
 }

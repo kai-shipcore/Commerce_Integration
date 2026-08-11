@@ -1,8 +1,9 @@
 /**
  * Business logic for the Demand Planning dashboard pieces this app owns:
- * shared master-SKU notes, the CBM-per-unit inline editor (with its
- * fc_container_items cascade + audit trail), and the OOS lost-demand-weight
- * preview. Data access lives in src/lib/planning-dashboard/repository.ts.
+ * shared master-SKU notes, short workflow labels, the CBM-per-unit inline
+ * editor (with its fc_container_items cascade + audit trail), and the OOS
+ * lost-demand-weight preview. Data access lives in
+ * src/lib/planning-dashboard/repository.ts.
  */
 
 import { auth } from "@/lib/auth";
@@ -13,6 +14,7 @@ import { OOS_LOST_DEMAND_CATEGORIES, OOS_LOST_DEMAND_MARKETPLACES, type Category
 import { PlanningDashboardRepository, withTransaction } from "@/lib/planning-dashboard/repository";
 
 const MAX_NOTE_LENGTH = 5000;
+const MAX_WORK_NOTE_LENGTH = 200;
 
 export const PlanningDashboardService = {
   async getSkuNotes(): Promise<Record<string, string>> {
@@ -33,6 +35,27 @@ export const PlanningDashboardService = {
     }
 
     await PlanningDashboardRepository.upsertSkuNote(sku, note, updatedBy);
+    return { sku, note };
+  },
+
+  async getSkuWorkNotes(): Promise<Record<string, string>> {
+    const rows = await PlanningDashboardRepository.listSkuWorkNotes();
+    return Object.fromEntries(rows.map((row) => [row.masterSku, row.note]));
+  },
+
+  async setSkuWorkNote(rawSku: unknown, rawNote: unknown, updatedBy: string | null) {
+    const sku = typeof rawSku === "string" ? rawSku.trim() : "";
+    const note = typeof rawNote === "string" ? rawNote.trim().replace(/\s*[\r\n]+\s*/g, " ") : "";
+
+    if (!sku) throw new ValidationError("Invalid sku");
+    if (note.length > MAX_WORK_NOTE_LENGTH) throw new ValidationError("Work note is too long");
+
+    if (!note) {
+      await PlanningDashboardRepository.deleteSkuWorkNote(sku);
+      return { sku, note: "" };
+    }
+
+    await PlanningDashboardRepository.upsertSkuWorkNote(sku, note, updatedBy);
     return { sku, note };
   },
 

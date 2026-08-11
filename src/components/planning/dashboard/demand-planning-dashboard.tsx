@@ -426,6 +426,16 @@ type ColumnSettings = {
   freezeUntil: string;
 };
 
+type ColumnSettingsDraft = {
+  columnVis: ColumnVisibility;
+  compactMode: boolean;
+  showZeroSales: boolean;
+  freezeUntil: string;
+  skuPartFilters: SkuPartFilters;
+  hiddenContainers: Set<string>;
+  hiddenBases: Set<string>;
+};
+
 const BASE_COLORABLE_COLUMNS = [
   ...ALL_COLS.map((column) => ({
     id: column.id,
@@ -490,6 +500,19 @@ function sortSkuFilterValues(values: Iterable<string>) {
   return Array.from(values)
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function cloneSkuPartFilters(filters: SkuPartFilters): SkuPartFilters {
+  return Object.fromEntries(
+    Object.entries(filters).map(([key, values]) => [key, [...values]]),
+  ) as SkuPartFilters;
+}
+
+function freezeColumnForVisibility(columnVis: ColumnVisibility, currentFreeze: string): string {
+  const visible = ALL_COLS.filter((column) => columnVis[column.id] !== false);
+  return visible.some((column) => column.id === currentFreeze)
+    ? currentFreeze
+    : visible.at(-1)?.id ?? currentFreeze;
 }
 
 function skuFilterSummary(values: string[]) {
@@ -783,6 +806,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [showMistake, setShowMistake] = useState(true);
   const [showZeroSales, setShowZeroSales] = useState(false);
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
+  const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false);
+  const [columnSettingsDraft, setColumnSettingsDraft] = useState<ColumnSettingsDraft | null>(null);
   const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
   const [columnOrder, setColumnOrder] = useState<ColumnOrder>([]);
@@ -798,6 +823,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [gradient, setGradient] = useState<GradientTier[]>(DEFAULT_GRADIENT);
   const [gradientSC, setGradientSC] = useState<GradientTier[]>(DEFAULT_GRADIENT_SC);
   const [skuCellNotes, setSkuCellNotes] = useState<Record<string, string>>({});
+  const [skuWorkNotes, setSkuWorkNotes] = useState<Record<string, string>>({});
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
@@ -888,6 +914,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       .then((response) => response.json() as Promise<{ success: boolean; data?: Record<string, string> }>)
       .then((json) => {
         if (json.success && json.data) setSkuCellNotes(json.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(apiPath("/api/planning/sku-work-notes"), { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ success: boolean; data?: Record<string, string> }>)
+      .then((json) => {
+        if (json.success && json.data) setSkuWorkNotes(json.data);
       })
       .catch(() => {});
   }, []);
@@ -1506,60 +1541,25 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleAllOn = useCallback(() => {
-    const nextColumnVis = getColumnVisibilityForPreset("all");
-    setCompactMode(false);
-    setColumnVis(nextColumnVis);
-    setGroupVis(getGroupVisibilityFromColumns(nextColumnVis));
-  }, []);
+  const handleSkuWorkNoteChange = useCallback(async (sku: string, note: string) => {
+    const normalizedSku = sku.trim();
+    const normalizedNote = note.trim().replace(/\s*[\r\n]+\s*/g, " ");
+    if (!normalizedSku) return;
 
-  const handleCoreOnly = useCallback(() => {
-    const nextColumnVis = getColumnVisibilityForPreset("core");
-    setCompactMode(false);
-    setColumnVis(nextColumnVis);
-    setGroupVis(getGroupVisibilityFromColumns(nextColumnVis));
-  }, []);
+    const response = await fetch(apiPath("/api/planning/sku-work-notes"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku: normalizedSku, note: normalizedNote }),
+    });
+    if (!response.ok) throw new Error("Failed to save SKU work note");
 
-  const handleCompact = useCallback(() => {
-    const nextColumnVis = getColumnVisibilityForPreset("compact");
-    setCompactMode(true);
-    setColumnVis(nextColumnVis);
-    setGroupVis(getGroupVisibilityFromColumns(nextColumnVis));
-    setFreezeUntil("sod");
-  }, []);
-
-  const handleToggleContainerColumns = useCallback(() => {
-    setColumnVis((current) => {
-      const containerItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === "con");
-      const allContainerColumnsVisible = containerItems.every((item) => current[item.id] !== false);
+    setSkuWorkNotes((current) => {
       const next = { ...current };
-      containerItems.forEach((item) => {
-        next[item.id] = !allContainerColumnsVisible;
-      });
-      setGroupVis(getGroupVisibilityFromColumns(next));
+      if (normalizedNote) next[normalizedSku] = normalizedNote;
+      else delete next[normalizedSku];
       return next;
     });
   }, []);
-
-  const handleToggleColumnVisibilityGroup = useCallback((group: ColumnGroupKey) => {
-    setCompactMode(false);
-    setColumnVis((current) => {
-      const groupItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
-      const allGroupColumnsVisible = groupItems.every((item) => current[item.id] !== false);
-      const next = { ...current };
-      groupItems.forEach((item) => {
-        next[item.id] = !allGroupColumnsVisible;
-      });
-      setGroupVis(getGroupVisibilityFromColumns(next));
-
-      const nextVisCols = ALL_COLS.filter((column) => next[column.id] !== false);
-      const stillVisible = nextVisCols.some((column) => column.id === freezeUntil);
-      if (!stillVisible && nextVisCols.length > 0) {
-        setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
-      }
-      return next;
-    });
-  }, [freezeUntil]);
 
   const handleToggleColumnVisibilityGroupOpen = useCallback((group: ColumnGroupKey) => {
     setOpenColumnVisibilityGroups((current) => ({ ...current, [group]: !current[group] }));
@@ -1584,18 +1584,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   );
 
   const hiddenColumnCount = COLUMN_VISIBILITY_ITEMS.filter((item) => columnVis[item.id] === false).length;
-  const allPresetActive = columnVisibilityEquals(columnVis, getColumnVisibilityForPreset("all"));
-  const corePresetActive = columnVisibilityEquals(columnVis, getColumnVisibilityForPreset("core"));
-  const compactPresetActive = compactMode && columnVisibilityEquals(columnVis, getColumnVisibilityForPreset("compact"));
-  const allContainerColumnsVisible = COLUMN_VISIBILITY_ITEMS
-    .filter((item) => item.group === "con")
-    .every((item) => columnVis[item.id] !== false);
-
-  const visColsForFreeze = useMemo(
-    () => ALL_COLS
-      .filter((c) => columnVis[c.id] !== false),
-    [columnVis],
-  );
 
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1635,23 +1623,147 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     ) as Record<SkuPartFilterKey, string[]>;
   }, [activeSkuFilterKeys, primaryBaseCategory, data.rows]);
 
-  const hasSkuPartFilters = activeSkuFilterKeys.some((key) => activeSkuPartFilters[key].length > 0);
+  const handleColumnSettingsOpenChange = useCallback((open: boolean) => {
+    setIsColumnSettingsOpen(open);
+    setOpenSkuFilterKey(null);
+    if (open) {
+      setColumnSettingsDraft({
+        columnVis: { ...columnVis },
+        compactMode,
+        showZeroSales,
+        freezeUntil,
+        skuPartFilters: cloneSkuPartFilters(skuPartFilters),
+        hiddenContainers: new Set(hiddenContainers),
+        hiddenBases: new Set(hiddenBases),
+      });
+    } else {
+      setColumnSettingsDraft(null);
+    }
+  }, [columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, showZeroSales, skuPartFilters]);
 
-  const handleSkuPartFilterToggle = useCallback((key: SkuPartFilterKey, value: string) => {
-    setSkuPartFilters((current) => {
-      const selected = new Set(current[key]);
-      if (selected.has(value)) {
-        selected.delete(value);
-      } else {
-        selected.add(value);
-      }
-      return { ...current, [key]: sortSkuFilterValues(selected) };
+  const applyColumnSettingsDraft = useCallback(() => {
+    if (!columnSettingsDraft) return;
+    setColumnVis({ ...columnSettingsDraft.columnVis });
+    setGroupVis(getGroupVisibilityFromColumns(columnSettingsDraft.columnVis));
+    setCompactMode(columnSettingsDraft.compactMode);
+    setShowZeroSales(columnSettingsDraft.showZeroSales);
+    setFreezeUntil(columnSettingsDraft.freezeUntil);
+    setSkuPartFilters(cloneSkuPartFilters(columnSettingsDraft.skuPartFilters));
+    setHiddenContainers(new Set(columnSettingsDraft.hiddenContainers));
+    setHiddenBases(new Set(columnSettingsDraft.hiddenBases));
+    setIsColumnSettingsOpen(false);
+    setColumnSettingsDraft(null);
+    setOpenSkuFilterKey(null);
+  }, [columnSettingsDraft]);
+
+  const handleDraftPreset = useCallback((preset: "all" | "core" | "compact") => {
+    setColumnSettingsDraft((current) => {
+      if (!current) return current;
+      const nextColumnVis = getColumnVisibilityForPreset(preset);
+      return {
+        ...current,
+        columnVis: nextColumnVis,
+        compactMode: preset === "compact",
+        freezeUntil: preset === "compact" ? "sod" : freezeColumnForVisibility(nextColumnVis, current.freezeUntil),
+      };
     });
   }, []);
 
-  const clearSkuPartFilter = useCallback((key: SkuPartFilterKey) => {
-    setSkuPartFilters((current) => ({ ...current, [key]: [] }));
+  const handleDraftToggleContainerColumns = useCallback(() => {
+    setColumnSettingsDraft((current) => {
+      if (!current) return current;
+      const containerItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === "con");
+      const allVisible = containerItems.every((item) => current.columnVis[item.id] !== false);
+      const nextColumnVis = { ...current.columnVis };
+      containerItems.forEach((item) => { nextColumnVis[item.id] = !allVisible; });
+      return { ...current, columnVis: nextColumnVis, compactMode: false };
+    });
   }, []);
+
+  const handleDraftToggleColumnGroup = useCallback((group: ColumnGroupKey) => {
+    setColumnSettingsDraft((current) => {
+      if (!current) return current;
+      const items = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
+      const allVisible = items.every((item) => current.columnVis[item.id] !== false);
+      const nextColumnVis = { ...current.columnVis };
+      items.forEach((item) => { nextColumnVis[item.id] = !allVisible; });
+      return {
+        ...current,
+        columnVis: nextColumnVis,
+        compactMode: false,
+        freezeUntil: freezeColumnForVisibility(nextColumnVis, current.freezeUntil),
+      };
+    });
+  }, []);
+
+  const handleDraftToggleColumn = useCallback((columnId: string) => {
+    setColumnSettingsDraft((current) => {
+      if (!current) return current;
+      const nextColumnVis = { ...current.columnVis, [columnId]: current.columnVis[columnId] === false };
+      return {
+        ...current,
+        columnVis: nextColumnVis,
+        compactMode: false,
+        freezeUntil: freezeColumnForVisibility(nextColumnVis, current.freezeUntil),
+      };
+    });
+  }, []);
+
+  const handleDraftSkuPartFilterToggle = useCallback((key: SkuPartFilterKey, value: string) => {
+    setColumnSettingsDraft((current) => {
+      if (!current) return current;
+      const selected = new Set(current.skuPartFilters[key]);
+      if (selected.has(value)) selected.delete(value); else selected.add(value);
+      return {
+        ...current,
+        skuPartFilters: { ...current.skuPartFilters, [key]: sortSkuFilterValues(selected) },
+      };
+    });
+  }, []);
+
+  const draftColumnVis = columnSettingsDraft?.columnVis ?? columnVis;
+  const draftCompactMode = columnSettingsDraft?.compactMode ?? compactMode;
+  const draftShowZeroSales = columnSettingsDraft?.showZeroSales ?? showZeroSales;
+  const draftFreezeUntil = columnSettingsDraft?.freezeUntil ?? freezeUntil;
+  const draftSkuPartFilters = columnSettingsDraft?.skuPartFilters ?? skuPartFilters;
+  const draftHiddenContainers = columnSettingsDraft?.hiddenContainers ?? hiddenContainers;
+  const draftHiddenBases = columnSettingsDraft?.hiddenBases ?? hiddenBases;
+  const draftActiveSkuPartFilters = useMemo(() => {
+    const next = { ...EMPTY_SKU_PART_FILTERS };
+    activeSkuFilterKeys.forEach((key) => { next[key] = draftSkuPartFilters[key]; });
+    return next;
+  }, [activeSkuFilterKeys, draftSkuPartFilters]);
+  const draftHasSkuPartFilters = activeSkuFilterKeys.some((key) => draftActiveSkuPartFilters[key].length > 0);
+  const draftAllPresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("all"));
+  const draftCorePresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("core"));
+  const draftCompactPresetActive = draftCompactMode && columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("compact"));
+  const draftAllContainerColumnsVisible = COLUMN_VISIBILITY_ITEMS
+    .filter((item) => item.group === "con")
+    .every((item) => draftColumnVis[item.id] !== false);
+  const draftVisColsForFreeze = useMemo(
+    () => ALL_COLS.filter((column) => draftColumnVis[column.id] !== false),
+    [draftColumnVis],
+  );
+  const columnSettingsChangeCount = useMemo(() => {
+    if (!columnSettingsDraft) return 0;
+    let count = 0;
+    for (const item of COLUMN_VISIBILITY_ITEMS) {
+      if ((columnSettingsDraft.columnVis[item.id] !== false) !== (columnVis[item.id] !== false)) count += 1;
+    }
+    if (columnSettingsDraft.compactMode !== compactMode) count += 1;
+    if (columnSettingsDraft.showZeroSales !== showZeroSales) count += 1;
+    if (columnSettingsDraft.freezeUntil !== freezeUntil) count += 1;
+    for (const key of Object.keys(EMPTY_SKU_PART_FILTERS) as SkuPartFilterKey[]) {
+      if (columnSettingsDraft.skuPartFilters[key].join("\u0000") !== skuPartFilters[key].join("\u0000")) count += 1;
+    }
+    const draftContainers = Array.from(columnSettingsDraft.hiddenContainers).sort().join("\u0000");
+    const appliedContainers = Array.from(hiddenContainers).sort().join("\u0000");
+    if (draftContainers !== appliedContainers) count += 1;
+    const draftBases = Array.from(columnSettingsDraft.hiddenBases).sort().join("\u0000");
+    const appliedBases = Array.from(hiddenBases).sort().join("\u0000");
+    if (draftBases !== appliedBases) count += 1;
+    return count;
+  }, [columnSettingsDraft, columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, showZeroSales, skuPartFilters]);
 
   const handleAgGridExportReady = useCallback((exporter: (() => Promise<void>) | null) => {
     agGridExportRef.current = exporter;
@@ -1952,7 +2064,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
         {hasData && (
           <>
-          <Popover>
+          <Popover open={isColumnSettingsOpen} onOpenChange={handleColumnSettingsOpenChange}>
             <PopoverTrigger asChild>
               <button
                 type="button"
@@ -2002,7 +2114,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             >
               {/* Header with close button */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderBottom: "1px solid #E2E8F0", gridColumn: "1 / -1", position: "sticky", top: 0, zIndex: 1, background: "#fff" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{pick("컬럼 설정", "Columns")}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>
+                  {pick("컬럼 설정", "Columns")}
+                  {columnSettingsChangeCount > 0 ? (
+                    <span style={{ marginLeft: 7, color: "#2563EB", fontSize: 10 }}>
+                      {pick(`${columnSettingsChangeCount}개 변경 대기`, `${columnSettingsChangeCount} pending`)}
+                    </span>
+                  ) : null}
+                </span>
                 <PopoverClose asChild>
                   <button
                     type="button"
@@ -2027,9 +2146,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {([
-                    { label: pick("전체", "All"), action: handleAllOn, active: allPresetActive },
-                    { label: pick("핵심", "Core"), action: handleCoreOnly, active: corePresetActive },
-                    { label: pick("간단히", "Compact"), action: handleCompact, active: compactPresetActive },
+                    { label: pick("전체", "All"), action: () => handleDraftPreset("all"), active: draftAllPresetActive },
+                    { label: pick("핵심", "Core"), action: () => handleDraftPreset("core"), active: draftCorePresetActive },
+                    { label: pick("간단히", "Compact"), action: () => handleDraftPreset("compact"), active: draftCompactPresetActive },
                   ] as { label: string; action: () => void; active: boolean }[]).map(({ label, action, active }) => (
                     <button
                       key={label}
@@ -2052,7 +2171,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 </div>
                 <button
                   type="button"
-                  onClick={handleToggleContainerColumns}
+                  onClick={handleDraftToggleContainerColumns}
                   style={{
                     marginTop: 7,
                     width: "100%",
@@ -2060,10 +2179,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     fontWeight: 600,
                     padding: "5px 10px",
                     borderRadius: 5,
-                    border: allContainerColumnsVisible ? "1px solid #3B82F6" : "1px solid #CBD5E1",
+                    border: draftAllContainerColumnsVisible ? "1px solid #3B82F6" : "1px solid #CBD5E1",
                     cursor: "pointer",
-                    background: allContainerColumnsVisible ? "#EFF6FF" : "#F8FAFC",
-                    color: allContainerColumnsVisible ? "#1D4ED8" : "#475569",
+                    background: draftAllContainerColumnsVisible ? "#EFF6FF" : "#F8FAFC",
+                    color: draftAllContainerColumnsVisible ? "#1D4ED8" : "#475569",
                     textAlign: "left",
                   }}
                 >
@@ -2078,9 +2197,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, flexShrink: 0 }}>
                     {pick("옵션", "Options")}
                   </div>
-                  <label style={{ display: "flex", flex: 1, minWidth: 0, alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent", whiteSpace: "nowrap" }}>
-                    <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, flexShrink: 0, cursor: "pointer", accentColor: "#3B82F6" }} />
-                    <span style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>{pick("판매 0인 SKU 표시", "Show Zero-Sales SKUs")}</span>
+                  <label style={{ display: "flex", flex: 1, minWidth: 0, alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: draftShowZeroSales ? "rgba(59,130,246,.06)" : "transparent", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={draftShowZeroSales} onChange={() => setColumnSettingsDraft((current) => current ? { ...current, showZeroSales: !current.showZeroSales } : current)} style={{ width: 14, height: 14, flexShrink: 0, cursor: "pointer", accentColor: "#3B82F6" }} />
+                    <span style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: draftShowZeroSales ? "#1E3A5F" : "#94A3B8" }}>{pick("판매 0인 SKU 표시", "Show Zero-Sales SKUs")}</span>
                   </label>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -2099,18 +2218,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </button>
                       <button
                         type="button"
-                        disabled={!hasSkuPartFilters}
+                        disabled={!draftHasSkuPartFilters}
                         onClick={() => {
-                          if (confirmReset("SKU 필터", "the SKU filters")) setSkuPartFilters(EMPTY_SKU_PART_FILTERS);
+                          setColumnSettingsDraft((current) => current ? { ...current, skuPartFilters: cloneSkuPartFilters(EMPTY_SKU_PART_FILTERS) } : current);
                         }}
                         style={{
                           fontSize: 10,
                           padding: "2px 7px",
                           borderRadius: 4,
                           border: "1px solid #CBD5E1",
-                          cursor: hasSkuPartFilters ? "pointer" : "default",
+                          cursor: draftHasSkuPartFilters ? "pointer" : "default",
                           background: "#F8FAFC",
-                          color: hasSkuPartFilters ? "#475569" : "#A8B0BA",
+                          color: draftHasSkuPartFilters ? "#475569" : "#A8B0BA",
                         }}
                       >
                         {pick("초기화", "Reset")}
@@ -2131,7 +2250,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     {isSkuFiltersOpen ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                       {activeSkuFilterKeys.map((key) => {
-                        const selectedValues = activeSkuPartFilters[key];
+                        const selectedValues = draftActiveSkuPartFilters[key];
                         const optionValues = skuFilterOptions[key] ?? [];
                         return (
                           <div key={key} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
@@ -2187,7 +2306,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                 <button
                                   type="button"
                                   disabled={!selectedValues.length}
-                                  onClick={() => clearSkuPartFilter(key)}
+                                  onClick={() => setColumnSettingsDraft((current) => current ? { ...current, skuPartFilters: { ...current.skuPartFilters, [key]: [] } } : current)}
                                   style={{
                                     width: "100%",
                                     marginBottom: 4,
@@ -2222,7 +2341,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                       <input
                                         type="checkbox"
                                         checked={checked}
-                                        onChange={() => handleSkuPartFilterToggle(key, value)}
+                                        onChange={() => handleDraftSkuPartFilterToggle(key, value)}
                                         style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#3B82F6" }}
                                       />
                                       <span style={{ fontSize: 12, color: checked ? "#1D4ED8" : "#334155", fontWeight: checked ? 700 : 500 }}>
@@ -2245,11 +2364,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <select
-                        value={freezeUntil}
-                        onChange={(e) => setFreezeUntil(e.target.value)}
+                        value={draftFreezeUntil}
+                        onChange={(e) => setColumnSettingsDraft((current) => current ? { ...current, freezeUntil: e.target.value } : current)}
                         style={{ flex: 1, minWidth: 0, fontSize: 12, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#1E293B", cursor: "pointer" }}
                       >
-                        {visColsForFreeze.map((col) => (
+                        {draftVisColsForFreeze.map((col) => (
                           <option key={col.id} value={col.id}>
                             {col.label.replace("\n", " ")}
                           </option>
@@ -2258,7 +2377,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirmReset("컬럼 고정", "the frozen columns")) setFreezeUntil(DEFAULT_FREEZE);
+                          setColumnSettingsDraft((current) => current ? { ...current, freezeUntil: DEFAULT_FREEZE } : current);
                         }}
                         style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B", whiteSpace: "nowrap" }}
                       >
@@ -2407,7 +2526,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 }}>
                   {COLUMN_VISIBILITY_GROUP_KEYS.map((group) => {
                     const groupItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
-                    const checkedCount = groupItems.filter((item) => columnVis[item.id] !== false).length;
+                    const checkedCount = groupItems.filter((item) => draftColumnVis[item.id] !== false).length;
                     const allChecked = checkedCount === groupItems.length;
                     const someChecked = checkedCount > 0 && checkedCount < groupItems.length;
                     const isOpen = openColumnVisibilityGroups[group];
@@ -2428,7 +2547,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             ref={(node) => {
                               if (node) node.indeterminate = someChecked;
                             }}
-                            onChange={() => handleToggleColumnVisibilityGroup(group)}
+                            onChange={() => handleDraftToggleColumnGroup(group)}
                             style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
                           />
                           <button
@@ -2446,7 +2565,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         {isOpen ? (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 1, padding: "0 0 4px 28px" }}>
                             {groupItems.map((item) => {
-                              const checked = columnVis[item.id] !== false;
+                              const checked = draftColumnVis[item.id] !== false;
                               return (
                                 <label
                                   key={item.id}
@@ -2464,7 +2583,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                   <input
                                     type="checkbox"
                                     checked={checked}
-                                    onChange={() => handleToggleColumn(item.id)}
+                                    onChange={() => handleDraftToggleColumn(item.id)}
                                     style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
                                   />
                                   <span
@@ -2507,10 +2626,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           <div style={SETTINGS_SECTION_TITLE_STYLE}>
                             {pick("컨테이너 표시", "Container Visibility")}
                           </div>
-                          {hiddenContainers.size > 0 && (
+                          {draftHiddenContainers.size > 0 && (
                             <button
                               type="button"
-                              onClick={() => setHiddenContainers(new Set())}
+                              onClick={() => setColumnSettingsDraft((current) => current ? { ...current, hiddenContainers: new Set() } : current)}
                               style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
                             >
                               {pick("모두 표시", "Show All")}
@@ -2522,16 +2641,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           {[
                             { name: "Base",          label: pick("기준 (현재고)", "Base (on-hand)"), color: "#94A3B8" },
                           ].map(({ name, label, color }) => {
-                            const visible = !hiddenBases.has(name);
+                            const visible = !draftHiddenBases.has(name);
                             return (
                               <label key={name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 5px", borderRadius: 4, cursor: "pointer", background: visible ? "rgba(59,130,246,.06)" : "transparent" }}>
                                 <input
                                   type="checkbox"
                                   checked={visible}
-                                  onChange={() => setHiddenBases((prev) => {
-                                    const next = new Set(prev);
+                                  onChange={() => setColumnSettingsDraft((current) => {
+                                    if (!current) return current;
+                                    const next = new Set(current.hiddenBases);
                                     if (next.has(name)) next.delete(name); else next.add(name);
-                                    return next;
+                                    return { ...current, hiddenBases: next };
                                   })}
                                   style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
                                 />
@@ -2546,14 +2666,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           {STATUS_GROUPS.map(({ status, label, color, accentColor }) => {
                             const group = allContainers.filter((c) => c.status === status);
                             if (!group.length) return null;
-                            const allVisible  = group.every((c) => !hiddenContainers.has(c.name));
-                            const someVisible = group.some((c)  => !hiddenContainers.has(c.name));
+                            const allVisible  = group.every((c) => !draftHiddenContainers.has(c.name));
+                            const someVisible = group.some((c)  => !draftHiddenContainers.has(c.name));
                             const isOpen = openContainerStatusGroups[status] !== false;
-                            const toggleGroup = () => setHiddenContainers((prev) => {
-                              const next = new Set(prev);
+                            const toggleGroup = () => setColumnSettingsDraft((current) => {
+                              if (!current) return current;
+                              const next = new Set(current.hiddenContainers);
                               if (allVisible) group.forEach((c) => next.add(c.name));
                               else            group.forEach((c) => next.delete(c.name));
-                              return next;
+                              return { ...current, hiddenContainers: next };
                             });
                             return (
                               <div key={status}>
@@ -2586,7 +2707,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                 </div>
                                 {/* Individual containers */}
                                 {isOpen ? group.map((c) => {
-                                  const visible = !hiddenContainers.has(c.name);
+                                  const visible = !draftHiddenContainers.has(c.name);
                                   return (
                                     <label
                                       key={c.name}
@@ -2599,10 +2720,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                       <input
                                         type="checkbox"
                                         checked={visible}
-                                        onChange={() => setHiddenContainers((prev) => {
-                                          const next = new Set(prev);
+                                        onChange={() => setColumnSettingsDraft((current) => {
+                                          if (!current) return current;
+                                          const next = new Set(current.hiddenContainers);
                                           if (next.has(c.name)) next.delete(c.name); else next.add(c.name);
-                                          return next;
+                                          return { ...current, hiddenContainers: next };
                                         })}
                                         style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#3B82F6" }}
                                       />
@@ -2627,6 +2749,30 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
                 </div>
               ) : null}
+              <div style={{ gridColumn: "1 / -1", position: "sticky", bottom: 0, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 14px", borderTop: "1px solid #CBD5E1", background: "rgba(255,255,255,.98)", boxShadow: "0 -4px 12px rgba(15,23,42,.06)" }}>
+                <span style={{ fontSize: 11, color: columnSettingsChangeCount > 0 ? "#1D4ED8" : "#64748B", fontWeight: columnSettingsChangeCount > 0 ? 700 : 500 }}>
+                  {columnSettingsChangeCount > 0
+                    ? pick(`${columnSettingsChangeCount}개 변경사항이 선택되었습니다. Apply를 눌러 적용하세요.`, `${columnSettingsChangeCount} change${columnSettingsChangeCount === 1 ? "" : "s"} selected. Click Apply to confirm.`)
+                    : pick("변경사항이 없습니다.", "No pending changes.")}
+                </span>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleColumnSettingsOpenChange(false)}
+                    style={{ minWidth: 78, padding: "6px 14px", borderRadius: 5, border: "1px solid #CBD5E1", background: "#fff", color: "#475569", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                  >
+                    {pick("취소", "Cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={columnSettingsChangeCount === 0}
+                    onClick={applyColumnSettingsDraft}
+                    style={{ minWidth: 86, padding: "6px 14px", borderRadius: 5, border: "1px solid", borderColor: columnSettingsChangeCount > 0 ? "#1D4ED8" : "#CBD5E1", background: columnSettingsChangeCount > 0 ? "#2563EB" : "#F1F5F9", color: columnSettingsChangeCount > 0 ? "#fff" : "#94A3B8", cursor: columnSettingsChangeCount > 0 ? "pointer" : "default", fontSize: 12, fontWeight: 700 }}
+                  >
+                    {pick("적용", "Apply")}
+                  </button>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
           <TextFormatPopover
@@ -2886,6 +3032,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           cellTextFormats={cellTextFormats}
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
+          skuWorkNotes={skuWorkNotes}
+          onSkuWorkNoteChange={canEditSkuNotes ? handleSkuWorkNoteChange : undefined}
           canEditSkuNotes={canEditSkuNotes}
           canEditPlanning={canEditDemandPlanning}
           selectedCellKeys={selectedCellKeys}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
@@ -11,6 +11,7 @@ import {
   type ColGroupDef,
   type CellMouseDownEvent,
   type CellMouseOverEvent,
+  type ColumnResizedEvent,
   type ICellRendererParams,
   type IHeaderGroupParams,
   type IHeaderParams,
@@ -100,6 +101,7 @@ type ContainerColumnTotals = Partial<Record<"ccbm" | "inb_qty" | "remaining" | "
 
 type ContainerTotalColumn = {
   id: string;
+  columnId: string;
   width: number;
   total?: number;
 };
@@ -919,6 +921,92 @@ function CbmCellRenderer({
   );
 }
 
+function WorkNoteCellRenderer({
+  value,
+  node,
+  onSave,
+}: ICellRendererParams<DemandRow, CellContent> & {
+  onSave: (note: string) => Promise<boolean>;
+}) {
+  const displayValue = value === null || value === undefined ? "" : String(value);
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState(displayValue);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    if (!editing && !savingRef.current) setInputValue(displayValue);
+  }, [displayValue, editing]);
+
+  async function commit() {
+    if (savingRef.current) return;
+    const nextNote = inputValue.trim().replace(/\s*[\r\n]+\s*/g, " ");
+    if (nextNote === displayValue) {
+      setEditing(false);
+      return;
+    }
+
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const saved = await onSave(nextNote);
+      if (!saved) setInputValue(displayValue);
+      else setInputValue(nextNote);
+    } catch {
+      setInputValue(displayValue);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="relative h-full w-full overflow-visible">
+        <input
+          autoFocus
+          type="text"
+          maxLength={200}
+          aria-label="Edit Note"
+          value={inputValue}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setInputValue(displayValue);
+              setEditing(false);
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void commit();
+            }
+          }}
+          onBlur={() => void commit()}
+          className="planning-cbm-edit-input absolute left-0 top-1/2 z-30 h-10 w-56 -translate-y-1/2 rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 text-left text-sm font-medium shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      title={displayValue || "Click to add Note"}
+      onClick={(event) => {
+        event.stopPropagation();
+        node.setSelected(true, true);
+        setEditing(true);
+      }}
+      className="h-full w-full truncate border-0 bg-transparent px-1 text-left"
+      style={{ color: "inherit", fontFamily: "inherit", fontSize: "inherit", fontWeight: "inherit" }}
+    >
+      {saving ? "..." : displayValue}
+    </button>
+  );
+}
+
 type HeaderEditorAnchor = { left: number; top: number; width: number; height: number };
 
 function WideHeaderNameEditor({
@@ -1020,16 +1108,26 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
 
 function SelectableHeader(params: IHeaderParams & {
   selectionId: string;
-  selected: boolean;
+  isSelected: () => boolean;
+  subscribeSelection: (listener: () => void) => () => void;
   onSelect: (columnId: string, additive: boolean) => void;
-  fullColumnSelected: boolean;
+  isFullColumnSelected: () => boolean;
   onFullColumnSelect: (columnId: string, additive: boolean) => void;
   onRename: (columnId: string, name: string) => void;
   isFiltered?: boolean;
   onRightClick?: (x: number, y: number) => void;
+  showMenuButton?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
+  const [, setSelectionVersion] = useState(0);
+  const subscribeSelection = params.subscribeSelection;
+  useEffect(
+    () => subscribeSelection(() => setSelectionVersion((version) => version + 1)),
+    [subscribeSelection],
+  );
+  const selected = params.isSelected();
+  const fullColumnSelected = params.isFullColumnSelected();
 
   if (editing && editorAnchor) {
     return (
@@ -1046,23 +1144,23 @@ function SelectableHeader(params: IHeaderParams & {
   }
 
   return (
-    <div style={{ display: "flex", height: "100%", position: "relative", width: "calc(100% + 16px)", marginLeft: -8, marginRight: -8, boxShadow: params.fullColumnSelected ? "inset 2px 0 #2563EB, inset -2px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
+    <div style={{ display: "flex", height: "100%", position: "relative", width: "calc(100% + 16px)", marginLeft: -8, marginRight: -8, boxShadow: fullColumnSelected ? "inset 2px 0 #2563EB, inset -2px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
       <button
         type="button"
         aria-label={`Select entire ${params.displayName} column`}
-        aria-pressed={params.fullColumnSelected}
+        aria-pressed={fullColumnSelected}
         title="Select entire column"
         onClick={(event) => {
           event.stopPropagation();
           params.onFullColumnSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
         }}
-        style={{ background: params.fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: 0, padding: 0, position: "absolute", right: 0, top: 0, zIndex: 2 }}
+        style={{ background: fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: 0, padding: 0, position: "absolute", right: 0, top: 0, zIndex: 2 }}
       />
       <div
         role="button"
         tabIndex={0}
-        aria-pressed={params.selected}
-        aria-label={`${params.displayName} header, ${params.selected ? "selected" : "not selected"}`}
+        aria-pressed={selected}
+        aria-label={`${params.displayName} header, ${selected ? "selected" : "not selected"}`}
         title="Drag to move. Click to select the header. Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
         onClick={(event) => {
           event.stopPropagation();
@@ -1088,12 +1186,12 @@ function SelectableHeader(params: IHeaderParams & {
         } : undefined}
         style={{
           alignItems: "center",
-          background: params.selected ? "rgba(96,165,250,.28)" : undefined,
-          boxShadow: params.selected ? "inset 0 0 0 3px #60A5FA" : undefined,
+          background: selected ? "rgba(96,165,250,.28)" : undefined,
+          boxShadow: selected ? "inset 0 0 0 3px #60A5FA" : undefined,
           cursor: "pointer",
           display: "flex",
           flex: 1,
-          fontWeight: params.selected ? 800 : undefined,
+          fontWeight: selected ? 800 : undefined,
           gap: 3,
           height: "100%",
           justifyContent: "center",
@@ -1104,9 +1202,27 @@ function SelectableHeader(params: IHeaderParams & {
           whiteSpace: "normal",
         }}
       >
-        {params.selected && <span aria-hidden="true" style={{ color: "#93C5FD", flexShrink: 0, fontWeight: 900 }}>✓</span>}
+        {selected && <span aria-hidden="true" style={{ color: "#93C5FD", flexShrink: 0, fontWeight: 900 }}>✓</span>}
         <span style={{ minWidth: 0, overflow: "hidden" }}>{params.displayName}</span>
-        {params.isFiltered && <span aria-hidden="true" style={{ color: "#60A5FA", fontSize: 9, lineHeight: 1 }}>▼</span>}
+        {params.showMenuButton ? (
+          <button
+            type="button"
+            aria-label={`Open ${params.displayName} column menu`}
+            title="Filter / Sort"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const rect = event.currentTarget.getBoundingClientRect();
+              params.onRightClick?.(rect.left, rect.bottom + 2);
+            }}
+            style={{ flexShrink: 0, width: 16, height: 18, padding: 0, border: "none", borderRadius: 3, background: params.isFiltered ? "rgba(96,165,250,.25)" : "rgba(255,255,255,.12)", color: params.isFiltered ? "#60A5FA" : "rgba(255,255,255,.8)", cursor: "pointer", fontSize: 9, lineHeight: "18px" }}
+          >
+            ▼
+          </button>
+        ) : params.isFiltered ? (
+          <span aria-hidden="true" style={{ color: "#60A5FA", fontSize: 9, lineHeight: 1 }}>▼</span>
+        ) : null}
       </div>
     </div>
   );
@@ -1503,13 +1619,56 @@ function ContainerGroupHeader(
     saving?: boolean;
     dirty?: boolean;
     selectionId: string;
-    selected: boolean;
+    isSelected: () => boolean;
+    subscribeSelection: (listener: () => void) => () => void;
     onSelect: (columnId: string, additive: boolean) => void;
     onRename: (columnId: string, name: string) => void;
   },
 ) {
   const [targetDays, setTargetDays] = useState(90);
   const [nameEditorAnchor, setNameEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
+  const [liveColumnWidths, setLiveColumnWidths] = useState<Record<string, number>>({});
+  const [, setSelectionVersion] = useState(0);
+  const subscribeSelection = props.subscribeSelection;
+  useEffect(
+    () => subscribeSelection(() => setSelectionVersion((version) => version + 1)),
+    [subscribeSelection],
+  );
+  const selected = props.isSelected();
+
+  // AG Grid keeps its normal header, pinned row and body cells aligned while
+  // the resize handle is moving. The totals strip is custom React content,
+  // however, so prop-based widths only refresh after the saved settings make
+  // a round trip through the dashboard. Read the displayed AG columns instead
+  // so the custom strip follows the exact same live width during the drag.
+  useEffect(() => {
+    const columnIds = new Set(props.totalColumns.map((column) => column.columnId));
+    const syncWidths = () => {
+      const next: Record<string, number> = {};
+      for (const column of props.totalColumns) {
+        next[column.columnId] = props.api.getColumn(column.columnId)?.getActualWidth() ?? column.width;
+      }
+      setLiveColumnWidths((current) => {
+        const keys = Object.keys(next);
+        if (keys.length === Object.keys(current).length && keys.every((key) => current[key] === next[key])) {
+          return current;
+        }
+        return next;
+      });
+    };
+    const handleColumnResized = (event: ColumnResizedEvent<DemandRow>) => {
+      if (event.column && !columnIds.has(event.column.getColId())) return;
+      syncWidths();
+    };
+
+    syncWidths();
+    props.api.addEventListener("columnResized", handleColumnResized);
+    props.api.addEventListener("displayedColumnsChanged", syncWidths);
+    return () => {
+      props.api.removeEventListener("columnResized", handleColumnResized);
+      props.api.removeEventListener("displayedColumnsChanged", syncWidths);
+    };
+  }, [props.api, props.totalColumns]);
   const statusBg =
     props.status === "packing_received"
       ? "border-t-[3px] border-blue-400 bg-blue-500/20"
@@ -1543,14 +1702,14 @@ function ContainerGroupHeader(
 
   return (
     <div
-      className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}
-      style={{ boxShadow: props.selected ? "inset 0 0 0 3px #60A5FA" : undefined, backgroundColor: props.selected ? "rgba(96,165,250,.28)" : undefined }}
+      className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[11px] ${statusBg}`}
+      style={{ boxShadow: selected ? "inset 0 0 0 3px #60A5FA" : undefined, backgroundColor: selected ? "rgba(96,165,250,.28)" : undefined }}
     >
-      <div className="flex items-center justify-center gap-1 overflow-hidden">
+      <div className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1">
         <span
           role="button"
           tabIndex={0}
-          aria-pressed={props.selected}
+          aria-pressed={selected}
           className="max-w-full truncate font-bold"
           title="Click to select; Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
           onClick={(event) => {
@@ -1571,7 +1730,7 @@ function ContainerGroupHeader(
           }}
           style={{ cursor: "text" }}
         >
-          {props.selected ? "✓ " : ""}
+          {selected ? "✓ " : ""}
           {props.displayName}
         </span>
         {props.onOpenInContainerPlanning && (
@@ -1589,7 +1748,7 @@ function ContainerGroupHeader(
           </button>
         )}
         {statusLabel && (
-          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${statusColor}`}>
+          <span className={`shrink-0 rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusColor}`}>
             {statusLabel}
           </span>
         )}
@@ -1662,7 +1821,7 @@ function ContainerGroupHeader(
         )}
       </div>
       {props.baseline ? null : (
-        <div className="flex w-full text-[9px] font-bold text-[#7EB880]">
+        <div className="flex w-full text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
           {props.totalColumns.map((column) => {
             const totalLabel = column.total === undefined
               ? ""
@@ -1672,9 +1831,10 @@ function ContainerGroupHeader(
             return (
               <span
                 key={column.id}
+                data-summary-column-id={column.columnId}
                 title={totalLabel ? `Total: ${totalLabel}` : undefined}
                 className="shrink-0 truncate text-center"
-                style={{ width: column.width }}
+                style={{ width: liveColumnWidths[column.columnId] ?? column.width }}
               >
                 {totalLabel}
               </span>
@@ -1712,9 +1872,11 @@ export function AgDemandPlanningGrid({
   columnTextFormats = {},
   cellTextFormats = {},
   skuCellNotes = {},
+  skuWorkNotes = {},
   canEditSkuNotes = false,
   canEditPlanning = false,
   onSkuCellNoteChange,
+  onSkuWorkNoteChange,
   onAgCellSelected,
   onCellSelectionChange,
   selectedColumnIds = [],
@@ -1738,7 +1900,13 @@ export function AgDemandPlanningGrid({
   const dragMovedRef = useRef(false);
   const selectedCellsRef = useRef<Set<string>>(new Set());
   const lastSelectedRef = useRef<string | null>(null);
+  const selectedColumnIdsRef = useRef(new Set(selectedColumnIds));
+  const selectedFullColumnIdsRef = useRef(new Set(selectedFullColumnIds));
+  const selectionListenersRef = useRef(new Set<() => void>());
+  const dragSelectionFrameRef = useRef<number | null>(null);
+  const pendingDragSelectionRef = useRef<SelectedAgCell[] | null>(null);
   const appliedColumnStructureRef = useRef<string | null>(null);
+  const columnWidthsRef = useRef(columnWidths);
   const columnTextFormatsRef = useRef(columnTextFormats);
   const cellTextFormatsRef = useRef(cellTextFormats);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
@@ -1862,11 +2030,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         ...row,
         ...(rowOverrides.get(row.sku) ?? {}),
         ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
+        workflow_note: skuWorkNotes[row.sku] ?? null,
       };
       merged.stock_mode = "available";
       return merged;
     });
-  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, urgencyFilter]);
 
   const visibleRows = useMemo(
     () => applyColumnFilters(bespokeFilteredRows, columnFilters, columnMenuAccessors(columnFilters.keys())),
@@ -2066,6 +2235,125 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, [cbmOverrides, cellColors, chainMap, columnColors, qtyOverrides, rowOverrides]);
 
   useEffect(() => {
+    columnWidthsRef.current = columnWidths;
+  }, [columnWidths]);
+
+  const refreshFullSelectionColumns = useCallback((logicalIds: Set<string>) => {
+    if (!logicalIds.size) return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const columns = (api.getColumns() ?? []).filter((column) => {
+      const columnId = column.getColId();
+      for (const logicalId of logicalIds) {
+        if (logicalId.startsWith("con:") && columnId.endsWith(`::${logicalId.slice(4)}`)) return true;
+        if (!logicalId.startsWith("container:") && columnId === logicalId) return true;
+      }
+      return false;
+    });
+    if (columns.length) api.refreshCells({ columns, force: true });
+  }, []);
+
+  const subscribeSelection = useCallback((listener: () => void) => {
+    selectionListenersRef.current.add(listener);
+    return () => selectionListenersRef.current.delete(listener);
+  }, []);
+
+  const notifySelectionChanged = useCallback(() => {
+    for (const listener of selectionListenersRef.current) listener();
+  }, []);
+
+  const handleColumnHeaderSelectFast = useCallback((columnId: string, additive: boolean) => {
+    const next = new Set(selectedColumnIdsRef.current);
+    if (next.has(columnId)) next.delete(columnId);
+    else {
+      if (!additive) next.clear();
+      next.add(columnId);
+    }
+    const clearedFullColumns = new Set(selectedFullColumnIdsRef.current);
+    selectedColumnIdsRef.current = next;
+    selectedFullColumnIdsRef.current = new Set();
+    notifySelectionChanged();
+    refreshFullSelectionColumns(clearedFullColumns);
+    startTransition(() => onColumnHeaderSelect?.(columnId, additive));
+  }, [notifySelectionChanged, onColumnHeaderSelect, refreshFullSelectionColumns]);
+
+  const handleFullColumnSelectFast = useCallback((columnId: string, additive: boolean) => {
+    const previous = new Set(selectedFullColumnIdsRef.current);
+    const next = new Set(previous);
+    if (next.has(columnId)) next.delete(columnId);
+    else {
+      if (!additive) next.clear();
+      next.add(columnId);
+    }
+    selectedColumnIdsRef.current = new Set();
+    selectedFullColumnIdsRef.current = next;
+    notifySelectionChanged();
+    refreshFullSelectionColumns(new Set([...previous, ...next]));
+    startTransition(() => onFullColumnSelect?.(columnId, additive));
+  }, [notifySelectionChanged, onFullColumnSelect, refreshFullSelectionColumns]);
+
+  useEffect(() => {
+    const nextHeaders = new Set(selectedColumnIds);
+    const nextFullColumns = new Set(selectedFullColumnIds);
+    const headerChanged = nextHeaders.size !== selectedColumnIdsRef.current.size
+      || [...nextHeaders].some((id) => !selectedColumnIdsRef.current.has(id));
+    const fullChanged = nextFullColumns.size !== selectedFullColumnIdsRef.current.size
+      || [...nextFullColumns].some((id) => !selectedFullColumnIdsRef.current.has(id));
+    if (!headerChanged && !fullChanged) return;
+
+    const affectedFullColumns = new Set([...selectedFullColumnIdsRef.current, ...nextFullColumns]);
+    selectedColumnIdsRef.current = nextHeaders;
+    selectedFullColumnIdsRef.current = nextFullColumns;
+    notifySelectionChanged();
+    if (fullChanged) refreshFullSelectionColumns(affectedFullColumns);
+  }, [notifySelectionChanged, refreshFullSelectionColumns, selectedColumnIds, selectedFullColumnIds]);
+
+  const refreshChangedCells = useCallback((previous: Set<string>, next: Set<string>) => {
+    const api = gridRef.current?.api;
+    if (!api) return;
+    const changed = new Set<string>();
+    for (const key of previous) if (!next.has(key)) changed.add(key);
+    for (const key of next) if (!previous.has(key)) changed.add(key);
+    if (!changed.size) return;
+
+    const rowNodesByColumn = new Map<string, Set<NonNullable<ReturnType<typeof api.getRowNode>>>>();
+    for (const key of changed) {
+      const separator = key.indexOf("::");
+      if (separator < 0) continue;
+      const rowId = key.slice(0, separator);
+      const columnId = key.slice(separator + 2);
+      const rowNode = api.getRowNode(rowId)
+        ?? api.getRenderedNodes().find((node) => node.data?.sku === rowId);
+      if (!rowNode || !api.getColumn(columnId)) continue;
+      const rowNodes = rowNodesByColumn.get(columnId) ?? new Set();
+      rowNodes.add(rowNode);
+      rowNodesByColumn.set(columnId, rowNodes);
+    }
+    for (const [columnId, rowNodes] of rowNodesByColumn) {
+      api.refreshCells({ columns: [columnId], rowNodes: [...rowNodes], force: true });
+    }
+  }, []);
+
+  const scheduleDragSelectionNotification = useCallback((cells: SelectedAgCell[]) => {
+    pendingDragSelectionRef.current = cells;
+    if (dragSelectionFrameRef.current !== null) return;
+    dragSelectionFrameRef.current = window.requestAnimationFrame(() => {
+      dragSelectionFrameRef.current = null;
+      const pending = pendingDragSelectionRef.current;
+      pendingDragSelectionRef.current = null;
+      if (!pending?.length) return;
+      startTransition(() => {
+        onCellSelectionChange?.(pending.map((cell) => `${cell.rowId}::${cell.columnId}`));
+        onAgCellSelected?.({ ...pending[0], cells: pending });
+      });
+    });
+  }, [onAgCellSelected, onCellSelectionChange]);
+
+  useEffect(() => () => {
+    if (dragSelectionFrameRef.current !== null) window.cancelAnimationFrame(dragSelectionFrameRef.current);
+  }, []);
+
+  useEffect(() => {
     columnTextFormatsRef.current = columnTextFormats;
     cellTextFormatsRef.current = cellTextFormats;
     const api = gridRef.current?.api;
@@ -2240,6 +2528,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       return map;
     });
   }, [canEditPlanning, onSkuCellNoteChange]);
+
+  const saveWorkNote = useCallback(async (row: DemandRow, note: string): Promise<boolean> => {
+    if (!canEditPlanning || !onSkuWorkNoteChange) return false;
+    await onSkuWorkNoteChange(row.sku, note);
+    return true;
+  }, [canEditPlanning, onSkuWorkNoteChange]);
 
   const autoFill = useCallback(async (
     container: ContainerMeta,
@@ -2675,7 +2969,13 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           }
           return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
         },
-        cellRenderer: isCopyable ? CopyableCellRenderer : column.id === "cbm" && canEditPlanning ? CbmCellRenderer : CellRenderer,
+        cellRenderer: isCopyable
+          ? CopyableCellRenderer
+          : column.id === "cbm" && canEditPlanning
+            ? CbmCellRenderer
+            : column.id === "workflow_note" && canEditPlanning
+              ? WorkNoteCellRenderer
+              : CellRenderer,
         cellRendererParams: isCopyable
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
               copyValue: column.id === "sku"
@@ -2692,19 +2992,25 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
                 onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
               })
+          : column.id === "workflow_note" && canEditPlanning
+            ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
+                onSave: (note: string) => params.data ? saveWorkNote(params.data, note) : Promise.resolve(false),
+              })
           : undefined,
         headerStyle: () => headerStyleForColor(columnColors[column.id]?.header, columnTextFormatsRef.current[column.id]?.header),
         headerClass: () => columnTextFormatsRef.current[column.id]?.header?.color ? "planning-user-header-text-color" : "",
         headerComponent: SelectableHeader,
         headerComponentParams: {
           selectionId: column.id,
-          selected: selectedColumnIds.includes(column.id),
-          onSelect: onColumnHeaderSelect ?? (() => {}),
-          fullColumnSelected: selectedFullColumnIds.includes(column.id),
-          onFullColumnSelect: onFullColumnSelect ?? (() => {}),
+          isSelected: () => selectedColumnIdsRef.current.has(column.id),
+          subscribeSelection,
+          onSelect: handleColumnHeaderSelectFast,
+          isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(column.id),
+          onFullColumnSelect: handleFullColumnSelectFast,
           onRename: onColumnHeaderRename ?? (() => {}),
           isFiltered: columnFilters.has(column.id),
           onRightClick: (x: number, y: number) => setColumnMenu({ x, y, key: column.id, label: headerName }),
+          showMenuButton: column.id === "workflow_note",
         },
         cellClassRules: {
           "planning-user-text-color": (params) => {
@@ -2715,14 +3021,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         cellStyle: (params) => {
           const key = cellColorKey(params.data?.sku, column.id);
           const selected = selectedCellsRef.current.has(key);
-          const fullColumnSelected = selectedFullColumnIds.includes(column.id);
+          const fullColumnSelected = selectedFullColumnIdsRef.current.has(column.id);
           const textFormat = { ...(columnTextFormatsRef.current[column.id]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
           return {
             backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             ...(textFormat.color ? { color: textFormat.color } : {}),
             ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
             fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : column.bold ? 700 : 400,
-            textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
+            textAlign: "center",
             ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
             ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
           };
@@ -2827,10 +3133,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           headerComponent: SelectableHeader,
           headerComponentParams: {
             selectionId: `con:${column.id}`,
-            selected: selectedColumnIds.includes(`con:${column.id}`),
-            onSelect: onColumnHeaderSelect ?? (() => {}),
-            fullColumnSelected: selectedFullColumnIds.includes(`con:${column.id}`),
-            onFullColumnSelect: onFullColumnSelect ?? (() => {}),
+            isSelected: () => selectedColumnIdsRef.current.has(`con:${column.id}`),
+            subscribeSelection,
+            onSelect: handleColumnHeaderSelectFast,
+            isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(`con:${column.id}`),
+            onFullColumnSelect: handleFullColumnSelectFast,
             onRename: onColumnHeaderRename ?? (() => {}),
             isFiltered: columnFilters.has(`${container.name}::${column.id}`),
             onRightClick: (x: number, y: number) => setColumnMenu({
@@ -2895,14 +3202,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             const columnId = `${container.name}::${column.id}`;
             const key = cellColorKey(params.data?.sku, columnId);
             const selected = selectedCellsRef.current.has(key);
-            const fullColumnSelected = selectedFullColumnIds.includes(`con:${column.id}`);
+            const fullColumnSelected = selectedFullColumnIdsRef.current.has(`con:${column.id}`);
             const textFormat = { ...(columnTextFormatsRef.current[`con:${column.id}`]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
             return {
               backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
               ...(textFormat.color ? { color: textFormat.color } : {}),
               ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
               ...(textFormat.bold !== undefined ? { fontWeight: textFormat.bold ? 700 : 400 } : {}),
-              textAlign: column.align === "num" ? "right" : column.align === "ctr" ? "center" : "left",
+              textAlign: "center",
               ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
               ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
             };
@@ -2949,7 +3256,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             const run = runsById.get(column.id);
             if (!run) continue; // defensive: should always be found
             children.push(buildConIndicatorColDef(run));
-            totalColumns.push({ id: run.indicatorId, width: 18, total: undefined });
+            totalColumns.push({
+              id: run.indicatorId,
+              columnId: `${container.name}::${run.indicatorId}`,
+              width: 18,
+              total: undefined,
+            });
             childRealIds.push(null);
             if (run.hiddenIds.length > 1) skipUntilId = run.hiddenIds[run.hiddenIds.length - 1];
             continue;
@@ -2957,6 +3269,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           children.push(buildRealSubColDef(column));
           totalColumns.push({
             id: column.id,
+            columnId: `${container.name}::${column.id}`,
             width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
             total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
           });
@@ -2991,8 +3304,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           headerGroupComponent: ContainerGroupHeader,
           headerGroupComponentParams: {
             selectionId: `container:${container.name}`,
-            selected: selectedColumnIds.includes(`container:${container.name}`),
-            onSelect: onColumnHeaderSelect ?? (() => {}),
+            isSelected: () => selectedColumnIdsRef.current.has(`container:${container.name}`),
+            subscribeSelection,
+            onSelect: handleColumnHeaderSelectFast,
             onRename: onColumnHeaderRename ?? (() => {}),
             eta: container.eta,
             baseline,
@@ -3043,7 +3357,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseHiddenRuns, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conHiddenRuns, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onFullColumnSelect, onHideColumn, onSkuCellNoteChange, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, selectedFullColumnIds, skuCellNotes, updateEta]);
+  }, [baseCandidates, baseHiddenRuns, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conHiddenRuns, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, hiddenBases, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -3081,7 +3395,6 @@ autoFilling3: autoFillingContainers3.has(container.name),
     collectColumnIds(columnDefs);
     const availableIds = new Set((api.getColumns() ?? []).map((column) => column.getColId()));
     const requestedOrder = columnOrder.length ? columnOrder : defaultOrder;
-
     // Hidden-run restore indicators (colId contains "hidegap:") are synthetic
     // and rebuilt every time the hidden set changes, so a saved `columnOrder`
     // — captured before this run existed, or before the user hid anything —
@@ -3286,11 +3599,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const cells = selectedCellsBetween(event, anchor);
               if (!cells.length) return;
               dragMovedRef.current = true;
-              selectedCellsRef.current = new Set(cells.map((c) => `${c.rowId}::${c.columnId}`));
+              const previous = selectedCellsRef.current;
+              const next = new Set(cells.map((c) => `${c.rowId}::${c.columnId}`));
+              selectedCellsRef.current = next;
               lastSelectedRef.current = `${event.data.sku}::${event.column.getColId()}`;
-              gridRef.current?.api.refreshCells({ force: true });
-              onCellSelectionChange?.([...selectedCellsRef.current]);
-              onAgCellSelected?.({ ...cells[0], cells });
+              refreshChangedCells(previous, next);
+              scheduleDragSelectionNotification(cells);
             }}
             onCellClicked={(event) => {
               event.node.setSelected(true, true);
@@ -3302,27 +3616,37 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const columnId = event.column.getColId();
               const key = `${event.data.sku}::${columnId}`;
               const nativeEvt = event.event as MouseEvent | undefined;
+              const previous = selectedCellsRef.current;
+              const next = new Set(previous);
               if (nativeEvt?.ctrlKey || nativeEvt?.metaKey) {
-                if (selectedCellsRef.current.has(key)) selectedCellsRef.current.delete(key);
-                else { selectedCellsRef.current.add(key); lastSelectedRef.current = key; }
+                if (next.has(key)) next.delete(key);
+                else { next.add(key); lastSelectedRef.current = key; }
               } else if (nativeEvt?.shiftKey && lastSelectedRef.current) {
                 const lastSku = lastSelectedRef.current.split("::")[0];
                 const skus = visibleRows.map((r) => r.sku);
                 const a = skus.indexOf(lastSku), b = skus.indexOf(event.data.sku);
                 const [lo, hi] = a <= b ? [a, b] : [b, a];
-                for (let i = lo; i <= hi; i++) selectedCellsRef.current.add(`${skus[i]}::${columnId}`);
+                for (let i = lo; i <= hi; i++) next.add(`${skus[i]}::${columnId}`);
               } else {
-                selectedCellsRef.current.clear();
-                selectedCellsRef.current.add(key);
+                next.clear();
+                next.add(key);
                 lastSelectedRef.current = key;
               }
-              gridRef.current?.api.refreshCells({ force: true });
-              onCellSelectionChange?.([...selectedCellsRef.current]);
-              onAgCellSelected?.({ rowId: event.data.sku, columnId, label: `${event.data.sku} / ${event.column.getColDef().headerName ?? columnId}` });
+              selectedCellsRef.current = next;
+              refreshChangedCells(previous, next);
+              const selection = {
+                rowId: event.data.sku,
+                columnId,
+                label: `${event.data.sku} / ${event.column.getColDef().headerName ?? columnId}`,
+              };
+              startTransition(() => {
+                onCellSelectionChange?.([...next]);
+                onAgCellSelected?.(selection);
+              });
             }}
             rowHeight={28}
             headerHeight={45}
-            groupHeaderHeight={42}
+            groupHeaderHeight={50}
             animateRows={false}
             singleClickEdit
             suppressCellFocus
@@ -3333,9 +3657,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
               onColumnOrderChange?.(event.api.getColumnState().map((state) => state.colId));
             }}
             onColumnResized={(event) => {
-              if (!event.finished || !event.column || event.source !== "uiColumnResized") return;
+              if (!event.column || event.source !== "uiColumnResized") return;
               const id = event.column.getColId();
-              const next = { ...columnWidths, [id]: event.column.getActualWidth() };
+              const next = { ...columnWidthsRef.current, [id]: event.column.getActualWidth() };
+              columnWidthsRef.current = next;
+              if (!event.finished) return;
               onColumnWidthsChange(next);
               window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next));
             }}
