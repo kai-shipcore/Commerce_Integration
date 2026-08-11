@@ -2074,14 +2074,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               {/* Options — placed before Column Visibility in DOM so stacked layout keeps it below Quick Preset */}
               {/* Options */}
               <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                  {pick("옵션", "Options")}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, flexShrink: 0 }}>
+                    {pick("옵션", "Options")}
+                  </div>
+                  <label style={{ display: "flex", flex: 1, minWidth: 0, alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, flexShrink: 0, cursor: "pointer", accentColor: "#3B82F6" }} />
+                    <span style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>{pick("판매 0인 SKU 표시", "Show Zero-Sales SKUs")}</span>
+                  </label>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent" }}>
-                    <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
-                    <span style={{ fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>{pick("판매 0인 SKU 표시", "Show Zero-Sales SKUs")}</span>
-                  </label>
                   <div ref={skuFiltersRef} style={{ marginTop: 8, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
                       <button

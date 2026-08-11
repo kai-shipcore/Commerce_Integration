@@ -29,6 +29,10 @@ import type { GradientTier } from "@/lib/planning/gradient-config";
 import { urgStatus } from "./columns";
 import type { DemandRow } from "@/types/demand-planning";
 
+// Temporarily hidden per request — logic kept intact so it can be shown again later.
+// The settings (gear) button must stay visible even while this is off.
+const SHOW_STATS = false;
+
 interface StatusBarProps {
   rows: DemandRow[];
   inline?: boolean;
@@ -80,13 +84,17 @@ export function StatusBar({
         overflow: "hidden",
       }}
     >
-      <SbItem label="SKU"     value={rows.length.toLocaleString()} color="#1D4ED8" />
-      <SbItem label={pick("🔴긴급", "🔴Critical")}  value={crit}                     color="#DC2626" />
-      <SbItem label={pick("⚠주의", "⚠Warning")}    value={warn}                     color="#B45309" />
-      <SbItem label="Stock"                          value={stock.toLocaleString()}   color="#1D4ED8" />
-      <SbItem label={pick("백오더", "BackOrd")}      value={bo.toLocaleString()}      color="#DC2626" />
-      <SbItem label="30D"                            value={s30.toLocaleString()}     color="#047857" />
-      <SbItem label={pick("입고", "Inbound")}        value={inb.toLocaleString()}     color="#1D4ED8" />
+      {SHOW_STATS && (
+        <>
+          <SbItem label="SKU"     value={rows.length.toLocaleString()} color="#1D4ED8" />
+          <SbItem label={pick("🔴긴급", "🔴Critical")}  value={crit}                     color="#DC2626" />
+          <SbItem label={pick("⚠주의", "⚠Warning")}    value={warn}                     color="#B45309" />
+          <SbItem label="Stock"                          value={stock.toLocaleString()}   color="#1D4ED8" />
+          <SbItem label={pick("백오더", "BackOrd")}      value={bo.toLocaleString()}      color="#DC2626" />
+          <SbItem label="30D"                            value={s30.toLocaleString()}     color="#047857" />
+          <SbItem label={pick("입고", "Inbound")}        value={inb.toLocaleString()}     color="#1D4ED8" />
+        </>
+      )}
       <SeasonalFactorSettings
         factors={seasonalFactors}
         onChange={onSeasonalFactorsChange}
@@ -247,7 +255,7 @@ function SeasonalFactorSettings({
           <Settings size={14} strokeWidth={2} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" style={{ width: "min(560px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
+      <PopoverContent align="end" style={{ width: "min(760px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>{pick("시즌지수 설정", "Planning Settings")}</div>
@@ -289,7 +297,8 @@ function SeasonalFactorSettings({
           </PopoverClose>
         </div>
 
-        <div style={{ maxHeight: "min(680px, calc(100vh - 96px))", overflowY: "auto" }}>
+        <div style={{ maxHeight: "calc(100vh - 96px)", overflowY: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
           {/* Seasonal Factors */}
           <div style={{ padding: "14px 16px" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>{pick("시즌 지수", "Seasonal Factors")}</div>
@@ -317,7 +326,7 @@ function SeasonalFactorSettings({
             </div>
           </div>
 
-          <div style={{ padding: "14px 16px", borderTop: "1px solid #E2E8F0" }}>
+          <div style={{ padding: "14px 16px", borderLeft: "1px solid #E2E8F0" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{pick("판매 비중 기간별 가중치", "Sales Window Weights")}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: Math.abs(salesWeightTotal - 1) < 0.0001 ? "#047857" : "#B45309" }}>
@@ -348,6 +357,7 @@ function SeasonalFactorSettings({
               </button>
             </div>
           </div>
+        </div>
 
           <div style={{ padding: "14px 16px", borderTop: "1px solid #E2E8F0" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>
