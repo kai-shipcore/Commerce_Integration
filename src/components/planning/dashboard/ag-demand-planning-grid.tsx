@@ -71,6 +71,7 @@ const planningTheme = themeQuartz.withParams({
   headerTextColor: "rgba(255,255,255,.82)",
   oddRowBackgroundColor: "#FAFAF7",
   rowBorder: { color: "#D8D6CE" },
+  columnBorder: { color: "#D8D6CE" },
   selectedRowBackgroundColor: "#DCEAFF",
   spacing: 4,
 });
