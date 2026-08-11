@@ -1045,7 +1045,7 @@ function WorkNoteCellRenderer({
 
   async function commit() {
     if (savingRef.current) return;
-    const nextNote = inputValue.trim().replace(/\s*[\r\n]+\s*/g, " ");
+    const nextNote = inputValue.trim();
     if (nextNote === displayValue) {
       setEditing(false);
       return;
@@ -1069,9 +1069,8 @@ function WorkNoteCellRenderer({
   if (editing) {
     return (
       <div className="relative h-full w-full overflow-visible">
-        <input
+        <textarea
           autoFocus
-          type="text"
           maxLength={200}
           aria-label="Edit Note"
           value={inputValue}
@@ -1082,13 +1081,22 @@ function WorkNoteCellRenderer({
               setInputValue(displayValue);
               setEditing(false);
             }
-            if (event.key === "Enter") {
+            // Plain Enter saves, matching every other single-line editor in
+            // this grid. Shift+Enter inserts a line break instead — left
+            // alone here so the textarea's own default behavior handles it.
+            if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               void commit();
             }
           }}
           onBlur={() => void commit()}
-          className="planning-cbm-edit-input absolute left-0 top-1/2 z-30 h-10 w-56 -translate-y-1/2 rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 text-left text-sm font-medium shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
+          // Anchored to the row's own top edge rather than vertically
+          // centered: centering a box this much taller than a 28px row means
+          // roughly half of it sits above the row, which — for a row near
+          // the top of the grid — lands behind the sticky header, hiding
+          // exactly the first lines typed. Growing only downward keeps the
+          // typed text visible regardless of which row is being edited.
+          className="planning-cbm-edit-input absolute left-0 top-0 z-30 h-24 w-56 resize-none rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 py-2 text-left text-sm font-medium shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
         />
       </div>
     );
