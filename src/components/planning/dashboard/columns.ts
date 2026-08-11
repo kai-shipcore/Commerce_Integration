@@ -239,6 +239,7 @@ export const GROUP_BTN_LABELS: Record<string, string> = {
 
 export const DEFAULT_FREEZE = "sod";
 export const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
+export const COLUMN_ORDER_STORAGE_KEY = "planning-dashboard-column-order";
 export const COLUMN_COLORS_STORAGE_KEY = "planning-dashboard-column-colors";
 export const CELL_COLORS_STORAGE_KEY = "planning-dashboard-cell-colors";
 export const COLUMN_TEXT_FORMATS_STORAGE_KEY = "planning-dashboard-column-text-formats";
@@ -246,6 +247,7 @@ export const CELL_TEXT_FORMATS_STORAGE_KEY = "planning-dashboard-cell-text-forma
 
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
 export type ColumnWidths = Record<string, number>;
+export type ColumnOrder = string[];
 export type ColumnVisibility = Record<string, boolean>;
 export type ColumnColorSettings = Record<string, { cell?: string; header?: string }>;
 export type CellColorSettings = Record<string, string>;
@@ -350,6 +352,19 @@ export function loadSavedColumnColors(): ColumnColorSettings {
     );
   } catch {
     return {};
+  }
+}
+
+export function loadSavedColumnOrder(): ColumnOrder {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(COLUMN_ORDER_STORAGE_KEY) ?? "[]") as unknown;
+    if (!Array.isArray(stored)) return [];
+    return Array.from(new Set(
+      stored.filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300),
+    )).slice(0, 5000);
+  } catch {
+    return [];
   }
 }
 

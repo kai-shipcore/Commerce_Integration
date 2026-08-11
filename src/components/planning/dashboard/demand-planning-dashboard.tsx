@@ -14,6 +14,7 @@ import {
   CELL_COLORS_STORAGE_KEY,
   CELL_TEXT_FORMATS_STORAGE_KEY,
   COLUMN_COLORS_STORAGE_KEY,
+  COLUMN_ORDER_STORAGE_KEY,
   COLUMN_TEXT_FORMATS_STORAGE_KEY,
   GROUP_BTN_LABELS,
   GROUP_LABELS,
@@ -22,6 +23,7 @@ import {
   TODAY,
   EMPTY_SKU_PART_FILTERS,
   loadSavedColumnColors,
+  loadSavedColumnOrder,
   loadSavedCellColors,
   loadSavedColumnTextFormats,
   loadSavedCellTextFormats,
@@ -29,7 +31,7 @@ import {
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
@@ -783,6 +785,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [freezeUntil, setFreezeUntil] = useState(DEFAULT_FREEZE);
   const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
+  const [columnOrder, setColumnOrder] = useState<ColumnOrder>([]);
   const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN);
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
@@ -802,6 +805,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const categoryFilterRef = useRef<HTMLDivElement>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
+  const columnOrderChangedRef = useRef(false);
 
   // Debounced save of all preferences to DB (1.5s delay to batch rapid changes)
   const savePrefsToDb = useCallback((prefs: Record<string, unknown>) => {
@@ -821,6 +825,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     columnWidthsRef.current = saved;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setColumnWidths(saved);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+    setColumnOrder(loadSavedColumnOrder());
   }, []);
 
   useEffect(() => {
@@ -928,6 +937,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           const widths = cw as ColumnWidths;
           columnWidthsRef.current = widths;
           setColumnWidths(widths);
+        }
+
+        const savedOrder = d[COLUMN_ORDER_STORAGE_KEY];
+        if (!columnOrderChangedRef.current && Array.isArray(savedOrder)) {
+          const normalizedOrder = Array.from(new Set(
+            savedOrder.filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300),
+          )).slice(0, 5000);
+          window.localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(normalizedOrder));
+          setColumnOrder(normalizedOrder);
+        } else if (!columnOrderChangedRef.current) {
+          window.localStorage.removeItem(COLUMN_ORDER_STORAGE_KEY);
+          setColumnOrder([]);
         }
 
         // Column colors
@@ -1051,6 +1072,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     savePrefsToDb({
       [COLUMN_SETTINGS_STORAGE_KEY]: { groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil },
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
+      [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
       [COLUMN_HEADER_NAMES_STORAGE_KEY]: columnHeaderNames,
       [CELL_COLORS_STORAGE_KEY]: cellColors,
@@ -1066,7 +1088,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnOrder, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -1077,6 +1099,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     columnWidthsRef.current = {};
     setColumnWidths({});
     window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
+  }, []);
+
+  const handleColumnOrderChange = useCallback((movedOrder: ColumnOrder) => {
+    columnOrderChangedRef.current = true;
+    setColumnOrder((current) => {
+      const moved = new Set(movedOrder);
+      const next = [...movedOrder, ...current.filter((id) => !moved.has(id))];
+      window.localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const resetColumnOrder = useCallback(() => {
+    columnOrderChangedRef.current = true;
+    setColumnOrder([]);
+    window.localStorage.removeItem(COLUMN_ORDER_STORAGE_KEY);
   }, []);
 
   const handleColumnColorChange = useCallback((columnIds: string[], target: "cell" | "header", color: string) => {
@@ -2036,14 +2074,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               {/* Options — placed before Column Visibility in DOM so stacked layout keeps it below Quick Preset */}
               {/* Options */}
               <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0" }}>
-                <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                  {pick("옵션", "Options")}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, flexShrink: 0 }}>
+                    {pick("옵션", "Options")}
+                  </div>
+                  <label style={{ display: "flex", flex: 1, minWidth: 0, alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, flexShrink: 0, cursor: "pointer", accentColor: "#3B82F6" }} />
+                    <span style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>{pick("판매 0인 SKU 표시", "Show Zero-Sales SKUs")}</span>
+                  </label>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 6px", borderRadius: 4, cursor: "pointer", background: showZeroSales ? "rgba(59,130,246,.06)" : "transparent" }}>
-                    <input type="checkbox" checked={showZeroSales} onChange={() => setShowZeroSales((v) => !v)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }} />
-                    <span style={{ fontSize: 12, fontWeight: 500, color: showZeroSales ? "#1E3A5F" : "#94A3B8" }}>{pick("판매 0인 SKU 표시", "Show Zero-Sales SKUs")}</span>
-                  </label>
                   <div ref={skuFiltersRef} style={{ marginTop: 8, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
                       <button
@@ -2227,9 +2267,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     </div>
                   </div>
                   <div style={{ marginTop: 10, padding: "8px 6px 2px" }}>
-                    <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
-                      {pick("컬럼 너비 초기화", "Reset Column Widths")}
-                    </div>
                     <button
                       type="button"
                       onClick={() => {
@@ -2237,8 +2274,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       }}
                       style={{ width: "100%", fontSize: 11, padding: "6px 10px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
                     >
-                      {pick("너비 초기화", "Reset Widths")}
+                      {pick("컬럼 너비 초기화", "Reset Column Widths")}
                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirmReset("컬럼 순서", "the column order")) resetColumnOrder();
+                      }}
+                      style={{ width: "100%", fontSize: 11, padding: "6px 10px", marginTop: 6, borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F8FAFC", color: "#475569", textAlign: "center" }}
+                    >
+                      {pick("컬럼 순서 초기화", "Reset Column Order")}
+                    </button>
                  </div>
                   <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
                   <button
@@ -2829,6 +2875,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidths={columnWidths}
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
+          columnOrder={columnOrder}
+          onColumnOrderChange={handleColumnOrderChange}
           seasonalFactors={seasonalFactors}
           gradient={gradient}
           gradientSC={gradientSC}

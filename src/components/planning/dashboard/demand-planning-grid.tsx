@@ -22,7 +22,7 @@ import {
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
-import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
+import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -61,6 +61,8 @@ export interface DemandPlanningGridProps {
   columnWidths: ColumnWidths;
   columnWidthsRef: React.MutableRefObject<ColumnWidths>;
   onColumnWidthsChange: (next: ColumnWidths) => void;
+  columnOrder?: ColumnOrder;
+  onColumnOrderChange?: (next: ColumnOrder) => void;
   seasonalFactors: SeasonalFactors;
   columnColors?: ColumnColorSettings;
   cellColors?: CellColorSettings;
