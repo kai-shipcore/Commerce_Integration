@@ -20,6 +20,16 @@ jobs:
             git fetch origin
             git checkout main
             git reset --hard origin/main
+
+            required_major=$(tr -d '[:space:]' < .nvmrc)
+            actual_full=$(node -v)
+            actual_major=$(echo "$actual_full" | sed -E 's/^v([0-9]+).*/\1/')
+            if [ "$actual_major" != "$required_major" ]; then
+              echo "::error::Node version mismatch on the server. .nvmrc declares major version $required_major, but the server's node -v reports $actual_full (major $actual_major). Refusing to install/build against an undeclared Node version. Resolve the server's Node version (or update .nvmrc, deliberately, if $actual_major is now the intended version) before re-running this deploy."
+              exit 1
+            fi
+            echo "Node version OK: server is on $actual_full, matching .nvmrc's major version $required_major"
+
             npm install
             npx prisma migrate deploy
             npx prisma generate
