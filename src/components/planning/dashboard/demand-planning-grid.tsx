@@ -69,6 +69,10 @@ export interface DemandPlanningGridProps {
   canEditSkuNotes?: boolean;
   canEditPlanning?: boolean;
   selectedCellKeys?: string[];
+  selectedColumnIds?: string[];
+  onColumnHeaderSelect?: (columnId: string, additive: boolean) => void;
+  columnHeaderNames?: Record<string, string>;
+  onColumnHeaderRename?: (columnId: string, name: string) => void;
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
   onCellSelectionChange?: (keys: string[]) => void;
   onExportReady?: (exporter: (() => Promise<void>) | null) => void;

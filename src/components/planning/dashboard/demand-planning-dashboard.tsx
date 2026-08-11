@@ -89,6 +89,7 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
 
 const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
 const CONTAINER_VISIBILITY_STORAGE_KEY = "planning-dashboard-container-visibility";
+const COLUMN_HEADER_NAMES_STORAGE_KEY = "planning-dashboard-column-header-names";
 const SETTINGS_SECTION_TITLE_STYLE = {
   color: "#1D4ED8",
   fontSize: 11,
@@ -360,9 +361,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [categoryDropdownPos, setCategoryDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
-  const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>(
-    BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []
-  );
+  const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>([]);
+  const [columnHeaderNames, setColumnHeaderNames] = useState<Record<string, string>>({});
   const canEditDemandPlanning = permissionsReady && can("demand-planning", "edit");
   const canEditSkuNotes = canEditDemandPlanning;
 
@@ -507,6 +507,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(COLUMN_HEADER_NAMES_STORAGE_KEY) ?? "{}") as unknown;
+      if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
+        setColumnHeaderNames(Object.fromEntries(
+          Object.entries(saved).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        ));
+      }
+    } catch {
+      window.localStorage.removeItem(COLUMN_HEADER_NAMES_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setSeasonalFactors(loadSavedSeasonalFactors());
   }, []);
@@ -590,6 +604,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setColumnColors(cc as ColumnColorSettings);
         }
 
+        // Per-user custom column header names
+        const headerNames = d[COLUMN_HEADER_NAMES_STORAGE_KEY];
+        if (headerNames && typeof headerNames === "object" && !Array.isArray(headerNames)) {
+          const normalized = Object.fromEntries(
+            Object.entries(headerNames).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          );
+          window.localStorage.setItem(COLUMN_HEADER_NAMES_STORAGE_KEY, JSON.stringify(normalized));
+          setColumnHeaderNames(normalized);
+        } else {
+          // localStorage is shared by accounts using the same browser. A successful
+          // server response with no saved names must therefore restore defaults,
+          // rather than briefly loaded names from a different signed-in user.
+          window.localStorage.removeItem(COLUMN_HEADER_NAMES_STORAGE_KEY);
+          setColumnHeaderNames({});
+        }
+
         // Cell colors
         const cellC = d[CELL_COLORS_STORAGE_KEY];
         if (cellC && typeof cellC === "object" && !Array.isArray(cellC)) {
@@ -671,6 +701,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_SETTINGS_STORAGE_KEY]: { groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil },
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
+      [COLUMN_HEADER_NAMES_STORAGE_KEY]: columnHeaderNames,
       [CELL_COLORS_STORAGE_KEY]: cellColors,
       [CONTAINER_VISIBILITY_STORAGE_KEY]: {
         hiddenContainers: Array.from(hiddenContainers).sort(),
@@ -682,7 +713,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, cellColors, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnColors, columnHeaderNames, cellColors, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -702,6 +733,26 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         next[id] = { ...(next[id] ?? {}), [target]: color };
       }
       window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleGridColumnSelect = useCallback((columnId: string, additive: boolean) => {
+    setSelectedColorColumns((current) => {
+      if (!additive) return [columnId];
+      return current.includes(columnId)
+        ? current.filter((id) => id !== columnId)
+        : [...current, columnId];
+    });
+  }, []);
+
+  const handleGridColumnRename = useCallback((columnId: string, name: string) => {
+    const normalizedName = name.trim().slice(0, 80);
+    setColumnHeaderNames((current) => {
+      const next = { ...current };
+      if (normalizedName) next[columnId] = normalizedName;
+      else delete next[columnId];
+      window.localStorage.setItem(COLUMN_HEADER_NAMES_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -919,7 +970,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   const colorableColumns = useMemo(
     () => [
-      ...BASE_COLORABLE_COLUMNS,
+      ...BASE_COLORABLE_COLUMNS.map((column) => ({
+        ...column,
+        label: columnHeaderNames[column.id] ?? column.label,
+      })),
       ...data.containers
         .filter((container) => containerMatchesCategory(container, categoryFilter))
         .map((container) => ({
@@ -927,7 +981,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           label: `Container Header: ${container.name}`,
         })),
     ],
-    [categoryFilter, data.containers],
+    [categoryFilter, columnHeaderNames, data.containers],
   );
   const selectedColorColumnIsContainerHeader = selectedColorColumns.length > 0 &&
     selectedColorColumns.every((id) => id.startsWith("container:"));
@@ -1629,9 +1683,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   {isColorSettingsOpen ? (
                     <>
                   <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 9 }}>
-                    {selectedColorColumns.length > 1 && (
-                      <div style={{ fontSize: 11, color: "#64748B" }}>
-                        {pick(`${selectedColorColumns.length}개 선택됨`, `${selectedColorColumns.length} selected`)}
+                    <div style={{ fontSize: 11, color: selectedColorColumns.length ? "#2563EB" : "#64748B", fontWeight: selectedColorColumns.length ? 700 : 400 }}>
+                      {selectedColorColumns.length
+                        ? pick(`${selectedColorColumns.length}개 컬럼 선택됨`, `${selectedColorColumns.length} columns selected`)
+                        : gridMode === "ag-grid"
+                          ? pick("그리드 제목을 클릭하여 컬럼을 선택하세요", "Click a grid header to select a column")
+                          : pick("아래 목록에서 컬럼을 선택하세요", "Select columns from the list below")}
+                    </div>
+                    {gridMode === "ag-grid" && (
+                      <div style={{ fontSize: 10, color: "#64748B" }}>
+                        {pick("Ctrl/Cmd/Shift + 클릭: 다중 선택 · 더블 클릭: 이름 변경", "Ctrl/Cmd/Shift + click: multi-select · Double-click: rename")}
                       </div>
                     )}
                     <select
@@ -1658,10 +1719,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             {target === "cell" ? pick("셀", "Cell") : pick("헤더", "Header")}
                             <input
                               type="color"
-                              disabled={target === "cell" && selectedColorColumnIsContainerHeader}
+                              disabled={!selectedColorColumns.length || (target === "cell" && selectedColorColumnIsContainerHeader)}
                               value={current}
                               onChange={(event) => handleColumnColorChange(selectedColorColumns, target, event.target.value)}
-                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: target === "cell" && selectedColorColumnIsContainerHeader ? "default" : "pointer", opacity: target === "cell" && selectedColorColumnIsContainerHeader ? 0.45 : 1 }}
+                              style={{ width: 34, height: 24, padding: 1, border: "1px solid #CBD5E1", borderRadius: 4, background: "#fff", cursor: !selectedColorColumns.length || (target === "cell" && selectedColorColumnIsContainerHeader) ? "default" : "pointer", opacity: !selectedColorColumns.length || (target === "cell" && selectedColorColumnIsContainerHeader) ? 0.45 : 1 }}
                             />
                           </label>
                         );
@@ -1670,8 +1731,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                       <button
                         type="button"
+                        disabled={!selectedColorColumns.length}
                         onClick={resetSelectedColumnColor}
-                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: selectedColorColumns.length ? "pointer" : "default", background: "#F1F5F9", color: "#64748B", opacity: selectedColorColumns.length ? 1 : 0.5 }}
                       >
                         {pick("선택 초기화", "Reset Selected")}
                       </button>
@@ -2227,6 +2289,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           canEditSkuNotes={canEditSkuNotes}
           canEditPlanning={canEditDemandPlanning}
           selectedCellKeys={selectedCellKeys}
+          selectedColumnIds={selectedColorColumns}
+          onColumnHeaderSelect={handleGridColumnSelect}
+          columnHeaderNames={columnHeaderNames}
+          onColumnHeaderRename={handleGridColumnRename}
           onAgCellSelected={(selection) => {
             setSelectedAgCell({ rowId: selection.rowId, columnId: selection.columnId, label: selection.label });
           }}

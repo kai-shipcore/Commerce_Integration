@@ -715,27 +715,102 @@ function CbmCellRenderer({
   );
 }
 
-function ConQtyHeader(params: IHeaderParams & {
-  isFiltered: boolean;
-  onRightClick: (x: number, y: number) => void;
+function SelectableHeader(params: IHeaderParams & {
+  selectionId: string;
+  selected: boolean;
+  onSelect: (columnId: string, additive: boolean) => void;
+  onRename: (columnId: string, name: string) => void;
+  isFiltered?: boolean;
+  onRightClick?: (x: number, y: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(params.displayName);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [editing]);
+
+  const commit = () => {
+    params.onRename(params.selectionId, draft);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        maxLength={80}
+        aria-label={`Rename ${params.displayName} column`}
+        title="Enter to save, Escape to cancel. Leave blank to restore the default name."
+        onChange={(event) => setDraft(event.target.value)}
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") commit();
+          if (event.key === "Escape") {
+            setDraft(params.displayName);
+            setEditing(false);
+          }
+        }}
+        className="h-7 w-[calc(100%-4px)] rounded border-2 border-blue-400 bg-white px-1 text-center text-[11px] font-semibold text-slate-900 outline-none"
+      />
+    );
+  }
+
   return (
     <div
-      style={{ display: "flex", alignItems: "center", gap: 3, width: "100%", height: "100%", cursor: "pointer", userSelect: "none" }}
-      onClick={(e) => {
-        e.stopPropagation();
-        params.progressSort(e.shiftKey);
+      role="button"
+      tabIndex={0}
+      aria-pressed={params.selected}
+      aria-label={`${params.displayName}, ${params.selected ? "selected" : "not selected"}`}
+      title="Click to select; Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
+      onClick={(event) => {
+        event.stopPropagation();
+        params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
       }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        params.onRightClick(e.clientX, e.clientY);
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+      }}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDraft(params.displayName);
+        setEditing(true);
+      }}
+      onContextMenu={params.onRightClick ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        params.onRightClick?.(event.clientX, event.clientY);
+      } : undefined}
+      style={{
+        alignItems: "center",
+        background: params.selected ? "rgba(96,165,250,.28)" : undefined,
+        boxShadow: params.selected ? "inset 0 0 0 3px #60A5FA" : undefined,
+        cursor: "pointer",
+        display: "flex",
+        fontWeight: params.selected ? 800 : undefined,
+        gap: 3,
+        height: "100%",
+        justifyContent: "center",
+        padding: "0 3px",
+        textAlign: "center",
+        userSelect: "none",
+        whiteSpace: "normal",
+        width: "100%",
       }}
     >
-      <span>Con. Qty</span>
-      {params.isFiltered && (
-        <span style={{ color: "#1a5cdb", fontSize: 9, lineHeight: 1 }}>▼</span>
-      )}
+      {params.selected && <span aria-hidden="true" style={{ color: "#93C5FD", flexShrink: 0, fontWeight: 900 }}>✓</span>}
+      <span>{params.displayName}</span>
+      {params.isFiltered && <span aria-hidden="true" style={{ color: "#60A5FA", fontSize: 9, lineHeight: 1 }}>▼</span>}
     </div>
   );
 }
@@ -1099,6 +1174,9 @@ function ContainerGroupHeader(
     autoFilling3?: boolean;
     saving?: boolean;
     dirty?: boolean;
+    selectionId: string;
+    selected: boolean;
+    onSelect: (columnId: string, additive: boolean) => void;
   },
 ) {
   const [targetDays, setTargetDays] = useState(90);
@@ -1119,17 +1197,34 @@ function ContainerGroupHeader(
     props.status === "shipped"          ? "text-amber-300" :
     props.status === "draft"            ? "text-red-300" : "";
   return (
-    <div className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}>
+    <div
+      className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}
+      style={{ boxShadow: props.selected ? "inset 0 0 0 3px #60A5FA" : undefined, backgroundColor: props.selected ? "rgba(96,165,250,.28)" : undefined }}
+    >
       <div className="flex items-center justify-center gap-1 overflow-hidden">
         <span
+          role="button"
+          tabIndex={0}
+          aria-pressed={props.selected}
           className="max-w-full truncate font-bold"
-          title="Double-click to open container details"
+          title="Click to select; Ctrl/Cmd/Shift + click to multi-select. Double-click to open details."
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onSelect(props.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            props.onSelect(props.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+          }}
           onDoubleClick={(event) => {
             event.stopPropagation();
             props.onOpenInContainerPlanning?.();
           }}
           style={{ cursor: props.onOpenInContainerPlanning ? "pointer" : "default" }}
         >
+          {props.selected ? "✓ " : ""}
           {props.displayName}
         </span>
         {statusLabel && (
@@ -1258,6 +1353,10 @@ export function AgDemandPlanningGrid({
   onSkuCellNoteChange,
   onAgCellSelected,
   onCellSelectionChange,
+  selectedColumnIds = [],
+  onColumnHeaderSelect,
+  columnHeaderNames = {},
+  onColumnHeaderRename,
   onExportReady,
   gradient = [],
   gradientSC = [],
@@ -2009,20 +2108,21 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const width = shouldPin
       ? pinnedBaseColumnLayout.widths[column.id]
       : columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column);
-    const headerName = column.id === "tavg_p"
+    const defaultHeaderName = column.id === "tavg_p"
       ? "T. Avg 이전"
       : column.id === "tavg_r"
         ? "T. Avg 실제"
         : column.id === "tavg_c"
           ? "T. Avg 현재"
           : column.label.replace("\n", " ");
+    const headerName = columnHeaderNames[column.id] ?? defaultHeaderName;
     columns.push({
       colId: column.id,
       headerName,
         headerTooltip: labelWithSalesWindowWeight(column.id, column.label.replace("\n", " "), salesWindowWeights),
         width,
         minWidth: Math.min(36, column.w),
-        sortable: column.id !== "row_num",
+        sortable: false,
         comparator: column.sortVal
           ? (_a, _b, nodeA, nodeB) => {
               const a = nodeA.data ? column.sortVal!(nodeA.data) : null;
@@ -2061,6 +2161,13 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             })
         : undefined,
       headerStyle: headerStyleForColor(columnColors[column.id]?.header),
+      headerComponent: SelectableHeader,
+      headerComponentParams: {
+        selectionId: column.id,
+        selected: selectedColumnIds.includes(column.id),
+        onSelect: onColumnHeaderSelect ?? (() => {}),
+        onRename: onColumnHeaderRename ?? (() => {}),
+      },
       cellStyle: (params) => {
         const key = cellColorKey(params.data?.sku, column.id);
         const selected = selectedCellsRef.current.has(key);
@@ -2097,6 +2204,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           headerStyle: headerStyleForColor(columnColors[`container:${container.name}`]?.header),
           headerGroupComponent: ContainerGroupHeader,
           headerGroupComponentParams: {
+            selectionId: `container:${container.name}`,
+            selected: selectedColumnIds.includes(`container:${container.name}`),
+            onSelect: onColumnHeaderSelect ?? (() => {}),
             eta: container.eta,
             baseline,
             editable: canEditPlanning,
@@ -2148,19 +2258,26 @@ autoFilling3: autoFillingContainers3.has(container.name),
               columnIndex === subColumns.length - 1 ? "container-column-end" : "",
             ].filter(Boolean).join(" "),
             colId: `${container.name}::${column.id}`,
-            headerName: column.id === "oo"
+            headerName: columnHeaderNames[`con:${column.id}`] ?? (column.id === "oo"
               ? "Open Ord"
               : column.id === "remaining"
                 ? "Rem. Qty"
-                : column.label.replace("\n", " "),
+                : column.label.replace("\n", " ")),
             headerTooltip: column.id === "inb_qty" && qtyEditable
               ? "Right-click to filter Qty > 0"
               : column.label.replace("\n", " "),
-            headerComponent: column.id === "inb_qty" && qtyEditable ? ConQtyHeader : undefined,
-            headerComponentParams: column.id === "inb_qty" && qtyEditable ? {
-              isFiltered: conQtyFilter === container.name,
-              onRightClick: (x: number, y: number) => setQtyCtxMenu({ x, y, containerName: container.name }),
-            } : undefined,
+            headerComponent: SelectableHeader,
+            headerComponentParams: {
+              selectionId: `con:${column.id}`,
+              selected: selectedColumnIds.includes(`con:${column.id}`),
+              onSelect: onColumnHeaderSelect ?? (() => {}),
+              onRename: onColumnHeaderRename ?? (() => {}),
+              ...(column.id === "inb_qty" && qtyEditable ? {
+                isFiltered: conQtyFilter === container.name,
+                onRightClick: (x: number, y: number) => setQtyCtxMenu({ x, y, containerName: container.name }),
+              } : {}),
+            },
+            sortable: false,
             width: containerColumnWidth(column),
             valueGetter: (params) => {
               if (!params.data) return "";
@@ -2221,7 +2338,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, skuCellNotes, subColumns, updateEta]);
+  }, [buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnHeaderNames, columnVis, columnWidths, compactMode, containerColumnTotals, containers, groupVis, hiddenBases, onColumnHeaderRename, onColumnHeaderSelect, onSkuCellNoteChange, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, selectedColumnIds, skuCellNotes, subColumns, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -2363,6 +2480,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
             defaultColDef={{
               autoHeaderHeight: false,
               wrapHeaderText: true,
+              sortable: false,
             }}
             getRowId={(params) => params.data.pinned ? `pinned_${params.data.sku}` : params.data.sku}
             rowSelection={{
