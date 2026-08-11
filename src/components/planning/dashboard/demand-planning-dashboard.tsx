@@ -1167,7 +1167,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         .filter((container) => containerMatchesCategory(container, categoryFilter))
         .map((container) => ({
           id: `container:${container.name}`,
-          label: `Container Header: ${container.name}`,
+          label: `Container Header: ${columnHeaderNames[`container:${container.name}`] ?? container.name}`,
         })),
     ],
     [categoryFilter, columnHeaderNames, data.containers],

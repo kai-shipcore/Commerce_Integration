@@ -23,7 +23,6 @@ import {
   GROUP_LABELS,
   TINT_COLORS,
   TODAY,
-  isResizableColumnId,
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
@@ -716,6 +715,105 @@ function CbmCellRenderer({
   );
 }
 
+type HeaderEditorAnchor = { left: number; top: number; width: number; height: number };
+
+function WideHeaderNameEditor({
+  name,
+  anchor,
+  onSave,
+  onCancel,
+}: {
+  name: string;
+  anchor: HeaderEditorAnchor;
+  onSave: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const editorWidth = Math.min(
+    Math.max(anchor.width, Math.min(480, Math.max(160, window.innerWidth - 16)), draft.length * 14 + 48),
+    Math.min(1200, Math.max(160, window.innerWidth - 16)),
+  );
+  const editorLeft = Math.min(
+    Math.max(8, anchor.left + anchor.width / 2 - editorWidth / 2),
+    Math.max(8, window.innerWidth - editorWidth - 8),
+  );
+  const editorTop = Math.max(8, anchor.top + anchor.height / 2 - 21);
+
+  return createPortal(
+    <input
+      ref={inputRef}
+      value={draft}
+      maxLength={80}
+      aria-label={`Rename ${name} header`}
+      title="Enter to save, Escape to cancel. Leave blank to restore the default name."
+      onChange={(event) => setDraft(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onBlur={() => onSave(draft)}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") onSave(draft);
+        if (event.key === "Escape") onCancel();
+      }}
+      className="fixed h-[42px] rounded-lg border-2 border-blue-500 bg-white px-4 text-left text-sm font-semibold text-slate-900 shadow-2xl outline-none ring-4 ring-blue-500/20"
+      style={{ left: editorLeft, top: editorTop, width: editorWidth, zIndex: 10000 }}
+    />,
+    document.body,
+  );
+}
+
+function EditableGroupHeader(params: IHeaderGroupParams & {
+  selectionId: string;
+  onRename: (columnId: string, name: string) => void;
+}) {
+  const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
+
+  if (editorAnchor) {
+    return (
+      <WideHeaderNameEditor
+        name={params.displayName}
+        anchor={editorAnchor}
+        onSave={(name) => {
+          params.onRename(params.selectionId, name);
+          setEditorAnchor(null);
+        }}
+        onCancel={() => setEditorAnchor(null)}
+      />
+    );
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Rename ${params.displayName} group header`}
+      title="Double-click to rename this group header"
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = event.currentTarget.getBoundingClientRect();
+        setEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== "F2") return;
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        setEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+      }}
+      style={{ alignItems: "center", cursor: "text", display: "flex", fontWeight: 700, height: "100%", justifyContent: "center", overflow: "hidden", textAlign: "center", width: "100%" }}
+    >
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{params.displayName}</span>
+    </div>
+  );
+}
+
 function SelectableHeader(params: IHeaderParams & {
   selectionId: string;
   selected: boolean;
@@ -727,56 +825,19 @@ function SelectableHeader(params: IHeaderParams & {
   onRightClick?: (x: number, y: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(params.displayName);
-  const [editorAnchor, setEditorAnchor] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!editing) return;
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, [editing]);
-
-  const commit = () => {
-    params.onRename(params.selectionId, draft);
-    setEditing(false);
-  };
+  const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
 
   if (editing && editorAnchor) {
-    const maxEditorWidth = Math.min(1200, Math.max(160, window.innerWidth - 16));
-    const editorWidth = Math.min(
-      Math.max(editorAnchor.width, Math.min(480, maxEditorWidth), draft.length * 14 + 48),
-      maxEditorWidth,
-    );
-    const editorLeft = Math.min(
-      Math.max(8, editorAnchor.left + editorAnchor.width / 2 - editorWidth / 2),
-      Math.max(8, window.innerWidth - editorWidth - 8),
-    );
-    const editorTop = Math.max(8, editorAnchor.top + editorAnchor.height / 2 - 21);
-
-    return createPortal(
-      <input
-        ref={inputRef}
-        value={draft}
-        maxLength={80}
-        aria-label={`Rename ${params.displayName} column`}
-        title="Enter to save, Escape to cancel. Leave blank to restore the default name."
-        onChange={(event) => setDraft(event.target.value)}
-        onClick={(event) => event.stopPropagation()}
-        onDoubleClick={(event) => event.stopPropagation()}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          if (event.key === "Enter") commit();
-          if (event.key === "Escape") {
-            setDraft(params.displayName);
-            setEditing(false);
-          }
+    return (
+      <WideHeaderNameEditor
+        name={params.displayName}
+        anchor={editorAnchor}
+        onSave={(name) => {
+          params.onRename(params.selectionId, name);
+          setEditing(false);
         }}
-        className="fixed h-[42px] rounded-lg border-2 border-blue-500 bg-white px-4 text-left text-sm font-semibold text-slate-900 shadow-2xl outline-none ring-4 ring-blue-500/20"
-        style={{ left: editorLeft, top: editorTop, width: editorWidth, zIndex: 10000 }}
-      />,
-      document.body,
+        onCancel={() => setEditing(false)}
+      />
     );
   }
 
@@ -814,7 +875,6 @@ function SelectableHeader(params: IHeaderParams & {
           event.stopPropagation();
           const rect = event.currentTarget.getBoundingClientRect();
           setEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
-          setDraft(params.displayName);
           setEditing(true);
         }}
         onContextMenu={params.onRightClick ? (event) => {
@@ -1210,9 +1270,11 @@ function ContainerGroupHeader(
     selectionId: string;
     selected: boolean;
     onSelect: (columnId: string, additive: boolean) => void;
+    onRename: (columnId: string, name: string) => void;
   },
 ) {
   const [targetDays, setTargetDays] = useState(90);
+  const [nameEditorAnchor, setNameEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
   const statusBg =
     props.status === "packing_received"
       ? "border-t-[3px] border-blue-400 bg-blue-500/20"
@@ -1229,6 +1291,21 @@ function ContainerGroupHeader(
     props.status === "packing_received" ? "text-blue-300" :
     props.status === "shipped"          ? "text-amber-300" :
     props.status === "draft"            ? "text-red-300" : "";
+
+  if (nameEditorAnchor) {
+    return (
+      <WideHeaderNameEditor
+        name={props.displayName}
+        anchor={nameEditorAnchor}
+        onSave={(name) => {
+          props.onRename(props.selectionId, name);
+          setNameEditorAnchor(null);
+        }}
+        onCancel={() => setNameEditorAnchor(null)}
+      />
+    );
+  }
+
   return (
     <div
       className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[10px] ${statusBg}`}
@@ -1240,7 +1317,7 @@ function ContainerGroupHeader(
           tabIndex={0}
           aria-pressed={props.selected}
           className="max-w-full truncate font-bold"
-          title="Click to select; Ctrl/Cmd/Shift + click to multi-select. Double-click to open details."
+          title="Click to select; Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
           onClick={(event) => {
             event.stopPropagation();
             props.onSelect(props.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
@@ -1252,14 +1329,30 @@ function ContainerGroupHeader(
             props.onSelect(props.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
           }}
           onDoubleClick={(event) => {
+            event.preventDefault();
             event.stopPropagation();
-            props.onOpenInContainerPlanning?.();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setNameEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
           }}
-          style={{ cursor: props.onOpenInContainerPlanning ? "pointer" : "default" }}
+          style={{ cursor: "text" }}
         >
           {props.selected ? "✓ " : ""}
           {props.displayName}
         </span>
+        {props.onOpenInContainerPlanning && (
+          <button
+            type="button"
+            aria-label={`Open ${props.displayName} details`}
+            title="Open container details"
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onOpenInContainerPlanning?.();
+            }}
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border-0 bg-white/10 p-0 text-white/75 hover:bg-white/20 hover:text-white"
+          >
+            <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
+          </button>
+        )}
         {statusLabel && (
           <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${statusColor}`}>
             {statusLabel}
@@ -2112,7 +2205,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const desiredWidths = Object.fromEntries(
       pinnedColumns.map((column) => [
         column.id,
-        columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column),
+        columnWidths[column.id] ?? baseColumnWidth(column),
       ]),
     ) as Record<string, number>;
     const desiredPinnedWidth = Object.values(desiredWidths).reduce((total, width) => total + width, 0);
@@ -2142,7 +2235,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const shouldPin = pinnedBaseColumnIdSet.has(column.id);
     const width = shouldPin
       ? pinnedBaseColumnLayout.widths[column.id]
-      : columnWidths[column.id as keyof typeof columnWidths] ?? baseColumnWidth(column);
+      : columnWidths[column.id] ?? baseColumnWidth(column);
     const defaultHeaderName = column.id === "tavg_p"
       ? "T. Avg 이전"
       : column.id === "tavg_r"
@@ -2223,7 +2316,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
     const groups: Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>> = [...baseGroups.entries()].map(([groupId, children]) => ({
       groupId,
-      headerName: GROUP_LABELS[groupId] || groupId,
+      headerName: columnHeaderNames[`group:${groupId}`] ?? GROUP_LABELS[groupId] ?? groupId,
+      headerGroupComponent: EditableGroupHeader,
+      headerGroupComponentParams: {
+        selectionId: `group:${groupId}`,
+        onRename: onColumnHeaderRename ?? (() => {}),
+      },
       children,
     }));
 
@@ -2239,13 +2337,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
         groups.push({
           groupId: `container-${container.name}`,
-          headerName: container.name,
+          headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
           headerStyle: headerStyleForColor(columnColors[`container:${container.name}`]?.header),
           headerGroupComponent: ContainerGroupHeader,
           headerGroupComponentParams: {
             selectionId: `container:${container.name}`,
             selected: selectedColumnIds.includes(`container:${container.name}`),
             onSelect: onColumnHeaderSelect ?? (() => {}),
+            onRename: onColumnHeaderRename ?? (() => {}),
             eta: container.eta,
             baseline,
             editable: canEditPlanning,
@@ -2253,7 +2352,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             status: container.status,
             totalColumns: subColumns.map((column) => ({
               id: column.id,
-              width: containerColumnWidth(column),
+              width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
               total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
             })),
             onEtaChange: (eta: string) => updateEta(container, eta),
@@ -2319,7 +2418,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               } : {}),
             },
             sortable: false,
-            width: containerColumnWidth(column),
+            width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
             valueGetter: (params) => {
               if (!params.data) return "";
               const key = `${params.data.sku}::${container.name}`;
@@ -2522,6 +2621,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
             columnDefs={columnDefs}
             defaultColDef={{
               autoHeaderHeight: false,
+              resizable: true,
               wrapHeaderText: true,
               sortable: false,
             }}
@@ -2580,9 +2680,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
             suppressCellFocus
             suppressMovableColumns
             onColumnResized={(event) => {
-              if (!event.finished || !event.column) return;
+              if (!event.finished || !event.column || event.source !== "uiColumnResized") return;
               const id = event.column.getColId();
-              if (!isResizableColumnId(id)) return;
               const next = { ...columnWidths, [id]: event.column.getActualWidth() };
               onColumnWidthsChange(next);
               window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(next));

@@ -242,7 +242,7 @@ export const COLUMN_COLORS_STORAGE_KEY = "planning-dashboard-column-colors";
 export const CELL_COLORS_STORAGE_KEY = "planning-dashboard-cell-colors";
 
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
-export type ColumnWidths = Partial<Record<ResizableColumnId, number>>;
+export type ColumnWidths = Record<string, number>;
 export type ColumnVisibility = Record<string, boolean>;
 export type ColumnColorSettings = Record<string, { cell?: string; header?: string }>;
 export type CellColorSettings = Record<string, string>;
@@ -308,8 +308,13 @@ export function loadSavedColumnWidths(): ColumnWidths {
     const stored = JSON.parse(window.localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
     return Object.fromEntries(
       Object.entries(stored)
-        .filter(([key, value]) => isResizableColumnId(key) && typeof value === "number" && Number.isFinite(value))
-        .map(([key, value]) => [key, clampColumnWidth(key as ResizableColumnId, value as number)])
+        .filter(([key, value]) => key.length > 0 && key.length <= 200 && typeof value === "number" && Number.isFinite(value))
+        .map(([key, value]) => [
+          key,
+          isResizableColumnId(key)
+            ? clampColumnWidth(key, value as number)
+            : Math.min(1000, Math.max(24, value as number)),
+        ])
     ) as ColumnWidths;
   } catch {
     return {};
