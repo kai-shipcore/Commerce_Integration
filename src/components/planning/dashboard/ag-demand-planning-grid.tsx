@@ -9,6 +9,7 @@ import {
   themeQuartz,
   type ColDef as AgColDef,
   type ColGroupDef,
+  type CellClickedEvent,
   type CellMouseDownEvent,
   type CellMouseOverEvent,
   type ColumnResizedEvent,
@@ -113,6 +114,7 @@ type HideGapRestoreInfo = { hiddenLabels: string[]; onRestore: () => void };
 
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
+type SelectionModifiers = { toggle: boolean; range: boolean };
 type SalesTargetTier = { minSales: number; targetDays: number };
 type CapacityMode = "fit" | "unlimited";
 type TargetOrder = { row: DemandRow; qty: number; cbmUnit: number };
@@ -455,7 +457,7 @@ function GridColumnMenu({
 }
 
 function selectedCellsBetween(
-  event: CellMouseDownEvent<DemandRow> | CellMouseOverEvent<DemandRow>,
+  event: CellClickedEvent<DemandRow> | CellMouseDownEvent<DemandRow> | CellMouseOverEvent<DemandRow>,
   anchor: DragCellAnchor,
 ): SelectedAgCell[] {
   if (event.rowIndex === null) return [];
@@ -1223,9 +1225,9 @@ function SelectableHeader(params: IHeaderParams & {
   selectionId: string;
   isSelected: () => boolean;
   subscribeSelection: (listener: () => void) => () => void;
-  onSelect: (columnId: string, additive: boolean) => void;
+  onSelect: (columnId: string, modifiers: SelectionModifiers) => void;
   isFullColumnSelected: () => boolean;
-  onFullColumnSelect: (columnId: string, additive: boolean) => void;
+  onFullColumnSelect: (columnId: string, modifiers: SelectionModifiers) => void;
   onRename: (columnId: string, name: string) => void;
   isFiltered?: boolean;
   onRightClick?: (x: number, y: number) => void;
@@ -1266,10 +1268,13 @@ function SelectableHeader(params: IHeaderParams & {
         type="button"
         aria-label={`Select entire ${params.displayName} column`}
         aria-pressed={fullColumnSelected}
-        title="Select entire column"
+        title="Select entire column. Ctrl/Cmd + click for multiple columns; Shift + click for a range."
         onClick={(event) => {
           event.stopPropagation();
-          params.onFullColumnSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+          params.onFullColumnSelect(params.selectionId, {
+            toggle: event.ctrlKey || event.metaKey,
+            range: event.shiftKey,
+          });
         }}
         style={{ background: fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: 0, padding: 0, position: "absolute", right: 0, top: 0, zIndex: 2 }}
       />
@@ -1278,16 +1283,22 @@ function SelectableHeader(params: IHeaderParams & {
         tabIndex={0}
         aria-pressed={selected}
         aria-label={`${params.displayName} header, ${selected ? "selected" : "not selected"}`}
-        title="Drag to move. Click to select the header. Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
+        title="Drag to move. Ctrl/Cmd + click for multiple headers; Shift + click for a range. Double-click to rename."
         onClick={(event) => {
           event.stopPropagation();
-          params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+          params.onSelect(params.selectionId, {
+            toggle: event.ctrlKey || event.metaKey,
+            range: event.shiftKey,
+          });
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
           event.stopPropagation();
-          params.onSelect(params.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+          params.onSelect(params.selectionId, {
+            toggle: event.ctrlKey || event.metaKey,
+            range: event.shiftKey,
+          });
         }}
         onDoubleClick={(event) => {
           event.preventDefault();
@@ -1756,7 +1767,7 @@ function ContainerGroupHeader(
     selectionId: string;
     isSelected: () => boolean;
     subscribeSelection: (listener: () => void) => () => void;
-    onSelect: (columnId: string, additive: boolean) => void;
+    onSelect: (columnId: string, modifiers: SelectionModifiers) => void;
     onRename: (columnId: string, name: string) => void;
   },
 ) {
@@ -1846,16 +1857,22 @@ function ContainerGroupHeader(
           tabIndex={0}
           aria-pressed={selected}
           className="max-w-full truncate font-bold"
-          title="Click to select; Ctrl/Cmd/Shift + click to multi-select. Double-click to rename."
+          title="Ctrl/Cmd + click for multiple headers; Shift + click for a range. Double-click to rename."
           onClick={(event) => {
             event.stopPropagation();
-            props.onSelect(props.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+            props.onSelect(props.selectionId, {
+              toggle: event.ctrlKey || event.metaKey,
+              range: event.shiftKey,
+            });
           }}
           onKeyDown={(event) => {
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
             event.stopPropagation();
-            props.onSelect(props.selectionId, event.ctrlKey || event.metaKey || event.shiftKey);
+            props.onSelect(props.selectionId, {
+              toggle: event.ctrlKey || event.metaKey,
+              range: event.shiftKey,
+            });
           }}
           onDoubleClick={(event) => {
             event.preventDefault();
@@ -2027,6 +2044,7 @@ export function AgDemandPlanningGrid({
   hiddenBases = new Set<string>(),
   salesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
   onHideColumn,
+  onHideColumns,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -2034,7 +2052,9 @@ export function AgDemandPlanningGrid({
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
   const dragMovedRef = useRef(false);
   const selectedCellsRef = useRef<Set<string>>(new Set());
-  const lastSelectedRef = useRef<string | null>(null);
+  const cellSelectionAnchorRef = useRef<DragCellAnchor | null>(null);
+  const lastHeaderSelectionRef = useRef<string | null>(null);
+  const lastFullColumnSelectionRef = useRef<string | null>(null);
   const selectedColumnIdsRef = useRef(new Set(selectedColumnIds));
   const selectedFullColumnIdsRef = useRef(new Set(selectedFullColumnIds));
   const selectionListenersRef = useRef(new Set<() => void>());
@@ -2415,35 +2435,85 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     for (const listener of selectionListenersRef.current) listener();
   }, []);
 
-  const handleColumnHeaderSelectFast = useCallback((columnId: string, additive: boolean) => {
-    const next = new Set(selectedColumnIdsRef.current);
-    if (next.has(columnId)) next.delete(columnId);
-    else {
-      if (!additive) next.clear();
-      next.add(columnId);
+  const headerSelectionRange = useCallback((anchorId: string, columnId: string) => {
+    const containerRange = anchorId.startsWith("container:") && columnId.startsWith("container:");
+    const mixedContainerLevels = anchorId.startsWith("container:") !== columnId.startsWith("container:");
+    if (mixedContainerLevels) return [columnId];
+
+    const displayedLeafOrder: string[] = [];
+    for (const column of gridRef.current?.api.getAllDisplayedColumns() ?? []) {
+      const physicalId = column.getColId();
+      if (physicalId.includes("hidegap:")) continue;
+      const logicalId = physicalId.includes("::")
+        ? `con:${physicalId.slice(physicalId.lastIndexOf("::") + 2)}`
+        : physicalId;
+      if (!displayedLeafOrder.includes(logicalId)) displayedLeafOrder.push(logicalId);
+    }
+    const order = containerRange
+      ? [
+          ...containers.filter((container) => container.status === "baseline" && !hiddenBases.has("Base")),
+          ...containers.filter((container) => container.status !== "baseline"),
+        ].map((container) => `container:${container.name}`)
+      : displayedLeafOrder.length ? displayedLeafOrder : [
+          ...ALL_COLS
+            .filter((column) => (column.grp === "fix" || groupVis[column.grp]) && columnVis[column.id] !== false)
+            .map((column) => column.id),
+          ...(groupVis.con
+            ? conCandidates
+                .filter((column) => columnVis[`con:${column.id}`] !== false)
+                .map((column) => `con:${column.id}`)
+            : []),
+        ];
+    const anchorIndex = order.indexOf(anchorId);
+    const columnIndex = order.indexOf(columnId);
+    if (anchorIndex < 0 || columnIndex < 0) return [columnId];
+    return order.slice(Math.min(anchorIndex, columnIndex), Math.max(anchorIndex, columnIndex) + 1);
+  }, [columnVis, conCandidates, containers, groupVis, hiddenBases]);
+
+  const handleColumnHeaderSelectFast = useCallback((columnId: string, modifiers: SelectionModifiers) => {
+    const current = selectedColumnIdsRef.current;
+    let next: Set<string>;
+    if (modifiers.range && lastHeaderSelectionRef.current) {
+      const range = headerSelectionRange(lastHeaderSelectionRef.current, columnId);
+      next = modifiers.toggle ? new Set([...current, ...range]) : new Set(range);
+    } else {
+      next = new Set(current);
+      if (next.has(columnId)) next.delete(columnId);
+      else {
+        if (!modifiers.toggle) next.clear();
+        next.add(columnId);
+        lastHeaderSelectionRef.current = columnId;
+      }
     }
     const clearedFullColumns = new Set(selectedFullColumnIdsRef.current);
     selectedColumnIdsRef.current = next;
     selectedFullColumnIdsRef.current = new Set();
     notifySelectionChanged();
     refreshFullSelectionColumns(clearedFullColumns);
-    startTransition(() => onColumnHeaderSelect?.(columnId, additive));
-  }, [notifySelectionChanged, onColumnHeaderSelect, refreshFullSelectionColumns]);
+    startTransition(() => onColumnHeaderSelect?.(columnId, modifiers.toggle || modifiers.range, [...next]));
+  }, [headerSelectionRange, notifySelectionChanged, onColumnHeaderSelect, refreshFullSelectionColumns]);
 
-  const handleFullColumnSelectFast = useCallback((columnId: string, additive: boolean) => {
+  const handleFullColumnSelectFast = useCallback((columnId: string, modifiers: SelectionModifiers) => {
     const previous = new Set(selectedFullColumnIdsRef.current);
-    const next = new Set(previous);
-    if (next.has(columnId)) next.delete(columnId);
-    else {
-      if (!additive) next.clear();
-      next.add(columnId);
+    let next: Set<string>;
+    if (modifiers.range && lastFullColumnSelectionRef.current) {
+      const range = headerSelectionRange(lastFullColumnSelectionRef.current, columnId);
+      next = modifiers.toggle ? new Set([...previous, ...range]) : new Set(range);
+    } else {
+      next = new Set(previous);
+      if (next.has(columnId)) next.delete(columnId);
+      else {
+        if (!modifiers.toggle) next.clear();
+        next.add(columnId);
+        lastFullColumnSelectionRef.current = columnId;
+      }
     }
     selectedColumnIdsRef.current = new Set();
     selectedFullColumnIdsRef.current = next;
     notifySelectionChanged();
     refreshFullSelectionColumns(new Set([...previous, ...next]));
-    startTransition(() => onFullColumnSelect?.(columnId, additive));
-  }, [notifySelectionChanged, onFullColumnSelect, refreshFullSelectionColumns]);
+    startTransition(() => onFullColumnSelect?.(columnId, modifiers.toggle || modifiers.range, [...next]));
+  }, [headerSelectionRange, notifySelectionChanged, onFullColumnSelect, refreshFullSelectionColumns]);
 
   useEffect(() => {
     const nextHeaders = new Set(selectedColumnIds);
@@ -2501,6 +2571,41 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     });
   }, [onAgCellSelected, onCellSelectionChange]);
+
+  const hideColumnsFromMenu = useCallback((menuColumnKey: string) => {
+    const clickedHideKey = hideKeyForColumnMenuKey(menuColumnKey);
+    let selectedHideKeys: Set<string> | null = null;
+
+    if (selectedColumnIdsRef.current.has(clickedHideKey)) {
+      selectedHideKeys = new Set(selectedColumnIdsRef.current);
+    } else if (selectedFullColumnIdsRef.current.has(clickedHideKey)) {
+      selectedHideKeys = new Set(selectedFullColumnIdsRef.current);
+    } else {
+      const cellColumnKeys = new Set<string>();
+      for (const cellKey of selectedCellsRef.current) {
+        const separator = cellKey.indexOf("::");
+        if (separator < 0) continue;
+        cellColumnKeys.add(hideKeyForColumnMenuKey(cellKey.slice(separator + 2)));
+      }
+      if (cellColumnKeys.has(clickedHideKey)) selectedHideKeys = cellColumnKeys;
+    }
+
+    const hideKeys = [...(selectedHideKeys ?? new Set([clickedHideKey]))]
+      .filter((columnId) => !columnId.startsWith("container:") && columnVis[columnId] !== false);
+    if (!hideKeys.length) return;
+
+    if (onHideColumns) onHideColumns(hideKeys);
+    else for (const columnId of hideKeys) onHideColumn?.(columnId);
+
+    selectedCellsRef.current = new Set();
+    selectedColumnIdsRef.current = new Set();
+    selectedFullColumnIdsRef.current = new Set();
+    cellSelectionAnchorRef.current = null;
+    lastHeaderSelectionRef.current = null;
+    lastFullColumnSelectionRef.current = null;
+    notifySelectionChanged();
+    startTransition(() => onCellSelectionChange?.([]));
+  }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns]);
 
   useEffect(() => () => {
     if (dragSelectionFrameRef.current !== null) window.cancelAnimationFrame(dragSelectionFrameRef.current);
@@ -3644,7 +3749,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const previous = selectedCellsRef.current;
               const next = new Set(cells.map((c) => `${c.rowId}::${c.columnId}`));
               selectedCellsRef.current = next;
-              lastSelectedRef.current = `${event.data.sku}::${event.column.getColId()}`;
+              cellSelectionAnchorRef.current = anchor;
               refreshChangedCells(previous, next);
               scheduleDragSelectionNotification(cells);
             }}
@@ -3659,20 +3764,28 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const key = `${event.data.sku}::${columnId}`;
               const nativeEvt = event.event as MouseEvent | undefined;
               const previous = selectedCellsRef.current;
-              const next = new Set(previous);
-              if (nativeEvt?.ctrlKey || nativeEvt?.metaKey) {
-                if (next.has(key)) next.delete(key);
-                else { next.add(key); lastSelectedRef.current = key; }
-              } else if (nativeEvt?.shiftKey && lastSelectedRef.current) {
-                const lastSku = lastSelectedRef.current.split("::")[0];
-                const skus = visibleRows.map((r) => r.sku);
-                const a = skus.indexOf(lastSku), b = skus.indexOf(event.data.sku);
-                const [lo, hi] = a <= b ? [a, b] : [b, a];
-                for (let i = lo; i <= hi; i++) next.add(`${skus[i]}::${columnId}`);
+              const toggle = Boolean(nativeEvt?.ctrlKey || nativeEvt?.metaKey);
+              const range = Boolean(nativeEvt?.shiftKey);
+              const extendRange = range && cellSelectionAnchorRef.current !== null;
+              let next: Set<string>;
+              let rangeCells: SelectedAgCell[] | undefined;
+              if (extendRange && cellSelectionAnchorRef.current) {
+                rangeCells = selectedCellsBetween(event, cellSelectionAnchorRef.current);
+                const rangeKeys = rangeCells.map((cell) => `${cell.rowId}::${cell.columnId}`);
+                next = toggle ? new Set([...previous, ...rangeKeys]) : new Set(rangeKeys);
               } else {
+                next = new Set(previous);
+              }
+              if (!extendRange && toggle) {
+                if (next.has(key)) next.delete(key);
+                else {
+                  next.add(key);
+                  cellSelectionAnchorRef.current = { rowIndex: event.rowIndex ?? 0, columnId };
+                }
+              } else if (!extendRange) {
                 next.clear();
                 next.add(key);
-                lastSelectedRef.current = key;
+                cellSelectionAnchorRef.current = { rowIndex: event.rowIndex ?? 0, columnId };
               }
               selectedCellsRef.current = next;
               refreshChangedCells(previous, next);
@@ -3683,7 +3796,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               };
               startTransition(() => {
                 onCellSelectionChange?.([...next]);
-                onAgCellSelected?.(selection);
+                onAgCellSelected?.(rangeCells?.length ? { ...selection, cells: rangeCells } : selection);
               });
             }}
             rowHeight={28}
@@ -3727,8 +3840,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
           sortDir={sort?.key === columnMenu.key ? sort.dir : null}
           onSortAsc={() => setSort({ key: columnMenu.key, dir: "asc" })}
           onSortDesc={() => setSort({ key: columnMenu.key, dir: "desc" })}
-          canHide={onHideColumn !== undefined}
-          onHide={() => onHideColumn?.(hideKeyForColumnMenuKey(columnMenu.key))}
+          canHide={onHideColumn !== undefined || onHideColumns !== undefined}
+          onHide={() => hideColumnsFromMenu(columnMenu.key)}
           filterActive={columnFilters.has(columnMenu.key)}
           committed={columnFilters.get(columnMenu.key) ?? null}
           getValues={() => (filterOpenKey === columnMenu.key ? columnValuesForOpenKey : [])}

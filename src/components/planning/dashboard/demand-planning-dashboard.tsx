@@ -1163,10 +1163,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleGridColumnSelect = useCallback((columnId: string, additive: boolean) => {
+  const handleGridColumnSelect = useCallback((columnId: string, additive: boolean, selection?: string[]) => {
     setActiveColorTarget("headers");
     setSelectedFullColumnIds([]);
     setSelectedColorColumns((current) => {
+      if (selection) return selection;
       if (current.includes(columnId)) {
         return current.filter((id) => id !== columnId);
       }
@@ -1174,10 +1175,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleFullColumnSelect = useCallback((columnId: string, additive: boolean) => {
+  const handleFullColumnSelect = useCallback((columnId: string, additive: boolean, selection?: string[]) => {
     setActiveColorTarget("columns");
     setSelectedColorColumns([]);
     setSelectedFullColumnIds((current) => {
+      if (selection) return selection;
       if (current.includes(columnId)) return current.filter((id) => id !== columnId);
       return additive ? [...current, columnId] : [columnId];
     });
@@ -1582,6 +1584,28 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     },
     [freezeUntil],
   );
+
+  const handleHideColumns = useCallback((columnIds: string[]) => {
+    const ids = [...new Set(columnIds)];
+    if (!ids.length) return;
+    setCompactMode(false);
+    setColumnVis((current) => {
+      const next = { ...current };
+      for (const columnId of ids) next[columnId] = false;
+      setGroupVis(getGroupVisibilityFromColumns(next));
+
+      const nextVisCols = ALL_COLS.filter((column) => next[column.id] !== false);
+      const stillVisible = nextVisCols.some((column) => column.id === freezeUntil);
+      if (!stillVisible && nextVisCols.length > 0) {
+        setFreezeUntil(nextVisCols[nextVisCols.length - 1].id);
+      }
+      return next;
+    });
+    setSelectedColorColumns([]);
+    setSelectedFullColumnIds([]);
+    setSelectedAgCell(null);
+    setSelectedAgCells([]);
+  }, [freezeUntil]);
 
   const hiddenColumnCount = COLUMN_VISIBILITY_ITEMS.filter((item) => columnVis[item.id] === false).length;
 
@@ -3064,6 +3088,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           hiddenBases={hiddenBases}
           salesWindowWeights={salesWindowWeights}
           onHideColumn={handleToggleColumn}
+          onHideColumns={handleHideColumns}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}

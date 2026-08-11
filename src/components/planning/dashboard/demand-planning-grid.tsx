@@ -76,9 +76,9 @@ export interface DemandPlanningGridProps {
   canEditPlanning?: boolean;
   selectedCellKeys?: string[];
   selectedColumnIds?: string[];
-  onColumnHeaderSelect?: (columnId: string, additive: boolean) => void;
+  onColumnHeaderSelect?: (columnId: string, additive: boolean, selection?: string[]) => void;
   selectedFullColumnIds?: string[];
-  onFullColumnSelect?: (columnId: string, additive: boolean) => void;
+  onFullColumnSelect?: (columnId: string, additive: boolean, selection?: string[]) => void;
   columnHeaderNames?: Record<string, string>;
   onColumnHeaderRename?: (columnId: string, name: string) => void;
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
@@ -93,6 +93,7 @@ export interface DemandPlanningGridProps {
    *  column's own id, or `con:<subColumnId>` for a container sub-column.
    *  Only consumed by the AG Grid variant's right-click column menu today. */
   onHideColumn?: (columnId: string) => void;
+  onHideColumns?: (columnIds: string[]) => void;
 }
 
 const ROW_HEIGHT = 28;
