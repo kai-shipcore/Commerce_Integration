@@ -3564,6 +3564,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
 
     const pinnedSet = new Set(pinnedBaseColumnLayout.ids);
     const defaultOrder: string[] = [];
+    const widthState: { colId: string; width: number }[] = [];
     const collectColumnIds = (definitions: Array<AgColDef<DemandRow> | ColGroupDef<DemandRow>>) => {
       for (const definition of definitions) {
         if ("children" in definition) {
@@ -3571,10 +3572,20 @@ autoFilling3: autoFillingContainers3.has(container.name),
           continue;
         }
         const columnId = definition.colId ?? definition.field;
-        if (columnId) defaultOrder.push(String(columnId));
+        if (!columnId) continue;
+        defaultOrder.push(String(columnId));
+        if (typeof definition.width === "number") widthState.push({ colId: String(columnId), width: definition.width });
       }
     };
     collectColumnIds(columnDefs);
+    // `columnWidths` (loaded from localStorage/DB, or a live resize) always
+    // feeds into `columnDefs`'s per-column `width`, but colId/groupId are all
+    // the structure check above compares — a width-only change never flips
+    // that signature, so `setGridOption` above skips it and the grid keeps
+    // showing whatever width it was first initialized with. Applying widths
+    // separately, every time, closes that gap without paying for a full
+    // columnDefs replace on every resize.
+    if (widthState.length) api.applyColumnState({ state: widthState, applyOrder: false });
     const availableIds = new Set((api.getColumns() ?? []).map((column) => column.getColId()));
     const requestedOrder = columnOrder.length ? columnOrder : defaultOrder;
     const desiredOrder = [

@@ -833,18 +833,49 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
   const columnOrderChangedRef = useRef(false);
 
-  // Debounced save of all preferences to DB (1.5s delay to batch rapid changes)
+  // Debounced save of all preferences to DB (1.5s delay to batch rapid changes).
+  // The mount-time GET below overwrites localStorage with whatever the DB has,
+  // unconditionally — so a change made and then immediately refreshed away
+  // (well inside the 1.5s window) would otherwise never reach the DB, and the
+  // next load's GET would stomp the correct local value right back to the old
+  // one. `latestPrefsRef` plus the pagehide/beforeunload flush below exist
+  // specifically to close that window.
+  const latestPrefsRef = useRef<Record<string, unknown> | null>(null);
+  const putPrefs = useCallback((prefs: Record<string, unknown>, keepalive: boolean) => {
+    fetch(apiPath("/api/user/preferences"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferences: prefs }),
+      keepalive,
+    }).catch(() => {});
+  }, []);
   const savePrefsToDb = useCallback((prefs: Record<string, unknown>) => {
+    latestPrefsRef.current = prefs;
     if (prefSaveTimerRef.current !== null) window.clearTimeout(prefSaveTimerRef.current);
     prefSaveTimerRef.current = window.setTimeout(() => {
       prefSaveTimerRef.current = null;
-      fetch(apiPath("/api/user/preferences"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preferences: prefs }),
-      }).catch(() => {});
+      latestPrefsRef.current = null;
+      putPrefs(prefs, false);
     }, 1500);
-  }, []);
+  }, [putPrefs]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (prefSaveTimerRef.current === null || latestPrefsRef.current === null) return;
+      window.clearTimeout(prefSaveTimerRef.current);
+      prefSaveTimerRef.current = null;
+      // `keepalive` lets this fetch survive the page actually unloading —
+      // a plain fetch gets aborted along with everything else at that point.
+      putPrefs(latestPrefsRef.current, true);
+      latestPrefsRef.current = null;
+    };
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+    };
+  }, [putPrefs]);
 
   useEffect(() => {
     const saved = loadSavedColumnWidths();
