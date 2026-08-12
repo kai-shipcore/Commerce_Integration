@@ -1268,6 +1268,7 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
 
 function SelectableHeader(params: IHeaderParams & {
   selectionId: string;
+  renameId?: string;
   isSelected: () => boolean;
   subscribeSelection: (listener: () => void) => () => void;
   onSelect: (columnId: string, modifiers: SelectionModifiers) => void;
@@ -1299,7 +1300,7 @@ function SelectableHeader(params: IHeaderParams & {
         name={params.displayName}
         anchor={editorAnchor}
         onSave={(name) => {
-          params.onRename(params.selectionId, name);
+          params.onRename(params.renameId ?? params.selectionId, name);
           setEditing(false);
         }}
         onCancel={() => setEditing(false)}
@@ -1820,6 +1821,7 @@ function ContainerGroupHeader(
   const [targetDays, setTargetDays] = useState(90);
   const [nameEditorAnchor, setNameEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
   const [liveColumnWidths, setLiveColumnWidths] = useState<Record<string, number>>({});
+  const [liveColumnOrder, setLiveColumnOrder] = useState<string[]>(() => props.totalColumns.map((column) => column.columnId));
   const [, setSelectionVersion] = useState(0);
   const subscribeSelection = props.subscribeSelection;
   useEffect(
@@ -1835,7 +1837,7 @@ function ContainerGroupHeader(
   // so the custom strip follows the exact same live width during the drag.
   useEffect(() => {
     const columnIds = new Set(props.totalColumns.map((column) => column.columnId));
-    const syncWidths = () => {
+    const syncLayout = () => {
       const next: Record<string, number> = {};
       for (const column of props.totalColumns) {
         next[column.columnId] = props.api.getColumn(column.columnId)?.getActualWidth() ?? column.width;
@@ -1847,20 +1849,42 @@ function ContainerGroupHeader(
         }
         return next;
       });
+      const displayedOrder = props.api.getAllDisplayedColumns()
+        .map((column) => column.getColId())
+        .filter((columnId) => columnIds.has(columnId));
+      const displayedSet = new Set(displayedOrder);
+      const nextOrder = [
+        ...displayedOrder,
+        ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !displayedSet.has(columnId)),
+      ];
+      setLiveColumnOrder((current) => (
+        current.length === nextOrder.length && current.every((columnId, index) => columnId === nextOrder[index])
+          ? current
+          : nextOrder
+      ));
     };
     const handleColumnResized = (event: ColumnResizedEvent<DemandRow>) => {
       if (event.column && !columnIds.has(event.column.getColId())) return;
-      syncWidths();
+      syncLayout();
     };
 
-    syncWidths();
+    syncLayout();
     props.api.addEventListener("columnResized", handleColumnResized);
-    props.api.addEventListener("displayedColumnsChanged", syncWidths);
+    props.api.addEventListener("columnMoved", syncLayout);
+    props.api.addEventListener("displayedColumnsChanged", syncLayout);
     return () => {
       props.api.removeEventListener("columnResized", handleColumnResized);
-      props.api.removeEventListener("displayedColumnsChanged", syncWidths);
+      props.api.removeEventListener("columnMoved", syncLayout);
+      props.api.removeEventListener("displayedColumnsChanged", syncLayout);
     };
   }, [props.api, props.totalColumns]);
+  const orderedTotalColumns = useMemo(() => {
+    const byId = new Map(props.totalColumns.map((column) => [column.columnId, column]));
+    const liveSet = new Set(liveColumnOrder);
+    return [...liveColumnOrder, ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !liveSet.has(columnId))]
+      .map((columnId) => byId.get(columnId))
+      .filter((column): column is ContainerTotalColumn => Boolean(column));
+  }, [liveColumnOrder, props.totalColumns]);
   const statusBg =
     props.status === "packing_received"
       ? "border-t-[3px] border-blue-400 bg-blue-500/20"
@@ -1908,7 +1932,7 @@ function ContainerGroupHeader(
           tabIndex={0}
           aria-pressed={selected}
           className="max-w-full truncate font-bold"
-          title="Ctrl/Cmd + click for multiple headers; Shift + click for a range. Double-click to rename."
+          title="Drag to move this container and all of its columns. Double-click to rename."
           onClick={(event) => {
             event.stopPropagation();
             props.onSelect(props.selectionId, {
@@ -1931,7 +1955,7 @@ function ContainerGroupHeader(
             const rect = event.currentTarget.getBoundingClientRect();
             setNameEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
           }}
-          style={{ cursor: "text" }}
+          style={{ cursor: "grab" }}
         >
           {selected ? "✓ " : ""}
           {props.displayName}
@@ -2025,7 +2049,7 @@ function ContainerGroupHeader(
       </div>
       {props.baseline ? null : (
         <div className="flex w-full text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
-          {props.totalColumns.map((column) => {
+          {orderedTotalColumns.map((column) => {
             const totalLabel = column.total === undefined
               ? ""
               : column.id === "ccbm"
@@ -2036,7 +2060,7 @@ function ContainerGroupHeader(
                 key={column.id}
                 data-summary-column-id={column.columnId}
                 title={totalLabel ? `Total: ${totalLabel}` : undefined}
-                className="shrink-0 truncate text-center"
+                className="shrink-0 overflow-visible whitespace-nowrap text-center"
                 style={{ width: liveColumnWidths[column.columnId] ?? column.width }}
               >
                 {totalLabel}
@@ -2472,6 +2496,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const columns = (api.getColumns() ?? []).filter((column) => {
       const columnId = column.getColId();
       for (const logicalId of logicalIds) {
+        if (logicalId.includes("::") && columnId === logicalId) return true;
         if (logicalId.startsWith("con:") && columnId.endsWith(`::${logicalId.slice(4)}`)) return true;
         if (!logicalId.startsWith("container:") && columnId === logicalId) return true;
       }
@@ -2498,10 +2523,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     for (const column of gridRef.current?.api.getAllDisplayedColumns() ?? []) {
       const physicalId = column.getColId();
       if (physicalId.includes("hidegap:")) continue;
-      const logicalId = physicalId.includes("::")
-        ? `con:${physicalId.slice(physicalId.lastIndexOf("::") + 2)}`
-        : physicalId;
-      if (!displayedLeafOrder.includes(logicalId)) displayedLeafOrder.push(logicalId);
+      if (!displayedLeafOrder.includes(physicalId)) displayedLeafOrder.push(physicalId);
     }
     const order = containerRange
       ? [
@@ -2513,9 +2535,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
             .filter((column) => (column.grp === "fix" || groupVis[column.grp]) && columnVis[column.id] !== false)
             .map((column) => column.id),
           ...(groupVis.con
-            ? conCandidates
+            ? containers.flatMap((container) => conCandidates
                 .filter((column) => columnVis[`con:${column.id}`] !== false)
-                .map((column) => `con:${column.id}`)
+                .map((column) => `${container.name}::${column.id}`))
             : []),
         ];
     const anchorIndex = order.indexOf(anchorId);
@@ -2644,7 +2666,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (cellColumnKeys.has(clickedHideKey)) selectedHideKeys = cellColumnKeys;
     }
 
-    const hideKeys = [...(selectedHideKeys ?? new Set([clickedHideKey]))]
+    const hideKeys = [...new Set([...(selectedHideKeys ?? new Set([clickedHideKey]))].map(hideKeyForColumnMenuKey))]
       .filter((columnId) => !columnId.startsWith("container:") && columnVis[columnId] !== false);
     if (!hideKeys.length) return;
 
@@ -3420,12 +3442,18 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         const baseline = container.status === "baseline";
         const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
 
-        const buildRealSubColDef = (column: (typeof conCandidates)[number]): AgColDef<DemandRow> => ({
+        const buildRealSubColDef = (column: (typeof conCandidates)[number]): AgColDef<DemandRow> => {
+          const physicalColumnId = `${container.name}::${column.id}`;
+          const sharedColumnId = `con:${column.id}`;
+          return ({
           // headerClass (text-color + start/end boundary) is assigned in the
           // combined post-pass below, once each column's final index in the
           // real+indicator list is known.
-          headerStyle: () => headerStyleForColor(columnColors[`con:${column.id}`]?.header, columnTextFormatsRef.current[`con:${column.id}`]?.header),
-          colId: `${container.name}::${column.id}`,
+          headerStyle: () => headerStyleForColor(
+            columnColors[physicalColumnId]?.header ?? columnColors[sharedColumnId]?.header,
+            columnTextFormatsRef.current[physicalColumnId]?.header ?? columnTextFormatsRef.current[sharedColumnId]?.header,
+          ),
+          colId: physicalColumnId,
           headerName: columnHeaderNames[`con:${column.id}`] ?? (column.id === "oo"
             ? "Open Ord"
             : column.id === "remaining"
@@ -3434,11 +3462,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           headerTooltip: column.label.replace("\n", " "),
           headerComponent: SelectableHeader,
           headerComponentParams: {
-            selectionId: `con:${column.id}`,
-            isSelected: () => selectedColumnIdsRef.current.has(`con:${column.id}`),
+            selectionId: physicalColumnId,
+            renameId: sharedColumnId,
+            isSelected: () => selectedColumnIdsRef.current.has(physicalColumnId),
             subscribeSelection,
             onSelect: handleColumnHeaderSelectFast,
-            isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(`con:${column.id}`),
+            isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(physicalColumnId),
             onFullColumnSelect: handleFullColumnSelectFast,
             onRename: onColumnHeaderRename ?? (() => {}),
             isFiltered: columnFilters.has(`${container.name}::${column.id}`),
@@ -3499,26 +3528,39 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             "planning-user-text-color": (params) => {
               const columnId = `${container.name}::${column.id}`;
               const key = cellColorKey(params.data?.sku, columnId);
-              return Boolean(cellTextFormatsRef.current[key]?.color ?? columnTextFormatsRef.current[`con:${column.id}`]?.cell?.color);
+              return Boolean(cellTextFormatsRef.current[key]?.color
+                ?? columnTextFormatsRef.current[physicalColumnId]?.cell?.color
+                ?? columnTextFormatsRef.current[sharedColumnId]?.cell?.color);
             },
           },
           cellStyle: (params) => {
             const columnId = `${container.name}::${column.id}`;
             const key = cellColorKey(params.data?.sku, columnId);
             const selected = selectedCellsRef.current.has(key);
-            const fullColumnSelected = selectedFullColumnIdsRef.current.has(`con:${column.id}`);
-            const textFormat = { ...(columnTextFormatsRef.current[`con:${column.id}`]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
+            const fullColumnSelected = selectedFullColumnIdsRef.current.has(physicalColumnId);
+            const textFormat = {
+              ...(columnTextFormatsRef.current[sharedColumnId]?.cell ?? {}),
+              ...(columnTextFormatsRef.current[physicalColumnId]?.cell ?? {}),
+              ...(cellTextFormatsRef.current[key] ?? {}),
+            };
+            const displayedColumns = params.column.getParent()?.getDisplayedLeafColumns() ?? [];
+            const isFirstDisplayedColumn = displayedColumns[0] === params.column;
             return {
-              backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
+              backgroundColor: selected ? "#BFD7FF" : cellColors[key]
+                ?? columnColors[physicalColumnId]?.cell
+                ?? columnColors[sharedColumnId]?.cell
+                ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
               ...(textFormat.color ? { color: textFormat.color } : {}),
               ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
               ...(textFormat.bold !== undefined ? { fontWeight: textFormat.bold ? 700 : 400 } : {}),
               textAlign: "center",
+              borderLeft: isFirstDisplayedColumn ? "2px solid #5A5750" : "none",
               ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
               ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
             };
           },
         });
+        };
 
         const visibleSubColumns = conCandidates.filter((column) => columnVis[`con:${column.id}`] !== false);
         const children = visibleSubColumns.map((column) => buildRealSubColDef(column));
@@ -3528,29 +3570,30 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
           total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
         }));
-        // Boundary styling (the 2px block-edge border and the start/end
-        // header classes) needs each column's final index among its visible
-        // siblings, so it's assigned after the fact rather than inside
-        // `buildRealSubColDef` itself.
+        // Resolve boundaries from AG Grid's live displayed order. The user can
+        // reorder children, so the original definition index is not a stable
+        // indicator of the left or right edge of the container block.
         children.forEach((child, columnIndex) => {
           const realId = visibleSubColumns[columnIndex].id;
-          child.headerClass = () => [
-            columnTextFormatsRef.current[`con:${realId}`]?.header?.color ? "planning-user-header-text-color" : "",
-            conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
-            columnIndex === 0 ? "container-column-start" : "",
-            columnIndex === children.length - 1 ? "container-column-end" : "",
-          ].filter(Boolean).join(" ");
-          if (columnIndex === 0) {
-            const baseCellStyle = child.cellStyle;
-            child.cellStyle = (params) => ({
-              ...(typeof baseCellStyle === "function" ? baseCellStyle(params) : baseCellStyle),
-              borderLeft: "2px solid #5A5750",
-            });
-          }
+          const physicalColumnId = `${container.name}::${realId}`;
+          child.headerClass = (params) => {
+            const displayedColumns = params.column?.getParent()?.getDisplayedLeafColumns() ?? [];
+            return [
+              (columnTextFormatsRef.current[physicalColumnId]?.header?.color
+                ?? columnTextFormatsRef.current[`con:${realId}`]?.header?.color) ? "planning-user-header-text-color" : "",
+              conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
+              displayedColumns[0] === params.column ? "container-column-start" : "",
+              displayedColumns.at(-1) === params.column ? "container-column-end" : "",
+            ].filter(Boolean).join(" ");
+          };
         });
 
         groups.push({
           groupId: `container-${container.name}`,
+          // A container is one planning block. Moving its group header must
+          // keep all 11 planning columns together, and individual column moves
+          // must not split the block or insert another column inside it.
+          marryChildren: true,
           headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
           headerStyle: () => headerStyleForColor(columnColors[`container:${container.name}`]?.header, columnTextFormatsRef.current[`container:${container.name}`]?.header),
           headerClass: () => columnTextFormatsRef.current[`container:${container.name}`]?.header?.color ? "planning-user-header-text-color" : "",
@@ -3892,6 +3935,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
             suppressDragLeaveHidesColumns
             onColumnMoved={(event) => {
               if (!event.finished || event.source !== "uiColumnMoved") return;
+              const affectedColumns = new Set(event.columns ?? (event.column ? [event.column] : []));
+              for (const column of [...affectedColumns]) {
+                for (const sibling of column.getParent()?.getDisplayedLeafColumns() ?? []) affectedColumns.add(sibling);
+              }
+              event.api.refreshHeader();
+              if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });
               onColumnOrderChange?.(event.api.getColumnState().map((state) => state.colId));
             }}
             onColumnResized={(event) => {

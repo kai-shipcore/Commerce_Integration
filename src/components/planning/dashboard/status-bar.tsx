@@ -33,6 +33,16 @@ import type { DemandRow } from "@/types/demand-planning";
 // The settings (gear) button must stay visible even while this is off.
 const SHOW_STATS = false;
 
+// Matches SETTINGS_SECTION_TITLE_STYLE in demand-planning-dashboard.tsx so section
+// titles read consistently across the Column Settings and Planning Settings popups.
+const SECTION_TITLE_STYLE: CSSProperties = {
+  color: "#1D4ED8",
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
 interface StatusBarProps {
   rows: DemandRow[];
   inline?: boolean;
@@ -310,7 +320,7 @@ function SeasonalFactorSettings({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
           {/* Seasonal Factors */}
           <div style={{ padding: "14px 16px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>{pick("시즌 지수", "Seasonal Factors")}</div>
+            <div style={{ ...SECTION_TITLE_STYLE, marginBottom: 10 }}>{pick("시즌 지수", "Seasonal Factors")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {SEASONAL_FACTOR_FIELDS.map(({ key, label }) => (
                 <label key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -337,7 +347,7 @@ function SeasonalFactorSettings({
 
           <div style={{ padding: "14px 16px", borderLeft: "1px solid #E2E8F0" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{pick("판매 비중 기간별 가중치", "Sales Window Weights")}</div>
+              <div style={SECTION_TITLE_STYLE}>{pick("판매 비중 기간별 가중치", "Sales Window Weights")}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: Math.abs(salesWeightTotal - 1) < 0.0001 ? "#047857" : "#B45309" }}>
                 {pick("합계", "Total")} {(salesWeightTotal * 100).toFixed(0)}%
               </div>
@@ -369,7 +379,7 @@ function SeasonalFactorSettings({
         </div>
 
           <div style={{ padding: "14px 16px", borderTop: "1px solid #E2E8F0" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>
+            <div style={{ ...SECTION_TITLE_STYLE, marginBottom: 4 }}>
               {pick("OOS 손실수요 마켓 비중", "OOS Lost-Demand Marketplace Weights")}
             </div>
             <div style={{ fontSize: 11, lineHeight: 1.4, color: "#64748B", marginBottom: 10 }}>
@@ -424,7 +434,7 @@ function SeasonalFactorSettings({
                   width: "100%",
                   border: "none",
                   borderRadius: 4,
-                  background: "#1A1917",
+                  background: "#2563EB",
                   color: "#fff",
                   cursor: "pointer",
                   padding: "9px 10px",
