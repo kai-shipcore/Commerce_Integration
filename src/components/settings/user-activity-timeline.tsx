@@ -112,15 +112,26 @@ export function UserActivityTimelineDialog({
     async function loadTimeline() {
       setLoading(true);
       try {
+        const params = new URLSearchParams({ userId: user!.id, date });
         const response = await fetch(
-          apiPath(`/api/admin/users/${encodeURIComponent(user!.id)}/activity-timeline?date=${date}`),
+          apiPath(`/api/admin/user-activity/timeline?${params.toString()}`),
           { cache: "no-store" },
         );
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.error || "Failed to load activity timeline");
+        const responseText = await response.text();
+        let result: { success?: boolean; error?: string; data?: { events?: TimelineEvent[] } } | null = null;
+        try {
+          result = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          throw new Error(
+            response.ok
+              ? "Activity timeline returned an invalid response"
+              : `Failed to load activity timeline (${response.status})`,
+          );
+        }
+        if (!response.ok || !result?.success) throw new Error(result?.error || "Failed to load activity timeline");
         if (cancelled) return;
 
-        const nextEvents = result.data.events as TimelineEvent[];
+        const nextEvents = result.data?.events ?? [];
         const nextGroups = buildHourGroups(enrichPageContext(nextEvents));
         const importantHours = nextGroups
           .filter((group) => group.events.some(isImportantEvent))
