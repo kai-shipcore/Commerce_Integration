@@ -362,6 +362,7 @@ function TextFormatPopover({
   onReset: () => void;
   fontSizeDisabled?: boolean;
 }) {
+  const { pick } = useI18n();
   const currentColor = format.color.toUpperCase();
 
   return (
@@ -404,8 +405,17 @@ function TextFormatPopover({
           </button>
         </div>
         {fontSizeDisabled && (
-          <div style={{ color: "#94A3B8", fontSize: 10, marginBottom: 8, lineHeight: 1.35 }} title="컨테이너 헤더 안의 글자 크기와 굵기는 고정되어 있어 변경이 반영되지 않습니다.">
-            {"컨테이너 헤더는 글자 크기와 굵기를 지원하지 않습니다."}
+          <div
+            style={{ color: "#94A3B8", fontSize: 10, marginBottom: 8, lineHeight: 1.35 }}
+            title={pick(
+              "컨테이너 헤더 안의 글자 크기와 굵기는 고정되어 있어 변경이 반영되지 않습니다.",
+              "Font size and bold are fixed for container headers, so changes are not applied.",
+            )}
+          >
+            {pick(
+              "컨테이너 헤더는 글자 크기와 굵기를 지원하지 않습니다.",
+              "Container headers do not support font size or bold formatting.",
+            )}
           </div>
         )}
         <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", paddingTop: 7 }}>FONT COLOR</div>
