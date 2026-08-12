@@ -294,6 +294,45 @@ function MenuItem({
  *  focus/portal handling would be one more thing to reconcile with AG Grid's
  *  own DOM. Filter has no hover flyout for the same reason: clicking it
  *  swaps the panel to a checkbox list with a back arrow instead. */
+function GridGroupMenu({
+  x, y, label, kind, canHide, onHide, onClose,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  kind: "columns" | "container";
+  canHide: boolean;
+  onHide: () => void;
+  onClose: () => void;
+}) {
+  const { pick } = useI18n();
+  return (
+    <>
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 999 }}
+        onClick={onClose}
+        onContextMenu={(event) => { event.preventDefault(); onClose(); }}
+      />
+      <div
+        style={{
+          position: "fixed", top: y, left: x, zIndex: 1000, background: "#fff",
+          border: "1px solid #E2E8F0", borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
+          minWidth: 200, overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #F1F5F9" }}>
+          {label}
+        </div>
+        <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
+          {kind === "container"
+            ? pick("컨테이너 숨기기", "Hide container")
+            : pick("그룹 열 숨기기", "Hide group columns")}
+        </MenuItem>
+      </div>
+    </>
+  );
+}
+
 function GridColumnMenu({
   x, y, label, sortDir, onSortAsc, onSortDesc, canHide, onHide, filterActive, committed, getValues, onFilterViewOpen, onApplyFilter, onClose,
 }: {
@@ -1179,6 +1218,7 @@ function WideHeaderNameEditor({
 function EditableGroupHeader(params: IHeaderGroupParams & {
   selectionId: string;
   onRename: (columnId: string, name: string) => void;
+  onRightClick?: (x: number, y: number) => void;
 }) {
   const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
 
@@ -1201,7 +1241,12 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
       role="button"
       tabIndex={0}
       aria-label={`Rename ${params.displayName} group header`}
-      title="Double-click to rename this group header"
+      title="Right-click to hide this group. Double-click to rename."
+      onContextMenu={params.onRightClick ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        params.onRightClick?.(event.clientX, event.clientY);
+      } : undefined}
       onDoubleClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1769,6 +1814,7 @@ function ContainerGroupHeader(
     subscribeSelection: (listener: () => void) => () => void;
     onSelect: (columnId: string, modifiers: SelectionModifiers) => void;
     onRename: (columnId: string, name: string) => void;
+    onRightClick?: (x: number, y: number) => void;
   },
 ) {
   const [targetDays, setTargetDays] = useState(90);
@@ -1850,6 +1896,11 @@ function ContainerGroupHeader(
     <div
       className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[11px] ${statusBg}`}
       style={{ boxShadow: selected ? "inset 0 0 0 3px #60A5FA" : undefined, backgroundColor: selected ? "rgba(96,165,250,.28)" : undefined }}
+      onContextMenu={props.onRightClick ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        props.onRightClick?.(event.clientX, event.clientY);
+      } : undefined}
     >
       <div className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1">
         <span
@@ -2045,6 +2096,7 @@ export function AgDemandPlanningGrid({
   salesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
   onHideColumn,
   onHideColumns,
+  onHideContainer,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -2077,6 +2129,8 @@ export function AgDemandPlanningGrid({
   const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
+  const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; label: string; columnIds: string[] } | null>(null);
+  const [containerMenu, setContainerMenu] = useState<{ x: number; y: number; label: string; containerName: string; baseline: boolean } | null>(null);
   const [filterOpenKey, setFilterOpenKey] = useState<string | null>(null);
   const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
@@ -2606,6 +2660,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     notifySelectionChanged();
     startTransition(() => onCellSelectionChange?.([]));
   }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns]);
+
+  const hideGroupColumns = useCallback((columnIds: string[]) => {
+    const visibleColumnIds = columnIds.filter((columnId) => columnVis[columnId] !== false);
+    if (!visibleColumnIds.length) return;
+    if (onHideColumns) onHideColumns(visibleColumnIds);
+    else for (const columnId of visibleColumnIds) onHideColumn?.(columnId);
+  }, [columnVis, onHideColumn, onHideColumns]);
 
   useEffect(() => () => {
     if (dragSelectionFrameRef.current !== null) window.cancelAnimationFrame(dragSelectionFrameRef.current);
@@ -3318,13 +3379,23 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
     const flushGroup = () => {
       if (currentGroupId === null || currentGroupChildren.length === 0) return;
+      const groupId = currentGroupId;
+      const groupColumnIds = currentGroupChildren
+        .map((column) => column.colId)
+        .filter((id): id is string => Boolean(id));
+      const groupHeaderName = columnHeaderNames[`group:${groupId}`] ?? GROUP_LABELS[groupId] ?? groupId;
       groups.push({
-        groupId: currentGroupId,
-        headerName: columnHeaderNames[`group:${currentGroupId}`] ?? GROUP_LABELS[currentGroupId] ?? currentGroupId,
+        groupId,
+        headerName: groupHeaderName,
         headerGroupComponent: EditableGroupHeader,
         headerGroupComponentParams: {
-          selectionId: `group:${currentGroupId}`,
+          selectionId: `group:${groupId}`,
           onRename: onColumnHeaderRename ?? (() => {}),
+          onRightClick: (x: number, y: number) => {
+            setColumnMenu(null);
+            setFilterOpenKey(null);
+            setGroupMenu({ x, y, label: groupHeaderName, columnIds: groupColumnIds });
+          },
         },
         children: currentGroupChildren,
       });
@@ -3490,6 +3561,18 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             subscribeSelection,
             onSelect: handleColumnHeaderSelectFast,
             onRename: onColumnHeaderRename ?? (() => {}),
+            onRightClick: (x: number, y: number) => {
+              setColumnMenu(null);
+              setGroupMenu(null);
+              setFilterOpenKey(null);
+              setContainerMenu({
+                x,
+                y,
+                label: columnHeaderNames[`container:${container.name}`] ?? container.name,
+                containerName: container.name,
+                baseline,
+              });
+            },
             eta: container.eta,
             baseline,
             editable: canEditPlanning,
@@ -3853,6 +3936,28 @@ autoFilling3: autoFillingContainers3.has(container.name),
             return nextMap;
           })}
           onClose={() => { setColumnMenu(null); setFilterOpenKey(null); }}
+        />
+      )}
+      {groupMenu && (
+        <GridGroupMenu
+          x={groupMenu.x}
+          y={groupMenu.y}
+          label={groupMenu.label}
+          kind="columns"
+          canHide={onHideColumn !== undefined || onHideColumns !== undefined}
+          onHide={() => hideGroupColumns(groupMenu.columnIds)}
+          onClose={() => setGroupMenu(null)}
+        />
+      )}
+      {containerMenu && (
+        <GridGroupMenu
+          x={containerMenu.x}
+          y={containerMenu.y}
+          label={containerMenu.label}
+          kind="container"
+          canHide={onHideContainer !== undefined}
+          onHide={() => onHideContainer?.(containerMenu.containerName, containerMenu.baseline)}
+          onClose={() => setContainerMenu(null)}
         />
       )}
     </div>

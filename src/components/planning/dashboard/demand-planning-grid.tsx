@@ -94,6 +94,8 @@ export interface DemandPlanningGridProps {
    *  Only consumed by the AG Grid variant's right-click column menu today. */
   onHideColumn?: (columnId: string) => void;
   onHideColumns?: (columnIds: string[]) => void;
+  /** Hides an entire Base or named container block from a group-header menu. */
+  onHideContainer?: (containerName: string, baseline: boolean) => void;
 }
 
 const ROW_HEIGHT = 28;

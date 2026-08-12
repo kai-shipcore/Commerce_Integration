@@ -1642,6 +1642,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setSelectedAgCells([]);
   }, [freezeUntil]);
 
+  const handleHideContainer = useCallback((containerName: string, baseline: boolean) => {
+    const update = (current: Set<string>) => {
+      const next = new Set(current);
+      next.add(containerName);
+      return next;
+    };
+    if (baseline) setHiddenBases(update);
+    else setHiddenContainers(update);
+  }, []);
+
   const hiddenColumnCount = COLUMN_VISIBILITY_ITEMS.filter((item) => columnVis[item.id] === false).length;
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -3123,6 +3133,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           salesWindowWeights={salesWindowWeights}
           onHideColumn={handleToggleColumn}
           onHideColumns={handleHideColumns}
+          onHideContainer={handleHideContainer}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}
