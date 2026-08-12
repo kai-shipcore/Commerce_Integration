@@ -189,7 +189,7 @@ function DeferredColorInput({
   );
 }
 
-function DeferredFontSizeControl({ value, onCommit }: { value: number; onCommit: (value: number) => void }) {
+function DeferredFontSizeControl({ value, onCommit, disabled = false }: { value: number; onCommit: (value: number) => void; disabled?: boolean }) {
   const [draft, setDraft] = useState(String(value));
   const pendingValueRef = useRef(value);
   const committedValueRef = useRef(value);
@@ -228,12 +228,13 @@ function DeferredFontSizeControl({ value, onCommit }: { value: number; onCommit:
   };
 
   return (
-    <div style={{ alignItems: "center", display: "flex", gap: 5 }}>
-      <button type="button" aria-label="Decrease font size" onClick={() => updateDraft(pendingValueRef.current - 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>−</button>
+    <div style={{ alignItems: "center", display: "flex", gap: 5, opacity: disabled ? 0.45 : 1 }}>
+      <button type="button" disabled={disabled} aria-label="Decrease font size" onClick={() => updateDraft(pendingValueRef.current - 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: disabled ? "default" : "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>−</button>
       <input
         type="number"
         min={6}
         max={48}
+        disabled={disabled}
         aria-label="Font size"
         value={draft}
         onChange={(event) => {
@@ -248,9 +249,9 @@ function DeferredFontSizeControl({ value, onCommit }: { value: number; onCommit:
             event.currentTarget.blur();
           }
         }}
-        style={{ border: "1px solid #94A3B8", borderRadius: 4, fontSize: 12, height: 27, padding: "2px 3px", textAlign: "center", width: 44 }}
+        style={{ border: "1px solid #94A3B8", borderRadius: 4, fontSize: 12, height: 27, padding: "2px 3px", textAlign: "center", width: 44, cursor: disabled ? "default" : "text" }}
       />
-      <button type="button" aria-label="Increase font size" onClick={() => updateDraft(pendingValueRef.current + 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>+</button>
+      <button type="button" disabled={disabled} aria-label="Increase font size" onClick={() => updateDraft(pendingValueRef.current + 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: disabled ? "default" : "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>+</button>
     </div>
   );
 }
@@ -352,12 +353,14 @@ function TextFormatPopover({
   targetLabel,
   onChange,
   onReset,
+  fontSizeDisabled = false,
 }: {
   enabled: boolean;
   format: Required<TextFormatSettings>;
   targetLabel: string;
   onChange: (patch: TextFormatSettings) => void;
   onReset: () => void;
+  fontSizeDisabled?: boolean;
 }) {
   const currentColor = format.color.toUpperCase();
 
@@ -382,10 +385,29 @@ function TextFormatPopover({
         <button type="button" onClick={onReset} style={{ alignItems: "center", background: "transparent", border: "none", color: "#334155", cursor: "pointer", display: "flex", fontSize: 12, gap: 7, marginBottom: 8, padding: "2px 0" }}>
           <RotateCcw size={14} aria-hidden="true" /> Reset
         </button>
-        <div style={{ alignItems: "center", display: "flex", gap: 8, marginBottom: 10 }}>
-          <DeferredFontSizeControl key={`${targetLabel}:${format.fontSize}`} value={format.fontSize} onCommit={(fontSize) => onChange({ fontSize })} />
-          <button type="button" aria-label="Bold" aria-pressed={format.bold} onClick={() => onChange({ bold: !format.bold })} style={{ background: format.bold ? "#DBEAFE" : "#fff", border: format.bold ? "1px solid #60A5FA" : "1px solid #CBD5E1", borderRadius: 4, color: format.bold ? "#1D4ED8" : "#1E293B", cursor: "pointer", fontSize: 14, fontWeight: 800, height: 27, marginLeft: 3, padding: 0, width: 29 }}>B</button>
+        <div style={{ alignItems: "center", display: "flex", gap: 8, marginBottom: fontSizeDisabled ? 2 : 10 }}>
+          <DeferredFontSizeControl
+            key={`${targetLabel}:${format.fontSize}`}
+            value={format.fontSize}
+            onCommit={(fontSize) => onChange({ fontSize })}
+            disabled={fontSizeDisabled}
+          />
+          <button
+            type="button"
+            disabled={fontSizeDisabled}
+            aria-label="Bold"
+            aria-pressed={format.bold}
+            onClick={() => onChange({ bold: !format.bold })}
+            style={{ background: format.bold ? "#DBEAFE" : "#fff", border: format.bold ? "1px solid #60A5FA" : "1px solid #CBD5E1", borderRadius: 4, color: format.bold ? "#1D4ED8" : "#1E293B", cursor: fontSizeDisabled ? "default" : "pointer", fontSize: 14, fontWeight: 800, height: 27, marginLeft: 3, opacity: fontSizeDisabled ? 0.45 : 1, padding: 0, width: 29 }}
+          >
+            B
+          </button>
         </div>
+        {fontSizeDisabled && (
+          <div style={{ color: "#94A3B8", fontSize: 10, marginBottom: 8, lineHeight: 1.35 }} title="컨테이너 헤더 안의 글자 크기와 굵기는 고정되어 있어 변경이 반영되지 않습니다.">
+            {"컨테이너 헤더는 글자 크기와 굵기를 지원하지 않습니다."}
+          </div>
+        )}
         <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", paddingTop: 7 }}>FONT COLOR</div>
         <div style={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(10, 19px)", marginTop: 6 }}>
           {FILL_COLOR_ROWS.flat().map((color, index) => (
@@ -1411,6 +1433,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     : activeColorTarget === "columns"
       ? selectedFullColumnIds.length > 0
       : Boolean(selectedAgCell);
+  const isContainerHeaderTextTarget = activeColorTarget === "headers"
+    && selectedColorColumns.length > 0
+    && selectedColorColumns.every((id) => id.startsWith("container:"));
   const fillPaletteColor = activeColorTarget === "headers"
     ? selectedHeaderColorInfo.color
     : activeColorTarget === "columns"
@@ -2409,7 +2434,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </button>
                     </div>
                   </div>
-                  <div style={{ marginTop: 10, padding: "8px 6px 2px" }}>
+                  <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
                     <button
                       type="button"
                       onClick={() => {
@@ -2805,6 +2830,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             targetLabel={fillPaletteTargetLabel}
             onChange={handleTextFormatApply}
             onReset={handleTextFormatReset}
+            fontSizeDisabled={isContainerHeaderTextTarget}
           />
           <FillColorPopover
             enabled={fillPaletteEnabled}
