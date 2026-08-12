@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
-import { CalendarRange, ChevronDown, ChevronUp, History, List, PackageOpen, Plus, Ship } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronUp, History, List, PackageOpen, Plus, Ship, X } from "lucide-react";
 import {
   containerStatusLabels,
   mockSkus,
@@ -2013,12 +2013,25 @@ export function ContainerPlanningPage() {
             </Link>
           </div>
 
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="form-input h-9 w-72 bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-            placeholder={pick("컨테이너 또는 SKU 검색", "Search container or SKU")}
-          />
+          <div className="relative w-72">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="form-input h-9 w-full bg-white pr-9 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+              placeholder={pick("컨테이너 또는 SKU 검색", "Search container or SKU")}
+            />
+            {query ? (
+              <button
+                type="button"
+                aria-label={pick("검색어 초기화", "Clear search")}
+                title={pick("검색어 초기화", "Clear search")}
+                onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground dark:hover:bg-slate-800"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={openForm}

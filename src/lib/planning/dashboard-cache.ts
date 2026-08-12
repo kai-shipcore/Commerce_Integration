@@ -28,7 +28,7 @@ export function planningDashboardCacheKey(mode: string, includeContainers = fals
   const categorySuffix = category ? `:${category}` : "";
   const variantSuffix = variant ? `:${variant}` : "";
   const detailMode = includeContainers ? (rawContainers ? "detail-raw" : "detail") : "summary";
-  return `planning:dashboard:v20:${mode}:${detailMode}${dateSuffix}${scopeSuffix}${categorySuffix}${variantSuffix}`;
+  return `planning:dashboard:v23:${mode}:${detailMode}${dateSuffix}${scopeSuffix}${categorySuffix}${variantSuffix}`;
 }
 
 async function withTimeout<T>(work: Promise<T>, fallback: T): Promise<T> {

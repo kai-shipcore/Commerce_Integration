@@ -2095,9 +2095,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               type="button"
               aria-label="Reset search"
               title="Reset search"
-              onClick={() => {
-                if (confirmReset("검색어", "the search")) setSearch("");
-              }}
+              onClick={() => setSearch("")}
               style={{
                 position: "absolute",
                 right: 5,
@@ -2958,7 +2956,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           </div>
           <button
             type="button"
-            onClick={reload}
+            onClick={() => reload()}
             disabled={loading}
             style={{
               fontSize: 11,
@@ -2983,7 +2981,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             <span style={{ fontSize: 13, color: "#7A766F" }}>Press Sync to load planning data</span>
             <button
               type="button"
-              onClick={reload}
+              onClick={() => reload()}
               style={{
                 fontSize: 12,
                 fontWeight: 600,

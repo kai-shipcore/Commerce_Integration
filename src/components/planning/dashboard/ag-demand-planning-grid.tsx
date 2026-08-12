@@ -36,7 +36,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
+import { baselineBackorderQty, inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
@@ -545,7 +545,7 @@ function computeContainerChain(
   const availableQty = effectiveTotal + (row.back ?? 0);
   const dailyRate = row.total_avg_curr ?? 0;
   let previousCarryover = Math.max(0, availableQty);
-  let previousBackorder = availableQty < 0 ? Math.abs(availableQty) : 0;
+  let previousBackorder = baselineBackorderQty(availableQty, row.total_30d ?? 0);
   let previousSod = row.sod;
   let previousEta = TODAY;
   const baseline = containers[0];
@@ -1885,7 +1885,7 @@ function ContainerGroupHeader(
           {selected ? "✓ " : ""}
           {props.displayName}
         </span>
-        {props.onOpenInContainerPlanning && (
+        {props.onOpenInContainerPlanning && !props.baseline && (
           <button
             type="button"
             aria-label={`Open ${props.displayName} details`}

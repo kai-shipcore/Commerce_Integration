@@ -42,7 +42,10 @@ interface StatusBarProps {
   onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
   oosLostDemandWeights?: OosLostDemandWeights;
   onOosLostDemandWeightsChange?: (next: OosLostDemandWeights) => void;
-  onApplyAndSync?: () => void;
+  onApplyAndSync?: (settings: {
+    salesWindowWeights: SalesWindowWeights;
+    oosLostDemandWeights: OosLostDemandWeights;
+  }) => void;
   gradient?: GradientTier[];
   gradientSC?: GradientTier[];
   onGradientChange?: (next: GradientTier[]) => void;
@@ -168,7 +171,10 @@ function SeasonalFactorSettings({
   onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
   oosLostDemandWeights: OosLostDemandWeights;
   onOosLostDemandWeightsChange?: (next: OosLostDemandWeights) => void;
-  onApplyAndSync?: () => void;
+  onApplyAndSync?: (settings: {
+    salesWindowWeights: SalesWindowWeights;
+    oosLostDemandWeights: OosLostDemandWeights;
+  }) => void;
 }) {
   const { pick } = useI18n();
 
@@ -228,7 +234,10 @@ function SeasonalFactorSettings({
     onSalesWindowWeightsChange(pendingSalesWeights);
     onOosLostDemandWeightsChange?.(pendingOosWeights);
     setJustApplied(true);
-    onApplyAndSync?.();
+    onApplyAndSync?.({
+      salesWindowWeights: pendingSalesWeights,
+      oosLostDemandWeights: pendingOosWeights,
+    });
   }
 
   return (

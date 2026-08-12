@@ -61,7 +61,27 @@ export function currentDailyAverage(prev: number, real: number, _categoryCode?: 
   return prev * 0.2 + real * 0.8;
 }
 
-export function fbmThirtyDayAverage(
+export function fivePeriodThirtyDayAverage(
+  sales90d: number,
+  sales60d: number,
+  sales30d: number,
+  preorder30d: number,
+  sales15d: number,
+  sales7d: number,
+): number {
+  return Math.ceil(
+    (
+      sales90d / 90 * 30
+      + sales60d / 60 * 30
+      + sales30d
+      + preorder30d
+      + sales15d / 15 * 30
+      + sales7d / 7 * 30
+    ) / 5,
+  );
+}
+
+export function weightedDailyAverage(
   sales90d: number,
   sales60d: number,
   sales30d: number,
@@ -70,17 +90,23 @@ export function fbmThirtyDayAverage(
   sales7d: number,
   weights: SalesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
 ): number {
-  return Math.ceil(
-    sales90d / 90 * 30 * weights.d90
-    + sales60d / 60 * 30 * weights.d60
-    + sales30d * weights.d30
-    + preorder30d * weights.pre
-    + sales15d / 15 * 30 * weights.d15
-    + sales7d / 7 * 30 * weights.d7
+  return Math.max(
+    0.01,
+    sales90d / 90 * weights.d90
+      + sales60d / 60 * weights.d60
+      + sales30d / 30 * weights.d30
+      + preorder30d / 30 * weights.pre
+      + sales15d / 15 * weights.d15
+      + sales7d / 7 * weights.d7,
   );
 }
 
 export function inventoryLifeDays(carryover: number, dailyRate: number, seasonalFactor: number): number | null {
   const adjustedDailyRate = dailyRate * seasonalFactor;
   return adjustedDailyRate > 0 ? carryover / adjustedDailyRate : null;
+}
+
+/** Google Sheet BF (Base Back Order): no recent sales means no back order. */
+export function baselineBackorderQty(availableQty: number, total30d: number): number {
+  return total30d <= 0 ? 0 : Math.max(0, -availableQty);
 }
