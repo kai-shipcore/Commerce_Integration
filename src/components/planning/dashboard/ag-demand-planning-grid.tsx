@@ -12,7 +12,9 @@ import {
   type CellClickedEvent,
   type CellMouseDownEvent,
   type CellMouseOverEvent,
+  type Column,
   type ColumnResizedEvent,
+  type GridApi,
   type ICellRendererParams,
   type IHeaderGroupParams,
   type IHeaderParams,
@@ -126,6 +128,13 @@ type TargetOrderPreview = {
   capacityCbm: number;
   excessCbm: number;
 };
+
+type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter";
+const qtyEditorRegistry = new Map<string, () => void>();
+
+function qtyEditorKey(rowId: string, columnId: string) {
+  return `${rowId}\u0000${columnId}`;
+}
 
 const DEFAULT_BACKFILL3_TIERS: SalesTargetTier[] = [
   { minSales: 10, targetDays: 90 },
@@ -499,20 +508,29 @@ function selectedCellsBetween(
   event: CellClickedEvent<DemandRow> | CellMouseDownEvent<DemandRow> | CellMouseOverEvent<DemandRow>,
   anchor: DragCellAnchor,
 ): SelectedAgCell[] {
-  if (event.rowIndex === null) return [];
-  const columns = event.api.getAllDisplayedColumns();
+  return selectedCellsBetweenPosition(event.api, event.rowIndex, event.column.getColId(), anchor);
+}
+
+function selectedCellsBetweenPosition(
+  api: GridApi<DemandRow>,
+  rowIndex: number | null,
+  columnId: string,
+  anchor: DragCellAnchor,
+): SelectedAgCell[] {
+  if (rowIndex === null) return [];
+  const columns = api.getAllDisplayedColumns();
   const anchorColumnIndex = columns.findIndex((column) => column.getColId() === anchor.columnId);
-  const currentColumnIndex = columns.findIndex((column) => column.getColId() === event.column.getColId());
+  const currentColumnIndex = columns.findIndex((column) => column.getColId() === columnId);
   if (anchorColumnIndex < 0 || currentColumnIndex < 0) return [];
 
-  const startRowIndex = Math.min(anchor.rowIndex, event.rowIndex);
-  const endRowIndex = Math.max(anchor.rowIndex, event.rowIndex);
+  const startRowIndex = Math.min(anchor.rowIndex, rowIndex);
+  const endRowIndex = Math.max(anchor.rowIndex, rowIndex);
   const startColumnIndex = Math.min(anchorColumnIndex, currentColumnIndex);
   const endColumnIndex = Math.max(anchorColumnIndex, currentColumnIndex);
   const selected = new Map<string, SelectedAgCell>();
 
   for (let rowIndex = startRowIndex; rowIndex <= endRowIndex; rowIndex += 1) {
-    const rowNode = event.api.getDisplayedRowAtIndex(rowIndex);
+    const rowNode = api.getDisplayedRowAtIndex(rowIndex);
     const row = rowNode?.data;
     if (!row) continue;
     for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
@@ -885,37 +903,61 @@ function CopyableCellRenderer({
 function QtyCellRenderer({
   value,
   node,
+  api,
+  column,
   onSave,
+  onSelectionPointerDown,
+  onSelectionPointerEnter,
+  onRequestEdit,
 }: ICellRendererParams<DemandRow, CellContent> & {
   onSave: (qty: number) => Promise<boolean>;
+  onSelectionPointerDown: (rowIndex: number, column: Column) => void;
+  onSelectionPointerEnter: (rowIndex: number, column: Column, buttons: number) => void;
+  onRequestEdit: () => boolean;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState(displayValue);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const rowId = node.data?.sku ?? "";
+  const columnId = column?.getColId() ?? "";
 
   useEffect(() => {
     if (!editing && !savingRef.current) setInputValue(displayValue);
   }, [displayValue, editing]);
 
-  async function commit() {
-    if (savingRef.current) return;
+  useEffect(() => {
+    if (!rowId || !columnId) return;
+    const key = qtyEditorKey(rowId, columnId);
+    const beginEditing = () => {
+      node.setSelected(true, true);
+      setEditing(true);
+    };
+    qtyEditorRegistry.set(key, beginEditing);
+    return () => {
+      if (qtyEditorRegistry.get(key) === beginEditing) qtyEditorRegistry.delete(key);
+    };
+  }, [columnId, node, rowId]);
+
+  async function commit(): Promise<boolean> {
+    if (savingRef.current) return false;
     const nextQty = inputValue.trim() === "" ? 0 : Number.parseInt(inputValue, 10);
     if (!Number.isFinite(nextQty) || nextQty < 0) {
       setInputValue(displayValue);
       setEditing(false);
-      return;
+      return false;
     }
     if (String(nextQty) === displayValue) {
       setEditing(false);
-      return;
+      return true;
     }
 
     savingRef.current = true;
     setSaving(true);
+    let saved = false;
     try {
-      const saved = await onSave(nextQty);
+      saved = await onSave(nextQty);
       if (!saved) setInputValue(displayValue);
     } catch {
       setInputValue(displayValue);
@@ -924,6 +966,48 @@ function QtyCellRenderer({
       setSaving(false);
       setEditing(false);
     }
+    return saved;
+  }
+
+  function moveToNextQtyCell(key: QtyNavigationKey) {
+    if (!column || node.rowIndex === null) return;
+    const editableQtyColumns = api.getAllDisplayedColumns().filter(
+      (displayedColumn) => displayedColumn.getColDef().cellRenderer === QtyCellRenderer,
+    );
+    const currentColumnIndex = editableQtyColumns.indexOf(column);
+    if (currentColumnIndex < 0) return;
+
+    let nextRowIndex = node.rowIndex;
+    let nextColumnIndex = currentColumnIndex;
+    if (key === "ArrowUp") nextRowIndex -= 1;
+    if (key === "ArrowDown" || key === "Enter") nextRowIndex += 1;
+    if (key === "ArrowLeft") nextColumnIndex -= 1;
+    if (key === "ArrowRight") nextColumnIndex += 1;
+    if (nextRowIndex < 0 || nextRowIndex >= api.getDisplayedRowCount()) return;
+    if (nextColumnIndex < 0 || nextColumnIndex >= editableQtyColumns.length) return;
+
+    const nextNode = api.getDisplayedRowAtIndex(nextRowIndex);
+    const nextColumn = editableQtyColumns[nextColumnIndex];
+    const nextRowId = nextNode?.data?.sku;
+    if (!nextNode || !nextRowId) return;
+
+    api.ensureIndexVisible(nextRowIndex, "middle");
+    api.ensureColumnVisible(nextColumn);
+    api.setFocusedCell(nextRowIndex, nextColumn);
+    nextNode.setSelected(true, true);
+
+    const targetKey = qtyEditorKey(nextRowId, nextColumn.getColId());
+    let attempts = 0;
+    const beginWhenRendered = () => {
+      const beginEditing = qtyEditorRegistry.get(targetKey);
+      if (beginEditing) {
+        beginEditing();
+        return;
+      }
+      attempts += 1;
+      if (attempts < 6) window.setTimeout(beginWhenRendered, 20);
+    };
+    window.setTimeout(beginWhenRendered, 0);
   }
 
   if (editing) {
@@ -939,12 +1023,19 @@ function QtyCellRenderer({
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
               setInputValue(displayValue);
               setEditing(false);
+              return;
             }
-            if (event.key === "Enter") {
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"].includes(event.key)) {
               event.preventDefault();
-              void commit();
+              event.stopPropagation();
+              const navigationKey = event.key as QtyNavigationKey;
+              void commit().then((saved) => {
+                if (saved) moveToNextQtyCell(navigationKey);
+              });
             }
           }}
           onBlur={() => void commit()}
@@ -959,8 +1050,17 @@ function QtyCellRenderer({
       type="button"
       disabled={saving}
       title="Click to edit quantity"
+      onMouseDown={(event) => {
+        if (event.button !== 0 || node.rowIndex === null || !column) return;
+        onSelectionPointerDown(node.rowIndex, column);
+      }}
+      onMouseEnter={(event) => {
+        if (node.rowIndex === null || !column) return;
+        onSelectionPointerEnter(node.rowIndex, column, event.buttons);
+      }}
       onClick={(event) => {
         event.stopPropagation();
+        if (!onRequestEdit()) return;
         node.setSelected(true, true);
         setEditing(true);
       }}
@@ -1462,13 +1562,27 @@ function formatSalesThreshold(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
 }
 
-function salesRangeLabel(minSales: number, upperSales: number | null): string {
-  if (minSales <= 0 && upperSales != null) return `${formatSalesThreshold(upperSales)} 미만`;
-  if (upperSales == null) return `${formatSalesThreshold(minSales)} 이상`;
-  return `${formatSalesThreshold(minSales)} 이상 ~ ${formatSalesThreshold(upperSales)} 미만`;
+function salesRangeLabel(
+  minSales: number,
+  upperSales: number | null,
+  pick: (ko: string, en: string) => string,
+): string {
+  if (minSales <= 0 && upperSales != null) {
+    return pick(`${formatSalesThreshold(upperSales)} 미만`, `Under ${formatSalesThreshold(upperSales)}`);
+  }
+  if (upperSales == null) {
+    return pick(`${formatSalesThreshold(minSales)} 이상`, `${formatSalesThreshold(minSales)} or more`);
+  }
+  return pick(
+    `${formatSalesThreshold(minSales)} 이상 ~ ${formatSalesThreshold(upperSales)} 미만`,
+    `${formatSalesThreshold(minSales)} to under ${formatSalesThreshold(upperSales)}`,
+  );
 }
 
-function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
+function validateSalesTargetTiers(
+  tiers: SalesTargetTier[],
+  pick: (ko: string, en: string) => string,
+): string | null {
   const normalized = tiers
     .map((tier) => ({
       minSales: Number(tier.minSales),
@@ -1476,26 +1590,32 @@ function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
     }))
     .sort((a, b) => b.minSales - a.minSales);
 
-  if (normalized.length === 0) return "최소 1개 이상의 구간이 필요합니다.";
+  if (normalized.length === 0) return pick("최소 1개 이상의 구간이 필요합니다.", "At least one sales range is required.");
 
   for (const tier of normalized) {
     if (!Number.isFinite(tier.minSales) || tier.minSales < 0) {
-      return "최소 판매량은 0 이상의 숫자로 입력해주세요.";
+      return pick("최소 판매량은 0 이상의 숫자로 입력해주세요.", "Minimum sales must be a number greater than or equal to 0.");
     }
 
     if (!Number.isFinite(tier.targetDays) || tier.targetDays < 1 || tier.targetDays > 365) {
-      return "목표일수는 1일부터 365일 사이로 입력해주세요.";
+      return pick("목표일수는 1일부터 365일 사이로 입력해주세요.", "Target days must be between 1 and 365.");
     }
   }
 
   const minSalesValues = new Set(normalized.map((tier) => tier.minSales));
   if (minSalesValues.size !== normalized.length) {
-    return "같은 최소 판매량이 중복되어 있습니다. 각 구간의 시작값을 다르게 입력해주세요.";
+    return pick(
+      "같은 최소 판매량이 중복되어 있습니다. 각 구간의 시작값을 다르게 입력해주세요.",
+      "Minimum sales values must be unique for each range.",
+    );
   }
 
   const lowestTier = normalized[normalized.length - 1];
   if (lowestTier.minSales !== 0) {
-    return "가장 낮은 판매 구간을 계산할 수 있도록 최소 판매량 0 구간을 추가해주세요.";
+    return pick(
+      "가장 낮은 판매 구간을 계산할 수 있도록 최소 판매량 0 구간을 추가해주세요.",
+      "Add a range with minimum sales set to 0 to cover the lowest sales range.",
+    );
   }
 
   for (let index = 1; index < normalized.length; index += 1) {
@@ -1504,9 +1624,14 @@ function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
 
     if (lowerSalesTier.targetDays > higherSalesTier.targetDays) {
       return (
-        `${salesRangeLabel(lowerSalesTier.minSales, higherSalesTier.minSales)} 구간의 목표일수가 ` +
-        `${salesRangeLabel(higherSalesTier.minSales, null)} 구간보다 큽니다. ` +
-        "판매량이 낮은 구간의 목표일수는 위 구간보다 작거나 같아야 합니다."
+        pick(
+          `${salesRangeLabel(lowerSalesTier.minSales, higherSalesTier.minSales, pick)} 구간의 목표일수가 ` +
+            `${salesRangeLabel(higherSalesTier.minSales, null, pick)} 구간보다 큽니다. ` +
+            "판매량이 낮은 구간의 목표일수는 위 구간보다 작거나 같아야 합니다.",
+          `Target days for ${salesRangeLabel(lowerSalesTier.minSales, higherSalesTier.minSales, pick)} exceed ` +
+            `the ${salesRangeLabel(higherSalesTier.minSales, null, pick)} range. ` +
+            "A lower sales range must have target days less than or equal to the range above it.",
+        )
       );
     }
   }
@@ -1523,40 +1648,44 @@ function CapacityModePanel({
   onChange: (mode: CapacityMode) => void;
   preview: TargetOrderPreview;
 }) {
+  const { pick } = useI18n();
   const overCapacity = preview.excessCbm > 0.000001;
 
   return (
     <div className="space-y-3 rounded-lg border border-[#D8D6CE] bg-[#FAFAF7] p-3">
-      <div className="text-xs font-bold text-[#2A2825]">컨테이너 CBM 적용 방식</div>
+      <div className="text-xs font-bold text-[#2A2825]">{pick("컨테이너 CBM 적용 방식", "Container CBM option")}</div>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className={`flex cursor-pointer gap-2 rounded-md border p-2.5 text-xs ${mode === "fit" ? "border-blue-500 bg-blue-50" : "border-[#D8D6CE] bg-white"}`}>
           <input type="radio" name="capacity-mode" checked={mode === "fit"} onChange={() => onChange("fit")} />
           <span>
-            <strong className="block text-[#1A1917]">컨테이너 CBM 용량에 맞춤</strong>
-            <span className="mt-0.5 block text-[#7A766F]">용량이 부족하면 수량을 줄이거나 해당 SKU를 제외합니다.</span>
+            <strong className="block text-[#1A1917]">{pick("컨테이너 CBM 용량에 맞춤", "Fit to container CBM capacity")}</strong>
+            <span className="mt-0.5 block text-[#7A766F]">{pick("용량이 부족하면 수량을 줄이거나 해당 SKU를 제외합니다.", "If capacity is insufficient, quantities are reduced or the SKU is excluded.")}</span>
           </span>
         </label>
         <label className={`flex cursor-pointer gap-2 rounded-md border p-2.5 text-xs ${mode === "unlimited" ? "border-amber-500 bg-amber-50" : "border-[#D8D6CE] bg-white"}`}>
           <input type="radio" name="capacity-mode" checked={mode === "unlimited"} onChange={() => onChange("unlimited")} />
           <span>
-            <strong className="block text-[#1A1917]">전체 필요수량 계산</strong>
-            <span className="mt-0.5 block text-[#7A766F]">CBM 제한 없이 계산된 모든 SKU의 수량을 채웁니다.</span>
+            <strong className="block text-[#1A1917]">{pick("전체 필요수량 계산", "Calculate full required quantity")}</strong>
+            <span className="mt-0.5 block text-[#7A766F]">{pick("CBM 제한 없이 계산된 모든 SKU의 수량을 채웁니다.", "Fills the calculated quantities for all SKUs without a CBM limit.")}</span>
           </span>
         </label>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <MetricPreview label="계산 SKU" value={preview.skuCount.toLocaleString()} />
-        <MetricPreview label="총 수량" value={preview.totalQty.toLocaleString()} />
-        <MetricPreview label="예상 CBM" value={`${preview.totalCbm.toFixed(2)} / ${preview.capacityCbm.toFixed(2)}`} />
+        <MetricPreview label={pick("계산 SKU", "SKUs calculated")} value={preview.skuCount.toLocaleString()} />
+        <MetricPreview label={pick("총 수량", "Total quantity")} value={preview.totalQty.toLocaleString()} />
+        <MetricPreview label={pick("예상 CBM", "Estimated CBM")} value={`${preview.totalCbm.toFixed(2)} / ${preview.capacityCbm.toFixed(2)}`} />
         <MetricPreview
-          label="초과 CBM"
+          label={pick("초과 CBM", "Excess CBM")}
           value={overCapacity ? `+${preview.excessCbm.toFixed(2)}` : "0.00"}
           warning={overCapacity}
         />
       </div>
       {overCapacity ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-          컨테이너 용량을 {preview.excessCbm.toFixed(2)} CBM 초과합니다.
+          {pick(
+            `컨테이너 용량을 ${preview.excessCbm.toFixed(2)} CBM 초과합니다.`,
+            `Exceeds container capacity by ${preview.excessCbm.toFixed(2)} CBM.`,
+          )}
         </div>
       ) : null}
     </div>
@@ -1591,21 +1720,27 @@ function FixedTargetDialog({
   onOpenChange: (open: boolean) => void;
   onApply: () => void;
 }) {
+  const { pick } = useI18n();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent style={{ maxWidth: 640 }}>
         <DialogHeader>
-          <DialogTitle>고정 목표 자동 발주 계산</DialogTitle>
+          <DialogTitle>{pick("고정 목표 자동 발주 계산", "Fixed-target automatic order calculation")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="text-xs text-[#7A766F]">
-            {containerName ? `${containerName} - ` : ""}{targetDays}일 고정 목표 재고일수를 기준으로 Con. Qty를 계산합니다.
+            {containerName ? `${containerName} - ` : ""}
+            {pick(
+              `${targetDays}일 고정 목표 재고일수를 기준으로 Con. Qty를 계산합니다.`,
+              `Calculates Con. Qty using a fixed inventory target of ${targetDays} days.`,
+            )}
           </div>
           <CapacityModePanel mode={capacityMode} onChange={onCapacityModeChange} preview={preview} />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-          <Button onClick={onApply}>적용</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{pick("취소", "Cancel")}</Button>
+          <Button onClick={onApply}>{pick("적용", "Apply")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1637,13 +1772,14 @@ function Backfill3Dialog({
   onOpenChange: (open: boolean) => void;
   onApply: () => void;
 }) {
+  const { pick } = useI18n();
   const [validationMessage, setValidationMessage] = useState("");
   const sortedTiers = tiers
     .map((tier, originalIndex) => ({ ...tier, originalIndex }))
     .sort((a, b) => b.minSales - a.minSales);
 
   function handleApply() {
-    const error = validateSalesTargetTiers(tiers);
+    const error = validateSalesTargetTiers(tiers, pick);
     if (error) {
       setValidationMessage(error);
       return;
@@ -1662,23 +1798,24 @@ function Backfill3Dialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent style={{ maxWidth: 640 }}>
         <DialogHeader>
-          <DialogTitle>자동 발주 목표일수</DialogTitle>
+          <DialogTitle>{pick("자동 발주 목표일수", "Automatic order target days")}</DialogTitle>
         </DialogHeader>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}>
           <div style={{ fontSize: 12, color: "#7A766F" }}>
-            {containerName ? `${containerName} - ` : ""}일평균 판매량 구간별 목표 재고일수를 설정합니다.
+            {containerName ? `${containerName} - ` : ""}
+            {pick("일평균 판매량 구간별 목표 재고일수를 설정합니다.", "Set target inventory days by average daily sales range.")}
           </div>
           <CapacityModePanel mode={capacityMode} onChange={onCapacityModeChange} preview={preview} />
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
-            <span>판매량 구간</span>
-            <span>최소 판매량</span>
-            <span>목표일수</span>
+            <span>{pick("판매량 구간", "Sales range")}</span>
+            <span>{pick("최소 판매량", "Minimum sales")}</span>
+            <span>{pick("목표일수", "Target days")}</span>
             <span />
           </div>
           {sortedTiers.map((tier, index) => {
             const upperSales = index === 0 ? null : sortedTiers[index - 1].minSales;
-            const rangeLabel = salesRangeLabel(tier.minSales, upperSales);
+            const rangeLabel = salesRangeLabel(tier.minSales, upperSales, pick);
 
             return (
             <div key={tier.originalIndex} style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, alignItems: "center" }}>
@@ -1727,7 +1864,7 @@ function Backfill3Dialog({
                   onRemoveTier(tier.originalIndex);
                 }}
                 disabled={tiers.length <= 1}
-                title="구간 삭제"
+                title={pick("구간 삭제", "Remove range")}
                 style={{
                   height: 32,
                   border: "1px solid #D8D6CE",
@@ -1753,7 +1890,7 @@ function Backfill3Dialog({
                 onAddTier();
               }}
             >
-              구간 추가
+              {pick("구간 추가", "Add range")}
             </Button>
           </div>
           {validationMessage ? (
@@ -1773,16 +1910,19 @@ function Backfill3Dialog({
             </div>
           ) : null}
           <div style={{ fontSize: 12, color: "#7A766F" }}>
-            최소 판매량이 높은 구간부터 적용됩니다. 가장 낮은 구간은 최소 판매량을 0으로 두면 됩니다.
+            {pick(
+              "최소 판매량이 높은 구간부터 적용됩니다. 가장 낮은 구간은 최소 판매량을 0으로 두면 됩니다.",
+              "Ranges are applied from the highest minimum sales value. Set minimum sales to 0 for the lowest range.",
+            )}
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            취소
+            {pick("취소", "Cancel")}
           </Button>
           <Button onClick={handleApply}>
-            적용
+            {pick("적용", "Apply")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1926,7 +2066,15 @@ function ContainerGroupHeader(
         props.onRightClick?.(event.clientX, event.clientY);
       } : undefined}
     >
-      <div className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1">
+      <div
+        className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1"
+        onClick={(event) => {
+          props.onSelect(props.selectionId, {
+            toggle: event.ctrlKey || event.metaKey,
+            range: event.shiftKey,
+          });
+        }}
+      >
         <span
           role="button"
           tabIndex={0}
@@ -2008,7 +2156,10 @@ function ContainerGroupHeader(
               className="w-[52px] rounded border border-blue-400/50 bg-blue-900/30 px-1.5 py-1 text-[11px] font-bold text-white text-center"
             />
             <button
-              onClick={() => props.onAutoFill2?.(targetDays)}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onAutoFill2?.(targetDays);
+              }}
               disabled={!props.qtyEditable || props.autoFilling2}
               title={`Con qty 고정 목표 계산 (${targetDays}일 INV Life)`}
               aria-label={`Calculate automatic order for a fixed ${targetDays}-day inventory target`}
@@ -2017,7 +2168,10 @@ function ContainerGroupHeader(
               {props.autoFilling2 ? "..." : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
             </button>
 <button
-              onClick={props.onAutoFill3}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onAutoFill3?.();
+              }}
               disabled={!props.qtyEditable || props.autoFilling3}
               title="Con qty 세일즈 구간별 목표 계산"
               aria-label="판매량 구간별 자동 발주 계산"
@@ -2028,14 +2182,20 @@ function ContainerGroupHeader(
             {props.qtyEditable && props.dirty && (
               <>
                 <button
-                  onClick={props.onReset}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    props.onReset?.();
+                  }}
                   title="DB 원래 값으로 초기화"
                   className="rounded px-3 py-1.5 text-[15px] bg-red-500/70 hover:bg-red-500 cursor-pointer"
                 >
                   ↺
                 </button>
                 <button
-                  onClick={props.onSave}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    props.onSave?.();
+                  }}
                   disabled={props.saving}
                   title="DB에 저장"
                   className="rounded px-3 py-1.5 text-[15px] bg-green-600/70 hover:bg-green-600 disabled:opacity-40 cursor-pointer"
@@ -2144,6 +2304,8 @@ export function AgDemandPlanningGrid({
   const cellTextFormatsRef = useRef(cellTextFormats);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
+  const qtyOverridesRef = useRef(qtyOverrides);
+  const clearingSelectedQtyRef = useRef(false);
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   const [chainReadyAfterLoad, setChainReadyAfterLoad] = useState(true);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
@@ -2172,6 +2334,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const [backfill3Dialog, setBackfill3Dialog] = useState<{ container: ContainerMeta; containerIndex: number } | null>(null);
   const [backfill3Tiers, setBackfill3Tiers] = useState<SalesTargetTier[]>(DEFAULT_BACKFILL3_TIERS);
   const [backfill3CapacityMode, setBackfill3CapacityMode] = useState<CapacityMode>("fit");
+
+  useEffect(() => {
+    qtyOverridesRef.current = qtyOverrides;
+  }, [qtyOverrides]);
 
   const containers = useMemo(() => {
     const filtered = data.containers
@@ -2650,6 +2816,32 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
   }, [onAgCellSelected, onCellSelectionChange]);
 
+  const handleQtySelectionPointerDown = useCallback((rowIndex: number, column: Column) => {
+    dragCellAnchorRef.current = { rowIndex, columnId: column.getColId() };
+    dragMovedRef.current = false;
+  }, []);
+
+  const handleQtySelectionPointerEnter = useCallback((rowIndex: number, column: Column, buttons: number) => {
+    const anchor = dragCellAnchorRef.current;
+    const api = gridRef.current?.api;
+    if (!anchor || !api || (buttons & 1) !== 1) return;
+    const cells = selectedCellsBetweenPosition(api, rowIndex, column.getColId(), anchor);
+    if (!cells.length) return;
+    dragMovedRef.current = true;
+    const previous = selectedCellsRef.current;
+    const next = new Set(cells.map((cell) => `${cell.rowId}::${cell.columnId}`));
+    selectedCellsRef.current = next;
+    cellSelectionAnchorRef.current = anchor;
+    refreshChangedCells(previous, next);
+    scheduleDragSelectionNotification(cells);
+  }, [refreshChangedCells, scheduleDragSelectionNotification]);
+
+  const handleQtyEditRequest = useCallback(() => {
+    if (!dragMovedRef.current) return true;
+    dragMovedRef.current = false;
+    return false;
+  }, []);
+
   const hideColumnsFromMenu = useCallback((menuColumnKey: string) => {
     const clickedSelectionKey = menuColumnKey;
     let selectedHideKeys: Set<string> | null = null;
@@ -2799,7 +2991,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     if (!canEditPlanning) return false;
     if (!Number.isFinite(nextQty) || nextQty < 0 || !container.container_id) return false;
     const key = `${row.sku}::${container.name}`;
-    const previous = qtyOverrides.get(key);
+    const previous = qtyOverridesRef.current.get(key);
     const itemId = previous !== undefined ? previous.item_id : raw.item_id ?? undefined;
     const oldQty = previous?.inbound_qty ?? raw.inbound_qty ?? 0;
     if (nextQty === oldQty || (!itemId && nextQty === 0)) return true;
@@ -2830,7 +3022,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     }
     if (!json.success) return false;
 
-    const nextOverrides = new Map(qtyOverrides);
+    const nextOverrides = new Map(qtyOverridesRef.current);
     const oldAllocatedQty = previous?.allocated_remaining_qty ?? raw.allocated_remaining_qty ?? 0;
     const nextAllocatedQty = nextQty === 0 ? 0 : (json.allocated_qty ?? oldAllocatedQty);
     nextOverrides.set(key, {
@@ -2841,6 +3033,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       item_id: nextQty === 0 ? undefined : (json.item_id ?? itemId),
       allocated_remaining_qty: nextAllocatedQty,
     });
+    qtyOverridesRef.current = nextOverrides;
     setQtyOverrides(nextOverrides);
     setChainMap((current) => new Map(current).set(row.sku, computeContainerChain(row, containers, nextOverrides, seasonalFactors)));
 
@@ -2872,7 +3065,54 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     }
     return true;
-  }, [canEditPlanning, containers, qtyOverrides, seasonalFactors]);
+  }, [canEditPlanning, containers, seasonalFactors]);
+
+  useEffect(() => {
+    const handleSelectedQtyDelete = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!canEditPlanning || clearingSelectedQtyRef.current) return;
+
+      const api = gridRef.current?.api;
+      if (!api) return;
+      const targets: Array<{ row: DemandRow; container: ContainerMeta; raw: ContainerRowData }> = [];
+      for (const selectedKey of selectedCellsRef.current) {
+        const separator = selectedKey.indexOf("::");
+        if (separator < 0) continue;
+        const rowId = selectedKey.slice(0, separator);
+        const columnId = selectedKey.slice(separator + 2);
+        if (!columnId.endsWith("::inb_qty")) continue;
+        const containerName = columnId.slice(0, -"::inb_qty".length);
+        const container = containers.find((item) => item.name === containerName);
+        const row = api.getRowNode(rowId)?.data;
+        if (!row || !container || container.status === "baseline" || container.status === "packing_received" || !container.container_id) continue;
+        const raw = row.containers?.[container.name] ?? {
+          item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
+          allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
+          inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
+        };
+        targets.push({ row, container, raw });
+      }
+      if (!targets.length) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      clearingSelectedQtyRef.current = true;
+      void (async () => {
+        try {
+          await Promise.allSettled(
+            targets.map((item) => saveQty(item.row, item.container, item.raw, 0)),
+          );
+        } finally {
+          clearingSelectedQtyRef.current = false;
+        }
+      })();
+    };
+
+    window.addEventListener("keydown", handleSelectedQtyDelete, true);
+    return () => window.removeEventListener("keydown", handleSelectedQtyDelete, true);
+  }, [canEditPlanning, containers, saveQty]);
 
 const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
     if (!canEditPlanning || !onSkuCellNoteChange) return;
@@ -3570,7 +3810,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
               inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
             };
-            return { onSave: (qty: number) => saveQty(row, container, raw, qty) };
+            return {
+              onSave: (qty: number) => saveQty(row, container, raw, qty),
+              onSelectionPointerDown: handleQtySelectionPointerDown,
+              onSelectionPointerEnter: handleQtySelectionPointerEnter,
+              onRequestEdit: handleQtyEditRequest,
+            };
           } : undefined,
           cellClassRules: {
             "planning-user-text-color": (params) => {
@@ -3716,7 +3961,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, handleQtySelectionPointerDown, handleQtySelectionPointerEnter, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -3835,7 +4080,43 @@ autoFilling3: autoFillingContainers3.has(container.name),
 
   return (
     <>
-    <div ref={gridHostRef} className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white">
+    <div
+      ref={gridHostRef}
+      className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white"
+      onMouseDownCapture={(event) => {
+        if (event.button !== 0) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("input, textarea, select, [contenteditable='true']")) return;
+        const cell = target.closest<HTMLElement>(".ag-cell[col-id]");
+        const row = target.closest<HTMLElement>(".ag-row[row-index]");
+        const columnId = cell?.getAttribute("col-id");
+        const rowIndex = Number(row?.getAttribute("row-index"));
+        if (!columnId || !Number.isInteger(rowIndex)) return;
+        dragCellAnchorRef.current = { rowIndex, columnId };
+        dragMovedRef.current = false;
+      }}
+      onMouseOverCapture={(event) => {
+        if ((event.buttons & 1) !== 1) return;
+        const anchor = dragCellAnchorRef.current;
+        const api = gridRef.current?.api;
+        if (!anchor || !api) return;
+        const target = event.target as HTMLElement;
+        const cell = target.closest<HTMLElement>(".ag-cell[col-id]");
+        const row = target.closest<HTMLElement>(".ag-row[row-index]");
+        const columnId = cell?.getAttribute("col-id");
+        const rowIndex = Number(row?.getAttribute("row-index"));
+        if (!columnId || !Number.isInteger(rowIndex)) return;
+        const cells = selectedCellsBetweenPosition(api, rowIndex, columnId, anchor);
+        if (!cells.length) return;
+        dragMovedRef.current = true;
+        const previous = selectedCellsRef.current;
+        const next = new Set(cells.map((selectedCell) => `${selectedCell.rowId}::${selectedCell.columnId}`));
+        selectedCellsRef.current = next;
+        cellSelectionAnchorRef.current = anchor;
+        refreshChangedCells(previous, next);
+        scheduleDragSelectionNotification(cells);
+      }}
+    >
       <style>{`
         @keyframes planning-spin { to { transform: rotate(360deg); } }
         .planning-ag-grid .ag-row-selected {

@@ -29,7 +29,7 @@
     <tr><td class="label">As of</td><td>선택한 날짜를 기준으로 재고와 계획 데이터를 조회합니다. 오늘이 아닌 날짜를 선택했다면 분석 기준일을 먼저 확인하세요.</td></tr>
     <tr><td class="label">Sync</td><td>최신 원천 데이터를 불러와 판매·재고·OOS 관련 계산을 갱신합니다.</td></tr>
     <tr><td class="label">Export / Import</td><td>현재 조회 결과를 내보내거나 지원되는 운송 중 재고 파일을 가져옵니다. 가져오기 화면의 미리보기와 오류를 확인한 후 적용하세요.</td></tr>
-    <tr><td class="label">SKU 개수</td><td>환경 설정 버튼 오른쪽에 현재 필터와 숨김 조건을 통과해 그리드에 표시되는 SKU 개수가 나타납니다.</td></tr>
+    <tr><td class="label">환경 설정 / SKU 개수</td><td>글꼴·채우기 색상 아이콘과 같은 크기의 독립된 <strong>환경 설정(⚙)</strong> 버튼이 표시되고, 그 오른쪽의 별도 영역에 현재 필터와 숨김 조건을 통과한 SKU 개수가 나타납니다. 환경 설정 팝업은 컬럼 설정 팝업과 같은 위치에서 열립니다.</td></tr>
   </table>
 
   <h3 id="dp-selection">② 헤더·전체 컬럼·셀 선택</h3>
@@ -58,7 +58,7 @@
     <tr><td class="label">오름차순 정렬 (A→Z)</td><td>문자는 A→Z, 숫자와 날짜는 작은 값→큰 값 순서로 정렬합니다.</td></tr>
     <tr><td class="label">내림차순 정렬 (Z→A)</td><td>문자는 Z→A, 숫자와 날짜는 큰 값→작은 값 순서로 정렬합니다.</td></tr>
     <tr><td class="label">필터</td><td><strong>값별 필터</strong> 또는 <strong>조건별 필터</strong>를 설정합니다. 선택 내용은 <span class="btn-label">적용</span>을 눌러야 반영되고, <span class="btn-label">취소</span>하면 기존 필터가 유지됩니다.</td></tr>
-    <tr><td class="label">열 숨기기</td><td>해당 컬럼을 숨깁니다. 오른쪽 클릭한 컬럼이 현재 다중 선택에 포함되어 있으면 선택된 헤더·전체 컬럼·셀에 해당하는 모든 컬럼을 한 번에 숨깁니다.</td></tr>
+    <tr><td class="label">열 숨기기</td><td>해당 컬럼을 숨깁니다. 오른쪽 클릭한 컬럼이 현재 다중 선택에 포함되어 있으면 선택된 헤더·전체 컬럼·셀에 해당하는 모든 컬럼을 한 번에 숨깁니다. 컨테이너 하위 컬럼은 <strong>선택한 컨테이너에만</strong> 적용되며 다른 컨테이너의 같은 이름 컬럼은 유지됩니다.</td></tr>
   </table>
 
   <h4 style="margin-top:18px">필터 사용 예</h4>
@@ -67,21 +67,22 @@
     <li><strong>조건별 필터:</strong> 비어 있음/비어 있지 않음, 텍스트 포함·미포함·시작·끝·일치, 숫자 초과·이상·미만·이하·같음·다름·범위 내·범위 밖 조건을 사용할 수 있습니다.</li>
     <li><strong>필터 해제:</strong> 값별 필터에서 모두 선택하거나 조건을 <code>없음</code>으로 바꾼 뒤 적용합니다.</li>
   </ul>
-  <div class="callout tip"><span class="callout-icon">↩️</span><div><b>숨긴 컬럼 복원:</b> 숨긴 위치와 맞닿은 실제 헤더에 복원 화살표가 표시됩니다. 화살표에 마우스를 올리면 숨겨진 컬럼 이름을 확인할 수 있고, 클릭하면 연속으로 숨겨진 컬럼 묶음이 복원됩니다. 컬럼 설정의 <strong>컬럼 표시</strong>에서도 다시 켤 수 있습니다.</div></div>
+  <div class="callout tip"><span class="callout-icon">↩️</span><div><b>숨긴 컬럼 복원:</b> 숨긴 위치와 맞닿은 실제 헤더에 복원 화살표가 표시됩니다. 화살표에 마우스를 올리면 숨겨진 컬럼 이름을 확인할 수 있고, 클릭하면 연속으로 숨겨진 컬럼 묶음이 복원됩니다. 컨테이너별로 숨김 상태가 달라도 컬럼 설정의 <strong>컨테이너 표시 › 모두 표시</strong>를 누르고 <strong>적용</strong>하면 숨긴 컨테이너와 모든 컨테이너 하위 컬럼을 한 번에 복원합니다.</div></div>
 
   <h3 id="dp-column-layout">④ 컬럼 이름·순서·너비</h3>
   <table class="feat-table">
     <tr><th style="width:190px">작업</th><th>방법</th><th>저장</th></tr>
     <tr><td class="label">헤더 이름 변경</td><td>일반 헤더 또는 상단 그룹/컨테이너 헤더를 <strong>더블클릭</strong>하고 큰 입력창에 이름을 입력합니다. Enter는 저장, Esc는 취소입니다. 빈 이름으로 저장하면 기본 이름으로 돌아갑니다.</td><td>사용자별 저장</td></tr>
-    <tr><td class="label">컬럼 순서 변경</td><td>개별 헤더를 원하는 위치로 드래그합니다. 이동 후 그리드를 클릭해도 화면이 다시 깜박이지 않고 현재 순서를 유지합니다.</td><td>사용자별 저장</td></tr>
+    <tr><td class="label">컬럼 순서 변경</td><td>일반 컬럼은 개별 헤더를 원하는 위치로 드래그합니다. <strong>컨테이너 이름이 있는 그룹 헤더</strong>를 드래그하면 Con. Qty, Rem. Qty, Open Orders, Avail Qty, Est. Sales, Back Order, Carry over, Inv. Life, EST. SOD, Plan SOD, CBM이 한 묶음으로 이동합니다.</td><td>사용자별 저장</td></tr>
     <tr><td class="label">컬럼 너비 변경</td><td>헤더 오른쪽 경계를 드래그합니다. 헤더·데이터 셀·요약/합계 영역이 같은 너비로 함께 변경됩니다.</td><td>모든 컬럼을 사용자별 저장</td></tr>
     <tr><td class="label">컬럼 고정</td><td><span class="btn-label">⊞ 컬럼 ▾</span>의 <strong>컬럼 고정</strong>에서 고정 끝점을 선택합니다. 선택한 컬럼까지 왼쪽에 고정됩니다.</td><td>사용자별 저장</td></tr>
     <tr><td class="label">너비 초기화</td><td>컬럼 설정의 <span class="btn-label">너비 초기화</span>를 누르고 확인 창에서 승인합니다. Next ETA, EST. SOD, Plan SOD는 기본 글꼴 10px과 날짜가 보이도록 지정된 기본 너비로 돌아갑니다.</td><td>기본값으로 갱신</td></tr>
   </table>
+  <div class="callout tip"><span class="callout-icon">↔️</span><div><b>컨테이너 그룹 정렬:</b> 하위 컬럼 순서를 바꾸면 컨테이너 헤더 위의 합계도 같은 순서로 이동합니다. 컨테이너 그룹의 굵은 왼쪽 경계선은 CBM 위치에 고정되지 않고 현재 가장 왼쪽에 놓인 하위 컬럼으로 자동 이동합니다.</div></div>
   <div class="callout tip"><span class="callout-icon">🔗</span><div><b>컨테이너 헤더:</b> 컨테이너 이름을 더블클릭하면 사용자 지정 이름을 편집하고, 이름 옆의 외부 링크 아이콘을 클릭하면 해당 컨테이너 계획 상세 화면을 새 탭에서 엽니다.</div></div>
 
   <h3 id="dp-formatting">⑤ 배경색·글꼴 서식</h3>
-  <p>환경 설정 버튼 오른쪽의 <strong>글꼴 서식</strong> 아이콘과 <strong>채우기 색상</strong> 아이콘은 현재 선택된 대상에 적용됩니다. 먼저 대상이 헤더인지, 전체 컬럼인지, 셀인지 확인하세요.</p>
+  <p>컬럼 설정 버튼 오른쪽, 환경 설정 버튼 왼쪽의 <strong>글꼴 서식</strong> 아이콘과 <strong>채우기 색상</strong> 아이콘은 현재 선택된 대상에 적용됩니다. 먼저 대상이 헤더인지, 전체 컬럼인지, 셀인지 확인하세요.</p>
   <table class="feat-table">
     <tr><th style="width:180px">현재 선택</th><th>채우기 색상</th><th>글꼴 크기·굵기·색상</th></tr>
     <tr><td class="label">헤더</td><td>선택한 헤더 배경만 변경</td><td>선택한 헤더 텍스트에 적용</td></tr>
@@ -98,25 +99,30 @@
 
   <h3 id="dp-column-settings">⑥ 컬럼 설정과 초기화</h3>
   <p><span class="btn-label">⊞ 컬럼 ▾</span>에는 빠른 설정, 옵션, SKU 필터, 컬럼 고정, 컬럼 표시, 컨테이너 표시와 초기화 도구가 있습니다.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/dp-columns-panel.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⊞</div><p>컬럼 설정 화면</p></div>'" alt="컬럼 설정 화면">
+    <div class="screenshot-caption">▲ 컬럼 설정 — 레이아웃, 색상 및 서식, 컬럼 표시와 컨테이너 표시를 한 화면에서 관리합니다.</div>
+  </div>
   <table class="feat-table">
     <tr><th style="width:190px">영역</th><th>설명</th></tr>
     <tr><td class="label">빠른 설정</td><td><strong>전체 / 핵심 / 간단히</strong> 중 하나를 선택하거나 컨테이너 하위 컬럼 전체를 켜고 끕니다.</td></tr>
     <tr><td class="label">옵션</td><td><strong>판매 0인 SKU 표시</strong>를 한 줄 옵션으로 켜거나 끕니다.</td></tr>
     <tr><td class="label">SKU 필터</td><td>현재 카테고리에 존재하는 SKU 파트 값을 복수 선택합니다. 서로 다른 필터 항목은 AND 조건으로 결합됩니다.</td></tr>
     <tr><td class="label">컬럼 표시</td><td>그룹 체크박스로 한 묶음을 제어하거나 그룹을 펼쳐 개별 컬럼을 선택합니다. <code>5/6</code>은 전체 6개 중 5개 표시를 뜻합니다.</td></tr>
-    <tr><td class="label">컨테이너 표시</td><td>Base와 Shipped/Final/Draft 상태 그룹 또는 개별 컨테이너를 표시·숨김 처리합니다.</td></tr>
+    <tr><td class="label">컨테이너 표시</td><td>Base와 Shipped/Final/Draft 상태 그룹 또는 개별 컨테이너를 표시·숨김 처리합니다. <strong>모두 표시</strong>는 숨긴 컨테이너와 컨테이너별 숨김 하위 컬럼을 함께 복원합니다.</td></tr>
   </table>
   <div class="callout info"><span class="callout-icon">✅</span><div><b>미리보기 후 확정:</b> 팝업에서 체크하거나 값을 바꾸는 동안에는 변경 대기 개수만 표시됩니다. 실제 그리드에 반영하려면 하단의 <span class="btn-label">적용</span>을 누르세요. <span class="btn-label">취소</span>, X, 바깥 영역 클릭으로 닫으면 초안은 폐기되고 기존 설정이 유지됩니다.</div></div>
 
   <h4 style="margin-top:18px">초기화 버튼</h4>
-  <p>모든 초기화는 실제 적용 전에 확인 창을 표시합니다. 메시지의 범위를 읽고 승인한 경우에만 삭제됩니다.</p>
+  <p>초기화 도구는 <strong>컬럼 레이아웃</strong>, <strong>색상 및 서식</strong>, <strong>모든 컬럼 설정 초기화</strong>로 구분됩니다. 실행 전 확인 창에서 범위를 확인하세요.</p>
   <table class="feat-table">
     <tr><th style="width:210px">버튼</th><th>초기화 범위</th></tr>
-    <tr><td class="label">너비 초기화</td><td>사용자가 조정한 모든 컬럼 너비</td></tr>
-    <tr><td class="label">선택 초기화 / 전체 초기화</td><td>선택한 컬럼 또는 모든 컬럼의 배경색</td></tr>
-    <tr><td class="label">선택한 셀 초기화 / 모든 셀 초기화</td><td>개별 셀에 지정한 배경색</td></tr>
-    <tr><td class="label">선택한 텍스트 색상 초기화 / 모든 텍스트 색상 초기화</td><td>선택 셀 또는 모든 셀의 사용자 지정 글자색</td></tr>
+    <tr><td class="label">컬럼 너비 초기화 / 컬럼 순서 초기화</td><td>사용자가 조정한 모든 컬럼 너비 또는 컬럼 배치 순서</td></tr>
+    <tr><td class="label">헤더 색상 — 선택 / 전체 초기화</td><td>선택한 헤더 또는 모든 헤더의 배경색</td></tr>
+    <tr><td class="label">셀 색상 — 선택 / 모든 셀 초기화</td><td>선택한 셀 또는 개별 셀에 지정한 모든 배경색</td></tr>
+    <tr><td class="label">텍스트 색상 — 선택 / 전체 초기화</td><td>선택 셀 또는 모든 셀의 사용자 지정 글자색</td></tr>
     <tr><td class="label">모든 텍스트 서식 초기화</td><td>사용자가 지정한 글꼴 크기·굵기·글자색을 모두 기본값으로 복원</td></tr>
+    <tr><td class="label">모든 컬럼 설정 초기화</td><td>컬럼 너비·순서·헤더/셀 색상·텍스트 서식을 한 번에 기본값으로 복원합니다. 확인 후 즉시 적용되고 컬럼 설정 팝업이 자동으로 닫힙니다.</td></tr>
   </table>
 
   <h3 id="dp-note-editing">⑦ Note와 셀 편집</h3>
@@ -125,7 +131,7 @@
   <table class="feat-table">
     <tr><th style="width:180px">동작</th><th>방법</th></tr>
     <tr><td class="label">입력</td><td>Note 셀을 편집하고 내용을 입력합니다. 여러 줄을 입력할 때는 <strong>Shift + Enter</strong>, 저장할 때는 <strong>Enter</strong> 또는 셀 바깥 클릭을 사용합니다.</td></tr>
-    <tr><td class="label">저장</td><td>SKU와 현재 사용자 기준으로 저장되어 다음 방문에도 표시됩니다. 저장 중에는 페이지 이동이나 새로고침을 피하세요.</td></tr>
+    <tr><td class="label">저장</td><td>SKU 기준으로 저장되는 <strong>전체 공유 메모</strong>입니다. 다른 사용자도 같은 내용을 보고, 다른 사용자가 수정하면 그 내용으로 덮어써집니다. 저장 중에는 페이지 이동이나 새로고침을 피하세요.</td></tr>
     <tr><td class="label">필터</td><td>Note 헤더 오른쪽 클릭 → 필터 → 값별 필터 또는 텍스트 포함 조건을 사용합니다.</td></tr>
     <tr><td class="label">서식</td><td>Note도 다른 일반 셀처럼 글꼴 크기·굵기·글자색·배경색을 지원합니다.</td></tr>
   </table>
@@ -134,7 +140,7 @@
   <table class="feat-table">
     <tr><th style="width:180px">값</th><th>편집 시 동작</th></tr>
     <tr><td class="label">CBM</td><td>셀의 큰 입력창에서 단위 CBM을 수정합니다. 저장되면 관련 컨테이너 CBM 계산에도 반영됩니다.</td></tr>
-    <tr><td class="label">Con. Qty</td><td>컨테이너 발주 수량 입력창에서 값을 입력합니다. 아무 값도 입력하지 않고 바깥으로 이동하거나 Enter를 누르면 <strong>0 입력과 동일</strong>하게 처리됩니다. 변경 후 연속 재고·품절예상일 계산이 갱신됩니다.</td></tr>
+    <tr><td class="label">Con. Qty</td><td>컨테이너 발주 수량 입력창에서 값을 입력합니다. 아무 값도 입력하지 않고 바깥으로 이동하거나 Enter를 누르면 <strong>0 입력과 동일</strong>하게 처리됩니다. <strong>Enter</strong>는 저장 후 같은 컬럼의 다음 행을 바로 편집하며, <strong>↑/↓</strong>는 이전·다음 행, <strong>←/→</strong>는 같은 행의 이전·다음 편집 가능한 Con. Qty 컬럼으로 이동합니다. 여러 Con. Qty 셀을 드래그해 선택한 뒤 <strong>Delete 또는 Backspace</strong>를 누르면 선택한 수량이 0으로 저장됩니다. 변경 후 연속 재고·품절예상일 계산이 갱신됩니다.</td></tr>
     <tr><td class="label">ETA</td><td>권한이 있는 사용자는 컨테이너 헤더의 ETA를 수정할 수 있습니다. ETA 변경은 예상 판매량·Inv. Life·EST. SOD·Plan SOD에 영향을 줄 수 있습니다.</td></tr>
   </table>
   <div class="callout warn"><span class="callout-icon">🔒</span><div>편집 권한이 없는 사용자는 데이터를 조회·정렬·필터할 수 있지만 CBM, Note, ETA, Con. Qty 및 저장 작업은 제한될 수 있습니다.</div></div>
@@ -166,8 +172,8 @@
     <tr><th style="width:210px">사용자별 유지되는 항목</th><th>설명</th></tr>
     <tr><td class="label">컬럼 구성</td><td>표시/숨김, 컨테이너 표시, 고정 끝점, 순서, 너비</td></tr>
     <tr><td class="label">이름과 서식</td><td>사용자 지정 헤더 이름, 헤더/컬럼/셀 배경색, 글꼴 크기·굵기·글자색</td></tr>
-    <tr><td class="label">업무 메모</td><td>Note 내용은 SKU와 사용자 기준으로 저장</td></tr>
   </table>
+  <div class="callout warn"><span class="callout-icon">👥</span><div><b>업무 메모(Note)는 사용자별이 아닙니다:</b> SKU 기준으로 저장되는 전체 공유 메모라, 모든 사용자가 같은 내용을 보고 마지막으로 수정한 내용이 남습니다.</div></div>
   <ul>
     <li><strong>설정이 반영되지 않음:</strong> 컬럼 설정 팝업 하단의 <span class="btn-label">적용</span>을 눌렀는지 확인합니다.</li>
     <li><strong>정렬되지 않음:</strong> 헤더 일반 클릭은 선택입니다. 오른쪽 클릭 메뉴에서 정렬을 선택합니다.</li>
@@ -177,7 +183,11 @@
   </ul>
 
   <h3 id="dp-planning-settings">⑪ Planning Settings</h3>
-  <p>상단의 환경 설정 버튼에서는 시즌 지수, 판매 기간별 가중치와 OOS 손실수요 마켓 비중을 조정합니다. 값을 편집하는 동안에는 초안이며, <span class="btn-label">적용 및 동기화</span>를 눌러야 저장과 재계산이 실행됩니다.</p>
+  <p>상단의 독립된 환경 설정(⚙) 버튼에서는 시즌 지수, 판매 기간별 가중치와 OOS 손실수요 마켓 비중을 조정합니다. 팝업은 컬럼 설정과 같은 위치에서 열립니다. 값을 편집하는 동안에는 초안이며, <span class="btn-label">적용 및 동기화</span>를 눌러야 저장과 재계산이 실행됩니다.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/dp-seasonal-factors.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⚙</div><p>환경 설정 화면</p></div>'" alt="환경 설정 화면">
+    <div class="screenshot-caption">▲ 환경 설정 — 컬럼 설정 버튼과 같은 위치에서 열리며 시즌 지수와 판매·OOS 가중치를 관리합니다.</div>
+  </div>
   <table class="feat-table">
     <tr><th style="width:210px">설정</th><th>용도</th></tr>
     <tr><td class="label">시즌 지수</td><td>월별 판매 배수를 설정해 ETA 월의 예상 판매량과 재고 소진 계산에 반영합니다.</td></tr>
