@@ -2,9 +2,12 @@
  * Code Guide:
  * /planning/action-list — what to order today.
  *
- * Distinct from /planning/demand-forecast, which reports on how the model is
+ * Distinct from /planning/forecast-validation, which reports on how the model is
  * performing. This page joins that forecast to stock on hand, preorder backlog
  * and confirmed inbound, and ranks SKUs by what needs attention.
+ *
+ * (It was previously distinguished from /planning/demand-forecast, which covered
+ * both jobs against the legacy pipeline and was deleted in August 2026.)
  *
  * All figures come from the FastAPI planning endpoints, which read the same
  * Python module the forecasting repo's own dashboard renders, so the two cannot

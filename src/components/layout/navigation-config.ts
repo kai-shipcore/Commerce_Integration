@@ -115,31 +115,18 @@ export const navigationItems: NavigationItem[] = [
     group: "Planning",
     hideable: true,
   },
-  {
-    // Retired from the menu (August 2026), superseded by Action List and
-    // Forecast Validation.
-    //
-    // It reported on the legacy statsforecast pipeline, which reads the fc_*
-    // tables, while the two screens that replaced it report on the LightGBM
-    // track and read the ml_* tables. Both were reachable from the same menu
-    // group under names that all read as "the forecast", and the same SKU
-    // showed a different number depending on which one you opened, with
-    // nothing on either screen saying why. That is the failure mode this
-    // removal is about: not that the old page was bad, but that having two
-    // answers in one menu makes neither trustworthy.
-    //
-    // `hidden` rather than deleted. The route and its components still exist
-    // and still work if visited directly; this only takes it out of the
-    // sidebar. Deleting them is the follow-up once the new screens have run a
-    // few weeks without anyone reaching for this one.
-    id: "demand-forecast",
-    name: "Demand Forecast",
-    href: "/planning/demand-forecast",
-    icon: BarChart3,
-    group: "Planning",
-    hideable: true,
-    hidden: true,
-  },
+  // The "demand-forecast" entry was here until August 2026, hidden from the menu
+  // first and deleted with its route and components afterwards. It reported on the
+  // legacy statsforecast pipeline, which reads the fc_* tables, while the two
+  // screens that replaced it report on the LightGBM track and read the ml_* tables.
+  // Both sat in this menu group under names that all read as "the forecast", and
+  // the same SKU showed a different number depending on which you opened, with
+  // nothing on either screen saying why. Having two answers in one menu makes
+  // neither trustworthy, which is what the removal was about.
+  //
+  // Replaced by Action List and Forecast Validation. `menuVisibility` may still
+  // carry a "demand-forecast" key for existing users; an unknown id is ignored, so
+  // no migration is needed.
   {
     id: "oos-impact",
     name: "OOS Impact",

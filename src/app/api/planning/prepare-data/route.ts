@@ -7,10 +7,10 @@
  * to read. On a machine with credentials that is repairable without anyone
  * opening a terminal, which is what this is for.
  *
- * Deliberately not the same upstream as /api/forecast/run. That one runs the
- * legacy statsforecast pipeline, which writes to shipcore.fc_forward_forecasts
- * and leaves the ML artifacts alone; using it here would regenerate the SKU
- * profiles and move segmentation underneath an unchanged ML forecast.
+ * A second route at /api/forecast/run used to run the legacy statsforecast
+ * pipeline instead, writing to shipcore.fc_forward_forecasts and leaving the ML
+ * artifacts alone. It was deleted in August 2026 along with the pages that read
+ * those tables.
  *
  * Returns a job_id. The client polls /api/forecast/status, which is the same
  * machinery the Run Forecast panel already uses, so this adds an endpoint

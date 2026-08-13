@@ -3,18 +3,16 @@
  * POST /api/planning/run-forecast — refresh the data and produce a new ML
  * forecast, on demand.
  *
- * Deliberately not the same upstream as /api/forecast/run. That one runs the
- * legacy statsforecast pipeline: it cross-validates a model menu per SKU and
- * writes shipcore.fc_forward_forecasts, which SKU Planning reads and the two
- * ML screens do not. Using it here would spend most of its runtime on work
- * neither the Action List nor Forecast Validation can see, and would move the
- * SKU profiles underneath an unchanged ML forecast.
+ * There used to be a second, similar route at /api/forecast/run, which ran the
+ * legacy statsforecast pipeline: it cross-validated a model menu per SKU and
+ * wrote shipcore.fc_forward_forecasts, which no screen reads any more. It was
+ * deleted in August 2026 with the pages it served. This is now the only
+ * on-demand forecast trigger, and it runs the ML pipeline.
  *
- * Returns a job_id. Polling and cancellation go through the existing
- * /api/forecast/status/[jobId] and /api/forecast/cancel/[jobId] routes, which
- * proxy generic job endpoints that read the jobs table by id and know nothing
- * about which pipeline produced the job. So this adds an endpoint rather than a
- * mechanism, the same way prepare-data did.
+ * Returns a job_id. Polling goes through /api/forecast/status/[jobId], which
+ * proxies a generic job endpoint that reads the jobs table by id and knows
+ * nothing about which pipeline produced the job. That route survived the
+ * deletion for exactly that reason: it is job machinery, not statsforecast.
  *
  * The horizon is forwarded rather than defaulted here. The floor lives upstream
  * (ge=13 in the endpoint signature) because the reason for it is upstream: each
