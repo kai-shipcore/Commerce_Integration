@@ -2117,10 +2117,12 @@ export function AgDemandPlanningGrid({
   gradientSC = [],
   hiddenContainers = new Set<string>(),
   hiddenBases = new Set<string>(),
+  hiddenContainerColumns = new Set<string>(),
   salesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
   onHideColumn,
   onHideColumns,
   onHideContainer,
+  onToggleContainerColumns,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -2649,29 +2651,42 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, [onAgCellSelected, onCellSelectionChange]);
 
   const hideColumnsFromMenu = useCallback((menuColumnKey: string) => {
-    const clickedHideKey = hideKeyForColumnMenuKey(menuColumnKey);
+    const clickedSelectionKey = menuColumnKey;
     let selectedHideKeys: Set<string> | null = null;
 
-    if (selectedColumnIdsRef.current.has(clickedHideKey)) {
+    if (selectedColumnIdsRef.current.has(clickedSelectionKey)) {
       selectedHideKeys = new Set(selectedColumnIdsRef.current);
-    } else if (selectedFullColumnIdsRef.current.has(clickedHideKey)) {
+    } else if (selectedFullColumnIdsRef.current.has(clickedSelectionKey)) {
       selectedHideKeys = new Set(selectedFullColumnIdsRef.current);
     } else {
       const cellColumnKeys = new Set<string>();
       for (const cellKey of selectedCellsRef.current) {
         const separator = cellKey.indexOf("::");
         if (separator < 0) continue;
-        cellColumnKeys.add(hideKeyForColumnMenuKey(cellKey.slice(separator + 2)));
+        cellColumnKeys.add(cellKey.slice(separator + 2));
       }
-      if (cellColumnKeys.has(clickedHideKey)) selectedHideKeys = cellColumnKeys;
+      if (cellColumnKeys.has(clickedSelectionKey)) selectedHideKeys = cellColumnKeys;
     }
 
-    const hideKeys = [...new Set([...(selectedHideKeys ?? new Set([clickedHideKey]))].map(hideKeyForColumnMenuKey))]
+    const requestedKeys = [...(selectedHideKeys ?? new Set([clickedSelectionKey]))]
+      .filter((columnId) => !columnId.startsWith("container:"));
+    const requestedPhysicalKeys = requestedKeys.filter((columnId) => columnId.includes("::"));
+    const physicalKeys = requestedPhysicalKeys.filter((columnId) => {
+      const column = gridRef.current?.api.getColumn(columnId);
+      const displayedSiblings = column?.getParent()?.getDisplayedLeafColumns() ?? [];
+      const selectedSiblingCount = displayedSiblings.filter((sibling) => requestedPhysicalKeys.includes(sibling.getColId())).length;
+      // Keep one visible child so the container header and its restore arrow
+      // always have a real column to anchor to.
+      if (selectedSiblingCount < displayedSiblings.length) return true;
+      return column !== displayedSiblings.at(-1);
+    });
+    const hideKeys = [...new Set(requestedKeys.filter((columnId) => !columnId.includes("::")).map(hideKeyForColumnMenuKey))]
       .filter((columnId) => !columnId.startsWith("container:") && columnVis[columnId] !== false);
-    if (!hideKeys.length) return;
+    if (!hideKeys.length && !physicalKeys.length) return;
 
     if (onHideColumns) onHideColumns(hideKeys);
     else for (const columnId of hideKeys) onHideColumn?.(columnId);
+    if (physicalKeys.length) onToggleContainerColumns?.(physicalKeys);
 
     selectedCellsRef.current = new Set();
     selectedColumnIdsRef.current = new Set();
@@ -2681,7 +2696,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     lastFullColumnSelectionRef.current = null;
     notifySelectionChanged();
     startTransition(() => onCellSelectionChange?.([]));
-  }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns]);
+  }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns, onToggleContainerColumns]);
 
   const hideGroupColumns = useCallback((columnIds: string[]) => {
     const visibleColumnIds = columnIds.filter((columnId) => columnVis[columnId] !== false);
@@ -3441,6 +3456,39 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         if (container.status === "baseline" && hiddenBases.has("Base")) continue;
         const baseline = container.status === "baseline";
         const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
+        const globallyVisibleSubColumns = conCandidates.filter((column) => columnVis[`con:${column.id}`] !== false);
+        const containerHiddenRuns: { hiddenIds: string[]; hiddenLabels: string[]; startIndex: number }[] = [];
+        let pendingHiddenColumns: typeof globallyVisibleSubColumns = [];
+        let hiddenRunStartIndex = -1;
+        const flushContainerHiddenRun = () => {
+          if (!pendingHiddenColumns.length) return;
+          containerHiddenRuns.push({
+            hiddenIds: pendingHiddenColumns.map((column) => column.id),
+            hiddenLabels: pendingHiddenColumns.map((column) => column.label.replace("\n", " ")),
+            startIndex: hiddenRunStartIndex,
+          });
+          pendingHiddenColumns = [];
+        };
+        globallyVisibleSubColumns.forEach((column, index) => {
+          if (hiddenContainerColumns.has(`${container.name}::${column.id}`)) {
+            if (!pendingHiddenColumns.length) hiddenRunStartIndex = index;
+            pendingHiddenColumns.push(column);
+          } else {
+            flushContainerHiddenRun();
+          }
+        });
+        flushContainerHiddenRun();
+        const containerRestoreMarkers = { left: new Map<string, HideGapRestoreInfo>(), right: new Map<string, HideGapRestoreInfo>() };
+        for (const run of containerHiddenRuns) {
+          const onRestore = () => onToggleContainerColumns?.(run.hiddenIds.map((id) => `${container.name}::${id}`));
+          const afterId = globallyVisibleSubColumns[run.startIndex + run.hiddenIds.length]?.id;
+          if (afterId) {
+            containerRestoreMarkers.left.set(afterId, { hiddenLabels: run.hiddenLabels, onRestore });
+            continue;
+          }
+          const beforeId = globallyVisibleSubColumns[run.startIndex - 1]?.id;
+          if (beforeId) containerRestoreMarkers.right.set(beforeId, { hiddenLabels: run.hiddenLabels, onRestore });
+        }
 
         const buildRealSubColDef = (column: (typeof conCandidates)[number]): AgColDef<DemandRow> => {
           const physicalColumnId = `${container.name}::${column.id}`;
@@ -3476,8 +3524,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               key: `${container.name}::${column.id}`,
               label: `${container.name} · ${column.label.replace("\n", " ")}`,
             }),
-            restoreMarkerLeft: conRestoreMarkers.left.get(column.id),
-            restoreMarkerRight: conRestoreMarkers.right.get(column.id),
+            restoreMarkerLeft: containerRestoreMarkers.left.get(column.id) ?? conRestoreMarkers.left.get(column.id),
+            restoreMarkerRight: containerRestoreMarkers.right.get(column.id) ?? conRestoreMarkers.right.get(column.id),
           },
           sortable: false,
           width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
@@ -3562,7 +3610,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         });
         };
 
-        const visibleSubColumns = conCandidates.filter((column) => columnVis[`con:${column.id}`] !== false);
+        const visibleSubColumns = globallyVisibleSubColumns.filter(
+          (column) => !hiddenContainerColumns.has(`${container.name}::${column.id}`),
+        );
         const children = visibleSubColumns.map((column) => buildRealSubColDef(column));
         const totalColumns: ContainerTotalColumn[] = visibleSubColumns.map((column) => ({
           id: column.id,
@@ -3581,7 +3631,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             return [
               (columnTextFormatsRef.current[physicalColumnId]?.header?.color
                 ?? columnTextFormatsRef.current[`con:${realId}`]?.header?.color) ? "planning-user-header-text-color" : "",
-              conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
+              containerRestoreMarkers.left.has(realId) || containerRestoreMarkers.right.has(realId)
+                || conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
               displayedColumns[0] === params.column ? "container-column-start" : "",
               displayedColumns.at(-1) === params.column ? "container-column-end" : "",
             ].filter(Boolean).join(" ");
@@ -3665,7 +3716,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, hiddenBases, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;

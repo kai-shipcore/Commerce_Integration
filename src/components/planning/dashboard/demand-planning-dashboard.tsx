@@ -466,6 +466,7 @@ type ColumnSettingsDraft = {
   skuPartFilters: SkuPartFilters;
   hiddenContainers: Set<string>;
   hiddenBases: Set<string>;
+  hiddenContainerColumns: Set<string>;
 };
 
 const BASE_COLORABLE_COLUMNS = [
@@ -827,6 +828,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [hiddenContainers, setHiddenContainers] = useState<Set<string>>(new Set());
   const [hiddenBases, setHiddenBases] = useState<Set<string>>(new Set());
+  const [hiddenContainerColumns, setHiddenContainerColumns] = useState<Set<string>>(new Set());
   const [openContainerStatusGroups, setOpenContainerStatusGroups] = useState<Record<string, boolean>>({
     packing_received: true,
     shipped: true,
@@ -1076,6 +1078,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           if (Array.isArray(saved.hiddenBases)) {
             setHiddenBases(new Set(saved.hiddenBases.filter((name): name is string => typeof name === "string")));
           }
+          if (Array.isArray(saved.hiddenContainerColumns)) {
+            setHiddenContainerColumns(new Set(saved.hiddenContainerColumns.filter((id): id is string => typeof id === "string")));
+          } else {
+            setHiddenContainerColumns(new Set());
+          }
+        } else {
+          setHiddenContainerColumns(new Set());
         }
 
         // Seasonal factors
@@ -1148,6 +1157,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [CONTAINER_VISIBILITY_STORAGE_KEY]: {
         hiddenContainers: Array.from(hiddenContainers).sort(),
         hiddenBases: Array.from(hiddenBases).sort(),
+        hiddenContainerColumns: Array.from(hiddenContainerColumns).sort(),
       },
       [SEASONAL_FACTORS_STORAGE_KEY]: seasonalFactors,
       [SALES_WINDOW_WEIGHTS_STORAGE_KEY]: salesWindowWeights,
@@ -1155,7 +1165,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnOrder, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnOrder, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -1652,6 +1662,21 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     else setHiddenContainers(update);
   }, []);
 
+  const handleToggleContainerColumns = useCallback((columnIds: string[]) => {
+    setHiddenContainerColumns((current) => {
+      const next = new Set(current);
+      for (const columnId of columnIds) {
+        if (next.has(columnId)) next.delete(columnId);
+        else next.add(columnId);
+      }
+      return next;
+    });
+    setSelectedColorColumns([]);
+    setSelectedFullColumnIds([]);
+    setSelectedAgCell(null);
+    setSelectedAgCells([]);
+  }, []);
+
   const hiddenColumnCount = COLUMN_VISIBILITY_ITEMS.filter((item) => columnVis[item.id] === false).length;
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1704,11 +1729,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         skuPartFilters: cloneSkuPartFilters(skuPartFilters),
         hiddenContainers: new Set(hiddenContainers),
         hiddenBases: new Set(hiddenBases),
+        hiddenContainerColumns: new Set(hiddenContainerColumns),
       });
     } else {
       setColumnSettingsDraft(null);
     }
-  }, [columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, showZeroSales, skuPartFilters]);
+  }, [columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, hiddenContainerColumns, showZeroSales, skuPartFilters]);
 
   const applyColumnSettingsDraft = useCallback(() => {
     if (!columnSettingsDraft) return;
@@ -1720,6 +1746,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setSkuPartFilters(cloneSkuPartFilters(columnSettingsDraft.skuPartFilters));
     setHiddenContainers(new Set(columnSettingsDraft.hiddenContainers));
     setHiddenBases(new Set(columnSettingsDraft.hiddenBases));
+    setHiddenContainerColumns(new Set(columnSettingsDraft.hiddenContainerColumns));
     setIsColumnSettingsOpen(false);
     setColumnSettingsDraft(null);
     setOpenSkuFilterKey(null);
@@ -1797,6 +1824,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const draftSkuPartFilters = columnSettingsDraft?.skuPartFilters ?? skuPartFilters;
   const draftHiddenContainers = columnSettingsDraft?.hiddenContainers ?? hiddenContainers;
   const draftHiddenBases = columnSettingsDraft?.hiddenBases ?? hiddenBases;
+  const draftHiddenContainerColumns = columnSettingsDraft?.hiddenContainerColumns ?? hiddenContainerColumns;
   const draftActiveSkuPartFilters = useMemo(() => {
     const next = { ...EMPTY_SKU_PART_FILTERS };
     activeSkuFilterKeys.forEach((key) => { next[key] = draftSkuPartFilters[key]; });
@@ -1831,8 +1859,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const draftBases = Array.from(columnSettingsDraft.hiddenBases).sort().join("\u0000");
     const appliedBases = Array.from(hiddenBases).sort().join("\u0000");
     if (draftBases !== appliedBases) count += 1;
+    const draftContainerColumns = Array.from(columnSettingsDraft.hiddenContainerColumns).sort().join("\u0000");
+    const appliedContainerColumns = Array.from(hiddenContainerColumns).sort().join("\u0000");
+    if (draftContainerColumns !== appliedContainerColumns) count += 1;
     return count;
-  }, [columnSettingsDraft, columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, showZeroSales, skuPartFilters]);
+  }, [columnSettingsDraft, columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, hiddenContainerColumns, showZeroSales, skuPartFilters]);
 
   const handleAgGridExportReady = useCallback((exporter: (() => Promise<void>) | null) => {
     agGridExportRef.current = exporter;
@@ -2693,10 +2724,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           <div style={SETTINGS_SECTION_TITLE_STYLE}>
                             {pick("컨테이너 표시", "Container Visibility")}
                           </div>
-                          {draftHiddenContainers.size > 0 && (
+                          {(draftHiddenContainers.size > 0 || draftHiddenContainerColumns.size > 0) && (
                             <button
                               type="button"
-                              onClick={() => setColumnSettingsDraft((current) => current ? { ...current, hiddenContainers: new Set() } : current)}
+                              title={pick("숨긴 컨테이너와 컨테이너 컬럼 모두 표시", "Show all hidden containers and container columns")}
+                              onClick={() => setColumnSettingsDraft((current) => current ? {
+                                ...current,
+                                hiddenContainers: new Set(),
+                                hiddenContainerColumns: new Set(),
+                              } : current)}
                               style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B" }}
                             >
                               {pick("모두 표시", "Show All")}
@@ -3130,10 +3166,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onExportReady={handleAgGridExportReady}
           hiddenContainers={hiddenContainers}
           hiddenBases={hiddenBases}
+          hiddenContainerColumns={hiddenContainerColumns}
           salesWindowWeights={salesWindowWeights}
           onHideColumn={handleToggleColumn}
           onHideColumns={handleHideColumns}
           onHideContainer={handleHideContainer}
+          onToggleContainerColumns={handleToggleContainerColumns}
         /> : <DemandPlanningGrid
           data={data}
           loading={loading}
