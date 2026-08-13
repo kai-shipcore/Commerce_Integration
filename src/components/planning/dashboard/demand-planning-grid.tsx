@@ -88,6 +88,7 @@ export interface DemandPlanningGridProps {
   gradientSC?: import("@/lib/planning/order-optimizer").GradientTier[];
   hiddenContainers?: Set<string>;
   hiddenBases?: Set<string>;
+  hiddenContainerColumns?: Set<string>;
   salesWindowWeights?: SalesWindowWeights;
   /** Hides a column by the same id `columnVis` already keys on: a base
    *  column's own id, or `con:<subColumnId>` for a container sub-column.
@@ -96,6 +97,8 @@ export interface DemandPlanningGridProps {
   onHideColumns?: (columnIds: string[]) => void;
   /** Hides an entire Base or named container block from a group-header menu. */
   onHideContainer?: (containerName: string, baseline: boolean) => void;
+  /** Hides or restores specific `<containerName>::<subColumnId>` columns. */
+  onToggleContainerColumns?: (columnIds: string[]) => void;
 }
 
 const ROW_HEIGHT = 28;
