@@ -15,7 +15,18 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           password: ${{ secrets.SSH_PASSWORD }}
+          # script_stop aborts on the first failing command, and without it this
+          # deploy lies. The default is false, so `npm run build` could fail and
+          # the very next line would still run `pm2 restart`, restarting the app
+          # on the PREVIOUS .next build, and the workflow would report success.
+          # The result is a green deploy serving the old bundle, which is
+          # indistinguishable from a deploy that worked until someone opens the
+          # page a change was meant to fix. That happened on 2026-08-13 with the
+          # Forecast Validation fix. See docs/BACKLOG.md item 20 for the same
+          # class of problem on the Python side.
+          script_stop: true
           script: |
+            set -euo pipefail
             cd /home/coverland/app
             git fetch origin
             git checkout main
@@ -33,6 +44,21 @@ jobs:
             npm install
             npx prisma migrate deploy
             npx prisma generate
+
+            # Build BEFORE restarting anything. With set -e above, a failed build
+            # now aborts the deploy and leaves the previous build serving, which
+            # is the correct outcome: an old page that works beats a restart onto
+            # a build that does not exist.
             npm run build
+
+            # Assert the build actually produced something this run, rather than
+            # trusting the exit code alone. A stale .next with a fresh exit status
+            # is the exact state this deploy used to leave behind.
+            if [ ! -f .next/BUILD_ID ]; then
+              echo "::error::.next/BUILD_ID is missing after npm run build. Refusing to restart."
+              exit 1
+            fi
+            echo "Built $(cat .next/BUILD_ID), from commit $(git rev-parse --short HEAD)"
+
             pm2 restart demand-pilot --update-env || pm2 start npm --name demand-pilot -- start
             pm2 restart app --update-env || true
