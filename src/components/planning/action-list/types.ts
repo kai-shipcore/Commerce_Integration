@@ -123,6 +123,8 @@ export interface ActionListMeta {
    *  are therefore absent from `rows`. Surfaced so totals can be reconciled
    *  against the forecast run rather than appearing quietly short. */
   demoted_since_forecast: number;
+  /** The actual SKU IDs that were demoted, so the provenance bar can name them. */
+  demoted_ids?: string[];
   trained_through: string | null;
   /** Which model produced the served forecast, and the last week it reaches.
    *  Optional: the API and this app deploy independently, so a running API that

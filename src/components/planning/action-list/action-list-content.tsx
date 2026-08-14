@@ -482,8 +482,8 @@ export function ActionListContent({
             className="cursor-help underline decoration-dotted underline-offset-2"
           >
             {pick(
-              `${data.meta.demoted_since_forecast}개는 실행 이후 비정기로 재분류되어 제외됨`,
-              `${data.meta.demoted_since_forecast} reclassified intermittent since the run, so not listed`,
+              `${data.meta.demoted_since_forecast}개는 실행 이후 비정기로 재분류되어 제외됨${data.meta.demoted_ids?.length ? `: ${data.meta.demoted_ids.join(", ")}` : ""}`,
+              `${data.meta.demoted_since_forecast} reclassified intermittent since the run, so not listed${data.meta.demoted_ids?.length ? `: ${data.meta.demoted_ids.join(", ")}` : ""}`,
             )}
           </span>
         )}
