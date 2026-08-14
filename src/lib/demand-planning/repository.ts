@@ -67,7 +67,8 @@ export type VelRow = {
   east_15d: number; east_7d: number; east_30d_pre: number;
   avg_daily_real: number; avg_daily_prev: number;
   east_avg_real: number; east_avg_prev: number;
-  fba_avg_real: number; fba_avg_prev: number; fba_30d: number;
+  fba_avg_real: number; fba_avg_prev: number;
+  fba_90d: number; fba_60d: number; fba_30d: number; fba_15d: number; fba_7d: number;
 };
 
 export interface DashboardFilters {
@@ -155,9 +156,9 @@ export const DemandPlanningRepository = {
       agg.containers_list,
       agg.next_eta,
       agg.cbm_unit,
-      agg.latest_container,
-      agg.latest_eta,
-      agg.latest_qty,
+      completed.latest_container,
+      completed.latest_eta,
+      completed.latest_qty,
       COALESCE(p.sales_status, s.sales_status, 'Original')  AS sales_status,
       p.category_code                                      AS category_code,
       COALESCE(p.cbm_per_unit, 0)::float8                  AS cbm_per_unit,
@@ -222,10 +223,7 @@ export const DemandPlanningRepository = {
           ORDER BY c.eta_date NULLS LAST
         )                                                                             AS containers_list,
         MIN(c.eta_date)::text                                                         AS next_eta,
-        AVG(ci.cbm_unit)::float8                                                      AS cbm_unit,
-        (ARRAY_AGG(c.container_number   ORDER BY c.eta_date NULLS LAST))[1]          AS latest_container,
-        (ARRAY_AGG(c.eta_date::text     ORDER BY c.eta_date NULLS LAST))[1]          AS latest_eta,
-        (ARRAY_AGG(ci.qty               ORDER BY c.eta_date NULLS LAST))[1]::int     AS latest_qty
+        AVG(ci.cbm_unit)::float8                                                      AS cbm_unit
       FROM shipcore.fc_container_items ci
       JOIN shipcore.fc_containers c ON c.id = ci.container_id
       JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
@@ -233,6 +231,20 @@ export const DemandPlanningRepository = {
         ${categoryWhere}
       GROUP BY ci.master_sku
     ) agg ON agg.master_sku = s.master_sku
+    LEFT JOIN (
+      SELECT DISTINCT ON (ci.master_sku)
+        ci.master_sku,
+        c.container_number                                             AS latest_container,
+        COALESCE(c.actual_arrival_date, c.eta_date)::text              AS latest_eta,
+        ci.qty::int                                                    AS latest_qty
+      FROM shipcore.fc_container_items ci
+      JOIN shipcore.fc_containers c ON c.id = ci.container_id
+      WHERE c.status = 'complete'
+      ORDER BY
+        ci.master_sku,
+        COALESCE(c.actual_arrival_date, c.eta_date) DESC NULLS LAST,
+        c.id DESC
+    ) completed ON completed.master_sku = s.master_sku
     ${productCategoryWhere(categoryCode)}
     ORDER BY s.master_sku
   `, categoryParams);
@@ -346,7 +358,11 @@ export const DemandPlanningRepository = {
         GREATEST(0.01, SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm_preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_prev,
         GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type='preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS fba_avg_real,
         GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type='preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS fba_avg_prev,
-        SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_30d
+        SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_90d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_60d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_30d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_15d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_date>=$1::date-6  AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_7d
       FROM ${table}
       WHERE ${skuCol} IS NOT NULL AND order_date >= $1::date - 96
       GROUP BY ${skuCol}

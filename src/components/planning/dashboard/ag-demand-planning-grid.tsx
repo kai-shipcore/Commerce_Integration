@@ -12,7 +12,9 @@ import {
   type CellClickedEvent,
   type CellMouseDownEvent,
   type CellMouseOverEvent,
+  type Column,
   type ColumnResizedEvent,
+  type GridApi,
   type ICellRendererParams,
   type IHeaderGroupParams,
   type IHeaderParams,
@@ -36,7 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { inventoryLifeDays } from "@/lib/planning/forecast-calculations";
+import { baselineBackorderQty, inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
@@ -114,6 +116,10 @@ type HideGapRestoreInfo = { hiddenLabels: string[]; onRestore: () => void };
 
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
+type EditableCellTarget =
+  | { kind: "cbm"; row: DemandRow }
+  | { kind: "note"; row: DemandRow }
+  | { kind: "qty"; row: DemandRow; container: ContainerMeta; raw: ContainerRowData };
 type SelectionModifiers = { toggle: boolean; range: boolean };
 type SalesTargetTier = { minSales: number; targetDays: number };
 type CapacityMode = "fit" | "unlimited";
@@ -126,6 +132,15 @@ type TargetOrderPreview = {
   capacityCbm: number;
   excessCbm: number;
 };
+
+type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter";
+type QtyEditorRegistration = { open: () => void; close: () => void };
+const qtyEditorRegistry = new Map<string, QtyEditorRegistration>();
+let activeQtyEditorKey: string | null = null;
+
+function qtyEditorKey(rowId: string, columnId: string) {
+  return `${rowId}\u0000${columnId}`;
+}
 
 const DEFAULT_BACKFILL3_TIERS: SalesTargetTier[] = [
   { minSales: 10, targetDays: 90 },
@@ -294,6 +309,45 @@ function MenuItem({
  *  focus/portal handling would be one more thing to reconcile with AG Grid's
  *  own DOM. Filter has no hover flyout for the same reason: clicking it
  *  swaps the panel to a checkbox list with a back arrow instead. */
+function GridGroupMenu({
+  x, y, label, kind, canHide, onHide, onClose,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  kind: "columns" | "container";
+  canHide: boolean;
+  onHide: () => void;
+  onClose: () => void;
+}) {
+  const { pick } = useI18n();
+  return (
+    <>
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 999 }}
+        onClick={onClose}
+        onContextMenu={(event) => { event.preventDefault(); onClose(); }}
+      />
+      <div
+        style={{
+          position: "fixed", top: y, left: x, zIndex: 1000, background: "#fff",
+          border: "1px solid #E2E8F0", borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
+          minWidth: 200, overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #F1F5F9" }}>
+          {label}
+        </div>
+        <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
+          {kind === "container"
+            ? pick("컨테이너 숨기기", "Hide container")
+            : pick("그룹 열 숨기기", "Hide group columns")}
+        </MenuItem>
+      </div>
+    </>
+  );
+}
+
 function GridColumnMenu({
   x, y, label, sortDir, onSortAsc, onSortDesc, canHide, onHide, filterActive, committed, getValues, onFilterViewOpen, onApplyFilter, onClose,
 }: {
@@ -460,20 +514,29 @@ function selectedCellsBetween(
   event: CellClickedEvent<DemandRow> | CellMouseDownEvent<DemandRow> | CellMouseOverEvent<DemandRow>,
   anchor: DragCellAnchor,
 ): SelectedAgCell[] {
-  if (event.rowIndex === null) return [];
-  const columns = event.api.getAllDisplayedColumns();
+  return selectedCellsBetweenPosition(event.api, event.rowIndex, event.column.getColId(), anchor);
+}
+
+function selectedCellsBetweenPosition(
+  api: GridApi<DemandRow>,
+  rowIndex: number | null,
+  columnId: string,
+  anchor: DragCellAnchor,
+): SelectedAgCell[] {
+  if (rowIndex === null) return [];
+  const columns = api.getAllDisplayedColumns();
   const anchorColumnIndex = columns.findIndex((column) => column.getColId() === anchor.columnId);
-  const currentColumnIndex = columns.findIndex((column) => column.getColId() === event.column.getColId());
+  const currentColumnIndex = columns.findIndex((column) => column.getColId() === columnId);
   if (anchorColumnIndex < 0 || currentColumnIndex < 0) return [];
 
-  const startRowIndex = Math.min(anchor.rowIndex, event.rowIndex);
-  const endRowIndex = Math.max(anchor.rowIndex, event.rowIndex);
+  const startRowIndex = Math.min(anchor.rowIndex, rowIndex);
+  const endRowIndex = Math.max(anchor.rowIndex, rowIndex);
   const startColumnIndex = Math.min(anchorColumnIndex, currentColumnIndex);
   const endColumnIndex = Math.max(anchorColumnIndex, currentColumnIndex);
   const selected = new Map<string, SelectedAgCell>();
 
   for (let rowIndex = startRowIndex; rowIndex <= endRowIndex; rowIndex += 1) {
-    const rowNode = event.api.getDisplayedRowAtIndex(rowIndex);
+    const rowNode = api.getDisplayedRowAtIndex(rowIndex);
     const row = rowNode?.data;
     if (!row) continue;
     for (let columnIndex = startColumnIndex; columnIndex <= endColumnIndex; columnIndex += 1) {
@@ -494,6 +557,10 @@ function selectedCellsBetween(
 
 function cellColorKey(rowId: string | undefined, columnId: string) {
   return rowId ? `${rowId}::${columnId}` : "";
+}
+
+function cssEscapeAttr(value: string): string {
+  return value.replace(/["\\]/g, "\\$&");
 }
 
 function containerColumnWidth(column: { id: string; w: number }) {
@@ -545,7 +612,7 @@ function computeContainerChain(
   const availableQty = effectiveTotal + (row.back ?? 0);
   const dailyRate = row.total_avg_curr ?? 0;
   let previousCarryover = Math.max(0, availableQty);
-  let previousBackorder = availableQty < 0 ? Math.abs(availableQty) : 0;
+  let previousBackorder = baselineBackorderQty(availableQty, row.total_30d ?? 0);
   let previousSod = row.sod;
   let previousEta = TODAY;
   const baseline = containers[0];
@@ -846,37 +913,70 @@ function CopyableCellRenderer({
 function QtyCellRenderer({
   value,
   node,
+  api,
+  column,
   onSave,
+  onSelectionPointerDown,
+  onSelectionPointerEnter,
+  onRequestEdit,
 }: ICellRendererParams<DemandRow, CellContent> & {
   onSave: (qty: number) => Promise<boolean>;
+  onSelectionPointerDown: (rowIndex: number, column: Column) => void;
+  onSelectionPointerEnter: (rowIndex: number, column: Column, buttons: number) => void;
+  onRequestEdit: () => boolean;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState(displayValue);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const skipNextBlurCommitRef = useRef(false);
+  const rowId = node.data?.sku ?? "";
+  const columnId = column?.getColId() ?? "";
 
   useEffect(() => {
     if (!editing && !savingRef.current) setInputValue(displayValue);
   }, [displayValue, editing]);
 
-  async function commit() {
-    if (savingRef.current) return;
+  useEffect(() => {
+    if (!rowId || !columnId) return;
+    const key = qtyEditorKey(rowId, columnId);
+    const beginEditing = () => {
+      if (activeQtyEditorKey !== key) qtyEditorRegistry.get(activeQtyEditorKey ?? "")?.close();
+      activeQtyEditorKey = key;
+      node.setSelected(true, true);
+      setEditing(true);
+    };
+    const closeEditing = () => {
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
+      setEditing(false);
+    };
+    const registration = { open: beginEditing, close: closeEditing };
+    qtyEditorRegistry.set(key, registration);
+    return () => {
+      if (qtyEditorRegistry.get(key) === registration) qtyEditorRegistry.delete(key);
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
+    };
+  }, [columnId, node, rowId]);
+
+  async function commit(): Promise<boolean> {
+    if (savingRef.current) return false;
     const nextQty = inputValue.trim() === "" ? 0 : Number.parseInt(inputValue, 10);
     if (!Number.isFinite(nextQty) || nextQty < 0) {
       setInputValue(displayValue);
       setEditing(false);
-      return;
+      return false;
     }
     if (String(nextQty) === displayValue) {
       setEditing(false);
-      return;
+      return true;
     }
 
     savingRef.current = true;
     setSaving(true);
+    let saved = false;
     try {
-      const saved = await onSave(nextQty);
+      saved = await onSave(nextQty);
       if (!saved) setInputValue(displayValue);
     } catch {
       setInputValue(displayValue);
@@ -885,6 +985,48 @@ function QtyCellRenderer({
       setSaving(false);
       setEditing(false);
     }
+    return saved;
+  }
+
+  function moveToNextQtyCell(key: QtyNavigationKey) {
+    if (!column || node.rowIndex === null) return;
+    const editableQtyColumns = api.getAllDisplayedColumns().filter(
+      (displayedColumn) => displayedColumn.getColDef().cellRenderer === QtyCellRenderer,
+    );
+    const currentColumnIndex = editableQtyColumns.indexOf(column);
+    if (currentColumnIndex < 0) return;
+
+    let nextRowIndex = node.rowIndex;
+    let nextColumnIndex = currentColumnIndex;
+    if (key === "ArrowUp") nextRowIndex -= 1;
+    if (key === "ArrowDown" || key === "Enter") nextRowIndex += 1;
+    if (key === "ArrowLeft") nextColumnIndex -= 1;
+    if (key === "ArrowRight") nextColumnIndex += 1;
+    if (nextRowIndex < 0 || nextRowIndex >= api.getDisplayedRowCount()) return;
+    if (nextColumnIndex < 0 || nextColumnIndex >= editableQtyColumns.length) return;
+
+    const nextNode = api.getDisplayedRowAtIndex(nextRowIndex);
+    const nextColumn = editableQtyColumns[nextColumnIndex];
+    const nextRowId = nextNode?.data?.sku;
+    if (!nextNode || !nextRowId) return;
+
+    api.ensureIndexVisible(nextRowIndex, "middle");
+    api.ensureColumnVisible(nextColumn);
+    api.setFocusedCell(nextRowIndex, nextColumn);
+    nextNode.setSelected(true, true);
+
+    const targetKey = qtyEditorKey(nextRowId, nextColumn.getColId());
+    let attempts = 0;
+    const beginWhenRendered = () => {
+      const beginEditing = qtyEditorRegistry.get(targetKey);
+      if (beginEditing) {
+        beginEditing.open();
+        return;
+      }
+      attempts += 1;
+      if (attempts < 6) window.setTimeout(beginWhenRendered, 20);
+    };
+    window.setTimeout(beginWhenRendered, 0);
   }
 
   if (editing) {
@@ -900,15 +1042,37 @@ function QtyCellRenderer({
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
               setInputValue(displayValue);
               setEditing(false);
+              return;
             }
-            if (event.key === "Enter") {
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"].includes(event.key)) {
               event.preventDefault();
-              void commit();
+              event.stopPropagation();
+              const navigationKey = event.key as QtyNavigationKey;
+              const parsedQty = inputValue.trim() === "" ? 0 : Number.parseInt(inputValue, 10);
+              if (!Number.isFinite(parsedQty) || parsedQty < 0) {
+                void commit();
+                return;
+              }
+              // Start persistence first, then move focus immediately instead
+              // of making keyboard navigation wait for React/grid rendering.
+              skipNextBlurCommitRef.current = true;
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+              setEditing(false);
+              moveToNextQtyCell(navigationKey);
+              window.setTimeout(() => void commit(), 0);
             }
           }}
-          onBlur={() => void commit()}
+          onBlur={() => {
+            if (skipNextBlurCommitRef.current) {
+              skipNextBlurCommitRef.current = false;
+              return;
+            }
+            void commit();
+          }}
           className="planning-cbm-edit-input planning-qty-edit-input absolute left-1/2 top-1/2 z-30 h-10 w-36 -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 text-right font-mono text-sm font-semibold shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
         />
       </div>
@@ -920,10 +1084,19 @@ function QtyCellRenderer({
       type="button"
       disabled={saving}
       title="Click to edit quantity"
+      onMouseDown={(event) => {
+        if (event.button !== 0 || node.rowIndex === null || !column) return;
+        onSelectionPointerDown(node.rowIndex, column);
+      }}
+      onMouseEnter={(event) => {
+        if (node.rowIndex === null || !column) return;
+        onSelectionPointerEnter(node.rowIndex, column, event.buttons);
+      }}
       onClick={(event) => {
         event.stopPropagation();
-        node.setSelected(true, true);
-        setEditing(true);
+        if (!onRequestEdit()) return;
+        const registration = qtyEditorRegistry.get(qtyEditorKey(rowId, columnId));
+        if (registration) registration.open();
       }}
       className="h-full w-full border-0 bg-transparent px-1 text-right font-mono text-[11px] font-semibold text-[#1A4FC0]"
     >
@@ -1179,6 +1352,7 @@ function WideHeaderNameEditor({
 function EditableGroupHeader(params: IHeaderGroupParams & {
   selectionId: string;
   onRename: (columnId: string, name: string) => void;
+  onRightClick?: (x: number, y: number) => void;
 }) {
   const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
 
@@ -1201,7 +1375,12 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
       role="button"
       tabIndex={0}
       aria-label={`Rename ${params.displayName} group header`}
-      title="Double-click to rename this group header"
+      title="Right-click to hide this group. Double-click to rename."
+      onContextMenu={params.onRightClick ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        params.onRightClick?.(event.clientX, event.clientY);
+      } : undefined}
       onDoubleClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1223,6 +1402,7 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
 
 function SelectableHeader(params: IHeaderParams & {
   selectionId: string;
+  renameId?: string;
   isSelected: () => boolean;
   subscribeSelection: (listener: () => void) => () => void;
   onSelect: (columnId: string, modifiers: SelectionModifiers) => void;
@@ -1254,7 +1434,7 @@ function SelectableHeader(params: IHeaderParams & {
         name={params.displayName}
         anchor={editorAnchor}
         onSave={(name) => {
-          params.onRename(params.selectionId, name);
+          params.onRename(params.renameId ?? params.selectionId, name);
           setEditing(false);
         }}
         onCancel={() => setEditing(false)}
@@ -1416,13 +1596,27 @@ function formatSalesThreshold(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
 }
 
-function salesRangeLabel(minSales: number, upperSales: number | null): string {
-  if (minSales <= 0 && upperSales != null) return `${formatSalesThreshold(upperSales)} 미만`;
-  if (upperSales == null) return `${formatSalesThreshold(minSales)} 이상`;
-  return `${formatSalesThreshold(minSales)} 이상 ~ ${formatSalesThreshold(upperSales)} 미만`;
+function salesRangeLabel(
+  minSales: number,
+  upperSales: number | null,
+  pick: (ko: string, en: string) => string,
+): string {
+  if (minSales <= 0 && upperSales != null) {
+    return pick(`${formatSalesThreshold(upperSales)} 미만`, `Under ${formatSalesThreshold(upperSales)}`);
+  }
+  if (upperSales == null) {
+    return pick(`${formatSalesThreshold(minSales)} 이상`, `${formatSalesThreshold(minSales)} or more`);
+  }
+  return pick(
+    `${formatSalesThreshold(minSales)} 이상 ~ ${formatSalesThreshold(upperSales)} 미만`,
+    `${formatSalesThreshold(minSales)} to under ${formatSalesThreshold(upperSales)}`,
+  );
 }
 
-function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
+function validateSalesTargetTiers(
+  tiers: SalesTargetTier[],
+  pick: (ko: string, en: string) => string,
+): string | null {
   const normalized = tiers
     .map((tier) => ({
       minSales: Number(tier.minSales),
@@ -1430,26 +1624,32 @@ function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
     }))
     .sort((a, b) => b.minSales - a.minSales);
 
-  if (normalized.length === 0) return "최소 1개 이상의 구간이 필요합니다.";
+  if (normalized.length === 0) return pick("최소 1개 이상의 구간이 필요합니다.", "At least one sales range is required.");
 
   for (const tier of normalized) {
     if (!Number.isFinite(tier.minSales) || tier.minSales < 0) {
-      return "최소 판매량은 0 이상의 숫자로 입력해주세요.";
+      return pick("최소 판매량은 0 이상의 숫자로 입력해주세요.", "Minimum sales must be a number greater than or equal to 0.");
     }
 
     if (!Number.isFinite(tier.targetDays) || tier.targetDays < 1 || tier.targetDays > 365) {
-      return "목표일수는 1일부터 365일 사이로 입력해주세요.";
+      return pick("목표일수는 1일부터 365일 사이로 입력해주세요.", "Target days must be between 1 and 365.");
     }
   }
 
   const minSalesValues = new Set(normalized.map((tier) => tier.minSales));
   if (minSalesValues.size !== normalized.length) {
-    return "같은 최소 판매량이 중복되어 있습니다. 각 구간의 시작값을 다르게 입력해주세요.";
+    return pick(
+      "같은 최소 판매량이 중복되어 있습니다. 각 구간의 시작값을 다르게 입력해주세요.",
+      "Minimum sales values must be unique for each range.",
+    );
   }
 
   const lowestTier = normalized[normalized.length - 1];
   if (lowestTier.minSales !== 0) {
-    return "가장 낮은 판매 구간을 계산할 수 있도록 최소 판매량 0 구간을 추가해주세요.";
+    return pick(
+      "가장 낮은 판매 구간을 계산할 수 있도록 최소 판매량 0 구간을 추가해주세요.",
+      "Add a range with minimum sales set to 0 to cover the lowest sales range.",
+    );
   }
 
   for (let index = 1; index < normalized.length; index += 1) {
@@ -1458,9 +1658,14 @@ function validateSalesTargetTiers(tiers: SalesTargetTier[]): string | null {
 
     if (lowerSalesTier.targetDays > higherSalesTier.targetDays) {
       return (
-        `${salesRangeLabel(lowerSalesTier.minSales, higherSalesTier.minSales)} 구간의 목표일수가 ` +
-        `${salesRangeLabel(higherSalesTier.minSales, null)} 구간보다 큽니다. ` +
-        "판매량이 낮은 구간의 목표일수는 위 구간보다 작거나 같아야 합니다."
+        pick(
+          `${salesRangeLabel(lowerSalesTier.minSales, higherSalesTier.minSales, pick)} 구간의 목표일수가 ` +
+            `${salesRangeLabel(higherSalesTier.minSales, null, pick)} 구간보다 큽니다. ` +
+            "판매량이 낮은 구간의 목표일수는 위 구간보다 작거나 같아야 합니다.",
+          `Target days for ${salesRangeLabel(lowerSalesTier.minSales, higherSalesTier.minSales, pick)} exceed ` +
+            `the ${salesRangeLabel(higherSalesTier.minSales, null, pick)} range. ` +
+            "A lower sales range must have target days less than or equal to the range above it.",
+        )
       );
     }
   }
@@ -1477,40 +1682,44 @@ function CapacityModePanel({
   onChange: (mode: CapacityMode) => void;
   preview: TargetOrderPreview;
 }) {
+  const { pick } = useI18n();
   const overCapacity = preview.excessCbm > 0.000001;
 
   return (
     <div className="space-y-3 rounded-lg border border-[#D8D6CE] bg-[#FAFAF7] p-3">
-      <div className="text-xs font-bold text-[#2A2825]">컨테이너 CBM 적용 방식</div>
+      <div className="text-xs font-bold text-[#2A2825]">{pick("컨테이너 CBM 적용 방식", "Container CBM option")}</div>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className={`flex cursor-pointer gap-2 rounded-md border p-2.5 text-xs ${mode === "fit" ? "border-blue-500 bg-blue-50" : "border-[#D8D6CE] bg-white"}`}>
           <input type="radio" name="capacity-mode" checked={mode === "fit"} onChange={() => onChange("fit")} />
           <span>
-            <strong className="block text-[#1A1917]">컨테이너 CBM 용량에 맞춤</strong>
-            <span className="mt-0.5 block text-[#7A766F]">용량이 부족하면 수량을 줄이거나 해당 SKU를 제외합니다.</span>
+            <strong className="block text-[#1A1917]">{pick("컨테이너 CBM 용량에 맞춤", "Fit to container CBM capacity")}</strong>
+            <span className="mt-0.5 block text-[#7A766F]">{pick("용량이 부족하면 수량을 줄이거나 해당 SKU를 제외합니다.", "If capacity is insufficient, quantities are reduced or the SKU is excluded.")}</span>
           </span>
         </label>
         <label className={`flex cursor-pointer gap-2 rounded-md border p-2.5 text-xs ${mode === "unlimited" ? "border-amber-500 bg-amber-50" : "border-[#D8D6CE] bg-white"}`}>
           <input type="radio" name="capacity-mode" checked={mode === "unlimited"} onChange={() => onChange("unlimited")} />
           <span>
-            <strong className="block text-[#1A1917]">전체 필요수량 계산</strong>
-            <span className="mt-0.5 block text-[#7A766F]">CBM 제한 없이 계산된 모든 SKU의 수량을 채웁니다.</span>
+            <strong className="block text-[#1A1917]">{pick("전체 필요수량 계산", "Calculate full required quantity")}</strong>
+            <span className="mt-0.5 block text-[#7A766F]">{pick("CBM 제한 없이 계산된 모든 SKU의 수량을 채웁니다.", "Fills the calculated quantities for all SKUs without a CBM limit.")}</span>
           </span>
         </label>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <MetricPreview label="계산 SKU" value={preview.skuCount.toLocaleString()} />
-        <MetricPreview label="총 수량" value={preview.totalQty.toLocaleString()} />
-        <MetricPreview label="예상 CBM" value={`${preview.totalCbm.toFixed(2)} / ${preview.capacityCbm.toFixed(2)}`} />
+        <MetricPreview label={pick("계산 SKU", "SKUs calculated")} value={preview.skuCount.toLocaleString()} />
+        <MetricPreview label={pick("총 수량", "Total quantity")} value={preview.totalQty.toLocaleString()} />
+        <MetricPreview label={pick("예상 CBM", "Estimated CBM")} value={`${preview.totalCbm.toFixed(2)} / ${preview.capacityCbm.toFixed(2)}`} />
         <MetricPreview
-          label="초과 CBM"
+          label={pick("초과 CBM", "Excess CBM")}
           value={overCapacity ? `+${preview.excessCbm.toFixed(2)}` : "0.00"}
           warning={overCapacity}
         />
       </div>
       {overCapacity ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-          컨테이너 용량을 {preview.excessCbm.toFixed(2)} CBM 초과합니다.
+          {pick(
+            `컨테이너 용량을 ${preview.excessCbm.toFixed(2)} CBM 초과합니다.`,
+            `Exceeds container capacity by ${preview.excessCbm.toFixed(2)} CBM.`,
+          )}
         </div>
       ) : null}
     </div>
@@ -1545,21 +1754,27 @@ function FixedTargetDialog({
   onOpenChange: (open: boolean) => void;
   onApply: () => void;
 }) {
+  const { pick } = useI18n();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent style={{ maxWidth: 640 }}>
         <DialogHeader>
-          <DialogTitle>고정 목표 자동 발주 계산</DialogTitle>
+          <DialogTitle>{pick("고정 목표 자동 발주 계산", "Fixed-target automatic order calculation")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="text-xs text-[#7A766F]">
-            {containerName ? `${containerName} - ` : ""}{targetDays}일 고정 목표 재고일수를 기준으로 Con. Qty를 계산합니다.
+            {containerName ? `${containerName} - ` : ""}
+            {pick(
+              `${targetDays}일 고정 목표 재고일수를 기준으로 Con. Qty를 계산합니다.`,
+              `Calculates Con. Qty using a fixed inventory target of ${targetDays} days.`,
+            )}
           </div>
           <CapacityModePanel mode={capacityMode} onChange={onCapacityModeChange} preview={preview} />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-          <Button onClick={onApply}>적용</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{pick("취소", "Cancel")}</Button>
+          <Button onClick={onApply}>{pick("적용", "Apply")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1591,13 +1806,14 @@ function Backfill3Dialog({
   onOpenChange: (open: boolean) => void;
   onApply: () => void;
 }) {
+  const { pick } = useI18n();
   const [validationMessage, setValidationMessage] = useState("");
   const sortedTiers = tiers
     .map((tier, originalIndex) => ({ ...tier, originalIndex }))
     .sort((a, b) => b.minSales - a.minSales);
 
   function handleApply() {
-    const error = validateSalesTargetTiers(tiers);
+    const error = validateSalesTargetTiers(tiers, pick);
     if (error) {
       setValidationMessage(error);
       return;
@@ -1616,23 +1832,24 @@ function Backfill3Dialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent style={{ maxWidth: 640 }}>
         <DialogHeader>
-          <DialogTitle>자동 발주 목표일수</DialogTitle>
+          <DialogTitle>{pick("자동 발주 목표일수", "Automatic order target days")}</DialogTitle>
         </DialogHeader>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "8px 0" }}>
           <div style={{ fontSize: 12, color: "#7A766F" }}>
-            {containerName ? `${containerName} - ` : ""}일평균 판매량 구간별 목표 재고일수를 설정합니다.
+            {containerName ? `${containerName} - ` : ""}
+            {pick("일평균 판매량 구간별 목표 재고일수를 설정합니다.", "Set target inventory days by average daily sales range.")}
           </div>
           <CapacityModePanel mode={capacityMode} onChange={onCapacityModeChange} preview={preview} />
           <div style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
-            <span>판매량 구간</span>
-            <span>최소 판매량</span>
-            <span>목표일수</span>
+            <span>{pick("판매량 구간", "Sales range")}</span>
+            <span>{pick("최소 판매량", "Minimum sales")}</span>
+            <span>{pick("목표일수", "Target days")}</span>
             <span />
           </div>
           {sortedTiers.map((tier, index) => {
             const upperSales = index === 0 ? null : sortedTiers[index - 1].minSales;
-            const rangeLabel = salesRangeLabel(tier.minSales, upperSales);
+            const rangeLabel = salesRangeLabel(tier.minSales, upperSales, pick);
 
             return (
             <div key={tier.originalIndex} style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, alignItems: "center" }}>
@@ -1681,7 +1898,7 @@ function Backfill3Dialog({
                   onRemoveTier(tier.originalIndex);
                 }}
                 disabled={tiers.length <= 1}
-                title="구간 삭제"
+                title={pick("구간 삭제", "Remove range")}
                 style={{
                   height: 32,
                   border: "1px solid #D8D6CE",
@@ -1707,7 +1924,7 @@ function Backfill3Dialog({
                 onAddTier();
               }}
             >
-              구간 추가
+              {pick("구간 추가", "Add range")}
             </Button>
           </div>
           {validationMessage ? (
@@ -1727,16 +1944,19 @@ function Backfill3Dialog({
             </div>
           ) : null}
           <div style={{ fontSize: 12, color: "#7A766F" }}>
-            최소 판매량이 높은 구간부터 적용됩니다. 가장 낮은 구간은 최소 판매량을 0으로 두면 됩니다.
+            {pick(
+              "최소 판매량이 높은 구간부터 적용됩니다. 가장 낮은 구간은 최소 판매량을 0으로 두면 됩니다.",
+              "Ranges are applied from the highest minimum sales value. Set minimum sales to 0 for the lowest range.",
+            )}
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            취소
+            {pick("취소", "Cancel")}
           </Button>
           <Button onClick={handleApply}>
-            적용
+            {pick("적용", "Apply")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1769,11 +1989,13 @@ function ContainerGroupHeader(
     subscribeSelection: (listener: () => void) => () => void;
     onSelect: (columnId: string, modifiers: SelectionModifiers) => void;
     onRename: (columnId: string, name: string) => void;
+    onRightClick?: (x: number, y: number) => void;
   },
 ) {
   const [targetDays, setTargetDays] = useState(90);
   const [nameEditorAnchor, setNameEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
   const [liveColumnWidths, setLiveColumnWidths] = useState<Record<string, number>>({});
+  const [liveColumnOrder, setLiveColumnOrder] = useState<string[]>(() => props.totalColumns.map((column) => column.columnId));
   const [, setSelectionVersion] = useState(0);
   const subscribeSelection = props.subscribeSelection;
   useEffect(
@@ -1789,7 +2011,7 @@ function ContainerGroupHeader(
   // so the custom strip follows the exact same live width during the drag.
   useEffect(() => {
     const columnIds = new Set(props.totalColumns.map((column) => column.columnId));
-    const syncWidths = () => {
+    const syncLayout = () => {
       const next: Record<string, number> = {};
       for (const column of props.totalColumns) {
         next[column.columnId] = props.api.getColumn(column.columnId)?.getActualWidth() ?? column.width;
@@ -1801,20 +2023,42 @@ function ContainerGroupHeader(
         }
         return next;
       });
+      const displayedOrder = props.api.getAllDisplayedColumns()
+        .map((column) => column.getColId())
+        .filter((columnId) => columnIds.has(columnId));
+      const displayedSet = new Set(displayedOrder);
+      const nextOrder = [
+        ...displayedOrder,
+        ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !displayedSet.has(columnId)),
+      ];
+      setLiveColumnOrder((current) => (
+        current.length === nextOrder.length && current.every((columnId, index) => columnId === nextOrder[index])
+          ? current
+          : nextOrder
+      ));
     };
     const handleColumnResized = (event: ColumnResizedEvent<DemandRow>) => {
       if (event.column && !columnIds.has(event.column.getColId())) return;
-      syncWidths();
+      syncLayout();
     };
 
-    syncWidths();
+    syncLayout();
     props.api.addEventListener("columnResized", handleColumnResized);
-    props.api.addEventListener("displayedColumnsChanged", syncWidths);
+    props.api.addEventListener("columnMoved", syncLayout);
+    props.api.addEventListener("displayedColumnsChanged", syncLayout);
     return () => {
       props.api.removeEventListener("columnResized", handleColumnResized);
-      props.api.removeEventListener("displayedColumnsChanged", syncWidths);
+      props.api.removeEventListener("columnMoved", syncLayout);
+      props.api.removeEventListener("displayedColumnsChanged", syncLayout);
     };
   }, [props.api, props.totalColumns]);
+  const orderedTotalColumns = useMemo(() => {
+    const byId = new Map(props.totalColumns.map((column) => [column.columnId, column]));
+    const liveSet = new Set(liveColumnOrder);
+    return [...liveColumnOrder, ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !liveSet.has(columnId))]
+      .map((columnId) => byId.get(columnId))
+      .filter((column): column is ContainerTotalColumn => Boolean(column));
+  }, [liveColumnOrder, props.totalColumns]);
   const statusBg =
     props.status === "packing_received"
       ? "border-t-[3px] border-blue-400 bg-blue-500/20"
@@ -1850,14 +2094,27 @@ function ContainerGroupHeader(
     <div
       className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[11px] ${statusBg}`}
       style={{ boxShadow: selected ? "inset 0 0 0 3px #60A5FA" : undefined, backgroundColor: selected ? "rgba(96,165,250,.28)" : undefined }}
+      onContextMenu={props.onRightClick ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        props.onRightClick?.(event.clientX, event.clientY);
+      } : undefined}
     >
-      <div className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1">
+      <div
+        className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1"
+        onClick={(event) => {
+          props.onSelect(props.selectionId, {
+            toggle: event.ctrlKey || event.metaKey,
+            range: event.shiftKey,
+          });
+        }}
+      >
         <span
           role="button"
           tabIndex={0}
           aria-pressed={selected}
           className="max-w-full truncate font-bold"
-          title="Ctrl/Cmd + click for multiple headers; Shift + click for a range. Double-click to rename."
+          title="Drag to move this container and all of its columns. Double-click to rename."
           onClick={(event) => {
             event.stopPropagation();
             props.onSelect(props.selectionId, {
@@ -1880,12 +2137,12 @@ function ContainerGroupHeader(
             const rect = event.currentTarget.getBoundingClientRect();
             setNameEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
           }}
-          style={{ cursor: "text" }}
+          style={{ cursor: "grab" }}
         >
           {selected ? "✓ " : ""}
           {props.displayName}
         </span>
-        {props.onOpenInContainerPlanning && (
+        {props.onOpenInContainerPlanning && !props.baseline && (
           <button
             type="button"
             aria-label={`Open ${props.displayName} details`}
@@ -1933,7 +2190,10 @@ function ContainerGroupHeader(
               className="w-[52px] rounded border border-blue-400/50 bg-blue-900/30 px-1.5 py-1 text-[11px] font-bold text-white text-center"
             />
             <button
-              onClick={() => props.onAutoFill2?.(targetDays)}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onAutoFill2?.(targetDays);
+              }}
               disabled={!props.qtyEditable || props.autoFilling2}
               title={`Con qty 고정 목표 계산 (${targetDays}일 INV Life)`}
               aria-label={`Calculate automatic order for a fixed ${targetDays}-day inventory target`}
@@ -1942,7 +2202,10 @@ function ContainerGroupHeader(
               {props.autoFilling2 ? "..." : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
             </button>
 <button
-              onClick={props.onAutoFill3}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onAutoFill3?.();
+              }}
               disabled={!props.qtyEditable || props.autoFilling3}
               title="Con qty 세일즈 구간별 목표 계산"
               aria-label="판매량 구간별 자동 발주 계산"
@@ -1953,14 +2216,20 @@ function ContainerGroupHeader(
             {props.qtyEditable && props.dirty && (
               <>
                 <button
-                  onClick={props.onReset}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    props.onReset?.();
+                  }}
                   title="DB 원래 값으로 초기화"
                   className="rounded px-3 py-1.5 text-[15px] bg-red-500/70 hover:bg-red-500 cursor-pointer"
                 >
                   ↺
                 </button>
                 <button
-                  onClick={props.onSave}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    props.onSave?.();
+                  }}
                   disabled={props.saving}
                   title="DB에 저장"
                   className="rounded px-3 py-1.5 text-[15px] bg-green-600/70 hover:bg-green-600 disabled:opacity-40 cursor-pointer"
@@ -1974,7 +2243,7 @@ function ContainerGroupHeader(
       </div>
       {props.baseline ? null : (
         <div className="flex w-full text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
-          {props.totalColumns.map((column) => {
+          {orderedTotalColumns.map((column) => {
             const totalLabel = column.total === undefined
               ? ""
               : column.id === "ccbm"
@@ -1985,7 +2254,7 @@ function ContainerGroupHeader(
                 key={column.id}
                 data-summary-column-id={column.columnId}
                 title={totalLabel ? `Total: ${totalLabel}` : undefined}
-                className="shrink-0 truncate text-center"
+                className="shrink-0 overflow-visible whitespace-nowrap text-center"
                 style={{ width: liveColumnWidths[column.columnId] ?? column.width }}
               >
                 {totalLabel}
@@ -2042,9 +2311,12 @@ export function AgDemandPlanningGrid({
   gradientSC = [],
   hiddenContainers = new Set<string>(),
   hiddenBases = new Set<string>(),
+  hiddenContainerColumns = new Set<string>(),
   salesWindowWeights = DEFAULT_SALES_WINDOW_WEIGHTS,
   onHideColumn,
   onHideColumns,
+  onHideContainer,
+  onToggleContainerColumns,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -2066,7 +2338,12 @@ export function AgDemandPlanningGrid({
   const cellTextFormatsRef = useRef(cellTextFormats);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
+  const qtyOverridesRef = useRef(qtyOverrides);
+  const lastChainedQtyOverridesRef = useRef(qtyOverrides);
+  const clearingSelectedQtyRef = useRef(false);
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
+  const chainMapRef = useRef(chainMap);
+  const qtyRenderSyncTimerRef = useRef<number | null>(null);
   const [chainReadyAfterLoad, setChainReadyAfterLoad] = useState(true);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const [rowOverrides, setRowOverrides] = useState<Map<string, Partial<DemandRow>>>(new Map());
@@ -2077,6 +2354,8 @@ export function AgDemandPlanningGrid({
   const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
+  const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; label: string; columnIds: string[] } | null>(null);
+  const [containerMenu, setContainerMenu] = useState<{ x: number; y: number; label: string; containerName: string; baseline: boolean } | null>(null);
   const [filterOpenKey, setFilterOpenKey] = useState<string | null>(null);
   const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
@@ -2092,6 +2371,31 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const [backfill3Dialog, setBackfill3Dialog] = useState<{ container: ContainerMeta; containerIndex: number } | null>(null);
   const [backfill3Tiers, setBackfill3Tiers] = useState<SalesTargetTier[]>(DEFAULT_BACKFILL3_TIERS);
   const [backfill3CapacityMode, setBackfill3CapacityMode] = useState<CapacityMode>("fit");
+
+  useEffect(() => {
+    qtyOverridesRef.current = qtyOverrides;
+  }, [qtyOverrides]);
+
+  useEffect(() => {
+    chainMapRef.current = chainMap;
+  }, [chainMap]);
+
+  const scheduleQtyRenderSync = useCallback(() => {
+    if (qtyRenderSyncTimerRef.current !== null) window.clearTimeout(qtyRenderSyncTimerRef.current);
+    qtyRenderSyncTimerRef.current = window.setTimeout(() => {
+      qtyRenderSyncTimerRef.current = null;
+      const overrides = qtyOverridesRef.current;
+      const chains = chainMapRef.current;
+      startTransition(() => {
+        setQtyOverrides(overrides);
+        setChainMap(chains);
+      });
+    }, 900);
+  }, []);
+
+  useEffect(() => () => {
+    if (qtyRenderSyncTimerRef.current !== null) window.clearTimeout(qtyRenderSyncTimerRef.current);
+  }, []);
 
   const containers = useMemo(() => {
     const filtered = data.containers
@@ -2392,12 +2696,44 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setChainMap(new Map(
-        data.rows.map((row) => [row.sku, computeContainerChain(row, containers, qtyOverrides, seasonalFactors)]),
-      ));
+      const currentOverrides = qtyOverridesRef.current;
+      const nextChainMap = new Map(
+        data.rows.map((row) => [row.sku, computeContainerChain(row, containers, currentOverrides, seasonalFactors)]),
+      );
+      lastChainedQtyOverridesRef.current = currentOverrides;
+      chainMapRef.current = nextChainMap;
+      setChainMap(nextChainMap);
       setChainReadyAfterLoad(true);
     });
     return () => { cancelled = true; };
+  }, [containers, data.rows, seasonalFactors]);
+
+  // Quantity edits affect only their SKU chain. Recomputing every row after
+  // each keystroke made Con. Qty edits increasingly slow on large datasets.
+  useEffect(() => {
+    const previous = lastChainedQtyOverridesRef.current;
+    if (previous === qtyOverrides) return;
+
+    const changedSkus = new Set<string>();
+    for (const [key, value] of qtyOverrides) {
+      if (previous.get(key) !== value) changedSkus.add(key.slice(0, key.indexOf("::")));
+    }
+    for (const key of previous.keys()) {
+      if (!qtyOverrides.has(key)) changedSkus.add(key.slice(0, key.indexOf("::")));
+    }
+    lastChainedQtyOverridesRef.current = qtyOverrides;
+    if (!changedSkus.size) return;
+
+    const rowsBySku = new Map(data.rows.map((row) => [row.sku, row]));
+    setChainMap((current) => {
+      const next = new Map(current);
+      for (const sku of changedSkus) {
+        const row = rowsBySku.get(sku);
+        if (row) next.set(sku, computeContainerChain(row, containers, qtyOverrides, seasonalFactors));
+      }
+      chainMapRef.current = next;
+      return next;
+    });
   }, [containers, data.rows, qtyOverrides, seasonalFactors]);
 
   useEffect(() => {
@@ -2418,6 +2754,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const columns = (api.getColumns() ?? []).filter((column) => {
       const columnId = column.getColId();
       for (const logicalId of logicalIds) {
+        if (logicalId.includes("::") && columnId === logicalId) return true;
         if (logicalId.startsWith("con:") && columnId.endsWith(`::${logicalId.slice(4)}`)) return true;
         if (!logicalId.startsWith("container:") && columnId === logicalId) return true;
       }
@@ -2444,10 +2781,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     for (const column of gridRef.current?.api.getAllDisplayedColumns() ?? []) {
       const physicalId = column.getColId();
       if (physicalId.includes("hidegap:")) continue;
-      const logicalId = physicalId.includes("::")
-        ? `con:${physicalId.slice(physicalId.lastIndexOf("::") + 2)}`
-        : physicalId;
-      if (!displayedLeafOrder.includes(logicalId)) displayedLeafOrder.push(logicalId);
+      if (!displayedLeafOrder.includes(physicalId)) displayedLeafOrder.push(physicalId);
     }
     const order = containerRange
       ? [
@@ -2459,9 +2793,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
             .filter((column) => (column.grp === "fix" || groupVis[column.grp]) && columnVis[column.id] !== false)
             .map((column) => column.id),
           ...(groupVis.con
-            ? conCandidates
+            ? containers.flatMap((container) => conCandidates
                 .filter((column) => columnVis[`con:${column.id}`] !== false)
-                .map((column) => `con:${column.id}`)
+                .map((column) => `${container.name}::${column.id}`))
             : []),
         ];
     const anchorIndex = order.indexOf(anchorId);
@@ -2572,30 +2906,120 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
   }, [onAgCellSelected, onCellSelectionChange]);
 
+  const handleQtySelectionPointerDown = useCallback((rowIndex: number, column: Column) => {
+    dragCellAnchorRef.current = { rowIndex, columnId: column.getColId() };
+    dragMovedRef.current = false;
+  }, []);
+
+  const handleQtySelectionPointerEnter = useCallback((rowIndex: number, column: Column, buttons: number) => {
+    const anchor = dragCellAnchorRef.current;
+    const api = gridRef.current?.api;
+    if (!anchor || !api || (buttons & 1) !== 1) return;
+    const cells = selectedCellsBetweenPosition(api, rowIndex, column.getColId(), anchor);
+    if (!cells.length) return;
+    dragMovedRef.current = true;
+    const previous = selectedCellsRef.current;
+    const next = new Set(cells.map((cell) => `${cell.rowId}::${cell.columnId}`));
+    selectedCellsRef.current = next;
+    cellSelectionAnchorRef.current = anchor;
+    refreshChangedCells(previous, next);
+    scheduleDragSelectionNotification(cells);
+  }, [refreshChangedCells, scheduleDragSelectionNotification]);
+
+  const handleQtyEditRequest = useCallback(() => {
+    if (!dragMovedRef.current) return true;
+    dragMovedRef.current = false;
+    return false;
+  }, []);
+
+  // Copy/paste/fill-handle share this: the selected cells' rows and columns,
+  // ordered the way they're actually displayed (not insertion order), so a
+  // pasted block lands in the same shape it was copied from.
+  const getSelectionBoundsOrdered = useCallback((): { rowIds: string[]; columnIds: string[] } | null => {
+    const api = gridRef.current?.api;
+    if (!api || selectedCellsRef.current.size === 0) return null;
+    const rowIdSet = new Set<string>();
+    const columnIdSet = new Set<string>();
+    for (const key of selectedCellsRef.current) {
+      const separator = key.indexOf("::");
+      if (separator < 0) continue;
+      rowIdSet.add(key.slice(0, separator));
+      columnIdSet.add(key.slice(separator + 2));
+    }
+    const rowIds = [...rowIdSet]
+      .map((id) => ({ id, index: api.getRowNode(id)?.rowIndex ?? -1 }))
+      .filter((entry) => entry.index >= 0)
+      .sort((a, b) => a.index - b.index)
+      .map((entry) => entry.id);
+    const displayedColumns = api.getAllDisplayedColumns();
+    const columnOrderIndex = new Map(displayedColumns.map((column, index) => [column.getColId(), index]));
+    const columnIds = [...columnIdSet]
+      .filter((id) => columnOrderIndex.has(id))
+      .sort((a, b) => (columnOrderIndex.get(a) ?? 0) - (columnOrderIndex.get(b) ?? 0));
+    if (!rowIds.length || !columnIds.length) return null;
+    return { rowIds, columnIds };
+  }, []);
+
+  // Prefer the exact underlying value for the few cells users actually edit
+  // (qty/cbm/note survive a copy → paste round trip as real numbers/text);
+  // fall back to whatever text AG Grid rendered for everything else.
+  const getCellCopyValue = useCallback((rowId: string, columnId: string): string => {
+    const api = gridRef.current?.api;
+    const row = api?.getRowNode(rowId)?.data;
+    if (row) {
+      if (columnId === "cbm") return row.cbm_per_unit ? row.cbm_per_unit.toFixed(6) : "";
+      if (columnId === "workflow_note") return row.workflow_note ?? "";
+      if (columnId.endsWith("::inb_qty")) {
+        const containerName = columnId.slice(0, -"::inb_qty".length);
+        const raw = row.containers?.[containerName];
+        return raw?.inbound_qty != null ? String(raw.inbound_qty) : "";
+      }
+    }
+    const host = gridHostRef.current;
+    if (!host) return "";
+    const rowEl = host.querySelector<HTMLElement>(`[row-id="${cssEscapeAttr(rowId)}"]`);
+    const cellEl = rowEl?.querySelector<HTMLElement>(`[col-id="${cssEscapeAttr(columnId)}"]`);
+    return cellEl?.textContent?.trim() ?? "";
+  }, []);
+
+
   const hideColumnsFromMenu = useCallback((menuColumnKey: string) => {
-    const clickedHideKey = hideKeyForColumnMenuKey(menuColumnKey);
+    const clickedSelectionKey = menuColumnKey;
     let selectedHideKeys: Set<string> | null = null;
 
-    if (selectedColumnIdsRef.current.has(clickedHideKey)) {
+    if (selectedColumnIdsRef.current.has(clickedSelectionKey)) {
       selectedHideKeys = new Set(selectedColumnIdsRef.current);
-    } else if (selectedFullColumnIdsRef.current.has(clickedHideKey)) {
+    } else if (selectedFullColumnIdsRef.current.has(clickedSelectionKey)) {
       selectedHideKeys = new Set(selectedFullColumnIdsRef.current);
     } else {
       const cellColumnKeys = new Set<string>();
       for (const cellKey of selectedCellsRef.current) {
         const separator = cellKey.indexOf("::");
         if (separator < 0) continue;
-        cellColumnKeys.add(hideKeyForColumnMenuKey(cellKey.slice(separator + 2)));
+        cellColumnKeys.add(cellKey.slice(separator + 2));
       }
-      if (cellColumnKeys.has(clickedHideKey)) selectedHideKeys = cellColumnKeys;
+      if (cellColumnKeys.has(clickedSelectionKey)) selectedHideKeys = cellColumnKeys;
     }
 
-    const hideKeys = [...(selectedHideKeys ?? new Set([clickedHideKey]))]
+    const requestedKeys = [...(selectedHideKeys ?? new Set([clickedSelectionKey]))]
+      .filter((columnId) => !columnId.startsWith("container:"));
+    const requestedPhysicalKeys = requestedKeys.filter((columnId) => columnId.includes("::"));
+    const physicalKeys = requestedPhysicalKeys.filter((columnId) => {
+      const column = gridRef.current?.api.getColumn(columnId);
+      const displayedSiblings = column?.getParent()?.getDisplayedLeafColumns() ?? [];
+      const selectedSiblingCount = displayedSiblings.filter((sibling) => requestedPhysicalKeys.includes(sibling.getColId())).length;
+      // Keep one visible child so the container header and its restore arrow
+      // always have a real column to anchor to.
+      if (selectedSiblingCount < displayedSiblings.length) return true;
+      return column !== displayedSiblings.at(-1);
+    });
+    const hideKeys = [...new Set(requestedKeys.filter((columnId) => !columnId.includes("::")).map(hideKeyForColumnMenuKey))]
       .filter((columnId) => !columnId.startsWith("container:") && columnVis[columnId] !== false);
-    if (!hideKeys.length) return;
+    if (!hideKeys.length && !physicalKeys.length) return;
 
     if (onHideColumns) onHideColumns(hideKeys);
     else for (const columnId of hideKeys) onHideColumn?.(columnId);
+    if (physicalKeys.length) onToggleContainerColumns?.(physicalKeys);
 
     selectedCellsRef.current = new Set();
     selectedColumnIdsRef.current = new Set();
@@ -2605,7 +3029,14 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     lastFullColumnSelectionRef.current = null;
     notifySelectionChanged();
     startTransition(() => onCellSelectionChange?.([]));
-  }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns]);
+  }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns, onToggleContainerColumns]);
+
+  const hideGroupColumns = useCallback((columnIds: string[]) => {
+    const visibleColumnIds = columnIds.filter((columnId) => columnVis[columnId] !== false);
+    if (!visibleColumnIds.length) return;
+    if (onHideColumns) onHideColumns(visibleColumnIds);
+    else for (const columnId of visibleColumnIds) onHideColumn?.(columnId);
+  }, [columnVis, onHideColumn, onHideColumns]);
 
   useEffect(() => () => {
     if (dragSelectionFrameRef.current !== null) window.cancelAnimationFrame(dragSelectionFrameRef.current);
@@ -2701,80 +3132,210 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     if (!canEditPlanning) return false;
     if (!Number.isFinite(nextQty) || nextQty < 0 || !container.container_id) return false;
     const key = `${row.sku}::${container.name}`;
-    const previous = qtyOverrides.get(key);
+    const previous = qtyOverridesRef.current.get(key);
     const itemId = previous !== undefined ? previous.item_id : raw.item_id ?? undefined;
     const oldQty = previous?.inbound_qty ?? raw.inbound_qty ?? 0;
     if (nextQty === oldQty || (!itemId && nextQty === 0)) return true;
 
-    let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
-    if (itemId && nextQty === 0) {
-      json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
-        method: "DELETE",
-        headers: DEMAND_PLANNING_MUTATION_HEADER,
-      }).then((response) => response.json());
-    } else if (itemId) {
-      json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
-        body: JSON.stringify({ qty: nextQty }),
-      }).then((response) => response.json());
-    } else {
-      json = await fetch(apiPath("/api/planning/containers/items"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
-        body: JSON.stringify({
-          container_id: container.container_id,
-          master_sku: row.sku,
-          qty: nextQty,
-          cbm_unit: previous?.cbm_unit ?? raw.cbm_unit ?? row.cbm_per_unit ?? 0,
-        }),
-      }).then((response) => response.json());
-    }
-    if (!json.success) return false;
-
-    const nextOverrides = new Map(qtyOverrides);
     const oldAllocatedQty = previous?.allocated_remaining_qty ?? raw.allocated_remaining_qty ?? 0;
-    const nextAllocatedQty = nextQty === 0 ? 0 : (json.allocated_qty ?? oldAllocatedQty);
-    nextOverrides.set(key, {
-      inbound_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
-      avail_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
-      cbm: nextQty === 0 ? null : (json.total_cbm ?? 0),
+    const optimisticOverride: QtyOverride = {
+      inbound_qty: nextQty === 0 ? null : nextQty,
+      avail_qty: nextQty === 0 ? null : nextQty,
+      cbm: nextQty === 0 ? null : nextQty * (previous?.cbm_unit ?? raw.cbm_unit ?? row.cbm_per_unit ?? 0),
       cbm_unit: previous?.cbm_unit ?? raw.cbm_unit,
-      item_id: nextQty === 0 ? undefined : (json.item_id ?? itemId),
-      allocated_remaining_qty: nextAllocatedQty,
+      item_id: nextQty === 0 ? undefined : itemId,
+      allocated_remaining_qty: nextQty === 0 ? 0 : oldAllocatedQty,
+    };
+    const nextOverrides = new Map(qtyOverridesRef.current).set(key, optimisticOverride);
+    qtyOverridesRef.current = nextOverrides;
+    lastChainedQtyOverridesRef.current = nextOverrides;
+    const optimisticChainMap = new Map(chainMapRef.current).set(
+      row.sku,
+      computeContainerChain(row, containers, nextOverrides, seasonalFactors),
+    );
+    chainMapRef.current = optimisticChainMap;
+    const immediateColumns = [`${container.name}::inb_qty`];
+    gridRef.current?.api.refreshCells({
+      rowNodes: [gridRef.current.api.getRowNode(row.sku)].filter((node) => node !== undefined),
+      columns: immediateColumns,
+      force: true,
     });
-    setQtyOverrides(nextOverrides);
-    setChainMap((current) => new Map(current).set(row.sku, computeContainerChain(row, containers, nextOverrides, seasonalFactors)));
+    scheduleQtyRenderSync();
 
-    if (container.status === "shipped" || container.status === "packing_received") {
-      setRowOverrides((current) => {
-        const next = new Map(current);
-        const currentRow = current.get(row.sku) ?? {};
-        const currentTotal = currentRow.total_inbound_qty ?? row.total_inbound_qty ?? 0;
-        const currentList = currentRow.containers_list ?? row.containers_list ?? "";
-        const entries = currentList.split(", ").filter(Boolean).filter((entry) => !entry.startsWith(`${container.name} (`));
-        if (nextQty > 0) entries.push(`${container.name} (${nextQty})`);
-        next.set(row.sku, {
-          total_inbound_qty: Math.max(0, currentTotal - oldQty + nextQty),
-          containers_list: entries.join(", ") || null,
+    // Keep keyboard entry responsive: the grid is updated optimistically and
+    // persistence finishes in the background. A failed request rolls back
+    // only if this cell has not been edited again in the meantime.
+    void (async () => {
+      try {
+        let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
+        if (itemId && nextQty === 0) {
+          json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
+            method: "DELETE",
+            headers: DEMAND_PLANNING_MUTATION_HEADER,
+          }).then((response) => response.json());
+        } else if (itemId) {
+          json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+            body: JSON.stringify({ qty: nextQty }),
+          }).then((response) => response.json());
+        } else {
+          json = await fetch(apiPath("/api/planning/containers/items"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+            body: JSON.stringify({
+              container_id: container.container_id,
+              master_sku: row.sku,
+              qty: nextQty,
+              cbm_unit: previous?.cbm_unit ?? raw.cbm_unit ?? row.cbm_per_unit ?? 0,
+            }),
+          }).then((response) => response.json());
+        }
+        if (!json.success) throw new Error("Failed to save Con. Qty");
+        if (qtyOverridesRef.current.get(key) !== optimisticOverride) return;
+
+        const nextAllocatedQty = nextQty === 0 ? 0 : (json.allocated_qty ?? oldAllocatedQty);
+        const confirmedOverride: QtyOverride = {
+          ...optimisticOverride,
+          inbound_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
+          avail_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
+          cbm: nextQty === 0 ? null : (json.total_cbm ?? optimisticOverride.cbm),
+          item_id: nextQty === 0 ? undefined : (json.item_id ?? itemId),
+          allocated_remaining_qty: nextAllocatedQty,
+        };
+        // A successful delete is already fully represented by the optimistic
+        // value, so avoid a second expensive grid render for every deleted cell.
+        if (nextQty !== 0) {
+          const displayValueChanged = confirmedOverride.inbound_qty !== optimisticOverride.inbound_qty
+            || confirmedOverride.cbm !== optimisticOverride.cbm;
+          const chainValueChanged = confirmedOverride.allocated_remaining_qty !== optimisticOverride.allocated_remaining_qty
+            || confirmedOverride.inbound_qty !== optimisticOverride.inbound_qty;
+          let confirmed = qtyOverridesRef.current;
+          if (displayValueChanged) {
+            confirmed = new Map(confirmed).set(key, confirmedOverride);
+            qtyOverridesRef.current = confirmed;
+            lastChainedQtyOverridesRef.current = confirmed;
+            gridRef.current?.api.refreshCells({
+              rowNodes: [gridRef.current.api.getRowNode(row.sku)].filter((node) => node !== undefined),
+              columns: immediateColumns,
+              force: true,
+            });
+            scheduleQtyRenderSync();
+          } else {
+            // Server IDs and allocation metadata are needed by the next edit,
+            // but do not require rebuilding hundreds of AG Grid columns.
+            Object.assign(optimisticOverride, confirmedOverride);
+          }
+          if (chainValueChanged) {
+            chainMapRef.current = new Map(chainMapRef.current).set(
+              row.sku,
+              computeContainerChain(row, containers, confirmed, seasonalFactors),
+            );
+            gridRef.current?.api.refreshCells({
+              rowNodes: [gridRef.current.api.getRowNode(row.sku)].filter((node) => node !== undefined),
+              columns: immediateColumns,
+              force: true,
+            });
+            scheduleQtyRenderSync();
+          }
+        }
+
+        if (container.status === "shipped" || container.status === "packing_received") {
+          setRowOverrides((current) => {
+            const next = new Map(current);
+            const currentRow = current.get(row.sku) ?? {};
+            const currentTotal = currentRow.total_inbound_qty ?? row.total_inbound_qty ?? 0;
+            const currentList = currentRow.containers_list ?? row.containers_list ?? "";
+            const entries = currentList.split(", ").filter(Boolean).filter((entry) => !entry.startsWith(`${container.name} (`));
+            if (nextQty > 0) entries.push(`${container.name} (${nextQty})`);
+            next.set(row.sku, {
+              total_inbound_qty: Math.max(0, currentTotal - oldQty + nextQty),
+              containers_list: entries.join(", ") || null,
+            });
+            return next;
+          });
+        }
+        if (nextAllocatedQty !== oldAllocatedQty) {
+          setRowOverrides((current) => {
+            const next = new Map(current);
+            const currentRow = current.get(row.sku) ?? {};
+            const currentRemaining = currentRow.remaining ?? row.remaining ?? 0;
+            next.set(row.sku, {
+              ...currentRow,
+              remaining: Math.max(0, currentRemaining - (nextAllocatedQty - oldAllocatedQty)),
+            });
+            return next;
+          });
+        }
+      } catch {
+        if (qtyOverridesRef.current.get(key) !== optimisticOverride) return;
+        const rolledBack = new Map(qtyOverridesRef.current);
+        if (previous === undefined) rolledBack.delete(key);
+        else rolledBack.set(key, previous);
+        qtyOverridesRef.current = rolledBack;
+        lastChainedQtyOverridesRef.current = rolledBack;
+        const rolledBackChainMap = new Map(chainMapRef.current).set(
+          row.sku,
+          computeContainerChain(row, containers, rolledBack, seasonalFactors),
+        );
+        chainMapRef.current = rolledBackChainMap;
+        gridRef.current?.api.refreshCells({
+          rowNodes: [gridRef.current.api.getRowNode(row.sku)].filter((node) => node !== undefined),
+          columns: immediateColumns,
+          force: true,
         });
-        return next;
-      });
-    }
-    if (nextAllocatedQty !== oldAllocatedQty) {
-      setRowOverrides((current) => {
-        const next = new Map(current);
-        const currentRow = current.get(row.sku) ?? {};
-        const currentRemaining = currentRow.remaining ?? row.remaining ?? 0;
-        next.set(row.sku, {
-          ...currentRow,
-          remaining: Math.max(0, currentRemaining - (nextAllocatedQty - oldAllocatedQty)),
-        });
-        return next;
-      });
-    }
+        scheduleQtyRenderSync();
+      }
+    })();
     return true;
-  }, [canEditPlanning, containers, qtyOverrides, seasonalFactors]);
+  }, [canEditPlanning, containers, scheduleQtyRenderSync, seasonalFactors]);
+
+  useEffect(() => {
+    const handleSelectedQtyDelete = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!canEditPlanning || clearingSelectedQtyRef.current) return;
+
+      const api = gridRef.current?.api;
+      if (!api) return;
+      const targets: Array<{ row: DemandRow; container: ContainerMeta; raw: ContainerRowData }> = [];
+      for (const selectedKey of selectedCellsRef.current) {
+        const separator = selectedKey.indexOf("::");
+        if (separator < 0) continue;
+        const rowId = selectedKey.slice(0, separator);
+        const columnId = selectedKey.slice(separator + 2);
+        if (!columnId.endsWith("::inb_qty")) continue;
+        const containerName = columnId.slice(0, -"::inb_qty".length);
+        const container = containers.find((item) => item.name === containerName);
+        const row = api.getRowNode(rowId)?.data;
+        if (!row || !container || container.status === "baseline" || container.status === "packing_received" || !container.container_id) continue;
+        const raw = row.containers?.[container.name] ?? {
+          item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
+          allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
+          inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
+        };
+        targets.push({ row, container, raw });
+      }
+      if (!targets.length) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      clearingSelectedQtyRef.current = true;
+      void (async () => {
+        try {
+          await Promise.allSettled(
+            targets.map((item) => saveQty(item.row, item.container, item.raw, 0)),
+          );
+        } finally {
+          clearingSelectedQtyRef.current = false;
+        }
+      })();
+    };
+
+    window.addEventListener("keydown", handleSelectedQtyDelete, true);
+    return () => window.removeEventListener("keydown", handleSelectedQtyDelete, true);
+  }, [canEditPlanning, containers, saveQty]);
 
 const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
     if (!canEditPlanning || !onSkuCellNoteChange) return;
@@ -2792,6 +3353,118 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     await onSkuWorkNoteChange(row.sku, note);
     return true;
   }, [canEditPlanning, onSkuWorkNoteChange]);
+
+  // Paste and fill both need to know, for an arbitrary "rowId::columnId" key,
+  // whether it's one of the few genuinely-editable cells (Con. Qty, CBM,
+  // Note) and what to call to write it — everything else is read-only and
+  // silently skipped rather than rejected, so a pasted block over a mixed
+  // selection still fills in whatever it can.
+  const resolveEditableTarget = useCallback((rowId: string, columnId: string): EditableCellTarget | null => {
+    if (!canEditPlanning) return null;
+    const api = gridRef.current?.api;
+    const row = api?.getRowNode(rowId)?.data;
+    if (!row) return null;
+    if (columnId === "cbm") return { kind: "cbm", row };
+    if (columnId === "workflow_note") return { kind: "note", row };
+    if (columnId.endsWith("::inb_qty")) {
+      const containerName = columnId.slice(0, -"::inb_qty".length);
+      const container = containers.find((item) => item.name === containerName);
+      if (!container || container.status === "baseline" || container.status === "packing_received" || !container.container_id) return null;
+      const raw = row.containers?.[containerName] ?? {
+        item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
+        allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
+        inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
+      };
+      return { kind: "qty", row, container, raw };
+    }
+    return null;
+  }, [canEditPlanning, containers]);
+
+  const applyValueToTarget = useCallback(async (target: EditableCellTarget, rawText: string): Promise<boolean> => {
+    if (target.kind === "note") return saveWorkNote(target.row, rawText);
+    const trimmed = rawText.trim();
+    const numeric = trimmed === "" ? 0 : Number(trimmed.replace(/,/g, ""));
+    if (!Number.isFinite(numeric) || numeric < 0) return false;
+    if (target.kind === "cbm") return saveCbm(target.row, numeric);
+    return saveQty(target.row, target.container, target.raw, Math.round(numeric));
+  }, [saveCbm, saveQty, saveWorkNote]);
+
+  useEffect(() => {
+    const handleCopy = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "c") return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      const bounds = getSelectionBoundsOrdered();
+      if (!bounds) return;
+      const { rowIds, columnIds } = bounds;
+      const tsv = rowIds.map((rowId) => columnIds.map((columnId) => {
+        const key = `${rowId}::${columnId}`;
+        return selectedCellsRef.current.has(key) ? getCellCopyValue(rowId, columnId) : "";
+      }).join("\t")).join("\n");
+      event.preventDefault();
+      void navigator.clipboard.writeText(tsv).catch(() => {});
+    };
+    window.addEventListener("keydown", handleCopy, true);
+    return () => window.removeEventListener("keydown", handleCopy, true);
+  }, [getCellCopyValue, getSelectionBoundsOrdered]);
+
+  useEffect(() => {
+    const handlePaste = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "v") return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!canEditPlanning) return;
+      const bounds = getSelectionBoundsOrdered();
+      if (!bounds) return;
+      const api = gridRef.current?.api;
+      if (!api) return;
+      event.preventDefault();
+
+      void (async () => {
+        let text: string;
+        try {
+          text = await navigator.clipboard.readText();
+        } catch {
+          return;
+        }
+        if (!text) return;
+        const lines = text.replace(/\r/g, "").split("\n");
+        if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+        const grid = lines.map((line) => line.split("\t"));
+        const isSingleValue = grid.length === 1 && grid[0].length === 1;
+
+        const applyOps: Array<Promise<boolean>> = [];
+        if (isSingleValue) {
+          const value = grid[0][0];
+          for (const key of selectedCellsRef.current) {
+            const separator = key.indexOf("::");
+            if (separator < 0) continue;
+            const editTarget = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
+            if (editTarget) applyOps.push(applyValueToTarget(editTarget, value));
+          }
+        } else {
+          const displayedColumns = api.getAllDisplayedColumns();
+          const startColIndex = displayedColumns.findIndex((column) => column.getColId() === bounds.columnIds[0]);
+          const startRowIndex = api.getRowNode(bounds.rowIds[0])?.rowIndex ?? -1;
+          if (startColIndex < 0 || startRowIndex < 0) return;
+          grid.forEach((line, rowOffset) => {
+            const rowNode = api.getDisplayedRowAtIndex(startRowIndex + rowOffset);
+            const rowId = rowNode?.data?.sku;
+            if (!rowId) return;
+            line.forEach((value, colOffset) => {
+              const column = displayedColumns[startColIndex + colOffset];
+              if (!column) return;
+              const editTarget = resolveEditableTarget(rowId, column.getColId());
+              if (editTarget) applyOps.push(applyValueToTarget(editTarget, value));
+            });
+          });
+        }
+        await Promise.allSettled(applyOps);
+      })();
+    };
+    window.addEventListener("keydown", handlePaste, true);
+    return () => window.removeEventListener("keydown", handlePaste, true);
+  }, [applyValueToTarget, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
 
   const autoFill = useCallback(async (
     container: ContainerMeta,
@@ -3318,13 +3991,23 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
     const flushGroup = () => {
       if (currentGroupId === null || currentGroupChildren.length === 0) return;
+      const groupId = currentGroupId;
+      const groupColumnIds = currentGroupChildren
+        .map((column) => column.colId)
+        .filter((id): id is string => Boolean(id));
+      const groupHeaderName = columnHeaderNames[`group:${groupId}`] ?? GROUP_LABELS[groupId] ?? groupId;
       groups.push({
-        groupId: currentGroupId,
-        headerName: columnHeaderNames[`group:${currentGroupId}`] ?? GROUP_LABELS[currentGroupId] ?? currentGroupId,
+        groupId,
+        headerName: groupHeaderName,
         headerGroupComponent: EditableGroupHeader,
         headerGroupComponentParams: {
-          selectionId: `group:${currentGroupId}`,
+          selectionId: `group:${groupId}`,
           onRename: onColumnHeaderRename ?? (() => {}),
+          onRightClick: (x: number, y: number) => {
+            setColumnMenu(null);
+            setFilterOpenKey(null);
+            setGroupMenu({ x, y, label: groupHeaderName, columnIds: groupColumnIds });
+          },
         },
         children: currentGroupChildren,
       });
@@ -3348,13 +4031,52 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         if (container.status === "baseline" && hiddenBases.has("Base")) continue;
         const baseline = container.status === "baseline";
         const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
+        const globallyVisibleSubColumns = conCandidates.filter((column) => columnVis[`con:${column.id}`] !== false);
+        const containerHiddenRuns: { hiddenIds: string[]; hiddenLabels: string[]; startIndex: number }[] = [];
+        let pendingHiddenColumns: typeof globallyVisibleSubColumns = [];
+        let hiddenRunStartIndex = -1;
+        const flushContainerHiddenRun = () => {
+          if (!pendingHiddenColumns.length) return;
+          containerHiddenRuns.push({
+            hiddenIds: pendingHiddenColumns.map((column) => column.id),
+            hiddenLabels: pendingHiddenColumns.map((column) => column.label.replace("\n", " ")),
+            startIndex: hiddenRunStartIndex,
+          });
+          pendingHiddenColumns = [];
+        };
+        globallyVisibleSubColumns.forEach((column, index) => {
+          if (hiddenContainerColumns.has(`${container.name}::${column.id}`)) {
+            if (!pendingHiddenColumns.length) hiddenRunStartIndex = index;
+            pendingHiddenColumns.push(column);
+          } else {
+            flushContainerHiddenRun();
+          }
+        });
+        flushContainerHiddenRun();
+        const containerRestoreMarkers = { left: new Map<string, HideGapRestoreInfo>(), right: new Map<string, HideGapRestoreInfo>() };
+        for (const run of containerHiddenRuns) {
+          const onRestore = () => onToggleContainerColumns?.(run.hiddenIds.map((id) => `${container.name}::${id}`));
+          const afterId = globallyVisibleSubColumns[run.startIndex + run.hiddenIds.length]?.id;
+          if (afterId) {
+            containerRestoreMarkers.left.set(afterId, { hiddenLabels: run.hiddenLabels, onRestore });
+            continue;
+          }
+          const beforeId = globallyVisibleSubColumns[run.startIndex - 1]?.id;
+          if (beforeId) containerRestoreMarkers.right.set(beforeId, { hiddenLabels: run.hiddenLabels, onRestore });
+        }
 
-        const buildRealSubColDef = (column: (typeof conCandidates)[number]): AgColDef<DemandRow> => ({
+        const buildRealSubColDef = (column: (typeof conCandidates)[number]): AgColDef<DemandRow> => {
+          const physicalColumnId = `${container.name}::${column.id}`;
+          const sharedColumnId = `con:${column.id}`;
+          return ({
           // headerClass (text-color + start/end boundary) is assigned in the
           // combined post-pass below, once each column's final index in the
           // real+indicator list is known.
-          headerStyle: () => headerStyleForColor(columnColors[`con:${column.id}`]?.header, columnTextFormatsRef.current[`con:${column.id}`]?.header),
-          colId: `${container.name}::${column.id}`,
+          headerStyle: () => headerStyleForColor(
+            columnColors[physicalColumnId]?.header ?? columnColors[sharedColumnId]?.header,
+            columnTextFormatsRef.current[physicalColumnId]?.header ?? columnTextFormatsRef.current[sharedColumnId]?.header,
+          ),
+          colId: physicalColumnId,
           headerName: columnHeaderNames[`con:${column.id}`] ?? (column.id === "oo"
             ? "Open Ord"
             : column.id === "remaining"
@@ -3363,11 +4085,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           headerTooltip: column.label.replace("\n", " "),
           headerComponent: SelectableHeader,
           headerComponentParams: {
-            selectionId: `con:${column.id}`,
-            isSelected: () => selectedColumnIdsRef.current.has(`con:${column.id}`),
+            selectionId: physicalColumnId,
+            renameId: sharedColumnId,
+            isSelected: () => selectedColumnIdsRef.current.has(physicalColumnId),
             subscribeSelection,
             onSelect: handleColumnHeaderSelectFast,
-            isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(`con:${column.id}`),
+            isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(physicalColumnId),
             onFullColumnSelect: handleFullColumnSelectFast,
             onRename: onColumnHeaderRename ?? (() => {}),
             isFiltered: columnFilters.has(`${container.name}::${column.id}`),
@@ -3376,8 +4099,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               key: `${container.name}::${column.id}`,
               label: `${container.name} · ${column.label.replace("\n", " ")}`,
             }),
-            restoreMarkerLeft: conRestoreMarkers.left.get(column.id),
-            restoreMarkerRight: conRestoreMarkers.right.get(column.id),
+            restoreMarkerLeft: containerRestoreMarkers.left.get(column.id) ?? conRestoreMarkers.left.get(column.id),
+            restoreMarkerRight: containerRestoreMarkers.right.get(column.id) ?? conRestoreMarkers.right.get(column.id),
           },
           sortable: false,
           width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
@@ -3389,7 +4112,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
               inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
             };
-            const value = { ...raw, ...(qtyOverrides.get(key) ?? {}), ...(params.data.pinned ? {} : (chainMap.get(params.data.sku)?.get(container.name) ?? {})) };
+            const value = { ...raw, ...(qtyOverridesRef.current.get(key) ?? {}), ...(params.data.pinned ? {} : (chainMapRef.current.get(params.data.sku)?.get(container.name) ?? {})) };
             return column.val(value, container, params.data);
           },
           comparator: column.id === "life" || column.id === "inb_qty" || column.id === "avail" || column.id === "est" || column.id === "cbo" || column.id === "carry" || column.id === "remaining"
@@ -3398,8 +4121,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                   if (!node.data) return -1;
                   const key = `${node.data.sku}::${container.name}`;
                   const raw = node.data.containers?.[container.name];
-                  const chain = chainMap.get(node.data.sku)?.get(container.name);
-                  const override = qtyOverrides.get(key);
+                  const chain = chainMapRef.current.get(node.data.sku)?.get(container.name);
+                  const override = qtyOverridesRef.current.get(key);
                   const merged = { ...raw, ...override, ...chain };
                   if (column.id === "life") return merged.inv_life ?? -1;
                   if (column.id === "inb_qty") return override?.inbound_qty ?? raw?.inbound_qty ?? 0;
@@ -3422,34 +4145,54 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
               inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
             };
-            return { onSave: (qty: number) => saveQty(row, container, raw, qty) };
+            return {
+              onSave: (qty: number) => saveQty(row, container, raw, qty),
+              onSelectionPointerDown: handleQtySelectionPointerDown,
+              onSelectionPointerEnter: handleQtySelectionPointerEnter,
+              onRequestEdit: handleQtyEditRequest,
+            };
           } : undefined,
           cellClassRules: {
             "planning-user-text-color": (params) => {
               const columnId = `${container.name}::${column.id}`;
               const key = cellColorKey(params.data?.sku, columnId);
-              return Boolean(cellTextFormatsRef.current[key]?.color ?? columnTextFormatsRef.current[`con:${column.id}`]?.cell?.color);
+              return Boolean(cellTextFormatsRef.current[key]?.color
+                ?? columnTextFormatsRef.current[physicalColumnId]?.cell?.color
+                ?? columnTextFormatsRef.current[sharedColumnId]?.cell?.color);
             },
           },
           cellStyle: (params) => {
             const columnId = `${container.name}::${column.id}`;
             const key = cellColorKey(params.data?.sku, columnId);
             const selected = selectedCellsRef.current.has(key);
-            const fullColumnSelected = selectedFullColumnIdsRef.current.has(`con:${column.id}`);
-            const textFormat = { ...(columnTextFormatsRef.current[`con:${column.id}`]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
+            const fullColumnSelected = selectedFullColumnIdsRef.current.has(physicalColumnId);
+            const textFormat = {
+              ...(columnTextFormatsRef.current[sharedColumnId]?.cell ?? {}),
+              ...(columnTextFormatsRef.current[physicalColumnId]?.cell ?? {}),
+              ...(cellTextFormatsRef.current[key] ?? {}),
+            };
+            const displayedColumns = params.column.getParent()?.getDisplayedLeafColumns() ?? [];
+            const isFirstDisplayedColumn = displayedColumns[0] === params.column;
             return {
-              backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[`con:${column.id}`]?.cell ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
+              backgroundColor: selected ? "#BFD7FF" : cellColors[key]
+                ?? columnColors[physicalColumnId]?.cell
+                ?? columnColors[sharedColumnId]?.cell
+                ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
               ...(textFormat.color ? { color: textFormat.color } : {}),
               ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
               ...(textFormat.bold !== undefined ? { fontWeight: textFormat.bold ? 700 : 400 } : {}),
               textAlign: "center",
+              borderLeft: isFirstDisplayedColumn ? "2px solid #5A5750" : "none",
               ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
               ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
             };
           },
         });
+        };
 
-        const visibleSubColumns = conCandidates.filter((column) => columnVis[`con:${column.id}`] !== false);
+        const visibleSubColumns = globallyVisibleSubColumns.filter(
+          (column) => !hiddenContainerColumns.has(`${container.name}::${column.id}`),
+        );
         const children = visibleSubColumns.map((column) => buildRealSubColDef(column));
         const totalColumns: ContainerTotalColumn[] = visibleSubColumns.map((column) => ({
           id: column.id,
@@ -3457,29 +4200,31 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           width: columnWidths[`${container.name}::${column.id}`] ?? containerColumnWidth(column),
           total: containerColumnTotals.get(container.name)?.[column.id as keyof ContainerColumnTotals],
         }));
-        // Boundary styling (the 2px block-edge border and the start/end
-        // header classes) needs each column's final index among its visible
-        // siblings, so it's assigned after the fact rather than inside
-        // `buildRealSubColDef` itself.
+        // Resolve boundaries from AG Grid's live displayed order. The user can
+        // reorder children, so the original definition index is not a stable
+        // indicator of the left or right edge of the container block.
         children.forEach((child, columnIndex) => {
           const realId = visibleSubColumns[columnIndex].id;
-          child.headerClass = () => [
-            columnTextFormatsRef.current[`con:${realId}`]?.header?.color ? "planning-user-header-text-color" : "",
-            conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
-            columnIndex === 0 ? "container-column-start" : "",
-            columnIndex === children.length - 1 ? "container-column-end" : "",
-          ].filter(Boolean).join(" ");
-          if (columnIndex === 0) {
-            const baseCellStyle = child.cellStyle;
-            child.cellStyle = (params) => ({
-              ...(typeof baseCellStyle === "function" ? baseCellStyle(params) : baseCellStyle),
-              borderLeft: "2px solid #5A5750",
-            });
-          }
+          const physicalColumnId = `${container.name}::${realId}`;
+          child.headerClass = (params) => {
+            const displayedColumns = params.column?.getParent()?.getDisplayedLeafColumns() ?? [];
+            return [
+              (columnTextFormatsRef.current[physicalColumnId]?.header?.color
+                ?? columnTextFormatsRef.current[`con:${realId}`]?.header?.color) ? "planning-user-header-text-color" : "",
+              containerRestoreMarkers.left.has(realId) || containerRestoreMarkers.right.has(realId)
+                || conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
+              displayedColumns[0] === params.column ? "container-column-start" : "",
+              displayedColumns.at(-1) === params.column ? "container-column-end" : "",
+            ].filter(Boolean).join(" ");
+          };
         });
 
         groups.push({
           groupId: `container-${container.name}`,
+          // A container is one planning block. Moving its group header must
+          // keep all 11 planning columns together, and individual column moves
+          // must not split the block or insert another column inside it.
+          marryChildren: true,
           headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
           headerStyle: () => headerStyleForColor(columnColors[`container:${container.name}`]?.header, columnTextFormatsRef.current[`container:${container.name}`]?.header),
           headerClass: () => columnTextFormatsRef.current[`container:${container.name}`]?.header?.color ? "planning-user-header-text-color" : "",
@@ -3490,6 +4235,18 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             subscribeSelection,
             onSelect: handleColumnHeaderSelectFast,
             onRename: onColumnHeaderRename ?? (() => {}),
+            onRightClick: (x: number, y: number) => {
+              setColumnMenu(null);
+              setGroupMenu(null);
+              setFilterOpenKey(null);
+              setContainerMenu({
+                x,
+                y,
+                label: columnHeaderNames[`container:${container.name}`] ?? container.name,
+                containerName: container.name,
+                baseline,
+              });
+            },
             eta: container.eta,
             baseline,
             editable: canEditPlanning,
@@ -3539,7 +4296,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, hiddenBases, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, handleQtySelectionPointerDown, handleQtySelectionPointerEnter, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -3669,7 +4426,43 @@ autoFilling3: autoFillingContainers3.has(container.name),
 
   return (
     <>
-    <div ref={gridHostRef} className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white">
+    <div
+      ref={gridHostRef}
+      className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white"
+      onMouseDownCapture={(event) => {
+        if (event.button !== 0) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("input, textarea, select, [contenteditable='true']")) return;
+        const cell = target.closest<HTMLElement>(".ag-cell[col-id]");
+        const row = target.closest<HTMLElement>(".ag-row[row-index]");
+        const columnId = cell?.getAttribute("col-id");
+        const rowIndex = Number(row?.getAttribute("row-index"));
+        if (!columnId || !Number.isInteger(rowIndex)) return;
+        dragCellAnchorRef.current = { rowIndex, columnId };
+        dragMovedRef.current = false;
+      }}
+      onMouseOverCapture={(event) => {
+        if ((event.buttons & 1) !== 1) return;
+        const anchor = dragCellAnchorRef.current;
+        const api = gridRef.current?.api;
+        if (!anchor || !api) return;
+        const target = event.target as HTMLElement;
+        const cell = target.closest<HTMLElement>(".ag-cell[col-id]");
+        const row = target.closest<HTMLElement>(".ag-row[row-index]");
+        const columnId = cell?.getAttribute("col-id");
+        const rowIndex = Number(row?.getAttribute("row-index"));
+        if (!columnId || !Number.isInteger(rowIndex)) return;
+        const cells = selectedCellsBetweenPosition(api, rowIndex, columnId, anchor);
+        if (!cells.length) return;
+        dragMovedRef.current = true;
+        const previous = selectedCellsRef.current;
+        const next = new Set(cells.map((selectedCell) => `${selectedCell.rowId}::${selectedCell.columnId}`));
+        selectedCellsRef.current = next;
+        cellSelectionAnchorRef.current = anchor;
+        refreshChangedCells(previous, next);
+        scheduleDragSelectionNotification(cells);
+      }}
+    >
       <style>{`
         @keyframes planning-spin { to { transform: rotate(360deg); } }
         .planning-ag-grid .ag-row-selected {
@@ -3820,6 +4613,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
             suppressDragLeaveHidesColumns
             onColumnMoved={(event) => {
               if (!event.finished || event.source !== "uiColumnMoved") return;
+              const affectedColumns = new Set(event.columns ?? (event.column ? [event.column] : []));
+              for (const column of [...affectedColumns]) {
+                for (const sibling of column.getParent()?.getDisplayedLeafColumns() ?? []) affectedColumns.add(sibling);
+              }
+              event.api.refreshHeader();
+              if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });
               onColumnOrderChange?.(event.api.getColumnState().map((state) => state.colId));
             }}
             onColumnResized={(event) => {
@@ -3864,6 +4663,28 @@ autoFilling3: autoFillingContainers3.has(container.name),
             return nextMap;
           })}
           onClose={() => { setColumnMenu(null); setFilterOpenKey(null); }}
+        />
+      )}
+      {groupMenu && (
+        <GridGroupMenu
+          x={groupMenu.x}
+          y={groupMenu.y}
+          label={groupMenu.label}
+          kind="columns"
+          canHide={onHideColumn !== undefined || onHideColumns !== undefined}
+          onHide={() => hideGroupColumns(groupMenu.columnIds)}
+          onClose={() => setGroupMenu(null)}
+        />
+      )}
+      {containerMenu && (
+        <GridGroupMenu
+          x={containerMenu.x}
+          y={containerMenu.y}
+          label={containerMenu.label}
+          kind="container"
+          canHide={onHideContainer !== undefined}
+          onHide={() => onHideContainer?.(containerMenu.containerName, containerMenu.baseline)}
+          onClose={() => setContainerMenu(null)}
         />
       )}
     </div>

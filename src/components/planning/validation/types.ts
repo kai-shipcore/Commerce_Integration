@@ -82,9 +82,15 @@ export interface ValidationOutliers {
   scored_units: number;
 }
 
+/** `week_of` is the training week a run was made from, W-MON labelled.
+ *
+ *  It was called `forecast_date` until the API renamed it on 2026-08-12. These
+ *  three interfaces kept the old name for a day, which did not fail a type check
+ *  because the payload is parsed as JSON and never structurally validated: the
+ *  compiler was checking these declarations against nothing. */
 export interface RunRow {
   model_version: string;
-  forecast_date: string;
+  week_of: string;
   n_skus: number;
   n_weeks: number;
   forecast_units: number;
@@ -92,7 +98,7 @@ export interface RunRow {
 
 export interface PerformanceRow {
   model_version: string;
-  forecast_date: string;
+  week_of: string;
   segment: string;
   n_skus: number;
   weeks_scored: number;
@@ -174,7 +180,9 @@ export interface TrendPredicted {
   yhat: number;
   lead: number;
   n_skus: number;
-  forecast_date: string;
+  /** Training week of the run this prediction came from. Renamed from
+   *  `forecast_date` on 2026-08-12; see the note above RunRow. */
+  week_of: string;
 }
 
 export interface TrendForward {

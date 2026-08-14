@@ -28,7 +28,10 @@ export interface DemandPlanningDataState {
   containerDetailsLoading: boolean;
   containerDetailsLoaded: boolean;
   error: string | null;
-  reload: () => void;
+  reload: (settings?: {
+    salesWindowWeights: SalesWindowWeights;
+    oosLostDemandWeights: OosLostDemandWeights;
+  }) => void;
   loadContainerDetails: () => void;
 }
 
@@ -51,9 +54,14 @@ export function useDemandPlanningData(
 
   const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category && category.length ? [...category].sort().join(",") : "all"}|${JSON.stringify(salesWindowWeights)}`;
 
-  function fetchDashboard(withRefresh: boolean) {
+  function fetchDashboard(withRefresh: boolean, settings?: {
+    salesWindowWeights: SalesWindowWeights;
+    oosLostDemandWeights: OosLostDemandWeights;
+  }) {
     let cancelled = false;
-    const requestScopeKey = scopeKey();
+    const effectiveSalesWeights = settings?.salesWindowWeights ?? salesWindowWeights;
+    const effectiveOosWeights = settings?.oosLostDemandWeights ?? oosLostDemandWeights;
+    const requestScopeKey = `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category && category.length ? [...category].sort().join(",") : "all"}|${JSON.stringify(effectiveSalesWeights)}`;
     const cachedData = dashboardMemoryCache.get(requestScopeKey);
     if (!withRefresh && cachedData) {
       setData(cachedData);
@@ -71,11 +79,11 @@ export function useDemandPlanningData(
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
     const categorySuffix = fastPathCategory(category) ? `&product=${fastPathCategory(category)}` : "";
-    const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(salesWindowWeights)}`;
+    const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(effectiveSalesWeights)}`;
     const dashUrl = apiPath(`/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}${salesWeightsSuffix}`);
     const dashFetch = withRefresh
       ? runPlanningStatsRefresh(
-          { salesWindowWeights, oosLostDemandWeights },
+          { salesWindowWeights: effectiveSalesWeights, oosLostDemandWeights: effectiveOosWeights },
           { isCancelled: () => cancelled },
         ).then(() => fetch(dashUrl))
       : fetch(dashUrl);
@@ -125,10 +133,13 @@ export function useDemandPlanningData(
 
   // Sync button: refresh stats first, then load. Ref guard blocks a second click
   // firing before the disabled/loading state has re-rendered onto the button.
-  function reload() {
+  function reload(settings?: {
+    salesWindowWeights: SalesWindowWeights;
+    oosLostDemandWeights: OosLostDemandWeights;
+  }) {
     if (syncInFlightRef.current) return;
     syncInFlightRef.current = true;
-    fetchDashboard(true);
+    fetchDashboard(true, settings);
   }
 
   function loadContainerDetails() {

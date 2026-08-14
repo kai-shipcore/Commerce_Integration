@@ -284,9 +284,30 @@ function usesLocalForecastServer() {
  * prevent.
  */
 function resolveServerDir(): string | null {
+  // Production refuses FIRST, before the explicit value is even read.
+  //
+  // This order used to be reversed, so an explicitly set FORECAST_SERVER_DIR
+  // won everywhere including production. That made the guard describe an
+  // intention the code did not enforce: the paragraph above says an unset
+  // variable is how this app declines to compete with systemd, while a set one
+  // quietly re-entered the race.
+  //
+  // It is also precisely the mistake DEPLOYMENT.md warns about. That file tells
+  // people not to copy FORECAST_SERVER_DIR out of a colleague's .env, because it
+  // is machine-specific — and .env.local overrides .env per-variable, so a value
+  // can arrive on the server without appearing in the file anyone thinks to
+  // check. Under pm2 it need not appear in any file at all, since pm2 holds
+  // environment per process. That is why searching /opt for one found nothing
+  // during the 2026-08-07 investigation (BACKLOG item 21).
+  //
+  // A second supervisor racing systemd for port 8000 costs a day of a
+  // crash-looping unit while every deploy reports green. Nothing this app gains
+  // from auto-starting in production is worth that, so the answer in production
+  // is always no.
+  if (process.env.NODE_ENV === "production") return null;
+
   const explicit = process.env.FORECAST_SERVER_DIR;
   if (explicit) return explicit;
-  if (process.env.NODE_ENV === "production") return null;
 
   let dir = process.cwd();
   for (let depth = 0; depth < 5; depth++) {

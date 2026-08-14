@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type RefObject } from "react";
 import { RotateCcw, Settings, Check } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath } from "@/lib/api-path";
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_SEASONAL_FACTORS,
   SEASONAL_FACTOR_FIELDS,
@@ -33,16 +33,30 @@ import type { DemandRow } from "@/types/demand-planning";
 // The settings (gear) button must stay visible even while this is off.
 const SHOW_STATS = false;
 
+// Matches SETTINGS_SECTION_TITLE_STYLE in demand-planning-dashboard.tsx so section
+// titles read consistently across the Column Settings and Planning Settings popups.
+const SECTION_TITLE_STYLE: CSSProperties = {
+  color: "#1D4ED8",
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
 interface StatusBarProps {
   rows: DemandRow[];
   inline?: boolean;
+  settingsAnchorRef?: RefObject<HTMLElement | null>;
   seasonalFactors: SeasonalFactors;
   onSeasonalFactorsChange: (next: SeasonalFactors) => void;
   salesWindowWeights: SalesWindowWeights;
   onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
   oosLostDemandWeights?: OosLostDemandWeights;
   onOosLostDemandWeightsChange?: (next: OosLostDemandWeights) => void;
-  onApplyAndSync?: () => void;
+  onApplyAndSync?: (settings: {
+    salesWindowWeights: SalesWindowWeights;
+    oosLostDemandWeights: OosLostDemandWeights;
+  }) => void;
   gradient?: GradientTier[];
   gradientSC?: GradientTier[];
   onGradientChange?: (next: GradientTier[]) => void;
@@ -52,6 +66,7 @@ interface StatusBarProps {
 export function StatusBar({
   rows,
   inline = false,
+  settingsAnchorRef,
   seasonalFactors,
   onSeasonalFactorsChange,
   salesWindowWeights,
@@ -71,17 +86,14 @@ export function StatusBar({
   return (
     <div
       style={{
-        background: "#fff",
         height: inline ? 30 : 32,
         flexShrink: 0,
         display: "flex",
         alignItems: "center",
+        gap: 5,
         fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
         fontSize: 12,
         lineHeight: 1,
-        border: "1px solid #C2BFB5",
-        borderRadius: inline ? 4 : 0,
-        overflow: "hidden",
       }}
     >
       {SHOW_STATS && (
@@ -95,6 +107,7 @@ export function StatusBar({
         </>
       )}
       <SeasonalFactorSettings
+        anchorRef={settingsAnchorRef}
         factors={seasonalFactors}
         onChange={onSeasonalFactorsChange}
         salesWindowWeights={salesWindowWeights}
@@ -117,7 +130,10 @@ function SbItem({ label, value, color }: { label: string; value: string | number
         gap: 4,
         padding: "0 11px",
         height: "100%",
-        borderRight: "1px solid #D8D6CE",
+        boxSizing: "border-box",
+        border: "1px solid #C2BFB5",
+        borderRadius: 4,
+        background: "#fff",
       }}
     >
       <span style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 650, lineHeight: "14px", color: "#3F3D38" }}>{label}</span>
@@ -154,6 +170,7 @@ const restoreButtonStyle: CSSProperties = {
 };
 
 function SeasonalFactorSettings({
+  anchorRef,
   factors,
   onChange,
   salesWindowWeights,
@@ -162,13 +179,17 @@ function SeasonalFactorSettings({
   onOosLostDemandWeightsChange,
   onApplyAndSync,
 }: {
+  anchorRef?: RefObject<HTMLElement | null>;
   factors: SeasonalFactors;
   onChange: (next: SeasonalFactors) => void;
   salesWindowWeights: SalesWindowWeights;
   onSalesWindowWeightsChange: (next: SalesWindowWeights) => void;
   oosLostDemandWeights: OosLostDemandWeights;
   onOosLostDemandWeightsChange?: (next: OosLostDemandWeights) => void;
-  onApplyAndSync?: () => void;
+  onApplyAndSync?: (settings: {
+    salesWindowWeights: SalesWindowWeights;
+    oosLostDemandWeights: OosLostDemandWeights;
+  }) => void;
 }) {
   const { pick } = useI18n();
 
@@ -228,11 +249,15 @@ function SeasonalFactorSettings({
     onSalesWindowWeightsChange(pendingSalesWeights);
     onOosLostDemandWeightsChange?.(pendingOosWeights);
     setJustApplied(true);
-    onApplyAndSync?.();
+    onApplyAndSync?.({
+      salesWindowWeights: pendingSalesWeights,
+      oosLostDemandWeights: pendingOosWeights,
+    });
   }
 
   return (
     <Popover onOpenChange={handleOpenChange}>
+      {anchorRef ? <PopoverAnchor virtualRef={anchorRef as RefObject<HTMLElement>} /> : null}
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -242,20 +267,21 @@ function SeasonalFactorSettings({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 30,
+            width: 32,
             height: "100%",
-            border: "none",
-            borderRight: "1px solid #D8D6CE",
+            boxSizing: "border-box",
+            border: "1px solid #C2BFB5",
+            borderRadius: 4,
             background: "#fff",
             color: "#64748B",
             cursor: "pointer",
             flexShrink: 0,
           }}
         >
-          <Settings size={14} strokeWidth={2} />
+          <Settings size={15} strokeWidth={2} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" style={{ width: "min(760px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
+      <PopoverContent align="start" style={{ width: "min(760px, calc(100vw - 32px))", padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "12px 16px 10px", borderBottom: "1px solid #E2E8F0" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>{pick("시즌지수 설정", "Planning Settings")}</div>
@@ -301,7 +327,7 @@ function SeasonalFactorSettings({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
           {/* Seasonal Factors */}
           <div style={{ padding: "14px 16px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 10 }}>{pick("시즌 지수", "Seasonal Factors")}</div>
+            <div style={{ ...SECTION_TITLE_STYLE, marginBottom: 10 }}>{pick("시즌 지수", "Seasonal Factors")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {SEASONAL_FACTOR_FIELDS.map(({ key, label }) => (
                 <label key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -328,7 +354,7 @@ function SeasonalFactorSettings({
 
           <div style={{ padding: "14px 16px", borderLeft: "1px solid #E2E8F0" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B" }}>{pick("판매 비중 기간별 가중치", "Sales Window Weights")}</div>
+              <div style={SECTION_TITLE_STYLE}>{pick("판매 비중 기간별 가중치", "Sales Window Weights")}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: Math.abs(salesWeightTotal - 1) < 0.0001 ? "#047857" : "#B45309" }}>
                 {pick("합계", "Total")} {(salesWeightTotal * 100).toFixed(0)}%
               </div>
@@ -360,7 +386,7 @@ function SeasonalFactorSettings({
         </div>
 
           <div style={{ padding: "14px 16px", borderTop: "1px solid #E2E8F0" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>
+            <div style={{ ...SECTION_TITLE_STYLE, marginBottom: 4 }}>
               {pick("OOS 손실수요 마켓 비중", "OOS Lost-Demand Marketplace Weights")}
             </div>
             <div style={{ fontSize: 11, lineHeight: 1.4, color: "#64748B", marginBottom: 10 }}>
@@ -415,7 +441,7 @@ function SeasonalFactorSettings({
                   width: "100%",
                   border: "none",
                   borderRadius: 4,
-                  background: "#1A1917",
+                  background: "#2563EB",
                   color: "#fff",
                   cursor: "pointer",
                   padding: "9px 10px",

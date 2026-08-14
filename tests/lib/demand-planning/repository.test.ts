@@ -61,6 +61,17 @@ describe("DemandPlanningRepository.getStatsRows", () => {
     const [sql] = primaryQueryMock.mock.calls[0];
     expect(sql).toContain("UPPER(p.category_code) = 'FM'");
   });
+
+  it("selects Container Info from the most recent completed container per SKU", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: null, inboundStatuses: "('shipped')" });
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("SELECT DISTINCT ON (ci.master_sku)");
+    expect(sql).toContain("WHERE c.status = 'complete'");
+    expect(sql).toContain("COALESCE(c.actual_arrival_date, c.eta_date)::text");
+    expect(sql).toContain("COALESCE(c.actual_arrival_date, c.eta_date) DESC NULLS LAST");
+    expect(sql).toContain("completed.latest_container");
+  });
 });
 
 describe("DemandPlanningRepository.getVelocitySnapshot", () => {

@@ -105,7 +105,7 @@ export function OverTimeSection({
       { version: string; date: string; weeks: number; cells: Map<string, PerformanceRow> }
     >();
     for (const r of performance) {
-      const date = r.forecast_date.slice(0, 10);
+      const date = r.week_of.slice(0, 10);
       const key = `${r.model_version}|${date}`;
       let entry = runsMap.get(key);
       if (!entry) {

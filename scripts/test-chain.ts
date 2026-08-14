@@ -7,7 +7,7 @@
  * Leave any expected field as null to skip checking it (still prints the actual).
  */
 
-import { fbmThirtyDayAverage, inventoryLifeDays, currentDailyAverage } from "../src/lib/planning/forecast-calculations";
+import { fivePeriodThirtyDayAverage, inventoryLifeDays, currentDailyAverage } from "../src/lib/planning/forecast-calculations";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "../src/lib/planning/seasonal-factors";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -159,8 +159,8 @@ const fba_avg_prev = null; // prev period data not available
 const fba_avg_curr = fba_avg_real; // API sets _fba_curr = fbaReal directly
 
 // ── 30-day totals ─────────────────────────────────────────────────────────
-const west_fbm_30d = fbmThirtyDayAverage(WEST_REAL.d90, WEST_REAL.d60, WEST_REAL.d30, WEST_REAL.d30_pre, WEST_REAL.d15, WEST_REAL.d7);
-const east_fbm_30d = fbmThirtyDayAverage(EAST_REAL.d90, EAST_REAL.d60, EAST_REAL.d30, EAST_REAL.d30_pre, EAST_REAL.d15, EAST_REAL.d7);
+const west_fbm_30d = fivePeriodThirtyDayAverage(WEST_REAL.d90, WEST_REAL.d60, WEST_REAL.d30, WEST_REAL.d30_pre, WEST_REAL.d15, WEST_REAL.d7);
+const east_fbm_30d = fivePeriodThirtyDayAverage(EAST_REAL.d90, EAST_REAL.d60, EAST_REAL.d30, EAST_REAL.d30_pre, EAST_REAL.d15, EAST_REAL.d7);
 const total_30d    = west_fbm_30d + east_fbm_30d + fba_30d_real;
 
 // ── Total combined rates ──────────────────────────────────────────────────
@@ -171,7 +171,7 @@ const total_avg_curr = avg_daily_curr + east_avg_curr + fba_avg_curr;
 // ── Baseline inventory state ──────────────────────────────────────────────
 const avail_qty          = total_stock + back;
 const baseline_carryover = avail_qty >= 0 ? avail_qty : 0;
-const baseline_backorder = avail_qty < 0 ? Math.abs(avail_qty) : 0;
+const baseline_backorder = total_30d <= 0 ? 0 : Math.max(0, -avail_qty);
 const dailyRate          = total_avg_curr;
 const baseline_seasonal  = seasonalFactorForEta(TODAY, DEFAULT_SEASONAL_FACTORS);
 const baseline_inv_life  = inventoryLifeDays(baseline_carryover, dailyRate, baseline_seasonal);

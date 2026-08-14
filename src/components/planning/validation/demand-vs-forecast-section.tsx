@@ -162,7 +162,7 @@ export function DemandVsForecastSection({ data }: { data: DemandVsForecastRespon
           const diff = actual != null && actual > 0 ? ((p.yhat - actual) / actual) * 100 : null;
           return [
             diff != null ? `${diff >= 0 ? "+" : ""}${diff.toFixed(0)}%` : "—",
-            String(p.forecast_date ?? "").slice(0, 10),
+            String(p.week_of ?? "").slice(0, 10),
             p.lead,
             fmtInt(p.n_skus),
           ];

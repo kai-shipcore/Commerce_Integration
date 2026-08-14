@@ -49,6 +49,7 @@ beforeEach(() => {
   repositoryMock.getLastSync.mockResolvedValue(null);
   repositoryMock.getContainerCategories.mockResolvedValue([]);
   repositoryMock.getCrossData.mockResolvedValue([]);
+  repositoryMock.getVelocitySnapshot.mockResolvedValue([]);
   getCacheMock.mockResolvedValue(null);
 });
 
@@ -79,7 +80,7 @@ describe("DemandPlanningService.getDashboardData", () => {
   it("computes a baseline row per SKU from total_stock + back when not rawContainers", async () => {
     repositoryMock.getStatsRows.mockResolvedValue([{
       sku: "SKU-1", total_inbound_qty: 0, containers_list: null, next_eta: null, cbm_unit: null,
-      latest_container: null, latest_eta: null, latest_qty: null,
+      latest_container: "190-CA-SEAT", latest_eta: "2026-08-10", latest_qty: 700,
       sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
       back: 0, west_stock: 5, east_stock: 5, west_available_stock: 5, east_available_stock: 5, transit_stock: 0,
       fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0,
@@ -95,11 +96,32 @@ describe("DemandPlanningService.getDashboardData", () => {
     expect(result.data.rows).toHaveLength(1);
     expect(result.data.rows[0].sku).toBe("SKU-1");
     expect(result.data.rows[0].total_stock).toBe(10);
+    expect(result.data.rows[0].container_info).toBe("2026-08-10 - (190-CA-SEAT) - 700");
   });
 
   it("skips the historical velocity snapshot lookups when asOf is today or absent", async () => {
     await DemandPlanningService.getDashboardData(baseQuery);
     expect(repositoryMock.getVelocitySnapshot).not.toHaveBeenCalled();
+  });
+
+  it("uses Total Avg Actual rather than Total Avg Current for S.O.D", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([{
+      sku: "SKU-1", total_inbound_qty: 0, containers_list: null, next_eta: null, cbm_unit: null,
+      latest_container: null, latest_eta: null, latest_qty: null,
+      sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
+      back: 0, west_stock: 100, east_stock: 0, west_available_stock: 100, east_available_stock: 0, transit_stock: 0,
+      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0,
+      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0,
+      total_stock: 100, west_90d: 900, west_60d: 600, west_30d: 300, west_15d: 150, west_7d: 70, west_30d_pre: 999,
+      east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
+      avg_daily_prev: 20, avg_daily_real: 99, avg_daily_curr: 99, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
+      fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0, fba_30d: 0, total_avg_prev: 20, total_avg_real: 99, total_avg_curr: 99,
+      oos_days_90d: 0, oos_lost_demand_90d: 0,
+    }]);
+
+    const result = await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" });
+    expect(result.data.rows[0].total_avg_real).toBe(10.02);
+    expect(result.data.rows[0].sod).toBe("2026-08-21");
   });
 
   it("queries historical velocity snapshots when asOf is a past date", async () => {

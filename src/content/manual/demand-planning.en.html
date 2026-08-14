@@ -1,0 +1,195 @@
+<section class="page-section">
+  <h2>Demand Planning (Planning Dashboard)</h2>
+  <p>The Demand Planning dashboard brings SKU sales, inventory, inbound schedules, and container order planning into one grid. You can select headers, entire columns, or cells and apply spreadsheet-style sorting, filtering, hiding, colors, and text formatting. Custom header names, column order, widths, visibility, and formatting are saved separately for each user.</p>
+
+  <div class="callout info"><span class="callout-icon">ℹ️</span><div><strong>Important:</strong> A single click on a column header no longer sorts the grid. It <strong>selects the header</strong>. Right-click the header to sort, filter, or hide the column.</div></div>
+
+  <div class="screenshot-box">
+    <img src="screenshots/01-demand-planning_en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>📊</div><p>Demand Planning dashboard</p></div>'" alt="Demand Planning dashboard">
+    <div class="screenshot-caption">▲ Demand Planning combines SKU rows, pinned information, sales and inventory metrics, and container planning columns.</div>
+  </div>
+
+  <h3 id="dp-quick-start">First Visit — Five-Step Quick Start</h3>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div><h4>Choose the scope</h4><p>Select category, product, urgency, and As of date. Search for an SKU when needed.</p></div></div>
+    <div class="step"><div class="step-num">2</div><div><h4>Show only useful columns</h4><p>Open <span class="btn-label">⊞ Columns ▾</span>, choose a preset or individual checkboxes, and click <span class="btn-label">Apply</span>.</p></div></div>
+    <div class="step"><div class="step-num">3</div><div><h4>Narrow the rows</h4><p>Right-click a header and choose Sort or Filter. You can also record workflow states in Note and filter by those states.</p></div></div>
+    <div class="step"><div class="step-num">4</div><div><h4>Review and edit</h4><p>Edit permitted values such as CBM, Note, ETA, and Con. Qty, then review the recalculated results.</p></div></div>
+    <div class="step"><div class="step-num">5</div><div><h4>Save pending quantities</h4><p>After automatic or manual quantity changes, review the pending state and click <span class="btn-label">Save</span>.</p></div></div>
+  </div>
+
+  <h3 id="dp-filters">① Top Toolbar and Data Scope</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Control</th><th>How to Use It</th></tr>
+    <tr><td class="label">Category / Product / Urgency</td><td>Reduce the SKU scope. When several controls are active, only rows satisfying all active criteria are shown.</td></tr>
+    <tr><td class="label">Search</td><td>Enter an SKU or another supported text value. Clear the input to return to the full result.</td></tr>
+    <tr><td class="label">As of</td><td>Loads inventory and planning data for the selected date. Confirm the analysis date before making decisions about a historical view.</td></tr>
+    <tr><td class="label">Sync</td><td>Reloads current source data and refreshes sales, inventory, and OOS calculations.</td></tr>
+    <tr><td class="label">Export / Import</td><td>Exports the current result or imports supported transit-stock data. Review the import preview and validation errors before applying it.</td></tr>
+    <tr><td class="label">Settings / SKU count</td><td>Settings is a separate button sized like the text and fill controls. The SKU count appears in its own area to the right and reflects active filters and visibility rules. Planning Settings opens at the same screen position as Column Settings.</td></tr>
+  </table>
+
+  <h3 id="dp-selection">② Selecting Headers, Entire Columns, and Cells</h3>
+  <p>The formatting target depends on where you select. Blue highlighting and the toolbar label—such as <code>1 selected header</code>, <code>2 entire columns</code>, or <code>8 selected cells</code>—identify the active target.</p>
+  <table class="feat-table">
+    <tr><th style="width:190px">Target</th><th style="width:230px">How to Select</th><th>Result</th></tr>
+    <tr><td class="label">Header only</td><td>Click the header title area</td><td>Selects only the header. Click the selected header again to deselect it. Formatting applies only to the header.</td></tr>
+    <tr><td class="label">Entire column</td><td>Click the thin selection strip at the very top of a leaf header</td><td>Selects all data cells in that column. The strip turns blue.</td></tr>
+    <tr><td class="label">One cell</td><td>Click a data cell</td><td>Selects that cell and replaces the previous selection.</td></tr>
+    <tr><td class="label">Cell range</td><td>Drag from the first cell to the last cell</td><td>Selects a rectangular range.</td></tr>
+  </table>
+
+  <h4 style="margin-top:18px">Multi-select keys</h4>
+  <table class="feat-table">
+    <tr><th style="width:190px">Keys</th><th>Headers / Entire Columns</th><th>Cells</th></tr>
+    <tr><td class="label">Ctrl + click<br><span style="font-size:11px;color:#64748b">Mac: Command + click</span></td><td>Add or remove non-adjacent columns</td><td>Add or remove non-adjacent cells</td></tr>
+    <tr><td class="label">Shift + click</td><td>Select every displayed column from the last anchor to the clicked column</td><td>Select the rectangle between the anchor cell and clicked cell</td></tr>
+    <tr><td class="label">Ctrl + Shift + click</td><td>Add a continuous range without clearing the current selection</td><td>Add a rectangle without clearing the current selection</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-icon">💡</span><div><b>Example:</b> Click West, then Shift-click Total. Every displayed header from West through Total is selected. If you reorder columns, the range follows the current displayed order.</div></div>
+
+  <h3 id="dp-sort-filter-hide">③ Sort, Filter, and Hide Columns</h3>
+  <p>Right-click a base-column or container sub-column header to open its menu.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Menu Item</th><th>Behavior</th></tr>
+    <tr><td class="label">Sort A → Z</td><td>Sorts text alphabetically and numbers or dates from lower to higher values.</td></tr>
+    <tr><td class="label">Sort Z → A</td><td>Sorts text in reverse order and numbers or dates from higher to lower values.</td></tr>
+    <tr><td class="label">Filter</td><td>Choose <strong>Filter by values</strong> or <strong>Filter by condition</strong>. Click <span class="btn-label">Apply</span> to commit the staged filter; <span class="btn-label">Cancel</span> preserves the current filter.</td></tr>
+    <tr><td class="label">Hide column</td><td>Hides the column. If the right-clicked column belongs to the current multi-selection, all represented columns are hidden together. A container sub-column is hidden <strong>only in the selected container</strong>; same-named columns in other containers remain visible.</td></tr>
+  </table>
+
+  <h4 style="margin-top:18px">Filter examples</h4>
+  <ul>
+    <li><strong>Filter by values:</strong> Search the distinct-value list and check only values to display. <code>(blank)</code> is available as a value.</li>
+    <li><strong>Filter by condition:</strong> Use empty/not empty; text contains, does not contain, starts with, ends with, or equals; or numeric greater than, at least, less than, at most, equals, not equal, between, or not between.</li>
+    <li><strong>Clear a filter:</strong> Select all values, or set the condition to <code>None</code>, and click Apply.</li>
+  </ul>
+  <div class="callout tip"><span class="callout-icon">↩️</span><div><b>Restore hidden columns:</b> A restore arrow is attached to the nearest real header at the hidden position. Hover to see hidden names, then click to restore the contiguous hidden run. To restore every hidden container and per-container sub-column at once, use <strong>Container Visibility › Show All</strong> and click <strong>Apply</strong>.</div></div>
+
+  <h3 id="dp-column-layout">④ Header Names, Order, and Width</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Task</th><th>How</th><th>Persistence</th></tr>
+    <tr><td class="label">Rename a header</td><td><strong>Double-click</strong> a leaf header or top group/container header and type in the wide editor. Enter saves; Esc cancels. Saving a blank name restores the default.</td><td>Per user</td></tr>
+    <tr><td class="label">Reorder columns</td><td>Drag a normal leaf header individually. Drag a <strong>container group header</strong> to move Con. Qty, Rem. Qty, Open Orders, Avail Qty, Est. Sales, Back Order, Carry over, Inv. Life, EST. SOD, Plan SOD, and CBM as one block.</td><td>Per user</td></tr>
+    <tr><td class="label">Resize columns</td><td>Drag the right header boundary. Header, data cells, and summary/total areas stay aligned to the same width.</td><td>All columns, per user</td></tr>
+    <tr><td class="label">Freeze columns</td><td>Choose the final pinned column under <strong>Freeze Column</strong> in <span class="btn-label">⊞ Columns ▾</span>. Everything through that column stays pinned on the left.</td><td>Per user</td></tr>
+    <tr><td class="label">Reset widths</td><td>Click <span class="btn-label">Reset Widths</span> and approve the confirmation. Next ETA, EST. SOD, and Plan SOD return to their 10px default font and date-friendly default widths.</td><td>Replaced by defaults</td></tr>
+  </table>
+  <div class="callout tip"><span class="callout-icon">↔️</span><div><b>Container group layout:</b> header totals follow the live sub-column order. The thick left boundary is not tied to CBM; it automatically moves to whichever sub-column is currently leftmost in the container.</div></div>
+  <div class="callout tip"><span class="callout-icon">🔗</span><div><b>Container headers:</b> double-click the container name to edit its custom name, or click the external-link icon beside it to open that container's planning details in a new tab.</div></div>
+
+  <h3 id="dp-formatting">⑤ Fill Color and Text Formatting</h3>
+  <p>The <strong>Text formatting</strong> and <strong>Fill color</strong> icons between Column Settings and Planning Settings apply to the current selection. Confirm whether the current target is a header, an entire column, or cells.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Current Selection</th><th>Fill Color</th><th>Font Size, Bold, and Text Color</th></tr>
+    <tr><td class="label">Header</td><td>Changes only selected header backgrounds</td><td>Applies to selected header text</td></tr>
+    <tr><td class="label">Entire column</td><td>Changes all data-cell backgrounds in each selected column</td><td>Applies to all data-cell text in each selected column</td></tr>
+    <tr><td class="label">Cells</td><td>Changes only selected cell backgrounds</td><td>Applies to selected cell text</td></tr>
+  </table>
+  <ul>
+    <li>Choose a palette color, a standard color, or <strong>Custom color</strong>.</li>
+    <li>Change font size with − / numeric input / +, toggle bold with <strong>B</strong>, and choose text color from the underlined A control.</li>
+    <li>Formatting applies immediately and is saved per user.</li>
+    <li>Top container group headers <strong>do not support font size or bold, but do support text color</strong>. The popover displays this limitation.</li>
+  </ul>
+  <div class="callout tip"><span class="callout-icon">🎨</span><div><b>Avoid formatting the wrong scope:</b> click the header title for header-only formatting, the thin top strip for an entire column, or a data cell for cell-only formatting. Check the target and count at the top of the popover.</div></div>
+
+  <h3 id="dp-column-settings">⑥ Column Settings and Resets</h3>
+  <p><span class="btn-label">⊞ Columns ▾</span> contains Quick Preset, Options, SKU Filters, Freeze Column, Column Visibility, Container Visibility, and reset tools.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/dp-columns-panel-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⊞</div><p>Column Settings</p></div>'" alt="Column Settings">
+    <div class="screenshot-caption">▲ Column Settings — Manage layout, colors and formatting, column visibility, and container visibility in one panel.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:190px">Area</th><th>Description</th></tr>
+    <tr><td class="label">Quick Preset</td><td>Choose <strong>All / Core / Compact</strong>, or toggle all container sub-columns.</td></tr>
+    <tr><td class="label">Options</td><td>Turn <strong>Show Zero-Sales SKUs</strong> on or off from the one-line option.</td></tr>
+    <tr><td class="label">SKU Filters</td><td>Select multiple SKU-part values available in the current category. Different filter fields are combined with AND logic.</td></tr>
+    <tr><td class="label">Column Visibility</td><td>Use a group checkbox for the whole group, or expand it to choose individual columns. <code>5/6</code> means five of six columns are visible.</td></tr>
+    <tr><td class="label">Container Visibility</td><td>Show or hide Base, Shipped/Final/Draft groups, or individual containers. <strong>Show All</strong> restores both hidden containers and hidden per-container sub-columns.</td></tr>
+  </table>
+  <div class="callout info"><span class="callout-icon">✅</span><div><b>Preview, then confirm:</b> While you edit this popover, only the pending-change count updates. Click <span class="btn-label">Apply</span> to change the grid. <span class="btn-label">Cancel</span>, X, or clicking outside discards the draft and keeps the current settings.</div></div>
+
+  <h4 style="margin-top:18px">Reset controls</h4>
+  <p>Reset tools are grouped into <strong>Column Layout</strong>, <strong>Colors &amp; Formatting</strong>, and <strong>Reset All Column Settings</strong>. Review the scope in the confirmation prompt.</p>
+  <table class="feat-table">
+    <tr><th style="width:220px">Control</th><th>What It Resets</th></tr>
+    <tr><td class="label">Reset Column Widths / Reset Column Order</td><td>All manually adjusted widths or the saved display order</td></tr>
+    <tr><td class="label">Header Color — Reset Selected / Reset All</td><td>Selected-header or all-header background colors</td></tr>
+    <tr><td class="label">Cell Color — Reset Selected / Reset All Cells</td><td>Selected-cell or all individually assigned cell fills</td></tr>
+    <tr><td class="label">Text Color — Reset Selected / Reset All</td><td>Custom text colors on the selection or all cells</td></tr>
+    <tr><td class="label">Reset All Text Formatting</td><td>All custom font sizes, bold settings, and text colors back to defaults</td></tr>
+    <tr><td class="label">Reset All Column Settings</td><td>Restores widths, order, header/cell colors, and text formatting together. After confirmation it applies immediately and closes Column Settings automatically.</td></tr>
+  </table>
+
+  <h3 id="dp-note-editing">⑦ Note and Cell Editing</h3>
+  <h4>Note — Per-SKU Workflow Tags and Notes</h4>
+  <p><strong>Note</strong> is immediately to the right of CBM. Enter free-form workflow states such as <code>Checked</code>, <code>Hold</code>, or <code>Recheck</code>, then select only <code>Checked</code> from Filter by values on the Note header.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Action</th><th>How</th></tr>
+    <tr><td class="label">Enter text</td><td>Edit the Note cell. Use <strong>Shift + Enter</strong> for a new line; use <strong>Enter</strong> or click outside to save.</td></tr>
+    <tr><td class="label">Persistence</td><td>The note is a <strong>shared note per SKU</strong>, not private to your account — other users see the same text, and whoever saves last overwrites it. Avoid navigation or refresh while a save is pending.</td></tr>
+    <tr><td class="label">Filter</td><td>Right-click Note → Filter → Filter by values, or use a text-contains condition.</td></tr>
+    <tr><td class="label">Formatting</td><td>Note supports font size, bold, text color, and background color like other normal cells.</td></tr>
+  </table>
+
+  <h4 style="margin-top:18px">Other editable values</h4>
+  <table class="feat-table">
+    <tr><th style="width:180px">Value</th><th>Editing Behavior</th></tr>
+    <tr><td class="label">CBM</td><td>Edit the unit CBM in the enlarged input. Saving updates related container CBM calculations.</td></tr>
+    <tr><td class="label">Con. Qty</td><td>Enter the container order quantity in the enlarged bordered editor. Leaving it blank and pressing Enter or moving focus is treated as <strong>0</strong>. <strong>Enter</strong> saves and opens the next row in the same column; <strong>↑/↓</strong> moves between rows, and <strong>←/→</strong> moves between editable Con. Qty columns in the same row. Drag across multiple Con. Qty cells and press <strong>Delete or Backspace</strong> to save the selected quantities as 0. Downstream inventory and SOD calculations refresh.</td></tr>
+    <tr><td class="label">ETA</td><td>Authorized users can edit ETA in a container header. ETA can affect estimated sales, Inv. Life, EST. SOD, and Plan SOD.</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-icon">🔒</span><div>Read-only users can review, sort, and filter data, but editing CBM, Note, ETA, Con. Qty, and saving may be restricted.</div></div>
+
+  <h3 id="dp-containers">⑧ Container Planning and Auto Calculation</h3>
+  <p>Each container can show planning sub-columns such as Con. Qty, remaining inventory, open orders, available quantity, estimated sales, backorder, carryover, Inv. Life, EST. SOD, Plan SOD, and CBM. Some are inputs; others are chained results based on the previous container and ETA.</p>
+  <table class="feat-table">
+    <tr><th style="width:180px">Feature</th><th>Description</th></tr>
+    <tr><td class="label">Fixed target 📅</td><td>Uses the target days in the header—90 by default—to calculate a Con. Qty draft for each SKU.</td></tr>
+    <tr><td class="label">Tiered target 📊</td><td>Applies different target days to different daily-sales tiers.</td></tr>
+    <tr><td class="label">Preview</td><td>Calculated values appear in the grid immediately but remain a draft. Review quantity, total CBM, and capacity warnings.</td></tr>
+    <tr><td class="label">Save / Reset</td><td><strong>Save</strong> commits pending quantities. <strong>Reset</strong> returns to the last saved values after a confirmation prompt.</td></tr>
+    <tr><td class="label">Container details</td><td>Use the container-header navigation action to open that container's planning details in a new tab.</td></tr>
+  </table>
+
+  <h3 id="dp-key-columns">⑨ Reading Key Columns</h3>
+  <table class="feat-table">
+    <tr><th style="width:190px">Column</th><th>Meaning</th></tr>
+    <tr><td class="label">West / East / Transit / Total</td><td>West available, East available, in-transit, and total inventory. Total is West + East + Transit.</td></tr>
+    <tr><td class="label">W/E/Total Avg</td><td>Regional or total average daily sales. Previous, Actual, and Current distinguish the prior basis, measured result, and currently applied rate.</td></tr>
+    <tr><td class="label">Next ETA</td><td>The next expected arrival date. Its 10px default font and wider default width are designed to show the date without truncation.</td></tr>
+    <tr><td class="label">S.O.D / EST. SOD / Plan SOD</td><td>Estimated stockout dates. General S.O.D uses current inventory; EST. SOD and Plan SOD reflect the container chain and planned quantities.</td></tr>
+    <tr><td class="label">Inv. Life</td><td>Estimated days that inventory at that stage will last at the applied sales rate.</td></tr>
+    <tr><td class="label">Back Order / Carry over</td><td>Unfulfilled demand and inventory or shortage carried into the next stage.</td></tr>
+  </table>
+
+  <h3 id="dp-preferences">⑩ Per-User Persistence and Troubleshooting</h3>
+  <table class="feat-table">
+    <tr><th style="width:210px">Saved Per User</th><th>Description</th></tr>
+    <tr><td class="label">Column layout</td><td>Visibility, container visibility, freeze endpoint, order, and width</td></tr>
+    <tr><td class="label">Names and formatting</td><td>Custom header names; header, column, and cell fills; font size, bold, and text color</td></tr>
+  </table>
+  <div class="callout warn"><span class="callout-icon">👥</span><div><b>Workflow notes (Note) are not per-user:</b> they're a shared note per SKU — every user sees the same text, and the last save wins.</div></div>
+  <ul>
+    <li><strong>A setting did not take effect:</strong> confirm that you clicked <span class="btn-label">Apply</span> at the bottom of Column Settings.</li>
+    <li><strong>A header did not sort:</strong> normal header click selects. Right-click and choose a sort command.</li>
+    <li><strong>Formatting covered too much:</strong> check whether the popover target says header, entire column, or cells, then use the matching reset.</li>
+    <li><strong>A date shows …:</strong> widen the header boundary or use <span class="btn-label">Reset Widths</span> to restore the recommended width.</li>
+    <li><strong>A Note or quantity did not save:</strong> verify edit permission, network connection, and save completion, then refresh.</li>
+  </ul>
+
+  <h3 id="dp-planning-settings">⑪ Planning Settings</h3>
+  <p>The separate Settings (⚙) button contains seasonal factors, sales-window weights, and OOS lost-demand marketplace weights. Its popover opens at the same position as Column Settings. Edits remain drafts until you click <span class="btn-label">Apply &amp; Sync</span>, which saves and recalculates the data.</p>
+  <div class="screenshot-box">
+    <img src="screenshots/dp-seasonal-factors-en.png" onerror="this.parentElement.innerHTML='<div class=\'screenshot-placeholder\'><div class=\'ph-icon\'>⚙</div><p>Planning Settings</p></div>'" alt="Planning Settings">
+    <div class="screenshot-caption">▲ Planning Settings — Opens from the same anchor as Column Settings and manages seasonal, sales-window, and OOS weights.</div>
+  </div>
+  <table class="feat-table">
+    <tr><th style="width:220px">Setting</th><th>Purpose</th></tr>
+    <tr><td class="label">Seasonal factors</td><td>Monthly sales multipliers used by expected-sales and inventory-life calculations for the ETA month.</td></tr>
+    <tr><td class="label">Sales Window Weights</td><td>Weights for 90/60/30/15/7-day and Pre windows. Confirm that the total is 100%.</td></tr>
+    <tr><td class="label">OOS marketplace weights</td><td>Automatically calculate or manually set Amazon, eBay, and Walmart expected-demand ratios by category.</td></tr>
+    <tr><td class="label">Restore defaults</td><td>A restore action asks for confirmation and returns the draft to defaults. Server data does not change until Apply &amp; Sync.</td></tr>
+  </table>
+</section>

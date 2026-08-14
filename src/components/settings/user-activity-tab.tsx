@@ -109,8 +109,15 @@ export function UserActivityTab() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{ACTIVITY_TIME_ZONE}</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => setRefreshKey((key) => key + 1)}>
-            <RefreshCw className="h-3.5 w-3.5" />{pick("새로고침", "Refresh")}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            onClick={() => setRefreshKey((key) => key + 1)}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            {loading ? pick("새로고침 중…", "Refreshing…") : pick("새로고침", "Refresh")}
           </Button>
         </div>
       </div>

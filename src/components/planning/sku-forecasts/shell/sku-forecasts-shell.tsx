@@ -306,7 +306,7 @@ export function SkuForecastsShell({
           </label>
           <button
             type="button"
-            onClick={reload}
+            onClick={() => reload()}
             disabled={loading}
             className="inline-flex h-9 items-center gap-2 rounded-md border bg-white px-3 text-sm font-semibold text-[#1A1917] disabled:cursor-default disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
           >
