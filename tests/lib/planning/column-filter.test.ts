@@ -87,4 +87,22 @@ describe("applyColumnFilters with ColumnFilter (values + condition)", () => {
     ]);
     expect(applyColumnFilters(rows, filters, accessors).map((r) => r.sku)).toEqual(["B"]);
   });
+
+  it("uses the fill-color accessor for legacy and explicit fill filters", () => {
+    const filters = new Map<"sku" | "qty", ColumnFilter>([
+      ["qty", { mode: "color", colorType: "fill", colors: new Set(["#ff0"]) }],
+    ]);
+    const fillColors = { qty: (row: Row) => row.sku === "B" ? "#ff0" : "" };
+    const textColors = { qty: (_row: Row) => "#ff0" };
+    expect(applyColumnFilters(rows, filters, accessors, undefined, fillColors, textColors).map((row) => row.sku)).toEqual(["B"]);
+  });
+
+  it("uses the text-color accessor independently from fill colors", () => {
+    const filters = new Map<"sku" | "qty", ColumnFilter>([
+      ["qty", { mode: "color", colorType: "text", colors: new Set(["#f0f"]) }],
+    ]);
+    const fillColors = { qty: (_row: Row) => "#f0f" };
+    const textColors = { qty: (row: Row) => row.sku === "C" ? "#f0f" : "" };
+    expect(applyColumnFilters(rows, filters, accessors, undefined, fillColors, textColors).map((row) => row.sku)).toEqual(["C"]);
+  });
 });
