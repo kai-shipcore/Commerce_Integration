@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ClipboardPaste, Copy, ExternalLink, Scissors } from "lucide-react";
 import {
   AllCommunityModule,
   themeQuartz,
@@ -127,13 +127,13 @@ type EditableCellTarget =
   | { kind: "cbm"; row: DemandRow }
   | { kind: "note"; row: DemandRow; slot: 1 | 2 | 3 }
   | { kind: "qty"; row: DemandRow; container: ContainerMeta; raw: ContainerRowData };
-type QtyHistoryChange = {
+type SheetHistoryChange = {
   rowId: string;
-  containerName: string;
-  before: number;
-  after: number;
+  columnId: string;
+  before: string;
+  after: string;
 };
-type QtyHistoryEntry = { changes: QtyHistoryChange[] };
+type SheetHistoryEntry = { changes: SheetHistoryChange[] };
 type SelectionModifiers = { toggle: boolean; range: boolean };
 type SalesTargetTier = { minSales: number; targetDays: number };
 type CapacityMode = "fit" | "unlimited";
@@ -148,10 +148,14 @@ type TargetOrderPreview = {
 };
 
 type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter";
-type QtyEditorRegistration = { open: () => void; close: () => void };
+type QtyEditorRegistration = {
+  kind: "qty" | "cbm" | "note";
+  open: (replacementValue?: string) => void;
+  close: () => void;
+};
 const qtyEditorRegistry = new Map<string, QtyEditorRegistration>();
 let activeQtyEditorKey: string | null = null;
-const MAX_QTY_HISTORY = 100;
+const MAX_SHEET_HISTORY = 100;
 
 function qtyEditorKey(rowId: string, columnId: string) {
   return `${rowId}\u0000${columnId}`;
@@ -437,6 +441,60 @@ function GridColorList({
         )}
       </div>
     </div>
+  );
+}
+
+/** Right-click Cut/Copy/Paste for a Con. Qty cell (or the current multi-cell
+ *  selection) — the same spreadsheet-style shortcuts already on Ctrl+X/C/V,
+ *  just exposed as a visible menu. Cut is disabled when nothing in the
+ *  selection is actually clearable (see performCut). */
+function ClipboardContextMenu({
+  x, y, canCut, canPaste, onCut, onCopy, onPaste, onClose,
+}: {
+  x: number;
+  y: number;
+  canCut: boolean;
+  canPaste: boolean;
+  onCut: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onClose: () => void;
+}) {
+  const { pick } = useI18n();
+  return (
+    <>
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 999 }}
+        onClick={onClose}
+        onContextMenu={(event) => { event.preventDefault(); onClose(); }}
+      />
+      <div
+        style={{
+          position: "fixed", top: y, left: x, zIndex: 1000, background: "#fff",
+          border: "1px solid #E2E8F0", borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
+          minWidth: 180, overflow: "hidden", padding: "4px 0",
+        }}
+      >
+        <MenuItem disabled={!canCut} onClick={() => { onCut(); onClose(); }}>
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 16 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><Scissors size={14} aria-hidden="true" />{pick("잘라내기", "Cut")}</span>
+            <span style={{ fontSize: 11, color: "#94A3B8" }}>Ctrl+X</span>
+          </span>
+        </MenuItem>
+        <MenuItem onClick={() => { onCopy(); onClose(); }}>
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 16 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><Copy size={14} aria-hidden="true" />{pick("복사", "Copy")}</span>
+            <span style={{ fontSize: 11, color: "#94A3B8" }}>Ctrl+C</span>
+          </span>
+        </MenuItem>
+        <MenuItem disabled={!canPaste} onClick={() => { onPaste(); onClose(); }}>
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 16 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><ClipboardPaste size={14} aria-hidden="true" />{pick("붙여넣기", "Paste")}</span>
+            <span style={{ fontSize: 11, color: "#94A3B8" }}>Ctrl+V</span>
+          </span>
+        </MenuItem>
+      </div>
+    </>
   );
 }
 
@@ -1199,9 +1257,13 @@ function QtyCellRenderer({
   column,
   onSave,
   onRequestEdit,
+  onSelectCell,
+  onContextMenuRequest,
 }: ICellRendererParams<DemandRow, CellContent> & {
   onSave: (qty: number) => Promise<boolean>;
   onRequestEdit: () => boolean;
+  onSelectCell: (rowIndex: number, columnId: string) => void;
+  onContextMenuRequest: (rowIndex: number, columnId: string, x: number, y: number) => void;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
   const [editing, setEditing] = useState(false);
@@ -1209,6 +1271,7 @@ function QtyCellRenderer({
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const skipNextBlurCommitRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const rowId = node.data?.sku ?? "";
   const columnId = column?.getColId() ?? "";
 
@@ -1219,33 +1282,45 @@ function QtyCellRenderer({
   useEffect(() => {
     if (!rowId || !columnId) return;
     const key = qtyEditorKey(rowId, columnId);
-    const beginEditing = () => {
+    const beginEditing = (replacementValue?: string) => {
       if (activeQtyEditorKey !== key) qtyEditorRegistry.get(activeQtyEditorKey ?? "")?.close();
       activeQtyEditorKey = key;
       node.setSelected(true, true);
+      setInputValue(replacementValue ?? displayValue);
       setEditing(true);
     };
     const closeEditing = () => {
       if (activeQtyEditorKey === key) activeQtyEditorKey = null;
       setEditing(false);
     };
-    const registration = { open: beginEditing, close: closeEditing };
+    const registration: QtyEditorRegistration = { kind: "qty", open: beginEditing, close: closeEditing };
     qtyEditorRegistry.set(key, registration);
     return () => {
       if (qtyEditorRegistry.get(key) === registration) qtyEditorRegistry.delete(key);
       if (activeQtyEditorKey === key) activeQtyEditorKey = null;
     };
-  }, [columnId, node, rowId]);
+  }, [columnId, displayValue, node, rowId]);
+
+  useEffect(() => {
+    if (!editing) return;
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus();
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  }, [editing]);
 
   async function commit(): Promise<boolean> {
     if (savingRef.current) return false;
     const nextQty = inputValue.trim() === "" ? 0 : Number.parseInt(inputValue, 10);
     if (!Number.isFinite(nextQty) || nextQty < 0) {
       setInputValue(displayValue);
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
       setEditing(false);
       return false;
     }
     if (String(nextQty) === displayValue) {
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
       setEditing(false);
       return true;
     }
@@ -1261,6 +1336,7 @@ function QtyCellRenderer({
     } finally {
       savingRef.current = false;
       setSaving(false);
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
       setEditing(false);
     }
     return saved;
@@ -1288,36 +1364,20 @@ function QtyCellRenderer({
     const nextRowId = nextNode?.data?.sku;
     if (!nextNode || !nextRowId) return;
 
-    api.ensureIndexVisible(nextRowIndex, "middle");
-    api.ensureColumnVisible(nextColumn);
-    api.setFocusedCell(nextRowIndex, nextColumn);
-    nextNode.setSelected(true, true);
-
-    const targetKey = qtyEditorKey(nextRowId, nextColumn.getColId());
-    let attempts = 0;
-    const beginWhenRendered = () => {
-      const beginEditing = qtyEditorRegistry.get(targetKey);
-      if (beginEditing) {
-        beginEditing.open();
-        return;
-      }
-      attempts += 1;
-      if (attempts < 6) window.setTimeout(beginWhenRendered, 20);
-    };
-    window.setTimeout(beginWhenRendered, 0);
+    onSelectCell(nextRowIndex, nextColumn.getColId());
   }
 
   if (editing) {
     return (
       <div className="h-full w-full overflow-hidden">
         <input
+          ref={inputRef}
           autoFocus
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
           aria-label="Edit Con. Qty"
           value={inputValue}
-          onFocus={(event) => event.currentTarget.select()}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
@@ -1325,13 +1385,13 @@ function QtyCellRenderer({
               event.preventDefault();
               event.stopPropagation();
               setInputValue(displayValue);
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
               setEditing(false);
               return;
             }
-            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"].includes(event.key)) {
+            if (event.key === "Enter") {
               event.preventDefault();
               event.stopPropagation();
-              const navigationKey = event.key as QtyNavigationKey;
               const parsedQty = inputValue.trim() === "" ? 0 : Number.parseInt(inputValue, 10);
               if (!Number.isFinite(parsedQty) || parsedQty < 0) {
                 void commit();
@@ -1342,7 +1402,7 @@ function QtyCellRenderer({
               skipNextBlurCommitRef.current = true;
               if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
               setEditing(false);
-              moveToNextQtyCell(navigationKey);
+              moveToNextQtyCell("Enter");
               window.setTimeout(() => void commit(), 0);
             }
           }}
@@ -1363,12 +1423,20 @@ function QtyCellRenderer({
     <button
       type="button"
       disabled={saving}
-      title="Click to edit quantity"
+      title="Double-click or press F2 to edit quantity"
       onClick={(event) => {
+        if (event.detail < 2) return;
+        event.preventDefault();
         event.stopPropagation();
         if (!onRequestEdit()) return;
         const registration = qtyEditorRegistry.get(qtyEditorKey(rowId, columnId));
         if (registration) registration.open();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (node.rowIndex === null) return;
+        onContextMenuRequest(node.rowIndex, columnId, event.clientX, event.clientY);
       }}
       className="h-full w-full border-0 bg-transparent px-1 text-right font-mono text-[11px] font-semibold text-[#1A4FC0]"
     >
@@ -1382,9 +1450,14 @@ function CbmCellRenderer({
   value,
   data,
   node,
+  column,
   onSave,
+  onRequestEdit,
+  onSelectCell,
 }: ICellRendererParams<DemandRow, CellContent> & {
   onSave: (cbm: number) => Promise<boolean>;
+  onRequestEdit: () => boolean;
+  onSelectCell: (rowIndex: number, columnId: string) => void;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
   const rawCbm = typeof data?.cbm_per_unit === "number" && Number.isFinite(data.cbm_per_unit)
@@ -1395,20 +1468,54 @@ function CbmCellRenderer({
   const [inputValue, setInputValue] = useState(editValue);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const skipNextBlurCommitRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const rowId = node.data?.sku ?? "";
+  const columnId = column?.getColId() ?? "";
 
   useEffect(() => {
     if (!editing && !savingRef.current) setInputValue(editValue);
   }, [editValue, editing]);
+
+  useEffect(() => {
+    if (!rowId || !columnId) return;
+    const key = qtyEditorKey(rowId, columnId);
+    const open = (replacementValue?: string) => {
+      if (activeQtyEditorKey !== key) qtyEditorRegistry.get(activeQtyEditorKey ?? "")?.close();
+      activeQtyEditorKey = key;
+      setInputValue(replacementValue ?? editValue);
+      setEditing(true);
+    };
+    const close = () => {
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
+      setEditing(false);
+    };
+    const registration: QtyEditorRegistration = { kind: "cbm", open, close };
+    qtyEditorRegistry.set(key, registration);
+    return () => {
+      if (qtyEditorRegistry.get(key) === registration) qtyEditorRegistry.delete(key);
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
+    };
+  }, [columnId, editValue, rowId]);
+
+  useEffect(() => {
+    if (!editing || !inputRef.current) return;
+    inputRef.current.focus();
+    const end = inputRef.current.value.length;
+    inputRef.current.setSelectionRange(end, end);
+  }, [editing]);
 
   async function commit() {
     if (savingRef.current) return;
     const nextCbm = Number.parseFloat(inputValue);
     if (!Number.isFinite(nextCbm) || nextCbm < 0) {
       setInputValue(editValue);
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
       setEditing(false);
       return;
     }
     if (rawCbm !== null && nextCbm === rawCbm) {
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
       setEditing(false);
       return;
     }
@@ -1423,6 +1530,7 @@ function CbmCellRenderer({
     } finally {
       savingRef.current = false;
       setSaving(false);
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
       setEditing(false);
     }
   }
@@ -1431,25 +1539,45 @@ function CbmCellRenderer({
     return (
       <div className="h-full w-full overflow-hidden">
         <input
+          ref={inputRef}
           autoFocus
           type="text"
           inputMode="decimal"
           value={inputValue}
           aria-label="Edit CBM"
-          onFocus={(event) => event.currentTarget.select()}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
               setInputValue(editValue);
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
               setEditing(false);
+              return;
             }
             if (event.key === "Enter") {
               event.preventDefault();
-              void commit();
+              event.stopPropagation();
+              const parsedCbm = Number.parseFloat(inputValue);
+              if (!Number.isFinite(parsedCbm) || parsedCbm < 0) {
+                void commit();
+                return;
+              }
+              skipNextBlurCommitRef.current = true;
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+              setEditing(false);
+              if (node.rowIndex !== null) onSelectCell(node.rowIndex + 1, columnId);
+              window.setTimeout(() => void commit(), 0);
             }
           }}
-          onBlur={() => void commit()}
+          onBlur={() => {
+            if (skipNextBlurCommitRef.current) {
+              skipNextBlurCommitRef.current = false;
+              return;
+            }
+            void commit();
+          }}
           className="planning-inline-cell-editor h-full w-full rounded-none border-2 border-[#1A5CDB] bg-white px-0.5 text-center font-mono text-[10px] text-[#1A4FC0] outline-none"
         />
       </div>
@@ -1460,11 +1588,13 @@ function CbmCellRenderer({
     <button
       type="button"
       disabled={saving}
-      title="Click to edit CBM"
+      title="Double-click or press F2 to edit CBM"
       onClick={(event) => {
+        if (event.detail < 2) return;
+        event.preventDefault();
         event.stopPropagation();
-        node.setSelected(true, true);
-        setEditing(true);
+        if (!onRequestEdit()) return;
+        qtyEditorRegistry.get(qtyEditorKey(rowId, columnId))?.open();
       }}
       className="h-full w-full border-0 bg-transparent px-0.5 text-center font-mono text-[10px] text-[#1A4FC0]"
     >
@@ -1476,47 +1606,76 @@ function CbmCellRenderer({
 function WorkNoteCellRenderer({
   value,
   node,
+  column,
   onSave,
+  onRequestEdit,
+  onSelectCell,
 }: ICellRendererParams<DemandRow, CellContent> & {
   onSave: (note: string) => Promise<boolean>;
+  onRequestEdit: () => boolean;
+  onSelectCell: (rowIndex: number, columnId: string) => void;
 }) {
   const displayValue = value === null || value === undefined ? "" : String(value);
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState(displayValue);
-  const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
+  const skipNextBlurCommitRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const rowId = node.data?.sku ?? "";
+  const columnId = column?.getColId() ?? "";
 
   useEffect(() => {
-    if (!editing && !savingRef.current) setInputValue(displayValue);
+    if (!editing) setInputValue(displayValue);
   }, [displayValue, editing]);
 
-  async function commit() {
-    if (savingRef.current) return;
-    const nextNote = inputValue.trim();
-    if (nextNote === displayValue) {
+  useEffect(() => {
+    if (!rowId || !columnId) return;
+    const key = qtyEditorKey(rowId, columnId);
+    const open = (replacementValue?: string) => {
+      if (activeQtyEditorKey !== key) qtyEditorRegistry.get(activeQtyEditorKey ?? "")?.close();
+      activeQtyEditorKey = key;
+      setInputValue(replacementValue ?? displayValue);
+      setEditing(true);
+    };
+    const close = () => {
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
       setEditing(false);
+    };
+    const registration: QtyEditorRegistration = { kind: "note", open, close };
+    qtyEditorRegistry.set(key, registration);
+    return () => {
+      if (qtyEditorRegistry.get(key) === registration) qtyEditorRegistry.delete(key);
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
+    };
+  }, [columnId, displayValue, rowId]);
+
+  useEffect(() => {
+    if (!editing || !inputRef.current) return;
+    inputRef.current.focus();
+    const end = inputRef.current.value.length;
+    inputRef.current.setSelectionRange(end, end);
+  }, [editing]);
+
+  function commit() {
+    const nextNote = inputValue.trim().replace(/\s*[\r\n]+\s*/g, " ");
+    if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+    setEditing(false);
+    if (nextNote === displayValue) {
       return;
     }
 
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      const saved = await onSave(nextNote);
+    // Paint the edited value immediately. The parent persists it in the
+    // background and restores the last confirmed value only if saving fails.
+    setInputValue(nextNote);
+    void onSave(nextNote).then((saved) => {
       if (!saved) setInputValue(displayValue);
-      else setInputValue(nextNote);
-    } catch {
-      setInputValue(displayValue);
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-      setEditing(false);
-    }
+    }).catch(() => setInputValue(displayValue));
   }
 
   if (editing) {
     return (
       <div className="h-full w-full overflow-hidden">
         <input
+          ref={inputRef}
           autoFocus
           type="text"
           maxLength={200}
@@ -1526,18 +1685,33 @@ function WorkNoteCellRenderer({
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
               setInputValue(displayValue);
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
               setEditing(false);
+              return;
             }
             // Plain Enter saves, matching every other single-line editor in
             // this grid. Shift+Enter inserts a line break instead — left
             // alone here so the textarea's own default behavior handles it.
             if (event.key === "Enter") {
               event.preventDefault();
-              void commit();
+              event.stopPropagation();
+              skipNextBlurCommitRef.current = true;
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+              setEditing(false);
+              if (node.rowIndex !== null) onSelectCell(node.rowIndex + 1, columnId);
+              window.setTimeout(commit, 0);
             }
           }}
-          onBlur={() => void commit()}
+          onBlur={() => {
+            if (skipNextBlurCommitRef.current) {
+              skipNextBlurCommitRef.current = false;
+              return;
+            }
+            commit();
+          }}
           // Anchored to the row's own top edge rather than vertically
           // centered: centering a box this much taller than a 28px row means
           // roughly half of it sits above the row, which — for a row near
@@ -1553,17 +1727,18 @@ function WorkNoteCellRenderer({
   return (
     <button
       type="button"
-      disabled={saving}
-      title={displayValue || "Click to add Note"}
+      title={inputValue || "Double-click or press F2 to edit Note"}
       onClick={(event) => {
+        if (event.detail < 2) return;
+        event.preventDefault();
         event.stopPropagation();
-        node.setSelected(true, true);
-        setEditing(true);
+        if (!onRequestEdit()) return;
+        qtyEditorRegistry.get(qtyEditorKey(rowId, columnId))?.open();
       }}
       className="h-full w-full truncate border-0 bg-transparent px-1 text-left"
       style={{ color: "inherit", fontFamily: "inherit", fontSize: "inherit", fontWeight: "inherit" }}
     >
-      {saving ? "..." : displayValue}
+      {inputValue}
     </button>
   );
 }
@@ -2602,6 +2777,7 @@ export function AgDemandPlanningGrid({
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
   const dragMovedRef = useRef(false);
   const selectedCellsRef = useRef<Set<string>>(new Set());
+  const activeSelectedCellRef = useRef<{ rowId: string; columnId: string } | null>(null);
   const cellSelectionAnchorRef = useRef<DragCellAnchor | null>(null);
   const lastHeaderSelectionRef = useRef<string | null>(null);
   const lastFullColumnSelectionRef = useRef<string | null>(null);
@@ -2619,9 +2795,9 @@ export function AgDemandPlanningGrid({
   const qtyOverridesRef = useRef(qtyOverrides);
   const lastChainedQtyOverridesRef = useRef(qtyOverrides);
   const clearingSelectedEditableCellsRef = useRef(false);
-  const qtyUndoStackRef = useRef<QtyHistoryEntry[]>([]);
-  const qtyRedoStackRef = useRef<QtyHistoryEntry[]>([]);
-  const qtyHistoryBusyRef = useRef(false);
+  const sheetUndoStackRef = useRef<SheetHistoryEntry[]>([]);
+  const sheetRedoStackRef = useRef<SheetHistoryEntry[]>([]);
+  const sheetHistoryBusyRef = useRef(false);
   const qtyPersistenceQueueRef = useRef<Map<string, Promise<void>>>(new Map());
   const qtyServerItemIdsRef = useRef<Map<string, number>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
@@ -2639,6 +2815,7 @@ export function AgDemandPlanningGrid({
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
   const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; label: string; columnIds: string[] } | null>(null);
   const [containerMenu, setContainerMenu] = useState<{ x: number; y: number; label: string; containerName: string; baseline: boolean } | null>(null);
+  const [qtyCtxMenu, setQtyCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [filterOpenKey, setFilterOpenKey] = useState<string | null>(null);
   const [dirtyContainers, setDirtyContainers] = useState<Set<string>>(new Set());
   const [autoFillingContainers, setAutoFillingContainers] = useState<Set<string>>(new Set());
@@ -2663,14 +2840,14 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     chainMapRef.current = chainMap;
   }, [chainMap]);
 
-  const pushQtyHistory = useCallback((changes: QtyHistoryChange[]) => {
+  const pushSheetHistory = useCallback((changes: SheetHistoryChange[]) => {
     const effectiveChanges = changes.filter((change) => change.before !== change.after);
     if (!effectiveChanges.length) return;
-    qtyUndoStackRef.current = [
-      ...qtyUndoStackRef.current.slice(-(MAX_QTY_HISTORY - 1)),
+    sheetUndoStackRef.current = [
+      ...sheetUndoStackRef.current.slice(-(MAX_SHEET_HISTORY - 1)),
       { changes: effectiveChanges },
     ];
-    qtyRedoStackRef.current = [];
+    sheetRedoStackRef.current = [];
   }, []);
 
   const scheduleQtyRenderSync = useCallback(() => {
@@ -3246,6 +3423,136 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     }
   }, []);
 
+  const selectSingleGridCell = useCallback((rowIndex: number, columnId: string) => {
+    const api = gridRef.current?.api;
+    const rowNode = api?.getDisplayedRowAtIndex(rowIndex);
+    const column = api?.getColumn(columnId);
+    const rowId = rowNode?.data?.sku;
+    if (!api || !rowNode || !column || !rowId) return;
+
+    const previous = selectedCellsRef.current;
+    const key = `${rowId}::${columnId}`;
+    const next = new Set([key]);
+    selectedCellsRef.current = next;
+    activeSelectedCellRef.current = { rowId, columnId };
+    cellSelectionAnchorRef.current = { rowIndex, columnId };
+    refreshChangedCells(previous, next);
+    api.ensureIndexVisible(rowIndex, "middle");
+    api.ensureColumnVisible(column);
+    api.setFocusedCell(rowIndex, column);
+    rowNode.setSelected(true, true);
+
+    const selection: SelectedAgCell = {
+      rowId,
+      columnId,
+      label: `${rowId} / ${column.getColDef().headerName ?? columnId}`,
+    };
+    startTransition(() => {
+      onCellSelectionChange?.([key]);
+      onAgCellSelected?.(selection);
+    });
+  }, [onAgCellSelected, onCellSelectionChange, refreshChangedCells]);
+
+  const extendSheetCellSelection = useCallback((direction: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight") => {
+    const api = gridRef.current?.api;
+    const active = activeSelectedCellRef.current;
+    if (!api || !active) return false;
+    const currentRowIndex = api.getRowNode(active.rowId)?.rowIndex;
+    if (currentRowIndex === null || currentRowIndex === undefined) return false;
+    let nextRowIndex = currentRowIndex;
+    let nextColumnId = active.columnId;
+
+    if (direction === "ArrowUp" || direction === "ArrowDown") {
+      nextRowIndex += direction === "ArrowUp" ? -1 : 1;
+    } else {
+      // Horizontal range extension is intentionally limited to adjacent Note
+      // columns. If another column sits between them, do not select through it.
+      const displayedColumns = api.getAllDisplayedColumns();
+      const currentColumnIndex = displayedColumns.findIndex((column) => column.getColId() === active.columnId);
+      const nextColumn = displayedColumns[currentColumnIndex + (direction === "ArrowLeft" ? -1 : 1)];
+      if (
+        currentColumnIndex < 0
+        || workNoteSlotForColumnId(active.columnId) === null
+        || !nextColumn
+        || workNoteSlotForColumnId(nextColumn.getColId()) === null
+      ) return false;
+      nextColumnId = nextColumn.getColId();
+    }
+    if (nextRowIndex < 0 || nextRowIndex >= api.getDisplayedRowCount()) return false;
+
+    const anchor = cellSelectionAnchorRef.current ?? { rowIndex: currentRowIndex, columnId: active.columnId };
+    const cells = selectedCellsBetweenPosition(api, nextRowIndex, nextColumnId, anchor);
+    const nextRow = api.getDisplayedRowAtIndex(nextRowIndex)?.data;
+    if (!cells.length || !nextRow) return false;
+
+    const previous = selectedCellsRef.current;
+    const next = new Set(cells.map((cell) => `${cell.rowId}::${cell.columnId}`));
+    selectedCellsRef.current = next;
+    activeSelectedCellRef.current = { rowId: nextRow.sku, columnId: nextColumnId };
+    cellSelectionAnchorRef.current = anchor;
+    refreshChangedCells(previous, next);
+    api.ensureIndexVisible(nextRowIndex, "middle");
+    api.ensureColumnVisible(nextColumnId);
+    api.setFocusedCell(nextRowIndex, nextColumnId);
+    startTransition(() => {
+      onCellSelectionChange?.([...next]);
+      onAgCellSelected?.({ ...cells[0], cells });
+    });
+    return true;
+  }, [onAgCellSelected, onCellSelectionChange, refreshChangedCells]);
+
+  // Right-clicking a cell that's already part of the current multi-selection
+  // keeps that selection (menu applies to all of it, like Sheets); right-
+  // clicking outside it collapses the selection to just the clicked cell.
+  const handleQtyContextMenu = useCallback((rowIndex: number, columnId: string, x: number, y: number) => {
+    const api = gridRef.current?.api;
+    const rowId = api?.getDisplayedRowAtIndex(rowIndex)?.data?.sku;
+    if (rowId && !selectedCellsRef.current.has(`${rowId}::${columnId}`)) {
+      selectSingleGridCell(rowIndex, columnId);
+    }
+    setQtyCtxMenu({ x, y });
+  }, [selectSingleGridCell]);
+
+  const navigateActiveQtyCell = useCallback((navigationKey: QtyNavigationKey) => {
+    const api = gridRef.current?.api;
+    const active = activeSelectedCellRef.current;
+    if (!api || !active || !active.columnId.endsWith("::inb_qty")) return false;
+    const rowIndex = api.getRowNode(active.rowId)?.rowIndex;
+    if (rowIndex === null || rowIndex === undefined) return false;
+    const qtyColumns = api.getAllDisplayedColumns().filter(
+      (column) => column.getColDef().cellRenderer === QtyCellRenderer,
+    );
+    const columnIndex = qtyColumns.findIndex((column) => column.getColId() === active.columnId);
+    if (columnIndex < 0) return false;
+
+    let nextRowIndex = rowIndex;
+    let nextColumnIndex = columnIndex;
+    if (navigationKey === "ArrowUp") nextRowIndex -= 1;
+    if (navigationKey === "ArrowDown" || navigationKey === "Enter") nextRowIndex += 1;
+    if (navigationKey === "ArrowLeft") nextColumnIndex -= 1;
+    if (navigationKey === "ArrowRight") nextColumnIndex += 1;
+    if (nextRowIndex < 0 || nextRowIndex >= api.getDisplayedRowCount()) return false;
+    if (nextColumnIndex < 0 || nextColumnIndex >= qtyColumns.length) return false;
+    selectSingleGridCell(nextRowIndex, qtyColumns[nextColumnIndex].getColId());
+    return true;
+  }, [selectSingleGridCell]);
+
+  const getActiveCellEditor = useCallback(() => {
+    const active = activeSelectedCellRef.current;
+    if (!active) return null;
+    return qtyEditorRegistry.get(qtyEditorKey(active.rowId, active.columnId)) ?? null;
+  }, []);
+
+  const navigateActiveBaseEditorCell = useCallback(() => {
+    const api = gridRef.current?.api;
+    const active = activeSelectedCellRef.current;
+    if (!api || !active) return false;
+    const rowIndex = api.getRowNode(active.rowId)?.rowIndex;
+    if (rowIndex === null || rowIndex === undefined || rowIndex + 1 >= api.getDisplayedRowCount()) return false;
+    selectSingleGridCell(rowIndex + 1, active.columnId);
+    return true;
+  }, [selectSingleGridCell]);
+
   const scheduleDragSelectionNotification = useCallback((cells: SelectedAgCell[]) => {
     pendingDragSelectionRef.current = cells;
     if (dragSelectionFrameRef.current !== null) return;
@@ -3427,7 +3734,11 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides, seasonalFactors)])));
   }, [canEditPlanning, containers, data.rows, qtyOverrides, seasonalFactors]);
 
-  const saveCbm = useCallback(async (row: DemandRow, nextCbm: number) => {
+  const saveCbm = useCallback(async (
+    row: DemandRow,
+    nextCbm: number,
+    options: { recordHistory?: boolean } = {},
+  ) => {
     if (!canEditPlanning) return false;
     if (!Number.isFinite(nextCbm) || nextCbm < 0) return false;
     if (nextCbm === row.cbm_per_unit) return true;
@@ -3446,6 +3757,14 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       }>;
     };
     if (!json.success) return false;
+    if (options.recordHistory !== false) {
+      pushSheetHistory([{
+        rowId: row.sku,
+        columnId: "cbm",
+        before: String(row.cbm_per_unit ?? 0),
+        after: String(nextCbm),
+      }]);
+    }
 
     setCbmOverrides((current) => new Map(current).set(row.sku, nextCbm));
     if (json.container_items?.length) {
@@ -3468,7 +3787,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     }
     return true;
-  }, [canEditPlanning]);
+  }, [canEditPlanning, pushSheetHistory]);
 
   const saveQty = useCallback(async (
     row: DemandRow,
@@ -3486,7 +3805,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const oldQty = previous !== undefined ? previous.inbound_qty ?? 0 : raw.inbound_qty ?? 0;
     if (nextQty === oldQty || (previous === undefined && !itemId && nextQty === 0)) return true;
     if (options.recordHistory !== false) {
-      pushQtyHistory([{ rowId: row.sku, containerName: container.name, before: oldQty, after: nextQty }]);
+      pushSheetHistory([{
+        rowId: row.sku,
+        columnId: `${container.name}::inb_qty`,
+        before: String(oldQty),
+        after: String(nextQty),
+      }]);
     }
 
     const oldAllocatedQty = previous?.allocated_remaining_qty ?? raw.allocated_remaining_qty ?? 0;
@@ -3650,7 +3974,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (qtyPersistenceQueueRef.current.get(key) === persistence) qtyPersistenceQueueRef.current.delete(key);
     });
     return true;
-  }, [canEditPlanning, containers, pushQtyHistory, scheduleQtyRenderSync, seasonalFactors]);
+  }, [canEditPlanning, containers, pushSheetHistory, scheduleQtyRenderSync, seasonalFactors]);
 
 const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
     if (!canEditPlanning || !onSkuCellNoteChange) return;
@@ -3663,11 +3987,22 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     });
   }, [canEditPlanning, onSkuCellNoteChange]);
 
-  const saveWorkNote = useCallback(async (row: DemandRow, note: string, slot: 1 | 2 | 3 = 1): Promise<boolean> => {
+  const saveWorkNote = useCallback(async (
+    row: DemandRow,
+    note: string,
+    slot: 1 | 2 | 3 = 1,
+    options: { recordHistory?: boolean } = {},
+  ): Promise<boolean> => {
     if (!canEditPlanning || !onSkuWorkNoteChange) return false;
-    await onSkuWorkNoteChange(row.sku, note, slot);
+    const normalizedNote = note.trim().replace(/\s*[\r\n]+\s*/g, " ");
+    await onSkuWorkNoteChange(row.sku, normalizedNote, slot);
+    if (options.recordHistory !== false) {
+      const columnId = slot === 2 ? "workflow_note_2" : slot === 3 ? "workflow_note_3" : "workflow_note";
+      const before = slot === 2 ? row.workflow_note_2 ?? "" : slot === 3 ? row.workflow_note_3 ?? "" : row.workflow_note ?? "";
+      pushSheetHistory([{ rowId: row.sku, columnId, before, after: normalizedNote }]);
+    }
     return true;
-  }, [canEditPlanning, onSkuWorkNoteChange]);
+  }, [canEditPlanning, onSkuWorkNoteChange, pushSheetHistory]);
 
   // Paste and fill both need to know, for an arbitrary "rowId::columnId" key,
   // whether it's one of the few genuinely-editable cells (Con. Qty, CBM,
@@ -3700,43 +4035,70 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   const applyValueToTarget = useCallback(async (
     target: EditableCellTarget,
     rawText: string,
-    options: { recordQtyHistory?: boolean } = {},
+    options: { recordSheetHistory?: boolean } = {},
   ): Promise<boolean> => {
-    if (target.kind === "note") return saveWorkNote(target.row, rawText, target.slot);
+    if (target.kind === "note") {
+      return saveWorkNote(target.row, rawText, target.slot, { recordHistory: options.recordSheetHistory });
+    }
     const trimmed = rawText.trim();
     const numeric = trimmed === "" ? 0 : Number(trimmed.replace(/,/g, ""));
     if (!Number.isFinite(numeric) || numeric < 0) return false;
-    if (target.kind === "cbm") return saveCbm(target.row, numeric);
+    if (target.kind === "cbm") {
+      return saveCbm(target.row, numeric, { recordHistory: options.recordSheetHistory });
+    }
     return saveQty(target.row, target.container, target.raw, Math.round(numeric), {
-      recordHistory: options.recordQtyHistory,
+      recordHistory: options.recordSheetHistory,
     });
   }, [saveCbm, saveQty, saveWorkNote]);
 
   const applyClipboardOperation = useCallback(async (
     operations: Array<{ target: EditableCellTarget; value: string }>,
   ) => {
-    const qtyChanges: QtyHistoryChange[] = [];
-    const seenQtyKeys = new Set<string>();
+    const changes: SheetHistoryChange[] = [];
+    const validOperations: Array<{ target: EditableCellTarget; value: string }> = [];
+    const seenKeys = new Set<string>();
     for (const { target, value } of operations) {
-      if (target.kind !== "qty") continue;
-      const numeric = value.trim() === "" ? 0 : Number(value.trim().replace(/,/g, ""));
-      if (!Number.isFinite(numeric) || numeric < 0) continue;
-      const key = `${target.row.sku}::${target.container.name}`;
-      if (seenQtyKeys.has(key)) continue;
-      seenQtyKeys.add(key);
-      const override = qtyOverridesRef.current.get(key);
-      qtyChanges.push({
-        rowId: target.row.sku,
-        containerName: target.container.name,
-        before: override !== undefined ? override.inbound_qty ?? 0 : target.raw.inbound_qty ?? 0,
-        after: Math.round(numeric),
-      });
+      const columnId = target.kind === "qty"
+        ? `${target.container.name}::inb_qty`
+        : target.kind === "cbm"
+          ? "cbm"
+          : target.slot === 2 ? "workflow_note_2" : target.slot === 3 ? "workflow_note_3" : "workflow_note";
+      const key = `${target.row.sku}::${columnId}`;
+      if (seenKeys.has(key)) continue;
+
+      let before: string;
+      let after: string;
+      if (target.kind === "note") {
+        after = value.trim().replace(/\s*[\r\n]+\s*/g, " ");
+        if (after.length > 200) continue;
+        before = target.slot === 2
+          ? target.row.workflow_note_2 ?? ""
+          : target.slot === 3 ? target.row.workflow_note_3 ?? "" : target.row.workflow_note ?? "";
+      } else {
+        const numeric = value.trim() === "" ? 0 : Number(value.trim().replace(/,/g, ""));
+        if (!Number.isFinite(numeric) || numeric < 0) continue;
+        after = String(target.kind === "qty" ? Math.round(numeric) : numeric);
+        if (target.kind === "cbm") {
+          before = String(target.row.cbm_per_unit ?? 0);
+        } else {
+          const qtyKey = `${target.row.sku}::${target.container.name}`;
+          const override = qtyOverridesRef.current.get(qtyKey);
+          before = String(override !== undefined ? override.inbound_qty ?? 0 : target.raw.inbound_qty ?? 0);
+        }
+      }
+      seenKeys.add(key);
+      changes.push({ rowId: target.row.sku, columnId, before, after });
+      validOperations.push({ target, value: after });
     }
-    pushQtyHistory(qtyChanges);
-    return Promise.allSettled(
-      operations.map(({ target, value }) => applyValueToTarget(target, value, { recordQtyHistory: false })),
+    const results = await Promise.allSettled(
+      validOperations.map(({ target, value }) => applyValueToTarget(target, value, { recordSheetHistory: false })),
     );
-  }, [applyValueToTarget, pushQtyHistory]);
+    pushSheetHistory(changes.filter((_change, index) => {
+      const result = results[index];
+      return result?.status === "fulfilled" && result.value;
+    }));
+    return results;
+  }, [applyValueToTarget, pushSheetHistory]);
 
   useEffect(() => {
     const handleSelectedEditableCellDelete = (event: KeyboardEvent) => {
@@ -3772,6 +4134,61 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     return () => window.removeEventListener("keydown", handleSelectedEditableCellDelete, true);
   }, [applyClipboardOperation, canEditPlanning, resolveEditableTarget]);
 
+  useEffect(() => {
+    const handleSheetSelectionKeyboard = (event: KeyboardEvent) => {
+      if (!canEditPlanning || event.ctrlKey || event.metaKey || event.altKey || activeQtyEditorKey) return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      const active = activeSelectedCellRef.current;
+      if (!active || !selectedCellsRef.current.has(`${active.rowId}::${active.columnId}`)) return;
+
+      if (event.shiftKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        // Range selection must not depend on the current cell renderer still
+        // being mounted. A forced refresh after the first Shift+Arrow can
+        // briefly recreate Note renderers, which previously made rapid range
+        // extension stop after one row.
+        if (!resolveEditableTarget(active.rowId, active.columnId)) return;
+        if (!extendSheetCellSelection(event.key as "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      const editor = getActiveCellEditor();
+      if (!editor) return;
+      if (event.key === "F2") {
+        editor.open();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (event.key === "Enter") {
+        const moved = editor.kind === "qty" ? navigateActiveQtyCell("Enter") : navigateActiveBaseEditorCell();
+        if (!moved) return;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (editor.kind === "qty" && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        if (!navigateActiveQtyCell(event.key as QtyNavigationKey)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      const replacementValue = editor.kind === "qty"
+        ? (/^\d$/.test(event.key) ? event.key : null)
+        : editor.kind === "cbm"
+          ? (/^[\d.]$/.test(event.key) ? event.key : null)
+          : event.key.length === 1 ? event.key : null;
+      if (replacementValue === null) return;
+      editor.open(replacementValue);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("keydown", handleSheetSelectionKeyboard, true);
+    return () => window.removeEventListener("keydown", handleSheetSelectionKeyboard, true);
+  }, [canEditPlanning, extendSheetCellSelection, getActiveCellEditor, navigateActiveBaseEditorCell, navigateActiveQtyCell, resolveEditableTarget]);
+
   const getSelectedCellsTsv = useCallback((): string | null => {
     const bounds = getSelectionBoundsOrdered();
     if (!bounds) return null;
@@ -3782,6 +4199,107 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     }).join("\t")).join("\n");
   }, [getCellCopyValue, getSelectionBoundsOrdered]);
 
+  // Shared by the Ctrl+X/C/V shortcuts below and the Cut/Copy/Paste
+  // right-click menu (ClipboardContextMenu) — same action, two triggers.
+  const performCopy = useCallback(async () => {
+    const tsv = getSelectedCellsTsv();
+    if (tsv === null) return;
+    await copyText(tsv).catch(() => {});
+  }, [getSelectedCellsTsv]);
+
+  const performCut = useCallback(async () => {
+    if (!canEditPlanning) return;
+    const tsv = getSelectedCellsTsv();
+    if (tsv === null) return;
+    const operations: Array<{ target: EditableCellTarget; value: string }> = [];
+    for (const key of selectedCellsRef.current) {
+      const separator = key.indexOf("::");
+      if (separator < 0) continue;
+      const target = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
+      if (target) operations.push({ target, value: "" });
+    }
+    // Cut clears every editable spreadsheet-style cell. Read-only cells remain
+    // in the copied TSV but are left untouched in the grid.
+    if (!operations.length) return;
+    await copyText(tsv)
+      .then(() => applyClipboardOperation(operations))
+      .catch(() => {});
+  }, [applyClipboardOperation, canEditPlanning, getSelectedCellsTsv, resolveEditableTarget]);
+
+  const performPaste = useCallback(async () => {
+    if (!canEditPlanning) return;
+    const bounds = getSelectionBoundsOrdered();
+    if (!bounds) return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      return;
+    }
+    if (!text) return;
+    const lines = text.replace(/\r/g, "").split("\n");
+    if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+    const grid = lines.map((line) => line.split("\t"));
+    const isSingleValue = grid.length === 1 && grid[0].length === 1;
+
+    const operations: Array<{ target: EditableCellTarget; value: string }> = [];
+    if (isSingleValue) {
+      const value = grid[0][0];
+      for (const key of selectedCellsRef.current) {
+        const separator = key.indexOf("::");
+        if (separator < 0) continue;
+        const editTarget = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
+        if (editTarget) operations.push({ target: editTarget, value });
+      }
+    } else {
+      const displayedColumns = api.getAllDisplayedColumns();
+      const startColIndex = displayedColumns.findIndex((column) => column.getColId() === bounds.columnIds[0]);
+      const startRowIndex = api.getRowNode(bounds.rowIds[0])?.rowIndex ?? -1;
+      if (startColIndex < 0 || startRowIndex < 0) return;
+      grid.forEach((line, rowOffset) => {
+        const rowNode = api.getDisplayedRowAtIndex(startRowIndex + rowOffset);
+        const rowId = rowNode?.data?.sku;
+        if (!rowId) return;
+        line.forEach((value, colOffset) => {
+          const column = displayedColumns[startColIndex + colOffset];
+          if (!column) return;
+          const editTarget = resolveEditableTarget(rowId, column.getColId());
+          if (editTarget) operations.push({ target: editTarget, value });
+        });
+      });
+    }
+    await applyClipboardOperation(operations);
+  }, [applyClipboardOperation, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
+
+  const performFillDown = useCallback(() => {
+    if (!canEditPlanning) return false;
+    const bounds = getSelectionBoundsOrdered();
+    if (!bounds || bounds.rowIds.length < 2) return false;
+
+    const operations: Array<{ target: EditableCellTarget; value: string }> = [];
+    for (const columnId of bounds.columnIds) {
+      const sourceRowId = bounds.rowIds.find((rowId) => selectedCellsRef.current.has(`${rowId}::${columnId}`));
+      if (!sourceRowId) continue;
+      const sourceValue = getCellCopyValue(sourceRowId, columnId);
+      let passedSource = false;
+      for (const rowId of bounds.rowIds) {
+        if (!selectedCellsRef.current.has(`${rowId}::${columnId}`)) continue;
+        if (!passedSource) {
+          passedSource = rowId === sourceRowId;
+          continue;
+        }
+        const target = resolveEditableTarget(rowId, columnId);
+        if (target) operations.push({ target, value: sourceValue });
+      }
+    }
+    if (!operations.length) return false;
+    void applyClipboardOperation(operations);
+    return true;
+  }, [applyClipboardOperation, canEditPlanning, getCellCopyValue, getSelectionBoundsOrdered, resolveEditableTarget]);
+
   useEffect(() => {
     const handleCopy = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "c") return;
@@ -3790,11 +4308,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       const tsv = getSelectedCellsTsv();
       if (tsv === null) return;
       event.preventDefault();
-      void copyText(tsv).catch(() => {});
+      void performCopy();
     };
     window.addEventListener("keydown", handleCopy, true);
     return () => window.removeEventListener("keydown", handleCopy, true);
-  }, [getSelectedCellsTsv]);
+  }, [getSelectedCellsTsv, performCopy]);
 
   useEffect(() => {
     const handleCut = (event: KeyboardEvent) => {
@@ -3802,25 +4320,23 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (!canEditPlanning) return;
-      const tsv = getSelectedCellsTsv();
-      if (tsv === null) return;
-      const operations: Array<{ target: EditableCellTarget; value: string }> = [];
+      let hasEditableTarget = false;
       for (const key of selectedCellsRef.current) {
         const separator = key.indexOf("::");
         if (separator < 0) continue;
-        const target = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
-        if (target?.kind === "qty") operations.push({ target, value: "" });
+        if (resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2))) {
+          hasEditableTarget = true;
+          break;
+        }
       }
-      if (!operations.length) return;
+      if (!hasEditableTarget) return;
       event.preventDefault();
       event.stopPropagation();
-      void copyText(tsv)
-        .then(() => applyClipboardOperation(operations))
-        .catch(() => {});
+      void performCut();
     };
     window.addEventListener("keydown", handleCut, true);
     return () => window.removeEventListener("keydown", handleCut, true);
-  }, [applyClipboardOperation, canEditPlanning, getSelectedCellsTsv, resolveEditableTarget]);
+  }, [canEditPlanning, performCut, resolveEditableTarget]);
 
   useEffect(() => {
     const handlePaste = (event: KeyboardEvent) => {
@@ -3830,98 +4346,68 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       if (!canEditPlanning) return;
       const bounds = getSelectionBoundsOrdered();
       if (!bounds) return;
-      const api = gridRef.current?.api;
-      if (!api) return;
       event.preventDefault();
-
-      void (async () => {
-        let text: string;
-        try {
-          text = await navigator.clipboard.readText();
-        } catch {
-          return;
-        }
-        if (!text) return;
-        const lines = text.replace(/\r/g, "").split("\n");
-        if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
-        const grid = lines.map((line) => line.split("\t"));
-        const isSingleValue = grid.length === 1 && grid[0].length === 1;
-
-        const operations: Array<{ target: EditableCellTarget; value: string }> = [];
-        if (isSingleValue) {
-          const value = grid[0][0];
-          for (const key of selectedCellsRef.current) {
-            const separator = key.indexOf("::");
-            if (separator < 0) continue;
-            const editTarget = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
-            if (editTarget) operations.push({ target: editTarget, value });
-          }
-        } else {
-          const displayedColumns = api.getAllDisplayedColumns();
-          const startColIndex = displayedColumns.findIndex((column) => column.getColId() === bounds.columnIds[0]);
-          const startRowIndex = api.getRowNode(bounds.rowIds[0])?.rowIndex ?? -1;
-          if (startColIndex < 0 || startRowIndex < 0) return;
-          grid.forEach((line, rowOffset) => {
-            const rowNode = api.getDisplayedRowAtIndex(startRowIndex + rowOffset);
-            const rowId = rowNode?.data?.sku;
-            if (!rowId) return;
-            line.forEach((value, colOffset) => {
-              const column = displayedColumns[startColIndex + colOffset];
-              if (!column) return;
-              const editTarget = resolveEditableTarget(rowId, column.getColId());
-              if (editTarget) operations.push({ target: editTarget, value });
-            });
-          });
-        }
-        await applyClipboardOperation(operations);
-      })();
+      void performPaste();
     };
     window.addEventListener("keydown", handlePaste, true);
     return () => window.removeEventListener("keydown", handlePaste, true);
-  }, [applyClipboardOperation, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
+  }, [canEditPlanning, getSelectionBoundsOrdered, performPaste]);
 
-  const applyQtyHistoryEntry = useCallback(async (entry: QtyHistoryEntry, direction: "undo" | "redo") => {
+  useEffect(() => {
+    const handleFillDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "d") return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!performFillDown()) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown", handleFillDown, true);
+    return () => window.removeEventListener("keydown", handleFillDown, true);
+  }, [performFillDown]);
+
+  const applySheetHistoryEntry = useCallback(async (entry: SheetHistoryEntry, direction: "undo" | "redo") => {
     const results = await Promise.all(entry.changes.map((change) => {
-      const target = resolveEditableTarget(change.rowId, `${change.containerName}::inb_qty`);
-      if (target?.kind !== "qty") return Promise.resolve(false);
+      const target = resolveEditableTarget(change.rowId, change.columnId);
+      if (!target) return Promise.resolve(false);
       const value = direction === "undo" ? change.before : change.after;
-      return applyValueToTarget(target, String(value), { recordQtyHistory: false });
+      return applyValueToTarget(target, value, { recordSheetHistory: false });
     }));
     return results.every(Boolean);
   }, [applyValueToTarget, resolveEditableTarget]);
 
   useEffect(() => {
-    const handleQtyHistoryShortcut = (event: KeyboardEvent) => {
+    const handleSheetHistoryShortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
       const direction = key === "y" || (key === "z" && event.shiftKey) ? "redo" : key === "z" ? "undo" : null;
       if (!direction) return;
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (!canEditPlanning || qtyHistoryBusyRef.current) return;
-      const source = direction === "undo" ? qtyUndoStackRef.current : qtyRedoStackRef.current;
+      if (!canEditPlanning || sheetHistoryBusyRef.current) return;
+      const source = direction === "undo" ? sheetUndoStackRef.current : sheetRedoStackRef.current;
       const entry = source.pop();
       if (!entry) return;
 
       event.preventDefault();
       event.stopPropagation();
-      qtyHistoryBusyRef.current = true;
-      void applyQtyHistoryEntry(entry, direction)
+      sheetHistoryBusyRef.current = true;
+      void applySheetHistoryEntry(entry, direction)
         .then((success) => {
           if (success) {
-            const destination = direction === "undo" ? qtyRedoStackRef : qtyUndoStackRef;
-            destination.current = [...destination.current.slice(-(MAX_QTY_HISTORY - 1)), entry];
+            const destination = direction === "undo" ? sheetRedoStackRef : sheetUndoStackRef;
+            destination.current = [...destination.current.slice(-(MAX_SHEET_HISTORY - 1)), entry];
           } else {
             source.push(entry);
           }
         })
         .finally(() => {
-          qtyHistoryBusyRef.current = false;
+          sheetHistoryBusyRef.current = false;
         });
     };
-    window.addEventListener("keydown", handleQtyHistoryShortcut, true);
-    return () => window.removeEventListener("keydown", handleQtyHistoryShortcut, true);
-  }, [applyQtyHistoryEntry, canEditPlanning]);
+    window.addEventListener("keydown", handleSheetHistoryShortcut, true);
+    return () => window.removeEventListener("keydown", handleSheetHistoryShortcut, true);
+  }, [applySheetHistoryEntry, canEditPlanning]);
 
   const autoFill = useCallback(async (
     container: ContainerMeta,
@@ -4395,12 +4881,16 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           : column.id === "cbm" && canEditPlanning
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
                 onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
+                onRequestEdit: handleQtyEditRequest,
+                onSelectCell: selectSingleGridCell,
               })
           : workNoteSlotForColumnId(column.id) !== null && canEditPlanning
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
                 onSave: (note: string) => params.data
                   ? saveWorkNote(params.data, note, workNoteSlotForColumnId(column.id) ?? 1)
                   : Promise.resolve(false),
+                onRequestEdit: handleQtyEditRequest,
+                onSelectCell: selectSingleGridCell,
               })
           : undefined,
         headerStyle: () => headerStyleForColor(columnColors[column.id]?.header, columnTextFormatsRef.current[column.id]?.header),
@@ -4610,6 +5100,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             return {
               onSave: (qty: number) => saveQty(row, container, raw, qty),
               onRequestEdit: handleQtyEditRequest,
+              onSelectCell: selectSingleGridCell,
+              onContextMenuRequest: handleQtyContextMenu,
             };
           } : undefined,
           cellClassRules: {
@@ -4756,7 +5248,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, selectSingleGridCell, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -4962,7 +5454,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
               if (nativeEvt && nativeEvt.button !== 0) return;
               const target = nativeEvt?.target as HTMLElement | null;
               if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-              dragCellAnchorRef.current = { rowIndex: event.rowIndex, columnId: event.column.getColId() };
+              const columnId = event.column.getColId();
+              dragCellAnchorRef.current = { rowIndex: event.rowIndex, columnId };
+              activeSelectedCellRef.current = { rowId: event.data.sku, columnId };
               dragMovedRef.current = false;
             }}
             onCellMouseOver={(event) => {
@@ -5019,6 +5513,15 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 cellSelectionAnchorRef.current = { rowIndex: event.rowIndex ?? 0, columnId };
               }
               selectedCellsRef.current = next;
+              if (next.has(key)) {
+                activeSelectedCellRef.current = { rowId: event.data.sku, columnId };
+              } else {
+                const firstKey = next.values().next().value as string | undefined;
+                const separator = firstKey?.indexOf("::") ?? -1;
+                activeSelectedCellRef.current = firstKey && separator >= 0
+                  ? { rowId: firstKey.slice(0, separator), columnId: firstKey.slice(separator + 2) }
+                  : null;
+              }
               refreshChangedCells(previous, next);
               const selection = {
                 rowId: event.data.sku,
@@ -5034,7 +5537,6 @@ autoFilling3: autoFillingContainers3.has(container.name),
             headerHeight={45}
             groupHeaderHeight={50}
             animateRows={false}
-            singleClickEdit
             suppressCellFocus
             maintainColumnOrder
             suppressDragLeaveHidesColumns
@@ -5131,6 +5633,21 @@ autoFilling3: autoFillingContainers3.has(container.name),
           canHide={onHideContainer !== undefined}
           onHide={() => onHideContainer?.(containerMenu.containerName, containerMenu.baseline)}
           onClose={() => setContainerMenu(null)}
+        />
+      )}
+      {qtyCtxMenu && (
+        <ClipboardContextMenu
+          x={qtyCtxMenu.x}
+          y={qtyCtxMenu.y}
+          canCut={canEditPlanning && [...selectedCellsRef.current].some((key) => {
+            const separator = key.indexOf("::");
+            return separator >= 0 && resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2))?.kind === "qty";
+          })}
+          canPaste={canEditPlanning}
+          onCut={() => void performCut()}
+          onCopy={() => void performCopy()}
+          onPaste={() => void performPaste()}
+          onClose={() => setQtyCtxMenu(null)}
         />
       )}
     </div>
