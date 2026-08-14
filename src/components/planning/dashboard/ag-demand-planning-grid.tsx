@@ -37,7 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { baselineBackorderQty, inventoryLifeDays } from "@/lib/planning/forecast-calculations";
 import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -118,7 +118,7 @@ type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
 type EditableCellTarget =
   | { kind: "cbm"; row: DemandRow }
-  | { kind: "note"; row: DemandRow }
+  | { kind: "note"; row: DemandRow; slot: 1 | 2 | 3 }
   | { kind: "qty"; row: DemandRow; container: ContainerMeta; raw: ContainerRowData };
 type SelectionModifiers = { toggle: boolean; range: boolean };
 type SalesTargetTier = { minSales: number; targetDays: number };
@@ -140,6 +140,13 @@ let activeQtyEditorKey: string | null = null;
 
 function qtyEditorKey(rowId: string, columnId: string) {
   return `${rowId}\u0000${columnId}`;
+}
+
+function workNoteSlotForColumnId(columnId: string): 1 | 2 | 3 | null {
+  if (columnId === "workflow_note") return 1;
+  if (columnId === "workflow_note_2") return 2;
+  if (columnId === "workflow_note_3") return 3;
+  return null;
 }
 
 const DEFAULT_BACKFILL3_TIERS: SalesTargetTier[] = [
@@ -748,6 +755,7 @@ function CopyableCellRenderer({
   onMemoSave?: (memo: string) => Promise<void>;
 }) {
   const { pick } = useI18n();
+  const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [noteDraft, setNoteDraft] = useState(initialMemo ?? "");
   const [noteSaving, setNoteSaving] = useState(false);
@@ -794,18 +802,20 @@ function CopyableCellRenderer({
   };
 
   return (
-    <Popover onOpenChange={(open) => {
-      if (open) {
-        setNoteDraft(initialMemo ?? "");
-        setNoteSaved(false);
-        setNoteError(false);
-      }
-    }}>
-      <PopoverTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
         <button
           type="button"
           title={`View ${label}`}
           onClick={() => node.setSelected(true, true)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            node.setSelected(true, true);
+            setNoteDraft(initialMemo ?? "");
+            setNoteSaved(false);
+            setNoteError(false);
+            setOpen(true);
+          }}
           className="flex h-full w-full min-w-0 items-center text-left"
         >
           <span className="min-w-0 flex-1 truncate">{renderCellValue(value)}</span>
@@ -822,7 +832,7 @@ function CopyableCellRenderer({
             </span>
           )}
         </button>
-      </PopoverTrigger>
+      </PopoverAnchor>
       <PopoverContent
         align="start"
         sideOffset={0}
@@ -907,6 +917,163 @@ function CopyableCellRenderer({
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+// Master SKU cell: a plain click only selects the cell (it used to also pop
+// the note editor open, which made "I just want to select this row" annoying
+// to do). Copy / Open in SKU Planning / Note are now explicit right-click
+// menu actions instead.
+function SkuCellRenderer({
+  value,
+  node,
+  sku,
+  memo: initialMemo,
+  onMemoSave,
+}: ICellRendererParams<DemandRow, CellContent> & {
+  sku: string;
+  memo?: string | null;
+  onMemoSave?: (memo: string) => Promise<void>;
+}) {
+  const { pick } = useI18n();
+  const [noteDraft, setNoteDraft] = useState(initialMemo ?? "");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [noteError, setNoteError] = useState(false);
+  const [memoOpen, setMemoOpen] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const handleNoteSave = async (overrideValue?: string) => {
+    if (!onMemoSave) return;
+    const valueToSave = overrideValue !== undefined ? overrideValue : noteDraft;
+    if (overrideValue === undefined && valueToSave === (initialMemo ?? "")) return;
+    setNoteSaving(true);
+    setNoteError(false);
+    try {
+      await onMemoSave(valueToSave);
+      setNoteSaved(true);
+    } catch {
+      setNoteSaved(false);
+      setNoteError(true);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
+  const openMemo = () => {
+    setNoteDraft(initialMemo ?? "");
+    setNoteSaved(false);
+    setNoteError(false);
+    setMemoOpen(true);
+  };
+
+  return (
+    <>
+      <Popover open={memoOpen} onOpenChange={setMemoOpen}>
+        <PopoverAnchor asChild>
+          <button
+            type="button"
+            title="Master SKU"
+            onClick={() => node.setSelected(true, true)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setCtxMenu({ x: event.clientX, y: event.clientY });
+            }}
+            className="flex h-full w-full min-w-0 items-center text-left"
+          >
+            <span className="min-w-0 flex-1 truncate">{renderCellValue(value)}</span>
+            {initialMemo?.trim() ? (
+              <span
+                aria-label={pick("메모 있음", "Has note")}
+                title={pick("메모 있음", "Has note")}
+                className="ml-1 h-0 w-0 shrink-0 border-l-[6px] border-t-[6px] border-l-transparent border-t-amber-500"
+              />
+            ) : null}
+          </button>
+        </PopoverAnchor>
+        {onMemoSave && (
+          <PopoverContent align="start" sideOffset={4} className="w-[min(420px,calc(100vw-32px))] p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-[#1A1917]">{pick("메모", "Note")}</span>
+              <span className={`text-[11px] font-medium ${noteError ? "text-red-600" : noteSaved ? "text-emerald-600" : noteSaving ? "text-slate-400" : "text-[#1A5CDB]"}`}>
+                {noteSaving ? pick("저장 중...", "Saving...") : noteError ? pick("저장 실패", "Save failed") : noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
+              </span>
+            </div>
+            <textarea
+              autoFocus
+              value={noteDraft}
+              onChange={(event) => {
+                setNoteDraft(event.target.value);
+                setNoteSaved(false);
+                setNoteError(false);
+              }}
+              onBlur={() => void handleNoteSave()}
+              placeholder={pick("이 SKU에 대한 메모를 입력하세요", "Add a note for this SKU")}
+              className="min-h-[86px] w-full resize-y rounded-md border border-[#d8d6ce] px-3 py-2 text-sm leading-5 outline-none focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/15 bg-white"
+            />
+            <div className="mt-2 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={noteSaving || (!noteDraft && !initialMemo?.trim())}
+                onClick={() => {
+                  setNoteDraft("");
+                  void handleNoteSave("");
+                }}
+              >
+                {pick("삭제", "Clear")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={noteSaving}
+                onClick={() => void handleNoteSave()}
+              >
+                {pick("저장", "Save")}
+              </Button>
+            </div>
+          </PopoverContent>
+        )}
+      </Popover>
+
+      {ctxMenu && createPortal(
+        <>
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 9999 }}
+            onClick={() => setCtxMenu(null)}
+            onContextMenu={(event) => { event.preventDefault(); setCtxMenu(null); }}
+          />
+          <div
+            style={{
+              position: "fixed", top: ctxMenu.y, left: ctxMenu.x, zIndex: 10000, background: "#fff",
+              border: "1px solid #E2E8F0", borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
+              minWidth: 200, overflow: "hidden",
+            }}
+          >
+            <MenuItem disabled={!sku} onClick={() => { void copyText(sku).catch(() => {}); setCtxMenu(null); }}>
+              {pick("SKU 복사", "Copy SKU")}
+            </MenuItem>
+            <MenuItem disabled={!sku} onClick={() => {
+              window.open(
+                withBasePath(`/planning/sku-forecasts?sku=${encodeURIComponent(sku)}`),
+                "_blank",
+                "noopener,noreferrer",
+              );
+              setCtxMenu(null);
+            }}>
+              {pick("SKU Planning에서 열기", "Open in SKU Planning")}
+            </MenuItem>
+            {onMemoSave && (
+              <MenuItem onClick={() => { setCtxMenu(null); openMemo(); }}>
+                {pick("메모", "Note")}
+              </MenuItem>
+            )}
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -1031,13 +1198,15 @@ function QtyCellRenderer({
 
   if (editing) {
     return (
-      <div className="relative h-full w-full overflow-visible">
+      <div className="h-full w-full overflow-hidden">
         <input
           autoFocus
-          type="number"
-          min={0}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
           aria-label="Edit Con. Qty"
           value={inputValue}
+          onFocus={(event) => event.currentTarget.select()}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
@@ -1073,7 +1242,7 @@ function QtyCellRenderer({
             }
             void commit();
           }}
-          className="planning-cbm-edit-input planning-qty-edit-input absolute left-1/2 top-1/2 z-30 h-10 w-36 -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 text-right font-mono text-sm font-semibold shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
+          className="planning-inline-cell-editor h-full w-full rounded-none border-2 border-[#1A5CDB] bg-white px-1 text-right font-mono text-[11px] font-semibold text-[#1A4FC0] outline-none"
         />
       </div>
     );
@@ -1157,14 +1326,14 @@ function CbmCellRenderer({
 
   if (editing) {
     return (
-      <div className="relative h-full w-full overflow-visible">
+      <div className="h-full w-full overflow-hidden">
         <input
           autoFocus
-          type="number"
-          min={0}
-          step="0.000001"
+          type="text"
+          inputMode="decimal"
           value={inputValue}
           aria-label="Edit CBM"
+          onFocus={(event) => event.currentTarget.select()}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
@@ -1178,7 +1347,7 @@ function CbmCellRenderer({
             }
           }}
           onBlur={() => void commit()}
-          className="planning-cbm-edit-input absolute left-1/2 top-1/2 z-30 h-10 w-36 -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 text-right font-mono text-sm font-semibold shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
+          className="planning-inline-cell-editor h-full w-full rounded-none border-2 border-[#1A5CDB] bg-white px-0.5 text-center font-mono text-[10px] text-[#1A4FC0] outline-none"
         />
       </div>
     );
@@ -1194,7 +1363,7 @@ function CbmCellRenderer({
         node.setSelected(true, true);
         setEditing(true);
       }}
-      className="h-full w-full border-0 bg-transparent px-0.5 text-right font-mono text-[10px] text-[#1A4FC0]"
+      className="h-full w-full border-0 bg-transparent px-0.5 text-center font-mono text-[10px] text-[#1A4FC0]"
     >
       {saving ? "..." : displayValue}
     </button>
@@ -1243,9 +1412,10 @@ function WorkNoteCellRenderer({
 
   if (editing) {
     return (
-      <div className="relative h-full w-full overflow-visible">
-        <textarea
+      <div className="h-full w-full overflow-hidden">
+        <input
           autoFocus
+          type="text"
           maxLength={200}
           aria-label="Edit Note"
           value={inputValue}
@@ -1259,7 +1429,7 @@ function WorkNoteCellRenderer({
             // Plain Enter saves, matching every other single-line editor in
             // this grid. Shift+Enter inserts a line break instead — left
             // alone here so the textarea's own default behavior handles it.
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (event.key === "Enter") {
               event.preventDefault();
               void commit();
             }
@@ -1271,7 +1441,7 @@ function WorkNoteCellRenderer({
           // the top of the grid — lands behind the sticky header, hiding
           // exactly the first lines typed. Growing only downward keeps the
           // typed text visible regardless of which row is being edited.
-          className="planning-cbm-edit-input absolute left-0 top-0 z-30 h-24 w-56 resize-none rounded-md border-2 border-[#1A5CDB] bg-[#FFFDE7] px-3 py-2 text-left text-sm font-medium shadow-lg outline-none focus:ring-2 focus:ring-[#1A5CDB]/25"
+          className="planning-inline-cell-editor h-full w-full rounded-none border-2 border-[#1A5CDB] bg-white px-1 text-left text-[11px] outline-none"
         />
       </div>
     );
@@ -2255,7 +2425,10 @@ function ContainerGroupHeader(
                 data-summary-column-id={column.columnId}
                 title={totalLabel ? `Total: ${totalLabel}` : undefined}
                 className="shrink-0 overflow-visible whitespace-nowrap text-center"
-                style={{ width: liveColumnWidths[column.columnId] ?? column.width }}
+                style={{
+                  width: liveColumnWidths[column.columnId] ?? column.width,
+                  transform: "translateX(-10px)",
+                }}
               >
                 {totalLabel}
               </span>
@@ -2294,6 +2467,8 @@ export function AgDemandPlanningGrid({
   cellTextFormats = {},
   skuCellNotes = {},
   skuWorkNotes = {},
+  skuWorkNotes2 = {},
+  skuWorkNotes3 = {},
   canEditSkuNotes = false,
   canEditPlanning = false,
   onSkuCellNoteChange,
@@ -2340,7 +2515,7 @@ export function AgDemandPlanningGrid({
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const qtyOverridesRef = useRef(qtyOverrides);
   const lastChainedQtyOverridesRef = useRef(qtyOverrides);
-  const clearingSelectedQtyRef = useRef(false);
+  const clearingSelectedEditableCellsRef = useRef(false);
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   const chainMapRef = useRef(chainMap);
   const qtyRenderSyncTimerRef = useRef<number | null>(null);
@@ -2490,11 +2665,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         ...(rowOverrides.get(row.sku) ?? {}),
         ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
         workflow_note: skuWorkNotes[row.sku] ?? null,
+        workflow_note_2: skuWorkNotes2[row.sku] ?? null,
+        workflow_note_3: skuWorkNotes3[row.sku] ?? null,
       };
       merged.stock_mode = "available";
       return merged;
     });
-  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
 
   const visibleRows = useMemo(
     () => applyColumnFilters(bespokeFilteredRows, columnFilters, columnMenuAccessors(columnFilters.keys())),
@@ -2969,6 +3146,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     if (row) {
       if (columnId === "cbm") return row.cbm_per_unit ? row.cbm_per_unit.toFixed(6) : "";
       if (columnId === "workflow_note") return row.workflow_note ?? "";
+      if (columnId === "workflow_note_2") return row.workflow_note_2 ?? "";
+      if (columnId === "workflow_note_3") return row.workflow_note_3 ?? "";
       if (columnId.endsWith("::inb_qty")) {
         const containerName = columnId.slice(0, -"::inb_qty".length);
         const raw = row.containers?.[containerName];
@@ -3290,53 +3469,6 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return true;
   }, [canEditPlanning, containers, scheduleQtyRenderSync, seasonalFactors]);
 
-  useEffect(() => {
-    const handleSelectedQtyDelete = (event: KeyboardEvent) => {
-      if (event.key !== "Delete" && event.key !== "Backspace") return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (!canEditPlanning || clearingSelectedQtyRef.current) return;
-
-      const api = gridRef.current?.api;
-      if (!api) return;
-      const targets: Array<{ row: DemandRow; container: ContainerMeta; raw: ContainerRowData }> = [];
-      for (const selectedKey of selectedCellsRef.current) {
-        const separator = selectedKey.indexOf("::");
-        if (separator < 0) continue;
-        const rowId = selectedKey.slice(0, separator);
-        const columnId = selectedKey.slice(separator + 2);
-        if (!columnId.endsWith("::inb_qty")) continue;
-        const containerName = columnId.slice(0, -"::inb_qty".length);
-        const container = containers.find((item) => item.name === containerName);
-        const row = api.getRowNode(rowId)?.data;
-        if (!row || !container || container.status === "baseline" || container.status === "packing_received" || !container.container_id) continue;
-        const raw = row.containers?.[container.name] ?? {
-          item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
-          allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
-          inv_life: null, est_sod: null, plan_sod: null, cbm: 0,
-        };
-        targets.push({ row, container, raw });
-      }
-      if (!targets.length) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      clearingSelectedQtyRef.current = true;
-      void (async () => {
-        try {
-          await Promise.allSettled(
-            targets.map((item) => saveQty(item.row, item.container, item.raw, 0)),
-          );
-        } finally {
-          clearingSelectedQtyRef.current = false;
-        }
-      })();
-    };
-
-    window.addEventListener("keydown", handleSelectedQtyDelete, true);
-    return () => window.removeEventListener("keydown", handleSelectedQtyDelete, true);
-  }, [canEditPlanning, containers, saveQty]);
-
 const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
     if (!canEditPlanning || !onSkuCellNoteChange) return;
     await onSkuCellNoteChange(row.sku, memo);
@@ -3348,9 +3480,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     });
   }, [canEditPlanning, onSkuCellNoteChange]);
 
-  const saveWorkNote = useCallback(async (row: DemandRow, note: string): Promise<boolean> => {
+  const saveWorkNote = useCallback(async (row: DemandRow, note: string, slot: 1 | 2 | 3 = 1): Promise<boolean> => {
     if (!canEditPlanning || !onSkuWorkNoteChange) return false;
-    await onSkuWorkNoteChange(row.sku, note);
+    await onSkuWorkNoteChange(row.sku, note, slot);
     return true;
   }, [canEditPlanning, onSkuWorkNoteChange]);
 
@@ -3365,7 +3497,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const row = api?.getRowNode(rowId)?.data;
     if (!row) return null;
     if (columnId === "cbm") return { kind: "cbm", row };
-    if (columnId === "workflow_note") return { kind: "note", row };
+    if (columnId === "workflow_note") return { kind: "note", row, slot: 1 };
+    if (columnId === "workflow_note_2") return { kind: "note", row, slot: 2 };
+    if (columnId === "workflow_note_3") return { kind: "note", row, slot: 3 };
     if (columnId.endsWith("::inb_qty")) {
       const containerName = columnId.slice(0, -"::inb_qty".length);
       const container = containers.find((item) => item.name === containerName);
@@ -3381,13 +3515,47 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   }, [canEditPlanning, containers]);
 
   const applyValueToTarget = useCallback(async (target: EditableCellTarget, rawText: string): Promise<boolean> => {
-    if (target.kind === "note") return saveWorkNote(target.row, rawText);
+    if (target.kind === "note") return saveWorkNote(target.row, rawText, target.slot);
     const trimmed = rawText.trim();
     const numeric = trimmed === "" ? 0 : Number(trimmed.replace(/,/g, ""));
     if (!Number.isFinite(numeric) || numeric < 0) return false;
     if (target.kind === "cbm") return saveCbm(target.row, numeric);
     return saveQty(target.row, target.container, target.raw, Math.round(numeric));
   }, [saveCbm, saveQty, saveWorkNote]);
+
+  useEffect(() => {
+    const handleSelectedEditableCellDelete = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!canEditPlanning || clearingSelectedEditableCellsRef.current) return;
+
+      const targets: EditableCellTarget[] = [];
+      for (const selectedKey of selectedCellsRef.current) {
+        const separator = selectedKey.indexOf("::");
+        if (separator < 0) continue;
+        const editTarget = resolveEditableTarget(
+          selectedKey.slice(0, separator),
+          selectedKey.slice(separator + 2),
+        );
+        // Delete/Backspace intentionally clears only Con. Qty and the three
+        // Note columns. CBM remains protected from accidental bulk deletion.
+        if (editTarget?.kind === "qty" || editTarget?.kind === "note") targets.push(editTarget);
+      }
+      if (!targets.length) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      clearingSelectedEditableCellsRef.current = true;
+      void Promise.allSettled(targets.map((target) => applyValueToTarget(target, "")))
+        .finally(() => {
+          clearingSelectedEditableCellsRef.current = false;
+        });
+    };
+
+    window.addEventListener("keydown", handleSelectedEditableCellDelete, true);
+    return () => window.removeEventListener("keydown", handleSelectedEditableCellDelete, true);
+  }, [applyValueToTarget, canEditPlanning, resolveEditableTarget]);
 
   useEffect(() => {
     const handleCopy = (event: KeyboardEvent) => {
@@ -3874,7 +4042,6 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const pinnedBaseColumnIdSet = new Set(pinnedBaseColumnLayout.ids);
 
     const buildRealBaseColDef = (column: (typeof baseCandidates)[number]): AgColDef<DemandRow> => {
-      const isCopyable = column.id === "sku" || column.id === "inb_lst";
       const shouldPin = pinnedBaseColumnIdSet.has(column.id);
       const width = shouldPin
         ? pinnedBaseColumnLayout.widths[column.id]
@@ -3913,32 +4080,37 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           }
           return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
         },
-        cellRenderer: isCopyable
-          ? CopyableCellRenderer
-          : column.id === "cbm" && canEditPlanning
-            ? CbmCellRenderer
-            : column.id === "workflow_note" && canEditPlanning
-              ? WorkNoteCellRenderer
-              : CellRenderer,
-        cellRendererParams: isCopyable
+        cellRenderer: column.id === "sku"
+          ? SkuCellRenderer
+          : column.id === "inb_lst"
+            ? CopyableCellRenderer
+            : column.id === "cbm" && canEditPlanning
+              ? CbmCellRenderer
+              : workNoteSlotForColumnId(column.id) !== null && canEditPlanning
+                ? WorkNoteCellRenderer
+                : CellRenderer,
+        cellRendererParams: column.id === "sku"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
-              copyValue: column.id === "sku"
-                ? (params.data?.sku ?? "")
-                : params.data?.containers_list ?? "",
-              label: column.id === "sku" ? "Master SKU" : "Containers List",
-              skuPlanningSku: column.id === "sku" ? (params.data?.sku ?? "") : undefined,
-              memo: column.id === "sku" && params.data ? (skuCellNotes[params.data.sku] ?? params.data.memo ?? null) : undefined,
-              onMemoSave: column.id === "sku" && params.data && onSkuCellNoteChange
+              sku: params.data?.sku ?? "",
+              memo: params.data ? (skuCellNotes[params.data.sku] ?? params.data.memo ?? null) : null,
+              onMemoSave: params.data && onSkuCellNoteChange
                 ? (memo: string) => saveMemo(params.data!, memo)
                 : undefined,
             })
+          : column.id === "inb_lst"
+            ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
+                copyValue: params.data?.containers_list ?? "",
+                label: "Containers List",
+              })
           : column.id === "cbm" && canEditPlanning
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
                 onSave: (cbm: number) => params.data ? saveCbm(params.data, cbm) : Promise.resolve(false),
               })
-          : column.id === "workflow_note" && canEditPlanning
+          : workNoteSlotForColumnId(column.id) !== null && canEditPlanning
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
-                onSave: (note: string) => params.data ? saveWorkNote(params.data, note) : Promise.resolve(false),
+                onSave: (note: string) => params.data
+                  ? saveWorkNote(params.data, note, workNoteSlotForColumnId(column.id) ?? 1)
+                  : Promise.resolve(false),
               })
           : undefined,
         headerStyle: () => headerStyleForColor(columnColors[column.id]?.header, columnTextFormatsRef.current[column.id]?.header),
@@ -3957,7 +4129,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           onRename: onColumnHeaderRename ?? (() => {}),
           isFiltered: columnFilters.has(column.id),
           onRightClick: (x: number, y: number) => setColumnMenu({ x, y, key: column.id, label: headerName }),
-          showMenuButton: column.id === "workflow_note",
+          showMenuButton: false,
           restoreMarkerLeft: baseRestoreMarkers.left.get(column.id),
           restoreMarkerRight: baseRestoreMarkers.right.get(column.id),
         },
@@ -4472,19 +4644,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
         .planning-ag-grid .ag-header-group-cell.planning-user-header-text-color * {
           color: inherit !important;
         }
-        .planning-ag-grid .ag-cell:has(.planning-cbm-edit-input),
-        .planning-ag-grid .ag-cell-wrapper:has(.planning-cbm-edit-input),
-        .planning-ag-grid .ag-cell-value:has(.planning-cbm-edit-input),
-        .planning-ag-grid .ag-cell:has(.planning-qty-edit-input),
-        .planning-ag-grid .ag-cell-wrapper:has(.planning-qty-edit-input),
-        .planning-ag-grid .ag-cell-value:has(.planning-qty-edit-input) {
-          overflow: visible !important;
-          z-index: 30;
-        }
-        .planning-ag-grid .ag-row:has(.planning-cbm-edit-input),
-        .planning-ag-grid .ag-row:has(.planning-qty-edit-input) {
-          overflow: visible !important;
-          z-index: 40 !important;
+        .planning-ag-grid .ag-cell:has(.planning-inline-cell-editor),
+        .planning-ag-grid .ag-cell-wrapper:has(.planning-inline-cell-editor),
+        .planning-ag-grid .ag-cell-value:has(.planning-inline-cell-editor) {
+          padding: 0 !important;
+          overflow: hidden !important;
         }
         .planning-ag-grid .container-column-start {
           border-left: 2px solid #5A5750 !important;
@@ -4605,6 +4769,23 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const affectedColumns = new Set(event.columns ?? (event.column ? [event.column] : []));
               for (const column of [...affectedColumns]) {
                 for (const sibling of column.getParent()?.getDisplayedLeafColumns() ?? []) affectedColumns.add(sibling);
+              }
+              const movedContainerColumns = [...affectedColumns].some((column) => column.getColId().includes("::"));
+              if (movedContainerColumns) {
+                // Container groups may be reordered among themselves, but the
+                // whole planning block must stay after the fixed/base columns
+                // (the Inbound / Container / SOD boundary).
+                const currentState = event.api.getColumnState();
+                const baseColumnIds = currentState
+                  .filter((state) => !state.colId.includes("::"))
+                  .map((state) => state.colId);
+                const containerColumnIds = currentState
+                  .filter((state) => state.colId.includes("::"))
+                  .map((state) => state.colId);
+                event.api.applyColumnState({
+                  state: [...baseColumnIds, ...containerColumnIds].map((colId) => ({ colId })),
+                  applyOrder: true,
+                });
               }
               event.api.refreshHeader();
               if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });

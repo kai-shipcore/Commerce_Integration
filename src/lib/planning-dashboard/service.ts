@@ -11,7 +11,7 @@ import { logAudit } from "@/lib/audit";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { ValidationError } from "@/lib/errors";
 import { OOS_LOST_DEMAND_CATEGORIES, OOS_LOST_DEMAND_MARKETPLACES, type CategoryKey } from "@/lib/planning/oos-lost-demand-weights";
-import { PlanningDashboardRepository, withTransaction } from "@/lib/planning-dashboard/repository";
+import { PlanningDashboardRepository, withTransaction, type WorkNoteSlot } from "@/lib/planning-dashboard/repository";
 
 const MAX_NOTE_LENGTH = 5000;
 const MAX_WORK_NOTE_LENGTH = 200;
@@ -38,12 +38,12 @@ export const PlanningDashboardService = {
     return { sku, note };
   },
 
-  async getSkuWorkNotes(): Promise<Record<string, string>> {
-    const rows = await PlanningDashboardRepository.listSkuWorkNotes();
+  async getSkuWorkNotes(slot: WorkNoteSlot = 1): Promise<Record<string, string>> {
+    const rows = await PlanningDashboardRepository.listSkuWorkNotes(slot);
     return Object.fromEntries(rows.map((row) => [row.masterSku, row.note]));
   },
 
-  async setSkuWorkNote(rawSku: unknown, rawNote: unknown, updatedBy: string | null) {
+  async setSkuWorkNote(rawSku: unknown, rawNote: unknown, updatedBy: string | null, slot: WorkNoteSlot = 1) {
     const sku = typeof rawSku === "string" ? rawSku.trim() : "";
     const note = typeof rawNote === "string" ? rawNote.trim().replace(/\s*[\r\n]+\s*/g, " ") : "";
 
@@ -51,11 +51,11 @@ export const PlanningDashboardService = {
     if (note.length > MAX_WORK_NOTE_LENGTH) throw new ValidationError("Work note is too long");
 
     if (!note) {
-      await PlanningDashboardRepository.deleteSkuWorkNote(sku);
+      await PlanningDashboardRepository.deleteSkuWorkNote(sku, slot);
       return { sku, note: "" };
     }
 
-    await PlanningDashboardRepository.upsertSkuWorkNote(sku, note, updatedBy);
+    await PlanningDashboardRepository.upsertSkuWorkNote(sku, note, updatedBy, slot);
     return { sku, note };
   },
 

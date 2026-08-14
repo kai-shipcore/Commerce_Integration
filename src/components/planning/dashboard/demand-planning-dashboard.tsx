@@ -24,6 +24,7 @@ import {
   EMPTY_SKU_PART_FILTERS,
   loadSavedColumnColors,
   loadSavedColumnOrder,
+  ensureAdditionalNotesInColumnOrder,
   loadSavedCellColors,
   loadSavedColumnTextFormats,
   loadSavedCellTextFormats,
@@ -500,6 +501,10 @@ type ColumnVisibilityItem = {
 };
 
 const COLUMN_VISIBILITY_GROUP_KEYS: ColumnGroupKey[] = ["fix", ...ALL_GROUP_KEYS];
+const CONTAINER_VISIBILITY_SUBCOLUMNS = [
+  ...CON_SUBCOLS.filter((column) => column.id === "ccbm"),
+  ...CON_SUBCOLS.filter((column) => column.id !== "ccbm"),
+];
 
 const COLUMN_VISIBILITY_ITEMS: ColumnVisibilityItem[] = [
   ...ALL_COLS.map((column) => ({
@@ -509,7 +514,7 @@ const COLUMN_VISIBILITY_ITEMS: ColumnVisibilityItem[] = [
     compact: COMPACT_COLUMN_IDS.has(column.id),
     kind: "base" as const,
   })),
-  ...CON_SUBCOLS.map((column) => ({
+  ...CONTAINER_VISIBILITY_SUBCOLUMNS.map((column) => ({
     id: `con:${column.id}`,
     label: column.id === "remaining" ? "Rem. Qty" : column.label.replace("\n", " "),
     group: "con" as const,
@@ -870,6 +875,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [gradientSC, setGradientSC] = useState<GradientTier[]>(DEFAULT_GRADIENT_SC);
   const [skuCellNotes, setSkuCellNotes] = useState<Record<string, string>>({});
   const [skuWorkNotes, setSkuWorkNotes] = useState<Record<string, string>>({});
+  const [skuWorkNotes2, setSkuWorkNotes2] = useState<Record<string, string>>({});
+  const [skuWorkNotes3, setSkuWorkNotes3] = useState<Record<string, string>>({});
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
@@ -965,12 +972,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   useEffect(() => {
-    fetch(apiPath("/api/planning/sku-work-notes"), { cache: "no-store" })
-      .then((response) => response.json() as Promise<{ success: boolean; data?: Record<string, string> }>)
-      .then((json) => {
-        if (json.success && json.data) setSkuWorkNotes(json.data);
-      })
-      .catch(() => {});
+    const loadSlot = (slot: 1 | 2 | 3, setter: (notes: Record<string, string>) => void) => {
+      fetch(apiPath(`/api/planning/sku-work-notes?slot=${slot}`), { cache: "no-store" })
+        .then((response) => response.json() as Promise<{ success: boolean; data?: Record<string, string> }>)
+        .then((json) => {
+          if (json.success && json.data) setter(json.data);
+        })
+        .catch(() => {});
+    };
+    loadSlot(1, setSkuWorkNotes);
+    loadSlot(2, setSkuWorkNotes2);
+    loadSlot(3, setSkuWorkNotes3);
   }, []);
 
   useEffect(() => {
@@ -1022,9 +1034,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
         const savedOrder = d[COLUMN_ORDER_STORAGE_KEY];
         if (!columnOrderChangedRef.current && Array.isArray(savedOrder)) {
-          const normalizedOrder = Array.from(new Set(
+          const normalizedOrder = ensureAdditionalNotesInColumnOrder(Array.from(new Set(
             savedOrder.filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300),
-          )).slice(0, 5000);
+          )).slice(0, 5000));
           window.localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(normalizedOrder));
           setColumnOrder(normalizedOrder);
         } else if (!columnOrderChangedRef.current) {
@@ -1609,7 +1621,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleSkuWorkNoteChange = useCallback(async (sku: string, note: string) => {
+  const handleSkuWorkNoteChange = useCallback(async (sku: string, note: string, slot: 1 | 2 | 3 = 1) => {
     const normalizedSku = sku.trim();
     const normalizedNote = note.trim().replace(/\s*[\r\n]+\s*/g, " ");
     if (!normalizedSku) return;
@@ -1617,11 +1629,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const response = await fetch(apiPath("/api/planning/sku-work-notes"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sku: normalizedSku, note: normalizedNote }),
+      body: JSON.stringify({ sku: normalizedSku, note: normalizedNote, slot }),
     });
     if (!response.ok) throw new Error("Failed to save SKU work note");
 
-    setSkuWorkNotes((current) => {
+    const setter = slot === 2 ? setSkuWorkNotes2 : slot === 3 ? setSkuWorkNotes3 : setSkuWorkNotes;
+    setter((current) => {
       const next = { ...current };
       if (normalizedNote) next[normalizedSku] = normalizedNote;
       else delete next[normalizedSku];
@@ -1846,6 +1859,39 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const draftHiddenContainers = columnSettingsDraft?.hiddenContainers ?? hiddenContainers;
   const draftHiddenBases = columnSettingsDraft?.hiddenBases ?? hiddenBases;
   const draftHiddenContainerColumns = columnSettingsDraft?.hiddenContainerColumns ?? hiddenContainerColumns;
+  const orderedColumnVisibilityItems = useMemo(() => {
+    const orderIndex = new Map(columnOrder.map((columnId, index) => [columnId, index]));
+    const fallbackOffset = columnOrder.length + 10_000;
+    const rank = (item: ColumnVisibilityItem, fallbackIndex: number) => {
+      if (item.kind === "base") return orderIndex.get(item.id) ?? fallbackOffset + fallbackIndex;
+      // Every container can have a different leaf-column order in the grid.
+      // The settings popup therefore keeps the shared container visibility
+      // list in its canonical order instead of implying one container's order
+      // is the global order for all containers.
+      return fallbackOffset + fallbackIndex;
+    };
+
+    return COLUMN_VISIBILITY_ITEMS
+      .map((item, fallbackIndex) => ({
+        ...item,
+        label: columnHeaderNames[item.id] ?? item.label,
+        orderRank: rank(item, fallbackIndex),
+        fallbackIndex,
+      }))
+      .sort((a, b) => a.orderRank - b.orderRank || a.fallbackIndex - b.fallbackIndex);
+  }, [columnHeaderNames, columnOrder]);
+  const orderedColumnVisibilityGroupKeys = useMemo(() => {
+    const movableGroups = COLUMN_VISIBILITY_GROUP_KEYS.filter((group) => group !== "con");
+    const fallbackGroupIndex = new Map(movableGroups.map((group, index) => [group, index]));
+    const orderedMovableGroups = [...movableGroups].sort((a, b) => {
+      const firstA = orderedColumnVisibilityItems.findIndex((item) => item.group === a);
+      const firstB = orderedColumnVisibilityItems.findIndex((item) => item.group === b);
+      const rankA = firstA < 0 ? Number.POSITIVE_INFINITY : firstA;
+      const rankB = firstB < 0 ? Number.POSITIVE_INFINITY : firstB;
+      return rankA - rankB || (fallbackGroupIndex.get(a) ?? 0) - (fallbackGroupIndex.get(b) ?? 0);
+    });
+    return [...orderedMovableGroups, "con" as ColumnGroupKey];
+  }, [orderedColumnVisibilityItems]);
   const draftActiveSkuPartFilters = useMemo(() => {
     const next = { ...EMPTY_SKU_PART_FILTERS };
     activeSkuFilterKeys.forEach((key) => { next[key] = draftSkuPartFilters[key]; });
@@ -1855,17 +1901,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const draftAllPresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("all"));
   const draftCorePresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("core"));
   const draftCompactPresetActive = draftCompactMode && columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("compact"));
-  const draftAllContainerColumnsVisible = COLUMN_VISIBILITY_ITEMS
+  const draftAllContainerColumnsVisible = orderedColumnVisibilityItems
     .filter((item) => item.group === "con")
     .every((item) => draftColumnVis[item.id] !== false);
   const draftVisColsForFreeze = useMemo(
-    () => ALL_COLS.filter((column) => draftColumnVis[column.id] !== false),
-    [draftColumnVis],
+    () => orderedColumnVisibilityItems.filter(
+      (column) => column.kind === "base" && draftColumnVis[column.id] !== false,
+    ),
+    [draftColumnVis, orderedColumnVisibilityItems],
   );
   const columnSettingsChangeCount = useMemo(() => {
     if (!columnSettingsDraft) return 0;
     let count = 0;
-    for (const item of COLUMN_VISIBILITY_ITEMS) {
+    for (const item of orderedColumnVisibilityItems) {
       if ((columnSettingsDraft.columnVis[item.id] !== false) !== (columnVis[item.id] !== false)) count += 1;
     }
     if (columnSettingsDraft.compactMode !== compactMode) count += 1;
@@ -1884,7 +1932,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const appliedContainerColumns = Array.from(hiddenContainerColumns).sort().join("\u0000");
     if (draftContainerColumns !== appliedContainerColumns) count += 1;
     return count;
-  }, [columnSettingsDraft, columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, hiddenContainerColumns, showZeroSales, skuPartFilters]);
+  }, [columnSettingsDraft, columnVis, compactMode, freezeUntil, hiddenBases, hiddenContainers, hiddenContainerColumns, orderedColumnVisibilityItems, showZeroSales, skuPartFilters]);
 
   const handleAgGridExportReady = useCallback((exporter: (() => Promise<void>) | null) => {
     agGridExportRef.current = exporter;
@@ -2699,8 +2747,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   {pick("컬럼 표시", "Column Visibility")}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 }}>
-                  {COLUMN_VISIBILITY_GROUP_KEYS.map((group) => {
-                    const groupItems = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
+                  {orderedColumnVisibilityGroupKeys.map((group) => {
+                    const groupItems = orderedColumnVisibilityItems.filter((item) => item.group === group);
+                    const groupLabel = columnHeaderNames[`group:${group}`]
+                      ?? GROUP_LABELS[group]
+                      ?? GROUP_BTN_LABELS[group]
+                      ?? group;
                     const checkedCount = groupItems.filter((item) => draftColumnVis[item.id] !== false).length;
                     const allChecked = checkedCount === groupItems.length;
                     const someChecked = checkedCount > 0 && checkedCount < groupItems.length;
@@ -2728,10 +2780,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           <button
                             type="button"
                             onClick={() => handleToggleColumnVisibilityGroupOpen(group)}
-                            title={GROUP_LABELS[group] || GROUP_BTN_LABELS[group] || group}
+                            title={groupLabel}
                             style={{ minWidth: 0, flex: 1, border: "none", background: "transparent", cursor: "pointer", padding: 0, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 700, color: checkedCount ? "#1E3A5F" : "#94A3B8" }}
                           >
-                            {GROUP_LABELS[group] || GROUP_BTN_LABELS[group] || group}
+                            {groupLabel}
                             <span style={{ marginLeft: 5, fontSize: 10, fontWeight: 700, color: "#64748B" }}>
                               {checkedCount}/{groupItems.length}
                             </span>
@@ -2762,7 +2814,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                     style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
                                   />
                                   <span
-                                    title={`${GROUP_LABELS[item.group] || GROUP_BTN_LABELS[item.group]} / ${labelWithSalesWindowWeight(item.id, item.label, salesWindowWeights)}`}
+                                    title={`${groupLabel} / ${labelWithSalesWindowWeight(item.id, item.label, salesWindowWeights)}`}
                                     style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 500, color: checked ? "#1E3A5F" : "#94A3B8" }}
                                   >
                                     {labelWithSalesWindowWeight(item.id, item.label, salesWindowWeights)}
@@ -2784,9 +2836,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
                  {/* Container Visibility */}
                   {(() => {
-                    const allContainers = data.containers.filter(
-                      (c) => c.status !== "baseline" && containerMatchesCategory(c, categoryFilter)
-                    );
+                    const containerOrderIndex = new Map<string, number>();
+                    columnOrder.forEach((columnId, index) => {
+                      const separator = columnId.lastIndexOf("::");
+                      if (separator <= 0) return;
+                      const containerName = columnId.slice(0, separator);
+                      if (!containerOrderIndex.has(containerName)) containerOrderIndex.set(containerName, index);
+                    });
+                    const allContainers = data.containers
+                      .filter((c) => c.status !== "baseline" && containerMatchesCategory(c, categoryFilter))
+                      .map((container, fallbackIndex) => ({ container, fallbackIndex }))
+                      .sort((a, b) => {
+                        const rankA = containerOrderIndex.get(a.container.name) ?? columnOrder.length + a.fallbackIndex;
+                        const rankB = containerOrderIndex.get(b.container.name) ?? columnOrder.length + b.fallbackIndex;
+                        return rankA - rankB || a.fallbackIndex - b.fallbackIndex;
+                      })
+                      .map(({ container }) => container);
                     if (!allContainers.length) return null;
 
                     const STATUS_GROUPS: { status: string; label: string; color: string; accentColor: string }[] = [
@@ -2794,6 +2859,26 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       { status: "shipped",          label: pick("최종", "Final"), color: "#F59E0B", accentColor: "#F59E0B" },
                       { status: "draft",            label: pick("초안", "Draft"),   color: "#EF4444", accentColor: "#EF4444" },
                     ];
+                    const statusMetadata = new Map(STATUS_GROUPS.map((group) => [group.status, group]));
+                    const orderedContainerStatusRuns = allContainers.reduce<Array<{
+                      key: string;
+                      status: string;
+                      containers: typeof allContainers;
+                    }>>((runs, container) => {
+                      const status = container.status;
+                      if (!status || !statusMetadata.has(status)) return runs;
+                      const previousRun = runs.at(-1);
+                      if (previousRun && previousRun.status === status) {
+                        previousRun.containers.push(container);
+                      } else {
+                        runs.push({
+                          key: `${status}:${runs.length}`,
+                          status,
+                          containers: [container],
+                        });
+                      }
+                      return runs;
+                    }, []);
 
                     return (
                       <div style={{ gridColumn: 3, gridRow: "2 / 5", padding: "10px 14px 8px", borderBottom: "1px solid #E2E8F0", maxHeight: "min(700px, calc(100vh - 200px))", overflowY: "auto" }}>
@@ -2843,9 +2928,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         </div>
                         <div style={{ borderTop: "1px solid #E2E8F0", marginBottom: 8 }} />
                         <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingRight: 2 }}>
-                          {STATUS_GROUPS.map(({ status, label, color, accentColor }) => {
-                            const group = allContainers.filter((c) => c.status === status);
-                            if (!group.length) return null;
+                          {orderedContainerStatusRuns.map(({ key, status, containers: group }) => {
+                            const { label, color, accentColor } = statusMetadata.get(status)!;
                             const allVisible  = group.every((c) => !draftHiddenContainers.has(c.name));
                             const someVisible = group.some((c)  => !draftHiddenContainers.has(c.name));
                             const isOpen = openContainerStatusGroups[status] !== false;
@@ -2857,7 +2941,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                               return { ...current, hiddenContainers: next };
                             });
                             return (
-                              <div key={status}>
+                              <div key={key}>
                                 {/* Group header */}
                                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 5px", borderRadius: 4, marginBottom: 2 }}>
                                   <button
@@ -2909,7 +2993,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                         style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#3B82F6" }}
                                       />
                                       <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: visible ? "#1E3A5F" : "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                        {c.name}
+                                        {columnHeaderNames[`container:${c.name}`] ?? c.name}
                                       </span>
                                       {c.eta && (
                                         <span style={{ fontSize: 10, fontWeight: 400, color: "#94A3B8", whiteSpace: "nowrap", fontFamily: "ui-monospace, monospace" }}>
@@ -3215,6 +3299,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
           skuWorkNotes={skuWorkNotes}
+          skuWorkNotes2={skuWorkNotes2}
+          skuWorkNotes3={skuWorkNotes3}
           onSkuWorkNoteChange={canEditSkuNotes ? handleSkuWorkNoteChange : undefined}
           canEditSkuNotes={canEditSkuNotes}
           canEditPlanning={canEditDemandPlanning}
