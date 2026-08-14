@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { PaintBucket, Pipette, RotateCcw, Search } from "lucide-react";
@@ -877,6 +877,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [skuWorkNotes, setSkuWorkNotes] = useState<Record<string, string>>({});
   const [skuWorkNotes2, setSkuWorkNotes2] = useState<Record<string, string>>({});
   const [skuWorkNotes3, setSkuWorkNotes3] = useState<Record<string, string>>({});
+  const skuWorkNotesRef = useRef<Array<Record<string, string>>>([{}, {}, {}]);
+  const confirmedSkuWorkNotesRef = useRef<Array<Record<string, string>>>([{}, {}, {}]);
+  const skuWorkNoteSaveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
+  const skuWorkNoteRenderScheduledRef = useRef([false, false, false]);
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
@@ -1007,7 +1011,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       fetch(apiPath(`/api/planning/sku-work-notes?slot=${slot}`), { cache: "no-store" })
         .then((response) => response.json() as Promise<{ success: boolean; data?: Record<string, string> }>)
         .then((json) => {
-          if (json.success && json.data) setter(json.data);
+          if (json.success && json.data) {
+            const notes = { ...json.data };
+            skuWorkNotesRef.current[slot - 1] = notes;
+            confirmedSkuWorkNotesRef.current[slot - 1] = { ...notes };
+            setter(notes);
+          }
         })
         .catch(() => {});
     };
@@ -1652,24 +1661,58 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleSkuWorkNoteChange = useCallback(async (sku: string, note: string, slot: 1 | 2 | 3 = 1) => {
+  const handleSkuWorkNoteChange = useCallback((sku: string, note: string, slot: 1 | 2 | 3 = 1) => {
     const normalizedSku = sku.trim();
     const normalizedNote = note.trim().replace(/\s*[\r\n]+\s*/g, " ");
     if (!normalizedSku) return;
 
-    const response = await fetch(apiPath("/api/planning/sku-work-notes"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sku: normalizedSku, note: normalizedNote, slot }),
-    });
-    if (!response.ok) throw new Error("Failed to save SKU work note");
-
     const setter = slot === 2 ? setSkuWorkNotes2 : slot === 3 ? setSkuWorkNotes3 : setSkuWorkNotes;
-    setter((current) => {
-      const next = { ...current };
-      if (normalizedNote) next[normalizedSku] = normalizedNote;
-      else delete next[normalizedSku];
-      return next;
+    const slotIndex = slot - 1;
+    const applyLocalValue = (value: string) => {
+      // Clone only once per microtask. Bulk delete/paste can update hundreds
+      // of cells synchronously without cloning the full SKU map per cell.
+      if (!skuWorkNoteRenderScheduledRef.current[slotIndex]) {
+        skuWorkNotesRef.current[slotIndex] = { ...skuWorkNotesRef.current[slotIndex] };
+        skuWorkNoteRenderScheduledRef.current[slotIndex] = true;
+        queueMicrotask(() => {
+          skuWorkNoteRenderScheduledRef.current[slotIndex] = false;
+          const snapshot = skuWorkNotesRef.current[slotIndex];
+          // Keep typing responsive while the large grid row model catches up.
+          startTransition(() => setter(snapshot));
+        });
+      }
+      const pending = skuWorkNotesRef.current[slotIndex];
+      if (value) pending[normalizedSku] = value;
+      else delete pending[normalizedSku];
+    };
+
+    // Update the grid immediately. Persistence is serialized per SKU/slot so
+    // rapid edits cannot arrive at the server out of order.
+    applyLocalValue(normalizedNote);
+    const queueKey = `${slot}\u0000${normalizedSku}`;
+    const previousSave = skuWorkNoteSaveQueuesRef.current.get(queueKey) ?? Promise.resolve();
+    const save = previousSave.catch(() => {}).then(async () => {
+      const response = await fetch(apiPath("/api/planning/sku-work-notes"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku: normalizedSku, note: normalizedNote, slot }),
+      });
+      if (!response.ok) throw new Error("Failed to save SKU work note");
+
+      const confirmed = confirmedSkuWorkNotesRef.current[slotIndex];
+      if (normalizedNote) confirmed[normalizedSku] = normalizedNote;
+      else delete confirmed[normalizedSku];
+    }).catch(() => {
+      // Roll back only if this failed value is still the latest visible edit.
+      // A newer queued edit owns the cell and must not be overwritten.
+      if ((skuWorkNotesRef.current[slotIndex][normalizedSku] ?? "") !== normalizedNote) return;
+      applyLocalValue(confirmedSkuWorkNotesRef.current[slotIndex][normalizedSku] ?? "");
+    });
+    skuWorkNoteSaveQueuesRef.current.set(queueKey, save);
+    void save.finally(() => {
+      if (skuWorkNoteSaveQueuesRef.current.get(queueKey) === save) {
+        skuWorkNoteSaveQueuesRef.current.delete(queueKey);
+      }
     });
   }, []);
 
