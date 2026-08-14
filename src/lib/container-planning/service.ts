@@ -459,7 +459,10 @@ export const ContainerPlanningService = {
   async deleteItem(itemId: number): Promise<void> {
     await withTransaction(async (client) => {
       const existing = await ContainerPlanningRepository.getItemForUpdate(itemId, client);
-      if (!existing) throw new NotFoundError("Item not found");
+      // DELETE is intentionally idempotent. The dashboard can briefly hold a
+      // cached item id after another request already removed the row; treating
+      // that stale id as success keeps the cleared cell from rolling back.
+      if (!existing) return;
 
       await ContainerPlanningRepository.deleteRemainingAllocationsForContainerItem(client, {
         containerId: existing.containerId,

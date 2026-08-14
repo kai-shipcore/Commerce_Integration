@@ -12,7 +12,6 @@ import {
   type CellClickedEvent,
   type CellMouseDownEvent,
   type CellMouseOverEvent,
-  type Column,
   type ColumnResizedEvent,
   type GridApi,
   type ICellRendererParams,
@@ -120,6 +119,13 @@ type EditableCellTarget =
   | { kind: "cbm"; row: DemandRow }
   | { kind: "note"; row: DemandRow; slot: 1 | 2 | 3 }
   | { kind: "qty"; row: DemandRow; container: ContainerMeta; raw: ContainerRowData };
+type QtyHistoryChange = {
+  rowId: string;
+  containerName: string;
+  before: number;
+  after: number;
+};
+type QtyHistoryEntry = { changes: QtyHistoryChange[] };
 type SelectionModifiers = { toggle: boolean; range: boolean };
 type SalesTargetTier = { minSales: number; targetDays: number };
 type CapacityMode = "fit" | "unlimited";
@@ -137,6 +143,7 @@ type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "
 type QtyEditorRegistration = { open: () => void; close: () => void };
 const qtyEditorRegistry = new Map<string, QtyEditorRegistration>();
 let activeQtyEditorKey: string | null = null;
+const MAX_QTY_HISTORY = 100;
 
 function qtyEditorKey(rowId: string, columnId: string) {
   return `${rowId}\u0000${columnId}`;
@@ -1083,13 +1090,9 @@ function QtyCellRenderer({
   api,
   column,
   onSave,
-  onSelectionPointerDown,
-  onSelectionPointerEnter,
   onRequestEdit,
 }: ICellRendererParams<DemandRow, CellContent> & {
   onSave: (qty: number) => Promise<boolean>;
-  onSelectionPointerDown: (rowIndex: number, column: Column) => void;
-  onSelectionPointerEnter: (rowIndex: number, column: Column, buttons: number) => void;
   onRequestEdit: () => boolean;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
@@ -1253,14 +1256,6 @@ function QtyCellRenderer({
       type="button"
       disabled={saving}
       title="Click to edit quantity"
-      onMouseDown={(event) => {
-        if (event.button !== 0 || node.rowIndex === null || !column) return;
-        onSelectionPointerDown(node.rowIndex, column);
-      }}
-      onMouseEnter={(event) => {
-        if (node.rowIndex === null || !column) return;
-        onSelectionPointerEnter(node.rowIndex, column, event.buttons);
-      }}
       onClick={(event) => {
         event.stopPropagation();
         if (!onRequestEdit()) return;
@@ -2516,6 +2511,11 @@ export function AgDemandPlanningGrid({
   const qtyOverridesRef = useRef(qtyOverrides);
   const lastChainedQtyOverridesRef = useRef(qtyOverrides);
   const clearingSelectedEditableCellsRef = useRef(false);
+  const qtyUndoStackRef = useRef<QtyHistoryEntry[]>([]);
+  const qtyRedoStackRef = useRef<QtyHistoryEntry[]>([]);
+  const qtyHistoryBusyRef = useRef(false);
+  const qtyPersistenceQueueRef = useRef<Map<string, Promise<void>>>(new Map());
+  const qtyServerItemIdsRef = useRef<Map<string, number>>(new Map());
   const [chainMap, setChainMap] = useState<Map<string, Map<string, ChainDerived>>>(new Map());
   const chainMapRef = useRef(chainMap);
   const qtyRenderSyncTimerRef = useRef<number | null>(null);
@@ -2554,6 +2554,16 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   useEffect(() => {
     chainMapRef.current = chainMap;
   }, [chainMap]);
+
+  const pushQtyHistory = useCallback((changes: QtyHistoryChange[]) => {
+    const effectiveChanges = changes.filter((change) => change.before !== change.after);
+    if (!effectiveChanges.length) return;
+    qtyUndoStackRef.current = [
+      ...qtyUndoStackRef.current.slice(-(MAX_QTY_HISTORY - 1)),
+      { changes: effectiveChanges },
+    ];
+    qtyRedoStackRef.current = [];
+  }, []);
 
   const scheduleQtyRenderSync = useCallback(() => {
     if (qtyRenderSyncTimerRef.current !== null) window.clearTimeout(qtyRenderSyncTimerRef.current);
@@ -2606,7 +2616,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const override = qtyOverrides.get(key);
     const merged = { ...raw, ...override, ...chain };
     switch (subId) {
-      case "inb_qty": return override?.inbound_qty ?? raw?.inbound_qty ?? 0;
+      case "inb_qty": return override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
       case "oo": return Math.round(merged.open_orders || 0);
       case "avail": return merged.avail_qty ?? null;
       case "est": return Math.round(merged.est_sales ?? 0) || 0;
@@ -2830,7 +2840,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         const raw = row.containers?.[container.name];
         const override = qtyOverrides.get(key);
         const derived = chainMap.get(row.sku)?.get(container.name);
-        const conQty = override?.inbound_qty ?? raw?.inbound_qty ?? 0;
+        const conQty = override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
         containerTotals.ccbm! += (conQty / (row.case_qty || 1)) * (row.cbm_per_unit ?? 0);
         containerTotals.inb_qty! += override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
         containerTotals.remaining! += row.remaining ?? 0;
@@ -3083,26 +3093,6 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
   }, [onAgCellSelected, onCellSelectionChange]);
 
-  const handleQtySelectionPointerDown = useCallback((rowIndex: number, column: Column) => {
-    dragCellAnchorRef.current = { rowIndex, columnId: column.getColId() };
-    dragMovedRef.current = false;
-  }, []);
-
-  const handleQtySelectionPointerEnter = useCallback((rowIndex: number, column: Column, buttons: number) => {
-    const anchor = dragCellAnchorRef.current;
-    const api = gridRef.current?.api;
-    if (!anchor || !api || (buttons & 1) !== 1) return;
-    const cells = selectedCellsBetweenPosition(api, rowIndex, column.getColId(), anchor);
-    if (!cells.length) return;
-    dragMovedRef.current = true;
-    const previous = selectedCellsRef.current;
-    const next = new Set(cells.map((cell) => `${cell.rowId}::${cell.columnId}`));
-    selectedCellsRef.current = next;
-    cellSelectionAnchorRef.current = anchor;
-    refreshChangedCells(previous, next);
-    scheduleDragSelectionNotification(cells);
-  }, [refreshChangedCells, scheduleDragSelectionNotification]);
-
   const handleQtyEditRequest = useCallback(() => {
     if (!dragMovedRef.current) return true;
     dragMovedRef.current = false;
@@ -3151,7 +3141,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (columnId.endsWith("::inb_qty")) {
         const containerName = columnId.slice(0, -"::inb_qty".length);
         const raw = row.containers?.[containerName];
-        return raw?.inbound_qty != null ? String(raw.inbound_qty) : "";
+        const override = qtyOverridesRef.current.get(`${row.sku}::${containerName}`);
+        const qty = override !== undefined ? override.inbound_qty : raw?.inbound_qty;
+        return qty != null ? String(qty) : "";
       }
     }
     const host = gridHostRef.current;
@@ -3237,11 +3229,19 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, [gridWidth]);
 
   useEffect(() => {
-    const handlePointerUp = () => {
+    const finishDragSelection = () => {
       dragCellAnchorRef.current = null;
     };
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => window.removeEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointerup", finishDragSelection);
+    window.addEventListener("pointercancel", finishDragSelection);
+    window.addEventListener("mouseup", finishDragSelection);
+    window.addEventListener("blur", finishDragSelection);
+    return () => {
+      window.removeEventListener("pointerup", finishDragSelection);
+      window.removeEventListener("pointercancel", finishDragSelection);
+      window.removeEventListener("mouseup", finishDragSelection);
+      window.removeEventListener("blur", finishDragSelection);
+    };
   }, []);
 
   const updateEta = useCallback(async (container: ContainerMeta, eta: string) => {
@@ -3307,14 +3307,19 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     container: ContainerMeta,
     raw: ContainerRowData,
     nextQty: number,
+    options: { recordHistory?: boolean } = {},
   ) => {
     if (!canEditPlanning) return false;
     if (!Number.isFinite(nextQty) || nextQty < 0 || !container.container_id) return false;
     const key = `${row.sku}::${container.name}`;
     const previous = qtyOverridesRef.current.get(key);
     const itemId = previous !== undefined ? previous.item_id : raw.item_id ?? undefined;
-    const oldQty = previous?.inbound_qty ?? raw.inbound_qty ?? 0;
-    if (nextQty === oldQty || (!itemId && nextQty === 0)) return true;
+    if (itemId) qtyServerItemIdsRef.current.set(key, itemId);
+    const oldQty = previous !== undefined ? previous.inbound_qty ?? 0 : raw.inbound_qty ?? 0;
+    if (nextQty === oldQty || (previous === undefined && !itemId && nextQty === 0)) return true;
+    if (options.recordHistory !== false) {
+      pushQtyHistory([{ rowId: row.sku, containerName: container.name, before: oldQty, after: nextQty }]);
+    }
 
     const oldAllocatedQty = previous?.allocated_remaining_qty ?? raw.allocated_remaining_qty ?? 0;
     const optimisticOverride: QtyOverride = {
@@ -3344,21 +3349,23 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     // Keep keyboard entry responsive: the grid is updated optimistically and
     // persistence finishes in the background. A failed request rolls back
     // only if this cell has not been edited again in the meantime.
-    void (async () => {
+    const previousPersistence = qtyPersistenceQueueRef.current.get(key) ?? Promise.resolve();
+    const persistence = previousPersistence.catch(() => {}).then(async () => {
       try {
         let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
-        if (itemId && nextQty === 0) {
-          json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
+        const serverItemId = qtyServerItemIdsRef.current.get(key) ?? itemId;
+        if (serverItemId && nextQty === 0) {
+          json = await fetch(apiPath(`/api/planning/containers/items/${serverItemId}`), {
             method: "DELETE",
             headers: DEMAND_PLANNING_MUTATION_HEADER,
           }).then((response) => response.json());
-        } else if (itemId) {
-          json = await fetch(apiPath(`/api/planning/containers/items/${itemId}`), {
+        } else if (serverItemId) {
+          json = await fetch(apiPath(`/api/planning/containers/items/${serverItemId}`), {
             method: "PATCH",
             headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
             body: JSON.stringify({ qty: nextQty }),
           }).then((response) => response.json());
-        } else {
+        } else if (nextQty > 0) {
           json = await fetch(apiPath("/api/planning/containers/items"), {
             method: "POST",
             headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
@@ -3369,8 +3376,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
               cbm_unit: previous?.cbm_unit ?? raw.cbm_unit ?? row.cbm_per_unit ?? 0,
             }),
           }).then((response) => response.json());
+        } else {
+          json = { success: true, qty: 0, allocated_qty: 0 };
         }
         if (!json.success) throw new Error("Failed to save Con. Qty");
+        if (nextQty === 0) qtyServerItemIdsRef.current.delete(key);
+        else if (json.item_id ?? serverItemId) qtyServerItemIdsRef.current.set(key, (json.item_id ?? serverItemId)!);
         if (qtyOverridesRef.current.get(key) !== optimisticOverride) return;
 
         const nextAllocatedQty = nextQty === 0 ? 0 : (json.allocated_qty ?? oldAllocatedQty);
@@ -3379,7 +3390,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
           inbound_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
           avail_qty: nextQty === 0 ? null : (json.qty ?? nextQty),
           cbm: nextQty === 0 ? null : (json.total_cbm ?? optimisticOverride.cbm),
-          item_id: nextQty === 0 ? undefined : (json.item_id ?? itemId),
+          item_id: nextQty === 0 ? undefined : (json.item_id ?? serverItemId),
           allocated_remaining_qty: nextAllocatedQty,
         };
         // A successful delete is already fully represented by the optimistic
@@ -3465,9 +3476,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         });
         scheduleQtyRenderSync();
       }
-    })();
+    });
+    qtyPersistenceQueueRef.current.set(key, persistence);
+    void persistence.finally(() => {
+      if (qtyPersistenceQueueRef.current.get(key) === persistence) qtyPersistenceQueueRef.current.delete(key);
+    });
     return true;
-  }, [canEditPlanning, containers, scheduleQtyRenderSync, seasonalFactors]);
+  }, [canEditPlanning, containers, pushQtyHistory, scheduleQtyRenderSync, seasonalFactors]);
 
 const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
     if (!canEditPlanning || !onSkuCellNoteChange) return;
@@ -3514,14 +3529,46 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     return null;
   }, [canEditPlanning, containers]);
 
-  const applyValueToTarget = useCallback(async (target: EditableCellTarget, rawText: string): Promise<boolean> => {
+  const applyValueToTarget = useCallback(async (
+    target: EditableCellTarget,
+    rawText: string,
+    options: { recordQtyHistory?: boolean } = {},
+  ): Promise<boolean> => {
     if (target.kind === "note") return saveWorkNote(target.row, rawText, target.slot);
     const trimmed = rawText.trim();
     const numeric = trimmed === "" ? 0 : Number(trimmed.replace(/,/g, ""));
     if (!Number.isFinite(numeric) || numeric < 0) return false;
     if (target.kind === "cbm") return saveCbm(target.row, numeric);
-    return saveQty(target.row, target.container, target.raw, Math.round(numeric));
+    return saveQty(target.row, target.container, target.raw, Math.round(numeric), {
+      recordHistory: options.recordQtyHistory,
+    });
   }, [saveCbm, saveQty, saveWorkNote]);
+
+  const applyClipboardOperation = useCallback(async (
+    operations: Array<{ target: EditableCellTarget; value: string }>,
+  ) => {
+    const qtyChanges: QtyHistoryChange[] = [];
+    const seenQtyKeys = new Set<string>();
+    for (const { target, value } of operations) {
+      if (target.kind !== "qty") continue;
+      const numeric = value.trim() === "" ? 0 : Number(value.trim().replace(/,/g, ""));
+      if (!Number.isFinite(numeric) || numeric < 0) continue;
+      const key = `${target.row.sku}::${target.container.name}`;
+      if (seenQtyKeys.has(key)) continue;
+      seenQtyKeys.add(key);
+      const override = qtyOverridesRef.current.get(key);
+      qtyChanges.push({
+        rowId: target.row.sku,
+        containerName: target.container.name,
+        before: override !== undefined ? override.inbound_qty ?? 0 : target.raw.inbound_qty ?? 0,
+        after: Math.round(numeric),
+      });
+    }
+    pushQtyHistory(qtyChanges);
+    return Promise.allSettled(
+      operations.map(({ target, value }) => applyValueToTarget(target, value, { recordQtyHistory: false })),
+    );
+  }, [applyValueToTarget, pushQtyHistory]);
 
   useEffect(() => {
     const handleSelectedEditableCellDelete = (event: KeyboardEvent) => {
@@ -3547,7 +3594,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       event.preventDefault();
       event.stopPropagation();
       clearingSelectedEditableCellsRef.current = true;
-      void Promise.allSettled(targets.map((target) => applyValueToTarget(target, "")))
+      void applyClipboardOperation(targets.map((target) => ({ target, value: "" })))
         .finally(() => {
           clearingSelectedEditableCellsRef.current = false;
         });
@@ -3555,26 +3602,57 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
     window.addEventListener("keydown", handleSelectedEditableCellDelete, true);
     return () => window.removeEventListener("keydown", handleSelectedEditableCellDelete, true);
-  }, [applyValueToTarget, canEditPlanning, resolveEditableTarget]);
+  }, [applyClipboardOperation, canEditPlanning, resolveEditableTarget]);
+
+  const getSelectedCellsTsv = useCallback((): string | null => {
+    const bounds = getSelectionBoundsOrdered();
+    if (!bounds) return null;
+    const { rowIds, columnIds } = bounds;
+    return rowIds.map((rowId) => columnIds.map((columnId) => {
+      const key = `${rowId}::${columnId}`;
+      return selectedCellsRef.current.has(key) ? getCellCopyValue(rowId, columnId) : "";
+    }).join("\t")).join("\n");
+  }, [getCellCopyValue, getSelectionBoundsOrdered]);
 
   useEffect(() => {
     const handleCopy = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "c") return;
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
-      const bounds = getSelectionBoundsOrdered();
-      if (!bounds) return;
-      const { rowIds, columnIds } = bounds;
-      const tsv = rowIds.map((rowId) => columnIds.map((columnId) => {
-        const key = `${rowId}::${columnId}`;
-        return selectedCellsRef.current.has(key) ? getCellCopyValue(rowId, columnId) : "";
-      }).join("\t")).join("\n");
+      const tsv = getSelectedCellsTsv();
+      if (tsv === null) return;
       event.preventDefault();
-      void navigator.clipboard.writeText(tsv).catch(() => {});
+      void copyText(tsv).catch(() => {});
     };
     window.addEventListener("keydown", handleCopy, true);
     return () => window.removeEventListener("keydown", handleCopy, true);
-  }, [getCellCopyValue, getSelectionBoundsOrdered]);
+  }, [getSelectedCellsTsv]);
+
+  useEffect(() => {
+    const handleCut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "x") return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!canEditPlanning) return;
+      const tsv = getSelectedCellsTsv();
+      if (tsv === null) return;
+      const operations: Array<{ target: EditableCellTarget; value: string }> = [];
+      for (const key of selectedCellsRef.current) {
+        const separator = key.indexOf("::");
+        if (separator < 0) continue;
+        const target = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
+        if (target?.kind === "qty") operations.push({ target, value: "" });
+      }
+      if (!operations.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void copyText(tsv)
+        .then(() => applyClipboardOperation(operations))
+        .catch(() => {});
+    };
+    window.addEventListener("keydown", handleCut, true);
+    return () => window.removeEventListener("keydown", handleCut, true);
+  }, [applyClipboardOperation, canEditPlanning, getSelectedCellsTsv, resolveEditableTarget]);
 
   useEffect(() => {
     const handlePaste = (event: KeyboardEvent) => {
@@ -3601,14 +3679,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         const grid = lines.map((line) => line.split("\t"));
         const isSingleValue = grid.length === 1 && grid[0].length === 1;
 
-        const applyOps: Array<Promise<boolean>> = [];
+        const operations: Array<{ target: EditableCellTarget; value: string }> = [];
         if (isSingleValue) {
           const value = grid[0][0];
           for (const key of selectedCellsRef.current) {
             const separator = key.indexOf("::");
             if (separator < 0) continue;
             const editTarget = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
-            if (editTarget) applyOps.push(applyValueToTarget(editTarget, value));
+            if (editTarget) operations.push({ target: editTarget, value });
           }
         } else {
           const displayedColumns = api.getAllDisplayedColumns();
@@ -3623,16 +3701,59 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               const column = displayedColumns[startColIndex + colOffset];
               if (!column) return;
               const editTarget = resolveEditableTarget(rowId, column.getColId());
-              if (editTarget) applyOps.push(applyValueToTarget(editTarget, value));
+              if (editTarget) operations.push({ target: editTarget, value });
             });
           });
         }
-        await Promise.allSettled(applyOps);
+        await applyClipboardOperation(operations);
       })();
     };
     window.addEventListener("keydown", handlePaste, true);
     return () => window.removeEventListener("keydown", handlePaste, true);
-  }, [applyValueToTarget, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
+  }, [applyClipboardOperation, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
+
+  const applyQtyHistoryEntry = useCallback(async (entry: QtyHistoryEntry, direction: "undo" | "redo") => {
+    const results = await Promise.all(entry.changes.map((change) => {
+      const target = resolveEditableTarget(change.rowId, `${change.containerName}::inb_qty`);
+      if (target?.kind !== "qty") return Promise.resolve(false);
+      const value = direction === "undo" ? change.before : change.after;
+      return applyValueToTarget(target, String(value), { recordQtyHistory: false });
+    }));
+    return results.every(Boolean);
+  }, [applyValueToTarget, resolveEditableTarget]);
+
+  useEffect(() => {
+    const handleQtyHistoryShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const direction = key === "y" || (key === "z" && event.shiftKey) ? "redo" : key === "z" ? "undo" : null;
+      if (!direction) return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (!canEditPlanning || qtyHistoryBusyRef.current) return;
+      const source = direction === "undo" ? qtyUndoStackRef.current : qtyRedoStackRef.current;
+      const entry = source.pop();
+      if (!entry) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      qtyHistoryBusyRef.current = true;
+      void applyQtyHistoryEntry(entry, direction)
+        .then((success) => {
+          if (success) {
+            const destination = direction === "undo" ? qtyRedoStackRef : qtyUndoStackRef;
+            destination.current = [...destination.current.slice(-(MAX_QTY_HISTORY - 1)), entry];
+          } else {
+            source.push(entry);
+          }
+        })
+        .finally(() => {
+          qtyHistoryBusyRef.current = false;
+        });
+    };
+    window.addEventListener("keydown", handleQtyHistoryShortcut, true);
+    return () => window.removeEventListener("keydown", handleQtyHistoryShortcut, true);
+  }, [applyQtyHistoryEntry, canEditPlanning]);
 
   const autoFill = useCallback(async (
     container: ContainerMeta,
@@ -3661,7 +3782,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         if (!checkedBaseCategories(categoryFilter).some((c) => c === cat)) return false;
         if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
         const key = `${r.sku}::${container.name}`;
-        const existingQty = qtyOverrides.get(key)?.inbound_qty ?? r.containers?.[container.name]?.inbound_qty ?? 0;
+        const override = qtyOverrides.get(key);
+        const existingQty = override !== undefined ? override.inbound_qty ?? 0 : r.containers?.[container.name]?.inbound_qty ?? 0;
         if (!force && existingQty > 0) {
           usedCbm += (existingQty / (r.case_qty || 1)) * (r.cbm_per_unit ?? 0);
           return false; // skip — already has Con Qty
@@ -4297,7 +4419,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                   const override = qtyOverridesRef.current.get(key);
                   const merged = { ...raw, ...override, ...chain };
                   if (column.id === "life") return merged.inv_life ?? -1;
-                  if (column.id === "inb_qty") return override?.inbound_qty ?? raw?.inbound_qty ?? 0;
+                  if (column.id === "inb_qty") return override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
                   if (column.id === "avail") return merged.avail_qty ?? -1;
                   if (column.id === "est") return merged.est_sales ?? -1;
                   if (column.id === "cbo") return merged.backorder ?? -1;
@@ -4319,8 +4441,6 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             };
             return {
               onSave: (qty: number) => saveQty(row, container, raw, qty),
-              onSelectionPointerDown: handleQtySelectionPointerDown,
-              onSelectionPointerEnter: handleQtySelectionPointerEnter,
               onRequestEdit: handleQtyEditRequest,
             };
           } : undefined,
@@ -4468,7 +4588,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, handleQtySelectionPointerDown, handleQtySelectionPointerEnter, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -4601,39 +4721,6 @@ autoFilling3: autoFillingContainers3.has(container.name),
     <div
       ref={gridHostRef}
       className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white"
-      onMouseDownCapture={(event) => {
-        if (event.button !== 0) return;
-        const target = event.target as HTMLElement;
-        if (target.closest("input, textarea, select, [contenteditable='true']")) return;
-        const cell = target.closest<HTMLElement>(".ag-cell[col-id]");
-        const row = target.closest<HTMLElement>(".ag-row[row-index]");
-        const columnId = cell?.getAttribute("col-id");
-        const rowIndex = Number(row?.getAttribute("row-index"));
-        if (!columnId || !Number.isInteger(rowIndex)) return;
-        dragCellAnchorRef.current = { rowIndex, columnId };
-        dragMovedRef.current = false;
-      }}
-      onMouseOverCapture={(event) => {
-        if ((event.buttons & 1) !== 1) return;
-        const anchor = dragCellAnchorRef.current;
-        const api = gridRef.current?.api;
-        if (!anchor || !api) return;
-        const target = event.target as HTMLElement;
-        const cell = target.closest<HTMLElement>(".ag-cell[col-id]");
-        const row = target.closest<HTMLElement>(".ag-row[row-index]");
-        const columnId = cell?.getAttribute("col-id");
-        const rowIndex = Number(row?.getAttribute("row-index"));
-        if (!columnId || !Number.isInteger(rowIndex)) return;
-        const cells = selectedCellsBetweenPosition(api, rowIndex, columnId, anchor);
-        if (!cells.length) return;
-        dragMovedRef.current = true;
-        const previous = selectedCellsRef.current;
-        const next = new Set(cells.map((selectedCell) => `${selectedCell.rowId}::${selectedCell.columnId}`));
-        selectedCellsRef.current = next;
-        cellSelectionAnchorRef.current = anchor;
-        refreshChangedCells(previous, next);
-        scheduleDragSelectionNotification(cells);
-      }}
     >
       <style>{`
         @keyframes planning-spin { to { transform: rotate(360deg); } }
@@ -4702,20 +4789,28 @@ autoFilling3: autoFillingContainers3.has(container.name),
               enableClickSelection: true,
             }}
             onCellMouseDown={(event) => {
-              if (!event.data || event.rowIndex === null) return;
+              if (!event.data || event.rowIndex === null || event.node.rowPinned) return;
               const nativeEvt = event.event as MouseEvent | undefined;
               if (nativeEvt && nativeEvt.button !== 0) return;
+              const target = nativeEvt?.target as HTMLElement | null;
+              if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
               dragCellAnchorRef.current = { rowIndex: event.rowIndex, columnId: event.column.getColId() };
               dragMovedRef.current = false;
             }}
             onCellMouseOver={(event) => {
               const anchor = dragCellAnchorRef.current;
               if (!anchor || !event.data || event.rowIndex === null) return;
+              const nativeEvt = event.event as MouseEvent | undefined;
+              if (nativeEvt && (nativeEvt.buttons & 1) !== 1) {
+                dragCellAnchorRef.current = null;
+                return;
+              }
               const cells = selectedCellsBetween(event, anchor);
               if (!cells.length) return;
-              dragMovedRef.current = true;
               const previous = selectedCellsRef.current;
               const next = new Set(cells.map((c) => `${c.rowId}::${c.columnId}`));
+              if (next.size === previous.size && [...next].every((key) => previous.has(key))) return;
+              dragMovedRef.current = true;
               selectedCellsRef.current = next;
               cellSelectionAnchorRef.current = anchor;
               refreshChangedCells(previous, next);

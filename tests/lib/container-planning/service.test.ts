@@ -226,9 +226,11 @@ describe("ContainerPlanningService.updateItem / deleteItem", () => {
     await expect(ContainerPlanningService.updateItem(1, 5, null)).rejects.toThrow(NotFoundError);
   });
 
-  it("deleteItem throws NotFoundError when the item doesn't exist", async () => {
+  it("deleteItem is idempotent when the item no longer exists", async () => {
     repositoryMock.getItemForUpdate.mockResolvedValue(null);
-    await expect(ContainerPlanningService.deleteItem(1)).rejects.toThrow(NotFoundError);
+    await expect(ContainerPlanningService.deleteItem(1)).resolves.toBeUndefined();
+    expect(repositoryMock.deleteItem).not.toHaveBeenCalled();
+    expect(invalidateCacheMock).toHaveBeenCalled();
   });
 });
 
