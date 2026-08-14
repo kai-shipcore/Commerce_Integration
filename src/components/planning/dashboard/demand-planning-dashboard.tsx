@@ -2929,8 +2929,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     if (!allContainers.length) return null;
 
                     const STATUS_GROUPS: { status: string; label: string; color: string; accentColor: string }[] = [
-                      { status: "packing_received", label: pick("선적", "Shipped"), color: "#3B82F6", accentColor: "#3B82F6" },
-                      { status: "shipped",          label: pick("최종", "Final"), color: "#F59E0B", accentColor: "#F59E0B" },
+                      { status: "shipped",          label: pick("선적", "Shipped"), color: "#3B82F6", accentColor: "#3B82F6" },
+                      { status: "packing_received", label: pick("최종", "Final"), color: "#F59E0B", accentColor: "#F59E0B" },
                       { status: "draft",            label: pick("초안", "Draft"),   color: "#EF4444", accentColor: "#EF4444" },
                     ];
                     const statusMetadata = new Map(STATUS_GROUPS.map((group) => [group.status, group]));

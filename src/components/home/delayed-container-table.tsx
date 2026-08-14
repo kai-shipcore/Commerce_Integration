@@ -18,15 +18,15 @@ interface Props {
 }
 
 function normalizeStatus(raw: string): string {
-  if (raw === "shipped")          return "final-list-sent";
-  if (raw === "packing_received") return "packing-list-received";
+  if (raw === "shipped")          return "packing-list-received";
+  if (raw === "packing_received") return "final-list-sent";
   if (raw === "complete")         return "complete";
   return "draft";
 }
 
 const STATUS_LABEL: Record<string, { ko: string; en: string; color: string }> = {
   "draft":                 { ko: "Draft",   en: "Draft",   color: "#d4537e" },
-  "final-list-sent":       { ko: "Packing", en: "Packing", color: "#ef9f27" },
+  "final-list-sent":       { ko: "Final", en: "Final", color: "#ef9f27" },
   "packing-list-received": { ko: "Shipped", en: "Shipped", color: "#378add" },
   "complete":              { ko: "Complete",en: "Complete", color: "#22a666" },
 };

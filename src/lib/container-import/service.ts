@@ -19,6 +19,7 @@ import { spawn, ChildProcess } from "child_process";
 import * as path from "path";
 import { logAudit } from "@/lib/audit";
 import { invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
+import { ContainerImportRepository } from "@/lib/container-import/repository";
 
 export type LogEntry = { line: string; isError?: boolean };
 export type RunPayload = LogEntry | { done: true; exitCode: number; cancelled?: boolean };
@@ -244,6 +245,34 @@ export const ContainerImportService = {
     emit(activeRun, { done: true, exitCode: 130, cancelled: true });
 
     return { ok: true };
+  },
+
+  async rollbackLatest(who: Who): Promise<
+    | { conflict: true }
+    | {
+        conflict: false;
+        dateSuffix: string;
+        tables: Array<{ sourceTable: string; tableName: string; rowCount: number }>;
+      }
+  > {
+    if (activeRun && !activeRun.done) return { conflict: true };
+    const restored = await ContainerImportRepository.restoreLatestBackupSet();
+    await invalidatePlanningDashboardCache();
+    const restoredRows = Object.fromEntries(
+      restored.tables.map((table) => [table.sourceTable, table.rowCount]),
+    );
+    await logAudit({
+      entityType: "container_import",
+      entityId: restored.dateSuffix,
+      entityLabel: `Container import backup ${restored.dateSuffix}`,
+      userId: who.userId,
+      userName: who.userName,
+      userEmail: who.userEmail,
+      action: "update",
+      before: { sources: restored.tables.map((table) => table.tableName) },
+      after: { restoredRows },
+    });
+    return { conflict: false, ...restored };
   },
 };
 

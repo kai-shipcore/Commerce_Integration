@@ -3,6 +3,14 @@ import { EventEmitter } from "events";
 
 const logAuditMock = vi.fn();
 vi.mock("@/lib/audit", () => ({ logAudit: logAuditMock }));
+const restoreLatestBackupSetMock = vi.fn();
+vi.mock("@/lib/container-import/repository", () => ({
+  ContainerImportRepository: { restoreLatestBackupSet: restoreLatestBackupSetMock },
+}));
+const invalidatePlanningDashboardCacheMock = vi.fn();
+vi.mock("@/lib/planning/dashboard-cache", () => ({
+  invalidatePlanningDashboardCache: invalidatePlanningDashboardCacheMock,
+}));
 
 class FakeChildProcess extends EventEmitter {
   stdout = new EventEmitter();
@@ -40,6 +48,14 @@ async function readAllChunks(stream: ReadableStream): Promise<string[]> {
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.resetModules();
+  restoreLatestBackupSetMock.mockResolvedValue({
+    dateSuffix: "20260814",
+    tables: [
+      { sourceTable: "fc_products", tableName: "fc_products_bak_20260814", rowCount: 100 },
+      { sourceTable: "fc_containers", tableName: "fc_containers_bak_20260814", rowCount: 10 },
+      { sourceTable: "fc_container_items", tableName: "fc_container_items_bak_20260814", rowCount: 42 },
+    ],
+  });
   ({ ContainerImportService } = await import("@/lib/container-import/service"));
 });
 
@@ -154,6 +170,38 @@ describe("ContainerImportService.subscribeStream", () => {
     const { value } = await reader.read();
     expect(new TextDecoder().decode(value)).toContain("row 1");
 
+    lastChild.emit("close", 0);
+  });
+});
+
+describe("ContainerImportService.rollbackLatest", () => {
+  it("restores the latest backup, invalidates the dashboard cache, and audit-logs", async () => {
+    const result = await ContainerImportService.rollbackLatest(WHO);
+
+    expect(result).toEqual({
+      conflict: false,
+      dateSuffix: "20260814",
+      tables: [
+        { sourceTable: "fc_products", tableName: "fc_products_bak_20260814", rowCount: 100 },
+        { sourceTable: "fc_containers", tableName: "fc_containers_bak_20260814", rowCount: 10 },
+        { sourceTable: "fc_container_items", tableName: "fc_container_items_bak_20260814", rowCount: 42 },
+      ],
+    });
+    expect(restoreLatestBackupSetMock).toHaveBeenCalledTimes(1);
+    expect(invalidatePlanningDashboardCacheMock).toHaveBeenCalledTimes(1);
+    expect(logAuditMock).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "container_import",
+      entityId: "20260814",
+      action: "update",
+      after: { restoredRows: { fc_products: 100, fc_containers: 10, fc_container_items: 42 } },
+    }));
+  });
+
+  it("rejects rollback while an import is active", async () => {
+    ContainerImportService.startRun({ url: "https://sheet", dryRun: false, forceDownload: false }, WHO);
+
+    await expect(ContainerImportService.rollbackLatest(WHO)).resolves.toEqual({ conflict: true });
+    expect(restoreLatestBackupSetMock).not.toHaveBeenCalled();
     lastChild.emit("close", 0);
   });
 });

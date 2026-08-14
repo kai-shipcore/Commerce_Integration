@@ -119,6 +119,28 @@ describe("ContainerPlanningService PATCH branches", () => {
     expect(logContainerAuditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "status_change" }));
   });
 
+  it("maps DB shipped to blue Shipped and packing_received to amber Final without false status changes", async () => {
+    repositoryMock.updateStatus.mockResolvedValue(true);
+
+    await ContainerPlanningService.updateStatus(
+      "1",
+      { ...existing, status: "shipped" },
+      "packing-list-received",
+      WHO,
+    );
+    expect(repositoryMock.updateStatus).toHaveBeenLastCalledWith("1", "shipped");
+    expect(logContainerAuditMock).not.toHaveBeenCalled();
+
+    await ContainerPlanningService.updateStatus(
+      "1",
+      { ...existing, status: "packing_received" },
+      "final-list-sent",
+      WHO,
+    );
+    expect(repositoryMock.updateStatus).toHaveBeenLastCalledWith("1", "packing_received");
+    expect(logContainerAuditMock).not.toHaveBeenCalled();
+  });
+
   it("updateDetails logs status_change, eta_change, and details_update independently", async () => {
     repositoryMock.updateDetails.mockResolvedValue(true);
     await ContainerPlanningService.updateDetails(

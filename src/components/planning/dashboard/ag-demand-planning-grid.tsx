@@ -2663,20 +2663,20 @@ function ContainerGroupHeader(
       .filter((column): column is ContainerTotalColumn => Boolean(column));
   }, [liveColumnOrder, props.totalColumns]);
   const statusBg =
-    props.status === "packing_received"
+    props.status === "shipped"
       ? "border-t-[3px] border-blue-400 bg-blue-500/20"
-      : props.status === "shipped"
+      : props.status === "packing_received"
         ? "border-t-[3px] border-amber-400 bg-amber-500/20"
         : props.status === "draft"
           ? "border-t-[3px] border-red-400 bg-red-500/20"
           : "";
   const statusLabel =
-    props.status === "packing_received" ? "Shipped" :
-    props.status === "shipped"          ? "Final" :
+    props.status === "shipped"          ? "Shipped" :
+    props.status === "packing_received" ? "Final" :
     props.status === "draft"            ? "Draft" : null;
   const statusColor =
-    props.status === "packing_received" ? "text-blue-300" :
-    props.status === "shipped"          ? "text-amber-300" :
+    props.status === "shipped"          ? "text-blue-300" :
+    props.status === "packing_received" ? "text-amber-300" :
     props.status === "draft"            ? "text-red-300" : "";
 
   if (nameEditorAnchor) {

@@ -319,8 +319,8 @@ function buildSkuImpact(item: ContainerItem, containerName: string, etaDate: str
 }
 
 function normalizeStatus(raw: string): ContainerStatus {
-  if (raw === "shipped") return "final-list-sent";
-  if (raw === "packing_received") return "packing-list-received";
+  if (raw === "shipped") return "packing-list-received";
+  if (raw === "packing_received") return "final-list-sent";
   if (raw === "complete") return "complete";
   return "draft";
 }

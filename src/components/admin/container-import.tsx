@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Container, Loader2, Play, RotateCcw, X } from "lucide-react";
+import { Container, DatabaseBackup, Loader2, Play, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,7 @@ export function ContainerImport() {
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRollingBack, setIsRollingBack] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const mountAbortRef = useRef<AbortController | null>(null);
 
@@ -174,6 +175,43 @@ export function ContainerImport() {
     setIsCancelling(false);
   }
 
+  async function rollbackLatestImport() {
+    if (isRollingBack || !window.confirm(pick(
+      "가장 최근 전체 백업으로 되돌리시겠습니까? 상품, 컨테이너, 컨테이너 품목 데이터가 모두 백업 시점의 값으로 복원됩니다.",
+      "Restore the latest complete backup? Product, container, and container item data will all be restored to the backup snapshot.",
+    ))) return;
+    setIsRollingBack(true);
+    try {
+      const response = await fetch(apiPath("/api/admin/import-containers/rollback"), { method: "POST" });
+      const result = await response.json() as {
+        error?: string;
+        dateSuffix?: string;
+        tables?: Array<{ sourceTable: string; tableName: string; rowCount: number }>;
+      };
+      if (!response.ok) throw new Error(result.error ?? "Rollback failed");
+      const restoredRows = (result.tables ?? [])
+        .map((table) => `${table.sourceTable} ${table.rowCount}행`)
+        .join(", ");
+      setLog((current) => [...current, {
+        text: pick(
+          `롤백 완료 (${result.dateSuffix ?? "-"}): ${restoredRows}을 복원했습니다.`,
+          `Rollback complete (${result.dateSuffix ?? "-"}): ${(result.tables ?? []).map((table) => `${table.sourceTable} ${table.rowCount} rows`).join(", ")} restored.`,
+        ),
+        isError: false,
+      }]);
+    } catch (error) {
+      setLog((current) => [...current, {
+        text: pick(
+          `롤백 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`,
+          `Rollback failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        ),
+        isError: true,
+      }]);
+    } finally {
+      setIsRollingBack(false);
+    }
+  }
+
   // ── Reset UI ─────────────────────────────────────────────────────────────────
 
   function reset() {
@@ -268,6 +306,15 @@ export function ContainerImport() {
           </span>
         </label>
 
+        {!dryRun && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
+            {pick(
+              "실제 가져오기 직전에 상품, 컨테이너, 컨테이너 품목을 각각 fc_products_bak_yyyyMMdd, fc_containers_bak_yyyyMMdd, fc_container_items_bak_yyyyMMdd로 백업합니다. 완료 후 문제가 있으면 ‘백업으로 롤백’을 사용할 수 있습니다.",
+              "Before database changes, complete dated snapshots are created for products, containers, and container items. Use ‘Roll back from backup’ if the completed import is incorrect.",
+            )}
+          </div>
+        )}
+
         <div className="flex gap-2">
           <Button onClick={runImport} disabled={isRunning || !url.trim() || !canCreate} className="gap-2">
             {isRunning
@@ -288,6 +335,14 @@ export function ContainerImport() {
           {(runState === "done" || runState === "error" || runState === "cancelled") && (
             <Button variant="outline" onClick={reset} className="gap-2">
               <RotateCcw className="h-4 w-4" /> {pick("초기화", "Reset")}
+            </Button>
+          )}
+          {runState === "done" && exitCode === 0 && !dryRun && (
+            <Button variant="destructive" onClick={rollbackLatestImport} disabled={isRollingBack || !canCreate} className="gap-2">
+              {isRollingBack
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> {pick("롤백 중…", "Rolling back…")}</>
+                : <><DatabaseBackup className="h-4 w-4" /> {pick("백업으로 롤백", "Roll back from backup")}</>
+              }
             </Button>
           )}
         </div>
@@ -322,7 +377,16 @@ export function ContainerImport() {
           </div>
           <pre className="max-h-[480px] overflow-y-auto p-4 text-xs font-mono leading-relaxed bg-muted/40 rounded-b-lg">
             {log.map((entry, i) => (
-              <span key={i} className={entry.isError ? "text-destructive" : ""}>
+              <span
+                key={i}
+                className={entry.isError
+                  ? "text-destructive"
+                  : entry.text.includes("| status=shipped |")
+                    ? "text-blue-600 dark:text-blue-400"
+                    : entry.text.includes("| status=packing_received |")
+                      ? "text-amber-600 dark:text-amber-400"
+                      : ""}
+              >
                 {entry.text}{"\n"}
               </span>
             ))}

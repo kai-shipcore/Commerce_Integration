@@ -232,13 +232,13 @@ function normalizeContainerStatus(status: string): ContainerStatus {
   if (normalized === "complete" || normalized === "completed" || normalized === "received-complete") {
     return "complete";
   }
-  if (normalized === "final-list-sent" || normalized === "final" || normalized === "sent" || normalized === "shipped") {
+  if (normalized === "final-list-sent" || normalized === "final" || normalized === "sent" || normalized === "packing-received") {
     return "final-list-sent";
   }
   if (
     normalized === "packing-list-received" ||
     normalized === "packing-list" ||
-    normalized === "packing-received" ||
+    normalized === "shipped" ||
     normalized === "received"
   ) {
     return "packing-list-received";

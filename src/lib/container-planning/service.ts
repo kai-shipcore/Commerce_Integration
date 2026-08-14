@@ -37,15 +37,15 @@ export interface Who {
 }
 
 function toDbStatus(status: ContainerStatus): string {
-  if (status === "final-list-sent") return "shipped";
-  if (status === "packing-list-received") return "packing_received";
+  if (status === "final-list-sent") return "packing_received";
+  if (status === "packing-list-received") return "shipped";
   if (status === "complete") return "complete";
   return "draft";
 }
 
 function fromDbStatus(s: string): ContainerStatus {
-  if (s === "shipped") return "final-list-sent";
-  if (s === "packing_received") return "packing-list-received";
+  if (s === "shipped") return "packing-list-received";
+  if (s === "packing_received") return "final-list-sent";
   if (s === "complete") return "complete";
   return "draft";
 }

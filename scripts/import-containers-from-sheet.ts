@@ -10,7 +10,8 @@
 //   Container columns (detected from row 3 by name pattern):
 //     col+0 = container name / qty per SKU in data rows
 //     col+5 = ETA date (header cell only)
-//     fill color of header cell → status (blue=shipped, orange=packing_received, purple/other=draft)
+//     fill color of header cell → status
+//       blue=shipped (Shipped), yellow/orange=packing_received (Final), purple/other=draft
 //
 // Container name pattern: digits-LETTERS[-LETTERS[-digits]] e.g. "178-CA-SEAT", "2026-SEAT-EXTRA-1"
 //
@@ -24,6 +25,7 @@
 // entire workbook into memory (ExcelJS OOMed on this 57MB file with 90MB+ sheets).
 
 import { getPrimaryPool } from "../src/lib/db/primary-db";
+import { CONTAINER_IMPORT_LOCK_KEY, ContainerImportRepository } from "../src/lib/container-import/repository";
 import { inferProduct } from "../src/lib/sku-master/repository";
 import * as path from "path";
 import * as fs from "fs";
@@ -274,11 +276,17 @@ function argbToStatus(argb: string | null, containerName: string): string {
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
   const isBlue   = b > r && b > g && b - r > 50 && b - g > 10;
-  const isOrange = r > b && g >= b && r - b > 60;
-  const detected = isBlue ? "blue" : isOrange ? "orange" : "purple/other";
-  const status   = isBlue ? "shipped" : isOrange ? "packing_received" : "draft";
+  const isYellowOrOrange = r > b && g >= b && r - b > 60;
+  const detected = isBlue ? "blue" : isYellowOrOrange ? "yellow/orange" : "purple/other";
+  const status   = isBlue ? "shipped" : isYellowOrOrange ? "packing_received" : "draft";
   console.log(`  color(${containerName}): #${hex} → ${detected} → ${status}`);
   return status;
+}
+
+function importStatusLabel(status: string): string {
+  if (status === "shipped") return "Shipped";
+  if (status === "packing_received") return "Final";
+  return "Draft";
 }
 
 // ─── Google Sheets download ───────────────────────────────────────────────────
@@ -548,7 +556,7 @@ async function main() {
 
   console.log(`\nFound ${containers.length} container(s):`);
   for (const cg of containers) {
-    console.log(`  ${cg.name} | status=${cg.status} | eta=${cg.etaDate ?? "(none)"}`);
+    console.log(`  ${cg.name} | status=${cg.status} | display=${importStatusLabel(cg.status)} | eta=${cg.etaDate ?? "(none)"}`);
   }
 
   const skuRows = extracted.skuRows;
@@ -568,7 +576,7 @@ async function main() {
     }
     console.log("\nContainers:");
     for (const cg of containers) {
-      console.log(`  ${cg.name} | status=${cg.status} | eta=${cg.etaDate ?? "(none)"}`);
+      console.log(`  ${cg.name} | status=${cg.status} | display=${importStatusLabel(cg.status)} | eta=${cg.etaDate ?? "(none)"}`);
     }
     return;
   }
@@ -576,9 +584,21 @@ async function main() {
   // ── DB writes ─────────────────────────────────────────────────────────────
   const pool = getPrimaryPool();
   const client = await pool.connect();
+  let importLockHeld = false;
 
   try {
+    // Keep one session-level lock across the committed backup transaction and
+    // the following import transaction so another importer/rollback cannot
+    // slip into the small gap between them.
+    await client.query("SELECT pg_advisory_lock(hashtext($1))", [CONTAINER_IMPORT_LOCK_KEY]);
+    importLockHeld = true;
+    const backup = await ContainerImportRepository.createBackupSet(client);
+    console.log(`\nBackup set ${backup.dateSuffix} created:`);
+    for (const table of backup.tables) {
+      console.log(`  shipcore.${table.tableName} (${table.rowCount} rows)`);
+    }
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [CONTAINER_IMPORT_LOCK_KEY]);
 
     // 1. Create products that exist in the sheet but not yet in fc_products.
     //    Without this, stats-only SKUs are skipped and show a blank CBM in planning.
@@ -743,7 +763,13 @@ async function main() {
     console.error("\nImport failed — rolled back.");
     throw err;
   } finally {
-    client.release();
+    try {
+      if (importLockHeld) {
+        await client.query("SELECT pg_advisory_unlock(hashtext($1))", [CONTAINER_IMPORT_LOCK_KEY]);
+      }
+    } finally {
+      client.release();
+    }
   }
 }
 

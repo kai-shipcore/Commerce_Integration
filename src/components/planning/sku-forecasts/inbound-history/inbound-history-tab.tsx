@@ -154,7 +154,7 @@ function StatusBadge({ status, language }: { status: string; language: SkuForeca
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : status === "draft"
         ? "bg-pink-50 text-pink-700 border-pink-200"
-        : status === "packing_received"
+        : status === "shipped"
           ? "bg-blue-50 text-blue-700 border-blue-200"
           : "bg-amber-50 text-amber-700 border-amber-200";
 
@@ -163,8 +163,8 @@ function StatusBadge({ status, language }: { status: string; language: SkuForeca
 
 function statusLabel(status: string, language: SkuForecastLanguage) {
   if (status === "draft") return "Draft";
-  if (status === "shipped") return pick(language, "패킹", "Packing");
-  if (status === "packing_received") return pick(language, "선적", "Shipped");
+  if (status === "shipped") return pick(language, "선적", "Shipped");
+  if (status === "packing_received") return pick(language, "최종", "Final");
   if (status === "complete") return "Complete";
   return status || "-";
 }
