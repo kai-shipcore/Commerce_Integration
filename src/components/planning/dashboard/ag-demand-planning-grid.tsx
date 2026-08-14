@@ -56,8 +56,8 @@ import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from 
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
-  applyColumnFilters, distinctColumnValuesExcluding, CONDITION_OPERATORS,
-  type ColumnFilter, type ConditionFilter, type DistinctValue,
+  applyColumnFilters, distinctColumnValuesExcluding, distinctColumnColorsExcluding, CONDITION_OPERATORS,
+  type ColumnFilter, type ConditionFilter, type DistinctColor, type DistinctValue,
 } from "@/lib/planning/column-filter";
 
 const modules = [AllCommunityModule];
@@ -112,6 +112,14 @@ type ContainerTotalColumn = {
 /** A hidden run's restore arrow, anchored to a real neighboring column's
  *  header rather than a column of its own — see `HideGapRestoreMarker`. */
 type HideGapRestoreInfo = { hiddenLabels: string[]; onRestore: () => void };
+
+/** A column's single active sort: either the usual value-based A-Z/Z-A, or a
+ *  Sheets-style "Sort by color" — a one-off partition (rows whose cell in
+ *  this column matches `color` first, everything else after, each half
+ *  keeping its prior relative order) rather than a persistent value order. */
+type GridSort =
+  | { key: string; kind: "value"; dir: "asc" | "desc" }
+  | { key: string; kind: "color"; color: string };
 
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
@@ -296,8 +304,8 @@ function GridConditionFields({
 }
 
 function MenuItem({
-  children, onClick, disabled, danger,
-}: { children: ReactNode; onClick?: () => void; disabled?: boolean; danger?: boolean }) {
+  children, onClick, disabled, danger, trailing,
+}: { children: ReactNode; onClick?: () => void; disabled?: boolean; danger?: boolean; trailing?: ReactNode }) {
   return (
     <button
       type="button"
@@ -305,13 +313,15 @@ function MenuItem({
       onClick={onClick}
       style={{
         ...MENU_ITEM_STYLE,
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
         color: disabled ? "#B8B5AE" : danger ? "#C42020" : "#1A1917",
         cursor: disabled ? "default" : "pointer",
       }}
       onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
     >
-      {children}
+      <span>{children}</span>
+      {trailing && <span style={{ color: "#94A3B8", flexShrink: 0 }}>{trailing}</span>}
     </button>
   );
 }
@@ -362,8 +372,81 @@ function GridGroupMenu({
   );
 }
 
+function FilterSectionFooter({ onCancel, onApply }: { onCancel: () => void; onApply: () => void }) {
+  const { pick } = useI18n();
+  return (
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 6, borderTop: "1px solid #F1F5F9", marginTop: 4 }}>
+      <button type="button" onClick={onCancel} style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12 }}>{pick("취소", "Cancel")}</button>
+      <button
+        type="button"
+        onClick={onApply}
+        style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12, fontWeight: 700, color: "#1A4FC0" }}
+      >
+        {pick("적용", "Apply")}
+      </button>
+    </div>
+  );
+}
+
+/** The swatch list behind both "Sort by color" and "Filter by color" —
+ *  Sheets' own "Fill color" submenu. Picking a swatch applies immediately
+ *  (no separate Apply step, matching Sheets — color sort/filter are one-shot
+ *  actions, not a staged multi-select like "Filter by values"). */
+function GridColorList({
+  colors, selected, onPick, onClear, onBack, emptyLabel,
+}: {
+  colors: DistinctColor[];
+  selected: string | null;
+  onPick: (color: string) => void;
+  onClear?: () => void;
+  onBack: () => void;
+  emptyLabel: string;
+}) {
+  const { pick } = useI18n();
+  return (
+    <div style={{ padding: 6, width: 220 }}>
+      <button
+        type="button"
+        onClick={onBack}
+        style={{ ...MENU_ITEM_STYLE, padding: "4px 4px 8px", fontSize: 11, color: "#64748B" }}
+      >
+        {pick("← 뒤로", "← Back")}
+      </button>
+      {onClear && <MenuItem onClick={onClear}>{pick("초기화", "Reset")}</MenuItem>}
+      <div style={{ maxHeight: 220, overflow: "auto" }}>
+        {colors.map(({ color, count }) => (
+          <button
+            key={color}
+            type="button"
+            onClick={() => onPick(color)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "5px 8px",
+              border: "none", background: selected === color ? "#EFF6FF" : "transparent",
+              cursor: "pointer", fontSize: 12, textAlign: "left",
+            }}
+            onMouseEnter={(e) => { if (selected !== color) (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = selected === color ? "#EFF6FF" : "transparent"; }}
+          >
+            <span style={{ width: 14, height: 14, borderRadius: 3, border: "1px solid rgba(0,0,0,.15)", background: color, flexShrink: 0 }} />
+            <span style={{ flex: 1, color: "#1A1917" }}>{color}</span>
+            <span style={{ color: "#94A3B8", fontVariantNumeric: "tabular-nums" }}>{count}</span>
+          </button>
+        ))}
+        {colors.length === 0 && (
+          <p style={{ padding: "6px 4px", fontSize: 11, color: "#94A3B8" }}>{emptyLabel}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The right-click column menu, laid out to match Google Sheets' own:
+ *  Sort A→Z / Sort Z→A / Sort by color, then Filter by color, then Filter by
+ *  condition / Filter by values as two inline-expanding sections (only one
+ *  open at a time) rather than a separate screen, then Hide column. */
 function GridColumnMenu({
-  x, y, label, sortDir, onSortAsc, onSortDesc, canHide, onHide, filterActive, committed, getValues, onFilterViewOpen, onApplyFilter, onClose,
+  x, y, label, sortDir, onSortAsc, onSortDesc, activeColorSort, onSortByColor,
+  canHide, onHide, committed, getValues, getColors, onOpenColumnData, onApplyFilter, onClose,
 }: {
   x: number;
   y: number;
@@ -371,41 +454,67 @@ function GridColumnMenu({
   sortDir: "asc" | "desc" | null;
   onSortAsc: () => void;
   onSortDesc: () => void;
+  activeColorSort: string | null;
+  onSortByColor: (color: string) => void;
   canHide: boolean;
   onHide: () => void;
-  filterActive: boolean;
   committed: ColumnFilter | null;
   getValues: () => DistinctValue[];
-  /** Fires when the Filter panel opens, so the caller can populate `getValues`
-   *  for this specific column before it's called. */
-  onFilterViewOpen: () => void;
+  getColors: () => DistinctColor[];
+  /** Fires when a data-dependent section/view opens (values, filter-by-color,
+   *  sort-by-color), so the caller can populate `getValues`/`getColors` for
+   *  this specific column before either is called. */
+  onOpenColumnData: () => void;
   onApplyFilter: (next: ColumnFilter | null) => void;
   onClose: () => void;
 }) {
   const { pick } = useI18n();
-  const [view, setView] = useState<"menu" | "filter">("menu");
-  const [mode, setMode] = useState<"values" | "condition">(committed?.mode ?? "values");
+  const [view, setView] = useState<"menu" | "sortColor" | "filterColor">("menu");
+  // Both sections start collapsed unless one is the actual committed mode —
+  // Sheets doesn't auto-expand "Filter by values" on a column with no filter
+  // yet.
+  const [filterSection, setFilterSection] = useState<"condition" | "values" | null>(
+    committed?.mode === "condition" ? "condition" : committed?.mode === "values" ? "values" : null,
+  );
   const [condition, setCondition] = useState<ConditionFilter | null>(
     committed?.mode === "condition" ? committed.condition : null,
   );
-  const values = useMemo(() => (view === "filter" ? getValues() : []), [view, getValues]);
+  const values = useMemo(() => (filterSection === "values" ? getValues() : []), [filterSection, getValues]);
+  const colors = useMemo(() => (view !== "menu" ? getColors() : []), [view, getColors]);
   const [staged, setStaged] = useState<Set<string>>(
     () => new Set(committed?.mode === "values" ? committed.values : []),
   );
   const [search, setSearch] = useState("");
   const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
 
-  // `values` only becomes available a render after the Filter panel opens —
+  // `values` only becomes available a render after the section opens —
   // `getValues` is answered by the parent, which needs to learn which column
-  // is open first. Seeded once per visit to the panel, from whatever became
-  // available, rather than at the click that opened it.
-  const seededForView = useRef(false);
+  // is open first. Seeded once per visit, from whatever became available,
+  // rather than at the click that opened it.
+  const seededValues = useRef(false);
   useEffect(() => {
-    if (view !== "filter") { seededForView.current = false; return; }
-    if (seededForView.current || values.length === 0) return;
+    if (filterSection !== "values") { seededValues.current = false; return; }
+    if (seededValues.current || values.length === 0) return;
     setStaged(new Set(committed?.mode === "values" ? committed.values : values.map((v) => v.value)));
-    seededForView.current = true;
-  }, [view, values, committed]);
+    seededValues.current = true;
+  }, [filterSection, values, committed]);
+
+  // "Filter by values" starts expanded (see `filterSection`'s initial value
+  // above), not just when explicitly clicked open — so the parent needs to
+  // learn this column is open on that initial render too, not only on a
+  // later click.
+  useEffect(() => {
+    if (filterSection === "values") onOpenColumnData();
+  }, [filterSection, onOpenColumnData]);
+
+  const toggleFilterSection = (section: "condition" | "values") => {
+    setFilterSection((current) => (current === section ? null : section));
+  };
+
+  const openColorView = (next: "sortColor" | "filterColor") => {
+    onOpenColumnData();
+    setView(next);
+  };
 
   return (
     <>
@@ -424,50 +533,51 @@ function GridColumnMenu({
         <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #F1F5F9" }}>
           {label}
         </div>
-        {view === "menu" ? (
-          <>
+        {view === "sortColor" ? (
+          <GridColorList
+            colors={colors}
+            selected={activeColorSort}
+            onPick={(color) => { onSortByColor(color); onClose(); }}
+            onBack={() => setView("menu")}
+            emptyLabel={pick("이 열에 지정된 색상이 없습니다", "No colors set on this column")}
+          />
+        ) : view === "filterColor" ? (
+          <GridColorList
+            colors={colors}
+            selected={committed?.mode === "color" ? [...committed.colors][0] ?? null : null}
+            onPick={(color) => { onApplyFilter({ mode: "color", colors: new Set([color]) }); onClose(); }}
+            onClear={committed?.mode === "color" ? () => { onApplyFilter(null); onClose(); } : undefined}
+            onBack={() => setView("menu")}
+            emptyLabel={pick("이 열에 지정된 색상이 없습니다", "No colors set on this column")}
+          />
+        ) : (
+          <div style={{ padding: 6, width: 240 }}>
             <MenuItem onClick={() => { onSortAsc(); onClose(); }}>
               {sortDir === "asc" ? "✓ " : ""}{pick("오름차순 정렬 (A→Z)", "Sort A → Z")}
             </MenuItem>
             <MenuItem onClick={() => { onSortDesc(); onClose(); }}>
               {sortDir === "desc" ? "✓ " : ""}{pick("내림차순 정렬 (Z→A)", "Sort Z → A")}
             </MenuItem>
-            <MenuItem onClick={() => { onFilterViewOpen(); setView("filter"); }}>
-              {filterActive ? pick("▼ 필터 (적용됨)", "▼ Filter (applied)") : pick("필터", "Filter")}
+            <MenuItem onClick={() => openColorView("sortColor")} trailing="▶">
+              {pick("색상별 정렬", "Sort by color")}
             </MenuItem>
-            <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
-              {pick("열 숨기기", "Hide column")}
+            <div style={{ borderTop: "1px solid #F1F5F9", margin: "4px 0" }} />
+            <MenuItem onClick={() => openColorView("filterColor")} trailing="▶">
+              {pick("색상별 필터", "Filter by color")}
             </MenuItem>
-          </>
-        ) : (
-          <div style={{ padding: 6, width: 240 }}>
-            <button
-              type="button"
-              onClick={() => setView("menu")}
-              style={{ ...MENU_ITEM_STYLE, padding: "4px 4px 8px", fontSize: 11, color: "#64748B" }}
-            >
-              {pick("← 뒤로", "← Back")}
-            </button>
-            <div style={{ display: "flex", gap: 4, marginBottom: 6, borderBottom: "1px solid #F1F5F9", paddingBottom: 6 }}>
-              <button
-                type="button"
-                onClick={() => setMode("condition")}
-                style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "3px 8px", fontSize: 11, borderRadius: 4, fontWeight: mode === "condition" ? 700 : 600, color: mode === "condition" ? "#1A4FC0" : "#64748B", background: mode === "condition" ? "#EFF6FF" : "transparent" }}
-              >
-                {pick("조건별 필터", "Filter by condition")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("values")}
-                style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "3px 8px", fontSize: 11, borderRadius: 4, fontWeight: mode === "values" ? 700 : 600, color: mode === "values" ? "#1A4FC0" : "#64748B", background: mode === "values" ? "#EFF6FF" : "transparent" }}
-              >
-                {pick("값별 필터", "Filter by values")}
-              </button>
-            </div>
-            {mode === "condition" ? (
-              <GridConditionFields condition={condition} onChange={setCondition} />
-            ) : (
-              <>
+            <MenuItem onClick={() => toggleFilterSection("condition")} trailing={filterSection === "condition" ? "▾" : "▸"}>
+              {pick("조건별 필터", "Filter by condition")}
+            </MenuItem>
+            {filterSection === "condition" && (
+              <div style={{ padding: "0 8px" }}>
+                <GridConditionFields condition={condition} onChange={setCondition} />
+              </div>
+            )}
+            <MenuItem onClick={() => toggleFilterSection("values")} trailing={filterSection === "values" ? "▾" : "▸"}>
+              {pick("값별 필터", "Filter by values")}
+            </MenuItem>
+            {filterSection === "values" && (
+              <div style={{ padding: "0 8px" }}>
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -498,25 +608,23 @@ function GridColumnMenu({
                     <p style={{ padding: "6px 4px", fontSize: 11, color: "#94A3B8" }}>{pick("일치하는 값 없음", "No matching values")}</p>
                   )}
                 </div>
-              </>
+              </div>
             )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 6, borderTop: "1px solid #F1F5F9", marginTop: 4 }}>
-              <button type="button" onClick={onClose} style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12 }}>{pick("취소", "Cancel")}</button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (mode === "condition") {
-                    onApplyFilter(condition === null ? null : { mode: "condition", condition });
-                  } else {
-                    onApplyFilter(staged.size === values.length ? null : { mode: "values", values: staged });
-                  }
-                  onClose();
-                }}
-                style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12, fontWeight: 700, color: "#1A4FC0" }}
-              >
-                {pick("적용", "Apply")}
-              </button>
-            </div>
+            <FilterSectionFooter
+              onCancel={onClose}
+              onApply={() => {
+                if (filterSection === "condition") {
+                  onApplyFilter(condition === null ? null : { mode: "condition", condition });
+                } else if (filterSection === "values") {
+                  onApplyFilter(staged.size === values.length ? null : { mode: "values", values: staged });
+                }
+                onClose();
+              }}
+            />
+            <div style={{ borderTop: "1px solid #F1F5F9", margin: "4px 0" }} />
+            <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
+              {pick("열 숨기기", "Hide column")}
+            </MenuItem>
           </div>
         )}
       </div>
@@ -2527,7 +2635,7 @@ export function AgDemandPlanningGrid({
   // same way `colId` already is: a base column's own id, or
   // `<containerName>::<subColumnId>` for a container sub-column.
   const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
-  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(null);
+  const [sort, setSort] = useState<GridSort | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
   const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; label: string; columnIds: string[] } | null>(null);
   const [containerMenu, setContainerMenu] = useState<{ x: number; y: number; label: string; containerName: string; baseline: boolean } | null>(null);
@@ -2648,6 +2756,32 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return value === null || value === undefined ? "" : String(value);
   }, [columnMenuValue]);
 
+  // Effective cell background color for Sort by color / Filter by color —
+  // mirrors the two cellStyle formulas exactly (an explicit per-cell color
+  // wins, then a per-column override, then the container-status/tint
+  // fallback), so "sort/filter by this color" always matches what the grid
+  // actually shows, never a value the color pickers can't produce.
+  const columnMenuColor = useCallback((key: string, row: DemandRow): string => {
+    const parsed = parseColumnMenuKey(key);
+    const cellKey = cellColorKey(row.sku, key);
+    const explicit = cellColors[cellKey];
+    if (explicit) return explicit;
+    if (parsed.kind === "base") {
+      const column = ALL_COLS.find((c) => c.id === parsed.id);
+      return columnColors[parsed.id]?.cell ?? TINT_COLORS[column?.tint ?? ""] ?? "#fff";
+    }
+    const container = containers.find((c) => c.name === parsed.container);
+    const column = CON_SUBCOLS.find((c) => c.id === parsed.sub);
+    const sharedColumnId = `con:${parsed.sub}`;
+    return columnColors[key]?.cell
+      ?? columnColors[sharedColumnId]?.cell
+      ?? (container?.status === "baseline" ? "#E2E0DC" : TINT_COLORS[column?.tint ?? ""] ?? "#fff");
+  }, [cellColors, columnColors, containers]);
+
+  const columnMenuColorAccessors = useCallback((keys: Iterable<string>): Partial<Record<string, (row: DemandRow) => string>> =>
+    Object.fromEntries([...new Set(keys)].map((key) => [key, (row: DemandRow) => columnMenuColor(key, row)])),
+  [columnMenuColor]);
+
   // Every filter above the column headers, applied but not yet sorted. This is
   // the population a column's own Filter submenu computes its distinct values
   // against (minus that column's own filter — see columnValuesForOpenKey).
@@ -2684,8 +2818,14 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
 
   const visibleRows = useMemo(
-    () => applyColumnFilters(bespokeFilteredRows, columnFilters, columnMenuAccessors(columnFilters.keys())),
-    [bespokeFilteredRows, columnFilters, columnMenuAccessors],
+    () => applyColumnFilters(
+      bespokeFilteredRows,
+      columnFilters,
+      columnMenuAccessors(columnFilters.keys()),
+      undefined,
+      columnMenuColorAccessors(columnFilters.keys()),
+    ),
+    [bespokeFilteredRows, columnFilters, columnMenuAccessors, columnMenuColorAccessors],
   );
 
   // The right-clicked column's distinct values, computed from every OTHER
@@ -2702,14 +2842,42 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       Object.fromEntries([...relevantKeys].map((key) => [key, (row: DemandRow) => columnMenuLabel(key, row)])),
       filterOpenKey,
       pick("(공백)", "(Blank)"),
+      undefined,
+      columnMenuColorAccessors(relevantKeys),
     );
-  }, [filterOpenKey, bespokeFilteredRows, columnFilters, columnMenuAccessors, columnMenuLabel, pick]);
+  }, [filterOpenKey, bespokeFilteredRows, columnFilters, columnMenuAccessors, columnMenuColorAccessors, columnMenuLabel, pick]);
+
+  // Same sequential idea as `columnValuesForOpenKey`, but the swatch list
+  // Sort by color / Filter by color show — distinct colors actually present
+  // in this column, most-used first.
+  const columnColorsForOpenKey = useMemo((): DistinctColor[] => {
+    if (!filterOpenKey) return [];
+    const relevantKeys = new Set([...columnFilters.keys(), filterOpenKey]);
+    return distinctColumnColorsExcluding(
+      bespokeFilteredRows,
+      columnFilters,
+      columnMenuAccessors(relevantKeys),
+      filterOpenKey,
+      (row) => columnMenuColor(filterOpenKey, row),
+      undefined,
+      columnMenuColorAccessors(relevantKeys),
+    );
+  }, [filterOpenKey, bespokeFilteredRows, columnFilters, columnMenuAccessors, columnMenuColorAccessors, columnMenuColor]);
 
   // Sorted, for display only — order-fill and chain calculations read
   // `visibleRows` directly, since which rows are in scope should not depend
   // on how they're currently displayed.
   const sortedRows = useMemo(() => {
     if (!sort) return visibleRows;
+    if (sort.kind === "color") {
+      const target = sort.color;
+      return [...visibleRows].sort((a, b) => {
+        const aMatch = columnMenuColor(sort.key, a) === target;
+        const bMatch = columnMenuColor(sort.key, b) === target;
+        if (aMatch === bMatch) return 0;
+        return aMatch ? -1 : 1;
+      });
+    }
     const accessor = (row: DemandRow) => columnMenuValue(sort.key, row);
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...visibleRows].sort((a, b) => {
@@ -2726,7 +2894,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
       return cmp * dir;
     });
-  }, [visibleRows, sort, columnMenuValue]);
+  }, [visibleRows, sort, columnMenuValue, columnMenuColor]);
 
   useEffect(() => {
     onFilteredRowsChange(visibleRows);
@@ -4923,15 +5091,17 @@ autoFilling3: autoFillingContainers3.has(container.name),
           x={columnMenu.x}
           y={columnMenu.y}
           label={columnMenu.label}
-          sortDir={sort?.key === columnMenu.key ? sort.dir : null}
-          onSortAsc={() => setSort({ key: columnMenu.key, dir: "asc" })}
-          onSortDesc={() => setSort({ key: columnMenu.key, dir: "desc" })}
+          sortDir={sort?.key === columnMenu.key && sort.kind === "value" ? sort.dir : null}
+          onSortAsc={() => setSort({ key: columnMenu.key, kind: "value", dir: "asc" })}
+          onSortDesc={() => setSort({ key: columnMenu.key, kind: "value", dir: "desc" })}
+          activeColorSort={sort?.key === columnMenu.key && sort.kind === "color" ? sort.color : null}
+          onSortByColor={(color) => setSort({ key: columnMenu.key, kind: "color", color })}
           canHide={onHideColumn !== undefined || onHideColumns !== undefined}
           onHide={() => hideColumnsFromMenu(columnMenu.key)}
-          filterActive={columnFilters.has(columnMenu.key)}
           committed={columnFilters.get(columnMenu.key) ?? null}
           getValues={() => (filterOpenKey === columnMenu.key ? columnValuesForOpenKey : [])}
-          onFilterViewOpen={() => setFilterOpenKey(columnMenu.key)}
+          getColors={() => (filterOpenKey === columnMenu.key ? columnColorsForOpenKey : [])}
+          onOpenColumnData={() => setFilterOpenKey(columnMenu.key)}
           onApplyFilter={(next) => setColumnFilters((prev) => {
             const nextMap = new Map(prev);
             if (next === null) nextMap.delete(columnMenu.key);

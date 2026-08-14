@@ -120,113 +120,115 @@ function ConditionFilterFields({
   );
 }
 
-function ColumnFilterBody({
+function FilterFooter({ onCancel, onApply }: { onCancel: () => void; onApply: () => void }) {
+  const { pick } = useI18n();
+  return (
+    <div className="mt-1 flex justify-end gap-1 border-t pt-1">
+      <DropdownMenuItem onSelect={onCancel}>{pick("취소", "Cancel")}</DropdownMenuItem>
+      <DropdownMenuItem onSelect={onApply}>{pick("적용", "Apply")}</DropdownMenuItem>
+    </div>
+  );
+}
+
+/** "Filter by condition"'s own submenu body — a sibling of
+ *  `ValuesFilterBody` rather than a tab inside one shared body, matching
+ *  Sheets' two separate entries instead of a toggle. */
+function ConditionFilterBody({
+  committed,
+  onApply,
+  onDone,
+}: Pick<ColumnFilterProps, "committed" | "onApply"> & { onDone: () => void }) {
+  const [condition, setCondition] = useState<ConditionFilter | null>(
+    committed?.mode === "condition" ? committed.condition : null,
+  );
+  return (
+    <div className="w-64 p-1">
+      <ConditionFilterFields condition={condition} onChange={setCondition} />
+      <FilterFooter
+        onCancel={onDone}
+        onApply={() => {
+          onApply(condition === null ? null : { mode: "condition", condition });
+          onDone();
+        }}
+      />
+    </div>
+  );
+}
+
+/** "Filter by values"'s own submenu body. */
+function ValuesFilterBody({
   committed,
   getValues,
   onApply,
   onDone,
 }: ColumnFilterProps & { onDone: () => void }) {
   const { pick } = useI18n();
-  const [mode, setMode] = useState<"values" | "condition">(committed?.mode ?? "values");
   // Computed once per mount, i.e. once per time the submenu opens — not on
   // every keystroke of the search box below.
   const values = useMemo(() => getValues(), [getValues]);
   const [staged, setStaged] = useState<Set<string>>(
     () => new Set(committed?.mode === "values" ? committed.values : values.map((v) => v.value)),
   );
-  const [condition, setCondition] = useState<ConditionFilter | null>(
-    committed?.mode === "condition" ? committed.condition : null,
-  );
   const [search, setSearch] = useState("");
   const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
     <div className="w-64 p-1">
-      <div className="mb-1 flex gap-1 border-b pb-1 text-[11px]">
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder={pick("값 검색…", "Search values…")}
+        className="mb-1 h-7 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
+        onKeyDown={(e) => e.stopPropagation()}
+      />
+      <div className="flex justify-between px-1 pb-1 text-[11px] text-muted-foreground">
         <button
           type="button"
-          onClick={() => setMode("condition")}
-          className={`rounded px-1.5 py-0.5 ${mode === "condition" ? "bg-muted font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          className="hover:text-foreground"
+          onClick={() => setStaged(new Set(values.map((v) => v.value)))}
         >
-          {pick("조건별 필터", "Filter by condition")}
+          {pick("모두 선택", "Select all")}
         </button>
         <button
           type="button"
-          onClick={() => setMode("values")}
-          className={`rounded px-1.5 py-0.5 ${mode === "values" ? "bg-muted font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          className="hover:text-foreground"
+          onClick={() => setStaged(new Set())}
         >
-          {pick("값별 필터", "Filter by values")}
+          {pick("모두 지우기", "Clear")}
         </button>
       </div>
-      {mode === "condition" ? (
-        <ConditionFilterFields condition={condition} onChange={setCondition} />
-      ) : (
-        <>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={pick("값 검색…", "Search values…")}
-            className="mb-1 h-7 w-full rounded border bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
-            onKeyDown={(e) => e.stopPropagation()}
-          />
-          <div className="flex justify-between px-1 pb-1 text-[11px] text-muted-foreground">
-            <button
-              type="button"
-              className="hover:text-foreground"
-              onClick={() => setStaged(new Set(values.map((v) => v.value)))}
-            >
-              {pick("모두 선택", "Select all")}
-            </button>
-            <button
-              type="button"
-              className="hover:text-foreground"
-              onClick={() => setStaged(new Set())}
-            >
-              {pick("모두 지우기", "Clear")}
-            </button>
-          </div>
-          <div className="max-h-56 overflow-auto">
-            {shown.map((v) => (
-              <DropdownMenuCheckboxItem
-                key={v.value}
-                checked={staged.has(v.value)}
-                onSelect={(e) => e.preventDefault()}
-                onCheckedChange={(checked) =>
-                  setStaged((prev) => {
-                    const next = new Set(prev);
-                    if (checked) next.add(v.value);
-                    else next.delete(v.value);
-                    return next;
-                  })
-                }
-              >
-                <span className="truncate">{v.label}</span>
-                <span className="ml-auto tabular-nums text-muted-foreground/70">{v.count}</span>
-              </DropdownMenuCheckboxItem>
-            ))}
-            {shown.length === 0 && (
-              <p className="px-2 py-1 text-xs text-muted-foreground">
-                {pick("일치하는 값 없음", "No matching values")}
-              </p>
-            )}
-          </div>
-        </>
-      )}
-      <div className="mt-1 flex justify-end gap-1 border-t pt-1">
-        <DropdownMenuItem onSelect={onDone}>{pick("취소", "Cancel")}</DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            if (mode === "condition") {
-              onApply(condition === null ? null : { mode: "condition", condition });
-            } else {
-              onApply(staged.size === values.length ? null : { mode: "values", values: staged });
+      <div className="max-h-56 overflow-auto">
+        {shown.map((v) => (
+          <DropdownMenuCheckboxItem
+            key={v.value}
+            checked={staged.has(v.value)}
+            onSelect={(e) => e.preventDefault()}
+            onCheckedChange={(checked) =>
+              setStaged((prev) => {
+                const next = new Set(prev);
+                if (checked) next.add(v.value);
+                else next.delete(v.value);
+                return next;
+              })
             }
-            onDone();
-          }}
-        >
-          {pick("적용", "Apply")}
-        </DropdownMenuItem>
+          >
+            <span className="truncate">{v.label}</span>
+            <span className="ml-auto tabular-nums text-muted-foreground/70">{v.count}</span>
+          </DropdownMenuCheckboxItem>
+        ))}
+        {shown.length === 0 && (
+          <p className="px-2 py-1 text-xs text-muted-foreground">
+            {pick("일치하는 값 없음", "No matching values")}
+          </p>
+        )}
       </div>
+      <FilterFooter
+        onCancel={onDone}
+        onApply={() => {
+          onApply(staged.size === values.length ? null : { mode: "values", values: staged });
+          onDone();
+        }}
+      />
     </div>
   );
 }
@@ -299,10 +301,16 @@ export function ColumnHeaderMenu({
         {filter && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuSub onOpenChange={filter.onOpenChange}>
-              <DropdownMenuSubTrigger>{pick("필터", "Filter")}</DropdownMenuSubTrigger>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>{pick("조건별 필터", "Filter by condition")}</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                <ColumnFilterBody {...filter} onDone={() => setOpen(false)} />
+                <ConditionFilterBody committed={filter.committed} onApply={filter.onApply} onDone={() => setOpen(false)} />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSub onOpenChange={filter.onOpenChange}>
+              <DropdownMenuSubTrigger>{pick("값별 필터", "Filter by values")}</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <ValuesFilterBody {...filter} onDone={() => setOpen(false)} />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           </>
