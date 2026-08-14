@@ -47,6 +47,12 @@ export interface ContainerItemCbmRow {
   total_cbm: number;
 }
 
+export type WorkNoteSlot = 1 | 2 | 3;
+
+function workNoteColumn(slot: WorkNoteSlot): "note" | "note_2" | "note_3" {
+  return slot === 2 ? "note_2" : slot === 3 ? "note_3" : "note";
+}
+
 export const PlanningDashboardRepository = {
   async listSkuNotes(): Promise<Array<{ masterSku: string; note: string }>> {
     const result = await pool().query<{ master_sku: string; note: string }>(
@@ -74,26 +80,42 @@ export const PlanningDashboardRepository = {
     );
   },
 
-  async listSkuWorkNotes(): Promise<Array<{ masterSku: string; note: string }>> {
+  async listSkuWorkNotes(slot: WorkNoteSlot = 1): Promise<Array<{ masterSku: string; note: string }>> {
+    const column = workNoteColumn(slot);
     const result = await pool().query<{ master_sku: string; note: string }>(
-      `SELECT master_sku, note
+      `SELECT master_sku, ${column} AS note
        FROM shipcore.fc_planning_sku_work_notes
-       WHERE NULLIF(BTRIM(note), '') IS NOT NULL
+       WHERE NULLIF(BTRIM(${column}), '') IS NOT NULL
        ORDER BY master_sku`,
     );
     return result.rows.map((row) => ({ masterSku: row.master_sku, note: row.note }));
   },
 
-  async deleteSkuWorkNote(sku: string): Promise<void> {
-    await pool().query(`DELETE FROM shipcore.fc_planning_sku_work_notes WHERE master_sku = $1`, [sku]);
+  async deleteSkuWorkNote(sku: string, slot: WorkNoteSlot = 1): Promise<void> {
+    const column = workNoteColumn(slot);
+    await pool().query(
+      `UPDATE shipcore.fc_planning_sku_work_notes
+       SET ${column} = NULL, updated_at = NOW()
+       WHERE master_sku = $1`,
+      [sku],
+    );
+    await pool().query(
+      `DELETE FROM shipcore.fc_planning_sku_work_notes
+       WHERE master_sku = $1
+         AND NULLIF(BTRIM(note), '') IS NULL
+         AND NULLIF(BTRIM(note_2), '') IS NULL
+         AND NULLIF(BTRIM(note_3), '') IS NULL`,
+      [sku],
+    );
   },
 
-  async upsertSkuWorkNote(sku: string, note: string, updatedBy: string | null): Promise<void> {
+  async upsertSkuWorkNote(sku: string, note: string, updatedBy: string | null, slot: WorkNoteSlot = 1): Promise<void> {
+    const column = workNoteColumn(slot);
     await pool().query(
-      `INSERT INTO shipcore.fc_planning_sku_work_notes (master_sku, note, updated_by, created_at, updated_at)
+      `INSERT INTO shipcore.fc_planning_sku_work_notes (master_sku, ${column}, updated_by, created_at, updated_at)
        VALUES ($1, $2, $3, NOW(), NOW())
        ON CONFLICT (master_sku) DO UPDATE
-         SET note = EXCLUDED.note,
+         SET ${column} = EXCLUDED.${column},
              updated_by = EXCLUDED.updated_by,
              updated_at = NOW()`,
       [sku, note, updatedBy],

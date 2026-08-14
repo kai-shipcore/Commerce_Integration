@@ -141,6 +141,8 @@ export const ALL_COLS: ColDef[] = [
   { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 190, align: "left", tint: "",        gh: "gh-fix",    fontSize: 10, val: (r) => r.container_info || "" },
   { id: "cbm",       grp: "fix", label: "CBM",              w: 56,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "", sortVal: (r) => r.cbm_per_unit ?? -1 },
   { id: "workflow_note", grp: "fix", label: "Note",          w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note ?? "", sortVal: (r) => r.workflow_note ?? "" },
+  { id: "workflow_note_2", grp: "fix", label: "Note 2",      w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note_2 ?? "", sortVal: (r) => r.workflow_note_2 ?? "" },
+  { id: "workflow_note_3", grp: "fix", label: "Note 3",      w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note_3 ?? "", sortVal: (r) => r.workflow_note_3 ?? "" },
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}` }), sortVal: (r) => r.sku },
@@ -220,7 +222,7 @@ export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
 ];
 
 export const COMPACT_COLUMN_IDS = new Set<string>([
-  "workflow_note","back","status","sku","west","east","total",
+  "back","status","sku","west","east","total",
   "tavg_p","tavg_r","tavg_c","inb_qty","inb_lst","next_eta","sod",
 ]);
 
@@ -361,12 +363,28 @@ export function loadSavedColumnOrder(): ColumnOrder {
   try {
     const stored = JSON.parse(window.localStorage.getItem(COLUMN_ORDER_STORAGE_KEY) ?? "[]") as unknown;
     if (!Array.isArray(stored)) return [];
-    return Array.from(new Set(
+    return ensureAdditionalNotesInColumnOrder(Array.from(new Set(
       stored.filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300),
-    )).slice(0, 5000);
+    )).slice(0, 5000));
   } catch {
     return [];
   }
+}
+
+export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOrder {
+  if (!order.length || !order.includes("workflow_note")) return order;
+  const next = [...order];
+  let insertAt = next.indexOf("workflow_note") + 1;
+  for (const columnId of ["workflow_note_2", "workflow_note_3"]) {
+    const existingIndex = next.indexOf(columnId);
+    if (existingIndex >= 0) {
+      insertAt = Math.max(insertAt, existingIndex + 1);
+      continue;
+    }
+    next.splice(insertAt, 0, columnId);
+    insertAt += 1;
+  }
+  return next;
 }
 
 function normalizeTextFormat(value: unknown): TextFormatSettings | null {

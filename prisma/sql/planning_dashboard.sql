@@ -137,6 +137,11 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_planning_sku_work_notes (
 CREATE INDEX IF NOT EXISTS idx_fc_planning_sku_work_notes_updated_at
     ON shipcore.fc_planning_sku_work_notes (updated_at DESC);
 
+ALTER TABLE shipcore.fc_planning_sku_work_notes
+    ALTER COLUMN note DROP NOT NULL,
+    ADD COLUMN IF NOT EXISTS note_2 TEXT,
+    ADD COLUMN IF NOT EXISTS note_3 TEXT;
+
 -- ─────────────────────────────────────────────────────────────
 -- 3. Per-SKU × per-container cross data
 --    Joins to tables 1 and 2 via integer IDs.

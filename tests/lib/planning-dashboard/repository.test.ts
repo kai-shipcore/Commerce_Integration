@@ -49,7 +49,17 @@ describe("PlanningDashboardRepository SKU work notes", () => {
     await PlanningDashboardRepository.upsertSkuWorkNote("SKU-1", "Hold", "u1");
     expect(poolQueryMock.mock.calls[0][0]).toContain("ON CONFLICT (master_sku)");
     await PlanningDashboardRepository.deleteSkuWorkNote("SKU-1");
-    expect(poolQueryMock.mock.calls[1][0]).toContain("DELETE FROM shipcore.fc_planning_sku_work_notes");
+    expect(poolQueryMock.mock.calls[1][0]).toContain("SET note = NULL");
+    expect(poolQueryMock.mock.calls[2][0]).toContain("DELETE FROM shipcore.fc_planning_sku_work_notes");
+  });
+
+  it("uses separate database columns for Note 2 and Note 3", async () => {
+    poolQueryMock.mockResolvedValue({ rows: [{ master_sku: "SKU-1", note: "Second" }] });
+    await PlanningDashboardRepository.listSkuWorkNotes(2);
+    expect(poolQueryMock.mock.calls[0][0]).toContain("note_2 AS note");
+
+    await PlanningDashboardRepository.upsertSkuWorkNote("SKU-1", "Third", "u1", 3);
+    expect(poolQueryMock.mock.calls[1][0]).toContain("note_3");
   });
 });
 

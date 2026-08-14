@@ -70,16 +70,25 @@ describe("PlanningDashboardService SKU work notes", () => {
 
   it("normalizes a work note to one line before saving", async () => {
     const result = await PlanningDashboardService.setSkuWorkNote(" SKU-1 ", " Hold\nRecheck ", "u1");
-    expect(repositoryMock.upsertSkuWorkNote).toHaveBeenCalledWith("SKU-1", "Hold Recheck", "u1");
+    expect(repositoryMock.upsertSkuWorkNote).toHaveBeenCalledWith("SKU-1", "Hold Recheck", "u1", 1);
     expect(result).toEqual({ sku: "SKU-1", note: "Hold Recheck" });
   });
 
   it("deletes an empty work note and limits its length", async () => {
     await expect(PlanningDashboardService.setSkuWorkNote("SKU-1", " ", "u1"))
       .resolves.toEqual({ sku: "SKU-1", note: "" });
-    expect(repositoryMock.deleteSkuWorkNote).toHaveBeenCalledWith("SKU-1");
+    expect(repositoryMock.deleteSkuWorkNote).toHaveBeenCalledWith("SKU-1", 1);
     await expect(PlanningDashboardService.setSkuWorkNote("SKU-1", "x".repeat(201), "u1"))
       .rejects.toThrow("Work note is too long");
+  });
+
+  it("keeps Note 2 and Note 3 in independent slots", async () => {
+    repositoryMock.listSkuWorkNotes.mockResolvedValue([{ masterSku: "SKU-1", note: "Second" }]);
+    await expect(PlanningDashboardService.getSkuWorkNotes(2)).resolves.toEqual({ "SKU-1": "Second" });
+    expect(repositoryMock.listSkuWorkNotes).toHaveBeenCalledWith(2);
+
+    await PlanningDashboardService.setSkuWorkNote("SKU-1", "Third", "u1", 3);
+    expect(repositoryMock.upsertSkuWorkNote).toHaveBeenCalledWith("SKU-1", "Third", "u1", 3);
   });
 });
 

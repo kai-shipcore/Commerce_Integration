@@ -114,6 +114,8 @@ export interface DemandRow {
   sod_days_raw?: number;
   memo?: string | null;
   workflow_note?: string | null;
+  workflow_note_2?: string | null;
+  workflow_note_3?: string | null;
   containers: Record<string, ContainerRowData>;
 }
 
