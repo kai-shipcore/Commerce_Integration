@@ -31,6 +31,7 @@ import { ComparisonSection } from "./comparison-section";
 import { DemandVsForecastSection } from "./demand-vs-forecast-section";
 import { DEFAULT_WEEKS, DemandPatternsSection } from "./demand-patterns-section";
 import { EmptySection } from "./empty-section";
+import { FinalTestSection } from "./final-test-section";
 import { OutliersSection } from "./outliers-section";
 import { ModelCard } from "@/components/planning/model-card";
 import { OverTimeSection } from "./over-time-section";
@@ -211,7 +212,11 @@ export function ValidationContent() {
 
       {v && (
         <>
-          <ComparisonSection comparison={v.comparison} coverage={v.coverage} />
+          <ComparisonSection
+            comparison={v.comparison}
+            coverage={v.coverage}
+            basis={v.basis?.accuracy}
+          />
 
           {/* Second, not last. This is the scope of the claim above it: which
               SKUs the model speaks for and how much of the volume they carry.
@@ -259,7 +264,11 @@ export function ValidationContent() {
           {/* Per-SKU detail after the aggregate evidence, not before it. The
               pooled figure has to be on the page before "where it diverges
               from the pooled figure" means anything. */}
-          <OutliersSection outliers={v.outliers} baseline={v.comparison.baseline} />
+          <OutliersSection
+            outliers={v.outliers}
+            baseline={v.comparison.baseline}
+            basis={v.basis?.accuracy}
+          />
 
           <section className="flex flex-col gap-4">
             <SectionHeading
@@ -271,13 +280,7 @@ export function ValidationContent() {
               )}
             />
             {v.final_test.evaluated ? (
-              <EmptySection
-                title={pick("결과 표시 준비 중", "Results not rendered yet")}
-                waitingOn={pick(
-                  "최종 테스트가 실행되었습니다. 이 자리에 결과 표가 들어갑니다.",
-                  "The final test has been run. Its results belong in this space.",
-                )}
-              />
+              <FinalTestSection result={v.final_test} />
             ) : (
               <EmptySection
                 title={pick(
@@ -285,12 +288,12 @@ export function ValidationContent() {
                   "Not evaluated yet, deliberately.",
                 )}
                 waitingOn={pick(
-                  "모델 개발이 끝날 때까지 이 구간은 한 번도 사용하지 않습니다. 개발 중에 확인하면 그 시점부터 더 이상 독립적인 검증이 아니게 되기 때문입니다.",
+                  "이 구간은 모델 개발이 끝날 때까지 한 번도 사용하지 않습니다. 개발 중에 확인하면 그 시점부터 더 이상 독립적인 검증이 아니게 되기 때문입니다.",
                   "This window is untouched until model development finishes. Looking at it during development would spend it: from that point on it is no longer independent evidence.",
                 )}
                 detail={pick(
-                  "평가가 끝나면 위 비교와 같은 형식의 결과가 이 자리에 표시되며, 그것이 모델 채택 여부를 판단하는 근거가 됩니다.",
-                  "Once it is run, results in the same shape as the comparison above will appear here, and those are the figures the adoption decision rests on.",
+                  "결과가 있는데도 이 자리가 비어 있다면 이 체크아웃에 outputs/reports/final_test.json 이 없는 것입니다. 이 테스트는 1회용이라 다시 실행해서 만들 수 없으므로, 파일을 가진 체크아웃에서 가져와야 합니다.",
+                  "If a result exists and this panel is still empty, this checkout is missing outputs/reports/final_test.json. The test is single-use and re-running is not a recovery path, so the file has to come from a checkout that has it.",
                 )}
               />
             )}

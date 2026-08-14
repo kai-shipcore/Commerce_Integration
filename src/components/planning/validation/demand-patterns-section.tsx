@@ -20,6 +20,7 @@ import dynamic from "next/dynamic";
 import type { Data, Layout } from "plotly.js";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { SectionHeading } from "./section-heading";
+import { LiveBasisLine } from "./section-basis";
 import type { DemandPatternsResponse } from "./types";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
@@ -237,6 +238,11 @@ export function DemandPatternsSection({
           </div>
         }
       />
+
+      {/* This is the live half of the page and the counts below it are the ones
+          a reader is most likely to assume are current, so it says that it is
+          rather than relying on the contrast with section 01. */}
+      <LiveBasisLine basis={data.basis} />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-md border p-3">

@@ -62,7 +62,8 @@ import {
   applyColumnFilters, distinctColumnValuesExcluding, type ColumnFilter, type DistinctValue,
 } from "@/lib/planning/column-filter";
 import { SectionHeading } from "./section-heading";
-import type { OutlierRow, ValidationOutliers } from "./types";
+import { PinnedBasisLine } from "./section-basis";
+import type { AccuracyBasis, OutlierRow, ValidationOutliers } from "./types";
 
 const nf = new Intl.NumberFormat("en-US");
 const pct = (v: number) => (Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : "—");
@@ -189,9 +190,14 @@ function Stat({
 export function OutliersSection({
   outliers,
   baseline,
+  basis,
 }: {
   outliers: ValidationOutliers;
   baseline: string;
+  /** The same pinned report section 01 reads, and stale in the same way at the
+   *  same times. The drift banner is not repeated here: one warning per page
+   *  for one condition, on the section that states the headline claim. */
+  basis?: AccuracyBasis | null;
 }) {
   const { pick } = useI18n();
   const [minUnits, setMinUnits] = useState<number>(outliers.default_min_units);
@@ -388,6 +394,8 @@ export function OutliersSection({
           `The pooled figure is a statement about the portfolio, not a promise about any SKU. This section is where you check whether the improvement is broad or whether a few large wins are carrying the average. Everything below compares against ${baseline}, with both methods divided by the same actual so the difference is like for like.`,
         )}
       />
+
+      <PinnedBasisLine basis={basis} />
 
       {/* Scope. Above everything, because every figure in the section is
           computed under it and a reader arriving mid-page needs to know what

@@ -39,14 +39,104 @@ export interface ValidationComparison {
   headline: ValidationHeadline | null;
 }
 
-/** What the comparison can and cannot speak for. The unscored group is
- *  overwhelmingly SKUs promoted from intermittent, whose training start moves
- *  with every profiling run and so are ineligible at any fixed cutoff. */
+/** What the comparison can and cannot speak for.
+ *
+ *  The unscored group is normally SKUs promoted from intermittent, whose
+ *  training start moves with every profiling run and so are ineligible at any
+ *  fixed cutoff. That is the intended gap and it is what the prose says.
+ *
+ *  It is not the only possible cause, which is why the two `*_as_of` fields
+ *  exist. `served` is live and moves with the Tuesday cron; `scored` comes from
+ *  the pinned accuracy report and does not move. Rendering their ratio as a
+ *  single percentage under a single date, which this did until 2026-08-14,
+ *  states a fact about a moment that never existed, and it hid a report left
+ *  unregenerated across a re-profile for two weeks. Anything reading `share`
+ *  must render both dates with it. */
 export interface ValidationCoverage {
   served: number;
   scored: number;
   unscored: number;
   share: number;
+  /** Newest week in the live sales grid, which `served` is counted from.
+   *  Optional: this app and the API deploy independently. */
+  served_as_of?: string | null;
+  /** When the accuracy report was computed, which `scored` comes from. */
+  scored_as_of?: string | null;
+  /** The pinned data snapshot that report was measured on. */
+  scored_snapshot?: string | null;
+  /** Scored SKUs no longer served at all, the gap seen from the other end.
+   *  `share` cannot express this: dropping a scored SKU raises the ratio. */
+  scored_not_served?: number;
+}
+
+/** Which clock a section's figures run on.
+ *
+ *  Live sections read `data/processed` and move every week, because they
+ *  describe the business as it is now. Pinned sections read the snapshot named
+ *  by `ML_DATA_SNAPSHOT` and deliberately do not move, because they are
+ *  measurements whose value is being comparable across model versions.
+ *
+ *  Both kinds were on this page from the beginning with nothing distinguishing
+ *  them, so a reader had to assume one or the other and either assumption was
+ *  wrong for half the page. */
+export interface LiveBasis {
+  kind: "live";
+  /** Newest week present in the sales grid, not today's date. The two differ by
+   *  up to a week normally and by however long the cron has been failing
+   *  otherwise, which is the case worth being able to see. */
+  as_of: string | null;
+  /** What the calendar says the newest complete week is. Optional: a running API
+   *  that predates the freshness check omits it and the line renders as before. */
+  expected_week?: string | null;
+  /** Whole weeks between the two. Non-zero means the weekly pipeline has not
+   *  delivered, which is the live half's version of the drift the pinned half
+   *  reports, and is invisible without this: a stale forecast renders exactly
+   *  like a current one. */
+  weeks_behind?: number | null;
+  source: string;
+}
+
+/** Whether the pinned accuracy report still describes what is being served.
+ *
+ *  Two independent questions with the same fix and different detection. A
+ *  snapshot rename is caught by comparing names; a re-profile within the same
+ *  snapshot name is not, and that is the one that went unnoticed for two weeks
+ *  in August 2026. */
+export interface AccuracyDrift {
+  /** False when no manifest exists, in which case the two staleness flags are
+   *  null rather than false: unknown and fine are different states. */
+  known: boolean;
+  snapshot_stale: boolean | null;
+  population_stale: boolean | null;
+  config_snapshot: string | null;
+  report_snapshot: string | null;
+  /** Absolute per-segment movement across the forecastable cohort, over that
+   *  cohort's measured size. Excludes the intermittent tail: measured over the
+   *  whole catalogue the August re-profile reads 3.8% instead of 42%. */
+  population_drift: number | null;
+  tolerance: number;
+}
+
+export interface AccuracyBasis {
+  kind: "pinned";
+  snapshot: string | null;
+  computed_at: string | null;
+  /** True when the date above is the summary file's mtime rather than a
+   *  recorded run time, which is the pre-manifest fallback. An mtime describes
+   *  the filesystem and is rewritten by checkout, copy and deploy, so a date
+   *  carrying this flag is not evidence of when anything was measured. */
+  computed_at_is_mtime: boolean;
+  commit: string | null;
+  windows: { window: string; cutoff: string; n_skus: number }[];
+  scored_skus: number | null;
+  population: { total: number; segments: Record<string, number> } | null;
+  live_population: { total: number; segments: Record<string, number> } | null;
+  drift: AccuracyDrift;
+}
+
+export interface ValidationBasis {
+  live: LiveBasis;
+  accuracy: AccuracyBasis;
 }
 
 export interface OutlierRow {
@@ -138,6 +228,10 @@ export interface ValidationMeta {
 
 export interface ValidationResponse {
   meta: ValidationMeta;
+  /** Which clock each section runs on. Optional so a running API that predates
+   *  it degrades to the previous behaviour, which is to say no basis line and
+   *  no drift banner, rather than blanking the page. */
+  basis?: ValidationBasis;
   comparison: ValidationComparison;
   coverage: ValidationCoverage;
   outliers: ValidationOutliers;
@@ -146,8 +240,62 @@ export interface ValidationResponse {
     performance: PerformanceRow[];
     last_complete_week: string;
   };
-  final_test: { cutoff: string; evaluated: boolean };
+  final_test: FinalTest;
 }
+
+/** One method's pooled WAPE on the final test window, keyed by segment.
+ *  Segment names come from the result file rather than being enumerated here,
+ *  for the same reason model versions are keys elsewhere in this file: a
+ *  segmentation change should move data, not this type. */
+export type FinalTestScores = Record<string, number>;
+
+/** One bootstrapped paired difference on the final test window.
+ *
+ *  `delta` is the model minus the other method, so negative favours the model.
+ *  `ci_lo`/`ci_hi` are the 95% interval, and whether it excludes zero is the
+ *  whole question: a delta whose interval straddles zero is a reading, not a
+ *  result, and the panel says so rather than reporting the point estimate as
+ *  though it were one. */
+export interface FinalTestComparison {
+  against: string;
+  segment: string;
+  delta: number;
+  se: number;
+  ci_lo: number;
+  ci_hi: number;
+}
+
+/** The quarantined window.
+ *
+ *  A discriminated union rather than optional fields, so the unevaluated case
+ *  cannot be rendered with half a result: there is nothing to show but the
+ *  cutoff, and the type says exactly that.
+ *
+ *  Everything in the evaluated arm is served from
+ *  `outputs/reports/final_test.json`, not restated by the API, so a figure here
+ *  and a figure in that file cannot drift apart. `methods` names which key in
+ *  `scores` is the model, the spreadsheet and the structural baseline, which is
+ *  how this file stays free of any version name. */
+export type FinalTest =
+  | { cutoff: string; evaluated: false }
+  | {
+      cutoff: string;
+      evaluated: true;
+      run_at: string | null;
+      commit: string | null;
+      snapshot: string | null;
+      test_weeks: string[];
+      scores: Record<string, FinalTestScores>;
+      methods: {
+        model: string | null;
+        spreadsheet: string | null;
+        structural_baseline: string | null;
+      };
+      comparisons: FinalTestComparison[];
+      /** The runner records pooled WAPE and the bootstrap only. False today;
+       *  the panel omits the calibration line rather than inventing it. */
+      has_bias: boolean;
+    };
 
 /** Weekly demand split by whether the model forecasts the SKU. The
  *  `not_forecast` series is the intermittent tail: real revenue with no
@@ -230,4 +378,7 @@ export interface DemandPatternsResponse {
   n_skus?: number;
   segments: { group: string; n_skus: number; units: number }[];
   weeks: number;
+  /** This section is live and says so on its own, so a reader does not have to
+   *  hold the other payload's basis block in their head to know that. */
+  basis?: LiveBasis;
 }

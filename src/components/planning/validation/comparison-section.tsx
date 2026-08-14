@@ -15,7 +15,13 @@
 
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { SectionHeading } from "./section-heading";
-import type { ValidationCell, ValidationComparison, ValidationCoverage } from "./types";
+import { AccuracyDriftBanner, PinnedBasisLine } from "./section-basis";
+import type {
+  AccuracyBasis,
+  ValidationCell,
+  ValidationComparison,
+  ValidationCoverage,
+} from "./types";
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 const nf = new Intl.NumberFormat("en-US");
@@ -114,9 +120,13 @@ function MatrixCell({
 export function ComparisonSection({
   comparison,
   coverage,
+  basis,
 }: {
   comparison: ValidationComparison;
   coverage: ValidationCoverage;
+  /** Optional: a running API that predates the basis block renders the section
+   *  exactly as it did before rather than blanking it. */
+  basis?: AccuracyBasis | null;
 }) {
   const { pick } = useI18n();
   // `versions` is no longer read: the matrix shows the current model's figure
@@ -150,6 +160,12 @@ export function ComparisonSection({
           "Pooled WAPE, lower is better. Errors are summed across SKUs before dividing, so heavier-demand SKUs count more. Both methods are scored on the same weeks of the same backtest windows, so the two figures are directly comparable rather than each measured against its own base.",
         )}
       />
+
+      {/* Directly under the heading, before any figure. A reader who sees the
+          numbers first has already formed a view by the time they reach a
+          caption explaining what the numbers are of. */}
+      <PinnedBasisLine basis={basis} />
+      <AccuracyDriftBanner basis={basis} />
 
       {headline && (
         <div className="grid gap-3 sm:grid-cols-3">
@@ -190,11 +206,27 @@ export function ComparisonSection({
             </p>
             {/* The caveat travels with the number. This is the card that gets
                 screenshotted, and three cards away from its coverage note it
-                reads as a claim about the whole catalogue. */}
-            <p className="mt-1.5 border-t border-emerald-300/60 pt-1.5 text-[11.5px] leading-snug text-emerald-700/70 dark:border-emerald-800/60 dark:text-emerald-400/70">
+                reads as a claim about the whole catalogue.
+
+                The two counts come from different clocks and the sentence now
+                says so. `scored` is from the pinned report, `served` is today's
+                planning table, and the ratio of the two is not a fact about any
+                single moment. Written without the dates it read as one, which
+                is how a report left unregenerated across a re-profile showed a
+                rising coverage percentage while coverage was in fact falling.
+                Dates in the tooltip rather than the card: the caption has to
+                stay one line at this size, and the basis line above the cards
+                already carries the pinned date in full. */}
+            <p
+              className="mt-1.5 border-t border-emerald-300/60 pt-1.5 text-[11.5px] leading-snug text-emerald-700/70 dark:border-emerald-800/60 dark:text-emerald-400/70"
+              title={pick(
+                `측정 기준일 ${coverage.scored_as_of?.slice(0, 10) ?? "기록 없음"} (스냅샷 ${coverage.scored_snapshot ?? "—"}) · 예측 대상 집계일 ${coverage.served_as_of ?? "—"}`,
+                `scored ${coverage.scored_as_of?.slice(0, 10) ?? "date not recorded"} on snapshot ${coverage.scored_snapshot ?? "—"} · forecast set counted ${coverage.served_as_of ?? "—"}`,
+              )}
+            >
               {pick(
-                `예측 대상 ${nf.format(coverage.served)}개 중 측정 가능한 ${nf.format(coverage.scored)}개(${Math.round(coverage.share * 100)}%) 기준`,
-                `measured on ${nf.format(coverage.scored)} of ${nf.format(coverage.served)} forecast SKUs (${Math.round(coverage.share * 100)}%)`,
+                `현재 예측 대상 ${nf.format(coverage.served)}개 중, 고정 구간에서 측정된 ${nf.format(coverage.scored)}개(${Math.round(coverage.share * 100)}%) 기준`,
+                `measured on ${nf.format(coverage.scored)} SKUs, of ${nf.format(coverage.served)} forecast today (${Math.round(coverage.share * 100)}%)`,
               )}
             </p>
           </div>
@@ -284,10 +316,24 @@ export function ComparisonSection({
           </p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
             {pick(
-              `예측 대상 ${nf.format(coverage.served)}개 SKU 중 ${nf.format(coverage.scored)}개(${Math.round(coverage.share * 100)}%)만 위 수치에 반영되어 있습니다. 나머지 ${nf.format(coverage.unscored)}개는 대부분 간헐 판매에서 승격된 SKU로, 승격 시 학습 시작일이 다시 잡혀 고정된 백테스트 구간에 들어오지 못합니다. 아직 측정되지 않은 것이 아니라 이 방식으로는 측정할 수 없습니다.`,
-              `${nf.format(coverage.scored)} of the ${nf.format(coverage.served)} forecast SKUs (${Math.round(coverage.share * 100)}%) are in the figures above. The other ${nf.format(coverage.unscored)} are mostly SKUs promoted out of intermittent, which resets their training start and leaves them ineligible for windows pinned to a fixed cutoff. That is not measured yet, it is not measurable this way.`,
+              `현재 예측 대상 ${nf.format(coverage.served)}개 SKU 중 ${nf.format(coverage.scored)}개(${Math.round(coverage.share * 100)}%)가 위 수치에 반영되어 있습니다. 나머지 ${nf.format(coverage.unscored)}개는 대부분 간헐 판매에서 승격된 SKU로, 승격 시 학습 시작일이 다시 잡혀 고정된 백테스트 구간에 들어오지 못합니다. 아직 측정되지 않은 것이 아니라 이 방식으로는 측정할 수 없습니다.`,
+              `${nf.format(coverage.scored)} of the ${nf.format(coverage.served)} SKUs forecast today (${Math.round(coverage.share * 100)}%) are in the figures above. The other ${nf.format(coverage.unscored)} are mostly SKUs promoted out of intermittent, which resets their training start and leaves them ineligible for windows pinned to a fixed cutoff. That is not measured yet, it is not measurable this way.`,
             )}
           </p>
+          {/* The other direction, and the reason it is stated separately.
+              `share` cannot express it: a scored SKU that stops being forecast
+              leaves the numerator and the denominator at once, so coverage
+              creeps upward while the report describes more products that are no
+              longer in the forecast set. Only shown when it is happening, since
+              a line reading "0 no longer forecast" is noise on a normal week. */}
+          {(coverage.scored_not_served ?? 0) > 0 && (
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
+              {pick(
+                `또한 측정 대상이었던 ${nf.format(coverage.scored_not_served ?? 0)}개 SKU는 현재 예측 대상이 아닙니다. 위 수치에는 이들이 포함되어 있으므로, 그만큼은 현재 서비스 중인 대상에 대한 평가가 아닙니다.`,
+                `A further ${nf.format(coverage.scored_not_served ?? 0)} SKUs that were scored are no longer forecast at all. They are still inside the figures above, so that much of the comparison describes products the model no longer serves.`,
+              )}
+            </p>
+          )}
         </div>
       </div>
     </section>

@@ -176,12 +176,26 @@ export function DemandVsForecastSection({ data }: { data: DemandVsForecastRespon
 
     if (forward.length > 0) {
       // Anchored to the last actual so the horizon continues the demand line
-      // rather than floating away from it.
+      // rather than floating away from it. The anchor is a separate trace with
+      // hoverinfo suppressed: without this, unified hover at the anchor week
+      // shows "Forecast: <actual value>" because the point carries the actual's
+      // y, not a prediction. That is the tooltip bug of 2026-08-14.
       const lastActual = actuals[actuals.length - 1];
+      if (lastActual) {
+        traces.push({
+          type: "scatter",
+          x: [lastActual.ds, forward[0].ds],
+          y: [lastActual.y, forward[0].yhat],
+          mode: "lines",
+          line: { color: COLOUR.forecast, width: 2 },
+          showlegend: false,
+          hoverinfo: "skip",
+        } as Data);
+      }
       traces.push({
         type: "scatter",
-        x: [...(lastActual ? [lastActual.ds] : []), ...forward.map((f) => f.ds)],
-        y: [...(lastActual ? [lastActual.y] : []), ...forward.map((f) => f.yhat)],
+        x: forward.map((f) => f.ds),
+        y: forward.map((f) => f.yhat),
         mode: "lines+markers",
         name: pick("예측 (최신 실행)", "Forecast (latest run)"),
         line: { color: COLOUR.forecast, width: 2 },

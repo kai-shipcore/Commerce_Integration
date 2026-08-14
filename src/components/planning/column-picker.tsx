@@ -102,7 +102,23 @@ export function ColumnPicker<Key extends string>({
         )}
       </summary>
 
-      <div className="absolute right-0 z-30 mt-1 w-64 rounded-md border bg-background p-2 shadow-lg">
+      {/* z-50 so the panel clears the sticky table headers beneath it.
+       *
+       *  Every table that renders this control has a sticky header, and the
+       *  scale those headers use is `Z` in `action-list/action-list-table.tsx`:
+       *  z-30 for the column-name row and z-40 for the corner cell. This panel
+       *  was z-30, which tied the name row and lost to the corner outright, and
+       *  a tie is decided by document order, which the table wins because it
+       *  comes after the toolbar. So the panel opened underneath the headers it
+       *  overlaps and the top two rows of checkboxes were unreadable.
+       *
+       *  Written as a literal rather than imported from `Z`, for two reasons.
+       *  Tailwind scans source text and cannot see a class assembled at runtime,
+       *  which is the same reason `Z` itself holds literals. And this component
+       *  is generic across planning tables, so importing a constant from one
+       *  specific table would couple it to that table's file. If `Z` ever grows
+       *  a layer above z-40, this number moves with it. */}
+      <div className="absolute right-0 z-50 mt-1 w-64 rounded-md border bg-background p-2 shadow-lg">
         {bands.length > 0
           ? bands.map((band) => {
               const cols = columns.filter((c) => c.band === band);

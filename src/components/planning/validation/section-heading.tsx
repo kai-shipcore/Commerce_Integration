@@ -10,12 +10,16 @@
  * argument ended and the next began, and there was no way to get back to a
  * section without scrolling past the others.
  *
- * The number is the point of the numbering. These sections are an argument in
- * order — how the model scores, the same evidence drawn, where it breaks down,
- * how it does on forecasts actually served, what is being held back, and the
- * demand the whole thing sits on. A reader presenting this to someone else
- * needs to be able to say "section three", and a reader returning to it needs
- * to know whether they have seen all of it.
+ * The number is the point of the numbering. A reader presenting this to someone
+ * else needs to be able to say "section three", and a reader returning to it
+ * needs to know whether they have seen all of it.
+ *
+ * The order the argument is made in is stated once, on VALIDATION_SECTIONS
+ * below, and not restated here. It used to be, in prose that listed a different
+ * order from the array twenty lines beneath it and then went on to describe the
+ * last section as "what is being held back" after that section started carrying
+ * the final test result. Two descriptions of one order is one description too
+ * many, and the array is the one that assigns the numbers.
  *
  * Headings own their anchor id rather than the page wrapping them in one, so a
  * section stays linkable from outside the page even now that nothing inside it
@@ -25,8 +29,8 @@
 
 /** The page's sections, in the order they render, which is the order the
  *  argument is made in: the claim, its scope, the claim drawn over time, the
- *  out-of-sample record, where it is weakest, and what is deliberately not
- *  claimed yet.
+ *  out-of-sample record, where it is weakest, and the one window held back from
+ *  development so it could settle the question once.
  *
  *  This list is what assigns the numbers, so it has to match the order the page
  *  actually renders in. A heading numbered 03 sitting fourth is worse than no
