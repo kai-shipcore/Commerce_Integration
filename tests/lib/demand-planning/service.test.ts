@@ -118,6 +118,7 @@ describe("DemandPlanningService.getDashboardData", () => {
       fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0, fba_30d: 0, total_avg_prev: 20, total_avg_real: 99, total_avg_curr: 99,
       oos_days_90d: 0, oos_lost_demand_90d: 0,
     }]);
+    repositoryMock.getVelocitySnapshot.mockResolvedValue([]);
 
     const result = await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" });
     expect(result.data.rows[0].total_avg_real).toBe(10.02);
