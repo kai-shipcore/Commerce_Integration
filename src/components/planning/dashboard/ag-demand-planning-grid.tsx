@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
 import {
   AllCommunityModule,
   themeQuartz,
@@ -470,11 +470,10 @@ function GridColumnMenu({
 }) {
   const { pick } = useI18n();
   const [view, setView] = useState<"menu" | "sortColor" | "filterColor">("menu");
-  // Both sections start collapsed unless one is the actual committed mode —
-  // Sheets doesn't auto-expand "Filter by values" on a column with no filter
-  // yet.
+  // "Filter by values" starts expanded by default — only a committed
+  // condition filter overrides that to expand "Filter by condition" instead.
   const [filterSection, setFilterSection] = useState<"condition" | "values" | null>(
-    committed?.mode === "condition" ? "condition" : committed?.mode === "values" ? "values" : null,
+    committed?.mode === "condition" ? "condition" : "values",
   );
   const [condition, setCondition] = useState<ConditionFilter | null>(
     committed?.mode === "condition" ? committed.condition : null,
@@ -578,15 +577,22 @@ function GridColumnMenu({
             </MenuItem>
             {filterSection === "values" && (
               <div style={{ padding: "0 8px" }}>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={pick("값 검색…", "Search values…")}
-                  style={{ width: "100%", height: 28, boxSizing: "border-box", padding: "0 8px", marginBottom: 4, fontSize: 12, border: "1px solid #E2E8F0", borderRadius: 4, outline: "none" }}
-                />
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
-                  <button type="button" onClick={() => setStaged(new Set(values.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 선택", "Select all")}</button>
-                  <button type="button" onClick={() => setStaged(new Set())} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 지우기", "Clear")}</button>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
+                  <span>
+                    <button type="button" onClick={() => setStaged(new Set(values.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 선택", "Select all")} {values.length}</button>
+                    {" - "}
+                    <button type="button" onClick={() => setStaged(new Set())} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 지우기", "Clear")}</button>
+                  </span>
+                  <span>{pick("표시 중", "Displaying")} {shown.length}</span>
+                </div>
+                <div style={{ position: "relative", marginBottom: 4 }}>
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={pick("값 검색…", "Search values…")}
+                    style={{ width: "100%", height: 28, boxSizing: "border-box", padding: "0 28px 0 8px", fontSize: 12, border: "1px solid #E2E8F0", borderRadius: 4, outline: "none" }}
+                  />
+                  <Search size={13} strokeWidth={2} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "#94A3B8", pointerEvents: "none" }} />
                 </div>
                 <div style={{ maxHeight: 200, overflow: "auto" }}>
                   {shown.map((v) => (
