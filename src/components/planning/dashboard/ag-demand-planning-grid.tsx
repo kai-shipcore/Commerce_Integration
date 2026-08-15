@@ -4205,7 +4205,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     if (columnId.endsWith("::inb_qty")) {
       const containerName = columnId.slice(0, -"::inb_qty".length);
       const container = containers.find((item) => item.name === containerName);
-      if (!container || container.status === "baseline" || container.status === "packing_received" || !container.container_id) return null;
+      // Final (packing_received) remains editable; only containers that have
+      // already shipped are locked against Con. Qty changes.
+      if (!container || container.status === "baseline" || container.status === "shipped" || !container.container_id) return null;
       const raw = row.containers?.[containerName] ?? {
         item_id: null, cbm_unit: null, inbound_qty: null, open_orders: 0, avail_qty: null,
         allocated_remaining_qty: null, est_sales: 0, backorder: 0, carryover: null, eta: container.eta,
@@ -5166,7 +5168,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       for (const [containerIndex, container] of renderOrder.entries()) {
         if (container.status === "baseline" && hiddenBases.has("Base")) continue;
         const baseline = container.status === "baseline";
-        const qtyEditable = canEditPlanning && !baseline && container.status !== "packing_received";
+        const qtyEditable = canEditPlanning && !baseline && container.status !== "shipped";
         const globallyVisibleSubColumns = conCandidates.filter((column) => columnVis[`con:${column.id}`] !== false);
         const containerHiddenRuns: { hiddenIds: string[]; hiddenLabels: string[]; startIndex: number }[] = [];
         let pendingHiddenColumns: typeof globallyVisibleSubColumns = [];
