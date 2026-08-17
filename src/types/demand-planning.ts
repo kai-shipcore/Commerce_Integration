@@ -8,6 +8,7 @@ export type ColumnGroupKey =
   | "stock"
   | "wsales"
   | "esales"
+  | "fbasales"
   | "wavg"
   | "eavg"
   | "fba"
@@ -92,6 +93,12 @@ export interface DemandRow {
   fba_avg_prev: number;
   fba_avg_real: number;
   fba_avg_curr: number;
+  fba_90d_sales?: number;
+  fba_60d_sales?: number;
+  fba_30d_sales?: number;
+  fba_15d_sales?: number;
+  fba_7d_sales?: number;
+  fba_30d_pre?: number;
   west_fbm_30d: number;
   east_fbm_30d: number;
   fba_30d: number;

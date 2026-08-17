@@ -6,6 +6,7 @@ export const TINT_COLORS: Record<string, string> = {
   "t-stock":   "#F5F9FF",
   "t-wsales":  "#F5FBF7",
   "t-esales":  "#FAF5FF",
+  "t-fbasales":"#F3F8FF",
   "t-avg":     "#FFFEF0",
   "t-total":   "#F5FCFC",
   "t-inb":     "#FDF5FF",
@@ -20,6 +21,7 @@ export const GROUP_HEADER_COLORS: Record<string, string> = {
   "gh-stock":  "#1A3555",
   "gh-wsales": "#153028",
   "gh-esales": "#2A1E42",
+  "gh-fbasales":"#182A46",
   "gh-avg":    "#303010",
   "gh-total":  "#182828",
   "gh-inb":    "#281828",
@@ -32,6 +34,7 @@ export const GROUP_LABELS: Record<string, string> = {
   stock:  "Inventory",
   wsales: "West FBM Sales",
   esales: "East FBM Sales",
+  fbasales: "FBA Sales",
   wavg:   "West Avg Daily",
   eavg:   "East Avg Daily",
   fba:    "FBA Avg",
@@ -44,6 +47,7 @@ export const GROUP_LABELS: Record<string, string> = {
 export const GROUP_BTN_COLORS: Record<string, string> = {
   wsales: "#153028",
   esales: "#2A1E42",
+  fbasales: "#182A46",
   wavg:   "#2C2A10",
   eavg:   "#2C2A10",
   fba:    "#1E2A10",
@@ -168,6 +172,13 @@ export const ALL_COLS: ColDef[] = [
   { id: "e15",  grp: "esales", label: "East\n15D",  w: 42, align: "num", tint: "t-esales", gh: "gh-esales", val: (r) => r.east_15d || 0 },
   { id: "e7",   grp: "esales", label: "East\n7D",   w: 40, align: "num", tint: "t-esales", gh: "gh-esales", val: (r) => r.east_7d || 0 },
   { id: "epre", grp: "esales", label: "E Pre\n30D", w: 38, align: "num", tint: "t-esales", gh: "gh-esales", val: (r) => r.east_30d_pre || 0 },
+  // FBA Sales
+  { id: "f90",  grp: "fbasales", label: "FBA\n90D",  w: 44, align: "num", tint: "t-fbasales", gh: "gh-fbasales", val: (r) => r.fba_90d_sales || 0 },
+  { id: "f60",  grp: "fbasales", label: "FBA\n60D",  w: 44, align: "num", tint: "t-fbasales", gh: "gh-fbasales", val: (r) => r.fba_60d_sales || 0 },
+  { id: "f30",  grp: "fbasales", label: "FBA\n30D",  w: 44, align: "num", tint: "t-fbasales", gh: "gh-fbasales", val: (r) => r.fba_30d_sales || 0, bold: true },
+  { id: "f15",  grp: "fbasales", label: "FBA\n15D",  w: 42, align: "num", tint: "t-fbasales", gh: "gh-fbasales", val: (r) => r.fba_15d_sales || 0 },
+  { id: "f7",   grp: "fbasales", label: "FBA\n7D",   w: 40, align: "num", tint: "t-fbasales", gh: "gh-fbasales", val: (r) => r.fba_7d_sales || 0 },
+  { id: "fpre", grp: "fbasales", label: "FBA Pre\n30D", w: 46, align: "num", tint: "t-fbasales", gh: "gh-fbasales", val: (r) => r.fba_30d_pre || 0 },
   // West Avg Daily
   { id: "wavg_p", grp: "wavg", label: "W Avg\n이전", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.avg_daily_prev), sortVal: (r) => r.avg_daily_prev ?? -1 },
   { id: "wavg_r", grp: "wavg", label: "W Avg\n실제", w: 56, align: "num", tint: "t-avg", gh: "gh-avg", val: (r) => avgOrBlank(r.avg_daily_real), sortVal: (r) => r.avg_daily_real ?? -1 },
@@ -218,7 +229,7 @@ export const ALL_COLS: ColDef[] = [
 // ── Column visibility / toolbar shared exports ───────────────────────────────
 
 export const ALL_GROUP_KEYS: ColumnGroupKey[] = [
-  "stock","wsales","esales","wavg","eavg","fba","s30","tavg","oos","inb","con",
+  "stock","wsales","esales","fbasales","wavg","eavg","fba","s30","tavg","oos","inb","con",
 ];
 
 export const COMPACT_COLUMN_IDS = new Set<string>([
@@ -230,6 +241,7 @@ export const GROUP_BTN_LABELS: Record<string, string> = {
   wsales: "📈 West Sales",
   stock:  "Inventory",
   esales: "📈 East Sales",
+  fbasales: "📈 FBA Sales",
   wavg:   "〜 W Avg",
   eavg:   "〜 E Avg",
   fba:    "FBA Avg",
@@ -372,17 +384,32 @@ export function loadSavedColumnOrder(): ColumnOrder {
 }
 
 export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOrder {
-  if (!order.length || !order.includes("workflow_note")) return order;
+  if (!order.length) return order;
   const next = [...order];
-  let insertAt = next.indexOf("workflow_note") + 1;
-  for (const columnId of ["workflow_note_2", "workflow_note_3"]) {
-    const existingIndex = next.indexOf(columnId);
-    if (existingIndex >= 0) {
-      insertAt = Math.max(insertAt, existingIndex + 1);
-      continue;
+  if (next.includes("workflow_note")) {
+    let insertAt = next.indexOf("workflow_note") + 1;
+    for (const columnId of ["workflow_note_2", "workflow_note_3"]) {
+      const existingIndex = next.indexOf(columnId);
+      if (existingIndex >= 0) {
+        insertAt = Math.max(insertAt, existingIndex + 1);
+        continue;
+      }
+      next.splice(insertAt, 0, columnId);
+      insertAt += 1;
     }
-    next.splice(insertAt, 0, columnId);
-    insertAt += 1;
+  }
+  const eastAnchor = Math.max(...["e90", "e60", "e30", "e15", "e7", "epre"].map((id) => next.indexOf(id)));
+  if (eastAnchor >= 0) {
+    let insertAt = eastAnchor + 1;
+    for (const columnId of ["f90", "f60", "f30", "f15", "f7", "fpre"]) {
+      const existingIndex = next.indexOf(columnId);
+      if (existingIndex >= 0) {
+        insertAt = Math.max(insertAt, existingIndex + 1);
+        continue;
+      }
+      next.splice(insertAt, 0, columnId);
+      insertAt += 1;
+    }
   }
   return next;
 }

@@ -165,6 +165,41 @@ describe("DemandPlanningService.refreshStats", () => {
     expect(cacheManagerDeleteMock).toHaveBeenCalledWith("oos-preorder:sku-list:v4");
   });
 
+  it("stores all FBA windows and applies the fixed sheet weights with preorder at zero", async () => {
+    repositoryMock.getInventoryByWarehouse.mockResolvedValue([]);
+    repositoryMock.getOosEpisodes.mockResolvedValue([]);
+    repositoryMock.getOosAgg.mockResolvedValue([]);
+    repositoryMock.getOosLostDemandRaw.mockResolvedValue([]);
+    repositoryMock.getCategoryChannelRatio.mockResolvedValue([]);
+    repositoryMock.getSalesVelocity
+      .mockResolvedValueOnce([{
+        master_sku: "SKU-FBA", sales_status: "Original",
+        west_90d: 0, west_60d: 0, west_30d: 0, west_30d_pre: 0, west_15d: 0, west_7d: 0,
+        east_90d: 0, east_60d: 0, east_30d: 0, east_30d_pre: 0, east_15d: 0, east_7d: 0,
+        avg_daily_prev: 0, east_avg_prev: 0, fba_avg_prev: 5,
+        fba_90d: 900, fba_60d: 600, fba_30d: 300,
+        fba_15d: 150, fba_7d: 70, fba_30d_pre: 999,
+      }])
+      .mockResolvedValueOnce([]);
+
+    await DemandPlanningService.refreshStats({
+      salesWindowWeights: { d90: 1, d60: 0, d30: 0, d15: 0, d7: 0, pre: 0 },
+    });
+
+    const statsCall = repositoryMock.batchUpsert.mock.calls.find((call) =>
+      call[0] === "shipcore.fc_stats" && (call[2] as string[]).includes("fba_90d_sales"));
+    const row = statsCall?.[1][0];
+    expect(row).toMatchObject({
+      fba_90d_sales: 900,
+      fba_60d_sales: 600,
+      fba_30d_sales: 300,
+      fba_15d_sales: 150,
+      fba_7d_sales: 70,
+      fba_30d_pre: 999,
+      fba_avg_real: 10,
+    });
+  });
+
   it("applies a category weight override over the auto-computed ratio", async () => {
     repositoryMock.getInventoryByWarehouse.mockResolvedValue([]);
     repositoryMock.getOosEpisodes.mockResolvedValue([]);

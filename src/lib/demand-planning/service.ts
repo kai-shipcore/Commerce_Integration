@@ -28,6 +28,7 @@ import {
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import {
   DEFAULT_SALES_WINDOW_WEIGHTS,
+  FBA_SALES_WINDOW_WEIGHTS,
   normalizeSalesWindowWeights,
   parseSalesWindowWeightsParam,
   type SalesWindowWeights,
@@ -155,7 +156,10 @@ export const DemandPlanningService = {
         const ePrev = Number(r.east_avg_prev);
         const eReal = weightedDailyAverage(r.east_90d, r.east_60d, r.east_30d, r.east_30d_pre, r.east_15d, r.east_7d, salesWindowWeights);
         const fbaPrev = Number(r.fba_avg_prev ?? 0);
-        const fbaReal = weightedDailyAverage(r.fba_90d, r.fba_60d, r.fba_30d, 0, r.fba_15d, r.fba_7d, salesWindowWeights);
+        const fbaReal = weightedDailyAverage(
+          r.fba_90d, r.fba_60d, r.fba_30d, r.fba_30d_pre, r.fba_15d, r.fba_7d,
+          FBA_SALES_WINDOW_WEIGHTS,
+        );
         return {
           master_sku: r.master_sku,
           west_90d: Number(r.west_90d), west_60d: Number(r.west_60d), west_30d: Number(r.west_30d),
@@ -166,7 +170,7 @@ export const DemandPlanningService = {
           east_avg_prev: ePrev, east_avg_real: eReal,
           fba_avg_real: fbaReal, fba_avg_prev: fbaPrev,
           fba_90d: Number(r.fba_90d), fba_60d: Number(r.fba_60d), fba_30d: Number(r.fba_30d),
-          fba_15d: Number(r.fba_15d), fba_7d: Number(r.fba_7d),
+          fba_15d: Number(r.fba_15d), fba_7d: Number(r.fba_7d), fba_30d_pre: Number(r.fba_30d_pre),
           _avg_curr: currentDailyAverage(wPrev, wReal, categoryCode),
           _east_curr: currentDailyAverage(ePrev, eReal, categoryCode),
           _fba_curr: currentDailyAverage(fbaPrev, fbaReal, categoryCode),
@@ -260,6 +264,12 @@ export const DemandPlanningService = {
       const east_15d = vel ? vel.east_15d : r.east_15d as number;
       const east_7d = vel ? vel.east_7d : r.east_7d as number;
       const east_30d_pre = vel ? vel.east_30d_pre : r.east_30d_pre as number;
+      const fba_90d_sales = Number(vel ? vel.fba_90d : r.fba_90d_sales ?? 0);
+      const fba_60d_sales = Number(vel ? vel.fba_60d : r.fba_60d_sales ?? 0);
+      const fba_30d_sales = Number(vel ? vel.fba_30d : r.fba_30d_sales ?? 0);
+      const fba_15d_sales = Number(vel ? vel.fba_15d : r.fba_15d_sales ?? 0);
+      const fba_7d_sales = Number(vel ? vel.fba_7d : r.fba_7d_sales ?? 0);
+      const fba_30d_pre = Number(vel ? vel.fba_30d_pre : r.fba_30d_pre ?? 0);
       const avg_daily_prev = Math.max(0.01, vel ? vel.avg_daily_prev : r.avg_daily_prev as number);
       const avg_daily_real = weightedDailyAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d, salesWindowWeights);
       const avg_daily_curr = Math.max(0.01, currentDailyAverage(avg_daily_prev, avg_daily_real, categoryCode as "SC" | "CC" | "FM" | undefined));
@@ -269,7 +279,10 @@ export const DemandPlanningService = {
       // categoryCode here can be AC/SWC too, which the narrower ForecastCategoryCode type doesn't include.
       const east_avg_curr = Math.max(0.01, currentDailyAverage(east_avg_prev, east_avg_real, categoryCode as "SC" | "CC" | "FM" | undefined));
       const fba_avg_prev = Math.max(0.01, vel ? vel.fba_avg_prev : r.fba_avg_prev as number);
-      const fba_avg_real = Math.max(0.01, vel ? vel.fba_avg_real : r.fba_avg_real as number);
+      const fba_avg_real = weightedDailyAverage(
+        fba_90d_sales, fba_60d_sales, fba_30d_sales, fba_30d_pre, fba_15d_sales, fba_7d_sales,
+        FBA_SALES_WINDOW_WEIGHTS,
+      );
       const fba_avg_curr = Math.max(0.01, currentDailyAverage(fba_avg_prev, fba_avg_real, categoryCode as "SC" | "CC" | "FM" | undefined));
       const fba_30d = vel
         ? fivePeriodThirtyDayAverage(vel.fba_90d, vel.fba_60d, vel.fba_30d, 0, vel.fba_15d, vel.fba_7d)
@@ -398,6 +411,7 @@ export const DemandPlanningService = {
         stock_mode: "available",
         west_90d, west_60d, west_30d, west_15d, west_7d, west_30d_pre,
         east_90d, east_60d, east_30d, east_15d, east_7d, east_30d_pre,
+        fba_90d_sales, fba_60d_sales, fba_30d_sales, fba_15d_sales, fba_7d_sales, fba_30d_pre,
         avg_daily_prev: Math.round(avg_daily_prev * 100) / 100,
         avg_daily_real: Math.round(avg_daily_real * 100) / 100,
         avg_daily_curr: Math.round(avg_daily_curr * 100) / 100,
@@ -568,6 +582,7 @@ export const DemandPlanningService = {
       "master_sku", "sales_status",
       "west_90d", "west_60d", "west_30d", "west_15d", "west_7d", "west_30d_pre",
       "east_90d", "east_60d", "east_30d", "east_15d", "east_7d", "east_30d_pre",
+      "fba_90d_sales", "fba_60d_sales", "fba_30d_sales", "fba_15d_sales", "fba_7d_sales", "fba_30d_pre",
       "avg_daily_real", "avg_daily_prev", "avg_daily_curr",
       "east_avg_real", "east_avg_prev", "east_avg_curr",
       "total_avg_prev", "total_avg_real", "total_avg_curr",
@@ -588,6 +603,12 @@ export const DemandPlanningService = {
       east_15d        = EXCLUDED.east_15d,
       east_7d         = EXCLUDED.east_7d,
       east_30d_pre    = EXCLUDED.east_30d_pre,
+      fba_90d_sales   = EXCLUDED.fba_90d_sales,
+      fba_60d_sales   = EXCLUDED.fba_60d_sales,
+      fba_30d_sales   = EXCLUDED.fba_30d_sales,
+      fba_15d_sales   = EXCLUDED.fba_15d_sales,
+      fba_7d_sales    = EXCLUDED.fba_7d_sales,
+      fba_30d_pre     = EXCLUDED.fba_30d_pre,
       avg_daily_real  = EXCLUDED.avg_daily_real,
       avg_daily_prev  = EXCLUDED.avg_daily_prev,
       avg_daily_curr  = EXCLUDED.avg_daily_curr,
@@ -619,8 +640,8 @@ export const DemandPlanningService = {
       );
       const fbaPrev = Number(r.fba_avg_prev ?? 0);
       const fbaReal = weightedDailyAverage(
-        Number(r.fba_90d ?? 0), Number(r.fba_60d ?? 0), Number(r.fba_30d ?? 0), 0,
-        Number(r.fba_15d ?? 0), Number(r.fba_7d ?? 0), salesWindowWeights,
+        Number(r.fba_90d ?? 0), Number(r.fba_60d ?? 0), Number(r.fba_30d ?? 0), Number(r.fba_30d_pre ?? 0),
+        Number(r.fba_15d ?? 0), Number(r.fba_7d ?? 0), FBA_SALES_WINDOW_WEIGHTS,
       );
       const wCurr = currentDailyAverage(wPrev, wReal, categoryCode);
       const eCurr = currentDailyAverage(ePrev, eReal, categoryCode);
@@ -638,6 +659,12 @@ export const DemandPlanningService = {
       r.fba_avg_prev = fbaPrev;
       r.fba_avg_real = fbaReal;
       r.fba_avg_curr = fbaCurr;
+      r.fba_90d_sales = Number(r.fba_90d ?? 0);
+      r.fba_60d_sales = Number(r.fba_60d ?? 0);
+      r.fba_30d_sales = Number(r.fba_30d ?? 0);
+      r.fba_15d_sales = Number(r.fba_15d ?? 0);
+      r.fba_7d_sales = Number(r.fba_7d ?? 0);
+      r.fba_30d_pre = Number(r.fba_30d_pre ?? 0);
 
       const w90 = Number(r.west_90d), w60 = Number(r.west_60d), w30 = Number(r.west_30d);
       const wPre = Number(r.west_30d_pre), w15 = Number(r.west_15d), w7 = Number(r.west_7d);

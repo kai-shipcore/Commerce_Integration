@@ -95,6 +95,7 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
   stock: true,
   wsales: true,
   esales: true,
+  fbasales: true,
   wavg: true,
   eavg: true,
   fba: true,

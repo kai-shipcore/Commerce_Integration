@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_stats (
     east_7d        NUMERIC(10, 2)  NOT NULL DEFAULT 0,
     east_30d_pre   NUMERIC(10, 2)  NOT NULL DEFAULT 0,
 
+    -- Amazon FBA sales (raw units per lookback window)
+    fba_90d_sales  NUMERIC(10, 2)  NOT NULL DEFAULT 0,
+    fba_60d_sales  NUMERIC(10, 2)  NOT NULL DEFAULT 0,
+    fba_30d_sales  NUMERIC(10, 2)  NOT NULL DEFAULT 0,
+    fba_15d_sales  NUMERIC(10, 2)  NOT NULL DEFAULT 0,
+    fba_7d_sales   NUMERIC(10, 2)  NOT NULL DEFAULT 0,
+    fba_30d_pre    NUMERIC(10, 2)  NOT NULL DEFAULT 0,
+
     -- West avg daily velocity (prev = prior period, real = trailing, curr = recent)
     avg_daily_prev NUMERIC(12, 6)  NOT NULL DEFAULT 0,
     avg_daily_real NUMERIC(12, 6)  NOT NULL DEFAULT 0,

@@ -143,6 +143,18 @@ describe("DemandPlanningRepository.getSalesVelocity", () => {
     expect(sql).toContain("$1::date - 91");
     expect(params).toEqual(["2026-03-01"]);
   });
+
+  it("keeps FBA sales and preorder in separate windows", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getSalesVelocity("custom", "2026-03-01");
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("channel = 'Amazon FBA' AND order_type = 'sales'");
+    expect(sql).toContain("order_type = 'preorder'");
+    expect(sql).toContain("AS fba_30d_pre");
+    expect(sql).toContain("/ 90 * 0.15");
+    expect(sql).toContain("/ 60 * 0.20");
+    expect(sql).not.toContain("channel = 'Amazon FBA' AND order_date");
+  });
 });
 
 describe("DemandPlanningRepository.batchUpsert", () => {

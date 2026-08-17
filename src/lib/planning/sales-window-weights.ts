@@ -12,6 +12,17 @@ export const DEFAULT_SALES_WINDOW_WEIGHTS = {
 export type SalesWindowWeights = typeof DEFAULT_SALES_WINDOW_WEIGHTS;
 export type SalesWindowWeightKey = keyof SalesWindowWeights;
 
+// The source Google Sheet uses these fixed weights for FBA. Dashboard users
+// may customize the West/East FBM weights, but that must not alter FBA.
+export const FBA_SALES_WINDOW_WEIGHTS: SalesWindowWeights = {
+  d90: 0.15,
+  d60: 0.2,
+  d30: 0.3,
+  d15: 0.2,
+  d7: 0.15,
+  pre: 0,
+};
+
 export const SALES_WINDOW_WEIGHT_FIELDS: Array<{ key: SalesWindowWeightKey; label: string }> = [
   { key: "d90", label: "90일" },
   { key: "d60", label: "60일" },
@@ -34,6 +45,15 @@ export const SALES_WINDOW_WEIGHT_COLUMN_KEYS: Record<string, SalesWindowWeightKe
   e15: "d15",
   e7: "d7",
   epre: "pre",
+};
+
+export const FBA_SALES_WINDOW_WEIGHT_COLUMN_KEYS: Record<string, SalesWindowWeightKey> = {
+  f90: "d90",
+  f60: "d60",
+  f30: "d30",
+  f15: "d15",
+  f7: "d7",
+  fpre: "pre",
 };
 
 export function normalizeSalesWindowWeights(value: unknown): SalesWindowWeights {
@@ -77,6 +97,8 @@ export function salesWindowWeightPercentLabel(value: number): string {
 }
 
 export function labelWithSalesWindowWeight(columnId: string, label: string, weights: SalesWindowWeights): string {
+  const fbaKey = FBA_SALES_WINDOW_WEIGHT_COLUMN_KEYS[columnId];
+  if (fbaKey) return `${label} · ${salesWindowWeightPercentLabel(FBA_SALES_WINDOW_WEIGHTS[fbaKey])}`;
   const key = SALES_WINDOW_WEIGHT_COLUMN_KEYS[columnId];
   if (!key) return label;
   return `${label} · ${salesWindowWeightPercentLabel(weights[key])}`;
