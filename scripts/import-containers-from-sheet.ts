@@ -5,8 +5,9 @@
 // Header row is row 3. Data rows start at row 4.
 //
 // Columns read per row:
-//   B  (col 2)  = CBM per unit → updates fc_products.cbm_per_unit
-//   L  (col 12) = Master SKU
+//   Column whose row-3 header is "CBM" = CBM value
+//   If row 3 also has "QTY/CTN", CBM per unit = CBM / QTY/CTN
+//   Column whose row-3 header is "Master SKU" = Master SKU
 //   Container columns (detected from row 3 by name pattern):
 //     col+0 = container name / qty per SKU in data rows
 //     col+5 = ETA date (header cell only)
@@ -18,14 +19,15 @@
 // DB writes (all inside one transaction):
 //   1. UPDATE fc_products SET cbm_per_unit = ... (only rows with a CBM value)
 //   2. UPSERT fc_containers by container_number (insert or update eta/status)
-//   3. UPSERT fc_container_items by container+sku (update qty/cbm if exists, insert if new)
-//      — items NOT in the sheet are left untouched (no deletes)
+//   3. Synchronize fc_container_items by container+sku (update/insert current rows,
+//      delete rows missing from the sheet or whose sheet qty is zero)
 //
 // File parsing: uses Python 3 stdlib (zipfile + re) to read xlsx without loading the
 // entire workbook into memory (ExcelJS OOMed on this 57MB file with 90MB+ sheets).
 
 import { getPrimaryPool } from "../src/lib/db/primary-db";
 import { CONTAINER_IMPORT_LOCK_KEY, ContainerImportRepository } from "../src/lib/container-import/repository";
+import { planContainerItemSync } from "../src/lib/container-import/item-sync";
 import { inferProduct } from "../src/lib/sku-master/repository";
 import * as path from "path";
 import * as fs from "fs";
@@ -39,8 +41,6 @@ const dryRun = process.argv.includes("--dry-run");
 const forceDownload = process.argv.includes("--force-download");
 const tabArgIdx = process.argv.indexOf("--tab");
 const tabArg = tabArgIdx !== -1 ? process.argv[tabArgIdx + 1] : null;
-const skuColArgIdx = process.argv.indexOf("--sku-col");
-const skuColArg = skuColArgIdx !== -1 ? process.argv[skuColArgIdx + 1] : "L";
 
 if (!input) {
   console.error(
@@ -68,7 +68,6 @@ import xml.etree.ElementTree as ET
 
 xlsx_path    = sys.argv[1]
 tab_name_arg = sys.argv[2] if len(sys.argv) > 2 else ""
-sku_col_name = sys.argv[3].upper() if len(sys.argv) > 3 else "L"
 
 def col_name_to_num_simple(name):
     n = 0
@@ -78,10 +77,19 @@ def col_name_to_num_simple(name):
 
 HEADER_ROW = 3
 DATA_START  = 4
-CBM_COL     = 2    # B
-SKU_COL     = col_name_to_num_simple(sku_col_name)
 ETA_OFFSET  = 5
 CONTAINER_RE = re.compile(r'^\\d{2,4}-[A-Z]{1,6}(-[A-Z\\d]+)*$')
+
+def normalize_header(value):
+    normalized = re.sub(r'\\s+', ' ', str(value)).strip().upper()
+    return re.sub(r'\\s*/\\s*', '/', normalized)
+
+def col_num_to_name(num):
+    result = ""
+    while num > 0:
+        num, rem = divmod(num - 1, 26)
+        result = chr(65 + rem) + result
+    return result
 
 col_name_to_num = col_name_to_num_simple
 
@@ -162,6 +170,9 @@ def serial_to_date(v):
 
 containers = []
 sku_rows   = []
+sku_col    = None
+cbm_col    = None
+qty_per_ctn_col = None
 
 with zf.open(target_file) as sheet_stream:
     context = ET.iterparse(sheet_stream, events=("start", "end"))
@@ -203,6 +214,14 @@ with zf.open(target_file) as sheet_stream:
 
         if rnum == HEADER_ROW:
             for col_idx, cell in cells.items():
+                header = normalize_header(cell["val"])
+                if header == "MASTER SKU" and sku_col is None:
+                    sku_col = col_idx
+                elif header == "CBM" and cbm_col is None:
+                    cbm_col = col_idx
+                elif header == "QTY/CTN" and qty_per_ctn_col is None:
+                    qty_per_ctn_col = col_idx
+            for col_idx, cell in cells.items():
                 v = cell["val"]
                 if isinstance(v, str) and CONTAINER_RE.match(v.strip()):
                     name = v.strip()
@@ -214,15 +233,22 @@ with zf.open(target_file) as sheet_stream:
                             eta_str = serial_to_date(ev)
                     containers.append({"colIdx": col_idx, "name": name, "etaDate": eta_str, "argb": cell["argb"]})
         elif rnum >= DATA_START:
-            sku_cell = cells.get(SKU_COL)
+            sku_cell = cells.get(sku_col) if sku_col is not None else None
             if not sku_cell or not sku_cell["val"]:
                 root.clear(); continue
             sku = str(sku_cell["val"]).strip().upper()
             if not sku:
                 root.clear(); continue
-            cbm_cell = cells.get(CBM_COL)
+            cbm_cell = cells.get(cbm_col) if cbm_col is not None else None
             cbm_val  = cbm_cell["val"] if cbm_cell else None
-            cbm      = float(cbm_val) if isinstance(cbm_val, (int, float)) and cbm_val > 0 else None
+            cbm = float(cbm_val) if isinstance(cbm_val, (int, float)) and cbm_val > 0 else None
+            if cbm is not None and qty_per_ctn_col is not None:
+                qty_per_ctn_cell = cells.get(qty_per_ctn_col)
+                qty_per_ctn_val = qty_per_ctn_cell["val"] if qty_per_ctn_cell else None
+                if isinstance(qty_per_ctn_val, (int, float)) and qty_per_ctn_val > 0:
+                    cbm = cbm / float(qty_per_ctn_val)
+                else:
+                    cbm = None
             qtys = {}
             for cg in containers:
                 qty_cell = cells.get(cg["colIdx"])
@@ -235,7 +261,21 @@ with zf.open(target_file) as sheet_stream:
             sku_rows.append({"masterSku": sku, "cbmUnit": cbm, "qtys": qtys})
         root.clear()
 
-print(json.dumps({"tab": target_name, "containers": containers, "skuRows": sku_rows}))
+if sku_col is None:
+    print(json.dumps({"error": "Master SKU header not found in row 3", "tab": target_name}))
+    sys.exit(1)
+if cbm_col is None:
+    print(json.dumps({"error": "CBM header not found in row 3", "tab": target_name}))
+    sys.exit(1)
+
+print(json.dumps({
+    "tab": target_name,
+    "skuColumn": col_num_to_name(sku_col),
+    "cbmColumn": col_num_to_name(cbm_col),
+    "qtyPerCtnColumn": col_num_to_name(qty_per_ctn_col) if qty_per_ctn_col is not None else None,
+    "containers": containers,
+    "skuRows": sku_rows
+}))
 `;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -255,6 +295,9 @@ interface SkuRowRaw {
 
 interface ExtractionResult {
   tab: string;
+  skuColumn?: string;
+  cbmColumn?: string;
+  qtyPerCtnColumn?: string | null;
   containers: ContainerInfo[];
   skuRows: SkuRowRaw[];
   error?: string;
@@ -481,7 +524,6 @@ function parseXlsx(xlsxPath: string): ExtractionResult {
 
   const args = [scriptPath, xlsxPath];
   args.push(tabArg ?? "");
-  args.push(skuColArg);
 
   console.log("Parsing xlsx via Python (avoids ExcelJS memory limits)...");
   // Try platform-appropriate interpreter names: macOS/Linux ship "python3";
@@ -541,6 +583,13 @@ async function main() {
   }
 
   console.log(`\nSheet: "${extracted.tab}"`);
+  console.log(`Master SKU column: ${extracted.skuColumn ?? "(not found)"}`);
+  console.log(
+    `CBM column: ${extracted.cbmColumn ?? "(not found)"}`
+      + (extracted.qtyPerCtnColumn
+        ? ` | QTY/CTN column: ${extracted.qtyPerCtnColumn} | per-unit CBM = CBM / QTY/CTN`
+        : " | per-unit CBM = CBM"),
+  );
 
   // ── Resolve container statuses from fill colors ───────────────────────────
   const containers: ContainerGroup[] = extracted.containers.map((c) => ({
@@ -706,7 +755,8 @@ async function main() {
     }
     console.log(`\nContainers: ${insertedContainers} inserted, ${updatedContainers} updated.`);
 
-    // 5. Load existing items for these containers so we can upsert without a unique constraint
+    // 5. Load existing items, then remove rows that are absent/zero in the sheet.
+    //    Keep one matching row so its ID and SKU memo survive repeated imports.
     const containerIdList = [...containerIds.values()];
     const containerIdToName = new Map([...containerIds.entries()].map(([name, id]) => [id, name]));
     const existingItemsRes = await client.query<{ id: string; container_id: string; master_sku: string }>(
@@ -715,19 +765,29 @@ async function main() {
        WHERE container_id = ANY($1::bigint[])`,
       [containerIdList]
     );
-    // existingMap: containerName → master_sku → item id
-    const existingMap = new Map<string, Map<string, string>>();
-    for (const row of existingItemsRes.rows) {
-      const cName = containerIdToName.get(row.container_id);
-      if (!cName) continue;
-      if (!existingMap.has(cName)) existingMap.set(cName, new Map());
-      existingMap.get(cName)!.set(row.master_sku, row.id);
+    const { retainedItemIds: existingMap, staleItemIds } = planContainerItemSync({
+      containerNames: containers.map((container) => container.name),
+      sourceRows: uniqueSkuRows,
+      validSkus,
+      existingItems: existingItemsRes.rows.map((row) => ({
+        id: row.id,
+        containerId: row.container_id,
+        masterSku: row.master_sku,
+      })),
+      containerIdToName,
+    });
+    if (staleItemIds.length > 0) {
+      await client.query(
+        `DELETE FROM shipcore.fc_container_items WHERE id = ANY($1::bigint[])`,
+        [staleItemIds],
+      );
     }
+    console.log(`\nRemoved ${staleItemIds.length} stale/duplicate container item(s).`);
 
-    // 6. Upsert container items — update qty/cbm if row exists, insert otherwise
+    // 6. Upsert the exact positive-qty sheet set for every imported container.
     let inserted = 0;
     let itemsUpdated = 0;
-    for (const r of skuRows) {
+    for (const r of uniqueSkuRows) {
       if (!validSkus.has(r.masterSku)) continue;
       for (const [containerName, qty] of Object.entries(r.qtys)) {
         const containerId = containerIds.get(containerName);
@@ -736,8 +796,10 @@ async function main() {
         const existingId = existingMap.get(containerName)?.get(r.masterSku);
         if (existingId) {
           await client.query(
-            `UPDATE shipcore.fc_container_items
-             SET qty = $1, cbm_unit = COALESCE($2::numeric, cbm_unit), updated_at = NOW()
+             `UPDATE shipcore.fc_container_items
+             SET qty = $1::int,
+                 cbm_unit = COALESCE($2::numeric, cbm_unit),
+                 updated_at = NOW()
              WHERE id = $3::bigint`,
             [qty, effectiveCbm, existingId]
           );
@@ -746,7 +808,7 @@ async function main() {
           await client.query(
              `INSERT INTO shipcore.fc_container_items
                (container_id, master_sku, qty, cbm_unit, created_at, updated_at)
-             VALUES ($1::bigint, $2::varchar(128), $3::int, $4::numeric, NOW(), NOW())`,
+              VALUES ($1::bigint, $2::varchar(128), $3::int, $4::numeric, NOW(), NOW())`,
             [containerId, r.masterSku, qty, effectiveCbm]
           );
           inserted++;
@@ -756,7 +818,7 @@ async function main() {
 
     await client.query("COMMIT");
     console.log(
-      `\nDone. ${insertedProducts.rowCount ?? 0} products created, ${insertedContainers} containers inserted, ${updatedContainers} updated, ${inserted} items inserted, ${itemsUpdated} items updated, ${cbmUpdated} CBM values updated.`
+      `\nDone. ${insertedProducts.rowCount ?? 0} products created, ${insertedContainers} containers inserted, ${updatedContainers} updated, ${staleItemIds.length} stale items removed, ${inserted} items inserted, ${itemsUpdated} items updated, ${cbmUpdated} CBM values updated.`
     );
   } catch (err) {
     await client.query("ROLLBACK");

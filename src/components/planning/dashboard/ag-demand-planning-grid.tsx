@@ -3370,7 +3370,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         const override = qtyOverrides.get(key);
         const derived = chainMap.get(row.sku)?.get(container.name);
         const conQty = override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
-        containerTotals.ccbm! += (conQty / (row.case_qty || 1)) * (row.cbm_per_unit ?? 0);
+        const cbmUnit = override?.cbm_unit ?? raw?.cbm_unit ?? row.cbm_per_unit ?? 0;
+        containerTotals.ccbm! += conQty * cbmUnit;
         containerTotals.inb_qty! += override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
         containerTotals.remaining! += row.remaining ?? 0;
         containerTotals.mistake! += row.mistake ?? 0;
@@ -4625,7 +4626,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         const override = qtyOverrides.get(key);
         const existingQty = override !== undefined ? override.inbound_qty ?? 0 : r.containers?.[container.name]?.inbound_qty ?? 0;
         if (!force && existingQty > 0) {
-          usedCbm += (existingQty / (r.case_qty || 1)) * (r.cbm_per_unit ?? 0);
+          const cbmUnit = override?.cbm_unit
+            ?? r.containers?.[container.name]?.cbm_unit
+            ?? r.cbm_per_unit
+            ?? 0;
+          usedCbm += existingQty * cbmUnit;
           return false; // skip — already has Con Qty
         }
         return true;
@@ -4644,7 +4649,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         return {
           sku: row.sku,
           adj_daily: adjDaily,
-          cbm_per_unit: (row.cbm_per_unit ?? 0) / (row.case_qty || 1),
+          cbm_per_unit: row.cbm_per_unit ?? 0,
           moq: row.moq ?? 1,
           order_multiple: row.order_multiple ?? 1,
           remaining_at_arrival: remainingAtArrival,
@@ -4667,7 +4672,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         for (const order of orders) {
           const key = `${order.sku}::${container.name}`;
           const raw = rowMap.get(order.sku);
-          const cbmUnit = (raw?.cbm_per_unit ?? 0) / (raw?.case_qty || 1);
+          const cbmUnit = raw?.containers?.[container.name]?.cbm_unit ?? raw?.cbm_per_unit ?? 0;
           next.set(key, {
             inbound_qty: order.qty,
             avail_qty: order.qty,
@@ -4749,7 +4754,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       const need = adjDaily * targetDays + backorder - remainingAtArrival;
       if (need <= 0) continue;
 
-      const cbmUnit = (row.cbm_per_unit ?? 0) / (row.case_qty || 1);
+      const cbmUnit = row.cbm_per_unit ?? 0;
       const remainingCbm = capacityMode === "fit" ? capacityCbm - usedCbm : Number.POSITIVE_INFINITY;
       if (remainingCbm <= 0) continue;
 
@@ -4864,7 +4869,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       const sku = key.slice(0, -(container.name.length + 2));
       const row = rowsBySku.get(sku);
       const currentQty = row?.containers?.[container.name]?.inbound_qty ?? 0;
-      const cbmUnit = val.cbm_unit ?? ((row?.cbm_per_unit ?? 0) / (row?.case_qty || 1));
+      const cbmUnit = val.cbm_unit ?? row?.cbm_per_unit ?? 0;
       const cbm = val.cbm ?? qty * cbmUnit;
       const delta = qty - currentQty;
 
