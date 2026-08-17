@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   baselineBackorderQty,
+  currentDailyAverage,
   fivePeriodThirtyDayAverage,
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
@@ -12,6 +13,11 @@ describe("Google Sheet sales formulas", () => {
 
   it("averages the five 30-day-normalized periods and rounds up", () => {
     expect(fivePeriodThirtyDayAverage(900, 600, 300, 50, 150, 70)).toBe(310);
+  });
+
+  it("uses the sheet's previous/actual blend on both sides of the 50% threshold", () => {
+    expect(currentDailyAverage(10, 14)).toBeCloseTo(13.6);
+    expect(currentDailyAverage(10, 16)).toBeCloseTo(14.2);
   });
 
   it("matches the sheet Base Back Order rule when Total 30D is zero", () => {

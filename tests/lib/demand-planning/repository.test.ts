@@ -40,6 +40,18 @@ describe("DemandPlanningRepository.getStatsRows", () => {
     expect(sql).toContain("FROM shipcore.fc_stats_custom s");
   });
 
+  it("returns every stored FBA sales window for today's dashboard", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "custom", categoryCode: "CC", inboundStatuses: "('shipped')" });
+    const [sql] = primaryQueryMock.mock.calls[0];
+    for (const column of [
+      "fba_90d_sales", "fba_60d_sales", "fba_30d_sales",
+      "fba_15d_sales", "fba_7d_sales", "fba_30d_pre",
+    ]) {
+      expect(sql).toContain(`AS ${column}`);
+    }
+  });
+
   it("uses fc_stats directly for SC category in link mode", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: "SC", inboundStatuses: "('shipped')" });

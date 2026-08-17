@@ -88,7 +88,10 @@ describe("DemandPlanningService.getDashboardData", () => {
       total_stock: 10, west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
       east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
       avg_daily_prev: 1, avg_daily_real: 1, avg_daily_curr: 1, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
-      fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0, fba_30d: 0, total_avg_prev: 1, total_avg_real: 1, total_avg_curr: 1,
+      fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0,
+      fba_90d_sales: 90, fba_60d_sales: 60, fba_30d_sales: 30,
+      fba_15d_sales: 15, fba_7d_sales: 7, fba_30d_pre: 0,
+      fba_30d: 0, total_avg_prev: 1, total_avg_real: 1, total_avg_curr: 1,
       oos_days_90d: 0, oos_lost_demand_90d: 0,
     }]);
 
@@ -97,6 +100,14 @@ describe("DemandPlanningService.getDashboardData", () => {
     expect(result.data.rows[0].sku).toBe("SKU-1");
     expect(result.data.rows[0].total_stock).toBe(10);
     expect(result.data.rows[0].container_info).toBe("2026-08-10 - (190-CA-SEAT) - 700");
+    expect(result.data.rows[0]).toMatchObject({
+      fba_90d_sales: 90,
+      fba_60d_sales: 60,
+      fba_30d_sales: 30,
+      fba_15d_sales: 15,
+      fba_7d_sales: 7,
+      fba_30d_pre: 0,
+    });
   });
 
   it("skips the historical velocity snapshot lookups when asOf is today or absent", async () => {

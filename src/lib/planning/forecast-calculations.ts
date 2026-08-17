@@ -58,7 +58,7 @@ export function currentDailyAverage(prev: number, real: number, _categoryCode?: 
   if (prev === 0) return real;
   const change = Math.abs((real - prev) / prev);
   if (change < 0.5) return prev * 0.1 + real * 0.9;
-  return prev * 0.2 + real * 0.8;
+  return prev * 0.3 + real * 0.7;
 }
 
 export function fivePeriodThirtyDayAverage(
