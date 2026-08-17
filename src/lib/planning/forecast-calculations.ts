@@ -110,3 +110,39 @@ export function inventoryLifeDays(carryover: number, dailyRate: number, seasonal
 export function baselineBackorderQty(availableQty: number, total30d: number): number {
   return total30d <= 0 ? 0 : Math.max(0, -availableQty);
 }
+
+/** Car Cover's source sheet suppresses back orders for the `-03-` SKU family. */
+export function isCarCover03Sku(sku: string): boolean {
+  const normalized = sku.toUpperCase();
+  return normalized.startsWith("CC-") && normalized.includes("-03-");
+}
+
+export function sheetBaselineBackorderQty(sku: string, availableQty: number, total30d: number): number {
+  return isCarCover03Sku(sku) ? 0 : baselineBackorderQty(availableQty, total30d);
+}
+
+/** Mirrors the sheet's Est. Sales formula for each container interval. */
+export function sheetContainerEstimatedSales(
+  sku: string,
+  daysBetween: number,
+  dailyRate: number,
+  seasonalFactor: number,
+  availableQty: number,
+  inboundQty: number,
+): number {
+  const projectedSales = daysBetween * dailyRate * seasonalFactor;
+  if (isCarCover03Sku(sku)) {
+    return Math.min(projectedSales, Math.max(availableQty - inboundQty, 0));
+  }
+  return sku.toUpperCase().startsWith("CC-") && availableQty === 0 ? 0 : projectedSales;
+}
+
+export function sheetContainerBackorderQty(
+  sku: string,
+  total30d: number,
+  estimatedSales: number,
+  availableQty: number,
+): number {
+  if (isCarCover03Sku(sku) || total30d <= 0) return 0;
+  return Math.max(0, estimatedSales - availableQty);
+}

@@ -3,6 +3,9 @@ import {
   baselineBackorderQty,
   currentDailyAverage,
   fivePeriodThirtyDayAverage,
+  sheetBaselineBackorderQty,
+  sheetContainerBackorderQty,
+  sheetContainerEstimatedSales,
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
 
@@ -24,5 +27,17 @@ describe("Google Sheet sales formulas", () => {
     expect(baselineBackorderQty(-12, 0)).toBe(0);
     expect(baselineBackorderQty(-12, 1)).toBe(12);
     expect(baselineBackorderQty(12, 1)).toBe(0);
+  });
+
+  it("suppresses Car Cover -03- back orders like the sheet", () => {
+    expect(sheetBaselineBackorderQty("CC-CN-03-P-GR-1TO", -12, 100)).toBe(0);
+    expect(sheetContainerBackorderQty("CC-CN-03-P-GR-1TO", 100, 20, 5)).toBe(0);
+    expect(sheetBaselineBackorderQty("CC-CN-15-P-GR-1TO", -12, 100)).toBe(12);
+  });
+
+  it("caps Car Cover -03- estimated sales at stock before the inbound quantity", () => {
+    expect(sheetContainerEstimatedSales("CC-CN-03-P-GR-1TO", 10, 2, 1, 15, 5)).toBe(10);
+    expect(sheetContainerEstimatedSales("CC-CN-03-P-GR-1TO", 10, 2, 1, 30, 5)).toBe(20);
+    expect(sheetContainerEstimatedSales("CC-CN-15-P-GR-1TO", 10, 2, 1, 0, 0)).toBe(0);
   });
 });

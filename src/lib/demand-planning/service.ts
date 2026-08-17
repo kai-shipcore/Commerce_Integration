@@ -18,11 +18,13 @@
 import { getPlanningDashboardCache, setPlanningDashboardCache, invalidatePlanningDashboardCache } from "@/lib/planning/dashboard-cache";
 import { addSheetDays, planningLocalDateString } from "@/lib/planning/date-utils";
 import {
-  baselineBackorderQty,
   currentDailyAverage,
   fivePeriodThirtyDayAverage,
   forecastCategoryCodeForSku,
   inventoryLifeDays,
+  sheetBaselineBackorderQty,
+  sheetContainerBackorderQty,
+  sheetContainerEstimatedSales,
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
@@ -278,6 +280,24 @@ export const DemandPlanningService = {
       // currentDailyAverage's categoryCode param is unused at runtime (kept for call-site symmetry);
       // categoryCode here can be AC/SWC too, which the narrower ForecastCategoryCode type doesn't include.
       const east_avg_curr = Math.max(0.01, currentDailyAverage(east_avg_prev, east_avg_real, categoryCode as "SC" | "CC" | "FM" | undefined));
+      const isCarCover = categoryCode === "CC";
+      const fbm_avg_prev = isCarCover
+        ? Math.max(0.01, avg_daily_prev + east_avg_prev)
+        : avg_daily_prev + east_avg_prev;
+      const fbm_avg_real = isCarCover
+        ? weightedDailyAverage(
+            west_90d + east_90d,
+            west_60d + east_60d,
+            west_30d + east_30d,
+            west_30d_pre + east_30d_pre,
+            west_15d + east_15d,
+            west_7d + east_7d,
+            salesWindowWeights,
+          )
+        : avg_daily_real + east_avg_real;
+      const fbm_avg_curr = isCarCover
+        ? currentDailyAverage(fbm_avg_prev, fbm_avg_real, categoryCode)
+        : avg_daily_curr + east_avg_curr;
       const fba_avg_prev = Math.max(0.01, vel ? vel.fba_avg_prev : r.fba_avg_prev as number);
       const fba_avg_real = weightedDailyAverage(
         fba_90d_sales, fba_60d_sales, fba_30d_sales, fba_30d_pre, fba_15d_sales, fba_7d_sales,
@@ -291,14 +311,28 @@ export const DemandPlanningService = {
       const oos_lost_demand_90d = (r.oos_lost_demand_90d as number | null) ?? null;
       const west_fbm_30d = fivePeriodThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d);
       const east_fbm_30d = fivePeriodThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d);
-      const total_30d = west_fbm_30d + east_fbm_30d + fba_30d;
-      const total_avg_prev = Math.max(0.03, avg_daily_prev + east_avg_prev + fba_avg_prev);
-      const total_avg_real = Math.max(0.03, avg_daily_real + east_avg_real + fba_avg_real);
-      const total_avg_curr = Math.max(0.03, avg_daily_curr + east_avg_curr + fba_avg_curr);
+      const fbm_30d = fivePeriodThirtyDayAverage(
+        west_90d + east_90d,
+        west_60d + east_60d,
+        west_30d + east_30d,
+        west_30d_pre + east_30d_pre,
+        west_15d + east_15d,
+        west_7d + east_7d,
+      );
+      const total_30d = (isCarCover ? fbm_30d : west_fbm_30d + east_fbm_30d) + fba_30d;
+      const total_avg_prev = isCarCover
+        ? fbm_avg_prev + fba_avg_prev
+        : Math.max(0.03, avg_daily_prev + east_avg_prev + fba_avg_prev);
+      const total_avg_real = isCarCover
+        ? fbm_avg_real + fba_avg_real
+        : Math.max(0.03, avg_daily_real + east_avg_real + fba_avg_real);
+      const total_avg_curr = isCarCover
+        ? fbm_avg_curr + fba_avg_curr
+        : Math.max(0.03, avg_daily_curr + east_avg_curr + fba_avg_curr);
 
       const availQty = (r.total_stock as number) + (r.back as number);
       const carryover = availQty >= 0 ? availQty : 0;
-      const baselineBackorder = baselineBackorderQty(availQty, total_30d);
+      const baselineBackorder = sheetBaselineBackorderQty(masterSku, availQty, total_30d);
       const dailyRate = total_avg_curr;
       const invLife = inventoryLifeDays(carryover, dailyRate, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
       const asOfMs = new Date(todayStr).getTime();
@@ -351,8 +385,10 @@ export const DemandPlanningService = {
           (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000,
         );
         const seasonalFactor = seasonalFactorForEta(eta, DEFAULT_SEASONAL_FACTORS);
-        const estSales = daysBetween * dailyRate * seasonalFactor;
-        const backorderC = total_30d <= 0 ? 0 : Math.max(0, estSales - availQtyC);
+        const estSales = sheetContainerEstimatedSales(
+          masterSku, daysBetween, dailyRate, seasonalFactor, availQtyC, qty,
+        );
+        const backorderC = sheetContainerBackorderQty(masterSku, total_30d, estSales, availQtyC);
         const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
         const invLifeC = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
 
@@ -422,9 +458,9 @@ export const DemandPlanningService = {
         fba_avg_real: Math.round(fba_avg_real * 100) / 100,
         fba_avg_curr: Math.round(fba_avg_curr * 100) / 100,
         west_fbm_30d, east_fbm_30d, fba_30d, total_30d,
-        total_avg_prev: Math.round(total_avg_prev * 100) / 100,
-        total_avg_real: Math.round(total_avg_real * 100) / 100,
-        total_avg_curr: Math.round(total_avg_curr * 100) / 100,
+        total_avg_prev: isCarCover ? total_avg_prev : Math.round(total_avg_prev * 100) / 100,
+        total_avg_real: isCarCover ? total_avg_real : Math.round(total_avg_real * 100) / 100,
+        total_avg_curr: isCarCover ? total_avg_curr : Math.round(total_avg_curr * 100) / 100,
         oos_days_90d, oos_lost_demand_90d,
         total_inbound_qty: r.total_inbound_qty as number | null,
         containers_list: (r.containers_list as string | null) ?? null,
@@ -645,6 +681,20 @@ export const DemandPlanningService = {
       );
       const wCurr = currentDailyAverage(wPrev, wReal, categoryCode);
       const eCurr = currentDailyAverage(ePrev, eReal, categoryCode);
+      const isCarCover = categoryCode === "CC";
+      const fbmPrev = isCarCover ? Math.max(0.01, wPrev + ePrev) : wPrev + ePrev;
+      const fbmReal = isCarCover
+        ? weightedDailyAverage(
+            Number(r.west_90d) + Number(r.east_90d),
+            Number(r.west_60d) + Number(r.east_60d),
+            Number(r.west_30d) + Number(r.east_30d),
+            Number(r.west_30d_pre) + Number(r.east_30d_pre),
+            Number(r.west_15d) + Number(r.east_15d),
+            Number(r.west_7d) + Number(r.east_7d),
+            salesWindowWeights,
+          )
+        : wReal + eReal;
+      const fbmCurr = isCarCover ? currentDailyAverage(fbmPrev, fbmReal, categoryCode) : wCurr + eCurr;
       const fbaCurr = currentDailyAverage(fbaPrev, fbaReal, categoryCode);
 
       r.avg_daily_prev = wPrev;
@@ -653,9 +703,9 @@ export const DemandPlanningService = {
       r.east_avg_real = eReal;
       r.avg_daily_curr = wCurr;
       r.east_avg_curr = eCurr;
-      r.total_avg_prev = wPrev + ePrev + fbaPrev;
-      r.total_avg_real = wReal + eReal + fbaReal;
-      r.total_avg_curr = wCurr + eCurr + fbaCurr;
+      r.total_avg_prev = fbmPrev + fbaPrev;
+      r.total_avg_real = fbmReal + fbaReal;
+      r.total_avg_curr = fbmCurr + fbaCurr;
       r.fba_avg_prev = fbaPrev;
       r.fba_avg_real = fbaReal;
       r.fba_avg_curr = fbaCurr;
@@ -672,11 +722,16 @@ export const DemandPlanningService = {
       const ePre = Number(r.east_30d_pre), e15 = Number(r.east_15d), e7 = Number(r.east_7d);
       r.west_fbm_30d = fivePeriodThirtyDayAverage(w90, w60, w30, wPre, w15, w7);
       r.east_fbm_30d = fivePeriodThirtyDayAverage(e90, e60, e30, ePre, e15, e7);
+      const fbm30d = fivePeriodThirtyDayAverage(
+        w90 + e90, w60 + e60, w30 + e30, wPre + ePre, w15 + e15, w7 + e7,
+      );
       r.fba_30d = fivePeriodThirtyDayAverage(
         Number(r.fba_90d ?? 0), Number(r.fba_60d ?? 0), Number(r.fba_30d ?? 0), 0,
         Number(r.fba_15d ?? 0), Number(r.fba_7d ?? 0),
       );
-      r.total_30d = (r.west_fbm_30d as number) + (r.east_fbm_30d as number) + (r.fba_30d as number);
+      r.total_30d = (isCarCover
+        ? fbm30d
+        : (r.west_fbm_30d as number) + (r.east_fbm_30d as number)) + (r.fba_30d as number);
     }
 
     await Promise.all([

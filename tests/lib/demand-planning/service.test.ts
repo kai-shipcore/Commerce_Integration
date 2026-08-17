@@ -211,6 +211,34 @@ describe("DemandPlanningService.refreshStats", () => {
     });
   });
 
+  it("combines West and East FBM before blending and 30-day rounding", async () => {
+    repositoryMock.getInventoryByWarehouse.mockResolvedValue([]);
+    repositoryMock.getOosEpisodes.mockResolvedValue([]);
+    repositoryMock.getOosAgg.mockResolvedValue([]);
+    repositoryMock.getOosLostDemandRaw.mockResolvedValue([]);
+    repositoryMock.getCategoryChannelRatio.mockResolvedValue([]);
+    repositoryMock.getSalesVelocity
+      .mockResolvedValueOnce([{
+        master_sku: "CC-CN-15-P-GR-1TO", sales_status: "Original",
+        west_90d: 1, west_60d: 0, west_30d: 0, west_30d_pre: 0, west_15d: 0, west_7d: 0,
+        east_90d: 1, east_60d: 0, east_30d: 0, east_30d_pre: 0, east_15d: 0, east_7d: 0,
+        avg_daily_prev: 10, east_avg_prev: 1, fba_avg_prev: 0,
+        fba_90d: 0, fba_60d: 0, fba_30d: 0, fba_15d: 0, fba_7d: 0, fba_30d_pre: 0,
+      }])
+      .mockResolvedValueOnce([]);
+
+    await DemandPlanningService.refreshStats({});
+
+    const statsCall = repositoryMock.batchUpsert.mock.calls.find((call) =>
+      call[0] === "shipcore.fc_stats" && (call[2] as string[]).includes("total_avg_curr"));
+    const row = statsCall?.[1][0];
+    expect(row.total_avg_real).toBeCloseTo(0.02);
+    expect(row.total_avg_curr).toBeCloseTo(3.317);
+    expect(row.west_fbm_30d).toBe(1);
+    expect(row.east_fbm_30d).toBe(1);
+    expect(row.total_30d).toBe(1);
+  });
+
   it("applies a category weight override over the auto-computed ratio", async () => {
     repositoryMock.getInventoryByWarehouse.mockResolvedValue([]);
     repositoryMock.getOosEpisodes.mockResolvedValue([]);

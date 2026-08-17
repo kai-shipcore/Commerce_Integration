@@ -37,7 +37,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import { baselineBackorderQty, inventoryLifeDays } from "@/lib/planning/forecast-calculations";
+import {
+  inventoryLifeDays,
+  sheetBaselineBackorderQty,
+  sheetContainerBackorderQty,
+  sheetContainerEstimatedSales,
+} from "@/lib/planning/forecast-calculations";
 import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
@@ -947,7 +952,7 @@ function computeContainerChain(
   const availableQty = effectiveTotal + (row.back ?? 0);
   const dailyRate = row.total_avg_curr ?? 0;
   let previousCarryover = Math.max(0, availableQty);
-  let previousBackorder = baselineBackorderQty(availableQty, row.total_30d ?? 0);
+  let previousBackorder = sheetBaselineBackorderQty(row.sku, availableQty, row.total_30d ?? 0);
   let previousSod = row.sod;
   let previousEta = TODAY;
   const baseline = containers[0];
@@ -982,8 +987,12 @@ function computeContainerChain(
     const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
     const days = Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000);
     const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
-    const estimatedSales = days * dailyRate * seasonalFactor;
-    const backorder = (row.total_30d ?? 0) <= 0 ? 0 : Math.max(0, estimatedSales - available);
+    const estimatedSales = sheetContainerEstimatedSales(
+      row.sku, days, dailyRate, seasonalFactor, available, qty,
+    );
+    const backorder = sheetContainerBackorderQty(
+      row.sku, row.total_30d ?? 0, estimatedSales, available,
+    );
     const carryover = backorder >= 1 ? 0 : Math.max(0, available - estimatedSales);
     const inventoryLife = inventoryLifeDays(carryover, dailyRate, seasonalFactor);
     const sodFromContainer = inventoryLife !== null

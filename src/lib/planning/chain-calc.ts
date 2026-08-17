@@ -1,4 +1,9 @@
-import { baselineBackorderQty, inventoryLifeDays } from "./forecast-calculations";
+import {
+  inventoryLifeDays,
+  sheetBaselineBackorderQty,
+  sheetContainerBackorderQty,
+  sheetContainerEstimatedSales,
+} from "./forecast-calculations";
 import { addSheetDays } from "./date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "./seasonal-factors";
 import type { ContainerMeta, DemandRow } from "@/types/demand-planning";
@@ -29,7 +34,7 @@ export function computeContainerChain(
   const dailyRate = row.total_avg_curr ?? 0;
 
   let prevCarryover = carryover;
-  let prevBackorder = baselineBackorderQty(availQty, row.total_30d ?? 0);
+  let prevBackorder = sheetBaselineBackorderQty(row.sku, availQty, row.total_30d ?? 0);
   let prevSod: string | null = row.sod;
   let prevEta = todayStr;
   const baseline = cons[0];
@@ -68,8 +73,12 @@ export function computeContainerChain(
       (new Date(eta).getTime() - new Date(prevEta).getTime()) / 86400000
     );
     const seasonalFactor = seasonalFactorForEta(eta, seasonalFactors);
-    const estSales   = daysBetween * dailyRate * seasonalFactor;
-    const backorderC = (row.total_30d ?? 0) <= 0 ? 0 : Math.max(0, estSales - availQtyC);
+    const estSales = sheetContainerEstimatedSales(
+      row.sku, daysBetween, dailyRate, seasonalFactor, availQtyC, qty,
+    );
+    const backorderC = sheetContainerBackorderQty(
+      row.sku, row.total_30d ?? 0, estSales, availQtyC,
+    );
     const carryoverC = backorderC >= 1 ? 0 : Math.max(0, availQtyC - estSales);
     const invLifeC   = inventoryLifeDays(carryoverC, dailyRate, seasonalFactor);
 
