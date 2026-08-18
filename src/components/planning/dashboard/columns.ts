@@ -259,6 +259,34 @@ export const COLUMN_COLORS_STORAGE_KEY = "planning-dashboard-column-colors";
 export const CELL_COLORS_STORAGE_KEY = "planning-dashboard-cell-colors";
 export const COLUMN_TEXT_FORMATS_STORAGE_KEY = "planning-dashboard-column-text-formats";
 export const CELL_TEXT_FORMATS_STORAGE_KEY = "planning-dashboard-cell-text-formats";
+export const COLUMN_FILTER_MENU_SIZE_STORAGE_KEY = "planning-dashboard-column-filter-menu-size";
+
+export type ColumnFilterMenuSize = { width: number; height: number };
+export const DEFAULT_COLUMN_FILTER_MENU_SIZE: ColumnFilterMenuSize = { width: 252, height: 470 };
+
+export function normalizeColumnFilterMenuSize(value: unknown): ColumnFilterMenuSize {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return DEFAULT_COLUMN_FILTER_MENU_SIZE;
+  const candidate = value as Record<string, unknown>;
+  const width = typeof candidate.width === "number" && Number.isFinite(candidate.width)
+    ? Math.round(candidate.width)
+    : DEFAULT_COLUMN_FILTER_MENU_SIZE.width;
+  const height = typeof candidate.height === "number" && Number.isFinite(candidate.height)
+    ? Math.round(candidate.height)
+    : DEFAULT_COLUMN_FILTER_MENU_SIZE.height;
+  return {
+    width: Math.max(200, Math.min(640, width)),
+    height: Math.max(400, Math.min(900, height)),
+  };
+}
+
+export function loadSavedColumnFilterMenuSize(): ColumnFilterMenuSize {
+  if (typeof window === "undefined") return DEFAULT_COLUMN_FILTER_MENU_SIZE;
+  try {
+    return normalizeColumnFilterMenuSize(JSON.parse(window.localStorage.getItem(COLUMN_FILTER_MENU_SIZE_STORAGE_KEY) ?? "null"));
+  } catch {
+    return DEFAULT_COLUMN_FILTER_MENU_SIZE;
+  }
+}
 
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
 export type ColumnWidths = Record<string, number>;

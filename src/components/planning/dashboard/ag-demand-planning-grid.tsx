@@ -20,11 +20,13 @@ import {
 } from "ag-grid-community";
 import {
   ALL_COLS,
+  DEFAULT_COLUMN_FILTER_MENU_SIZE,
   COLUMN_WIDTHS_STORAGE_KEY,
   CON_SUBCOLS,
   GROUP_LABELS,
   TINT_COLORS,
   TODAY,
+  normalizeColumnFilterMenuSize,
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
@@ -55,7 +57,7 @@ import {
   getTier,
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
-import type { CellContent, TextFormatSettings } from "./columns";
+import type { CellContent, ColumnFilterMenuSize, TextFormatSettings } from "./columns";
 import type { DemandPlanningGridProps } from "./demand-planning-grid";
 import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
@@ -389,10 +391,27 @@ function GridGroupMenu({
   );
 }
 
-function FilterSectionFooter({ onCancel, onApply }: { onCancel: () => void; onApply: () => void }) {
+function FilterSectionFooter({
+  onCancel,
+  onApply,
+  onResetSize,
+}: {
+  onCancel: () => void;
+  onApply: () => void;
+  onResetSize?: () => void;
+}) {
   const { pick } = useI18n();
   return (
-    <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, paddingTop: 6, borderTop: "1px solid #F1F5F9", marginTop: 4 }}>
+    <div style={{ display: "flex", flexShrink: 0, justifyContent: "flex-end", gap: 6, paddingTop: 6, borderTop: "1px solid #F1F5F9", marginTop: "auto" }}>
+      {onResetSize && (
+        <button
+          type="button"
+          onClick={onResetSize}
+          style={{ ...MENU_ITEM_STYLE, marginRight: "auto", width: "auto", padding: "5px 10px", fontSize: 12, color: "#64748B" }}
+        >
+          {pick("크기 초기화", "Reset size")}
+        </button>
+      )}
       <button type="button" onClick={onCancel} style={{ ...MENU_ITEM_STYLE, width: "auto", padding: "5px 10px", fontSize: 12 }}>{pick("취소", "Cancel")}</button>
       <button
         type="button"
@@ -477,18 +496,19 @@ function colorDisplayName(color: string, pick: (ko: string, en: string) => strin
 
 /** Third-level palette shared by the Fill Color and Text Color menus. */
 function GridColorList({
-  colors, selected, onPick,
+  colors, selected, onPick, openLeft,
 }: {
   colors: DistinctColor[];
   selected: string | null;
   onPick: (color: string) => void;
+  openLeft: boolean;
 }) {
   const { pick } = useI18n();
   return (
     <div
       role="menu"
       style={{
-        position: "absolute", left: "100%", top: -6, zIndex: 1001,
+        position: "absolute", left: openLeft ? undefined : "100%", right: openLeft ? "100%" : undefined, top: -6, zIndex: 1001,
         width: 220, padding: 6, background: "#fff", border: "1px solid #E2E8F0",
         borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
       }}
@@ -520,7 +540,7 @@ function GridColorList({
 /** Google Sheets-style second-level color menu. Filter includes None; Sort
  *  does not. Fill/Text entries are disabled when that color type is absent. */
 function GridColorTypeMenu({
-  mode, fillColors, textColors, selectedType, selectedColor, onNone, onPick,
+  mode, fillColors, textColors, selectedType, selectedColor, onNone, onPick, openLeft,
 }: {
   mode: "sort" | "filter";
   fillColors: DistinctColor[];
@@ -529,6 +549,7 @@ function GridColorTypeMenu({
   selectedColor: string | null;
   onNone?: () => void;
   onPick: (type: "fill" | "text", color: string) => void;
+  openLeft: boolean;
 }) {
   const { pick } = useI18n();
   const [colorTypeMenu, setColorTypeMenu] = useState<"fill" | "text" | null>(null);
@@ -550,6 +571,7 @@ function GridColorTypeMenu({
             colors={colors}
             selected={selectedType === type ? selectedColor : null}
             onPick={(color) => onPick(type, color)}
+            openLeft={openLeft}
           />
         )}
       </div>
@@ -560,7 +582,7 @@ function GridColorTypeMenu({
     <div
       role="menu"
       style={{
-        position: "absolute", left: "100%", top: -6, zIndex: 1001,
+        position: "absolute", left: openLeft ? undefined : "100%", right: openLeft ? "100%" : undefined, top: -6, zIndex: 1001,
         width: 196, padding: 6, background: "#fff", border: "1px solid #E2E8F0",
         borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
       }}
@@ -638,6 +660,7 @@ function ClipboardContextMenu({
 function GridColumnMenu({
   x, y, label, sortDir, onSortAsc, onSortDesc, activeColorSort, onSortByColor,
   canHide, onHide, committed, getValues, getFillColors, getTextColors, onOpenColumnData, onApplyFilter, onClose,
+  size, onSizeChange,
 }: {
   x: number;
   y: number;
@@ -659,6 +682,8 @@ function GridColumnMenu({
   onOpenColumnData: () => void;
   onApplyFilter: (next: ColumnFilter | null) => void;
   onClose: () => void;
+  size: ColumnFilterMenuSize;
+  onSizeChange?: (next: ColumnFilterMenuSize) => void;
 }) {
   const { pick } = useI18n();
   const [colorMenu, setColorMenu] = useState<"sortColor" | "filterColor" | null>(null);
@@ -677,7 +702,46 @@ function GridColumnMenu({
     () => new Set(committed?.mode === "values" ? committed.values : []),
   );
   const [search, setSearch] = useState("");
+  const [menuSize, setMenuSize] = useState(() => normalizeColumnFilterMenuSize(size));
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
   const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
+
+  useEffect(() => () => resizeCleanupRef.current?.(), []);
+
+  const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    resizeCleanupRef.current?.();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startSize = menuSize;
+    let latestSize = startSize;
+    const onMove = (moveEvent: PointerEvent) => {
+      latestSize = normalizeColumnFilterMenuSize({
+        width: startSize.width + moveEvent.clientX - startX,
+        height: startSize.height + moveEvent.clientY - startY,
+      });
+      setMenuSize(latestSize);
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      resizeCleanupRef.current = null;
+    };
+    const onUp = () => {
+      cleanup();
+      onSizeChange?.(latestSize);
+    };
+    resizeCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const menuLeft = typeof window === "undefined" ? x : Math.max(8, Math.min(x, window.innerWidth - menuSize.width - 8));
+  const menuTop = typeof window === "undefined" ? y : Math.max(8, Math.min(y, window.innerHeight - menuSize.height - 8));
+  const openColorMenusLeft = typeof window !== "undefined"
+    && menuLeft + menuSize.width + 416 > window.innerWidth - 8
+    && menuLeft >= 416;
 
   // `values` only becomes available a render after the section opens —
   // `getValues` is answered by the parent, which needs to learn which column
@@ -717,15 +781,15 @@ function GridColumnMenu({
       />
       <div
         style={{
-          position: "fixed", top: y, left: x, zIndex: 1000, background: "#fff",
+          position: "fixed", top: menuTop, left: menuLeft, zIndex: 1000, background: "#fff",
           border: "1px solid #E2E8F0", borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
-          minWidth: 200, maxWidth: 260, overflow: "visible",
+          width: menuSize.width, height: menuSize.height, minWidth: 200, minHeight: 400, overflow: "visible",
         }}
       >
         <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #F1F5F9" }}>
           {label}
         </div>
-        <div style={{ padding: 6, width: 240 }}>
+        <div style={{ boxSizing: "border-box", display: "flex", flexDirection: "column", height: "calc(100% - 28px)", minHeight: 0, overflow: "visible", padding: 6, width: "100%" }}>
             <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
               {pick("열 숨기기", "Hide column")}
             </MenuItem>
@@ -753,6 +817,7 @@ function GridColumnMenu({
                   selectedType={activeColorSort?.type ?? null}
                   selectedColor={activeColorSort?.color ?? null}
                   onPick={(type, color) => { onSortByColor(type, color); onClose(); }}
+                  openLeft={openColorMenusLeft}
                 />
               )}
             </div>
@@ -774,6 +839,7 @@ function GridColumnMenu({
                   selectedType={committed?.mode === "color" ? committed.colorType ?? "fill" : null}
                   selectedColor={committed?.mode === "color" ? [...committed.colors][0] ?? null : null}
                   onNone={() => { onApplyFilter(null); onClose(); }}
+                  openLeft={openColorMenusLeft}
                   onPick={(type, color) => {
                     onApplyFilter({ mode: "color", colorType: type, colors: new Set([color]) });
                     onClose();
@@ -793,7 +859,7 @@ function GridColumnMenu({
               {pick("값별 필터", "Filter by values")}
             </MenuItem>
             {filterSection === "values" && (
-              <div style={{ padding: "0 8px" }}>
+              <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0, padding: "0 8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
                   <span>
                     <button type="button" onClick={() => setStaged(new Set(values.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 선택", "Select all")} {values.length}</button>
@@ -811,9 +877,16 @@ function GridColumnMenu({
                   />
                   <Search size={13} strokeWidth={2} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", color: "#94A3B8", pointerEvents: "none" }} />
                 </div>
-                <div style={{ maxHeight: 200, overflow: "auto" }}>
+                <div
+                  style={{
+                    flex: "none",
+                    height: Math.max(24, 96 + menuSize.height - DEFAULT_COLUMN_FILTER_MENU_SIZE.height),
+                    minHeight: 24,
+                    overflowY: "auto",
+                  }}
+                >
                   {shown.map((v) => (
-                    <label key={v.value} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", fontSize: 12, cursor: "pointer" }}>
+                    <label key={v.value} style={{ boxSizing: "border-box", display: "flex", alignItems: "center", gap: 6, height: 24, padding: "3px 4px", fontSize: 12, cursor: "pointer" }}>
                       <input
                         type="checkbox"
                         checked={staged.has(v.value)}
@@ -835,6 +908,11 @@ function GridColumnMenu({
             )}
             <FilterSectionFooter
               onCancel={onClose}
+              onResetSize={() => {
+                const defaultSize = { ...DEFAULT_COLUMN_FILTER_MENU_SIZE };
+                setMenuSize(defaultSize);
+                onSizeChange?.(defaultSize);
+              }}
               onApply={() => {
                 if (filterSection === "condition") {
                   onApplyFilter(condition === null ? null : { mode: "condition", condition });
@@ -842,6 +920,16 @@ function GridColumnMenu({
                   onApplyFilter(staged.size === values.length ? null : { mode: "values", values: staged });
                 }
                 onClose();
+              }}
+            />
+            <div
+              aria-label={pick("필터 창 크기 조절", "Resize filter window")}
+              title={pick("드래그하여 필터 창 크기 조절", "Drag to resize filter window")}
+              onPointerDown={startResize}
+              style={{
+                position: "absolute", right: 1, bottom: 1, zIndex: 4,
+                width: 16, height: 16, cursor: "nwse-resize", touchAction: "none",
+                background: "linear-gradient(135deg, transparent 48%, #94A3B8 49%, #94A3B8 57%, transparent 58%, transparent 68%, #64748B 69%, #64748B 77%, transparent 78%)",
               }}
             />
           </div>
@@ -897,6 +985,56 @@ function selectedCellsBetweenPosition(
 
 function cellColorKey(rowId: string | undefined, columnId: string) {
   return rowId ? `${rowId}::${columnId}` : "";
+}
+
+/** Border-only look for a multi-cell selection: a line is drawn only on the
+ *  edges that face a non-selected neighbor, so a drag range renders as one
+ *  outer rectangle instead of filling every cell or bordering each one on
+ *  all four sides (which double-draws the shared edge between two selected
+ *  cells and hides the rest of the range). */
+function selectionEdgeStyle(
+  api: GridApi<DemandRow>,
+  rowIndex: number | null,
+  rowId: string | undefined,
+  columnId: string,
+  selectedKeys: Set<string>,
+): CSSProperties {
+  if (rowIndex === null || !rowId) return {};
+  const columns = api.getAllDisplayedColumns();
+  const columnIndex = columns.findIndex((column) => column.getColId() === columnId);
+  const leftColumnId = columnIndex > 0 ? columns[columnIndex - 1].getColId() : null;
+  const rightColumnId = columnIndex >= 0 && columnIndex < columns.length - 1 ? columns[columnIndex + 1].getColId() : null;
+  const aboveRowId = api.getDisplayedRowAtIndex(rowIndex - 1)?.data?.sku;
+  const belowRowId = api.getDisplayedRowAtIndex(rowIndex + 1)?.data?.sku;
+
+  const hasAbove = Boolean(aboveRowId && selectedKeys.has(cellColorKey(aboveRowId, columnId)));
+  const hasBelow = Boolean(belowRowId && selectedKeys.has(cellColorKey(belowRowId, columnId)));
+  const hasLeft = Boolean(leftColumnId && selectedKeys.has(cellColorKey(rowId, leftColumnId)));
+  const hasRight = Boolean(rightColumnId && selectedKeys.has(cellColorKey(rowId, rightColumnId)));
+
+  // Real `border*` properties, not box-shadow: the grid theme's columnBorder
+  // draws an opaque border-right (and a same-width, transparent border-top/
+  // -bottom) directly on every `.ag-cell` via its CSS class. An inset
+  // box-shadow paints underneath a border on the same element, so on the
+  // right/bottom edges the theme's own border silently covered it — the
+  // selection's right/bottom edge never showed, which is why a multi-column
+  // drag looked like it bled into whichever column came next. An inline
+  // `border` of the same property always wins over that CSS-class border.
+  // No position/zIndex here: AG Grid positions every cell with an inline
+  // `position: absolute; left: ...px`, and a cellStyle-returned `position`
+  // value is merged onto that same inline style, clobbering "absolute" with
+  // "relative". Once that happens, the cell's own `left` is reinterpreted as
+  // an offset from its normal-flow position instead of an absolute
+  // coordinate, and it renders shifted far to the right of where it belongs.
+  // A plain `border` doesn't need a stacking-context trick to show, so this
+  // was always unnecessary.
+  const SELECTED_BORDER = "1px solid #2563EB";
+  return {
+    ...(hasAbove ? {} : { borderTop: SELECTED_BORDER }),
+    ...(hasBelow ? {} : { borderBottom: SELECTED_BORDER }),
+    ...(hasLeft ? {} : { borderLeft: SELECTED_BORDER }),
+    ...(hasRight ? {} : { borderRight: SELECTED_BORDER }),
+  };
 }
 
 function cssEscapeAttr(value: string): string {
@@ -1577,7 +1715,7 @@ function QtyCellRenderer({
             }
             void commit();
           }}
-          className="planning-inline-cell-editor h-full w-full rounded-none border-2 border-[#1A5CDB] bg-white px-1 text-right font-mono text-[11px] font-semibold text-[#1A4FC0] outline-none"
+          className="planning-inline-cell-editor h-full w-full rounded-none border-0 bg-white px-1 text-center font-mono text-[11px] font-semibold text-[#1A4FC0] outline-none"
         />
       </div>
     );
@@ -1602,7 +1740,7 @@ function QtyCellRenderer({
         if (node.rowIndex === null) return;
         onContextMenuRequest(node.rowIndex, columnId, event.clientX, event.clientY);
       }}
-      className="h-full w-full border-0 bg-transparent px-1 text-right font-mono text-[11px] font-semibold text-[#1A4FC0]"
+      className="h-full w-full appearance-none border-0 bg-transparent px-1 text-center font-mono text-[11px] font-semibold text-[#1A4FC0] shadow-none outline-none focus:shadow-none focus:outline-none focus-visible:shadow-none focus-visible:outline-none"
     >
       {saving ? "..." : displayValue}
     </button>
@@ -1742,7 +1880,7 @@ function CbmCellRenderer({
             }
             void commit();
           }}
-          className="planning-inline-cell-editor h-full w-full rounded-none border-2 border-[#1A5CDB] bg-white px-0.5 text-center font-mono text-[10px] text-[#1A4FC0] outline-none"
+          className="planning-inline-cell-editor h-full w-full rounded-none border-0 bg-white px-0.5 text-center font-mono text-[10px] text-[#1A4FC0] outline-none"
         />
       </div>
     );
@@ -1760,7 +1898,7 @@ function CbmCellRenderer({
         if (!onRequestEdit()) return;
         qtyEditorRegistry.get(qtyEditorKey(rowId, columnId))?.open();
       }}
-      className="h-full w-full border-0 bg-transparent px-0.5 text-center font-mono text-[10px] text-[#1A4FC0]"
+      className="h-full w-full appearance-none border-0 bg-transparent px-0.5 text-center font-mono text-[10px] text-[#1A4FC0] shadow-none outline-none focus:shadow-none focus:outline-none focus-visible:shadow-none focus-visible:outline-none"
     >
       {saving ? "..." : displayValue}
     </button>
@@ -1882,7 +2020,7 @@ function WorkNoteCellRenderer({
           // the top of the grid — lands behind the sticky header, hiding
           // exactly the first lines typed. Growing only downward keeps the
           // typed text visible regardless of which row is being edited.
-          className="planning-inline-cell-editor h-full w-full rounded-none border-2 border-[#1A5CDB] bg-white px-1 text-left text-[11px] outline-none"
+          className="planning-inline-cell-editor h-full w-full rounded-none border-0 bg-white px-1 text-center text-[11px] outline-none"
         />
       </div>
     );
@@ -1899,7 +2037,7 @@ function WorkNoteCellRenderer({
         if (!onRequestEdit()) return;
         qtyEditorRegistry.get(qtyEditorKey(rowId, columnId))?.open();
       }}
-      className="h-full w-full truncate border-0 bg-transparent px-1 text-left"
+      className="h-full w-full appearance-none truncate border-0 bg-transparent px-1 text-center shadow-none outline-none focus:shadow-none focus:outline-none focus-visible:shadow-none focus-visible:outline-none"
       style={{ color: "inherit", fontFamily: "inherit", fontSize: "inherit", fontWeight: "inherit" }}
     >
       {inputValue}
@@ -2055,7 +2193,7 @@ function SelectableHeader(params: IHeaderParams & {
   }
 
   return (
-    <div style={{ display: "flex", height: "100%", position: "relative", width: "calc(100% + 16px)", marginLeft: -8, marginRight: -8, boxShadow: fullColumnSelected ? "inset 2px 0 #2563EB, inset -2px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
+    <div style={{ display: "flex", height: "100%", position: "relative", width: "calc(100% + 16px)", marginLeft: -8, marginRight: -8, boxShadow: fullColumnSelected ? "inset 1px 0 #2563EB, inset -1px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
       <button
         type="button"
         aria-label={`Select entire ${params.displayName} column`}
@@ -2106,12 +2244,10 @@ function SelectableHeader(params: IHeaderParams & {
         } : undefined}
         style={{
           alignItems: "center",
-          background: selected ? "rgba(96,165,250,.28)" : undefined,
-          boxShadow: selected ? "inset 0 0 0 3px #60A5FA" : undefined,
+          boxShadow: selected ? "inset 0 0 0 1px #60A5FA" : undefined,
           cursor: "pointer",
           display: "flex",
           flex: 1,
-          fontWeight: selected ? 800 : undefined,
           gap: 3,
           height: "100%",
           justifyContent: "center",
@@ -2122,7 +2258,6 @@ function SelectableHeader(params: IHeaderParams & {
           whiteSpace: "normal",
         }}
       >
-        {selected && <span aria-hidden="true" style={{ color: "#93C5FD", flexShrink: 0, fontWeight: 900 }}>✓</span>}
         <span style={{ minWidth: 0, overflow: "hidden" }}>{params.displayName}</span>
         {params.showMenuButton ? (
           <button
@@ -2705,7 +2840,13 @@ function ContainerGroupHeader(
   return (
     <div
       className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[11px] ${statusBg}`}
-      style={{ boxShadow: selected ? "inset 0 0 0 3px #60A5FA" : undefined, backgroundColor: selected ? "rgba(96,165,250,.28)" : undefined }}
+      style={{
+        boxShadow: selected ? "inset 0 0 0 1px #60A5FA" : undefined,
+        height: "100%",
+        marginLeft: -8,
+        marginRight: -8,
+        width: "calc(100% + 16px)",
+      }}
       onContextMenu={props.onRightClick ? (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2869,7 +3010,6 @@ function ContainerGroupHeader(
                 className="shrink-0 overflow-visible whitespace-nowrap text-center"
                 style={{
                   width: liveColumnWidths[column.columnId] ?? column.width,
-                  transform: "translateX(-10px)",
                 }}
               >
                 {totalLabel}
@@ -2900,6 +3040,8 @@ export function AgDemandPlanningGrid({
   freezeUntil,
   columnWidths,
   onColumnWidthsChange,
+  columnFilterMenuSize = DEFAULT_COLUMN_FILTER_MENU_SIZE,
+  onColumnFilterMenuSizeChange,
   columnOrder = [],
   onColumnOrderChange,
   seasonalFactors,
@@ -3599,8 +3741,39 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     for (const key of next) if (!previous.has(key)) changed.add(key);
     if (!changed.size) return;
 
-    const rowNodesByColumn = new Map<string, Set<NonNullable<ReturnType<typeof api.getRowNode>>>>();
+    // A cell's selection border depends on whether its neighbors are also
+    // selected, so a cell that stays selected still needs repainting when a
+    // neighbor's selection state flips (e.g. the previous edge of a drag
+    // range, once the range grows past it, must drop the border it no
+    // longer needs). Widen the refresh to include each changed cell's four
+    // neighbors, not just the cells whose own membership changed.
+    const columns = api.getAllDisplayedColumns();
+    const columnIndexById = new Map(columns.map((column, index) => [column.getColId(), index]));
+    const toRefresh = new Set<string>(changed);
     for (const key of changed) {
+      const separator = key.indexOf("::");
+      if (separator < 0) continue;
+      const rowId = key.slice(0, separator);
+      const columnId = key.slice(separator + 2);
+      const rowNode = api.getRowNode(rowId) ?? api.getRenderedNodes().find((node) => node.data?.sku === rowId);
+      const rowIndex = rowNode?.rowIndex ?? null;
+      if (rowIndex !== null) {
+        const aboveRowId = api.getDisplayedRowAtIndex(rowIndex - 1)?.data?.sku;
+        const belowRowId = api.getDisplayedRowAtIndex(rowIndex + 1)?.data?.sku;
+        if (aboveRowId) toRefresh.add(cellColorKey(aboveRowId, columnId));
+        if (belowRowId) toRefresh.add(cellColorKey(belowRowId, columnId));
+      }
+      const columnIndex = columnIndexById.get(columnId);
+      if (columnIndex !== undefined) {
+        const leftColumnId = columns[columnIndex - 1]?.getColId();
+        const rightColumnId = columns[columnIndex + 1]?.getColId();
+        if (leftColumnId) toRefresh.add(cellColorKey(rowId, leftColumnId));
+        if (rightColumnId) toRefresh.add(cellColorKey(rowId, rightColumnId));
+      }
+    }
+
+    const rowNodesByColumn = new Map<string, Set<NonNullable<ReturnType<typeof api.getRowNode>>>>();
+    for (const key of toRefresh) {
       const separator = key.indexOf("::");
       if (separator < 0) continue;
       const rowId = key.slice(0, separator);
@@ -5125,13 +5298,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           const fullColumnSelected = selectedFullColumnIdsRef.current.has(column.id);
           const textFormat = { ...(columnTextFormatsRef.current[column.id]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
           return {
-            backgroundColor: selected ? "#BFD7FF" : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
+            backgroundColor: cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             ...(textFormat.color ? { color: textFormat.color } : {}),
             ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
             fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : column.bold ? 700 : 400,
             textAlign: "center",
             ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-            ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
+            ...(selected
+              ? selectionEdgeStyle(params.api, params.node.rowIndex, params.data?.sku, column.id, selectedCellsRef.current)
+              : fullColumnSelected
+                ? { boxShadow: "inset 1px 0 #2563EB, inset -1px 0 #2563EB" }
+                : {}),
           };
         },
       };
@@ -5326,7 +5503,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             const displayedColumns = params.column.getParent()?.getDisplayedLeafColumns() ?? [];
             const isFirstDisplayedColumn = displayedColumns[0] === params.column;
             return {
-              backgroundColor: selected ? "#BFD7FF" : cellColors[key]
+              backgroundColor: cellColors[key]
                 ?? columnColors[physicalColumnId]?.cell
                 ?? columnColors[sharedColumnId]?.cell
                 ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
@@ -5336,7 +5513,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               textAlign: "center",
               borderLeft: isFirstDisplayedColumn ? "2px solid #5A5750" : "none",
               ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
-              ...(fullColumnSelected ? { boxShadow: "inset 2px 0 #2563EB, inset -2px 0 #2563EB" } : {}),
+              ...(selected
+                ? selectionEdgeStyle(params.api, params.node.rowIndex, params.data?.sku, columnId, selectedCellsRef.current)
+                : fullColumnSelected
+                  ? { boxShadow: "inset 1px 0 #2563EB, inset -1px 0 #2563EB", position: "relative", zIndex: 1 }
+                  : {}),
             };
           },
         });
@@ -5793,6 +5974,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
           x={columnMenu.x}
           y={columnMenu.y}
           label={columnMenu.label}
+          size={columnFilterMenuSize}
+          onSizeChange={onColumnFilterMenuSizeChange}
           sortDir={sort?.key === columnMenu.key && sort.kind === "value" ? sort.dir : null}
           onSortAsc={() => setSort({ key: columnMenu.key, kind: "value", dir: "asc" })}
           onSortDesc={() => setSort({ key: columnMenu.key, kind: "value", dir: "desc" })}

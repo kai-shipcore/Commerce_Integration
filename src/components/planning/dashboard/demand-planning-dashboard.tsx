@@ -13,6 +13,7 @@ import {
   CON_SUBCOLS,
   CELL_COLORS_STORAGE_KEY,
   CELL_TEXT_FORMATS_STORAGE_KEY,
+  COLUMN_FILTER_MENU_SIZE_STORAGE_KEY,
   COLUMN_COLORS_STORAGE_KEY,
   COLUMN_ORDER_STORAGE_KEY,
   COLUMN_TEXT_FORMATS_STORAGE_KEY,
@@ -28,11 +29,13 @@ import {
   loadSavedCellColors,
   loadSavedColumnTextFormats,
   loadSavedCellTextFormats,
+  loadSavedColumnFilterMenuSize,
   loadSavedColumnWidths,
+  normalizeColumnFilterMenuSize,
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
@@ -862,6 +865,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnSettingsDraft, setColumnSettingsDraft] = useState<ColumnSettingsDraft | null>(null);
   const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
+  const [columnFilterMenuSize, setColumnFilterMenuSize] = useState<ColumnFilterMenuSize>(loadSavedColumnFilterMenuSize);
   const [columnOrder, setColumnOrder] = useState<ColumnOrder>([]);
   const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN);
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
@@ -1073,6 +1077,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setColumnWidths(widths);
         }
 
+        const filterMenuSize = d[COLUMN_FILTER_MENU_SIZE_STORAGE_KEY];
+        if (filterMenuSize && typeof filterMenuSize === "object" && !Array.isArray(filterMenuSize)) {
+          const normalizedSize = normalizeColumnFilterMenuSize(filterMenuSize);
+          window.localStorage.setItem(COLUMN_FILTER_MENU_SIZE_STORAGE_KEY, JSON.stringify(normalizedSize));
+          setColumnFilterMenuSize(normalizedSize);
+        }
+
         const savedOrder = d[COLUMN_ORDER_STORAGE_KEY];
         if (!columnOrderChangedRef.current && Array.isArray(savedOrder)) {
           const normalizedOrder = ensureAdditionalNotesInColumnOrder(Array.from(new Set(
@@ -1213,6 +1224,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     savePrefsToDb({
       [COLUMN_SETTINGS_STORAGE_KEY]: { groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil },
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
+      [COLUMN_FILTER_MENU_SIZE_STORAGE_KEY]: columnFilterMenuSize,
       [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
       [COLUMN_HEADER_NAMES_STORAGE_KEY]: columnHeaderNames,
@@ -1230,11 +1242,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnOrder, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, columnOrder, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
     setColumnWidths(next);
+  }, []);
+
+  const handleColumnFilterMenuSizeChange = useCallback((next: ColumnFilterMenuSize) => {
+    const normalizedSize = normalizeColumnFilterMenuSize(next);
+    setColumnFilterMenuSize(normalizedSize);
+    window.localStorage.setItem(COLUMN_FILTER_MENU_SIZE_STORAGE_KEY, JSON.stringify(normalizedSize));
   }, []);
 
   const resetColumnWidths = useCallback(() => {
@@ -3362,6 +3380,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidths={columnWidths}
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
+          columnFilterMenuSize={columnFilterMenuSize}
+          onColumnFilterMenuSizeChange={handleColumnFilterMenuSizeChange}
           columnOrder={columnOrder}
           onColumnOrderChange={handleColumnOrderChange}
           seasonalFactors={seasonalFactors}
