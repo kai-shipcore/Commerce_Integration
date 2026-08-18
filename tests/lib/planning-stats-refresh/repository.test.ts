@@ -54,7 +54,7 @@ describe("PlanningStatsRefreshRepository.queueJob", () => {
 describe("PlanningStatsRefreshRepository job transitions", () => {
   it("marks a job succeeded with its refresh result", async () => {
     queryMock.mockResolvedValue({ rows: [] });
-    const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3 };
+    const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3, productsBackfilled: 4 };
 
     await PlanningStatsRefreshRepository.markSucceeded(activeJob.id, result);
 

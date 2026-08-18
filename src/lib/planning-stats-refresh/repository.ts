@@ -12,6 +12,7 @@ export type PlanningStatsRefreshResult = {
   inventoryUpserted: number;
   linkSalesUpserted: number;
   customSalesUpserted: number;
+  productsBackfilled: number;
 };
 
 export type PlanningStatsRefreshJob = {

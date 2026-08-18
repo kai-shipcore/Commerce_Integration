@@ -50,7 +50,7 @@ describe("PlanningStatsRefreshService.queue", () => {
   it("runs the refresh and records the result after returning the queued job", async () => {
     queueJobMock.mockResolvedValue({ job, created: true });
     markRunningMock.mockResolvedValue({ ...job, status: "running", payload: {} });
-    const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3 };
+    const result = { inventoryUpserted: 1, linkSalesUpserted: 2, customSalesUpserted: 3, productsBackfilled: 4 };
     refreshStatsMock.mockResolvedValue(result);
 
     await PlanningStatsRefreshService.queue({});

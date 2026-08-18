@@ -25,8 +25,12 @@ const invalidateCacheMock = vi.fn();
 const cacheManagerDeleteMock = vi.fn();
 const cacheManagerDeletePatternMock = vi.fn();
 const syncAllTransitStatsMock = vi.fn();
+const insertMissingProductsMock = vi.fn();
 
 vi.mock("@/lib/demand-planning/repository", () => ({ DemandPlanningRepository: repositoryMock }));
+vi.mock("@/lib/sku-master/repository", () => ({
+  SkuMasterRepository: { insertMissingProducts: insertMissingProductsMock },
+}));
 vi.mock("@/lib/transit-stock/repository", () => ({
   TransitStockRepository: { syncAllStats: syncAllTransitStatsMock },
 }));
@@ -51,6 +55,7 @@ beforeEach(() => {
   repositoryMock.getCrossData.mockResolvedValue([]);
   repositoryMock.getVelocitySnapshot.mockResolvedValue([]);
   getCacheMock.mockResolvedValue(null);
+  insertMissingProductsMock.mockResolvedValue({ inserted: 0 });
 });
 
 const baseQuery = {
@@ -170,13 +175,32 @@ describe("DemandPlanningService.refreshStats", () => {
       .mockResolvedValueOnce([{ master_sku: "SKU-1", avg_daily_prev: 1, avg_daily_real: 1, east_avg_prev: 0, east_avg_real: 0, fba_avg_prev: 0, fba_avg_real: 0, west_90d: 0, west_60d: 0, west_30d: 0, west_30d_pre: 0, west_15d: 0, west_7d: 0, east_90d: 0, east_60d: 0, east_30d: 0, east_30d_pre: 0, east_15d: 0, east_7d: 0, fba_30d: 0 }])
       .mockResolvedValueOnce([]);
 
+    insertMissingProductsMock.mockResolvedValue({ inserted: 1 });
+
     const result = await DemandPlanningService.refreshStats({});
 
-    expect(result).toEqual({ inventoryUpserted: 1, linkSalesUpserted: 1, customSalesUpserted: 0 });
+    expect(result).toEqual({ inventoryUpserted: 1, linkSalesUpserted: 1, customSalesUpserted: 0, productsBackfilled: 1 });
     expect(syncAllTransitStatsMock).toHaveBeenCalledTimes(1);
+    expect(insertMissingProductsMock).toHaveBeenCalledWith(["SKU-1"]);
     expect(repositoryMock.upsertSwcProducts).toHaveBeenCalled();
     expect(invalidateCacheMock).toHaveBeenCalled();
     expect(cacheManagerDeleteMock).toHaveBeenCalledWith("oos-preorder:sku-list:v4");
+  });
+
+  it("backfills fc_products from the union of inventory and sales-velocity SKUs discovered this run, deduplicated", async () => {
+    repositoryMock.getInventoryByWarehouse.mockResolvedValue([{ master_sku: "SKU-1" }, { master_sku: "SKU-2" }]);
+    repositoryMock.getOosEpisodes.mockResolvedValue([]);
+    repositoryMock.getOosAgg.mockResolvedValue([]);
+    repositoryMock.getOosLostDemandRaw.mockResolvedValue([]);
+    repositoryMock.getCategoryChannelRatio.mockResolvedValue([]);
+    repositoryMock.getSalesVelocity
+      .mockResolvedValueOnce([{ master_sku: "SKU-1", avg_daily_prev: 1, avg_daily_real: 1, east_avg_prev: 0, east_avg_real: 0, fba_avg_prev: 0, fba_avg_real: 0, west_90d: 0, west_60d: 0, west_30d: 0, west_30d_pre: 0, west_15d: 0, west_7d: 0, east_90d: 0, east_60d: 0, east_30d: 0, east_30d_pre: 0, east_15d: 0, east_7d: 0, fba_30d: 0 }])
+      .mockResolvedValueOnce([{ master_sku: "SKU-3", avg_daily_prev: 0, avg_daily_real: 0, east_avg_prev: 0, east_avg_real: 0, fba_avg_prev: 0, fba_avg_real: 0, west_90d: 0, west_60d: 0, west_30d: 0, west_30d_pre: 0, west_15d: 0, west_7d: 0, east_90d: 0, east_60d: 0, east_30d: 0, east_30d_pre: 0, east_15d: 0, east_7d: 0, fba_30d: 0 }]);
+
+    await DemandPlanningService.refreshStats({});
+
+    // SKU-1 appears in both inventory and link-velocity but must only be passed once.
+    expect(insertMissingProductsMock).toHaveBeenCalledWith(["SKU-1", "SKU-2", "SKU-3"]);
   });
 
   it("stores all FBA windows and applies the fixed sheet weights with preorder at zero", async () => {

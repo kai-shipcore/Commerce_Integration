@@ -43,6 +43,7 @@ import {
 } from "@/lib/planning/oos-lost-demand-weights";
 import { OosImpactService } from "@/lib/oos-impact/service";
 import { DemandPlanningRepository, type VelRow } from "@/lib/demand-planning/repository";
+import { SkuMasterRepository } from "@/lib/sku-master/repository";
 import { TransitStockRepository } from "@/lib/transit-stock/repository";
 import type { ContainerMeta, ContainerRowData, DemandPlanningData, DemandRow } from "@/types/demand-planning";
 
@@ -492,7 +493,7 @@ export const DemandPlanningService = {
 
   // ─── Stats refresh ("Sync" pipeline) ────────────────────────────────
 
-  async refreshStats(rawWeights: { salesWindowWeights?: unknown; oosLostDemandWeights?: unknown }): Promise<{ inventoryUpserted: number; linkSalesUpserted: number; customSalesUpserted: number } | null> {
+  async refreshStats(rawWeights: { salesWindowWeights?: unknown; oosLostDemandWeights?: unknown }): Promise<{ inventoryUpserted: number; linkSalesUpserted: number; customSalesUpserted: number; productsBackfilled: number } | null> {
     const salesWindowWeights: SalesWindowWeights = rawWeights.salesWindowWeights
       ? normalizeSalesWindowWeights(rawWeights.salesWindowWeights)
       : DEFAULT_SALES_WINDOW_WEIGHTS;
@@ -745,7 +746,23 @@ export const DemandPlanningService = {
       DemandPlanningRepository.batchUpsert("shipcore.fc_stats_custom", customRows, salesCols, salesUpdateSet),
     ]);
 
-    // ── Step 3: Sync SWC SKUs into fc_products ───────────────────────
+    // ── Step 3a: Backfill fc_products for any master SKU with real
+    // inventory/sales/pre-order data but no product row yet. Before this,
+    // only a separate, manual "SKU Master" sync (inventory-only) could add
+    // new SKUs to fc_products — a SKU with pre-order/sales velocity but no
+    // inventory yet (a new color announced ahead of stock, say) never got
+    // picked up there and stayed unclassified until someone happened to
+    // notice. Reusing the rows already fetched above for Steps 1/2 costs no
+    // extra query. insertMissingProducts only INSERTs where no row exists —
+    // it never reactivates a SKU someone deliberately deactivated.
+    const discoveredMasterSkus = [...new Set([
+      ...invRows.map((r) => String(r.master_sku)),
+      ...linkRows.map((r) => String(r.master_sku)),
+      ...customRows.map((r) => String(r.master_sku)),
+    ])];
+    const { inserted: productsBackfilled } = await SkuMasterRepository.insertMissingProducts(discoveredMasterSkus);
+
+    // ── Step 3b: Sync SWC SKUs into fc_products ──────────────────────
     await DemandPlanningRepository.upsertSwcProducts();
 
     await Promise.all([
@@ -757,6 +774,7 @@ export const DemandPlanningService = {
       inventoryUpserted: invRows.length,
       linkSalesUpserted: linkRows.length,
       customSalesUpserted: customRows.length,
+      productsBackfilled,
     };
   },
 };

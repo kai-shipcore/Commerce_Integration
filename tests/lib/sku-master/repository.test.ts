@@ -159,6 +159,40 @@ describe("SkuMasterRepository.upsertProductsFromSync", () => {
   });
 });
 
+describe("SkuMasterRepository.insertMissingProducts", () => {
+  it("commits and returns the inserted count on success", async () => {
+    clientQueryMock.mockResolvedValue({ rowCount: 2 });
+
+    const result = await SkuMasterRepository.insertMissingProducts(["SKU-1", "SKU-2"]);
+
+    expect(result.inserted).toBe(2);
+    expect(clientQueryMock).toHaveBeenCalledWith("BEGIN");
+    expect(clientQueryMock).toHaveBeenCalledWith("COMMIT");
+    expect(clientReleaseMock).toHaveBeenCalled();
+  });
+
+  it("only inserts rows that don't already exist (WHERE NOT EXISTS, not an upsert)", async () => {
+    clientQueryMock.mockResolvedValue({ rowCount: 0 });
+
+    await SkuMasterRepository.insertMissingProducts(["SKU-1"]);
+
+    const insertCall = clientQueryMock.mock.calls.find(([sql]) =>
+      typeof sql === "string" && sql.includes("INSERT INTO shipcore.fc_products"));
+    expect(insertCall?.[0]).toContain("WHERE NOT EXISTS");
+    expect(insertCall?.[0]).not.toContain("DO UPDATE SET");
+  });
+
+  it("rolls back and rethrows on failure", async () => {
+    clientQueryMock
+      .mockResolvedValueOnce(undefined) // BEGIN
+      .mockRejectedValueOnce(new Error("create temp table failed"));
+
+    await expect(SkuMasterRepository.insertMissingProducts(["SKU-1"])).rejects.toThrow("create temp table failed");
+    expect(clientQueryMock).toHaveBeenCalledWith("ROLLBACK");
+    expect(clientReleaseMock).toHaveBeenCalled();
+  });
+});
+
 describe("SkuMasterRepository.applyExcelImport", () => {
   it("skips the CBM precision migration when scale is already sufficient", async () => {
     clientQueryMock.mockImplementation(async (sql: string) => {

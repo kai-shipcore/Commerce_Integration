@@ -362,6 +362,92 @@ export const SkuMasterRepository = {
     }
   },
 
+  /**
+   * Pure backfill for master SKUs discovered in real inventory/sales/pre-order
+   * data (see refreshStats) that have no `fc_products` row at all yet — the
+   * gap that let 30 real SKUs go unclassified until a manual audit caught it.
+   * Unlike upsertProductsFromSync, this never touches a SKU that already has
+   * a row: it only INSERTs where none exists, so it can safely run on every
+   * automatic "Sync" without silently reactivating a SKU someone deliberately
+   * marked inactive via deactivateProduct.
+   */
+  async insertMissingProducts(masterSkus: string[]): Promise<{ inserted: number }> {
+    const primary = getPrimaryPool();
+    const client = await primary.connect();
+
+    const rows = [...new Map(masterSkus.map((masterSku) => [masterSku, { masterSku, ...inferProduct(masterSku) }])).values()];
+
+    try {
+      await client.query("BEGIN");
+      await client.query(`
+        CREATE TEMP TABLE stg_fc_products_backfill (
+          master_sku TEXT,
+          product_name TEXT,
+          category TEXT,
+          category_code TEXT,
+          moq INT,
+          order_multiple INT,
+          cbm_per_unit NUMERIC,
+          case_qty INT,
+          weight_kg NUMERIC
+        ) ON COMMIT DROP
+      `);
+
+      if (rows.length > 0) {
+        await client.query(
+          `INSERT INTO stg_fc_products_backfill
+             (master_sku, product_name, category, category_code, moq, order_multiple, cbm_per_unit, case_qty, weight_kg)
+           SELECT
+             unnest($1::text[]),
+             unnest($2::text[]),
+             unnest($3::text[]),
+             unnest($4::text[]),
+             unnest($5::int[]),
+             unnest($6::int[]),
+             unnest($7::numeric[]),
+             unnest($8::int[]),
+             unnest($9::numeric[])`,
+          [
+            rows.map((row) => row.masterSku),
+            rows.map((row) => row.masterSku),
+            rows.map((row) => row.category),
+            rows.map((row) => row.categoryCode),
+            rows.map((row) => row.moq),
+            rows.map((row) => row.moq),
+            rows.map((row) => row.cbmPerUnit),
+            rows.map((row) => row.caseQty),
+            rows.map((row) => row.weightKg),
+          ]
+        );
+      }
+
+      const inserted = await client.query(`
+        INSERT INTO shipcore.fc_products (
+          master_sku, product_name, category, category_code, status,
+          moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
+          created_at, updated_at
+        )
+        SELECT
+          stg.master_sku, stg.product_name, stg.category, stg.category_code, 'active',
+          stg.moq, stg.order_multiple, stg.cbm_per_unit, stg.case_qty, stg.weight_kg,
+          NOW(), NOW()
+        FROM stg_fc_products_backfill stg
+        WHERE NOT EXISTS (
+          SELECT 1 FROM shipcore.fc_products p WHERE p.master_sku = stg.master_sku
+        )
+        ON CONFLICT (master_sku) DO NOTHING
+      `);
+
+      await client.query("COMMIT");
+      return { inserted: inserted.rowCount ?? 0 };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
   async updateProduct(masterSku: string, fields: UpdateProductFields): Promise<boolean> {
     const pool = getPrimaryPool();
     const result = await pool.query(
