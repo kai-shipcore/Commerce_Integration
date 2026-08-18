@@ -6376,6 +6376,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
               if (!preserveSelection && !selectedCellsRef.current.has(key)) {
                 selectSingleGridCell(event.node.rowIndex, columnId);
               }
+              if (workNoteSlotForColumnId(columnId) !== null && nativeEvent) {
+                setQtyCtxMenu({ x: nativeEvent.clientX, y: nativeEvent.clientY });
+              }
             }}
             rowHeight={28}
             headerHeight={45}
@@ -6491,7 +6494,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
           canCut={canEditPlanning && (
             [...selectedCellsRef.current].some((key) => {
               const separator = key.indexOf("::");
-              return separator >= 0 && resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2))?.kind === "qty";
+              if (separator < 0) return false;
+              const target = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
+              return target?.kind === "qty" || target?.kind === "note";
             }) || selectionHasCuttableFormat()
           )}
           canPaste={canEditPlanning}
