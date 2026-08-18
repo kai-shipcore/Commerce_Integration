@@ -22,7 +22,7 @@ import {
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
-import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, ResizableColumnId, SkuPartFilters } from "./columns";
+import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -38,6 +38,14 @@ import type {
 } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
+
+export type PlanningFormatHistoryChange =
+  | { kind: "cell-background"; key: string; before: string | null; after: string | null }
+  | { kind: "column-background"; columnId: string; target: "cell" | "header"; before: string | null; after: string | null }
+  | { kind: "cell-text-format"; key: string; before: TextFormatSettings | null; after: TextFormatSettings | null }
+  | { kind: "column-text-format"; columnId: string; target: "cell" | "header"; before: TextFormatSettings | null; after: TextFormatSettings | null };
+
+export type PlanningFormatHistoryRecorder = (changes: PlanningFormatHistoryChange[]) => void;
 
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
@@ -70,6 +78,8 @@ export interface DemandPlanningGridProps {
   cellColors?: CellColorSettings;
   columnTextFormats?: ColumnTextFormatSettings;
   cellTextFormats?: CellTextFormatSettings;
+  onFormatHistoryRecorderReady?: (recorder: PlanningFormatHistoryRecorder | null) => void;
+  onApplyFormatHistoryChanges?: (changes: PlanningFormatHistoryChange[], direction: "undo" | "redo") => void;
   skuCellNotes?: Record<string, string>;
   onSkuCellNoteChange?: (sku: string, note: string) => void | Promise<void>;
   skuWorkNotes?: Record<string, string>;
@@ -88,6 +98,7 @@ export interface DemandPlanningGridProps {
   onAgCellSelected?: (selection: { rowId: string; columnId: string; label: string; cells?: { rowId: string; columnId: string; label: string }[] }) => void;
   onCellSelectionChange?: (keys: string[]) => void;
   onExportReady?: (exporter: (() => Promise<void>) | null) => void;
+  onEditActionsReady?: (actions: EditMenuActions | null) => void;
   gradient?: import("@/lib/planning/order-optimizer").GradientTier[];
   gradientSC?: import("@/lib/planning/order-optimizer").GradientTier[];
   hiddenContainers?: Set<string>;

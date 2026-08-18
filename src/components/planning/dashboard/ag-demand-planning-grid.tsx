@@ -57,8 +57,8 @@ import {
   getTier,
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
-import type { CellContent, ColumnFilterMenuSize, TextFormatSettings } from "./columns";
-import type { DemandPlanningGridProps } from "./demand-planning-grid";
+import type { CellContent, ColumnFilterMenuSize, EditMenuActions, EditMenuAvailability, TextFormatSettings } from "./columns";
+import type { DemandPlanningGridProps, PlanningFormatHistoryChange } from "./demand-planning-grid";
 import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -140,8 +140,13 @@ type SheetHistoryChange = {
   before: string;
   after: string;
 };
-type SheetHistoryEntry = { changes: SheetHistoryChange[] };
-type SelectionModifiers = { toggle: boolean; range: boolean };
+type SheetHistoryEntry = {
+  valueChanges: SheetHistoryChange[];
+  formatChanges: PlanningFormatHistoryChange[];
+};
+type SheetClipboardFormat = { background: string | null; textColor: string | null };
+type SheetClipboardPayload = { text: string; formats: Array<Array<SheetClipboardFormat | null>> };
+type SelectionModifiers = { toggle: boolean; range: boolean; replace?: boolean };
 type SalesTargetTier = { minSales: number; targetDays: number };
 type CapacityMode = "fit" | "unlimited";
 type TargetOrder = { row: DemandRow; qty: number; cbmUnit: number };
@@ -862,7 +867,7 @@ function GridColumnMenu({
               <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0, padding: "0 8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
                   <span>
-                    <button type="button" onClick={() => setStaged(new Set(values.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 선택", "Select all")} {values.length}</button>
+                    <button type="button" onClick={() => setStaged(new Set(shown.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 선택", "Select all")} {shown.length}</button>
                     {" - "}
                     <button type="button" onClick={() => setStaged(new Set())} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 지우기", "Clear")}</button>
                   </span>
@@ -2206,6 +2211,12 @@ function SelectableHeader(params: IHeaderParams & {
             range: event.shiftKey,
           });
         }}
+        onContextMenu={params.onRightClick ? (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          params.onFullColumnSelect(params.selectionId, { toggle: false, range: false, replace: true });
+          params.onRightClick?.(event.clientX, event.clientY);
+        } : undefined}
         style={{ background: fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: 0, padding: 0, position: "absolute", right: 0, top: 0, zIndex: 2 }}
       />
       <div
@@ -2240,6 +2251,7 @@ function SelectableHeader(params: IHeaderParams & {
         onContextMenu={params.onRightClick ? (event) => {
           event.preventDefault();
           event.stopPropagation();
+          params.onSelect(params.selectionId, { toggle: false, range: false, replace: true });
           params.onRightClick?.(event.clientX, event.clientY);
         } : undefined}
         style={{
@@ -2850,6 +2862,7 @@ function ContainerGroupHeader(
       onContextMenu={props.onRightClick ? (event) => {
         event.preventDefault();
         event.stopPropagation();
+        props.onSelect(props.selectionId, { toggle: false, range: false, replace: true });
         props.onRightClick?.(event.clientX, event.clientY);
       } : undefined}
     >
@@ -3049,6 +3062,8 @@ export function AgDemandPlanningGrid({
   cellColors = {},
   columnTextFormats = {},
   cellTextFormats = {},
+  onFormatHistoryRecorderReady,
+  onApplyFormatHistoryChanges,
   skuCellNotes = {},
   skuWorkNotes = {},
   skuWorkNotes2 = {},
@@ -3066,6 +3081,7 @@ export function AgDemandPlanningGrid({
   columnHeaderNames = {},
   onColumnHeaderRename,
   onExportReady,
+  onEditActionsReady,
   gradient = [],
   gradientSC = [],
   hiddenContainers = new Set<string>(),
@@ -3095,7 +3111,9 @@ export function AgDemandPlanningGrid({
   const appliedColumnStructureRef = useRef<string | null>(null);
   const columnWidthsRef = useRef(columnWidths);
   const columnTextFormatsRef = useRef(columnTextFormats);
+  const cellColorsRef = useRef(cellColors);
   const cellTextFormatsRef = useRef(cellTextFormats);
+  const sheetClipboardRef = useRef<SheetClipboardPayload | null>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const qtyOverridesRef = useRef(qtyOverrides);
@@ -3146,15 +3164,32 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     chainMapRef.current = chainMap;
   }, [chainMap]);
 
-  const pushSheetHistory = useCallback((changes: SheetHistoryChange[]) => {
-    const effectiveChanges = changes.filter((change) => change.before !== change.after);
-    if (!effectiveChanges.length) return;
+  const pushHistoryEntry = useCallback((entry: SheetHistoryEntry) => {
+    const valueChanges = entry.valueChanges.filter((change) => change.before !== change.after);
+    const formatChanges = entry.formatChanges.filter(
+      (change) => JSON.stringify(change.before) !== JSON.stringify(change.after),
+    );
+    if (!valueChanges.length && !formatChanges.length) return;
     sheetUndoStackRef.current = [
       ...sheetUndoStackRef.current.slice(-(MAX_SHEET_HISTORY - 1)),
-      { changes: effectiveChanges },
+      { valueChanges, formatChanges },
     ];
     sheetRedoStackRef.current = [];
   }, []);
+
+  const pushSheetHistory = useCallback((changes: SheetHistoryChange[]) => {
+    pushHistoryEntry({ valueChanges: changes, formatChanges: [] });
+  }, [pushHistoryEntry]);
+
+  const pushFormatHistory = useCallback((changes: PlanningFormatHistoryChange[]) => {
+    pushHistoryEntry({ valueChanges: [], formatChanges: changes });
+  }, [pushHistoryEntry]);
+
+  useEffect(() => {
+    if (!onFormatHistoryRecorderReady) return;
+    onFormatHistoryRecorderReady(pushFormatHistory);
+    return () => onFormatHistoryRecorderReady(null);
+  }, [onFormatHistoryRecorderReady, pushFormatHistory]);
 
   const scheduleQtyRenderSync = useCallback(() => {
     if (qtyRenderSyncTimerRef.current !== null) window.clearTimeout(qtyRenderSyncTimerRef.current);
@@ -3675,7 +3710,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const handleColumnHeaderSelectFast = useCallback((columnId: string, modifiers: SelectionModifiers) => {
     const current = selectedColumnIdsRef.current;
     let next: Set<string>;
-    if (modifiers.range && lastHeaderSelectionRef.current) {
+    if (modifiers.replace) {
+      next = new Set([columnId]);
+      lastHeaderSelectionRef.current = columnId;
+    } else if (modifiers.range && lastHeaderSelectionRef.current) {
       const range = headerSelectionRange(lastHeaderSelectionRef.current, columnId);
       next = modifiers.toggle ? new Set([...current, ...range]) : new Set(range);
     } else {
@@ -3698,7 +3736,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const handleFullColumnSelectFast = useCallback((columnId: string, modifiers: SelectionModifiers) => {
     const previous = new Set(selectedFullColumnIdsRef.current);
     let next: Set<string>;
-    if (modifiers.range && lastFullColumnSelectionRef.current) {
+    if (modifiers.replace) {
+      next = new Set([columnId]);
+      lastFullColumnSelectionRef.current = columnId;
+    } else if (modifiers.range && lastFullColumnSelectionRef.current) {
       const range = headerSelectionRange(lastFullColumnSelectionRef.current, columnId);
       next = modifiers.toggle ? new Set([...previous, ...range]) : new Set(range);
     } else {
@@ -4054,6 +4095,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   useEffect(() => () => {
     if (dragSelectionFrameRef.current !== null) window.cancelAnimationFrame(dragSelectionFrameRef.current);
   }, []);
+
+  useEffect(() => {
+    cellColorsRef.current = cellColors;
+  }, [cellColors]);
 
   useEffect(() => {
     columnTextFormatsRef.current = columnTextFormats;
@@ -4422,6 +4467,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const applyClipboardOperation = useCallback(async (
     operations: Array<{ target: EditableCellTarget; value: string }>,
+    formatChanges: PlanningFormatHistoryChange[] = [],
   ) => {
     const changes: SheetHistoryChange[] = [];
     const validOperations: Array<{ target: EditableCellTarget; value: string }> = [];
@@ -4462,46 +4508,58 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const results = await Promise.allSettled(
       validOperations.map(({ target, value }) => applyValueToTarget(target, value, { recordSheetHistory: false })),
     );
-    pushSheetHistory(changes.filter((_change, index) => {
+    const successfulValueChanges = changes.filter((_change, index) => {
       const result = results[index];
       return result?.status === "fulfilled" && result.value;
-    }));
+    });
+    if (formatChanges.length) onApplyFormatHistoryChanges?.(formatChanges, "redo");
+    pushHistoryEntry({ valueChanges: successfulValueChanges, formatChanges });
     return results;
-  }, [applyValueToTarget, pushSheetHistory]);
+  }, [applyValueToTarget, onApplyFormatHistoryChanges, pushHistoryEntry]);
+
+  // Delete/Backspace intentionally clears only Con. Qty and the three Note
+  // columns. CBM remains protected from accidental bulk deletion.
+  const collectDeletableTargets = useCallback((): EditableCellTarget[] => {
+    const targets: EditableCellTarget[] = [];
+    for (const selectedKey of selectedCellsRef.current) {
+      const separator = selectedKey.indexOf("::");
+      if (separator < 0) continue;
+      const editTarget = resolveEditableTarget(
+        selectedKey.slice(0, separator),
+        selectedKey.slice(separator + 2),
+      );
+      if (editTarget?.kind === "qty" || editTarget?.kind === "note") targets.push(editTarget);
+    }
+    return targets;
+  }, [resolveEditableTarget]);
+
+  // Shared by the Delete/Backspace shortcut below and the Edit menu's Delete
+  // item — same action, two triggers.
+  const performDelete = useCallback((): boolean => {
+    if (!canEditPlanning || clearingSelectedEditableCellsRef.current) return false;
+    const targets = collectDeletableTargets();
+    if (!targets.length) return false;
+    clearingSelectedEditableCellsRef.current = true;
+    void applyClipboardOperation(targets.map((target) => ({ target, value: "" })))
+      .finally(() => {
+        clearingSelectedEditableCellsRef.current = false;
+      });
+    return true;
+  }, [applyClipboardOperation, canEditPlanning, collectDeletableTargets]);
 
   useEffect(() => {
     const handleSelectedEditableCellDelete = (event: KeyboardEvent) => {
       if (event.key !== "Delete" && event.key !== "Backspace") return;
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (!canEditPlanning || clearingSelectedEditableCellsRef.current) return;
-
-      const targets: EditableCellTarget[] = [];
-      for (const selectedKey of selectedCellsRef.current) {
-        const separator = selectedKey.indexOf("::");
-        if (separator < 0) continue;
-        const editTarget = resolveEditableTarget(
-          selectedKey.slice(0, separator),
-          selectedKey.slice(separator + 2),
-        );
-        // Delete/Backspace intentionally clears only Con. Qty and the three
-        // Note columns. CBM remains protected from accidental bulk deletion.
-        if (editTarget?.kind === "qty" || editTarget?.kind === "note") targets.push(editTarget);
-      }
-      if (!targets.length) return;
-
+      if (!performDelete()) return;
       event.preventDefault();
       event.stopPropagation();
-      clearingSelectedEditableCellsRef.current = true;
-      void applyClipboardOperation(targets.map((target) => ({ target, value: "" })))
-        .finally(() => {
-          clearingSelectedEditableCellsRef.current = false;
-        });
     };
 
     window.addEventListener("keydown", handleSelectedEditableCellDelete, true);
     return () => window.removeEventListener("keydown", handleSelectedEditableCellDelete, true);
-  }, [applyClipboardOperation, canEditPlanning, resolveEditableTarget]);
+  }, [performDelete]);
 
   useEffect(() => {
     const handleSheetSelectionKeyboard = (event: KeyboardEvent) => {
@@ -4568,32 +4626,99 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     }).join("\t")).join("\n");
   }, [getCellCopyValue, getSelectionBoundsOrdered]);
 
+  const getSelectedClipboardPayload = useCallback((): SheetClipboardPayload | null => {
+    const bounds = getSelectionBoundsOrdered();
+    const text = getSelectedCellsTsv();
+    const api = gridRef.current?.api;
+    if (!bounds || text === null || !api) return null;
+    return {
+      text,
+      formats: bounds.rowIds.map((rowId) => {
+        const row = api.getRowNode(rowId)?.data;
+        return bounds.columnIds.map((columnId) => {
+          if (!row || !selectedCellsRef.current.has(`${rowId}::${columnId}`)) return null;
+          return {
+            background: columnMenuFillColor(columnId, row) || null,
+            textColor: columnMenuTextColor(columnId, row) || null,
+          };
+        });
+      }),
+    };
+  }, [columnMenuFillColor, columnMenuTextColor, getSelectedCellsTsv, getSelectionBoundsOrdered]);
+
+  const buildCellFormatChanges = useCallback((targets: Array<{
+    rowId: string;
+    columnId: string;
+    format: SheetClipboardFormat;
+  }>): PlanningFormatHistoryChange[] => {
+    const changes: PlanningFormatHistoryChange[] = [];
+    const seen = new Set<string>();
+    for (const { rowId, columnId, format } of targets) {
+      const key = `${rowId}::${columnId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      changes.push({
+        kind: "cell-background",
+        key,
+        before: cellColorsRef.current[key] ?? null,
+        after: format.background,
+      });
+
+      const beforeTextFormat = cellTextFormatsRef.current[key] ?? null;
+      const nextTextFormat = { ...(beforeTextFormat ?? {}) };
+      if (format.textColor) nextTextFormat.color = format.textColor;
+      else delete nextTextFormat.color;
+      changes.push({
+        kind: "cell-text-format",
+        key,
+        before: beforeTextFormat,
+        after: Object.keys(nextTextFormat).length ? nextTextFormat : null,
+      });
+    }
+    return changes;
+  }, []);
+
+  const hasEffectiveFormatChanges = useCallback((changes: PlanningFormatHistoryChange[]) =>
+    changes.some((change) => JSON.stringify(change.before) !== JSON.stringify(change.after)), []);
+
+  const selectionHasCuttableFormat = useCallback(() => [...selectedCellsRef.current].some((key) =>
+    Boolean(cellColorsRef.current[key] || cellTextFormatsRef.current[key]?.color)), []);
+
   // Shared by the Ctrl+X/C/V shortcuts below and the Cut/Copy/Paste
   // right-click menu (ClipboardContextMenu) — same action, two triggers.
   const performCopy = useCallback(async () => {
-    const tsv = getSelectedCellsTsv();
-    if (tsv === null) return;
-    await copyText(tsv).catch(() => {});
-  }, [getSelectedCellsTsv]);
+    const payload = getSelectedClipboardPayload();
+    if (!payload) return;
+    await copyText(payload.text)
+      .then(() => { sheetClipboardRef.current = payload; })
+      .catch(() => {});
+  }, [getSelectedClipboardPayload]);
 
   const performCut = useCallback(async () => {
     if (!canEditPlanning) return;
-    const tsv = getSelectedCellsTsv();
-    if (tsv === null) return;
+    const payload = getSelectedClipboardPayload();
+    if (!payload) return;
     const operations: Array<{ target: EditableCellTarget; value: string }> = [];
+    const formatTargets: Array<{ rowId: string; columnId: string; format: SheetClipboardFormat }> = [];
     for (const key of selectedCellsRef.current) {
       const separator = key.indexOf("::");
       if (separator < 0) continue;
-      const target = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
+      const rowId = key.slice(0, separator);
+      const columnId = key.slice(separator + 2);
+      const target = resolveEditableTarget(rowId, columnId);
       if (target) operations.push({ target, value: "" });
+      formatTargets.push({ rowId, columnId, format: { background: null, textColor: null } });
     }
-    // Cut clears every editable spreadsheet-style cell. Read-only cells remain
-    // in the copied TSV but are left untouched in the grid.
-    if (!operations.length) return;
-    await copyText(tsv)
-      .then(() => applyClipboardOperation(operations))
+    const formatChanges = buildCellFormatChanges(formatTargets);
+    if (!operations.length && !hasEffectiveFormatChanges(formatChanges)) return;
+    await copyText(payload.text)
+      .then(() => {
+        sheetClipboardRef.current = payload;
+        return applyClipboardOperation(operations, formatChanges);
+      })
       .catch(() => {});
-  }, [applyClipboardOperation, canEditPlanning, getSelectedCellsTsv, resolveEditableTarget]);
+  }, [applyClipboardOperation, buildCellFormatChanges, canEditPlanning, getSelectedClipboardPayload, hasEffectiveFormatChanges, resolveEditableTarget]);
 
   const performPaste = useCallback(async () => {
     if (!canEditPlanning) return;
@@ -4608,20 +4733,27 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     } catch {
       return;
     }
-    if (!text) return;
+    const copiedPayload = sheetClipboardRef.current?.text === text ? sheetClipboardRef.current : null;
+    if (!text && !copiedPayload) return;
     const lines = text.replace(/\r/g, "").split("\n");
     if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
     const grid = lines.map((line) => line.split("\t"));
     const isSingleValue = grid.length === 1 && grid[0].length === 1;
+    const copiedFormats = copiedPayload?.formats ?? null;
 
     const operations: Array<{ target: EditableCellTarget; value: string }> = [];
+    const formatTargets: Array<{ rowId: string; columnId: string; format: SheetClipboardFormat }> = [];
     if (isSingleValue) {
       const value = grid[0][0];
+      const copiedFormat = copiedFormats?.[0]?.[0] ?? null;
       for (const key of selectedCellsRef.current) {
         const separator = key.indexOf("::");
         if (separator < 0) continue;
-        const editTarget = resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2));
+        const rowId = key.slice(0, separator);
+        const columnId = key.slice(separator + 2);
+        const editTarget = resolveEditableTarget(rowId, columnId);
         if (editTarget) operations.push({ target: editTarget, value });
+        if (copiedFormat) formatTargets.push({ rowId, columnId, format: copiedFormat });
       }
     } else {
       const displayedColumns = api.getAllDisplayedColumns();
@@ -4635,13 +4767,16 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         line.forEach((value, colOffset) => {
           const column = displayedColumns[startColIndex + colOffset];
           if (!column) return;
-          const editTarget = resolveEditableTarget(rowId, column.getColId());
+          const columnId = column.getColId();
+          const editTarget = resolveEditableTarget(rowId, columnId);
           if (editTarget) operations.push({ target: editTarget, value });
+          const copiedFormat = copiedFormats?.[rowOffset]?.[colOffset] ?? null;
+          if (copiedFormat) formatTargets.push({ rowId, columnId, format: copiedFormat });
         });
       });
     }
-    await applyClipboardOperation(operations);
-  }, [applyClipboardOperation, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
+    await applyClipboardOperation(operations, buildCellFormatChanges(formatTargets));
+  }, [applyClipboardOperation, buildCellFormatChanges, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
 
   const performFillDown = useCallback(() => {
     if (!canEditPlanning) return false;
@@ -4698,14 +4833,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           break;
         }
       }
-      if (!hasEditableTarget) return;
+      if (!hasEditableTarget && !selectionHasCuttableFormat()) return;
       event.preventDefault();
       event.stopPropagation();
       void performCut();
     };
     window.addEventListener("keydown", handleCut, true);
     return () => window.removeEventListener("keydown", handleCut, true);
-  }, [canEditPlanning, performCut, resolveEditableTarget]);
+  }, [canEditPlanning, performCut, resolveEditableTarget, selectionHasCuttableFormat]);
 
   useEffect(() => {
     const handlePaste = (event: KeyboardEvent) => {
@@ -4736,14 +4871,48 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   }, [performFillDown]);
 
   const applySheetHistoryEntry = useCallback(async (entry: SheetHistoryEntry, direction: "undo" | "redo") => {
-    const results = await Promise.all(entry.changes.map((change) => {
+    const results = await Promise.all(entry.valueChanges.map((change) => {
       const target = resolveEditableTarget(change.rowId, change.columnId);
       if (!target) return Promise.resolve(false);
       const value = direction === "undo" ? change.before : change.after;
       return applyValueToTarget(target, value, { recordSheetHistory: false });
     }));
-    return results.every(Boolean);
-  }, [applyValueToTarget, resolveEditableTarget]);
+    if (!results.every(Boolean)) return false;
+    if (entry.formatChanges.length) {
+      if (!onApplyFormatHistoryChanges) return false;
+      onApplyFormatHistoryChanges(entry.formatChanges, direction);
+    }
+    return true;
+  }, [applyValueToTarget, onApplyFormatHistoryChanges, resolveEditableTarget]);
+
+  // Shared by the Ctrl+Z/Y shortcut below and the Edit menu's Undo/Redo items
+  // — same action, two triggers. Returns whether an entry was actually
+  // popped (and thus whether the caller should preventDefault), independent
+  // of whether applying it eventually succeeds.
+  const runSheetHistoryStep = useCallback((direction: "undo" | "redo"): boolean => {
+    if (!canEditPlanning || sheetHistoryBusyRef.current) return false;
+    const source = direction === "undo" ? sheetUndoStackRef.current : sheetRedoStackRef.current;
+    const entry = source.pop();
+    if (!entry) return false;
+
+    sheetHistoryBusyRef.current = true;
+    void applySheetHistoryEntry(entry, direction)
+      .then((success) => {
+        if (success) {
+          const destination = direction === "undo" ? sheetRedoStackRef : sheetUndoStackRef;
+          destination.current = [...destination.current.slice(-(MAX_SHEET_HISTORY - 1)), entry];
+        } else {
+          source.push(entry);
+        }
+      })
+      .finally(() => {
+        sheetHistoryBusyRef.current = false;
+      });
+    return true;
+  }, [applySheetHistoryEntry, canEditPlanning]);
+
+  const performUndo = useCallback(() => { runSheetHistoryStep("undo"); }, [runSheetHistoryStep]);
+  const performRedo = useCallback(() => { runSheetHistoryStep("redo"); }, [runSheetHistoryStep]);
 
   useEffect(() => {
     const handleSheetHistoryShortcut = (event: KeyboardEvent) => {
@@ -4753,30 +4922,13 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       if (!direction) return;
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (!canEditPlanning || sheetHistoryBusyRef.current) return;
-      const source = direction === "undo" ? sheetUndoStackRef.current : sheetRedoStackRef.current;
-      const entry = source.pop();
-      if (!entry) return;
-
+      if (!runSheetHistoryStep(direction)) return;
       event.preventDefault();
       event.stopPropagation();
-      sheetHistoryBusyRef.current = true;
-      void applySheetHistoryEntry(entry, direction)
-        .then((success) => {
-          if (success) {
-            const destination = direction === "undo" ? sheetRedoStackRef : sheetUndoStackRef;
-            destination.current = [...destination.current.slice(-(MAX_SHEET_HISTORY - 1)), entry];
-          } else {
-            source.push(entry);
-          }
-        })
-        .finally(() => {
-          sheetHistoryBusyRef.current = false;
-        });
     };
     window.addEventListener("keydown", handleSheetHistoryShortcut, true);
     return () => window.removeEventListener("keydown", handleSheetHistoryShortcut, true);
-  }, [applySheetHistoryEntry, canEditPlanning]);
+  }, [runSheetHistoryStep]);
 
   const autoFill = useCallback(async (
     container: ContainerMeta,
@@ -5757,11 +5909,44 @@ autoFilling3: autoFillingContainers3.has(container.name),
     return () => onExportReady(null);
   }, [exportCurrentView, onExportReady]);
 
+  const getEditMenuAvailability = useCallback((): EditMenuAvailability => {
+    const hasSelection = selectedCellsRef.current.size > 0;
+    return {
+      canUndo: canEditPlanning && !sheetHistoryBusyRef.current && sheetUndoStackRef.current.length > 0,
+      canRedo: canEditPlanning && !sheetHistoryBusyRef.current && sheetRedoStackRef.current.length > 0,
+      canCut: canEditPlanning && hasSelection && (
+        [...selectedCellsRef.current].some((key) => {
+          const separator = key.indexOf("::");
+          return separator >= 0 && resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2)) !== null;
+        }) || selectionHasCuttableFormat()
+      ),
+      canCopy: hasSelection,
+      canPaste: canEditPlanning && hasSelection,
+      canDelete: canEditPlanning && collectDeletableTargets().length > 0,
+    };
+  }, [canEditPlanning, collectDeletableTargets, resolveEditableTarget, selectionHasCuttableFormat]);
+
+  useEffect(() => {
+    if (!onEditActionsReady) return;
+    const actions: EditMenuActions = {
+      undo: performUndo,
+      redo: performRedo,
+      cut: () => void performCut(),
+      copy: () => void performCopy(),
+      paste: () => void performPaste(),
+      deleteSelection: () => { performDelete(); },
+      getAvailability: getEditMenuAvailability,
+    };
+    onEditActionsReady(actions);
+    return () => onEditActionsReady(null);
+  }, [getEditMenuAvailability, onEditActionsReady, performCopy, performCut, performDelete, performPaste, performRedo, performUndo]);
+
   return (
     <>
     <div
       ref={gridHostRef}
       className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white"
+      onContextMenuCapture={(event) => event.preventDefault()}
     >
       <style>{`
         @keyframes planning-spin { to { transform: rotate(360deg); } }
@@ -5914,6 +6099,16 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 onAgCellSelected?.(rangeCells?.length ? { ...selection, cells: rangeCells } : selection);
               });
             }}
+            onCellContextMenu={(event) => {
+              const nativeEvent = event.event as MouseEvent | undefined;
+              nativeEvent?.preventDefault();
+              if (!event.data || event.node.rowPinned || event.node.rowIndex === null) return;
+              const columnId = event.column.getColId();
+              const key = `${event.data.sku}::${columnId}`;
+              if (!selectedCellsRef.current.has(key)) {
+                selectSingleGridCell(event.node.rowIndex, columnId);
+              }
+            }}
             rowHeight={28}
             headerHeight={45}
             groupHeaderHeight={50}
@@ -6025,10 +6220,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
         <ClipboardContextMenu
           x={qtyCtxMenu.x}
           y={qtyCtxMenu.y}
-          canCut={canEditPlanning && [...selectedCellsRef.current].some((key) => {
-            const separator = key.indexOf("::");
-            return separator >= 0 && resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2))?.kind === "qty";
-          })}
+          canCut={canEditPlanning && (
+            [...selectedCellsRef.current].some((key) => {
+              const separator = key.indexOf("::");
+              return separator >= 0 && resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2))?.kind === "qty";
+            }) || selectionHasCuttableFormat()
+          )}
           canPaste={canEditPlanning}
           onCut={() => void performCut()}
           onCopy={() => void performCopy()}

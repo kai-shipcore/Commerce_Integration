@@ -1,10 +1,11 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { PaintBucket, Pipette, RotateCcw, Search } from "lucide-react";
+import { ClipboardPaste, Copy, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2 } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
+import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder } from "./demand-planning-grid";
 import { StatusBar } from "./status-bar";
 import {
   ALL_COLS,
@@ -21,6 +22,7 @@ import {
   GROUP_LABELS,
   DEFAULT_FREEZE,
   COLUMN_WIDTHS_STORAGE_KEY,
+  TINT_COLORS,
   TODAY,
   EMPTY_SKU_PART_FILTERS,
   loadSavedColumnColors,
@@ -35,7 +37,7 @@ import {
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
@@ -133,9 +135,40 @@ const FILL_COLOR_ROWS = [
 
 const STANDARD_FILL_COLORS = ["#000000", "#FFFFFF", "#EA4335", "#FB8C00", "#FABB05", "#34A853", "#24C1E0", "#4285F4", "#7E57C2", "#EC407A"] as const;
 
+function paletteCheckColor(color: string) {
+  const hex = color.replace("#", "");
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000 > 155 ? "#1A1917" : "#FFFFFF";
+}
+
 function defaultCellTextFontSize(columnId: string | undefined) {
   if (!columnId) return 11;
   return columnId === "next_eta" || /(?:^con:|::)(?:esod|psod)$/.test(columnId) ? 10 : 11;
+}
+
+function sharedContainerColumnId(columnId: string) {
+  const separator = columnId.indexOf("::");
+  return separator >= 0 ? `con:${columnId.slice(separator + 2)}` : null;
+}
+
+function defaultCellFillColor(columnId: string, containers: ContainerMeta[]) {
+  const sharedColumnId = sharedContainerColumnId(columnId);
+  if (sharedColumnId) {
+    const subColumnId = sharedColumnId.slice(4);
+    const column = CON_SUBCOLS.find((candidate) => candidate.id === subColumnId);
+    const containerName = columnId.slice(0, columnId.indexOf("::"));
+    const baseline = containers.find((container) => container.name === containerName)?.status === "baseline";
+    return baseline ? "#E2E0DC" : TINT_COLORS[column?.tint ?? ""] ?? "#FFFFFF";
+  }
+  const column = ALL_COLS.find((candidate) => candidate.id === columnId);
+  return TINT_COLORS[column?.tint ?? ""] ?? "#FFFFFF";
+}
+
+function persistPlanningPreference(key: string, value: Record<string, unknown>) {
+  if (Object.keys(value).length) window.localStorage.setItem(key, JSON.stringify(value));
+  else window.localStorage.removeItem(key);
 }
 
 function DeferredColorInput({
@@ -283,10 +316,19 @@ function FillColorPopover({
   currentColor: string;
   targetLabel: string;
   onApply: (color: string) => void;
-  onReset: () => void;
+  onReset: () => boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const applyAndClose = (color: string) => {
+    onApply(color);
+    setOpen(false);
+  };
+  const resetAndClose = () => {
+    if (onReset()) setOpen(false);
+  };
+
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -310,7 +352,7 @@ function FillColorPopover({
           }}
         >
           <PaintBucket size={15} aria-hidden="true" />
-          <span aria-hidden="true" style={{ background: enabled ? currentColor : "#A8A49E", height: 3, marginTop: 1, width: 18 }} />
+          <span aria-hidden="true" style={{ backgroundColor: enabled ? currentColor : "#A8A49E", border: enabled && currentColor.toUpperCase() === "#FFFFFF" ? "1px solid #94A3B8" : "none", boxSizing: "border-box", display: "block", flexShrink: 0, height: 4, marginTop: 1, width: 18 }} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={4} style={{ background: "#FFFFFF", boxShadow: "0 10px 28px rgba(15,23,42,.2)", opacity: 1, width: 244, padding: 10 }}>
@@ -319,7 +361,7 @@ function FillColorPopover({
         </div>
         <button
           type="button"
-          onClick={onReset}
+          onClick={resetAndClose}
           style={{ alignItems: "center", background: "transparent", border: "none", color: "#334155", cursor: "pointer", display: "flex", fontSize: 12, gap: 7, marginBottom: 8, padding: "2px 0" }}
         >
           <RotateCcw size={14} aria-hidden="true" /> Reset
@@ -331,24 +373,34 @@ function FillColorPopover({
               type="button"
               aria-label={`Set fill color ${color}`}
               title={color}
-              onClick={() => onApply(color)}
+              onClick={() => applyAndClose(color)}
               style={{
                 background: color,
-                border: currentColor.toUpperCase() === color ? "2px solid #2563EB" : color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent",
+                alignItems: "center",
+                border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent",
                 borderRadius: "50%",
-                boxShadow: currentColor.toUpperCase() === color ? "0 0 0 1px #fff inset" : undefined,
+                color: paletteCheckColor(color),
                 cursor: "pointer",
+                display: "inline-flex",
+                fontSize: 13,
+                fontWeight: 800,
                 height: 19,
+                justifyContent: "center",
+                lineHeight: 1,
                 padding: 0,
                 width: 19,
               }}
-            />
+            >
+              {currentColor.toUpperCase() === color ? "✓" : null}
+            </button>
           ))}
         </div>
         <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>STANDARD</div>
         <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
           {STANDARD_FILL_COLORS.map((color) => (
-            <button key={color} type="button" aria-label={`Set standard fill color ${color}`} onClick={() => onApply(color)} style={{ background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", cursor: "pointer", height: 19, padding: 0, width: 19 }} />
+            <button key={color} type="button" aria-label={`Set standard fill color ${color}`} onClick={() => applyAndClose(color)} style={{ alignItems: "center", background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", color: paletteCheckColor(color), cursor: "pointer", display: "inline-flex", fontSize: 13, fontWeight: 800, height: 19, justifyContent: "center", lineHeight: 1, padding: 0, width: 19 }}>
+              {currentColor.toUpperCase() === color ? "✓" : null}
+            </button>
           ))}
         </div>
         <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>CUSTOM</div>
@@ -356,7 +408,7 @@ function FillColorPopover({
           <span aria-hidden="true" style={{ background: currentColor, border: "1px solid #CBD5E1", borderRadius: "50%", height: 19, width: 19 }} />
           <Pipette size={15} aria-hidden="true" />
           <span style={{ color: "#475569", fontSize: 11 }}>Custom color</span>
-          <DeferredColorInput key={currentColor} value={currentColor} ariaLabel="Custom fill color" onCommit={onApply} />
+          <DeferredColorInput key={currentColor} value={currentColor} ariaLabel="Custom fill color" onCommit={applyAndClose} />
         </label>
       </PopoverContent>
     </Popover>
@@ -375,14 +427,22 @@ function TextFormatPopover({
   format: Required<TextFormatSettings>;
   targetLabel: string;
   onChange: (patch: TextFormatSettings) => void;
-  onReset: () => void;
+  onReset: () => boolean;
   fontSizeDisabled?: boolean;
 }) {
   const { pick } = useI18n();
   const currentColor = format.color.toUpperCase();
+  const [open, setOpen] = useState(false);
+  const applyColorAndClose = (color: string) => {
+    onChange({ color });
+    setOpen(false);
+  };
+  const resetAndClose = () => {
+    if (onReset()) setOpen(false);
+  };
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -391,15 +451,29 @@ function TextFormatPopover({
           title={enabled ? `Text formatting: ${targetLabel}` : "Select column headers or grid cells first"}
           style={{ alignItems: "center", background: enabled ? "#fff" : "#F5F4EF", border: "1px solid #C2BFB5", borderRadius: 4, color: enabled ? "#1A1917" : "#A8A49E", cursor: enabled ? "pointer" : "default", display: "inline-flex", flexDirection: "column", flexShrink: 0, fontFamily: "Arial, sans-serif", fontSize: 15, fontWeight: format.bold ? 800 : 500, height: 30, justifyContent: "center", padding: "2px 7px 1px", width: 32 }}
         >
-          <span aria-hidden="true" style={{ lineHeight: 15 }}>A</span>
-          <span aria-hidden="true" style={{ background: enabled ? currentColor : "#A8A49E", height: 3, marginTop: 1, width: 18 }} />
+          <span
+            aria-hidden="true"
+            style={{
+              borderBottom: `4px solid ${enabled ? currentColor : "#A8A49E"}`,
+              boxSizing: "border-box",
+              display: "block",
+              flexShrink: 0,
+              lineHeight: "15px",
+              minHeight: 20,
+              textAlign: "center",
+              width: 18,
+              ...(enabled && currentColor === "#FFFFFF" ? { boxShadow: "inset 0 -1px #94A3B8" } : {}),
+            }}
+          >
+            A
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={4} style={{ background: "#FFFFFF", boxShadow: "0 10px 28px rgba(15,23,42,.2)", opacity: 1, padding: 10, width: 244 }}>
         <div style={{ color: "#64748B", fontSize: 10, fontWeight: 700, marginBottom: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={targetLabel}>
           {targetLabel}
         </div>
-        <button type="button" onClick={onReset} style={{ alignItems: "center", background: "transparent", border: "none", color: "#334155", cursor: "pointer", display: "flex", fontSize: 12, gap: 7, marginBottom: 8, padding: "2px 0" }}>
+        <button type="button" onClick={resetAndClose} style={{ alignItems: "center", background: "transparent", border: "none", color: "#334155", cursor: "pointer", display: "flex", fontSize: 12, gap: 7, marginBottom: 8, padding: "2px 0" }}>
           <RotateCcw size={14} aria-hidden="true" /> Reset
         </button>
         <div style={{ alignItems: "center", display: "flex", gap: 8, marginBottom: fontSizeDisabled ? 2 : 10 }}>
@@ -442,15 +516,19 @@ function TextFormatPopover({
               type="button"
               aria-label={`Set font color ${color}`}
               title={color}
-              onClick={() => onChange({ color })}
-              style={{ background: color, border: currentColor === color ? "2px solid #2563EB" : color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", boxShadow: currentColor === color ? "0 0 0 1px #fff inset" : undefined, cursor: "pointer", height: 19, padding: 0, width: 19 }}
-            />
+              onClick={() => applyColorAndClose(color)}
+              style={{ alignItems: "center", background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", color: paletteCheckColor(color), cursor: "pointer", display: "inline-flex", fontSize: 13, fontWeight: 800, height: 19, justifyContent: "center", lineHeight: 1, padding: 0, width: 19 }}
+            >
+              {currentColor === color ? "✓" : null}
+            </button>
           ))}
         </div>
         <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>STANDARD</div>
         <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
           {STANDARD_FILL_COLORS.map((color) => (
-            <button key={color} type="button" aria-label={`Set standard font color ${color}`} onClick={() => onChange({ color })} style={{ background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", cursor: "pointer", height: 19, padding: 0, width: 19 }} />
+            <button key={color} type="button" aria-label={`Set standard font color ${color}`} onClick={() => applyColorAndClose(color)} style={{ alignItems: "center", background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", color: paletteCheckColor(color), cursor: "pointer", display: "inline-flex", fontSize: 13, fontWeight: 800, height: 19, justifyContent: "center", lineHeight: 1, padding: 0, width: 19 }}>
+              {currentColor === color ? "✓" : null}
+            </button>
           ))}
         </div>
         <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>CUSTOM</div>
@@ -458,7 +536,7 @@ function TextFormatPopover({
           <span aria-hidden="true" style={{ background: currentColor, border: "1px solid #CBD5E1", borderRadius: "50%", height: 19, width: 19 }} />
           <Pipette size={15} aria-hidden="true" />
           <span style={{ color: "#475569", fontSize: 11 }}>Custom color</span>
-          <DeferredColorInput key={currentColor} value={currentColor} ariaLabel="Custom font color" onCommit={(color) => onChange({ color })} />
+          <DeferredColorInput key={currentColor} value={currentColor} ariaLabel="Custom font color" onCommit={applyColorAndClose} />
         </label>
       </PopoverContent>
     </Popover>
@@ -724,6 +802,35 @@ function loadSavedColumnSettings(): Partial<ColumnSettings> {
   }
 }
 
+/** One row in the toolbar's Edit menu (Undo/Redo/Cut/Copy/Paste/Delete) —
+ *  Google Sheets-style: icon + label on the left, shortcut hint on the
+ *  right, dimmed and inert when the action doesn't apply to the current
+ *  selection/history state. */
+function EditMenuItem({
+  icon, label, shortcut, disabled, onSelect,
+}: { icon: ReactNode; label: string; shortcut: string; disabled: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onSelect}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+        width: "100%", padding: "7px 10px", borderRadius: 4,
+        border: "none", background: "transparent", textAlign: "left",
+        fontSize: 12, fontWeight: 600,
+        color: disabled ? "#B8B5AE" : "#1A1917",
+        cursor: disabled ? "default" : "pointer",
+      }}
+      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = "#F8FAFC"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+    >
+      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>{icon}{label}</span>
+      <span style={{ fontSize: 11, color: "#94A3B8" }}>{shortcut}</span>
+    </button>
+  );
+}
+
 export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "native" | "ag-grid" }) {
   const { pick } = useI18n();
   const confirmReset = useCallback((koreanTarget: string, englishTarget: string) => window.confirm(
@@ -872,6 +979,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
   const [columnTextFormats, setColumnTextFormats] = useState<ColumnTextFormatSettings>({});
   const [cellTextFormats, setCellTextFormats] = useState<CellTextFormatSettings>({});
+  const formatHistoryRecorderRef = useRef<PlanningFormatHistoryRecorder | null>(null);
   const [isColorSettingsOpen, setIsColorSettingsOpen] = useState(true);
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
   const [selectedAgCells, setSelectedAgCells] = useState<{ rowId: string; columnId: string; label: string }[]>([]);
@@ -893,7 +1001,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const categoryFilterRef = useRef<HTMLDivElement>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
+  const agGridEditActionsRef = useRef<EditMenuActions | null>(null);
   const columnOrderChangedRef = useRef(false);
+  const editMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const [isEditMenuOpen, setIsEditMenuOpen] = useState(false);
+  const [editMenuAvailability, setEditMenuAvailability] = useState<EditMenuAvailability>({
+    canUndo: false, canRedo: false, canCut: false, canCopy: false, canPaste: false, canDelete: false,
+  });
 
   // Debounced save of all preferences to DB (1.5s delay to batch rapid changes).
   // The mount-time GET below overwrites localStorage with whatever the DB has,
@@ -1277,7 +1391,84 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     window.localStorage.removeItem(COLUMN_ORDER_STORAGE_KEY);
   }, []);
 
+  const handleFormatHistoryRecorderReady = useCallback((recorder: PlanningFormatHistoryRecorder | null) => {
+    formatHistoryRecorderRef.current = recorder;
+  }, []);
+
+  const applyFormatHistoryChanges = useCallback((changes: PlanningFormatHistoryChange[], direction: "undo" | "redo") => {
+    const valueFor = <T,>(change: { before: T; after: T }) => direction === "undo" ? change.before : change.after;
+
+    const cellBackgroundChanges = changes.filter((change) => change.kind === "cell-background");
+    if (cellBackgroundChanges.length) {
+      setCellColors((current) => {
+        const next = { ...current };
+        for (const change of cellBackgroundChanges) {
+          const value = valueFor(change);
+          if (value) next[change.key] = value;
+          else delete next[change.key];
+        }
+        persistPlanningPreference(CELL_COLORS_STORAGE_KEY, next);
+        return next;
+      });
+    }
+
+    const columnBackgroundChanges = changes.filter((change) => change.kind === "column-background");
+    if (columnBackgroundChanges.length) {
+      setColumnColors((current) => {
+        const next = { ...current };
+        for (const change of columnBackgroundChanges) {
+          const setting = { ...(next[change.columnId] ?? {}) };
+          const value = valueFor(change);
+          if (value) setting[change.target] = value;
+          else delete setting[change.target];
+          if (Object.keys(setting).length) next[change.columnId] = setting;
+          else delete next[change.columnId];
+        }
+        persistPlanningPreference(COLUMN_COLORS_STORAGE_KEY, next);
+        return next;
+      });
+    }
+
+    const cellTextChanges = changes.filter((change) => change.kind === "cell-text-format");
+    if (cellTextChanges.length) {
+      setCellTextFormats((current) => {
+        const next = { ...current };
+        for (const change of cellTextChanges) {
+          const value = valueFor(change);
+          if (value) next[change.key] = { ...value };
+          else delete next[change.key];
+        }
+        persistPlanningPreference(CELL_TEXT_FORMATS_STORAGE_KEY, next);
+        return next;
+      });
+    }
+
+    const columnTextChanges = changes.filter((change) => change.kind === "column-text-format");
+    if (columnTextChanges.length) {
+      setColumnTextFormats((current) => {
+        const next = { ...current };
+        for (const change of columnTextChanges) {
+          const setting = { ...(next[change.columnId] ?? {}) };
+          const value = valueFor(change);
+          if (value) setting[change.target] = { ...value };
+          else delete setting[change.target];
+          if (Object.keys(setting).length) next[change.columnId] = setting;
+          else delete next[change.columnId];
+        }
+        persistPlanningPreference(COLUMN_TEXT_FORMATS_STORAGE_KEY, next);
+        return next;
+      });
+    }
+  }, []);
+
   const handleColumnColorChange = useCallback((columnIds: string[], target: "cell" | "header", color: string) => {
+    formatHistoryRecorderRef.current?.(columnIds.map((columnId) => ({
+      kind: "column-background" as const,
+      columnId,
+      target,
+      before: columnColors[columnId]?.[target] ?? null,
+      after: color,
+    })));
     setColumnColors((current) => {
       const next = { ...current };
       for (const id of columnIds) {
@@ -1286,7 +1477,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [columnColors]);
 
   const handleGridColumnSelect = useCallback((columnId: string, additive: boolean, selection?: string[]) => {
     setActiveColorTarget("headers");
@@ -1342,6 +1533,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   const resetColumnColorTarget = useCallback((columnIds: string[], target: "cell" | "header") => {
+    formatHistoryRecorderRef.current?.(columnIds.map((columnId) => ({
+      kind: "column-background" as const,
+      columnId,
+      target,
+      before: columnColors[columnId]?.[target] ?? null,
+      after: null,
+    })));
     setColumnColors((current) => {
       const next = { ...current };
       for (const id of columnIds) {
@@ -1354,11 +1552,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       else window.localStorage.removeItem(COLUMN_COLORS_STORAGE_KEY);
       return next;
     });
-  }, []);
+  }, [columnColors]);
 
   const handleSelectedCellColorChange = useCallback((color: string) => {
     if (!selectedAgCell) return;
     const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    formatHistoryRecorderRef.current?.(targets.map((cell) => {
+      const key = `${cell.rowId}::${cell.columnId}`;
+      return { kind: "cell-background" as const, key, before: cellColors[key] ?? null, after: color };
+    }));
     setCellColors((current) => {
       const next = { ...current };
       for (const cell of targets) {
@@ -1367,11 +1569,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, [selectedAgCell, selectedAgCells]);
+  }, [cellColors, selectedAgCell, selectedAgCells]);
 
   const resetSelectedCellColor = useCallback(() => {
     if (!selectedAgCell) return;
     const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    formatHistoryRecorderRef.current?.(targets.map((cell) => {
+      const key = `${cell.rowId}::${cell.columnId}`;
+      return { kind: "cell-background" as const, key, before: cellColors[key] ?? null, after: null };
+    }));
     setCellColors((current) => {
       const next = { ...current };
       for (const cell of targets) {
@@ -1384,7 +1590,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       }
       return next;
     });
-  }, [selectedAgCell, selectedAgCells]);
+  }, [cellColors, selectedAgCell, selectedAgCells]);
 
   const resetCellColors = useCallback(() => {
     setCellColors({});
@@ -1392,6 +1598,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   const handleColumnTextFormatChange = useCallback((columnIds: string[], target: "cell" | "header", patch: TextFormatSettings) => {
+    formatHistoryRecorderRef.current?.(columnIds.map((columnId) => {
+      const before = columnTextFormats[columnId]?.[target] ?? null;
+      return {
+        kind: "column-text-format" as const,
+        columnId,
+        target,
+        before,
+        after: { ...(before ?? {}), ...patch },
+      };
+    }));
     setColumnTextFormats((current) => {
       const next = { ...current };
       for (const id of columnIds) {
@@ -1403,11 +1619,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       window.localStorage.setItem(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [columnTextFormats]);
 
   const handleSelectedCellTextFormatChange = useCallback((patch: TextFormatSettings) => {
     if (!selectedAgCell) return;
     const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    formatHistoryRecorderRef.current?.(targets.map((cell) => {
+      const key = `${cell.rowId}::${cell.columnId}`;
+      const before = cellTextFormats[key] ?? null;
+      return { kind: "cell-text-format" as const, key, before, after: { ...(before ?? {}), ...patch } };
+    }));
     setCellTextFormats((current) => {
       const next = { ...current };
       for (const cell of targets) {
@@ -1417,9 +1638,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       window.localStorage.setItem(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
-  }, [selectedAgCell, selectedAgCells]);
+  }, [cellTextFormats, selectedAgCell, selectedAgCells]);
 
   const resetColumnTextFormatTarget = useCallback((columnIds: string[], target: "cell" | "header") => {
+    formatHistoryRecorderRef.current?.(columnIds.map((columnId) => ({
+      kind: "column-text-format" as const,
+      columnId,
+      target,
+      before: columnTextFormats[columnId]?.[target] ?? null,
+      after: null,
+    })));
     setColumnTextFormats((current) => {
       const next = { ...current };
       for (const id of columnIds) {
@@ -1432,11 +1660,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       else window.localStorage.removeItem(COLUMN_TEXT_FORMATS_STORAGE_KEY);
       return next;
     });
-  }, []);
+  }, [columnTextFormats]);
 
   const resetSelectedCellTextFormat = useCallback(() => {
     if (!selectedAgCell) return;
     const targets = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    formatHistoryRecorderRef.current?.(targets.map((cell) => {
+      const key = `${cell.rowId}::${cell.columnId}`;
+      return { kind: "cell-text-format" as const, key, before: cellTextFormats[key] ?? null, after: null };
+    }));
     setCellTextFormats((current) => {
       const next = { ...current };
       for (const cell of targets) delete next[`${cell.rowId}::${cell.columnId}`];
@@ -1444,7 +1676,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       else window.localStorage.removeItem(CELL_TEXT_FORMATS_STORAGE_KEY);
       return next;
     });
-  }, [selectedAgCell, selectedAgCells]);
+  }, [cellTextFormats, selectedAgCell, selectedAgCells]);
 
   const resetSelectedCellTextColor = useCallback(() => {
     if (!selectedAgCell) return;
@@ -1518,27 +1750,44 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   const selectedCellColorInfo = useMemo(() => {
     if (!selectedAgCell) return { color: "#FFFFFF", label: "No cell" };
-    const keys = selectedCellKeys.length ? selectedCellKeys : [`${selectedAgCell.rowId}::${selectedAgCell.columnId}`];
-    const colors = keys.map((key) => cellColors[key] ?? "#FFFFFF");
+    const cells = selectedAgCells.length ? selectedAgCells : [selectedAgCell];
+    const colors = cells.map((cell) => {
+      const key = `${cell.rowId}::${cell.columnId}`;
+      const sharedColumnId = sharedContainerColumnId(cell.columnId);
+      return cellColors[key]
+        ?? columnColors[cell.columnId]?.cell
+        ?? (sharedColumnId ? columnColors[sharedColumnId]?.cell : undefined)
+        ?? defaultCellFillColor(cell.columnId, data.containers);
+    });
     const unique = Array.from(new Set(colors));
     return unique.length === 1
       ? { color: unique[0], label: unique[0] === "#FFFFFF" ? "Default" : unique[0].toUpperCase() }
       : { color: "#FFFFFF", label: "Mixed" };
-  }, [cellColors, selectedAgCell, selectedCellKeys]);
+  }, [cellColors, columnColors, data.containers, selectedAgCell, selectedAgCells]);
 
   const selectedHeaderColorInfo = useMemo(() => {
     if (!selectedColorColumns.length) return { color: "#FFFFFF", mixed: false };
-    const colors = selectedColorColumns.map((id) => columnColors[id]?.header ?? "#2A2825");
+    const colors = selectedColorColumns.map((id) => {
+      const sharedColumnId = sharedContainerColumnId(id);
+      return columnColors[id]?.header
+        ?? (sharedColumnId ? columnColors[sharedColumnId]?.header : undefined)
+        ?? "#2A2825";
+    });
     const uniqueColors = Array.from(new Set(colors.map((color) => color.toUpperCase())));
     return { color: uniqueColors[0] ?? "#2A2825", mixed: uniqueColors.length > 1 };
   }, [columnColors, selectedColorColumns]);
 
   const selectedFullColumnColorInfo = useMemo(() => {
     if (!selectedFullColumnIds.length) return { color: "#FFFFFF", mixed: false };
-    const colors = selectedFullColumnIds.map((id) => columnColors[id]?.cell ?? "#FFFFFF");
+    const colors = selectedFullColumnIds.map((id) => {
+      const sharedColumnId = sharedContainerColumnId(id);
+      return columnColors[id]?.cell
+        ?? (sharedColumnId ? columnColors[sharedColumnId]?.cell : undefined)
+        ?? defaultCellFillColor(id, data.containers);
+    });
     const uniqueColors = Array.from(new Set(colors.map((color) => color.toUpperCase())));
     return { color: uniqueColors[0] ?? "#FFFFFF", mixed: uniqueColors.length > 1 };
-  }, [columnColors, selectedFullColumnIds]);
+  }, [columnColors, data.containers, selectedFullColumnIds]);
 
   const fillPaletteEnabled = activeColorTarget === "headers"
     ? selectedColorColumns.length > 0
@@ -1575,16 +1824,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [activeColorTarget, handleColumnColorChange, handleSelectedCellColorChange, selectedColorColumns, selectedFullColumnIds]);
 
   const handleFillColorReset = useCallback(() => {
-    if (!confirmReset("선택한 채우기 색상", "the selected fill color")) return;
+    if (!confirmReset("선택한 채우기 색상", "the selected fill color")) return false;
     if (activeColorTarget === "headers") {
       resetColumnColorTarget(selectedColorColumns, "header");
-      return;
-    }
-    if (activeColorTarget === "columns") {
+    } else if (activeColorTarget === "columns") {
       resetColumnColorTarget(selectedFullColumnIds, "cell");
-      return;
+    } else {
+      resetSelectedCellColor();
     }
-    resetSelectedCellColor();
+    return true;
   }, [activeColorTarget, confirmReset, resetColumnColorTarget, resetSelectedCellColor, selectedColorColumns, selectedFullColumnIds]);
 
   const currentTextFormat = useMemo<Required<TextFormatSettings>>(() => {
@@ -1596,11 +1844,26 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       : { fontSize: defaultCellTextFontSize(selectedCellColumnId), bold: false, color: "#1A1917" };
     let selectedFormat: TextFormatSettings | undefined;
     if (activeColorTarget === "headers") {
-      selectedFormat = columnTextFormats[selectedColorColumns[0] ?? ""]?.header;
+      const columnId = selectedColorColumns[0] ?? "";
+      const sharedColumnId = sharedContainerColumnId(columnId);
+      selectedFormat = {
+        ...(sharedColumnId ? columnTextFormats[sharedColumnId]?.header : {}),
+        ...(columnTextFormats[columnId]?.header ?? {}),
+      };
     } else if (activeColorTarget === "columns") {
-      selectedFormat = columnTextFormats[selectedFullColumnIds[0] ?? ""]?.cell;
+      const columnId = selectedFullColumnIds[0] ?? "";
+      const sharedColumnId = sharedContainerColumnId(columnId);
+      selectedFormat = {
+        ...(sharedColumnId ? columnTextFormats[sharedColumnId]?.cell : {}),
+        ...(columnTextFormats[columnId]?.cell ?? {}),
+      };
     } else if (selectedAgCell) {
-      selectedFormat = cellTextFormats[`${selectedAgCell.rowId}::${selectedAgCell.columnId}`];
+      const sharedColumnId = sharedContainerColumnId(selectedAgCell.columnId);
+      selectedFormat = {
+        ...(sharedColumnId ? columnTextFormats[sharedColumnId]?.cell : {}),
+        ...(columnTextFormats[selectedAgCell.columnId]?.cell ?? {}),
+        ...(cellTextFormats[`${selectedAgCell.rowId}::${selectedAgCell.columnId}`] ?? {}),
+      };
     }
     return { ...defaultFormat, ...(selectedFormat ?? {}) };
   }, [activeColorTarget, cellTextFormats, columnTextFormats, selectedAgCell, selectedColorColumns, selectedFullColumnIds]);
@@ -1618,16 +1881,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [activeColorTarget, handleColumnTextFormatChange, handleSelectedCellTextFormatChange, selectedColorColumns, selectedFullColumnIds]);
 
   const handleTextFormatReset = useCallback(() => {
-    if (!confirmReset("선택한 텍스트 서식", "the selected text formatting")) return;
+    if (!confirmReset("선택한 텍스트 서식", "the selected text formatting")) return false;
     if (activeColorTarget === "headers") {
       resetColumnTextFormatTarget(selectedColorColumns, "header");
-      return;
-    }
-    if (activeColorTarget === "columns") {
+    } else if (activeColorTarget === "columns") {
       resetColumnTextFormatTarget(selectedFullColumnIds, "cell");
-      return;
+    } else {
+      resetSelectedCellTextFormat();
     }
-    resetSelectedCellTextFormat();
+    return true;
   }, [activeColorTarget, confirmReset, resetColumnTextFormatTarget, resetSelectedCellTextFormat, selectedColorColumns, selectedFullColumnIds]);
 
   const handleSeasonalFactorsChange = useCallback((next: SeasonalFactors) => {
@@ -2031,6 +2293,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     agGridExportRef.current = exporter;
   }, []);
 
+  const handleAgGridEditActionsReady = useCallback((actions: EditMenuActions | null) => {
+    agGridEditActionsRef.current = actions;
+  }, []);
+
+  const handleEditMenuOpenChange = useCallback((open: boolean) => {
+    setIsEditMenuOpen(open);
+    if (open) {
+      setEditMenuAvailability(agGridEditActionsRef.current?.getAvailability() ?? {
+        canUndo: false, canRedo: false, canCut: false, canCopy: false, canPaste: false, canDelete: false,
+      });
+    }
+  }, []);
+
   const handleExport = useCallback(() => {
     if (gridMode === "ag-grid" && agGridExportRef.current) {
       void agGridExportRef.current();
@@ -2324,6 +2599,81 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
         {hasData && (
           <>
+          {gridMode === "ag-grid" && (
+            <Popover open={isEditMenuOpen} onOpenChange={handleEditMenuOpenChange}>
+              <PopoverTrigger asChild>
+                <button
+                  ref={editMenuButtonRef}
+                  type="button"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    height: 30,
+                    boxSizing: "border-box",
+                    padding: "0 10px",
+                    borderRadius: 4,
+                    border: "1px solid #C2BFB5",
+                    cursor: "pointer",
+                    color: "#1A1917",
+                    background: "#fff",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {pick("편집", "Edit")} ▾
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-56 p-1">
+                <EditMenuItem
+                  icon={<Undo2 size={14} aria-hidden="true" />}
+                  label={pick("실행 취소", "Undo")}
+                  shortcut="Ctrl+Z"
+                  disabled={!editMenuAvailability.canUndo}
+                  onSelect={() => { agGridEditActionsRef.current?.undo(); setIsEditMenuOpen(false); }}
+                />
+                <EditMenuItem
+                  icon={<Redo2 size={14} aria-hidden="true" />}
+                  label={pick("다시 실행", "Redo")}
+                  shortcut="Ctrl+Y"
+                  disabled={!editMenuAvailability.canRedo}
+                  onSelect={() => { agGridEditActionsRef.current?.redo(); setIsEditMenuOpen(false); }}
+                />
+                <div style={{ height: 1, background: "#F1F5F9", margin: "4px 0" }} />
+                <EditMenuItem
+                  icon={<Scissors size={14} aria-hidden="true" />}
+                  label={pick("잘라내기", "Cut")}
+                  shortcut="Ctrl+X"
+                  disabled={!editMenuAvailability.canCut}
+                  onSelect={() => { agGridEditActionsRef.current?.cut(); setIsEditMenuOpen(false); }}
+                />
+                <EditMenuItem
+                  icon={<Copy size={14} aria-hidden="true" />}
+                  label={pick("복사", "Copy")}
+                  shortcut="Ctrl+C"
+                  disabled={!editMenuAvailability.canCopy}
+                  onSelect={() => { agGridEditActionsRef.current?.copy(); setIsEditMenuOpen(false); }}
+                />
+                <EditMenuItem
+                  icon={<ClipboardPaste size={14} aria-hidden="true" />}
+                  label={pick("붙여넣기", "Paste")}
+                  shortcut="Ctrl+V"
+                  disabled={!editMenuAvailability.canPaste}
+                  onSelect={() => { agGridEditActionsRef.current?.paste(); setIsEditMenuOpen(false); }}
+                />
+                <div style={{ height: 1, background: "#F1F5F9", margin: "4px 0" }} />
+                <EditMenuItem
+                  icon={<Trash2 size={14} aria-hidden="true" />}
+                  label={pick("삭제", "Delete")}
+                  shortcut="Delete"
+                  disabled={!editMenuAvailability.canDelete}
+                  onSelect={() => { agGridEditActionsRef.current?.deleteSelection(); setIsEditMenuOpen(false); }}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
           <Popover open={isColumnSettingsOpen} onOpenChange={handleColumnSettingsOpenChange}>
             <PopoverTrigger asChild>
               <button
@@ -3391,6 +3741,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           cellColors={cellColors}
           columnTextFormats={columnTextFormats}
           cellTextFormats={cellTextFormats}
+          onFormatHistoryRecorderReady={handleFormatHistoryRecorderReady}
+          onApplyFormatHistoryChanges={applyFormatHistoryChanges}
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
           skuWorkNotes={skuWorkNotes}
@@ -3423,6 +3775,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             setSelectedAgCells(cells);
           }}
           onExportReady={handleAgGridExportReady}
+          onEditActionsReady={handleAgGridEditActionsReady}
           hiddenContainers={hiddenContainers}
           hiddenBases={hiddenBases}
           hiddenContainerColumns={hiddenContainerColumns}

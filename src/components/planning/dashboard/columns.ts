@@ -301,6 +301,27 @@ export type SkuPartFilterKey = "formula" | "fabric" | "seat" | "no" | "size" | "
 export type SkuParts = Record<SkuPartFilterKey, string>;
 export type SkuPartFilters = Record<SkuPartFilterKey, string[]>;
 
+export type EditMenuAvailability = {
+  canUndo: boolean;
+  canRedo: boolean;
+  canCut: boolean;
+  canCopy: boolean;
+  canPaste: boolean;
+  canDelete: boolean;
+};
+/** Exposed by the AG Grid variant so a toolbar Edit menu owned by the parent
+ *  dashboard can drive Undo/Redo/Cut/Copy/Paste/Delete without reaching into
+ *  the grid's internal selection/history refs. */
+export type EditMenuActions = {
+  undo: () => void;
+  redo: () => void;
+  cut: () => void;
+  copy: () => void;
+  paste: () => void;
+  deleteSelection: () => void;
+  getAvailability: () => EditMenuAvailability;
+};
+
 export const EMPTY_SKU_PART_FILTERS: SkuPartFilters = {
   formula: [],
   fabric: [],
