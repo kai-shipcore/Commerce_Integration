@@ -1571,7 +1571,7 @@ function QtyCellRenderer({
   onSave: (qty: number) => Promise<boolean>;
   onRequestEdit: () => boolean;
   onSelectCell: (rowIndex: number, columnId: string) => void;
-  onContextMenuRequest: (rowIndex: number, columnId: string, x: number, y: number) => void;
+  onContextMenuRequest: (rowIndex: number, columnId: string, x: number, y: number, preserveSelection: boolean) => void;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
   const [editing, setEditing] = useState(false);
@@ -1744,7 +1744,13 @@ function QtyCellRenderer({
         event.preventDefault();
         event.stopPropagation();
         if (node.rowIndex === null) return;
-        onContextMenuRequest(node.rowIndex, columnId, event.clientX, event.clientY);
+        onContextMenuRequest(
+          node.rowIndex,
+          columnId,
+          event.clientX,
+          event.clientY,
+          event.ctrlKey || event.metaKey || event.shiftKey,
+        );
       }}
       className="h-full w-full appearance-none border-0 bg-transparent px-1 text-center font-mono text-[11px] font-semibold text-[#1A4FC0] shadow-none outline-none focus:shadow-none focus:outline-none focus-visible:shadow-none focus-visible:outline-none"
     >
@@ -2320,6 +2326,7 @@ function SelectableHeader(params: IHeaderParams & {
   onRename: (columnId: string, name: string) => void;
   isFiltered?: boolean;
   onRightClick?: (x: number, y: number) => void;
+  shouldPreserveContextSelection: () => boolean;
   showMenuButton?: boolean;
   /** Set when a hidden run's restore arrow anchors to this column — see
    *  `HideGapRestoreMarker`. At most one of these two is set per column. */
@@ -2368,7 +2375,11 @@ function SelectableHeader(params: IHeaderParams & {
         onContextMenu={params.onRightClick ? (event) => {
           event.preventDefault();
           event.stopPropagation();
-          params.onFullColumnSelect(params.selectionId, { toggle: false, range: false, replace: true });
+          const preserveSelection = event.ctrlKey || event.metaKey || event.shiftKey
+            || params.shouldPreserveContextSelection();
+          if (!preserveSelection) {
+            params.onFullColumnSelect(params.selectionId, { toggle: false, range: false, replace: true });
+          }
           params.onRightClick?.(event.clientX, event.clientY);
         } : undefined}
         style={{ background: fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: 0, padding: 0, position: "absolute", right: 0, top: 0, zIndex: 2 }}
@@ -2405,7 +2416,11 @@ function SelectableHeader(params: IHeaderParams & {
         onContextMenu={params.onRightClick ? (event) => {
           event.preventDefault();
           event.stopPropagation();
-          params.onSelect(params.selectionId, { toggle: false, range: false, replace: true });
+          const preserveSelection = event.ctrlKey || event.metaKey || event.shiftKey
+            || params.shouldPreserveContextSelection();
+          if (!preserveSelection) {
+            params.onSelect(params.selectionId, { toggle: false, range: false, replace: true });
+          }
           params.onRightClick?.(event.clientX, event.clientY);
         } : undefined}
         style={{
@@ -2903,6 +2918,7 @@ function ContainerGroupHeader(
     onSelect: (columnId: string, modifiers: SelectionModifiers) => void;
     onRename: (columnId: string, name: string) => void;
     onRightClick?: (x: number, y: number) => void;
+    shouldPreserveContextSelection: () => boolean;
   },
 ) {
   const [targetDays, setTargetDays] = useState(90);
@@ -3016,7 +3032,11 @@ function ContainerGroupHeader(
       onContextMenu={props.onRightClick ? (event) => {
         event.preventDefault();
         event.stopPropagation();
-        props.onSelect(props.selectionId, { toggle: false, range: false, replace: true });
+        const preserveSelection = event.ctrlKey || event.metaKey || event.shiftKey
+          || props.shouldPreserveContextSelection();
+        if (!preserveSelection) {
+          props.onSelect(props.selectionId, { toggle: false, range: false, replace: true });
+        }
         props.onRightClick?.(event.clientX, event.clientY);
       } : undefined}
     >
@@ -4015,6 +4035,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
   }, [onAgCellSelected, onCellSelectionChange, refreshChangedCells]);
 
+  const shouldPreserveContextSelection = useCallback(() => (
+    selectedColumnIdsRef.current.size > 1
+      || selectedFullColumnIdsRef.current.size > 1
+      || selectedCellsRef.current.size > 1
+  ), []);
+
   const extendSheetCellSelection = useCallback((direction: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight") => {
     const api = gridRef.current?.api;
     const active = activeSelectedCellRef.current;
@@ -4063,17 +4089,23 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return true;
   }, [onAgCellSelected, onCellSelectionChange, refreshChangedCells]);
 
-  // Right-clicking a cell that's already part of the current multi-selection
-  // keeps that selection (menu applies to all of it, like Sheets); right-
-  // clicking outside it collapses the selection to just the clicked cell.
-  const handleQtyContextMenu = useCallback((rowIndex: number, columnId: string, x: number, y: number) => {
+  // Modifier-assisted or existing multi-selections survive a right-click,
+  // including when the clicked cell is outside the selected range.
+  const handleQtyContextMenu = useCallback((
+    rowIndex: number,
+    columnId: string,
+    x: number,
+    y: number,
+    preserveSelection: boolean,
+  ) => {
     const api = gridRef.current?.api;
     const rowId = api?.getDisplayedRowAtIndex(rowIndex)?.data?.sku;
-    if (rowId && !selectedCellsRef.current.has(`${rowId}::${columnId}`)) {
+    if (!preserveSelection && !shouldPreserveContextSelection()
+      && rowId && !selectedCellsRef.current.has(`${rowId}::${columnId}`)) {
       selectSingleGridCell(rowIndex, columnId);
     }
     setQtyCtxMenu({ x, y });
-  }, [selectSingleGridCell]);
+  }, [selectSingleGridCell, shouldPreserveContextSelection]);
 
   const navigateActiveQtyCell = useCallback((navigationKey: QtyNavigationKey) => {
     const api = gridRef.current?.api;
@@ -5662,6 +5694,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           onRename: onColumnHeaderRename ?? (() => {}),
           isFiltered: columnFilters.has(column.id),
           onRightClick: (x: number, y: number) => setColumnMenu({ x, y, key: column.id, label: headerName }),
+          shouldPreserveContextSelection,
           showMenuButton: false,
           restoreMarkerLeft: baseRestoreMarkers.left.get(column.id),
           restoreMarkerRight: baseRestoreMarkers.right.get(column.id),
@@ -5810,6 +5843,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               key: `${container.name}::${column.id}`,
               label: `${container.name} · ${column.label.replace("\n", " ")}`,
             }),
+            shouldPreserveContextSelection,
             restoreMarkerLeft: containerRestoreMarkers.left.get(column.id) ?? conRestoreMarkers.left.get(column.id),
             restoreMarkerRight: containerRestoreMarkers.right.get(column.id) ?? conRestoreMarkers.right.get(column.id),
           },
@@ -5962,6 +5996,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 baseline,
               });
             },
+            shouldPreserveContextSelection,
             eta: container.eta,
             baseline,
             editable: canEditPlanning,
@@ -6011,7 +6046,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -6335,7 +6370,10 @@ autoFilling3: autoFillingContainers3.has(container.name),
               if (!event.data || event.node.rowPinned || event.node.rowIndex === null) return;
               const columnId = event.column.getColId();
               const key = `${event.data.sku}::${columnId}`;
-              if (!selectedCellsRef.current.has(key)) {
+              const preserveSelection = Boolean(
+                nativeEvent?.ctrlKey || nativeEvent?.metaKey || nativeEvent?.shiftKey,
+              ) || shouldPreserveContextSelection();
+              if (!preserveSelection && !selectedCellsRef.current.has(key)) {
                 selectSingleGridCell(event.node.rowIndex, columnId);
               }
             }}
