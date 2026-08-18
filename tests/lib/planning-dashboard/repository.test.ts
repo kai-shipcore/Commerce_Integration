@@ -77,6 +77,26 @@ describe("PlanningDashboardRepository.getProductCbmForUpdate", () => {
   });
 });
 
+describe("PlanningDashboardRepository T. Avg current override", () => {
+  it("reads and writes the override independently of calculated stats", async () => {
+    clientQueryMock.mockResolvedValueOnce({ rows: [{ total_avg_curr_override: 3.25 }] });
+    await expect(PlanningDashboardRepository.getTotalAvgCurrentOverrideForUpdate(
+      "SKU-1",
+      { query: clientQueryMock } as never,
+    )).resolves.toBe(3.25);
+    expect(clientQueryMock.mock.calls[0][0]).toContain("FOR UPDATE");
+
+    clientQueryMock.mockResolvedValueOnce({ rows: [] });
+    await PlanningDashboardRepository.updateTotalAvgCurrentOverride(
+      "SKU-1",
+      null,
+      { query: clientQueryMock } as never,
+    );
+    expect(clientQueryMock.mock.calls[1][0]).toContain("SET total_avg_curr_override");
+    expect(clientQueryMock.mock.calls[1][1]).toEqual(["SKU-1", null]);
+  });
+});
+
 describe("PlanningDashboardRepository.cascadeContainerItemsCbm", () => {
   it("returns rows with the original snake_case field names", async () => {
     clientQueryMock.mockResolvedValue({

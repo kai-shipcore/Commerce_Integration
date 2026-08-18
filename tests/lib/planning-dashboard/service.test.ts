@@ -11,6 +11,8 @@ const repositoryMock = {
   getProductCbmForUpdate: vi.fn(),
   updateProductCbm: vi.fn(),
   cascadeContainerItemsCbm: vi.fn(),
+  getTotalAvgCurrentOverrideForUpdate: vi.fn(),
+  updateTotalAvgCurrentOverride: vi.fn(),
   getOosLostDemandChannelTotals: vi.fn(),
 };
 
@@ -119,6 +121,35 @@ describe("PlanningDashboardService.updateProductCbm", () => {
 
     expect(logAuditMock).not.toHaveBeenCalled();
     expect(invalidateCacheMock).toHaveBeenCalled();
+  });
+});
+
+describe("PlanningDashboardService.updateTotalAvgCurrentOverride", () => {
+  it("stores a rounded manual override and audit-logs the distinction", async () => {
+    repositoryMock.getTotalAvgCurrentOverrideForUpdate.mockResolvedValue(null);
+
+    const result = await PlanningDashboardService.updateTotalAvgCurrentOverride("SKU-1", 1.23456, "1.2.3.4");
+
+    expect(repositoryMock.updateTotalAvgCurrentOverride).toHaveBeenCalledWith("SKU-1", 1.2346, expect.anything());
+    expect(result).toEqual({ totalAvgCurrentOverride: 1.2346 });
+    expect(invalidateCacheMock).toHaveBeenCalled();
+    expect(logAuditMock).toHaveBeenCalledWith(expect.objectContaining({
+      before: { totalAvgCurrentOverride: null },
+      after: { totalAvgCurrentOverride: 1.2346 },
+    }));
+  });
+
+  it("clears the override with null so the automatic value is restored", async () => {
+    repositoryMock.getTotalAvgCurrentOverrideForUpdate.mockResolvedValue(2.5);
+
+    await expect(PlanningDashboardService.updateTotalAvgCurrentOverride("SKU-1", null, null))
+      .resolves.toEqual({ totalAvgCurrentOverride: null });
+    expect(repositoryMock.updateTotalAvgCurrentOverride).toHaveBeenCalledWith("SKU-1", null, expect.anything());
+  });
+
+  it("rejects negative and non-numeric overrides", async () => {
+    await expect(PlanningDashboardService.updateTotalAvgCurrentOverride("SKU-1", -1, null)).rejects.toThrow(ValidationError);
+    await expect(PlanningDashboardService.updateTotalAvgCurrentOverride("SKU-1", "bad", null)).rejects.toThrow(ValidationError);
   });
 });
 

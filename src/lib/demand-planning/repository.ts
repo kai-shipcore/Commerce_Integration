@@ -216,6 +216,7 @@ export const DemandPlanningRepository = {
       COALESCE(s.total_avg_prev, 0)::float8                AS total_avg_prev,
       COALESCE(s.total_avg_real, 0)::float8                AS total_avg_real,
       COALESCE(s.total_avg_curr, 0)::float8                AS total_avg_curr,
+      p.total_avg_curr_override::float8                    AS total_avg_curr_override,
       COALESCE(s.oos_days_90d,   0)::int                   AS oos_days_90d,
       s.oos_lost_demand_90d::float8                        AS oos_lost_demand_90d
     FROM ${statsSource} s

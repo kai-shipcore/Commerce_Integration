@@ -326,9 +326,13 @@ export const DemandPlanningService = {
       const total_avg_real = isCarCover
         ? fbm_avg_real + fba_avg_real
         : Math.max(0.03, avg_daily_real + east_avg_real + fba_avg_real);
-      const total_avg_curr = isCarCover
+      const total_avg_curr_auto = isCarCover
         ? fbm_avg_curr + fba_avg_curr
         : Math.max(0.03, avg_daily_curr + east_avg_curr + fba_avg_curr);
+      const total_avg_curr_override = r.total_avg_curr_override == null
+        ? null
+        : Number(r.total_avg_curr_override);
+      const total_avg_curr = total_avg_curr_override ?? total_avg_curr_auto;
 
       const availQty = (r.total_stock as number) + (r.back as number);
       const carryover = availQty >= 0 ? availQty : 0;
@@ -461,6 +465,8 @@ export const DemandPlanningService = {
         total_avg_prev: isCarCover ? total_avg_prev : Math.round(total_avg_prev * 100) / 100,
         total_avg_real: isCarCover ? total_avg_real : Math.round(total_avg_real * 100) / 100,
         total_avg_curr: isCarCover ? total_avg_curr : Math.round(total_avg_curr * 100) / 100,
+        total_avg_curr_auto: isCarCover ? total_avg_curr_auto : Math.round(total_avg_curr_auto * 100) / 100,
+        total_avg_curr_override,
         oos_days_90d, oos_lost_demand_90d,
         total_inbound_qty: r.total_inbound_qty as number | null,
         containers_list: (r.containers_list as string | null) ?? null,

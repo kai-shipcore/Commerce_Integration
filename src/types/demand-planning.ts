@@ -106,6 +106,8 @@ export interface DemandRow {
   total_avg_prev: number;
   total_avg_real: number;
   total_avg_curr: number;
+  total_avg_curr_auto?: number;
+  total_avg_curr_override?: number | null;
   oos_days_90d: number | null;
   oos_lost_demand_90d: number | null;
   cbm_per_unit?: number;

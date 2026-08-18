@@ -52,6 +52,13 @@ describe("DemandPlanningRepository.getStatsRows", () => {
     }
   });
 
+  it("loads the manual T. Avg current override separately from calculated stats", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: "SC", inboundStatuses: "('shipped')" });
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("p.total_avg_curr_override::float8");
+  });
+
   it("uses fc_stats directly for SC category in link mode", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: "SC", inboundStatuses: "('shipped')" });

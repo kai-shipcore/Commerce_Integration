@@ -94,6 +94,43 @@ export const PlanningDashboardService = {
     return { cbmPerUnit: cbm, containerItems };
   },
 
+  async updateTotalAvgCurrentOverride(sku: string, rawValue: unknown, ip: string | null) {
+    const parsedValue = rawValue === null || rawValue === ""
+      ? null
+      : Number(rawValue);
+    if (!sku || (parsedValue !== null && (!Number.isFinite(parsedValue) || parsedValue < 0))) {
+      throw new ValidationError("Invalid sku or total_avg_curr_override");
+    }
+    const value = parsedValue === null ? null : Math.round(parsedValue * 10_000) / 10_000;
+
+    const previousValue = await withTransaction(async (client) => {
+      const previous = await PlanningDashboardRepository.getTotalAvgCurrentOverrideForUpdate(sku, client);
+      await PlanningDashboardRepository.updateTotalAvgCurrentOverride(sku, value, client);
+      return previous;
+    });
+
+    await invalidatePlanningDashboardCache();
+
+    if (previousValue !== value) {
+      const session = await auth();
+      await logAudit({
+        entityType: "sku",
+        entityId: sku,
+        entityLabel: sku,
+        userId: session?.user?.id ?? null,
+        userName: session?.user?.name ?? null,
+        userEmail: session?.user?.email ?? null,
+        action: "update",
+        before: { totalAvgCurrentOverride: previousValue },
+        after: { totalAvgCurrentOverride: value },
+        note: "Planning dashboard T. Avg current manual override",
+        ip,
+      });
+    }
+
+    return { totalAvgCurrentOverride: value };
+  },
+
   async getOosLostDemandWeights(): Promise<Record<CategoryKey, Record<string, number>>> {
     const rows = await PlanningDashboardRepository.getOosLostDemandChannelTotals();
     const byCategory = new Map(rows.map((row) => [row.category_code, row]));

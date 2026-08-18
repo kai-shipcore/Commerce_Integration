@@ -91,7 +91,7 @@ describe("DemandPlanningService.getDashboardData", () => {
       fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0,
       fba_90d_sales: 90, fba_60d_sales: 60, fba_30d_sales: 30,
       fba_15d_sales: 15, fba_7d_sales: 7, fba_30d_pre: 0,
-      fba_30d: 0, total_avg_prev: 1, total_avg_real: 1, total_avg_curr: 1,
+      fba_30d: 0, total_avg_prev: 1, total_avg_real: 1, total_avg_curr: 1, total_avg_curr_override: 2.5,
       oos_days_90d: 0, oos_lost_demand_90d: 0,
     }]);
 
@@ -100,6 +100,9 @@ describe("DemandPlanningService.getDashboardData", () => {
     expect(result.data.rows[0].sku).toBe("SKU-1");
     expect(result.data.rows[0].total_stock).toBe(10);
     expect(result.data.rows[0].container_info).toBe("2026-08-10 - (190-CA-SEAT) - 700");
+    expect(result.data.rows[0].total_avg_curr_auto).toBe(1.02);
+    expect(result.data.rows[0].total_avg_curr).toBe(2.5);
+    expect(result.data.rows[0].total_avg_curr_override).toBe(2.5);
     expect(result.data.rows[0]).toMatchObject({
       fba_90d_sales: 90,
       fba_60d_sales: 60,

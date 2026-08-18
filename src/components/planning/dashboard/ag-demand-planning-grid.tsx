@@ -132,6 +132,7 @@ type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
 type EditableCellTarget =
   | { kind: "cbm"; row: DemandRow }
+  | { kind: "tavg"; row: DemandRow }
   | { kind: "note"; row: DemandRow; slot: 1 | 2 | 3 }
   | { kind: "qty"; row: DemandRow; container: ContainerMeta; raw: ContainerRowData };
 type SheetHistoryChange = {
@@ -161,7 +162,7 @@ type TargetOrderPreview = {
 
 type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter";
 type QtyEditorRegistration = {
-  kind: "qty" | "cbm" | "note";
+  kind: "qty" | "cbm" | "tavg" | "note";
   open: (replacementValue?: string) => void;
   close: () => void;
 };
@@ -1904,6 +1905,159 @@ function CbmCellRenderer({
         qtyEditorRegistry.get(qtyEditorKey(rowId, columnId))?.open();
       }}
       className="h-full w-full appearance-none border-0 bg-transparent px-0.5 text-center font-mono text-[10px] text-[#1A4FC0] shadow-none outline-none focus:shadow-none focus:outline-none focus-visible:shadow-none focus-visible:outline-none"
+    >
+      {saving ? "..." : displayValue}
+    </button>
+  );
+}
+
+function TotalAvgCurrentCellRenderer({
+  value,
+  data,
+  node,
+  column,
+  onSave,
+  onRequestEdit,
+  onSelectCell,
+}: ICellRendererParams<DemandRow, CellContent> & {
+  onSave: (value: number | null) => Promise<boolean>;
+  onRequestEdit: () => boolean;
+  onSelectCell: (rowIndex: number, columnId: string) => void;
+}) {
+  const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
+  const override = data?.total_avg_curr_override ?? null;
+  const autoValue = data?.total_avg_curr_auto ?? data?.total_avg_curr ?? 0;
+  const editValue = override === null ? displayValue : String(override);
+  const [editing, setEditing] = useState(false);
+  const [inputValue, setInputValue] = useState(editValue);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const skipNextBlurCommitRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const rowId = node.data?.sku ?? "";
+  const columnId = column?.getColId() ?? "";
+
+  useEffect(() => {
+    if (!editing && !savingRef.current) setInputValue(editValue);
+  }, [editValue, editing]);
+
+  useEffect(() => {
+    if (!rowId || !columnId) return;
+    const key = qtyEditorKey(rowId, columnId);
+    const open = (replacementValue?: string) => {
+      if (activeQtyEditorKey !== key) qtyEditorRegistry.get(activeQtyEditorKey ?? "")?.close();
+      activeQtyEditorKey = key;
+      setInputValue(replacementValue ?? editValue);
+      setEditing(true);
+    };
+    const close = () => {
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
+      setEditing(false);
+    };
+    const registration: QtyEditorRegistration = { kind: "tavg", open, close };
+    qtyEditorRegistry.set(key, registration);
+    return () => {
+      if (qtyEditorRegistry.get(key) === registration) qtyEditorRegistry.delete(key);
+      if (activeQtyEditorKey === key) activeQtyEditorKey = null;
+    };
+  }, [columnId, editValue, rowId]);
+
+  useEffect(() => {
+    if (!editing || !inputRef.current) return;
+    inputRef.current.focus();
+    inputRef.current.select();
+  }, [editing]);
+
+  async function commit() {
+    if (savingRef.current) return;
+    const trimmed = inputValue.trim();
+    const parsedValue = trimmed === "" ? null : Number(trimmed.replace(/,/g, ""));
+    if (parsedValue !== null && (!Number.isFinite(parsedValue) || parsedValue < 0)) {
+      setInputValue(editValue);
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+      setEditing(false);
+      return;
+    }
+    const nextValue = parsedValue === null ? null : Math.round(parsedValue * 10_000) / 10_000;
+    if (nextValue === override || (override === null && nextValue === data?.total_avg_curr)) {
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+      setEditing(false);
+      return;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const saved = await onSave(nextValue);
+      if (!saved) setInputValue(editValue);
+    } catch {
+      setInputValue(editValue);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="h-full w-full overflow-hidden">
+        <input
+          ref={inputRef}
+          autoFocus
+          type="text"
+          inputMode="decimal"
+          value={inputValue}
+          aria-label="Edit T. Avg current"
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              setInputValue(editValue);
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+              setEditing(false);
+              return;
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
+              skipNextBlurCommitRef.current = true;
+              if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
+              setEditing(false);
+              if (node.rowIndex !== null) onSelectCell(node.rowIndex + 1, columnId);
+              window.setTimeout(() => void commit(), 0);
+            }
+          }}
+          onBlur={() => {
+            if (skipNextBlurCommitRef.current) {
+              skipNextBlurCommitRef.current = false;
+              return;
+            }
+            void commit();
+          }}
+          className="planning-inline-cell-editor h-full w-full rounded-none border-0 bg-transparent px-0.5 text-center font-mono text-[10px] font-bold outline-none"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      title={override === null
+        ? "Double-click or press F2 to set a manual T. Avg current value"
+        : `Manual value (auto: ${autoValue}). Clear the cell to restore auto.`}
+      onClick={(event) => {
+        if (event.detail < 2) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!onRequestEdit()) return;
+        qtyEditorRegistry.get(qtyEditorKey(rowId, columnId))?.open();
+      }}
+      className="h-full w-full appearance-none border-0 bg-transparent px-0.5 text-center font-mono text-[10px] font-bold shadow-none outline-none"
     >
       {saving ? "..." : displayValue}
     </button>
@@ -4018,6 +4172,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const row = api?.getRowNode(rowId)?.data;
     if (row) {
       if (columnId === "cbm") return row.cbm_per_unit ? row.cbm_per_unit.toFixed(6) : "";
+      if (columnId === "tavg_c") return String(row.total_avg_curr ?? "");
       if (columnId === "workflow_note") return row.workflow_note ?? "";
       if (columnId === "workflow_note_2") return row.workflow_note_2 ?? "";
       if (columnId === "workflow_note_3") return row.workflow_note_3 ?? "";
@@ -4200,6 +4355,56 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     }
     return true;
   }, [canEditPlanning, pushSheetHistory]);
+
+  const saveTotalAvgCurrent = useCallback(async (
+    row: DemandRow,
+    nextOverride: number | null,
+    options: { recordHistory?: boolean } = {},
+  ) => {
+    if (!canEditPlanning) return false;
+    if (nextOverride !== null && (!Number.isFinite(nextOverride) || nextOverride < 0)) return false;
+    const normalizedOverride = nextOverride === null ? null : Math.round(nextOverride * 10_000) / 10_000;
+    if (normalizedOverride === (row.total_avg_curr_override ?? null)) return true;
+    const response = await fetch(apiPath(`/api/planning/products/${encodeURIComponent(row.sku)}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+      body: JSON.stringify({ total_avg_curr_override: normalizedOverride }),
+    });
+    const json = await response.json().catch(() => null) as { success?: boolean } | null;
+    if (!json?.success) return false;
+
+    if (options.recordHistory !== false) {
+      pushSheetHistory([{
+        rowId: row.sku,
+        columnId: "tavg_c",
+        before: row.total_avg_curr_override == null ? "" : String(row.total_avg_curr_override),
+        after: normalizedOverride === null ? "" : String(normalizedOverride),
+      }]);
+    }
+
+    const effectiveValue = normalizedOverride ?? row.total_avg_curr_auto ?? row.total_avg_curr;
+    const updatedRow = {
+      ...row,
+      total_avg_curr: effectiveValue,
+      total_avg_curr_override: normalizedOverride,
+    };
+    setRowOverrides((current) => {
+      const next = new Map(current);
+      next.set(row.sku, {
+        ...(current.get(row.sku) ?? {}),
+        total_avg_curr: effectiveValue,
+        total_avg_curr_override: normalizedOverride,
+      });
+      return next;
+    });
+    const nextChain = new Map(chainMapRef.current).set(
+      row.sku,
+      computeContainerChain(updatedRow, containers, qtyOverridesRef.current, seasonalFactors),
+    );
+    chainMapRef.current = nextChain;
+    setChainMap(nextChain);
+    return true;
+  }, [canEditPlanning, containers, pushSheetHistory, seasonalFactors]);
 
   const saveQty = useCallback(async (
     row: DemandRow,
@@ -4427,6 +4632,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const row = api?.getRowNode(rowId)?.data;
     if (!row) return null;
     if (columnId === "cbm") return { kind: "cbm", row };
+    if (columnId === "tavg_c") return { kind: "tavg", row };
     if (columnId === "workflow_note") return { kind: "note", row, slot: 1 };
     if (columnId === "workflow_note_2") return { kind: "note", row, slot: 2 };
     if (columnId === "workflow_note_3") return { kind: "note", row, slot: 3 };
@@ -4455,6 +4661,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       return saveWorkNote(target.row, rawText, target.slot, { recordHistory: options.recordSheetHistory });
     }
     const trimmed = rawText.trim();
+    if (target.kind === "tavg") {
+      const value = trimmed === "" ? null : Number(trimmed.replace(/,/g, ""));
+      if (value !== null && (!Number.isFinite(value) || value < 0)) return false;
+      return saveTotalAvgCurrent(target.row, value, { recordHistory: options.recordSheetHistory });
+    }
     const numeric = trimmed === "" ? 0 : Number(trimmed.replace(/,/g, ""));
     if (!Number.isFinite(numeric) || numeric < 0) return false;
     if (target.kind === "cbm") {
@@ -4463,7 +4674,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     return saveQty(target.row, target.container, target.raw, Math.round(numeric), {
       recordHistory: options.recordSheetHistory,
     });
-  }, [saveCbm, saveQty, saveWorkNote]);
+  }, [saveCbm, saveQty, saveTotalAvgCurrent, saveWorkNote]);
 
   const applyClipboardOperation = useCallback(async (
     operations: Array<{ target: EditableCellTarget; value: string }>,
@@ -4477,7 +4688,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         ? `${target.container.name}::inb_qty`
         : target.kind === "cbm"
           ? "cbm"
-          : target.slot === 2 ? "workflow_note_2" : target.slot === 3 ? "workflow_note_3" : "workflow_note";
+          : target.kind === "tavg"
+            ? "tavg_c"
+            : target.slot === 2 ? "workflow_note_2" : target.slot === 3 ? "workflow_note_3" : "workflow_note";
       const key = `${target.row.sku}::${columnId}`;
       if (seenKeys.has(key)) continue;
 
@@ -4489,6 +4702,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         before = target.slot === 2
           ? target.row.workflow_note_2 ?? ""
           : target.slot === 3 ? target.row.workflow_note_3 ?? "" : target.row.workflow_note ?? "";
+      } else if (target.kind === "tavg") {
+        const numeric = value.trim() === "" ? null : Number(value.trim().replace(/,/g, ""));
+        if (numeric !== null && (!Number.isFinite(numeric) || numeric < 0)) continue;
+        after = numeric === null ? "" : String(numeric);
+        before = target.row.total_avg_curr_override == null ? "" : String(target.row.total_avg_curr_override);
       } else {
         const numeric = value.trim() === "" ? 0 : Number(value.trim().replace(/,/g, ""));
         if (!Number.isFinite(numeric) || numeric < 0) continue;
@@ -4517,8 +4735,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     return results;
   }, [applyValueToTarget, onApplyFormatHistoryChanges, pushHistoryEntry]);
 
-  // Delete/Backspace intentionally clears only Con. Qty and the three Note
-  // columns. CBM remains protected from accidental bulk deletion.
+  // Delete/Backspace clears Con. Qty, notes, and a T. Avg manual override.
+  // CBM remains protected from accidental bulk deletion.
   const collectDeletableTargets = useCallback((): EditableCellTarget[] => {
     const targets: EditableCellTarget[] = [];
     for (const selectedKey of selectedCellsRef.current) {
@@ -4528,7 +4746,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         selectedKey.slice(0, separator),
         selectedKey.slice(separator + 2),
       );
-      if (editTarget?.kind === "qty" || editTarget?.kind === "note") targets.push(editTarget);
+      if (editTarget?.kind === "qty" || editTarget?.kind === "note" || editTarget?.kind === "tavg") targets.push(editTarget);
     }
     return targets;
   }, [resolveEditableTarget]);
@@ -4603,7 +4821,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       }
       const replacementValue = editor.kind === "qty"
         ? (/^\d$/.test(event.key) ? event.key : null)
-        : editor.kind === "cbm"
+        : editor.kind === "cbm" || editor.kind === "tavg"
           ? (/^[\d.]$/.test(event.key) ? event.key : null)
           : event.key.length === 1 ? event.key : null;
       if (replacementValue === null) return;
@@ -5385,6 +5603,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           ? SkuCellRenderer
           : column.id === "inb_lst"
             ? CopyableCellRenderer
+            : column.id === "tavg_c" && canEditPlanning
+              ? TotalAvgCurrentCellRenderer
             : column.id === "cbm" && canEditPlanning
               ? CbmCellRenderer
               : workNoteSlotForColumnId(column.id) !== null && canEditPlanning
@@ -5402,6 +5622,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
                 copyValue: params.data?.containers_list ?? "",
                 label: "Containers List",
+              })
+          : column.id === "tavg_c" && canEditPlanning
+            ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
+                onSave: (value: number | null) => params.data
+                  ? saveTotalAvgCurrent(params.data, value)
+                  : Promise.resolve(false),
+                onRequestEdit: handleQtyEditRequest,
+                onSelectCell: selectSingleGridCell,
               })
           : column.id === "cbm" && canEditPlanning
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
@@ -5450,7 +5678,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           const fullColumnSelected = selectedFullColumnIdsRef.current.has(column.id);
           const textFormat = { ...(columnTextFormatsRef.current[column.id]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
           return {
-            backgroundColor: cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
+            backgroundColor: column.id === "tavg_c" && params.data?.total_avg_curr_override != null
+              ? "#fecaca"
+              : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             ...(textFormat.color ? { color: textFormat.color } : {}),
             ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
             fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : column.bold ? 700 : 400,
@@ -5781,7 +6011,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveWorkNote, selectSingleGridCell, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
