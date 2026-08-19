@@ -30,6 +30,21 @@ The app writes to a **primary PostgreSQL database** (via Prisma) and reads from 
 
 Pages that depend on the lookup DB (Inventory, Orders) will fail gracefully if that connection is missing.
 
+### Sync Pipelines
+
+Several pages pull from the Supabase lookup DB (or reconcile purely within the primary DB) into `shipcore.*`. Not exhaustive — these are the ones documented so far:
+
+| Page(s) | Reads from | Writes to |
+|---|---|---|
+| Velocity (`/velocity`) | Supabase `ecommerce_data.vw_sales_order_items_link_new`, `sales_orders` | `shipcore.fc_velocity_link_snapshot`, `fc_velocity_custom_snapshot` |
+| Demand Planning dashboard, SKU Forecasts, OOS Impact | Supabase `ecommerce_data.coverland_inventory_by_warehouse`, `vw_coverland_inventory_history` + primary `fc_velocity_*_snapshot` | `shipcore.fc_stats`, `fc_stats_custom`, `fc_inventory_history_snapshot`, `fc_products` (backfill only) |
+| SKU Master admin (`/planning/sku-master`) | Supabase `ecommerce_data.coverland_inventory_by_warehouse` | `shipcore.fc_products` |
+| Transit Stock (`/planning/transit-stock`) | primary `fc_transit_records` only | `fc_stats.transit_stock`, `fc_stats_custom.transit_stock` |
+
+- The Demand Planning row is **one shared pipeline** (`DemandPlanningService.refreshStats()`, queued via `PlanningStatsRefreshService`) triggered from three different pages' "Sync" buttons — clicking any of them runs the identical job, not three separate ones.
+- That pipeline's `fc_products` backfill (`SkuMasterRepository.insertMissingProducts`) is **insert-only**: it fills in a `fc_products` row for any master SKU seen in inventory/velocity data that doesn't have one yet, but never touches a row that already exists — so it can't undo a manual deactivation. The SKU Master admin page's own sync (`upsertProductsFromSync`) is a true upsert and *does* force `status = 'active'` on conflict, which is fine there because a human is the one clicking it.
+- Transit Stock has **no dedicated Sync button**: `syncAllStats()` (full reconciliation) only runs as a step inside the Demand Planning pipeline above; `syncStats()` (targeted, per-SKU) runs silently as a side effect of every Transit Stock create/import/update/delete, with no visible sync control of its own.
+
 ### Key Layers
 
 | Layer | Location | Notes |
