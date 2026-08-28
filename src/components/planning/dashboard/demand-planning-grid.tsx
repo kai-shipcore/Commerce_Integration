@@ -73,6 +73,8 @@ export interface DemandPlanningGridProps {
   onColumnFilterMenuSizeChange?: (next: ColumnFilterMenuSize) => void;
   columnOrder?: ColumnOrder;
   onColumnOrderChange?: (next: ColumnOrder) => void;
+  onContainerOrderCustomized?: () => void;
+  onContainerEtaChange?: (container: { id: number; name: string; eta: string }) => void;
   seasonalFactors: SeasonalFactors;
   columnColors?: ColumnColorSettings;
   cellColors?: CellColorSettings;

@@ -3,6 +3,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import { toast } from "sonner";
 import { ClipboardPaste, Copy, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2 } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder } from "./demand-planning-grid";
@@ -113,6 +114,7 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
 
 const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
 const CONTAINER_VISIBILITY_STORAGE_KEY = "planning-dashboard-container-visibility";
+const CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY = "planning-dashboard-container-order-customized";
 const COLUMN_HEADER_NAMES_STORAGE_KEY = "planning-dashboard-column-header-names";
 const SETTINGS_SECTION_TITLE_STYLE = {
   color: "#1D4ED8",
@@ -720,6 +722,57 @@ function containerMatchesCategory(container: ContainerMeta, categoryFilter: Cate
   return checkedBaseCategories.some((c) => container.categories!.includes(c.toUpperCase()));
 }
 
+function compareContainersByEtaAndName(a: ContainerMeta, b: ContainerMeta) {
+  const aTime = a.eta ? new Date(a.eta).getTime() : Number.POSITIVE_INFINITY;
+  const bTime = b.eta ? new Date(b.eta).getTime() : Number.POSITIVE_INFINITY;
+  if (aTime !== bTime) return aTime - bTime;
+  return a.name.localeCompare(b.name);
+}
+
+function resetContainerGroupsToEtaOrder(current: ColumnOrder, containers: ContainerMeta[]): ColumnOrder {
+  const baseColumnIds: string[] = [];
+  const existingIdsByContainer = new Map<string, string[]>();
+  const existingContainerNames: string[] = [];
+
+  for (const columnId of current) {
+    const separator = columnId.lastIndexOf("::");
+    if (separator <= 0) {
+      baseColumnIds.push(columnId);
+      continue;
+    }
+    const containerName = columnId.slice(0, separator);
+    if (!existingIdsByContainer.has(containerName)) {
+      existingIdsByContainer.set(containerName, []);
+      existingContainerNames.push(containerName);
+    }
+    existingIdsByContainer.get(containerName)!.push(columnId);
+  }
+
+  const sortedNames = [...new Set(
+    containers
+      .filter((container) => container.status !== "baseline")
+      .sort(compareContainersByEtaAndName)
+      .map((container) => container.name),
+  )];
+  const sortedNameSet = new Set(sortedNames);
+  const idsForContainer = (containerName: string) => {
+    const existing = existingIdsByContainer.get(containerName) ?? [];
+    const existingSet = new Set(existing);
+    return [
+      ...existing,
+      ...CON_SUBCOLS
+        .map((column) => `${containerName}::${column.id}`)
+        .filter((columnId) => !existingSet.has(columnId)),
+    ];
+  };
+
+  return [
+    ...baseColumnIds,
+    ...sortedNames.flatMap(idsForContainer),
+    ...existingContainerNames.filter((name) => !sortedNameSet.has(name)).flatMap(idsForContainer),
+  ];
+}
+
 function getColumnVisibilityForPreset(preset: "all" | "core" | "compact"): ColumnVisibility {
   const coreGroups = new Set<ColumnGroupKey>(["fix", "stock", "s30", "tavg", "inb"]);
   return Object.fromEntries(
@@ -974,6 +1027,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
   const [columnFilterMenuSize, setColumnFilterMenuSize] = useState<ColumnFilterMenuSize>(loadSavedColumnFilterMenuSize);
   const [columnOrder, setColumnOrder] = useState<ColumnOrder>([]);
+  const [containerOrderCustomized, setContainerOrderCustomized] = useState(false);
+  const [containerEtaOverrides, setContainerEtaOverrides] = useState<Map<number, string>>(new Map());
+  const containerEtaOverridesRef = useRef(containerEtaOverrides);
   const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN);
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
@@ -998,11 +1054,23 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
   const skuFiltersRef = useRef<HTMLDivElement>(null);
+
+  const containersWithEtaOverrides = useMemo(() => data.containers.map((container) => (
+    container.container_id !== undefined && containerEtaOverrides.has(container.container_id)
+      ? { ...container, eta: containerEtaOverrides.get(container.container_id)! }
+      : container
+  )), [containerEtaOverrides, data.containers]);
+  const effectiveColumnOrder = useMemo(() => (
+    containerOrderCustomized || columnOrder.length === 0
+      ? columnOrder
+      : resetContainerGroupsToEtaOrder(columnOrder, containersWithEtaOverrides)
+  ), [columnOrder, containerOrderCustomized, containersWithEtaOverrides]);
   const categoryFilterRef = useRef<HTMLDivElement>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
   const agGridEditActionsRef = useRef<EditMenuActions | null>(null);
   const columnOrderChangedRef = useRef(false);
+  const containerOrderCustomizedChangedRef = useRef(false);
   const editMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [isEditMenuOpen, setIsEditMenuOpen] = useState(false);
   const [editMenuAvailability, setEditMenuAvailability] = useState<EditMenuAvailability>({
@@ -1063,6 +1131,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setColumnOrder(loadSavedColumnOrder());
+    setContainerOrderCustomized(
+      window.localStorage.getItem(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY) === "true",
+    );
   }, []);
 
   useEffect(() => {
@@ -1210,6 +1281,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setColumnOrder([]);
         }
 
+        if (!containerOrderCustomizedChangedRef.current) {
+          const customized = d[CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY] === true;
+          window.localStorage.setItem(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, String(customized));
+          setContainerOrderCustomized(customized);
+        }
+
         // Column colors
         const cc = d[COLUMN_COLORS_STORAGE_KEY];
         if (cc && typeof cc === "object" && !Array.isArray(cc)) {
@@ -1340,6 +1417,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
       [COLUMN_FILTER_MENU_SIZE_STORAGE_KEY]: columnFilterMenuSize,
       [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
+      [CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY]: containerOrderCustomized,
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
       [COLUMN_HEADER_NAMES_STORAGE_KEY]: columnHeaderNames,
       [CELL_COLORS_STORAGE_KEY]: cellColors,
@@ -1356,7 +1434,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, columnOrder, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -1385,10 +1463,47 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
+  const handleContainerOrderCustomized = useCallback(() => {
+    containerOrderCustomizedChangedRef.current = true;
+    setContainerOrderCustomized(true);
+    window.localStorage.setItem(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, "true");
+  }, []);
+
+  const applyContainerEtaOrder = useCallback((containers: ContainerMeta[]) => {
+    columnOrderChangedRef.current = true;
+    containerOrderCustomizedChangedRef.current = true;
+    setContainerOrderCustomized(false);
+    window.localStorage.setItem(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, "false");
+    setColumnOrder((current) => {
+      const next = resetContainerGroupsToEtaOrder(current, containers);
+      window.localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleContainerEtaChange = useCallback((updated: { id: number; name: string; eta: string }) => {
+    const nextOverrides = new Map(containerEtaOverridesRef.current).set(updated.id, updated.eta);
+    containerEtaOverridesRef.current = nextOverrides;
+    setContainerEtaOverrides(nextOverrides);
+    applyContainerEtaOrder(data.containers.map((container) => (
+      container.container_id !== undefined && nextOverrides.has(container.container_id)
+        ? { ...container, eta: nextOverrides.get(container.container_id)! }
+        : container
+    )));
+  }, [applyContainerEtaOrder, data.containers]);
+
+  const handleResetContainerOrder = useCallback(() => {
+    applyContainerEtaOrder(containersWithEtaOverrides);
+    toast.success(pick("컨테이너 순서가 초기화되었습니다.", "Container order reset."));
+  }, [applyContainerEtaOrder, containersWithEtaOverrides, pick]);
+
   const resetColumnOrder = useCallback(() => {
     columnOrderChangedRef.current = true;
+    containerOrderCustomizedChangedRef.current = true;
+    setContainerOrderCustomized(false);
     setColumnOrder([]);
     window.localStorage.removeItem(COLUMN_ORDER_STORAGE_KEY);
+    window.localStorage.setItem(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, "false");
   }, []);
 
   const handleFormatHistoryRecorderReady = useCallback((recorder: PlanningFormatHistoryRecorder | null) => {
@@ -2215,8 +2330,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const draftHiddenBases = columnSettingsDraft?.hiddenBases ?? hiddenBases;
   const draftHiddenContainerColumns = columnSettingsDraft?.hiddenContainerColumns ?? hiddenContainerColumns;
   const orderedColumnVisibilityItems = useMemo(() => {
-    const orderIndex = new Map(columnOrder.map((columnId, index) => [columnId, index]));
-    const fallbackOffset = columnOrder.length + 10_000;
+    const orderIndex = new Map(effectiveColumnOrder.map((columnId, index) => [columnId, index]));
+    const fallbackOffset = effectiveColumnOrder.length + 10_000;
     const rank = (item: ColumnVisibilityItem, fallbackIndex: number) => {
       if (item.kind === "base") return orderIndex.get(item.id) ?? fallbackOffset + fallbackIndex;
       // Every container can have a different leaf-column order in the grid.
@@ -2234,7 +2349,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         fallbackIndex,
       }))
       .sort((a, b) => a.orderRank - b.orderRank || a.fallbackIndex - b.fallbackIndex);
-  }, [columnHeaderNames, columnOrder]);
+  }, [columnHeaderNames, effectiveColumnOrder]);
   const orderedColumnVisibilityGroupKeys = useMemo(() => {
     const movableGroups = COLUMN_VISIBILITY_GROUP_KEYS.filter((group) => group !== "con");
     const fallbackGroupIndex = new Map(movableGroups.map((group, index) => [group, index]));
@@ -3280,18 +3395,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                  {/* Container Visibility */}
                   {(() => {
                     const containerOrderIndex = new Map<string, number>();
-                    columnOrder.forEach((columnId, index) => {
+                    effectiveColumnOrder.forEach((columnId, index) => {
                       const separator = columnId.lastIndexOf("::");
                       if (separator <= 0) return;
                       const containerName = columnId.slice(0, separator);
                       if (!containerOrderIndex.has(containerName)) containerOrderIndex.set(containerName, index);
                     });
-                    const allContainers = data.containers
+                    const allContainers = containersWithEtaOverrides
                       .filter((c) => c.status !== "baseline" && containerMatchesCategory(c, categoryFilter))
                       .map((container, fallbackIndex) => ({ container, fallbackIndex }))
                       .sort((a, b) => {
-                        const rankA = containerOrderIndex.get(a.container.name) ?? columnOrder.length + a.fallbackIndex;
-                        const rankB = containerOrderIndex.get(b.container.name) ?? columnOrder.length + b.fallbackIndex;
+                        const rankA = containerOrderIndex.get(a.container.name) ?? effectiveColumnOrder.length + a.fallbackIndex;
+                        const rankB = containerOrderIndex.get(b.container.name) ?? effectiveColumnOrder.length + b.fallbackIndex;
                         return rankA - rankB || a.fallbackIndex - b.fallbackIndex;
                       })
                       .map(({ container }) => container);
@@ -3329,7 +3444,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           <div style={SETTINGS_SECTION_TITLE_STYLE}>
                             {pick("컨테이너 표시", "Container Visibility")}
                           </div>
-                          {(draftHiddenContainers.size > 0 || draftHiddenContainerColumns.size > 0) && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            <button
+                              type="button"
+                              title={pick("컨테이너를 ETA 날짜, 이름 순으로 다시 정렬", "Sort containers by ETA, then name")}
+                              onClick={handleResetContainerOrder}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4, border: "1px solid #CBD5E1", cursor: "pointer", background: "#fff", color: "#475569" }}
+                            >
+                              <RotateCcw size={11} aria-hidden="true" />
+                              {pick("순서 초기화", "Reset Order")}
+                            </button>
+                            {(draftHiddenContainers.size > 0 || draftHiddenContainerColumns.size > 0) && (
                             <button
                               type="button"
                               title={pick("숨긴 컨테이너와 컨테이너 컬럼 모두 표시", "Show all hidden containers and container columns")}
@@ -3342,7 +3467,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             >
                               {pick("모두 표시", "Show All")}
                             </button>
-                          )}
+                            )}
+                          </div>
                         </div>
                         {/* Base container toggles */}
                         <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 8 }}>
@@ -3439,7 +3565,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                         {columnHeaderNames[`container:${c.name}`] ?? c.name}
                                       </span>
                                       {c.eta && (
-                                        <span style={{ fontSize: 10, fontWeight: 400, color: "#94A3B8", whiteSpace: "nowrap", fontFamily: "ui-monospace, monospace" }}>
+                                        <span style={{ fontSize: 12, fontWeight: 600, color: "#64748B", whiteSpace: "nowrap", fontFamily: "ui-monospace, monospace" }}>
                                           {c.eta.slice(5)}
                                         </span>
                                       )}
@@ -3732,8 +3858,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onColumnWidthsChange={handleColumnWidthsChange}
           columnFilterMenuSize={columnFilterMenuSize}
           onColumnFilterMenuSizeChange={handleColumnFilterMenuSizeChange}
-          columnOrder={columnOrder}
+          columnOrder={effectiveColumnOrder}
           onColumnOrderChange={handleColumnOrderChange}
+          onContainerOrderCustomized={handleContainerOrderCustomized}
+          onContainerEtaChange={handleContainerEtaChange}
           seasonalFactors={seasonalFactors}
           gradient={gradient}
           gradientSC={gradientSC}

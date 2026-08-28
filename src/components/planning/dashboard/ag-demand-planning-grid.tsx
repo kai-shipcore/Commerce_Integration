@@ -2,6 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
 import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ClipboardPaste, Copy, ExternalLink, Scissors, Search } from "lucide-react";
 import {
@@ -1411,10 +1412,12 @@ function SkuCellRenderer({
   sku,
   memo: initialMemo,
   onMemoSave,
+  onCopySelection,
 }: ICellRendererParams<DemandRow, CellContent> & {
   sku: string;
   memo?: string | null;
   onMemoSave?: (memo: string) => Promise<void>;
+  onCopySelection?: () => Promise<void>;
 }) {
   const { pick } = useI18n();
   const [noteDraft, setNoteDraft] = useState(initialMemo ?? "");
@@ -1532,7 +1535,13 @@ function SkuCellRenderer({
               minWidth: 200, overflow: "hidden",
             }}
           >
-            <MenuItem disabled={!sku} onClick={() => { void copyText(sku).catch(() => {}); setCtxMenu(null); }}>
+            <MenuItem
+              disabled={!sku}
+              onClick={() => {
+                void (onCopySelection ? onCopySelection() : copyText(sku)).catch(() => {});
+                setCtxMenu(null);
+              }}
+            >
               {pick("SKU 복사", "Copy SKU")}
             </MenuItem>
             <MenuItem disabled={!sku} onClick={() => {
@@ -2892,6 +2901,75 @@ function Backfill3Dialog({
   );
 }
 
+type EtaPickerAnchor = { left: number; top: number; width: number; height: number };
+
+function EtaDatePickerPortal({
+  label,
+  value,
+  anchor,
+  onChange,
+  onClose,
+}: {
+  label: string;
+  value: string;
+  anchor: EtaPickerAnchor;
+  onChange: (value: string) => void;
+  onClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      try {
+        input.showPicker();
+      } catch {
+        // The input remains focused and editable when a browser blocks showPicker().
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  return createPortal(
+    <>
+      <div
+        className="fixed inset-0 z-[9998]"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          onClose();
+        }}
+      />
+      <input
+        ref={inputRef}
+        type="date"
+        aria-label={label}
+        defaultValue={value}
+        onChange={(event) => {
+          if (event.target.value) onChange(event.target.value);
+          onClose();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onClose();
+          event.stopPropagation();
+        }}
+        style={{
+          position: "fixed",
+          left: anchor.left,
+          top: anchor.top,
+          width: anchor.width,
+          height: anchor.height,
+          zIndex: 9999,
+          colorScheme: "dark",
+        }}
+        className="rounded border border-white/30 bg-[#4b2728] px-2 text-[11px] font-semibold text-white outline-none ring-2 ring-blue-400"
+      />
+    </>,
+    document.body,
+  );
+}
+
 function ContainerGroupHeader(
   props: IHeaderGroupParams & {
     eta: string;
@@ -2900,7 +2978,7 @@ function ContainerGroupHeader(
     qtyEditable: boolean;
     status?: string;
     totalColumns: ContainerTotalColumn[];
-    onEtaChange: (value: string) => void;
+    onEtaEditRequest: (anchor: EtaPickerAnchor) => void;
     onAutoFill?: () => void;
     onAutoFill2?: (days: number) => void;
     onAutoFill3?: () => void;
@@ -3109,7 +3187,24 @@ function ContainerGroupHeader(
                 type="date"
                 value={props.eta}
                 disabled={!props.editable}
-                onChange={(event) => props.onEtaChange(event.target.value)}
+                readOnly
+                onPointerDown={(event) => {
+                  if (!props.editable) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  props.onEtaEditRequest({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                }}
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  if (!props.editable || (event.key !== "Enter" && event.key !== " ")) return;
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  props.onEtaEditRequest({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                }}
+                onKeyUp={(event) => event.stopPropagation()}
                 style={{ colorScheme: "dark" }}
                 className="h-[24px] w-[108px] rounded border border-white/30 bg-transparent px-2 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
               />
@@ -3231,6 +3326,8 @@ export function AgDemandPlanningGrid({
   onColumnFilterMenuSizeChange,
   columnOrder = [],
   onColumnOrderChange,
+  onContainerOrderCustomized,
+  onContainerEtaChange,
   seasonalFactors,
   columnColors = {},
   cellColors = {},
@@ -3289,6 +3386,10 @@ export function AgDemandPlanningGrid({
   const cellTextFormatsRef = useRef(cellTextFormats);
   const sheetClipboardRef = useRef<SheetClipboardPayload | null>(null);
   const [etaOverrides, setEtaOverrides] = useState<Map<number, string>>(new Map());
+  const [etaEditor, setEtaEditor] = useState<{
+    container: ContainerMeta;
+    anchor: EtaPickerAnchor;
+  } | null>(null);
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const qtyOverridesRef = useRef(qtyOverrides);
   const lastChainedQtyOverridesRef = useRef(qtyOverrides);
@@ -3401,7 +3502,15 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         return checkedBase.some((cat) => container.categories!.includes(cat.toUpperCase()));
       });
 
-    return filtered;
+    const baseline = filtered.filter((container) => container.status === "baseline");
+    const ordered = filtered
+      .filter((container) => container.status !== "baseline")
+      .sort((a, b) => {
+        const aTime = a.eta ? new Date(a.eta).getTime() : Number.POSITIVE_INFINITY;
+        const bTime = b.eta ? new Date(b.eta).getTime() : Number.POSITIVE_INFINITY;
+        return aTime !== bTime ? aTime - bTime : a.name.localeCompare(b.name);
+      });
+    return [...baseline, ...ordered];
   }, [categoryFilter, data.containers, etaOverrides, hiddenContainers]);
 
   // Raw, comparable value for a container sub-column, mirroring the "merged"
@@ -4203,6 +4312,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const api = gridRef.current?.api;
     const row = api?.getRowNode(rowId)?.data;
     if (row) {
+      if (columnId === "sku") return row.sku;
       if (columnId === "cbm") return row.cbm_per_unit ? row.cbm_per_unit.toFixed(6) : "";
       if (columnId === "tavg_c") return String(row.total_avg_curr ?? "");
       if (columnId === "workflow_note") return row.workflow_note ?? "";
@@ -4325,13 +4435,21 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
       body: JSON.stringify({ eta }),
     });
-    if (!response.ok) return;
+    if (!response.ok) {
+      toast.error(pick("ETA 변경에 실패했습니다.", "Failed to update ETA."));
+      return;
+    }
     const result = await response.json().catch(() => null) as { success?: boolean } | null;
-    if (!result?.success) return;
+    if (!result?.success) {
+      toast.error(pick("ETA 변경에 실패했습니다.", "Failed to update ETA."));
+      return;
+    }
     setEtaOverrides((current) => new Map(current).set(container.container_id!, eta));
+    onContainerEtaChange?.({ id: container.container_id, name: container.name, eta });
     const nextContainers = containers.map((entry) => entry.container_id === container.container_id ? { ...entry, eta } : entry);
     setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides, seasonalFactors)])));
-  }, [canEditPlanning, containers, data.rows, qtyOverrides, seasonalFactors]);
+    toast.success(pick("변경되었습니다.", "Updated."));
+  }, [canEditPlanning, containers, data.rows, onContainerEtaChange, pick, qtyOverrides, seasonalFactors]);
 
   const saveCbm = useCallback(async (
     row: DemandRow,
@@ -5649,6 +5767,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               onMemoSave: params.data && onSkuCellNoteChange
                 ? (memo: string) => saveMemo(params.data!, memo)
                 : undefined,
+              onCopySelection: performCopy,
             })
           : column.id === "inb_lst"
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
@@ -6003,7 +6122,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             qtyEditable,
             status: container.status,
             totalColumns,
-            onEtaChange: (eta: string) => updateEta(container, eta),
+            onEtaEditRequest: (anchor: EtaPickerAnchor) => setEtaEditor({ container, anchor }),
             onAutoFill: () => {
               setAutoFillingContainers((s) => new Set(s).add(container.name));
               void autoFill(container, containerIndex, true).finally(() => {
@@ -6046,7 +6165,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -6395,6 +6514,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               }
               const movedContainerColumns = [...affectedColumns].some((column) => column.getColId().includes("::"));
               if (movedContainerColumns) {
+                onContainerOrderCustomized?.();
                 // Container groups may be reordered among themselves, but the
                 // whole planning block must stay after the fixed/base columns
                 // (the Inbound / Container / SOD boundary).
@@ -6507,6 +6627,15 @@ autoFilling3: autoFillingContainers3.has(container.name),
         />
       )}
     </div>
+    {etaEditor && (
+      <EtaDatePickerPortal
+        label={`Edit ${etaEditor.container.name} ETA`}
+        value={etaEditor.container.eta}
+        anchor={etaEditor.anchor}
+        onChange={(eta) => void updateEta(etaEditor.container, eta)}
+        onClose={() => setEtaEditor(null)}
+      />
+    )}
     <FixedTargetDialog
       open={fixedTargetDialog !== null}
       containerName={fixedTargetDialog?.container.name ?? ""}
