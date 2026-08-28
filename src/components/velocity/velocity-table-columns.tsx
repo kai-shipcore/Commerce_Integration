@@ -15,15 +15,28 @@ export type VelocityRow = {
   isTotal?: boolean;
 };
 
-const FINAL_CAR_COVER_STYLE_REMAP: Record<string, string> = {
-  BKGR: "BKLG",
+// Car Cover master SKUs are 6 segments: CC-<line>-<series>-<model>-<color>-<suffix>.
+// The two remaps live on different segments, so they are keyed by position.
+const FINAL_CAR_COVER_LINE_REMAP: Record<string, string> = {
   TN: "TNS",
 };
 
+const FINAL_CAR_COVER_COLOR_REMAP: Record<string, string> = {
+  BKGR: "BKLG",
+};
+
+const LINE_SEGMENT_INDEX = 1;
+const COLOR_SEGMENT_INDEX = 4;
+
 export function toFinalCarCoverSku(masterSku: string): string {
   const parts = masterSku.split("-");
-  const remapped = FINAL_CAR_COVER_STYLE_REMAP[parts[1]];
-  if (remapped) parts[1] = remapped;
+
+  const line = FINAL_CAR_COVER_LINE_REMAP[parts[LINE_SEGMENT_INDEX]];
+  if (line) parts[LINE_SEGMENT_INDEX] = line;
+
+  const color = FINAL_CAR_COVER_COLOR_REMAP[parts[COLOR_SEGMENT_INDEX]];
+  if (color) parts[COLOR_SEGMENT_INDEX] = color;
+
   return parts.join("-");
 }
 

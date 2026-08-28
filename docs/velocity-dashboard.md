@@ -183,12 +183,16 @@ Unlike Sales and TTM:
 | `Total Sales` / `Total` | Quantity from the link snapshot |
 | `Final Car Cover Sales` | Same quantity repeated beside a display-only remapped SKU |
 
-For the display-only final SKU, the page converts the style segment:
+For the display-only final SKU, the page converts two segments of the 6-segment
+Car Cover SKU (`CC-<line>-<series>-<model>-<color>-<suffix>`):
 
 ```text
-BKGR -> BKLG
-TN -> TNS
+line  segment 2:  TN   -> TNS
+color segment 5:  BKGR -> BKLG
 ```
+
+The two remaps sit on different segments, so they are keyed by position rather than
+matched anywhere in the SKU.
 
 The quantity is not recalculated for the final SKU column; it is the same value shown in the total column.
 
@@ -234,7 +238,7 @@ Rows with no positive quantity anywhere are filtered out before display. The tot
 Search behavior depends on item:
 
 - All items: searches the primary `masterSku`
-- Car Cover: also searches the display-only final SKU after the style-segment remap (`BKGR -> BKLG`, `TN -> TNS`)
+- Car Cover: also searches the display-only final SKU after the segment remaps (`TN -> TNS` on the line segment, `BKGR -> BKLG` on the color segment)
 - Seat Cover: also searches `customMasterSku`; in preorder mode it also searches `ttmMasterSku`
 - Floor Mat: only the primary `masterSku` is searchable
 
