@@ -3,6 +3,7 @@
 import { type ColumnDef } from "@tanstack/react-table";
 import { ArrowDownIcon, ArrowUpIcon, CaretSortIcon } from "@radix-ui/react-icons";
 import { DataTableColumnHeader } from "@/components/ui/data-table/data-table-column-header";
+import { toFinalMasterSku } from "@/lib/planning/master-sku";
 import { cn } from "@/lib/utils";
 
 export type VelocityRow = {
@@ -15,30 +16,11 @@ export type VelocityRow = {
   isTotal?: boolean;
 };
 
-// Car Cover master SKUs are 6 segments: CC-<line>-<series>-<model>-<color>-<suffix>.
-// The two remaps live on different segments, so they are keyed by position.
-const FINAL_CAR_COVER_LINE_REMAP: Record<string, string> = {
-  TN: "TNS",
-};
-
-const FINAL_CAR_COVER_COLOR_REMAP: Record<string, string> = {
-  BKGR: "BKLG",
-};
-
-const LINE_SEGMENT_INDEX = 1;
-const COLOR_SEGMENT_INDEX = 4;
-
-export function toFinalCarCoverSku(masterSku: string): string {
-  const parts = masterSku.split("-");
-
-  const line = FINAL_CAR_COVER_LINE_REMAP[parts[LINE_SEGMENT_INDEX]];
-  if (line) parts[LINE_SEGMENT_INDEX] = line;
-
-  const color = FINAL_CAR_COVER_COLOR_REMAP[parts[COLOR_SEGMENT_INDEX]];
-  if (color) parts[COLOR_SEGMENT_INDEX] = color;
-
-  return parts.join("-");
-}
+// The TN→TNS / BKGR→BKLG remap moved to src/lib/planning/master-sku.ts so the
+// Demand Planning server path can roll legacy sales onto the final SKU with the
+// same rule. Re-exported under the old name to keep this module's callers
+// (velocity page, velocity-export) unchanged.
+export const toFinalCarCoverSku = toFinalMasterSku;
 
 function QtyCell({ value, isTotal }: { value: number | null; isTotal?: boolean }) {
   if (value == null) return <PlaceholderCell />;

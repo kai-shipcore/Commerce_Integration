@@ -24,3 +24,36 @@ export function normalizedMasterSkuSql(skuExpression: string): string {
     ELSE BTRIM(${skuExpression})
   END`;
 }
+
+// ─── Final (current-production) master SKU ──────────────────────────────
+//
+// Distinct from normalizeMasterSku above: that one merges rows, this one only
+// names the SKU the factory now produces. `TN` and `BKGR` are no longer
+// ordered — their replacements are `TNS` and `BKLG` — but stock still sits on
+// the old SKUs, so the two must stay separate rows while demand rolls up onto
+// the final one.
+//
+// Car Cover master SKUs are 6 segments: CC-<line>-<series>-<model>-<color>-<suffix>.
+// The two remaps live on different segments, so they are keyed by position.
+const FINAL_CAR_COVER_LINE_REMAP: Record<string, string> = {
+  TN: "TNS",
+};
+
+const FINAL_CAR_COVER_COLOR_REMAP: Record<string, string> = {
+  BKGR: "BKLG",
+};
+
+const LINE_SEGMENT_INDEX = 1;
+const COLOR_SEGMENT_INDEX = 4;
+
+export function toFinalMasterSku(masterSku: string): string {
+  const parts = masterSku.split("-");
+
+  const line = FINAL_CAR_COVER_LINE_REMAP[parts[LINE_SEGMENT_INDEX]];
+  if (line) parts[LINE_SEGMENT_INDEX] = line;
+
+  const color = FINAL_CAR_COVER_COLOR_REMAP[parts[COLOR_SEGMENT_INDEX]];
+  if (color) parts[COLOR_SEGMENT_INDEX] = color;
+
+  return parts.join("-");
+}

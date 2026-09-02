@@ -57,6 +57,13 @@ export interface DemandRow {
   sales_status: "Original" | "Custom" | "Hold" | "Part" | "Discontinued" | "TBD" | "SWC";
   category_code?: "SC" | "CC" | "FM" | "AC" | "SWC";
   sku: string;
+  /**
+   * Legacy master SKUs (TN / BKGR) whose sales are included in this row's
+   * sales figures because the factory now only produces this SKU. Their own
+   * rows keep their sales too — stock has to be tracked per SKU — so the same
+   * units appear twice across the grid by design.
+   */
+  rolled_up_from?: string[];
   west_stock: number;
   east_stock: number;
   west_available_stock?: number;

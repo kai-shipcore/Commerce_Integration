@@ -27,6 +27,7 @@ import {
   sheetContainerEstimatedSales,
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
+import { toFinalMasterSku } from "@/lib/planning/master-sku";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import {
   DEFAULT_SALES_WINDOW_WEIGHTS,
@@ -70,6 +71,25 @@ function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" | "SWC" {
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
+}
+
+// Every per-SKU sales figure the dashboard derives its numbers from. The raw
+// windows are summed; the three `*_prev` averages are stored columns with no
+// window to re-derive them from, so they are summed directly (their 0.01 floor
+// is applied afterwards, at the call site, exactly as before).
+const SALES_WINDOW_KEYS = [
+  "west_90d", "west_60d", "west_30d", "west_15d", "west_7d", "west_30d_pre",
+  "east_90d", "east_60d", "east_30d", "east_15d", "east_7d", "east_30d_pre",
+  "fba_90d_sales", "fba_60d_sales", "fba_30d_sales", "fba_15d_sales", "fba_7d_sales", "fba_30d_pre",
+  "avg_daily_prev", "east_avg_prev", "fba_avg_prev",
+] as const;
+
+type SalesWindows = Record<(typeof SALES_WINDOW_KEYS)[number], number>;
+
+function categoryCodeForStatsRow(r: Record<string, unknown>, masterSku: string): "SC" | "CC" | "FM" | "AC" | "SWC" {
+  return r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC" || r.category_code === "SWC"
+    ? r.category_code
+    : inferCategoryCode(masterSku);
 }
 
 // DB status values for containers that have confirmed quantities.
@@ -188,6 +208,41 @@ export const DemandPlanningService = {
       for (const r of customVelRows) customVelMap.set(r.master_sku, buildVelEntry(r));
     }
 
+    // Both the roll-up pre-pass and the row loop below have to resolve a SKU's
+    // sales the same way: the historical snapshot wins when asOf != today,
+    // otherwise the stored fc_stats columns.
+    function velEntryFor(r: Record<string, unknown>, masterSku: string): VelEntry | undefined {
+      const categoryCode = categoryCodeForStatsRow(r, masterSku);
+      const velSourceMap = (categoryCode === "CC" || categoryCode === "FM" || categoryCode === "SWC") ? customVelMap : linkVelMap;
+      return velSourceMap.get(masterSku);
+    }
+
+    function effectiveSalesWindows(r: Record<string, unknown>, vel: VelEntry | undefined): SalesWindows {
+      return {
+        west_90d: Number(vel ? vel.west_90d : r.west_90d),
+        west_60d: Number(vel ? vel.west_60d : r.west_60d),
+        west_30d: Number(vel ? vel.west_30d : r.west_30d),
+        west_15d: Number(vel ? vel.west_15d : r.west_15d),
+        west_7d: Number(vel ? vel.west_7d : r.west_7d),
+        west_30d_pre: Number(vel ? vel.west_30d_pre : r.west_30d_pre),
+        east_90d: Number(vel ? vel.east_90d : r.east_90d),
+        east_60d: Number(vel ? vel.east_60d : r.east_60d),
+        east_30d: Number(vel ? vel.east_30d : r.east_30d),
+        east_15d: Number(vel ? vel.east_15d : r.east_15d),
+        east_7d: Number(vel ? vel.east_7d : r.east_7d),
+        east_30d_pre: Number(vel ? vel.east_30d_pre : r.east_30d_pre),
+        fba_90d_sales: Number(vel ? vel.fba_90d : r.fba_90d_sales ?? 0),
+        fba_60d_sales: Number(vel ? vel.fba_60d : r.fba_60d_sales ?? 0),
+        fba_30d_sales: Number(vel ? vel.fba_30d : r.fba_30d_sales ?? 0),
+        fba_15d_sales: Number(vel ? vel.fba_15d : r.fba_15d_sales ?? 0),
+        fba_7d_sales: Number(vel ? vel.fba_7d : r.fba_7d_sales ?? 0),
+        fba_30d_pre: Number(vel ? vel.fba_30d_pre : r.fba_30d_pre ?? 0),
+        avg_daily_prev: Number(vel ? vel.avg_daily_prev : r.avg_daily_prev),
+        east_avg_prev: Number(vel ? vel.east_avg_prev : r.east_avg_prev),
+        fba_avg_prev: Number(vel ? vel.fba_avg_prev : r.fba_avg_prev ?? 0),
+      };
+    }
+
     // ── Assemble response ──────────────────────────────────────────────
 
     const containers: ContainerMeta[] = [
@@ -235,13 +290,43 @@ export const DemandPlanningService = {
       });
     }
 
+    // ── Final-SKU sales roll-up (TN→TNS, BKGR→BKLG) ────────────────────
+    //
+    // The factory no longer produces the legacy line/colour, so demand has to
+    // sit on the SKU that actually gets ordered. Stock does not move: the
+    // legacy SKU still holds real inventory that has to be sold down, so its
+    // row stays exactly as it is (own sales included) and only the final row
+    // gains the legacy row's sales on top of its own.
+    //
+    // Consequence, accepted deliberately: the same units appear on both rows,
+    // so column totals and any cross-row sum count them twice. Stock, back
+    // orders, SOD and the container chain are untouched — the final SKU is
+    // planned against its own inventory only.
+    const rollupWindows = new Map<string, SalesWindows>();
+    const rollupSources = new Map<string, string[]>();
+    for (const r of rowsResult) {
+      const sku = r.sku as string;
+      if (!sku.startsWith("CC-")) continue;
+      const finalSku = toFinalMasterSku(sku);
+      if (finalSku === sku) continue;
+      const windows = effectiveSalesWindows(r, velEntryFor(r, sku));
+      const accumulated = rollupWindows.get(finalSku);
+      if (accumulated) {
+        // Both remaps can fire independently, so more than one legacy SKU can
+        // feed the same final SKU. Accumulate rather than overwrite.
+        for (const key of SALES_WINDOW_KEYS) accumulated[key] += windows[key];
+        rollupSources.get(finalSku)!.push(sku);
+      } else {
+        rollupWindows.set(finalSku, windows);
+        rollupSources.set(finalSku, [sku]);
+      }
+    }
+
     const rows: DemandRow[] = rowsResult.map((r) => {
       const masterSku = r.sku as string;
       const rowSku = masterSku;
       const { seat, no, color, tone } = parseSku(masterSku);
-      const categoryCode = r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC" || r.category_code === "SWC"
-        ? r.category_code
-        : inferCategoryCode(masterSku);
+      const categoryCode = categoryCodeForStatsRow(r, masterSku);
 
       const containerInfo = r.latest_container
         ? `${r.latest_eta ?? ""} - (${r.latest_container}) - ${r.latest_qty ?? ""}`
@@ -253,30 +338,38 @@ export const DemandPlanningService = {
         for (const [name, data] of skuCross) containersObj[name] = data;
       }
 
-      const velSourceMap = (categoryCode === "CC" || categoryCode === "FM" || categoryCode === "SWC") ? customVelMap : linkVelMap;
-      const vel = velSourceMap.get(masterSku);
-      const west_90d = vel ? vel.west_90d : r.west_90d as number;
-      const west_60d = vel ? vel.west_60d : r.west_60d as number;
-      const west_30d = vel ? vel.west_30d : r.west_30d as number;
-      const west_15d = vel ? vel.west_15d : r.west_15d as number;
-      const west_7d = vel ? vel.west_7d : r.west_7d as number;
-      const west_30d_pre = vel ? vel.west_30d_pre : r.west_30d_pre as number;
-      const east_90d = vel ? vel.east_90d : r.east_90d as number;
-      const east_60d = vel ? vel.east_60d : r.east_60d as number;
-      const east_30d = vel ? vel.east_30d : r.east_30d as number;
-      const east_15d = vel ? vel.east_15d : r.east_15d as number;
-      const east_7d = vel ? vel.east_7d : r.east_7d as number;
-      const east_30d_pre = vel ? vel.east_30d_pre : r.east_30d_pre as number;
-      const fba_90d_sales = Number(vel ? vel.fba_90d : r.fba_90d_sales ?? 0);
-      const fba_60d_sales = Number(vel ? vel.fba_60d : r.fba_60d_sales ?? 0);
-      const fba_30d_sales = Number(vel ? vel.fba_30d : r.fba_30d_sales ?? 0);
-      const fba_15d_sales = Number(vel ? vel.fba_15d : r.fba_15d_sales ?? 0);
-      const fba_7d_sales = Number(vel ? vel.fba_7d : r.fba_7d_sales ?? 0);
-      const fba_30d_pre = Number(vel ? vel.fba_30d_pre : r.fba_30d_pre ?? 0);
-      const avg_daily_prev = Math.max(0.01, vel ? vel.avg_daily_prev : r.avg_daily_prev as number);
+      const vel = velEntryFor(r, masterSku);
+      const own = effectiveSalesWindows(r, vel);
+      const rolledUpFrom = rollupSources.get(masterSku);
+      const contributed = rollupWindows.get(masterSku);
+      const sales: SalesWindows = contributed
+        ? (Object.fromEntries(
+            SALES_WINDOW_KEYS.map((key) => [key, own[key] + contributed[key]]),
+          ) as SalesWindows)
+        : own;
+
+      const west_90d = sales.west_90d;
+      const west_60d = sales.west_60d;
+      const west_30d = sales.west_30d;
+      const west_15d = sales.west_15d;
+      const west_7d = sales.west_7d;
+      const west_30d_pre = sales.west_30d_pre;
+      const east_90d = sales.east_90d;
+      const east_60d = sales.east_60d;
+      const east_30d = sales.east_30d;
+      const east_15d = sales.east_15d;
+      const east_7d = sales.east_7d;
+      const east_30d_pre = sales.east_30d_pre;
+      const fba_90d_sales = sales.fba_90d_sales;
+      const fba_60d_sales = sales.fba_60d_sales;
+      const fba_30d_sales = sales.fba_30d_sales;
+      const fba_15d_sales = sales.fba_15d_sales;
+      const fba_7d_sales = sales.fba_7d_sales;
+      const fba_30d_pre = sales.fba_30d_pre;
+      const avg_daily_prev = Math.max(0.01, sales.avg_daily_prev);
       const avg_daily_real = weightedDailyAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d, salesWindowWeights);
       const avg_daily_curr = Math.max(0.01, currentDailyAverage(avg_daily_prev, avg_daily_real, categoryCode as "SC" | "CC" | "FM" | undefined));
-      const east_avg_prev = Math.max(0.01, vel ? vel.east_avg_prev : r.east_avg_prev as number);
+      const east_avg_prev = Math.max(0.01, sales.east_avg_prev);
       const east_avg_real = weightedDailyAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d, salesWindowWeights);
       // currentDailyAverage's categoryCode param is unused at runtime (kept for call-site symmetry);
       // categoryCode here can be AC/SWC too, which the narrower ForecastCategoryCode type doesn't include.
@@ -299,14 +392,16 @@ export const DemandPlanningService = {
       const fbm_avg_curr = isCarCover
         ? currentDailyAverage(fbm_avg_prev, fbm_avg_real, categoryCode)
         : avg_daily_curr + east_avg_curr;
-      const fba_avg_prev = Math.max(0.01, vel ? vel.fba_avg_prev : r.fba_avg_prev as number);
+      const fba_avg_prev = Math.max(0.01, sales.fba_avg_prev);
       const fba_avg_real = weightedDailyAverage(
         fba_90d_sales, fba_60d_sales, fba_30d_sales, fba_30d_pre, fba_15d_sales, fba_7d_sales,
         FBA_SALES_WINDOW_WEIGHTS,
       );
       const fba_avg_curr = Math.max(0.01, currentDailyAverage(fba_avg_prev, fba_avg_real, categoryCode as "SC" | "CC" | "FM" | undefined));
-      const fba_30d = vel
-        ? fivePeriodThirtyDayAverage(vel.fba_90d, vel.fba_60d, vel.fba_30d, 0, vel.fba_15d, vel.fba_7d)
+      // The stored fba_30d column knows nothing about rolled-up sales, so a row
+      // that received any has to re-derive it. Same formula refreshStats uses.
+      const fba_30d = vel || contributed
+        ? fivePeriodThirtyDayAverage(fba_90d_sales, fba_60d_sales, fba_30d_sales, 0, fba_15d_sales, fba_7d_sales)
         : r.fba_30d as number;
       const oos_days_90d = (r.oos_days_90d as number | null) ?? null;
       const oos_lost_demand_90d = (r.oos_lost_demand_90d as number | null) ?? null;
@@ -435,6 +530,7 @@ export const DemandPlanningService = {
         sales_status: (r.sales_status as "Original" | "Custom" | "Hold"),
         category_code: categoryCode,
         sku: rowSku,
+        ...(rolledUpFrom ? { rolled_up_from: rolledUpFrom } : {}),
         west_stock: r.west_stock,
         east_stock: r.east_stock,
         west_available_stock: r.west_available_stock,

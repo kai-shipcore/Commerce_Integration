@@ -282,3 +282,123 @@ describe("DemandPlanningService.refreshStats", () => {
     expect(lostDemandCall?.[1]).toEqual([{ master_sku: "SKU-1", oos_lost_demand_90d: 20 }]);
   });
 });
+
+// ─── Final-SKU sales roll-up (TN→TNS, BKGR→BKLG) ─────────────────────────
+//
+// The factory only orders the final SKU now, so its row has to carry the
+// legacy SKU's demand — but the legacy SKU still holds stock that has to be
+// sold down, so its own row must stay untouched.
+
+function ccStatsRow(sku: string, overrides: Record<string, unknown> = {}) {
+  return {
+    sku, total_inbound_qty: 0, containers_list: null, next_eta: null, cbm_unit: null,
+    latest_container: null, latest_eta: null, latest_qty: null,
+    sales_status: "Original", category_code: "CC", cbm_per_unit: 0, memo: null,
+    case_qty: 1, moq: 1, order_multiple: 1,
+    back: 0, west_stock: 0, east_stock: 0, west_available_stock: 0, east_available_stock: 0, transit_stock: 0,
+    fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0,
+    fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0,
+    total_stock: 0,
+    west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
+    east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
+    avg_daily_prev: 0, avg_daily_real: 0, avg_daily_curr: 0,
+    east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
+    fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0,
+    fba_90d_sales: 0, fba_60d_sales: 0, fba_30d_sales: 0, fba_15d_sales: 0, fba_7d_sales: 0, fba_30d_pre: 0,
+    fba_30d: 0, total_avg_prev: 0, total_avg_real: 0, total_avg_curr: 0, total_avg_curr_override: null,
+    oos_days_90d: 0, oos_lost_demand_90d: 0,
+    ...overrides,
+  };
+}
+
+const rowBySku = <T extends { sku: string }>(rows: T[], sku: string): T => rows.find((r) => r.sku === sku)!;
+
+describe("DemandPlanningService.getDashboardData - final SKU sales roll-up", () => {
+  it("adds the legacy SKU's sales to the final SKU's row", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CC-SS-15-K-BKGR-STR", { west_90d: 90, west_60d: 60, west_30d: 30, west_15d: 15, west_7d: 7, fba_90d_sales: 9 }),
+      ccStatsRow("CC-SS-15-K-BKLG-STR", { west_90d: 10, west_60d: 6, west_30d: 3, west_15d: 1, west_7d: 1, fba_90d_sales: 1 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    const final = rowBySku(data.rows, "CC-SS-15-K-BKLG-STR");
+    expect(final).toMatchObject({ west_90d: 100, west_60d: 66, west_30d: 33, west_15d: 16, west_7d: 8, fba_90d_sales: 10 });
+    expect(final.rolled_up_from).toEqual(["CC-SS-15-K-BKGR-STR"]);
+  });
+
+  it("leaves the legacy SKU's own row exactly as it was", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CC-SS-15-K-BKGR-STR", { west_90d: 90, west_30d: 30, total_stock: 38, west_available_stock: 38, back: -4 }),
+      ccStatsRow("CC-SS-15-K-BKLG-STR", { west_90d: 10 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    const legacy = rowBySku(data.rows, "CC-SS-15-K-BKGR-STR");
+    expect(legacy).toMatchObject({ west_90d: 90, west_30d: 30, total_stock: 38, back: -4 });
+    expect(legacy.rolled_up_from).toBeUndefined();
+  });
+
+  it("accumulates when more than one legacy SKU maps to the same final SKU", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CC-TN-15-K-BKGR-STR", { west_90d: 10 }),
+      ccStatsRow("CC-TN-15-K-BKLG-STR", { west_90d: 20 }),
+      ccStatsRow("CC-TNS-15-K-BKLG-STR", { west_90d: 5 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    const final = rowBySku(data.rows, "CC-TNS-15-K-BKLG-STR");
+    expect(final.west_90d).toBe(35);
+    expect(final.rolled_up_from).toEqual(["CC-TN-15-K-BKGR-STR", "CC-TN-15-K-BKLG-STR"]);
+  });
+
+  it("does not move stock or back orders onto the final SKU", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CC-SS-15-K-BKGR-STR", { west_90d: 90, total_stock: 38, west_stock: 38, west_available_stock: 38, back: -7 }),
+      ccStatsRow("CC-SS-15-K-BKLG-STR", { total_stock: 2, west_stock: 2, west_available_stock: 2 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(rowBySku(data.rows, "CC-SS-15-K-BKLG-STR")).toMatchObject({
+      total_stock: 2, west_stock: 2, west_available_stock: 2, back: 0,
+    });
+  });
+
+  it("raises the final SKU's daily average and pulls its S.O.D forward", async () => {
+    const withoutLegacy = ccStatsRow("CC-SS-15-K-BKLG-STR", { total_stock: 100, west_90d: 90, west_60d: 60, west_30d: 30, west_15d: 15, west_7d: 7 });
+    repositoryMock.getStatsRows.mockResolvedValue([withoutLegacy]);
+    const before = rowBySku((await DemandPlanningService.getDashboardData(baseQuery)).data.rows, "CC-SS-15-K-BKLG-STR");
+
+    repositoryMock.getStatsRows.mockResolvedValue([
+      withoutLegacy,
+      ccStatsRow("CC-SS-15-K-BKGR-STR", { west_90d: 90, west_60d: 60, west_30d: 30, west_15d: 15, west_7d: 7 }),
+    ]);
+    const after = rowBySku((await DemandPlanningService.getDashboardData(baseQuery)).data.rows, "CC-SS-15-K-BKLG-STR");
+
+    expect(after.west_90d).toBe(before.west_90d * 2);
+    // Not exactly double: the FBA and east averages carry a 0.01 floor each.
+    expect(after.total_avg_real).toBeGreaterThan(before.total_avg_real);
+    expect(after.total_stock).toBe(before.total_stock);
+    expect(after.sod! < before.sod!).toBe(true);
+  });
+
+  it("leaves a legacy row alone when its final SKU has no row of its own", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CC-CP-15-N-BKGR-STR", { west_90d: 12, total_stock: 1 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(data.rows).toHaveLength(1);
+    expect(data.rows[0]).toMatchObject({ sku: "CC-CP-15-N-BKGR-STR", west_90d: 12, total_stock: 1 });
+    expect(data.rows[0].rolled_up_from).toBeUndefined();
+  });
+
+  it("does not touch non-car-cover SKUs", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CA-SC-10-F-10-BK-1TO", { category_code: "SC", west_90d: 1993, fba_90d_sales: 60 }),
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+    expect(data.rows[0]).toMatchObject({ sku: "CA-SC-10-F-10-BK-1TO", west_90d: 1993, fba_90d_sales: 60 });
+    expect(data.rows[0].rolled_up_from).toBeUndefined();
+  });
+});
