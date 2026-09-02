@@ -288,7 +288,6 @@ async function fetchModeRows(
   item: string,
   channels: string[],
   ranges: PeriodRange[],
-  tz: "utc" | "la" = "utc",
   combined?: boolean
 ): Promise<VelocityRow[]> {
   const dbChannels = [...new Set(channels.map((ch) => CHANNEL_DB_KEY[ch] ?? ch))];
@@ -297,7 +296,6 @@ async function fetchModeRows(
     channels: dbChannels.join(","),
     mode,
     ranges: ranges.map((r) => `${r.from}:${r.to}`).join(","),
-    tz,
     ...(combined ? { combined: "1" } : {}),
   });
   const res = await fetch(apiPath(`/api/velocity/data?${params}`));
@@ -414,11 +412,10 @@ interface PaneProps {
   ranges: PeriodRange[];
   selectedItem: string;
   selectedChannels: string[];
-  timezone: "utc" | "la";
   exportSlot: HTMLDivElement | null;
 }
 
-function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, exportSlot }: PaneProps) {
+function VelocityPane({ mode, ranges, selectedItem, selectedChannels, exportSlot }: PaneProps) {
   const { pick } = useI18n();
   const [allRows, setAllRows] = useState<VelocityRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -449,12 +446,12 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Start table loading after velocity query changes.
     setLoading(true);
-    fetchModeRows(mode, selectedItem, selectedChannels, ranges, timezone, false)
+    fetchModeRows(mode, selectedItem, selectedChannels, ranges, false)
       .then((rows) => setAllRows(rows))
       .catch(() => {})
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItem, selectedChannels.join(","), mode, rangesKey, timezone]);
+  }, [selectedItem, selectedChannels.join(","), mode, rangesKey]);
 
   const filtered = useMemo(() => {
     const hasAnyQty = (r: VelocityRow) =>
@@ -516,9 +513,9 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
     setExportingAll(true);
     try {
       const [salesRows, ttmRows, preorderRows] = await Promise.all([
-        fetchModeRows("sales",    selectedItem, selectedChannels, ranges, timezone),
-        fetchModeRows("ttm",      selectedItem, selectedChannels, ranges, timezone),
-        fetchModeRows("preorder", selectedItem, selectedChannels, ranges, timezone),
+        fetchModeRows("sales",    selectedItem, selectedChannels, ranges),
+        fetchModeRows("ttm",      selectedItem, selectedChannels, ranges),
+        fetchModeRows("preorder", selectedItem, selectedChannels, ranges),
       ]);
       exportAllVelocity(salesRows, ttmRows, preorderRows, labels, label, selectedItem);
     } catch {
@@ -526,7 +523,7 @@ function VelocityPane({ mode, ranges, selectedItem, selectedChannels, timezone, 
     } finally {
       setExportingAll(false);
     }
-  }, [selectedItem, selectedChannels, ranges, labels, label, timezone]);
+  }, [selectedItem, selectedChannels, ranges, labels, label]);
 
   const exportButtons = (
     <div className="flex items-center gap-2">
@@ -600,19 +597,12 @@ export default function VelocityPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [exportSlot, setExportSlot] = useState<HTMLDivElement | null>(null);
-  const [timezone, setTimezone] = useState<"utc" | "la">(() =>
-    typeof window !== "undefined"
-      ? ((localStorage.getItem("velocity_tz") as "utc" | "la") ?? "utc")
-      : "utc"
-  );
-
   const handleResetPeriod = () => {
     setPeriodMode("period");
     setPeriods(DEFAULT_PERIODS);
     setCustomRanges(defaultRanges());
   };
 
-  useEffect(() => { localStorage.setItem("velocity_tz", timezone); }, [timezone]);
   useEffect(() => { localStorage.setItem("velocity_period_mode", periodMode); }, [periodMode]);
   useEffect(() => { localStorage.setItem("velocity_periods", JSON.stringify(periods)); }, [periods]);
   useEffect(() => { localStorage.setItem("velocity_custom_ranges", JSON.stringify(customRanges)); }, [customRanges]);
@@ -680,22 +670,6 @@ export default function VelocityPage() {
                 {pick("마지막 동기화:", "Last synced:")} {formattedSyncTime}
               </span>
             )}
-            <div className="flex items-center rounded-md border border-border bg-muted p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800">
-              {(["utc", "la"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTimezone(t)}
-                  className={cn(
-                    "rounded px-2.5 py-1 font-medium transition-colors",
-                    timezone === t
-                      ? "bg-background shadow-sm text-foreground dark:bg-slate-950 dark:text-slate-50"
-                      : "text-muted-foreground hover:text-foreground dark:text-slate-300 dark:hover:text-slate-50"
-                  )}
-                >
-                  {t === "utc" ? "UTC" : "LA Time"}
-                </button>
-              ))}
-            </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <button
@@ -820,7 +794,6 @@ export default function VelocityPage() {
               ranges={activeRanges}
               selectedItem={selectedItem}
               selectedChannels={selectedChannels}
-              timezone={timezone}
               exportSlot={exportSlot}
             />
           )}

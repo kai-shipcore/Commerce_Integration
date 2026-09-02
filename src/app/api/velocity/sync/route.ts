@@ -2,8 +2,8 @@
  * Code Guide:
  * GET  /api/velocity/sync — Returns the most recent synced_at timestamp from fc_velocity_link_snapshot.
  * POST /api/velocity/sync — Pulls data from two Supabase views independently.
- *                           Stores both UTC date (order_date) and LA date (order_date_la) per row,
- *                           grouped by both dates so timezone-based filtering works without re-sync.
+ *                           Stores the UTC order date (order_date) per row — the only date basis
+ *                           the app aggregates on; there is no timezone option.
  *                           Batch-upserts into fc_velocity_link_snapshot and fc_velocity_custom_snapshot
  *                           (500 rows per batch each).
  * Controller layer only: parses the request and delegates to VelocityService, which owns the

@@ -932,13 +932,12 @@ export const VelocityRepository = {
     channels: string[];
     orderType: "sales" | "ttm";
     ranges: { from: string; to: string }[];
-    dateCol: string;
   }): Promise<Array<{ master_sku: string } & Record<string, unknown>>> {
     const pool = getPrimaryPool();
     const cols = opts.ranges
       .map(
         ({ from, to }, i) =>
-          `SUM(CASE WHEN ${opts.dateCol} >= '${from}' AND ${opts.dateCol} <= '${to}' THEN ${opts.qtyColumn} ELSE 0 END)::int AS qty_${i}`
+          `SUM(CASE WHEN order_date >= '${from}' AND order_date <= '${to}' THEN ${opts.qtyColumn} ELSE 0 END)::int AS qty_${i}`
       )
       .join(", ");
 
@@ -960,14 +959,13 @@ export const VelocityRepository = {
     items: string[];
     channels: string[];
     ranges: { from: string; to: string }[];
-    dateCol: string;
     orderTypeFilter: string;
   }): Promise<Array<{ master_sku: string } & Record<string, unknown>>> {
     const pool = getPrimaryPool();
     const cols = opts.ranges
       .map(
         ({ from, to }, i) =>
-          `SUM(CASE WHEN ${opts.dateCol} >= '${from}' AND ${opts.dateCol} <= '${to}' THEN ${opts.qtyColumn} ELSE 0 END)::int AS qty_${i}`
+          `SUM(CASE WHEN order_date >= '${from}' AND order_date <= '${to}' THEN ${opts.qtyColumn} ELSE 0 END)::int AS qty_${i}`
       )
       .join(", ");
 
@@ -1029,21 +1027,25 @@ export const VelocityRepository = {
     await client.query(`SELECT pg_advisory_unlock($1::bigint)`, [VELOCITY_SYNC_LOCK_KEY]);
   },
 
+  // GROUP BY is positional against LINK_SELECT / CUSTOM_SELECT: every column
+  // except the SUM at position 6. Adding or removing a select column shifts
+  // these numbers, and a wrong-but-valid number groups the wrong thing without
+  // erroring — recount them whenever the select list changes.
   async fetchLinkRowsFromLookup(lookupPool: Pool, dateFilter: string): Promise<LinkSnapshotSourceRow[]> {
     const result = await lookupPool.query<LinkSnapshotSourceRow>(
-      `${LINK_SELECT} ${LINK_WHERE} ${dateFilter} GROUP BY 1, 2, 3, 4, 5, 6, 8`
+      `${LINK_SELECT} ${LINK_WHERE} ${dateFilter} GROUP BY 1, 2, 3, 4, 5, 7`
     );
     return result.rows;
   },
 
   async fetchLinkForecastRowsFromLookup(lookupPool: Pool): Promise<LinkSnapshotSourceRow[]> {
-    const result = await lookupPool.query<LinkSnapshotSourceRow>(`${LINK_SELECT} ${LINK_WHERE} GROUP BY 1, 2, 3, 4, 5, 6, 8`);
+    const result = await lookupPool.query<LinkSnapshotSourceRow>(`${LINK_SELECT} ${LINK_WHERE} GROUP BY 1, 2, 3, 4, 5, 7`);
     return result.rows;
   },
 
   async fetchCustomRowsFromLookup(lookupPool: Pool, dateFilterC: string): Promise<CustomSnapshotSourceRow[]> {
     const result = await lookupPool.query<CustomSnapshotSourceRow>(
-      `${CUSTOM_SELECT} ${CUSTOM_WHERE} ${dateFilterC} GROUP BY 1, 2, 3, 4, 5, 6, 8`
+      `${CUSTOM_SELECT} ${CUSTOM_WHERE} ${dateFilterC} GROUP BY 1, 2, 3, 4, 5, 7`
     );
     return result.rows;
   },
@@ -1059,18 +1061,17 @@ export const VelocityRepository = {
       const batch = rows.slice(i, i + BATCH_SIZE);
       await pool.query(
         `INSERT INTO ${table}
-           (order_date, order_date_la, item_category, channel, order_type, link_master_sku, link_qty, synced_at, is_custom)
-         SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
-                UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[]),
-                UNNEST($9::text[])
-         ON CONFLICT (order_date, order_date_la, item_category, channel, order_type, link_master_sku)
+           (order_date, item_category, channel, order_type, link_master_sku, link_qty, synced_at, is_custom)
+         SELECT UNNEST($1::date[]), UNNEST($2::text[]), UNNEST($3::text[]), UNNEST($4::text[]),
+                UNNEST($5::text[]), UNNEST($6::int[]), UNNEST($7::timestamptz[]),
+                UNNEST($8::text[])
+         ON CONFLICT (order_date, item_category, channel, order_type, link_master_sku)
          DO UPDATE SET
            link_qty  = EXCLUDED.link_qty,
            synced_at = EXCLUDED.synced_at,
            is_custom = EXCLUDED.is_custom`,
         [
           batch.map((r) => r.order_date.toISOString().slice(0, 10)),
-          batch.map((r) => r.order_date_la.toISOString().slice(0, 10)),
           batch.map((r) => r.item_category),
           batch.map((r) => r.channel),
           batch.map((r) => r.order_type),
@@ -1092,18 +1093,17 @@ export const VelocityRepository = {
       const batch = rows.slice(i, i + BATCH_SIZE);
       await pool.query(
         `INSERT INTO shipcore.fc_velocity_custom_snapshot
-           (order_date, order_date_la, item_category, channel, order_type, custom_master_sku, custom_qty, synced_at, is_custom)
-         SELECT UNNEST($1::date[]), UNNEST($2::date[]), UNNEST($3::text[]), UNNEST($4::text[]),
-                UNNEST($5::text[]), UNNEST($6::text[]), UNNEST($7::int[]), UNNEST($8::timestamptz[]),
-                UNNEST($9::text[])
-         ON CONFLICT (order_date, order_date_la, item_category, channel, order_type, custom_master_sku)
+           (order_date, item_category, channel, order_type, custom_master_sku, custom_qty, synced_at, is_custom)
+         SELECT UNNEST($1::date[]), UNNEST($2::text[]), UNNEST($3::text[]), UNNEST($4::text[]),
+                UNNEST($5::text[]), UNNEST($6::int[]), UNNEST($7::timestamptz[]),
+                UNNEST($8::text[])
+         ON CONFLICT (order_date, item_category, channel, order_type, custom_master_sku)
          DO UPDATE SET
            custom_qty = EXCLUDED.custom_qty,
            synced_at  = EXCLUDED.synced_at,
            is_custom  = EXCLUDED.is_custom`,
         [
           batch.map((r) => r.order_date.toISOString().slice(0, 10)),
-          batch.map((r) => r.order_date_la.toISOString().slice(0, 10)),
           batch.map((r) => r.item_category),
           batch.map((r) => r.channel),
           batch.map((r) => r.order_type),
@@ -1184,7 +1184,6 @@ const ORDER_TYPE_CASE = (alias: string) => `
 
 export interface LinkSnapshotSourceRow {
   order_date: Date;
-  order_date_la: Date;
   channel: string;
   item_category: string;
   order_type: string;
@@ -1195,7 +1194,6 @@ export interface LinkSnapshotSourceRow {
 
 export interface CustomSnapshotSourceRow {
   order_date: Date;
-  order_date_la: Date;
   channel: string;
   item_category: string;
   order_type: string;
@@ -1246,7 +1244,6 @@ const CUSTOM_WHERE = `
 const LINK_SELECT = `
     SELECT
        (l.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
-       (l.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
        ${CHANNEL_CASE("l")}       AS channel,
        ${ITEM_CATEGORY_CASE("l.master_sku")} AS item_category,
        ${ORDER_TYPE_CASE("l")}    AS order_type,
@@ -1258,7 +1255,6 @@ const LINK_SELECT = `
 const CUSTOM_SELECT = `
     SELECT
        (c.order_date AT TIME ZONE 'UTC')::date                  AS order_date,
-       (c.order_date AT TIME ZONE 'America/Los_Angeles')::date  AS order_date_la,
        ${CHANNEL_CASE("c")}       AS channel,
        ${ITEM_CATEGORY_CASE("c.master_sku")} AS item_category,
        ${ORDER_TYPE_CASE("c")}    AS order_type,

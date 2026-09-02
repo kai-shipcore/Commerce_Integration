@@ -9,7 +9,7 @@
  *   mode     — "sales" | "ttm" | "preorder"
  *   ranges   — comma-separated "from:to" date pairs (e.g. "2025-01-01:2025-03-31,2025-04-01:2025-04-30")
  *              used by all modes including preorder (client applies 2-day offset via periodsToRanges)
- *   tz       — "utc" (default) | "la" — which date column to filter on
+ *              Always filtered on order_date (UTC) — there is no timezone option.
  *   combined — "1" for preorder mode to merge preorder + ttm_preorder by master_sku (Car Cover)
  *
  * Controller layer only: parses the request and delegates to VelocityService.
@@ -27,7 +27,6 @@ export async function GET(req: NextRequest) {
       channels: p.get("channels")?.split(",").filter(Boolean) ?? [],
       mode: p.get("mode") ?? "sales",
       rangesCsv: p.get("ranges") ?? "",
-      dateCol: p.get("tz") === "la" ? "order_date_la" : "order_date",
       combined: p.get("combined") === "1",
     });
     return apiSuccess(result);

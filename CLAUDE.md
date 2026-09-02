@@ -45,6 +45,31 @@ Several pages pull from the Supabase lookup DB (or reconcile purely within the p
 - That pipeline's `fc_products` backfill (`SkuMasterRepository.insertMissingProducts`) is **insert-only**: it fills in a `fc_products` row for any master SKU seen in inventory/velocity data that doesn't have one yet, but never touches a row that already exists — so it can't undo a manual deactivation. The SKU Master admin page's own sync (`upsertProductsFromSync`) is a true upsert and *does* force `status = 'active'` on conflict, which is fine there because a human is the one clicking it.
 - Transit Stock has **no dedicated Sync button**: `syncAllStats()` (full reconciliation) only runs as a step inside the Demand Planning pipeline above; `syncStats()` (targeted, per-SKU) runs silently as a side effect of every Transit Stock create/import/update/delete, with no visible sync control of its own.
 
+### Dates: order date is UTC, the planning business day is LA
+
+Two different things, deliberately on two different clocks:
+
+- **Order dates are aggregated on UTC only.** `fc_velocity_*_snapshot.order_date` is
+  `(order_date AT TIME ZONE 'UTC')::date`, and every reader — Velocity and Demand Planning
+  alike — groups on it. There is no timezone option anywhere in the UI.
+- **The planning "today" is the Los Angeles calendar date** (`planningLocalDateString()` in
+  `src/lib/planning/date-utils.ts`). It sets the ends of the sales windows, the S.O.D.
+  arithmetic, the container baseline ETA, and the grid's today marker. That is the
+  warehouse's working day, not a display preference, so it stays on LA.
+
+Velocity used to carry a UTC/LA toggle (and the snapshots an `order_date_la` column) while
+Demand Planning was UTC-only. Same SKU, same period, different numbers — the resulting
+support question (`CA-SC-10-F-10-BK-1TO`, 8/24–8/30: Velocity 138 vs Demand Planning 121)
+was five units of pure timezone plus twelve units of Link-vs-Custom snapshot. The toggle and
+the column were removed in `20260901180000_drop_velocity_order_date_la` rather than
+documented, because the option itself was the bug. Roughly 44% of snapshot rows fall on a
+different day under the two clocks, so do not reintroduce a second date column: standardise
+on `order_date` and convert at the edges if a report ever needs LA.
+
+Also note the snapshot sync's `GROUP BY 1, 2, 3, 4, 5, 7` is positional against
+`LINK_SELECT` / `CUSTOM_SELECT`. Changing the select list shifts those numbers, and a
+wrong-but-valid number groups the wrong column without raising an error.
+
 ### Key Layers
 
 | Layer | Location | Notes |

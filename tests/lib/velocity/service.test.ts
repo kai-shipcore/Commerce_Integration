@@ -128,12 +128,12 @@ describe("VelocityService.getChannelVelocity", () => {
 
 describe("VelocityService.getSnapshotData", () => {
   it("returns empty arrays when items or channels are missing", async () => {
-    const result = await VelocityService.getSnapshotData({ items: [], channels: ["Amazon"], mode: "sales", rangesCsv: "", dateCol: "order_date", combined: false });
+    const result = await VelocityService.getSnapshotData({ items: [], channels: ["Amazon"], mode: "sales", rangesCsv: "", combined: false });
     expect(result).toEqual({ link: [], custom: [] });
   });
 
   it("returns empty preorder shape when items/channels are missing in preorder mode", async () => {
-    const result = await VelocityService.getSnapshotData({ items: [], channels: [], mode: "preorder", rangesCsv: "", dateCol: "order_date", combined: false });
+    const result = await VelocityService.getSnapshotData({ items: [], channels: [], mode: "preorder", rangesCsv: "", combined: false });
     expect(result).toEqual({ link: [], custom: [], ttm: [] });
   });
 
@@ -141,7 +141,7 @@ describe("VelocityService.getSnapshotData", () => {
     repositoryMock.querySnapshotByRanges.mockResolvedValue([]);
     await VelocityService.getSnapshotData({
       items: ["Car Cover"], channels: ["Amazon"], mode: "sales",
-      rangesCsv: "2026-01-01:2026-01-31,not-a-date:also-not", dateCol: "order_date", combined: false,
+      rangesCsv: "2026-01-01:2026-01-31,not-a-date:also-not", combined: false,
     });
     const call = repositoryMock.querySnapshotByRanges.mock.calls[0][0];
     expect(call.ranges).toEqual([{ from: "2026-01-01", to: "2026-01-31" }]);
@@ -151,7 +151,7 @@ describe("VelocityService.getSnapshotData", () => {
     repositoryMock.querySnapshotByRanges.mockResolvedValue([]);
     await VelocityService.getSnapshotData({
       items: ["Car Cover"], channels: ["Amazon"], mode: "sales",
-      rangesCsv: "2026-01-01:2026-01-31", dateCol: "order_date", combined: false,
+      rangesCsv: "2026-01-01:2026-01-31", combined: false,
     });
     // only the link query fires; custom snapshot query is skipped for non-Seat-Cover items
     expect(repositoryMock.querySnapshotByRanges).toHaveBeenCalledTimes(1);
@@ -161,7 +161,7 @@ describe("VelocityService.getSnapshotData", () => {
     repositoryMock.querySnapshotPreorder.mockResolvedValue([]);
     await VelocityService.getSnapshotData({
       items: ["Car Cover"], channels: ["Amazon"], mode: "preorder",
-      rangesCsv: "2026-01-01:2026-01-31", dateCol: "order_date", combined: true,
+      rangesCsv: "2026-01-01:2026-01-31", combined: true,
     });
     // only the combined link query fires (no separate ttm query, no custom for Car Cover)
     expect(repositoryMock.querySnapshotPreorder).toHaveBeenCalledTimes(1);

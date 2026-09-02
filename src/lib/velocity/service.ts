@@ -190,11 +190,10 @@ export const VelocityService = {
     channels: string[];
     mode: string;
     rangesCsv: string;
-    dateCol: string;
     combined: boolean;
   }) {
     const ranges = parseRanges(query.rangesCsv);
-    const { items, channels, mode, dateCol, combined } = query;
+    const { items, channels, mode, combined } = query;
 
     if (!items.length || !channels.length) {
       return mode === "preorder" ? { link: [], custom: [], ttm: [] } : { link: [], custom: [] };
@@ -210,18 +209,18 @@ export const VelocityService = {
       const [linkRows, ttmRows, customRows] = await Promise.all([
         VelocityRepository.querySnapshotPreorder({
           table: "fc_velocity_link_snapshot", skuColumn: "link_master_sku", qtyColumn: "link_qty",
-          items, channels, ranges, dateCol, orderTypeFilter: linkFilter,
+          items, channels, ranges, orderTypeFilter: linkFilter,
         }),
         combined
           ? Promise.resolve([])
           : VelocityRepository.querySnapshotPreorder({
               table: "fc_velocity_link_snapshot", skuColumn: "link_master_sku", qtyColumn: "link_qty",
-              items, channels, ranges, dateCol, orderTypeFilter: `order_type = 'ttm_preorder'`,
+              items, channels, ranges, orderTypeFilter: `order_type = 'ttm_preorder'`,
             }),
         needsCustom
           ? VelocityRepository.querySnapshotPreorder({
               table: "fc_velocity_custom_snapshot", skuColumn: "custom_master_sku", qtyColumn: "custom_qty",
-              items, channels, ranges, dateCol, orderTypeFilter: linkFilter,
+              items, channels, ranges, orderTypeFilter: linkFilter,
             })
           : Promise.resolve([]),
       ]);
@@ -240,12 +239,12 @@ export const VelocityService = {
     const [linkRows, customRows] = await Promise.all([
       VelocityRepository.querySnapshotByRanges({
         table: "fc_velocity_link_snapshot", skuColumn: "link_master_sku", qtyColumn: "link_qty",
-        items, channels, orderType, ranges, dateCol,
+        items, channels, orderType, ranges,
       }),
       needsCustom
         ? VelocityRepository.querySnapshotByRanges({
             table: "fc_velocity_custom_snapshot", skuColumn: "custom_master_sku", qtyColumn: "custom_qty",
-            items, channels, orderType, ranges, dateCol,
+            items, channels, orderType, ranges,
           })
         : Promise.resolve([]),
     ]);

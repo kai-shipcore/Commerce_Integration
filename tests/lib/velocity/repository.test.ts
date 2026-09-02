@@ -157,7 +157,7 @@ describe("VelocityRepository sync helpers", () => {
 
   it("upsertLinkSnapshot batches inserts and returns the total row count", async () => {
     const rows = Array.from({ length: 3 }, (_, i) => ({
-      order_date: new Date("2026-01-01"), order_date_la: new Date("2026-01-01"),
+      order_date: new Date("2026-01-01"),
       channel: "Amazon FBA", item_category: "Seat Cover", order_type: "sales",
       link_master_sku: `SKU-${i}`, link_qty: 1, is_custom: "N",
     }));
@@ -166,6 +166,52 @@ describe("VelocityRepository sync helpers", () => {
 
     expect(upserted).toBe(3);
     expect(primaryQueryMock).toHaveBeenCalledTimes(1); // fits in one batch (BATCH_SIZE=2000)
+  });
+
+  // The INSERT lists columns positionally against an UNNEST per parameter, so a
+  // column removed from one half and not the other silently writes the wrong
+  // field. Pin the two counts to each other.
+  it("upsertLinkSnapshot passes exactly one parameter array per inserted column", async () => {
+    await VelocityRepository.upsertLinkSnapshot(
+      [{
+        order_date: new Date("2026-01-01"), channel: "Amazon FBA", item_category: "Seat Cover",
+        order_type: "sales", link_master_sku: "SKU-1", link_qty: 1, is_custom: "N",
+      }],
+      new Date(),
+    );
+
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    const columns = (sql as string).match(/\(([^)]*)\)\s*SELECT/)![1].split(",").length;
+    expect(columns).toBe((params as unknown[]).length);
+    expect(sql).not.toContain("order_date_la");
+  });
+
+  it("upsertCustomSnapshot passes exactly one parameter array per inserted column", async () => {
+    await VelocityRepository.upsertCustomSnapshot(
+      [{
+        order_date: new Date("2026-01-01"), channel: "Amazon FBA", item_category: "Seat Cover",
+        order_type: "sales", custom_master_sku: "SKU-1", custom_qty: 1, is_custom: "N",
+      }],
+      new Date(),
+    );
+
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    const columns = (sql as string).match(/\(([^)]*)\)\s*SELECT/)![1].split(",").length;
+    expect(columns).toBe((params as unknown[]).length);
+    expect(sql).not.toContain("order_date_la");
+  });
+
+  it("querySnapshotByRanges always aggregates on order_date (no timezone option)", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await VelocityRepository.querySnapshotByRanges({
+      table: "fc_velocity_link_snapshot", skuColumn: "link_master_sku", qtyColumn: "link_qty",
+      items: ["Seat Cover"], channels: ["Amazon FBA"], orderType: "sales",
+      ranges: [{ from: "2026-08-24", to: "2026-08-30" }],
+    });
+
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("order_date >= '2026-08-24'");
+    expect(sql).not.toContain("order_date_la");
   });
 
   it("deleteStaleSnapshots uses the full-wipe clause when full=true", async () => {

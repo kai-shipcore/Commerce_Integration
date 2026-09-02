@@ -24,7 +24,7 @@
     <tr><td class="label">Channels</td><td>Select several channels at once. <span class="btn-label">All</span> selects or clears all eight channels.</td></tr>
     <tr><td class="label">Mode</td><td><strong>Sales</strong> shows regular sales, <strong>TTM</strong> shows TTM-classified orders, and <strong>Pre-Order</strong> shows preorder demand.</td></tr>
     <tr><td class="label">Period / Custom</td><td>Use rolling day windows or exact start and end dates. Up to five periods can be compared.</td></tr>
-    <tr><td class="label">UTC / LA Time</td><td>Controls which calendar date receives an order. Use <strong>LA Time</strong> for Los Angeles business-day reporting.</td></tr>
+    <tr><td class="label">Order date basis</td><td>Every total is aggregated on the <strong>UTC</strong> order date. There is no timezone setting, and Demand Planning uses the same basis.</td></tr>
     <tr><td class="label">Last synced</td><td>When the displayed snapshot was last refreshed from source orders.</td></tr>
     <tr><td class="label">Sync</td><td>Rebuilds the latest velocity snapshot from Supabase after confirmation.</td></tr>
   </table>
@@ -102,6 +102,6 @@
     <tr><td class="label">No Custom columns</td><td>Custom columns are shown only for Seat Cover.</td></tr>
     <tr><td class="label">Data looks old</td><td>Check Last synced and run <span class="btn-label">Sync</span> if you have permission.</td></tr>
     <tr><td class="label">Sync already in progress</td><td>Another user may be syncing. Wait briefly and try again.</td></tr>
-    <tr><td class="label">Date totals differ</td><td>UTC and LA Time have different midnight boundaries, so an order can fall on different dates.</td></tr>
+    <tr><td class="label">Date totals differ</td><td>Totals use the UTC order date, so an order placed after 5pm Los Angeles time counts on the next day.</td></tr>
   </table>
 </section>
