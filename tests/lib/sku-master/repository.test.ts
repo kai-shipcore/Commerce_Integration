@@ -82,6 +82,16 @@ describe("SkuMasterRepository.buildListFilters", () => {
     expect(whereClause).toContain("$5");
     expect(params).toEqual(["active", "%foo%", ["CC"], "Custom", "Hold"]);
   });
+
+  it("filters on the Part sales type through the same derived expression", () => {
+    const { whereClause, params } = SkuMasterRepository.buildListFilters({ ...base, salesType: "Part" });
+
+    // Part is derived from the SKU, so it needs no extra parameter — the
+    // predicate is the same originalOrCustomSql comparison the other types use.
+    expect(whereClause).toContain("(^|-)PARTS?(-|$)");
+    expect(whereClause).toContain("$2");
+    expect(params).toEqual(["active", "Part"]);
+  });
 });
 
 describe("SkuMasterRepository.findBySku", () => {

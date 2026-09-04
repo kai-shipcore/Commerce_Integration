@@ -91,6 +91,17 @@ describe("DemandPlanningRepository.getStatsRows", () => {
     expect(sql).toContain("COALESCE(c.actual_arrival_date, c.eta_date) DESC NULLS LAST");
     expect(sql).toContain("completed.latest_container");
   });
+
+  it("reports a part SKU as Part, ahead of the order-derived Original/Custom", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: null, inboundStatuses: "('shipped')" });
+    const [sql] = primaryQueryMock.mock.calls[0];
+    // Manual override first, then the SKU-derived Part, then the stats value.
+    expect(sql).toContain("p.sales_status,");
+    expect(sql).toContain("THEN 'Part' END");
+    expect(sql).toContain("(^|-)PARTS?(-|$)");
+    expect(sql.indexOf("THEN 'Part' END")).toBeLessThan(sql.indexOf("s.sales_status,"));
+  });
 });
 
 describe("DemandPlanningRepository.getVelocitySnapshot", () => {

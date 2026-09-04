@@ -3684,6 +3684,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (productFilter === "orig" && row.sales_status !== "Original")      return false;
       if (productFilter === "cust" && row.sales_status !== "Custom")        return false;
+      if (productFilter === "part" && row.sales_status !== "Part")          return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
       if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
       const urgency = urgStatus(row);

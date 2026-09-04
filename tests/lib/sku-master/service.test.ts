@@ -73,6 +73,15 @@ describe("SkuMasterService.listProducts", () => {
     await expect(SkuMasterService.listProducts({ ...baseQuery, salesType: "bogus" })).rejects.toThrow(ValidationError);
   });
 
+  it("accepts Part as a sales type and passes it through to the repository", async () => {
+    repositoryMock.countProducts.mockResolvedValue(0);
+    repositoryMock.listProducts.mockResolvedValue([]);
+
+    await SkuMasterService.listProducts({ ...baseQuery, salesType: "Part" });
+
+    expect(repositoryMock.listProducts.mock.calls[0][0]).toMatchObject({ salesType: "Part" });
+  });
+
   it("rejects an invalid type filter", async () => {
     await expect(SkuMasterService.listProducts({ ...baseQuery, type: "bogus" })).rejects.toThrow(ValidationError);
   });

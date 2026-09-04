@@ -1,4 +1,4 @@
-export type ProductFilter = "all" | "orig" | "cust";
+export type ProductFilter = "all" | "orig" | "cust" | "part";
 export type CategoryFilter = "sc" | "cc" | "fm" | "ac" | "swc";
 export type BaseCategoryFilter = "sc" | "cc" | "fm" | "ac";
 export type UrgencyFilter = "crit" | "warn" | "bo" | "over";

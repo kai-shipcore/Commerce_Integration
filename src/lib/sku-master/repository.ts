@@ -1,6 +1,6 @@
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
-import { normalizeMasterSku } from "@/lib/planning/master-sku";
+import { normalizeMasterSku, partMasterSkuSql } from "@/lib/planning/master-sku";
 
 export type ProductKey = "cc" | "fm" | "sc" | "ac" | "swc";
 
@@ -26,7 +26,7 @@ export interface ResolvedSkuMasterListQuery {
   search: string;
   productValues: string[];
   status: "all" | "active" | "inactive";
-  salesType: "all" | "Original" | "Custom";
+  salesType: "all" | "Original" | "Custom" | "Part";
   typeFilter: "all" | "Hold" | "Discontinued" | "TBD";
 }
 
@@ -101,7 +101,12 @@ const forecastDashboardViewSql = `
 const overrideStatusSql = `(CASE WHEN p.sales_status IN ('Hold', 'Discontinued', 'TBD') THEN p.sales_status ELSE NULL END)`;
 // Original vs Custom is derived purely from actual order/velocity data (the is_custom flag baked
 // into fc_stats/fc_stats_custom), independent of any manual override on fc_products.
-const originalOrCustomSql = `COALESCE((SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), 'Original')`;
+// Replacement parts are a third sales type, and they take precedence over the
+// order-derived value: a part SKU is a part whether or not anyone has ordered
+// one (see partMasterSkuSql — the classification is derived from the SKU
+// itself, since nothing has written fc_products.sales_status = 'Part' since
+// fc_replacement_parts was dropped).
+const originalOrCustomSql = `CASE WHEN ${partMasterSkuSql("p.master_sku")} THEN 'Part' ELSE COALESCE((SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), 'Original') END`;
 
 const PRODUCT_CATEGORY_MAP: Record<string, string> = { cc: "CC", fm: "FM", sc: "SC", ac: "AC", swc: "SWC" };
 

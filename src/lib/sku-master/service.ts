@@ -76,7 +76,7 @@ export const SkuMasterService = {
     }
 
     const salesType = query.salesType || "all";
-    if (salesType !== "all" && salesType !== "Original" && salesType !== "Custom") {
+    if (salesType !== "all" && salesType !== "Original" && salesType !== "Custom" && salesType !== "Part") {
       throw new ValidationError("Invalid salesType filter");
     }
 

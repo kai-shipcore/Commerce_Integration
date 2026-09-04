@@ -40,14 +40,15 @@ type SkuStatus = "active" | "inactive";
 // SWC is an item/category designation (surfaced in the category filter bar), not a lifecycle
 // status, so it's excluded here too.
 type OverrideSalesStatus = "Hold" | "Discontinued" | "TBD";
-type OriginalOrCustom = "Original" | "Custom";
+// Part is derived from the SKU itself (see partMasterSkuSql), not stored.
+type OriginalOrCustom = "Original" | "Custom" | "Part";
 type StatusFilter = SkuStatus | "all";
 // SWC is a real category_code value (see productMeta below), kept page-local rather than widening
 // the shared mock-data ProductKey (used elsewhere, e.g. container planning, which doesn't need it).
 type SkuMasterProductKey = ProductKey | "swc";
 type SkuMasterCategoryFilter = SkuMasterProductKey;
 // Trimmed filter-bar type, distinct from the full SalesStatus domain used by the per-row editor below.
-type SalesTypeFilter = "all" | "Original" | "Custom";
+type SalesTypeFilter = "all" | "Original" | "Custom" | "Part";
 // Filters on the TYPE column (manual override) — distinct from SalesTypeFilter, which filters the
 // separate ORIGINAL/CUSTOM column.
 type TypeFilter = "all" | OverrideSalesStatus;
@@ -702,9 +703,10 @@ export function SkuMasterPage() {
             }}
             className="form-input h-9 w-36 bg-white text-xs"
           >
-            <option value="all">{pick("전체 (오리지널/커스텀)", "All (Original/Custom)")}</option>
+            <option value="all">{pick("전체 (오리지널/커스텀/부품)", "All (Original/Custom/Part)")}</option>
             <option value="Original">Original</option>
             <option value="Custom">Custom</option>
+            <option value="Part">Part</option>
           </select>
           <button
             type="button"
@@ -1313,6 +1315,8 @@ function OriginalOrCustomBadge({ value }: { value: OriginalOrCustom }) {
   const badge: Record<OriginalOrCustom, string> = {
     Original: "bg-gray-100 text-gray-600",
     Custom:   "bg-blue-100 text-blue-700",
+    // Purple, matching .sc-part on the Demand Planning grid.
+    Part:     "bg-purple-100 text-purple-700",
   };
   return (
     <div className="px-4 py-3">

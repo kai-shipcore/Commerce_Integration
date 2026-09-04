@@ -448,6 +448,7 @@ export function DemandPlanningGrid({
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (productFilter === "orig" && r.sales_status !== "Original")      return false;
       if (productFilter === "cust" && r.sales_status !== "Custom")        return false;
+      if (productFilter === "part" && r.sales_status !== "Part")          return false;
       if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
       const u: UrgencyStatus = urgStatus(r);

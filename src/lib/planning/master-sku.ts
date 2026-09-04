@@ -25,6 +25,33 @@ export function normalizedMasterSkuSql(skuExpression: string): string {
   END`;
 }
 
+// ─── Replacement-part master SKUs ───────────────────────────────────────
+//
+// A part SKU carries PART (or PARTS) as its own hyphen-delimited segment:
+// CA-SC-PART-ARM5-BR, and the three aggregate rows BACK-SEAT-COVER-PARTS,
+// FRONT-SEAT-COVER-PARTS, INDV-SEAT-COVER-PART. Matched as a segment rather
+// than as a substring so a SKU that merely contains the letters — PARTNER,
+// say — is not read as a part.
+//
+// Derived on read rather than stored. fc_products.sales_status did hold 'Part'
+// for some rows, written once by 20260625100000_sync_part_status_to_fc_products
+// from fc_replacement_parts; that table was dropped in
+// 20260729183216_remove_seat_cover_parts, leaving nothing to classify the
+// parts added since — 190 of 293 were falling through to 'Original'. Deriving
+// from the SKU keeps new part SKUs classified without a job to run, the same
+// reason is_custom_sku was dropped in favour of a derived Original/Custom.
+const PART_SEGMENT_PATTERN = "(^|-)PARTS?(-|$)";
+
+export function isPartMasterSku(masterSku: string): boolean {
+  return new RegExp(PART_SEGMENT_PATTERN, "i").test(masterSku.trim());
+}
+
+/** The same rule as `isPartMasterSku`, for a SQL expression. `~*` is
+ *  Postgres' case-insensitive regex match. */
+export function partMasterSkuSql(skuExpression: string): string {
+  return `BTRIM(${skuExpression}) ~* '${PART_SEGMENT_PATTERN}'`;
+}
+
 // ─── Final (current-production) master SKU ──────────────────────────────
 //
 // Distinct from normalizeMasterSku above: that one merges rows, this one only

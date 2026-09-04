@@ -14,7 +14,7 @@
 import type { Pool } from "pg";
 import { getPrimaryPool } from "@/lib/db/primary-db";
 import { getLookupPool } from "@/lib/db/supabase-lookup";
-import { normalizedMasterSkuSql } from "@/lib/planning/master-sku";
+import { normalizedMasterSkuSql, partMasterSkuSql } from "@/lib/planning/master-sku";
 
 function primary(): Pool {
   return getPrimaryPool();
@@ -159,7 +159,12 @@ export const DemandPlanningRepository = {
       completed.latest_container,
       completed.latest_eta,
       completed.latest_qty,
-      COALESCE(p.sales_status, s.sales_status, 'Original')  AS sales_status,
+      COALESCE(
+        p.sales_status,
+        CASE WHEN ${partMasterSkuSql("s.master_sku")} THEN 'Part' END,
+        s.sales_status,
+        'Original'
+      )                                                     AS sales_status,
       p.category_code                                      AS category_code,
       COALESCE(p.cbm_per_unit, 0)::float8                  AS cbm_per_unit,
       p.memo                                               AS memo,

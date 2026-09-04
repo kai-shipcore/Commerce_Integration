@@ -527,7 +527,7 @@ export const DemandPlanningService = {
         order_multiple: (r.order_multiple as number) ?? (r.moq as number) ?? 1,
         seat, no, color, tone,
         back: r.back as number,
-        sales_status: (r.sales_status as "Original" | "Custom" | "Hold"),
+        sales_status: (r.sales_status as DemandRow["sales_status"]),
         category_code: categoryCode,
         sku: rowSku,
         ...(rolledUpFrom ? { rolled_up_from: rolledUpFrom } : {}),
