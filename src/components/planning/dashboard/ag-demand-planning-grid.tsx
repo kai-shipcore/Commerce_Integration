@@ -109,6 +109,7 @@ const CONTAINER_BLOCK_RAIL = "2px solid #5A5750";
 const CON_QTY_COLUMN_ID = "inb_qty";
 const CON_QTY_TINT = "#CFE8F7";
 const CON_QTY_RAIL = "1px solid #5B8FC9";
+const SELECTED_CELL_FILL = "#DBEAFE";
 
 type QtyOverride = {
   inbound_qty: number | null;
@@ -1016,11 +1017,8 @@ function cellColorKey(rowId: string | undefined, columnId: string) {
   return rowId ? `${rowId}::${columnId}` : "";
 }
 
-/** Border-only look for a multi-cell selection: a line is drawn only on the
- *  edges that face a non-selected neighbor, so a drag range renders as one
- *  outer rectangle instead of filling every cell or bordering each one on
- *  all four sides (which double-draws the shared edge between two selected
- *  cells and hides the rest of the range). */
+/** Outer border for a multi-cell selection. The selected fill is applied by
+ *  each cellStyle so the whole range reads as one highlighted blue area. */
 function selectionEdgeStyle(
   api: GridApi<DemandRow>,
   rowIndex: number | null,
@@ -5934,9 +5932,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           const fullColumnSelected = selectedFullColumnIdsRef.current.has(column.id);
           const textFormat = { ...(columnTextFormatsRef.current[column.id]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
           return {
-            backgroundColor: column.id === "tavg_c" && params.data?.total_avg_curr_override != null
-              ? "#fecaca"
-              : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
+            backgroundColor: selected
+              ? SELECTED_CELL_FILL
+              : column.id === "tavg_c" && params.data?.total_avg_curr_override != null
+                ? "#fecaca"
+                : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             ...(textFormat.color ? { color: textFormat.color } : {}),
             ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
             fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : column.bold ? 700 : 400,
@@ -6143,12 +6143,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             const isFirstDisplayedColumn = displayedColumns[0] === params.column;
             const isConQty = column.id === CON_QTY_COLUMN_ID;
             return {
-              // The Con. Qty tint sits in the fallback position, so a colour
-              // the user painted on the cell or column still wins.
-              backgroundColor: cellColors[key]
-                ?? columnColors[physicalColumnId]?.cell
-                ?? columnColors[sharedColumnId]?.cell
-                ?? (baseline ? "#E2E0DC" : isConQty ? CON_QTY_TINT : TINT_COLORS[column.tint] || "#fff"),
+              // Selection temporarily overlays every underlying tint; the
+              // user's cell/column colour returns when selection is cleared.
+              backgroundColor: selected
+                ? SELECTED_CELL_FILL
+                : cellColors[key]
+                  ?? columnColors[physicalColumnId]?.cell
+                  ?? columnColors[sharedColumnId]?.cell
+                  ?? (baseline ? "#E2E0DC" : isConQty ? CON_QTY_TINT : TINT_COLORS[column.tint] || "#fff"),
               ...(textFormat.color ? { color: textFormat.color } : {}),
               ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
               ...(textFormat.bold !== undefined
