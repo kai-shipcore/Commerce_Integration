@@ -23,3 +23,12 @@ describe("FBA sales columns", () => {
     ]);
   });
 });
+
+describe("Sales Status column", () => {
+  it("renders Part with a distinct status class instead of Original styling", () => {
+    const statusColumn = ALL_COLS.find((column) => column.id === "status");
+    const rendered = statusColumn?.val({ sales_status: "Part" } as never, 0, "ok");
+
+    expect(rendered).toEqual({ html: '<span class="sc sc-part">Part</span>' });
+  });
+});

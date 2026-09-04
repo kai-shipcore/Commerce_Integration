@@ -1402,10 +1402,9 @@ function CopyableCellRenderer({
   );
 }
 
-// Master SKU cell: a plain click only selects the cell (it used to also pop
-// the note editor open, which made "I just want to select this row" annoying
-// to do). Copy / Open in SKU Planning / Note are now explicit right-click
-// menu actions instead.
+// Master SKU cell: a plain click only selects the cell. Existing notes expose
+// the editor on hover; copy, navigation, and explicit note editing remain
+// available from the right-click menu.
 function SkuCellRenderer({
   value,
   node,
@@ -1425,7 +1424,45 @@ function SkuCellRenderer({
   const [noteSaved, setNoteSaved] = useState(false);
   const [noteError, setNoteError] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
+  const [memoPreviewOpen, setMemoPreviewOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const memo = initialMemo?.trim() ?? "";
+  const memoPreviewCloseTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (memoPreviewCloseTimerRef.current !== null) {
+        window.clearTimeout(memoPreviewCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const cancelMemoPreviewClose = () => {
+    if (memoPreviewCloseTimerRef.current !== null) {
+      window.clearTimeout(memoPreviewCloseTimerRef.current);
+      memoPreviewCloseTimerRef.current = null;
+    }
+  };
+
+  const openMemoPreview = () => {
+    if (!memo || memoOpen) return;
+    cancelMemoPreviewClose();
+    if (!memoPreviewOpen) {
+      setNoteDraft(initialMemo ?? "");
+      setNoteSaved(false);
+      setNoteError(false);
+      setMemoPreviewOpen(true);
+    }
+  };
+
+  const scheduleMemoPreviewClose = () => {
+    if (memoOpen) return;
+    cancelMemoPreviewClose();
+    memoPreviewCloseTimerRef.current = window.setTimeout(() => {
+      setMemoPreviewOpen(false);
+      memoPreviewCloseTimerRef.current = null;
+    }, 160);
+  };
 
   const handleNoteSave = async (overrideValue?: string) => {
     if (!onMemoSave) return;
@@ -1445,6 +1482,8 @@ function SkuCellRenderer({
   };
 
   const openMemo = () => {
+    cancelMemoPreviewClose();
+    setMemoPreviewOpen(false);
     setNoteDraft(initialMemo ?? "");
     setNoteSaved(false);
     setNoteError(false);
@@ -1453,14 +1492,26 @@ function SkuCellRenderer({
 
   return (
     <>
-      <Popover open={memoOpen} onOpenChange={setMemoOpen}>
+      <Popover
+        open={memoOpen || memoPreviewOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            cancelMemoPreviewClose();
+            setMemoOpen(false);
+            setMemoPreviewOpen(false);
+          }
+        }}
+      >
         <PopoverAnchor asChild>
           <button
             type="button"
             title="Master SKU"
             onClick={() => node.setSelected(true, true)}
+            onMouseEnter={openMemoPreview}
+            onMouseLeave={scheduleMemoPreviewClose}
             onContextMenu={(event) => {
               event.preventDefault();
+              setMemoPreviewOpen(false);
               setCtxMenu({ x: event.clientX, y: event.clientY });
             }}
             className="flex h-full w-full min-w-0 items-center text-left"
@@ -1475,48 +1526,76 @@ function SkuCellRenderer({
             ) : null}
           </button>
         </PopoverAnchor>
-        {onMemoSave && (
-          <PopoverContent align="start" sideOffset={4} className="w-[min(420px,calc(100vw-32px))] p-4">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-sm font-semibold text-[#1A1917]">{pick("메모", "Note")}</span>
-              <span className={`text-[11px] font-medium ${noteError ? "text-red-600" : noteSaved ? "text-emerald-600" : noteSaving ? "text-slate-400" : "text-[#1A5CDB]"}`}>
-                {noteSaving ? pick("저장 중...", "Saving...") : noteError ? pick("저장 실패", "Save failed") : noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
-              </span>
-            </div>
-            <textarea
-              autoFocus
-              value={noteDraft}
-              onChange={(event) => {
-                setNoteDraft(event.target.value);
-                setNoteSaved(false);
-                setNoteError(false);
-              }}
-              onBlur={() => void handleNoteSave()}
-              placeholder={pick("이 SKU에 대한 메모를 입력하세요", "Add a note for this SKU")}
-              className="min-h-[86px] w-full resize-y rounded-md border border-[#d8d6ce] px-3 py-2 text-sm leading-5 outline-none focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/15 bg-white"
-            />
-            <div className="mt-2 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={noteSaving || (!noteDraft && !initialMemo?.trim())}
-                onClick={() => {
-                  setNoteDraft("");
-                  void handleNoteSave("");
-                }}
-              >
-                {pick("삭제", "Clear")}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={noteSaving}
-                onClick={() => void handleNoteSave()}
-              >
-                {pick("저장", "Save")}
-              </Button>
-            </div>
+        {(memo || onMemoSave) && (
+          <PopoverContent
+            align="start"
+            sideOffset={4}
+            onOpenAutoFocus={(event) => {
+              if (!memoOpen) event.preventDefault();
+            }}
+            onCloseAutoFocus={(event) => event.preventDefault()}
+            onMouseEnter={cancelMemoPreviewClose}
+            onMouseLeave={(event) => {
+              if (!event.currentTarget.contains(document.activeElement)) {
+                scheduleMemoPreviewClose();
+              }
+            }}
+            className="w-[min(420px,calc(100vw-32px))] p-4"
+          >
+            {onMemoSave ? (
+              <>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-[#1A1917]">{pick("메모", "Note")}</span>
+                  <span className={`text-[11px] font-medium ${noteError ? "text-red-600" : noteSaved ? "text-emerald-600" : noteSaving ? "text-slate-400" : "text-[#1A5CDB]"}`}>
+                    {noteSaving ? pick("저장 중...", "Saving...") : noteError ? pick("저장 실패", "Save failed") : noteSaved ? pick("저장됨", "Saved") : pick("공유 SKU 메모", "Shared SKU note")}
+                  </span>
+                </div>
+                <textarea
+                  autoFocus={memoOpen}
+                  value={noteDraft}
+                  onChange={(event) => {
+                    setNoteDraft(event.target.value);
+                    setNoteSaved(false);
+                    setNoteError(false);
+                  }}
+                  onBlur={() => void handleNoteSave()}
+                  placeholder={pick("이 SKU에 대한 메모를 입력하세요", "Add a note for this SKU")}
+                  className="min-h-[86px] w-full resize-y rounded-md border border-[#d8d6ce] px-3 py-2 text-sm leading-5 outline-none focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/15 bg-white"
+                />
+                <div className="mt-2 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={noteSaving || (!noteDraft && !initialMemo?.trim())}
+                    onClick={() => {
+                      setNoteDraft("");
+                      void handleNoteSave("");
+                    }}
+                  >
+                    {pick("삭제", "Clear")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={noteSaving}
+                    onClick={() => void handleNoteSave()}
+                  >
+                    {pick("저장", "Save")}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-[#1A1917]">{pick("메모", "Note")}</span>
+                  <span className="truncate text-[11px] font-medium text-[#1A5CDB]">{sku}</span>
+                </div>
+                <div className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-sm leading-5 text-[#3F3D38]">
+                  {memo}
+                </div>
+              </div>
+            )}
           </PopoverContent>
         )}
       </Popover>
