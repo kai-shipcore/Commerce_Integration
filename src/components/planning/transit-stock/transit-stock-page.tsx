@@ -7,6 +7,7 @@ import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import { toast } from "sonner";
+import { MasterSkuMultiSelect } from "@/components/planning/transit-stock/master-sku-multi-select";
 
 type TransitRecord = {
   id: string;
@@ -26,19 +27,21 @@ type WarehouseOption = {
   warehouseType: string;
 };
 
+// One row per selected master SKU, each with its own qty — the same shape the
+// Excel import already sends, so a multi-SKU add reuses that endpoint.
+type AddRow = { masterSku: string; qty: string };
+
 type AddForm = {
   sourceWarehouseCode: string;
   destWarehouseCode: string;
-  masterSku: string;
-  qty: string;
+  rows: AddRow[];
   notes: string;
 };
 
 const emptyForm: AddForm = {
   sourceWarehouseCode: "",
   destWarehouseCode: "",
-  masterSku: "",
-  qty: "",
+  rows: [],
   notes: "",
 };
 
@@ -200,30 +203,68 @@ export function TransitStockPage() {
     setShowModal(true);
   }
 
+  // Selecting SKUs must not lose the quantities already typed for the ones that
+  // stay selected, so qty is carried over by SKU rather than by position.
+  function setSelectedSkus(skus: string[]) {
+    setForm((f) => {
+      const byQty = new Map(f.rows.map((r) => [r.masterSku, r.qty]));
+      return { ...f, rows: skus.map((masterSku) => ({ masterSku, qty: byQty.get(masterSku) ?? "" })) };
+    });
+  }
+
+  function setRowQty(masterSku: string, qty: string) {
+    setForm((f) => ({ ...f, rows: f.rows.map((r) => (r.masterSku === masterSku ? { ...r, qty } : r)) }));
+  }
+
   async function submitAdd() {
-    const qty = parseInt(form.qty, 10);
     if (!form.sourceWarehouseCode) { toast.error(pick("출발 창고를 선택하세요.", "Select a source warehouse.")); return; }
     if (!form.destWarehouseCode)   { toast.error(pick("도착 창고를 선택하세요.", "Select a destination warehouse.")); return; }
     if (form.sourceWarehouseCode === form.destWarehouseCode) { toast.error(pick("출발 창고와 도착 창고는 달라야 합니다.", "Source and destination warehouses must be different.")); return; }
-    if (!form.masterSku.trim())    { toast.error(pick("Master SKU를 입력하세요.", "Enter a Master SKU.")); return; }
-    if (isNaN(qty) || qty < 1)     { toast.error(pick("수량은 1 이상이어야 합니다.", "Qty must be at least 1.")); return; }
+    if (form.rows.length === 0)    { toast.error(pick("Master SKU를 선택하세요.", "Select at least one Master SKU.")); return; }
+
+    const invalid = form.rows.find((r) => {
+      const n = parseInt(r.qty, 10);
+      return isNaN(n) || n < 1;
+    });
+    if (invalid) {
+      toast.error(pick(`${invalid.masterSku}의 수량은 1 이상이어야 합니다.`, `Qty for ${invalid.masterSku} must be at least 1.`));
+      return;
+    }
+
+    const notes = form.notes.trim();
+    const rows = form.rows.map((r) => ({
+      masterSku: r.masterSku.trim().toUpperCase(),
+      qty: parseInt(r.qty, 10),
+      notes: notes || undefined,
+    }));
 
     setSaving(true);
     try {
-      const res = await fetch(apiPath("/api/planning/transit-records"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceWarehouseCode: form.sourceWarehouseCode,
-          destWarehouseCode: form.destWarehouseCode,
-          masterSku: form.masterSku.trim().toUpperCase(),
-          qty,
-          notes: form.notes.trim() || undefined,
-        }),
-      });
+      // A single SKU keeps the single-create route so its per-record audit entry
+      // stays as it was; two or more go through the bulk route the Excel import
+      // already uses (one insert, one stats resync).
+      const res = rows.length === 1
+        ? await fetch(apiPath("/api/planning/transit-records"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sourceWarehouseCode: form.sourceWarehouseCode,
+              destWarehouseCode: form.destWarehouseCode,
+              ...rows[0],
+            }),
+          })
+        : await fetch(apiPath("/api/planning/transit-records/import"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sourceWarehouseCode: form.sourceWarehouseCode,
+              destWarehouseCode: form.destWarehouseCode,
+              rows,
+            }),
+          });
       const json = await res.json();
       if (!json.success) { toast.error(json.error ?? pick("저장에 실패했습니다.", "Failed to save.")); return; }
-      toast.success(pick("레코드가 추가되었습니다.", "Record added."));
+      toast.success(pick(`${rows.length}개 레코드가 추가되었습니다.`, `${rows.length} record(s) added.`));
       setShowModal(false);
       await fetchRecords();
     } finally {
@@ -475,7 +516,7 @@ export function TransitStockPage() {
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
           onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}
         >
-          <div className="transit-stock-modal-panel" style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 480, boxShadow: "0 8px 32px rgba(0,0,0,.18)" }}>
+          <div className="transit-stock-modal-panel" style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: "100%", maxWidth: 560, boxShadow: "0 8px 32px rgba(0,0,0,.18)", maxHeight: "90vh", overflowY: "auto" }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 20px" }}>🚢 {pick("재고 이동 추가", "Add Transit Record")}</h2>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -513,27 +554,54 @@ export function TransitStockPage() {
                 </select>
               </ModalField>
 
-              <ModalField label={pick("Master SKU *", "Master SKU *")}>
-                <input
-                  className="form-input bg-white"
-                  value={form.masterSku}
-                  onChange={(e) => setForm((f) => ({ ...f, masterSku: e.target.value }))}
-                  placeholder="e.g. ABC-123"
+              {/* A div, not the <label> ModalField uses: the picker's option
+                  buttons live inside this block, and a label would forward
+                  their clicks to its own control. */}
+              <ModalFieldBlock label={pick("Master SKU * (다중 선택)", "Master SKU * (multi-select)")}>
+                <MasterSkuMultiSelect
+                  value={form.rows.map((r) => r.masterSku)}
+                  onChange={setSelectedSkus}
+                  disabled={saving}
                 />
-              </ModalField>
+              </ModalFieldBlock>
 
-              <ModalField label={pick("수량 *", "Qty *")}>
-                <input
-                  type="number"
-                  min={1}
-                  className="form-input bg-white"
-                  value={form.qty}
-                  onChange={(e) => setForm((f) => ({ ...f, qty: e.target.value }))}
-                  placeholder="0"
-                />
-              </ModalField>
+              {form.rows.length > 0 && (
+                <ModalFieldBlock label={pick(`수량 * (${form.rows.length}개 SKU)`, `Qty * (${form.rows.length} SKUs)`)}>
+                  <div className="transit-stock-preview" style={{ maxHeight: 200, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 6, background: "#fff" }}>
+                    {form.rows.map((r) => (
+                      <div
+                        key={r.masterSku}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderTop: "1px solid #f1f5f9" }}
+                      >
+                        <span style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.masterSku}
+                        </span>
+                        <input
+                          type="number"
+                          min={1}
+                          className="form-input bg-white"
+                          style={{ width: 96, textAlign: "right" }}
+                          value={r.qty}
+                          onChange={(e) => setRowQty(r.masterSku, e.target.value)}
+                          placeholder="0"
+                          aria-label={pick(`${r.masterSku} 수량`, `Qty for ${r.masterSku}`)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSkus(form.rows.filter((x) => x.masterSku !== r.masterSku).map((x) => x.masterSku))}
+                          title={pick("제거", "Remove")}
+                          aria-label={pick(`${r.masterSku} 제거`, `Remove ${r.masterSku}`)}
+                          style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 13, lineHeight: 1, cursor: "pointer", padding: 2 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </ModalFieldBlock>
+              )}
 
-              <ModalField label={pick("메모 (선택)", "Notes (optional)")}>
+              <ModalField label={pick("메모 (선택 · 모든 SKU 공통)", "Notes (optional · applies to every SKU)")}>
                 <textarea
                   className="form-input bg-white"
                   rows={2}
@@ -720,8 +788,25 @@ const tdStyle: React.CSSProperties = { padding: "10px 14px", verticalAlign: "mid
 function ModalField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.03em" }}>{label}</span>
+      <FieldLabel>{label}</FieldLabel>
       {children}
     </label>
+  );
+}
+
+// Same row as ModalField, without the <label> wrapper — for fields whose body
+// holds its own buttons/inputs, which a label would hijack the clicks of.
+function ModalFieldBlock({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <FieldLabel>{label}</FieldLabel>
+      {children}
+    </div>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.03em" }}>{children}</span>
   );
 }

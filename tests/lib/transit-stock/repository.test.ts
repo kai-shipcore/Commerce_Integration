@@ -39,6 +39,30 @@ describe("TransitStockRepository.listRecords", () => {
   });
 });
 
+describe("TransitStockRepository.searchMasterSkus", () => {
+  it("filters active products by the search term and reads the window count", async () => {
+    poolQueryMock.mockResolvedValue({ rows: [
+      { master_sku: "SKU-1", total: "2" },
+      { master_sku: "SKU-2", total: "2" },
+    ] });
+
+    const result = await TransitStockRepository.searchMasterSkus("sku", 50);
+
+    const [sql, params] = poolQueryMock.mock.calls[0];
+    expect(sql).toContain("FROM shipcore.fc_products");
+    expect(sql).toContain("status = 'active'");
+    expect(sql).toContain("COUNT(*) OVER ()");
+    expect(params).toEqual(["sku", 50]);
+    expect(result).toEqual({ skus: ["SKU-1", "SKU-2"], total: 2 });
+  });
+
+  it("reports total 0 when nothing matches", async () => {
+    poolQueryMock.mockResolvedValue({ rows: [] });
+    const result = await TransitStockRepository.searchMasterSkus("nope", 50);
+    expect(result).toEqual({ skus: [], total: 0 });
+  });
+});
+
 describe("TransitStockRepository.createRecord", () => {
   it("forces status to in_transit", async () => {
     createMock.mockResolvedValue({ id: BigInt(1) });

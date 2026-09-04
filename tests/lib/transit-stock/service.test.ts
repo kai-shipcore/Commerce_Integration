@@ -3,6 +3,7 @@ import { NotFoundError, ValidationError } from "@/lib/errors";
 
 const repositoryMock = {
   listRecords: vi.fn(),
+  searchMasterSkus: vi.fn(),
   createRecord: vi.fn(),
   createManyRecords: vi.fn(),
   updateRecord: vi.fn(),
@@ -28,6 +29,32 @@ describe("TransitStockService.listRecords", () => {
     repositoryMock.listRecords.mockResolvedValue([{ id: BigInt(7), masterSku: "SKU-1" }]);
     const result = await TransitStockService.listRecords(null);
     expect(result[0].id).toBe("7");
+  });
+});
+
+describe("TransitStockService.listMasterSkuOptions", () => {
+  beforeEach(() => {
+    repositoryMock.searchMasterSkus.mockResolvedValue({ skus: ["SKU-1"], total: 120 });
+  });
+
+  it("trims the search term and returns the sku list with the pre-limit total", async () => {
+    const result = await TransitStockService.listMasterSkuOptions({ search: "  ca-sc  ", limit: 50 });
+
+    expect(repositoryMock.searchMasterSkus).toHaveBeenCalledWith("ca-sc", 50);
+    expect(result).toEqual({ data: ["SKU-1"], total: 120 });
+  });
+
+  it("clamps the limit to 1..200", async () => {
+    await TransitStockService.listMasterSkuOptions({ search: "", limit: 500 });
+    expect(repositoryMock.searchMasterSkus).toHaveBeenLastCalledWith("", 200);
+
+    await TransitStockService.listMasterSkuOptions({ search: "", limit: -3 });
+    expect(repositoryMock.searchMasterSkus).toHaveBeenLastCalledWith("", 1);
+  });
+
+  it("falls back to 50 when the limit is not a number", async () => {
+    await TransitStockService.listMasterSkuOptions({ search: "", limit: NaN });
+    expect(repositoryMock.searchMasterSkus).toHaveBeenLastCalledWith("", 50);
   });
 });
 

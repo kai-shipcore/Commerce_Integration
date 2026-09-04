@@ -33,6 +33,12 @@ export interface UpdateTransitRecordData {
   notes?: string | null;
 }
 
+export interface MasterSkuSearchResult {
+  skus: string[];
+  /** Matches before the LIMIT, so the picker can say how many it left off. */
+  total: number;
+}
+
 function isRecordNotFound(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
 }
@@ -43,6 +49,28 @@ export const TransitStockRepository = {
       where: statusFilter ? { status: statusFilter } : undefined,
       orderBy: { createdAt: "desc" },
     });
+  },
+
+  // Reads shipcore.fc_products, which the SKU Master domain owns — the second
+  // exception in this file, for a different reason than syncStats: the Add
+  // Record dialog needs the master SKU list to pick from, and the SKU Master
+  // route that already returns it is behind sku-master:read, so a user with
+  // transit-stock permissions only would get a 403 from it. One column, read
+  // only. COUNT(*) OVER () gets the pre-LIMIT total in the same round trip.
+  async searchMasterSkus(search: string, limit: number): Promise<MasterSkuSearchResult> {
+    const result = await getPrimaryPool().query<{ master_sku: string; total: string }>(
+      `SELECT master_sku, COUNT(*) OVER ()::text AS total
+       FROM shipcore.fc_products
+       WHERE status = 'active'
+         AND ($1 = '' OR master_sku ILIKE '%' || $1 || '%')
+       ORDER BY master_sku
+       LIMIT $2`,
+      [search, limit],
+    );
+    return {
+      skus: result.rows.map((row) => row.master_sku),
+      total: Number(result.rows[0]?.total ?? 0),
+    };
   },
 
   createRecord(data: CreateTransitRecordData): Promise<TransitRecord> {

@@ -27,6 +27,11 @@ export interface ImportTransitRecordsInput {
   rows: Array<{ masterSku: string; qty: number; notes?: string }>;
 }
 
+export interface ListMasterSkuOptionsQuery {
+  search: string;
+  limit: number;
+}
+
 export interface UpdateTransitRecordInput {
   status?: "in_transit" | "arrived" | "cancelled";
   qty?: number;
@@ -42,6 +47,18 @@ export const TransitStockService = {
   async listRecords(statusFilter: string | null) {
     const records = await TransitStockRepository.listRecords(statusFilter);
     return records.map(serialize);
+  },
+
+  // Feeds the Add Record dialog's master SKU picker. Read-only, so no audit
+  // entry. The limit is capped rather than paged: a reader looking at 200
+  // matches has not typed enough to be choosing between them, and `total`
+  // tells the picker how many it left off.
+  async listMasterSkuOptions(query: ListMasterSkuOptionsQuery) {
+    const search = query.search.trim();
+    const limit = Math.min(200, Math.max(1, Number(query.limit) || 50));
+
+    const { skus, total } = await TransitStockRepository.searchMasterSkus(search, limit);
+    return { data: skus, total };
   },
 
   async createRecord(input: CreateTransitRecordInput, who: Who, ip: string | null) {
