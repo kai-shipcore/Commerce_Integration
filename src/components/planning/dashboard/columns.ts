@@ -296,6 +296,59 @@ export function loadSavedColumnFilterMenuSize(): ColumnFilterMenuSize {
   }
 }
 
+export const ROW_HEIGHT_STORAGE_KEY = "planning-dashboard-row-height";
+
+export const DEFAULT_ROW_HEIGHT = 28;
+export const MIN_ROW_HEIGHT = 24;
+export const MAX_ROW_HEIGHT = 160;
+
+export function normalizeRowHeight(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_ROW_HEIGHT;
+  return Math.max(MIN_ROW_HEIGHT, Math.min(MAX_ROW_HEIGHT, Math.round(value)));
+}
+
+export function loadSavedRowHeight(): number {
+  if (typeof window === "undefined") return DEFAULT_ROW_HEIGHT;
+  try {
+    return normalizeRowHeight(JSON.parse(window.localStorage.getItem(ROW_HEIGHT_STORAGE_KEY) ?? "null"));
+  } catch {
+    return DEFAULT_ROW_HEIGHT;
+  }
+}
+
+export const ROW_HEIGHTS_STORAGE_KEY = "planning-dashboard-row-heights";
+
+/** Per-row height overrides, keyed by master SKU. Only rows the user has
+ *  actually dragged appear here; everything else follows the grid-wide height,
+ *  the same way Sheets keeps a default row height plus the rows you resized. */
+export type RowHeights = Record<string, number>;
+
+export function normalizeRowHeights(value: unknown): RowHeights {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([sku, height]) => sku.length > 0 && sku.length <= 200 && typeof height === "number" && Number.isFinite(height))
+      .map(([sku, height]) => [sku, normalizeRowHeight(height)]),
+  );
+}
+
+export function loadSavedRowHeights(): RowHeights {
+  if (typeof window === "undefined") return {};
+  try {
+    return normalizeRowHeights(JSON.parse(window.localStorage.getItem(ROW_HEIGHTS_STORAGE_KEY) ?? "null"));
+  } catch {
+    return {};
+  }
+}
+
+/** Columns that spread over several lines once the rows are taller than
+ *  DEFAULT_ROW_HEIGHT. These are the left-aligned text columns, the only ones
+ *  whose value is clipped to a single line today — extra row height would
+ *  otherwise just add empty space above and below the same truncated string. */
+export const WRAPPING_ROW_COLUMN_IDS = [
+  "cont_info", "sku", "inb_lst", "workflow_note", "workflow_note_2", "workflow_note_3",
+] as const;
+
 export type ResizableColumnId = "row_num" | "cont_info" | "sku" | "inb_lst";
 export type ColumnWidths = Record<string, number>;
 export type ColumnOrder = string[];

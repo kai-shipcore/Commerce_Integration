@@ -16,6 +16,11 @@ import {
   CELL_COLORS_STORAGE_KEY,
   CELL_TEXT_FORMATS_STORAGE_KEY,
   COLUMN_FILTER_MENU_SIZE_STORAGE_KEY,
+  DEFAULT_ROW_HEIGHT,
+  MAX_ROW_HEIGHT,
+  MIN_ROW_HEIGHT,
+  ROW_HEIGHT_STORAGE_KEY,
+  ROW_HEIGHTS_STORAGE_KEY,
   COLUMN_COLORS_STORAGE_KEY,
   COLUMN_ORDER_STORAGE_KEY,
   COLUMN_TEXT_FORMATS_STORAGE_KEY,
@@ -33,12 +38,16 @@ import {
   loadSavedColumnTextFormats,
   loadSavedCellTextFormats,
   loadSavedColumnFilterMenuSize,
+  loadSavedRowHeight,
+  loadSavedRowHeights,
+  normalizeRowHeight,
+  normalizeRowHeights,
   loadSavedColumnWidths,
   normalizeColumnFilterMenuSize,
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, RowHeights, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
@@ -240,10 +249,32 @@ function DeferredColorInput({
   );
 }
 
-function DeferredFontSizeControl({ value, onCommit, disabled = false }: { value: number; onCommit: (value: number) => void; disabled?: boolean }) {
-  const [draft, setDraft] = useState(String(value));
-  const pendingValueRef = useRef(value);
-  const committedValueRef = useRef(value);
+/** Debounced numeric stepper. Named for its first use (per-column font size)
+ *  and reused for row height: both commit a value that forces the whole grid to
+ *  re-render, so rapid typing and button repeats have to stay local until the
+ *  user settles. The min/max/label are parameters; the defaults are the font
+ *  size ones. */
+function DeferredFontSizeControl({
+  value,
+  onCommit,
+  disabled = false,
+  min = 6,
+  max = 48,
+  label = "Font size",
+}: {
+  value: number;
+  onCommit: (value: number) => void;
+  disabled?: boolean;
+  min?: number;
+  max?: number;
+  label?: string;
+}) {
+  // `draft` is null unless the user is mid-edit, so the control otherwise
+  // renders whatever `value` currently is. That is what makes an outside
+  // change — the Reset button, or a drag on the grid — actually show up here;
+  // holding the last typed string instead left the box reading 49 after a
+  // reset, which looked like the reset had done nothing.
+  const [draft, setDraft] = useState<string | null>(null);
   const commitTimerRef = useRef<number | null>(null);
   const onCommitRef = useRef(onCommit);
 
@@ -255,22 +286,20 @@ function DeferredFontSizeControl({ value, onCommit, disabled = false }: { value:
     if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current);
   }, []);
 
-  const normalized = (next: number) => Math.min(48, Math.max(6, Math.round(next)));
-  const commit = (next = pendingValueRef.current) => {
+  const shownValue = draft !== null && Number.isFinite(Number(draft)) ? Number(draft) : value;
+  const normalized = (next: number) => Math.min(max, Math.max(min, Math.round(next)));
+  const commit = (next = shownValue) => {
     if (commitTimerRef.current !== null) {
       window.clearTimeout(commitTimerRef.current);
       commitTimerRef.current = null;
     }
     const finalValue = normalized(next);
-    pendingValueRef.current = finalValue;
-    setDraft(String(finalValue));
-    if (finalValue === committedValueRef.current) return;
-    committedValueRef.current = finalValue;
+    setDraft(null);
+    if (finalValue === value) return;
     onCommitRef.current(finalValue);
   };
   const updateDraft = (next: number) => {
     const finalValue = normalized(next);
-    pendingValueRef.current = finalValue;
     setDraft(String(finalValue));
     if (commitTimerRef.current !== null) window.clearTimeout(commitTimerRef.current);
     // Keep rapid typing/spinner/button repeats local to this small control, then
@@ -280,14 +309,14 @@ function DeferredFontSizeControl({ value, onCommit, disabled = false }: { value:
 
   return (
     <div style={{ alignItems: "center", display: "flex", gap: 5, opacity: disabled ? 0.45 : 1 }}>
-      <button type="button" disabled={disabled} aria-label="Decrease font size" onClick={() => updateDraft(pendingValueRef.current - 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: disabled ? "default" : "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>−</button>
+      <button type="button" disabled={disabled} aria-label={`Decrease ${label.toLowerCase()}`} onClick={() => updateDraft(shownValue - 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: disabled ? "default" : "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>−</button>
       <input
         type="number"
-        min={6}
-        max={48}
+        min={min}
+        max={max}
         disabled={disabled}
-        aria-label="Font size"
-        value={draft}
+        aria-label={label}
+        value={draft ?? String(value)}
         onChange={(event) => {
           setDraft(event.target.value);
           const next = Number(event.target.value);
@@ -302,7 +331,7 @@ function DeferredFontSizeControl({ value, onCommit, disabled = false }: { value:
         }}
         style={{ border: "1px solid #94A3B8", borderRadius: 4, fontSize: 12, height: 27, padding: "2px 3px", textAlign: "center", width: 44, cursor: disabled ? "default" : "text" }}
       />
-      <button type="button" disabled={disabled} aria-label="Increase font size" onClick={() => updateDraft(pendingValueRef.current + 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: disabled ? "default" : "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>+</button>
+      <button type="button" disabled={disabled} aria-label={`Increase ${label.toLowerCase()}`} onClick={() => updateDraft(shownValue + 1)} style={{ background: "#fff", border: "1px solid #CBD5E1", borderRadius: 4, cursor: disabled ? "default" : "pointer", fontSize: 16, height: 27, lineHeight: 1, padding: 0, width: 27 }}>+</button>
     </div>
   );
 }
@@ -1026,6 +1055,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnSettingsLoaded, setColumnSettingsLoaded] = useState(false);
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
   const [columnFilterMenuSize, setColumnFilterMenuSize] = useState<ColumnFilterMenuSize>(loadSavedColumnFilterMenuSize);
+  const [rowHeight, setRowHeight] = useState<number>(loadSavedRowHeight);
+  const [rowHeights, setRowHeights] = useState<RowHeights>(loadSavedRowHeights);
   const [columnOrder, setColumnOrder] = useState<ColumnOrder>([]);
   const [containerOrderCustomized, setContainerOrderCustomized] = useState(false);
   const [containerEtaOverrides, setContainerEtaOverrides] = useState<Map<number, string>>(new Map());
@@ -1269,6 +1300,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setColumnFilterMenuSize(normalizedSize);
         }
 
+        const savedRowHeight = d[ROW_HEIGHT_STORAGE_KEY];
+        if (typeof savedRowHeight === "number") {
+          const normalizedHeight = normalizeRowHeight(savedRowHeight);
+          window.localStorage.setItem(ROW_HEIGHT_STORAGE_KEY, JSON.stringify(normalizedHeight));
+          setRowHeight(normalizedHeight);
+        }
+
+        const savedRowHeights = d[ROW_HEIGHTS_STORAGE_KEY];
+        if (savedRowHeights && typeof savedRowHeights === "object" && !Array.isArray(savedRowHeights)) {
+          const normalizedHeights = normalizeRowHeights(savedRowHeights);
+          window.localStorage.setItem(ROW_HEIGHTS_STORAGE_KEY, JSON.stringify(normalizedHeights));
+          setRowHeights(normalizedHeights);
+        }
+
         const savedOrder = d[COLUMN_ORDER_STORAGE_KEY];
         if (!columnOrderChangedRef.current && Array.isArray(savedOrder)) {
           const normalizedOrder = ensureAdditionalNotesInColumnOrder(Array.from(new Set(
@@ -1416,6 +1461,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_SETTINGS_STORAGE_KEY]: { groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil },
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
       [COLUMN_FILTER_MENU_SIZE_STORAGE_KEY]: columnFilterMenuSize,
+      [ROW_HEIGHT_STORAGE_KEY]: rowHeight,
+      [ROW_HEIGHTS_STORAGE_KEY]: rowHeights,
       [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
       [CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY]: containerOrderCustomized,
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
@@ -1434,7 +1481,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -1445,6 +1492,33 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const normalizedSize = normalizeColumnFilterMenuSize(next);
     setColumnFilterMenuSize(normalizedSize);
     window.localStorage.setItem(COLUMN_FILTER_MENU_SIZE_STORAGE_KEY, JSON.stringify(normalizedSize));
+  }, []);
+
+  const handleRowHeightChange = useCallback((next: number) => {
+    const normalizedHeight = normalizeRowHeight(next);
+    setRowHeight(normalizedHeight);
+    window.localStorage.setItem(ROW_HEIGHT_STORAGE_KEY, JSON.stringify(normalizedHeight));
+  }, []);
+
+  // The rows a drag on a # border applied to: one row, or the whole selection
+  // when the dragged row was part of it.
+  const handleRowHeightsChange = useCallback((skus: string[], height: number) => {
+    if (skus.length === 0) return;
+    setRowHeights((current) => {
+      const normalizedHeight = normalizeRowHeight(height);
+      const next = { ...current };
+      for (const sku of skus) next[sku] = normalizedHeight;
+      window.localStorage.setItem(ROW_HEIGHTS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  // Resets both halves: the grid-wide height and every row dragged off it.
+  const resetRowHeight = useCallback(() => {
+    setRowHeight(DEFAULT_ROW_HEIGHT);
+    setRowHeights({});
+    window.localStorage.removeItem(ROW_HEIGHT_STORAGE_KEY);
+    window.localStorage.removeItem(ROW_HEIGHTS_STORAGE_KEY);
   }, []);
 
   const resetColumnWidths = useCallback(() => {
@@ -1851,12 +1925,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   const resetAllColumnSettings = useCallback(() => {
     resetColumnWidths();
+    resetRowHeight();
     resetColumnOrder();
     resetColumnColors();
     resetCellColors();
     resetAllTextColors();
     resetAllTextFormatting();
-  }, [resetAllTextColors, resetAllTextFormatting, resetCellColors, resetColumnColors, resetColumnOrder, resetColumnWidths]);
+  }, [resetAllTextColors, resetAllTextFormatting, resetCellColors, resetColumnColors, resetColumnOrder, resetColumnWidths, resetRowHeight]);
 
   const selectedCellKeys = useMemo(
     () => selectedAgCells.map((cell) => `${cell.rowId}::${cell.columnId}`),
@@ -3126,6 +3201,36 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </button>
                     </div>
                   </div>
+                  {/* Row height is an AG Grid feature (the native grid's row
+                      height is baked into its own virtual-scroll arithmetic),
+                      so the control is not offered on the native dashboard —
+                      better absent than present and inert. */}
+                  {gridMode === "ag-grid" && (
+                  <div style={{ marginTop: 10, padding: "8px 6px 2px", borderTop: "1px solid #E2E8F0" }}>
+                    <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
+                      {pick("행 높이", "Row Height")}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <DeferredFontSizeControl
+                        value={rowHeight}
+                        onCommit={handleRowHeightChange}
+                        min={MIN_ROW_HEIGHT}
+                        max={MAX_ROW_HEIGHT}
+                        label={pick("행 높이", "Row height")}
+                      />
+                      <span style={{ fontSize: 11, color: "#64748B", flex: 1, minWidth: 0 }}>
+                        {pick("px · 전체 기본값 (행별은 # 경계 드래그)", "px · default for all rows (drag a # border per row)")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={resetRowHeight}
+                        style={{ fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid #CBD5E1", cursor: "pointer", background: "#F1F5F9", color: "#64748B", whiteSpace: "nowrap" }}
+                      >
+                        {pick("초기화", "Reset")}
+                      </button>
+                    </div>
+                  </div>
+                  )}
                   <div style={{ marginTop: 8, padding: "8px 6px", borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" }}>
                     <div style={{ ...SETTINGS_SECTION_TITLE_STYLE, marginBottom: 6 }}>
                       {pick("컬럼 레이아웃", "Column Layout")}
@@ -3858,6 +3963,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnWidthsRef={columnWidthsRef}
           onColumnWidthsChange={handleColumnWidthsChange}
           columnFilterMenuSize={columnFilterMenuSize}
+          rowHeight={rowHeight}
+          rowHeights={rowHeights}
+          onRowHeightsChange={handleRowHeightsChange}
           onColumnFilterMenuSizeChange={handleColumnFilterMenuSizeChange}
           columnOrder={effectiveColumnOrder}
           onColumnOrderChange={handleColumnOrderChange}

@@ -22,7 +22,7 @@ import {
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
-import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -71,6 +71,14 @@ export interface DemandPlanningGridProps {
   onColumnWidthsChange: (next: ColumnWidths) => void;
   columnFilterMenuSize?: ColumnFilterMenuSize;
   onColumnFilterMenuSizeChange?: (next: ColumnFilterMenuSize) => void;
+  // Row height is an AG Grid feature only. This grid keeps its fixed 28px:
+  // ROW_HEIGHT is baked into its own virtual-scroll arithmetic, so a variable
+  // height here would mean reworking the scroll math, not passing a number.
+  /** The grid-wide default, set by the Row Height stepper in the dashboard. */
+  rowHeight?: number;
+  /** Per-row overrides, keyed by master SKU — the rows the user has dragged. */
+  rowHeights?: RowHeights;
+  onRowHeightsChange?: (skus: string[], height: number) => void;
   columnOrder?: ColumnOrder;
   onColumnOrderChange?: (next: ColumnOrder) => void;
   onContainerOrderCustomized?: () => void;

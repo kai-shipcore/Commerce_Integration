@@ -22,12 +22,16 @@ import {
 import {
   ALL_COLS,
   DEFAULT_COLUMN_FILTER_MENU_SIZE,
+  DEFAULT_ROW_HEIGHT,
   COLUMN_WIDTHS_STORAGE_KEY,
   CON_SUBCOLS,
   GROUP_LABELS,
   TINT_COLORS,
   TODAY,
+  WRAPPING_ROW_COLUMN_IDS,
   normalizeColumnFilterMenuSize,
+  normalizeRowHeight,
+  type RowHeights,
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
@@ -1216,6 +1220,94 @@ function excelDateSerial(value: unknown): number | null {
 
 function CellRenderer({ value }: ICellRendererParams<DemandRow, CellContent>) {
   return renderCellValue(value);
+}
+
+/** The `#` column's cell: the row number, and the grab strip for that row's
+ *  height, sitting astride its bottom border — the spreadsheet gesture, where
+ *  the boundary you drag belongs to the row above it.
+ *
+ *  As in Sheets, dragging the boundary of a row that is part of the current
+ *  selection resizes every selected row to the same height; dragging one
+ *  outside the selection resizes only that row. `getResizeTargets` decides.
+ *
+ *  Resizing goes straight through AG (`node.setRowHeight` +
+ *  `api.onRowHeightChanged`), the API meant for exactly this: the rows follow
+ *  the pointer without a React state change per frame. The final height is
+ *  handed to the dashboard once, on release, to be persisted. */
+function RowHeightHandleCellRenderer({
+  value,
+  node,
+  api,
+  fallbackRowHeight,
+  getResizeTargets,
+  onResizeStart,
+  onResizeEnd,
+  onCommit,
+  resizeLabel,
+}: ICellRendererParams<DemandRow, CellContent> & {
+  fallbackRowHeight: () => number;
+  getResizeTargets: (sku: string) => string[];
+  onResizeStart: () => void;
+  onResizeEnd: () => void;
+  onCommit: (skus: string[], height: number) => void;
+  resizeLabel: string;
+}) {
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => cleanupRef.current?.(), []);
+
+  const startResize = (event: React.PointerEvent<HTMLSpanElement>) => {
+    const sku = node.data?.sku;
+    if (!sku) return;
+    event.preventDefault();
+    event.stopPropagation();
+    cleanupRef.current?.();
+    const targets = getResizeTargets(sku);
+    const startY = event.clientY;
+    const startHeight = node.rowHeight ?? fallbackRowHeight();
+    let latestHeight = startHeight;
+    const onMove = (moveEvent: PointerEvent) => {
+      latestHeight = normalizeRowHeight(startHeight + moveEvent.clientY - startY);
+      for (const target of targets) {
+        const targetNode = target === sku ? node : api.getRowNode(target);
+        targetNode?.setRowHeight(latestHeight);
+      }
+      api.onRowHeightChanged();
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      // The pointer spends the drag over other cells, so the cursor and the
+      // no-select guard have to live on the document, not on this one span.
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+      onResizeEnd();
+      cleanupRef.current = null;
+    };
+    const onUp = () => {
+      cleanup();
+      onCommit(targets, latestHeight);
+    };
+    cleanupRef.current = cleanup;
+    onResizeStart();
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  return (
+    <span className="planning-row-resize-cell">
+      {renderCellValue(value)}
+      <span
+        role="separator"
+        aria-label={resizeLabel}
+        title={resizeLabel}
+        className="planning-row-resize-handle"
+        onPointerDown={startResize}
+      />
+    </span>
+  );
 }
 
 async function copyText(value: string) {
@@ -3425,6 +3517,9 @@ export function AgDemandPlanningGrid({
   onColumnWidthsChange,
   columnFilterMenuSize = DEFAULT_COLUMN_FILTER_MENU_SIZE,
   onColumnFilterMenuSizeChange,
+  rowHeight = DEFAULT_ROW_HEIGHT,
+  rowHeights = {},
+  onRowHeightsChange,
   columnOrder = [],
   onColumnOrderChange,
   onContainerOrderCustomized,
@@ -3467,6 +3562,42 @@ export function AgDemandPlanningGrid({
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
+  // The grid-wide height and the per-row overrides are read from refs by
+  // getRowHeight and by the drag handle, so neither the grid callbacks nor the
+  // column definitions have to be rebuilt when either changes.
+  const rowHeightRef = useRef(rowHeight);
+  const rowHeightsRef = useRef<RowHeights>(rowHeights);
+  const onRowHeightsChangeRef = useRef(onRowHeightsChange);
+  useEffect(() => {
+    onRowHeightsChangeRef.current = onRowHeightsChange;
+  }, [onRowHeightsChange]);
+  useEffect(() => {
+    rowHeightRef.current = rowHeight;
+    rowHeightsRef.current = rowHeights;
+    // Neither the rowHeight option nor a changed override map moves rows that
+    // are already laid out; resetRowHeights() is what re-runs getRowHeight.
+    const api = gridRef.current?.api;
+    if (api && !api.isDestroyed()) api.resetRowHeights();
+  }, [rowHeight, rowHeights]);
+  // Set while a row-height drag is in flight, so the pointerdown that starts it
+  // does not also start AG's cell-range selection: pointerdown fires first, and
+  // AG's own mousedown listener sits on the cell, where a React
+  // stopPropagation cannot reach it.
+  const rowResizeActiveRef = useRef(false);
+  /** Sheets' rule: a boundary inside the selection resizes the whole
+   *  selection, one outside it resizes only its own row. The rows come from the
+   *  cell selection — any row with a selected cell counts. */
+  const selectedRowResizeTargets = useCallback((sku: string) => {
+    const selectedRows = new Set<string>();
+    for (const key of selectedCellsRef.current) {
+      const separator = key.indexOf("::");
+      selectedRows.add(separator === -1 ? key : key.slice(0, separator));
+    }
+    return selectedRows.size > 1 && selectedRows.has(sku) ? [...selectedRows] : [sku];
+  }, []);
+  const getRowHeight = useCallback((params: { data?: DemandRow }) => (
+    (params.data ? rowHeightsRef.current[params.data.sku] : undefined) ?? rowHeightRef.current
+  ), []);
   const gridHostRef = useRef<HTMLDivElement>(null);
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
   const dragMovedRef = useRef(false);
@@ -5879,6 +6010,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
     const buildRealBaseColDef = (column: (typeof baseCandidates)[number]): AgColDef<DemandRow> => {
       const shouldPin = pinnedBaseColumnIdSet.has(column.id);
+      const isWrappingColumn = (WRAPPING_ROW_COLUMN_IDS as readonly string[]).includes(column.id);
       const width = shouldPin
         ? pinnedBaseColumnLayout.widths[column.id]
         : columnWidths[column.id] ?? baseColumnWidth(column);
@@ -5909,6 +6041,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             }
           : undefined,
         pinned: shouldPin ? "left" : undefined,
+        // Marked on every row height; the CSS rule that acts on it is gated by
+        // the wrapper's data-row-wrap, so nothing changes at the default height.
+        ...(isWrappingColumn ? { wrapText: true, cellClass: "planning-wrap-cell" } : {}),
         valueGetter: (params) => {
           if (!params.data) return "";
           if (column.id === "cbm") {
@@ -5916,7 +6051,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           }
           return column.val(params.data, params.node?.rowIndex ?? 0, urgStatus(params.data));
         },
-        cellRenderer: column.id === "sku"
+        cellRenderer: column.id === "row_num"
+          ? RowHeightHandleCellRenderer
+          : column.id === "sku"
           ? SkuCellRenderer
           : column.id === "inb_lst"
             ? CopyableCellRenderer
@@ -5927,7 +6064,16 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               : workNoteSlotForColumnId(column.id) !== null && canEditPlanning
                 ? WorkNoteCellRenderer
                 : CellRenderer,
-        cellRendererParams: column.id === "sku"
+        cellRendererParams: column.id === "row_num"
+          ? {
+              fallbackRowHeight: () => rowHeightRef.current,
+              getResizeTargets: selectedRowResizeTargets,
+              onResizeStart: () => { rowResizeActiveRef.current = true; },
+              onResizeEnd: () => { rowResizeActiveRef.current = false; },
+              onCommit: (skus: string[], height: number) => onRowHeightsChangeRef.current?.(skus, height),
+              resizeLabel: pick("드래그하여 행 높이 조절 (선택한 행 전체)", "Drag to resize the selected rows"),
+            }
+          : column.id === "sku"
           ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
               sku: params.data?.sku ?? "",
               memo: params.data ? (skuCellNotes[params.data.sku] ?? params.data.memo ?? null) : null,
@@ -6345,7 +6491,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -6510,6 +6656,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
     <div
       ref={gridHostRef}
       className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white"
+      // Only taller-than-default rows wrap their text columns: at the default
+      // height the attribute is absent and the grid renders exactly as before.
+      data-row-wrap={rowHeight > DEFAULT_ROW_HEIGHT || Object.keys(rowHeights).length > 0 ? "on" : undefined}
       onContextMenuCapture={(event) => event.preventDefault()}
     >
       <style>{`
@@ -6560,6 +6709,60 @@ autoFilling3: autoFillingContainers3.has(container.name),
           font-style: italic;
           border-bottom: 2px solid #93c5fd !important;
         }
+        /* AG gives .ag-cell position: absolute, so inset: 0 fills it exactly
+           whatever the cell's own display/padding happens to be. */
+        .planning-ag-grid .planning-row-resize-cell {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        /* Astride the row's bottom border, and tall enough to hit: the border
+           itself is 1px, and a 1px target is not a target. */
+        .planning-ag-grid .planning-row-resize-handle {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: -4px;
+          height: 9px;
+          z-index: 3;
+          cursor: ns-resize;
+          touch-action: none;
+        }
+        .planning-ag-grid .planning-row-resize-handle::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 3px;
+          height: 3px;
+          background: rgba(37, 99, 235, .55);
+          opacity: 0;
+        }
+        .planning-ag-grid .planning-row-resize-handle:hover::after {
+          opacity: 1;
+        }
+        /* The wrappable columns' renderers put Tailwind's truncate (and so
+           white-space: nowrap) on their inner spans, which would keep a taller
+           row showing the same one clipped line. One gated rule beats editing
+           four renderers. */
+        .planning-ag-grid[data-row-wrap="on"] .ag-cell.planning-wrap-cell,
+        .planning-ag-grid[data-row-wrap="on"] .ag-cell.planning-wrap-cell * {
+          white-space: normal !important;
+          text-overflow: clip !important;
+          overflow-wrap: anywhere;
+        }
+        /* AG's theme gives .ag-cell a line-height of (row height - 3px), which
+           is what keeps one-line values vertically centred as the rows grow —
+           numeric columns therefore need nothing. A wrapped column has to opt
+           out of it, or its lines would sit a full row apart, and centre itself
+           with flex instead. */
+        .planning-ag-grid[data-row-wrap="on"] .ag-cell.planning-wrap-cell {
+          align-items: center;
+          display: flex;
+          line-height: 1.3;
+        }
         .planning-ag-grid .ag-header-cell.planning-hidegap-header {
           overflow: visible !important;
           z-index: 5;
@@ -6592,6 +6795,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
               if (nativeEvt && nativeEvt.button !== 0) return;
               const target = nativeEvt?.target as HTMLElement | null;
               if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+              // A row-height drag starts on the # column's boundary strip, and
+              // that gesture must not also drag out a cell-range selection.
+              // Clicking the rest of the # cell still selects rows, which is
+              // what makes a multi-row resize possible in the first place.
+              if (rowResizeActiveRef.current) return;
               const columnId = event.column.getColId();
               dragCellAnchorRef.current = { rowIndex: event.rowIndex, columnId };
               activeSelectedCellRef.current = { rowId: event.data.sku, columnId };
@@ -6687,7 +6895,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 setQtyCtxMenu({ x: nativeEvent.clientX, y: nativeEvent.clientY });
               }
             }}
-            rowHeight={28}
+            rowHeight={rowHeight}
+            getRowHeight={getRowHeight}
             headerHeight={45}
             groupHeaderHeight={50}
             animateRows={false}
