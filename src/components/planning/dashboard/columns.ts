@@ -227,7 +227,7 @@ export const ALL_COLS: ColDef[] = [
   { id: "next_eta", grp: "inb", label: "Next\nETA",          w: 92,  align: "ctr",  tint: "t-inb", gh: "gh-inb", fontSize: 10, val: (r) => {
     const d = daysTo(r.next_eta);
     const color = d !== null && d < 0 ? "#C42020" : d !== null && d <= 14 ? "#9A5200" : "#1A4FC0";
-    return { html: `<span style="font-family:monospace;color:${color};font-weight:${d !== null && d <= 14 ? 600 : 400}">${r.next_eta || "—"}</span>` };
+    return { html: `<span style="font-family:inherit;font-size:inherit;color:${color};font-weight:${d !== null && d <= 14 ? 600 : 400}">${r.next_eta || "—"}</span>` };
   }, sortVal: (r) => r.next_eta ?? "" },
   { id: "sod",      grp: "inb", label: "S.O.D\n품절예상일", w: 82,  align: "ctr",  tint: "t-inb", gh: "gh-inb", val: (r, _i, u) => ({
     html: `<span class="${u === "crit" ? "sod-crit" : u === "warn" ? "sod-warn" : "sod-ok"}">${r.sod || "—"}</span>`,

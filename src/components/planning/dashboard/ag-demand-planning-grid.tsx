@@ -81,7 +81,7 @@ const planningTheme = themeQuartz.withParams({
   browserColorScheme: "light",
   fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
   fontSize: 11,
-  foregroundColor: "#1A1917",
+  foregroundColor: "#000000",
   headerBackgroundColor: "#2A2825",
   headerFontSize: 10,
   headerTextColor: "rgba(255,255,255,.82)",
@@ -6132,9 +6132,18 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           restoreMarkerRight: baseRestoreMarkers.right.get(column.id),
         },
         cellClassRules: {
+          "planning-status-cell": () => column.id === "status",
           "planning-user-text-color": (params) => {
             const key = cellColorKey(params.data?.sku, column.id);
             return Boolean(cellTextFormatsRef.current[key]?.color ?? columnTextFormatsRef.current[column.id]?.cell?.color);
+          },
+          "planning-user-font-weight": (params) => {
+            const key = cellColorKey(params.data?.sku, column.id);
+            return (cellTextFormatsRef.current[key]?.bold ?? columnTextFormatsRef.current[column.id]?.cell?.bold) !== undefined;
+          },
+          "planning-user-font-size": (params) => {
+            const key = cellColorKey(params.data?.sku, column.id);
+            return (cellTextFormatsRef.current[key]?.fontSize ?? columnTextFormatsRef.current[column.id]?.cell?.fontSize) !== undefined;
           },
         },
         cellStyle: (params) => {
@@ -6148,9 +6157,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               : column.id === "tavg_c" && params.data?.total_avg_curr_override != null
                 ? "#fecaca"
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
-            ...(textFormat.color ? { color: textFormat.color } : {}),
-            ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
-            fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : column.bold ? 700 : 400,
+            color: textFormat.color ?? "#000000",
+            fontSize: textFormat.fontSize ?? 11,
+            fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : 400,
             textAlign: "center",
             ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
             ...(selected
@@ -6339,6 +6348,20 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 ?? columnTextFormatsRef.current[physicalColumnId]?.cell?.color
                 ?? columnTextFormatsRef.current[sharedColumnId]?.cell?.color);
             },
+            "planning-user-font-weight": (params) => {
+              const columnId = `${container.name}::${column.id}`;
+              const key = cellColorKey(params.data?.sku, columnId);
+              return (cellTextFormatsRef.current[key]?.bold
+                ?? columnTextFormatsRef.current[physicalColumnId]?.cell?.bold
+                ?? columnTextFormatsRef.current[sharedColumnId]?.cell?.bold) !== undefined;
+            },
+            "planning-user-font-size": (params) => {
+              const columnId = `${container.name}::${column.id}`;
+              const key = cellColorKey(params.data?.sku, columnId);
+              return (cellTextFormatsRef.current[key]?.fontSize
+                ?? columnTextFormatsRef.current[physicalColumnId]?.cell?.fontSize
+                ?? columnTextFormatsRef.current[sharedColumnId]?.cell?.fontSize) !== undefined;
+            },
           },
           cellStyle: (params) => {
             const columnId = `${container.name}::${column.id}`;
@@ -6362,11 +6385,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                   ?? columnColors[physicalColumnId]?.cell
                   ?? columnColors[sharedColumnId]?.cell
                   ?? (baseline ? "#E2E0DC" : isConQty ? CON_QTY_TINT : TINT_COLORS[column.tint] || "#fff"),
-              ...(textFormat.color ? { color: textFormat.color } : {}),
-              ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
-              ...(textFormat.bold !== undefined
-                ? { fontWeight: textFormat.bold ? 700 : 400 }
-                : isConQty ? { fontWeight: 700 } : {}),
+              color: textFormat.color ?? "#000000",
+              fontSize: textFormat.fontSize ?? 11,
+              fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : 400,
               textAlign: "center",
               borderLeft: isFirstDisplayedColumn
                 ? CONTAINER_BLOCK_RAIL
@@ -6674,8 +6695,26 @@ autoFilling3: autoFillingContainers3.has(container.name),
         .planning-ag-grid .planning-rendered-cell-value * {
           font-size: inherit !important;
         }
+        .planning-ag-grid .ag-cell:not(.planning-user-text-color):not(.planning-status-cell),
+        .planning-ag-grid .ag-cell:not(.planning-user-text-color):not(.planning-status-cell) * {
+          color: #000000 !important;
+        }
+        .planning-ag-grid .ag-cell:not(.planning-user-font-weight):not(.planning-status-cell),
+        .planning-ag-grid .ag-cell:not(.planning-user-font-weight):not(.planning-status-cell) * {
+          font-weight: 400 !important;
+        }
+        .planning-ag-grid .ag-cell:not(.planning-user-font-size):not(.planning-status-cell),
+        .planning-ag-grid .ag-cell:not(.planning-user-font-size):not(.planning-status-cell) * {
+          font-size: 11px !important;
+        }
         .planning-ag-grid .ag-cell.planning-user-text-color * {
           color: inherit !important;
+        }
+        .planning-ag-grid .ag-cell.planning-user-font-weight * {
+          font-weight: inherit !important;
+        }
+        .planning-ag-grid .ag-cell.planning-user-font-size * {
+          font-size: inherit !important;
         }
         .planning-ag-grid .ag-header-cell.planning-user-header-text-color *,
         .planning-ag-grid .ag-header-group-cell.planning-user-header-text-color * {

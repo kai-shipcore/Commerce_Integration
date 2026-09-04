@@ -632,7 +632,7 @@ export function DemandPlanningGrid({
         .sc { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; white-space: nowrap; }
         .sc-orig { background: #E5EEFF; color: #1238A0; }
         .sc-cust { background: #E3F5EC; color: #0A6A45; }
-        .sc-part { background: #F3E8FF; color: #7E22CE; }
+        .sc-part { background: #FCE7F3; color: #BE185D; }
         .sc-hold { background: #FEF3D8; color: #9A5200; }
         .sc-disc { background: #FEE2E2; color: #B91C1C; }
         .sc-tbd  { background: #F1F5F9; color: #64748B; }
