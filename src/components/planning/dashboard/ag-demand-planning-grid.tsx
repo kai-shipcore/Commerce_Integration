@@ -88,6 +88,28 @@ const planningTheme = themeQuartz.withParams({
   spacing: 4,
 });
 
+// 2px dark grey on the left edge of every container block. Kept as a named
+// constant so it is visibly not the same thing as CON_QTY_RAIL below.
+const CONTAINER_BLOCK_RAIL = "2px solid #5A5750";
+
+// Con. Qty is the one container column a planner types into, and it sits in a
+// block of eleven columns that all share the t-cn tint and the theme's 1px
+// column border — so nothing marked out the cell you are meant to edit. It
+// gets a thin blue rail on both sides, a tint a step darker than the rest of
+// the block, and a bold value.
+//
+// Blue and 1px, deliberately unlike CONTAINER_BLOCK_RAIL: a 2px dark grey rail
+// here read as another block boundary, which is the opposite of what it is for.
+// The colour belongs to the same family as the editable-qty text (#1A4FC0) and
+// the native grid's dashed editable affordance (#90B8E0), so it says "you can
+// type in this column" rather than "a section starts here".
+//
+// Handled here rather than in CON_SUBCOLS because that list is shared with the
+// native grid, which is deliberately unchanged.
+const CON_QTY_COLUMN_ID = "inb_qty";
+const CON_QTY_TINT = "#CFE8F7";
+const CON_QTY_RAIL = "1px solid #5B8FC9";
+
 type QtyOverride = {
   inbound_qty: number | null;
   avail_qty: number | null;
@@ -1809,7 +1831,7 @@ function QtyCellRenderer({
             }
             void commit();
           }}
-          className="planning-inline-cell-editor h-full w-full rounded-none border-0 bg-white px-1 text-center font-mono text-[11px] font-semibold text-[#1A4FC0] outline-none"
+          className="planning-inline-cell-editor h-full w-full rounded-none border-0 bg-white px-1 text-center font-mono text-[11px] font-bold text-[#1A4FC0] outline-none"
         />
       </div>
     );
@@ -1840,7 +1862,7 @@ function QtyCellRenderer({
           event.ctrlKey || event.metaKey || event.shiftKey,
         );
       }}
-      className="h-full w-full appearance-none border-0 bg-transparent px-1 text-center font-mono text-[11px] font-semibold text-[#1A4FC0] shadow-none outline-none focus:shadow-none focus:outline-none focus-visible:shadow-none focus-visible:outline-none"
+      className="h-full w-full appearance-none border-0 bg-transparent px-1 text-center font-mono text-[11px] font-bold text-[#1A4FC0] shadow-none outline-none focus:shadow-none focus:outline-none focus-visible:shadow-none focus-visible:outline-none"
     >
       {saving ? "..." : displayValue}
     </button>
@@ -3368,7 +3390,9 @@ function ContainerGroupHeader(
                 key={column.id}
                 data-summary-column-id={column.columnId}
                 title={totalLabel ? `Total: ${totalLabel}` : undefined}
-                className="shrink-0 overflow-visible whitespace-nowrap text-center"
+                className={`shrink-0 overflow-visible whitespace-nowrap text-center${
+                  column.id === CON_QTY_COLUMN_ID ? " font-bold" : ""
+                }`}
                 style={{
                   width: liveColumnWidths[column.columnId] ?? column.width,
                 }}
@@ -6117,16 +6141,24 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             };
             const displayedColumns = params.column.getParent()?.getDisplayedLeafColumns() ?? [];
             const isFirstDisplayedColumn = displayedColumns[0] === params.column;
+            const isConQty = column.id === CON_QTY_COLUMN_ID;
             return {
+              // The Con. Qty tint sits in the fallback position, so a colour
+              // the user painted on the cell or column still wins.
               backgroundColor: cellColors[key]
                 ?? columnColors[physicalColumnId]?.cell
                 ?? columnColors[sharedColumnId]?.cell
-                ?? (baseline ? "#E2E0DC" : TINT_COLORS[column.tint] || "#fff"),
+                ?? (baseline ? "#E2E0DC" : isConQty ? CON_QTY_TINT : TINT_COLORS[column.tint] || "#fff"),
               ...(textFormat.color ? { color: textFormat.color } : {}),
               ...((textFormat.fontSize ?? column.fontSize) ? { fontSize: textFormat.fontSize ?? column.fontSize } : {}),
-              ...(textFormat.bold !== undefined ? { fontWeight: textFormat.bold ? 700 : 400 } : {}),
+              ...(textFormat.bold !== undefined
+                ? { fontWeight: textFormat.bold ? 700 : 400 }
+                : isConQty ? { fontWeight: 700 } : {}),
               textAlign: "center",
-              borderLeft: isFirstDisplayedColumn ? "2px solid #5A5750" : "none",
+              borderLeft: isFirstDisplayedColumn
+                ? CONTAINER_BLOCK_RAIL
+                : isConQty ? CON_QTY_RAIL : "none",
+              ...(isConQty ? { borderRight: CON_QTY_RAIL } : {}),
               ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
               ...(selected
                 ? selectionEdgeStyle(params.api, params.node.rowIndex, params.data?.sku, columnId, selectedCellsRef.current)
@@ -6163,6 +6195,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 || conRestoreMarkers.left.has(realId) || conRestoreMarkers.right.has(realId) ? "planning-hidegap-header" : "",
               displayedColumns[0] === params.column ? "container-column-start" : "",
               displayedColumns.at(-1) === params.column ? "container-column-end" : "",
+              realId === CON_QTY_COLUMN_ID ? "con-qty-column" : "",
             ].filter(Boolean).join(" ");
           };
         });
@@ -6437,6 +6470,14 @@ autoFilling3: autoFillingContainers3.has(container.name),
         .planning-ag-grid .ag-cell-value:has(.planning-inline-cell-editor) {
           padding: 0 !important;
           overflow: hidden !important;
+        }
+        /* Declared before the two container-block rules on purpose: these are
+           all single !important classes, so the later rule wins, and a Con. Qty
+           sitting at either edge of its block must keep that block's own
+           border — the thin rail never replaces a block boundary. */
+        .planning-ag-grid .con-qty-column {
+          border-left: 1px solid #5B8FC9 !important;
+          border-right: 1px solid #5B8FC9 !important;
         }
         .planning-ag-grid .container-column-start {
           border-left: 2px solid #5A5750 !important;
