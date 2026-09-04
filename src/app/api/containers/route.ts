@@ -3,8 +3,8 @@
 // by the Container Timeline page (?view=timeline). PATCH is shared with
 // Demand Planning: requests carrying `x-planning-permission-context:
 // demand-planning` are checked against demand-planning.edit instead of
-// container-planning.edit, and multiplex onto one of five sub-contracts —
-// status-only, confirmed-only, details-only, eta-only, eta-lax-lgb-only, or
+// container-planning.edit, and multiplex onto focused sub-contracts for
+// status, calendar color, confirmed delivery, details, ETA, ETA LAX/LGB, or
 // a full replace of details + items — selected by query params/body shape.
 
 import { NextRequest } from "next/server";
@@ -52,6 +52,10 @@ const ContainerDetailsSchema = z.object({
 const ContainerConfirmedSchema = z.object({
   confirmedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   confirmedTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+}).strict();
+
+const ContainerColorSchema = z.object({
+  calendarColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable(),
 }).strict();
 
 function getRequestIp(request: NextRequest): string | null {
@@ -118,7 +122,8 @@ export async function PATCH(request: NextRequest) {
     const id = searchParams.get("id")?.trim();
     const isTimelineDatePatch =
       searchParams.get("confirmedOnly") === "true" ||
-      searchParams.get("etaLaxLgbOnly") === "true";
+      searchParams.get("etaLaxLgbOnly") === "true" ||
+      searchParams.get("colorOnly") === "true";
 
     if (session?.user?.id && !demandPlanningRequest) {
       const role = (session.user.role as string) ?? "user";
@@ -141,6 +146,14 @@ export async function PATCH(request: NextRequest) {
     const statusOnly = z.object({ status: ContainerStatusSchema }).strict().safeParse(body);
     if (statusOnly.success) {
       const result = await ContainerPlanningService.updateStatus(id, existing, statusOnly.data.status, who);
+      return apiSuccess({ data: result });
+    }
+
+    const colorOnly = searchParams.get("colorOnly") === "true"
+      ? ContainerColorSchema.safeParse(body)
+      : undefined;
+    if (colorOnly?.success) {
+      const result = await ContainerPlanningService.updateCalendarColor(id, existing, colorOnly.data.calendarColor, who);
       return apiSuccess({ data: result });
     }
 

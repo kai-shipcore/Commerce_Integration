@@ -74,7 +74,7 @@ describe("ContainerPlanningRepository.listContainers", () => {
     poolQueryMock.mockResolvedValue({
       rows: [{
         id: "1", container_number: "C-1", eta_date: "2026-01-01", actual_arrival_date: null,
-        status: "draft", cbm_capacity: "80", factory_name: "F1", origin: null, dest_warehouse: "W1", note: null,
+        status: "draft", cbm_capacity: "80", factory_name: "F1", origin: null, dest_warehouse: "W1", note: null, calendar_color: "#4285F4",
         est_loading_date: null, etd_ngb_date: null, eta_lax_lgb_date: null, confirmed_date: null, confirmed_time: null,
         item_count: 1, total_qty: 10, total_cbm: "5", items: [{ id: "1", sku: "SKU-1", qty: 10, cbm: 0.5, sku_memo: null, remaining_stock_qty: 2, allocations: [] }],
       }],
@@ -86,6 +86,7 @@ describe("ContainerPlanningRepository.listContainers", () => {
     expect(withoutDetails[0].items).toBeUndefined();
     expect(withoutDetails[0].containerNumber).toBe("C-1");
     expect(withoutDetails[0].cbmCapacity).toBe(80);
+    expect(withoutDetails[0].calendarColor).toBe("#4285F4");
 
     const withDetails = await ContainerPlanningRepository.listContainers({
       warehouseCode: "", warehouseName: "", city: "", includeReceived: true, includeDetails: true, timelineView: false, categoryCode: null,
@@ -113,6 +114,15 @@ describe("ContainerPlanningRepository status/details updates", () => {
     expect(await ContainerPlanningRepository.updateStatus("1", "complete")).toBe(false);
   });
 
+  it("updates a custom calendar color or clears it to restore the status default", async () => {
+    poolQueryMock.mockResolvedValue({ rowCount: 1 });
+    expect(await ContainerPlanningRepository.updateCalendarColor("1", "#4285F4")).toBe(true);
+    expect(poolQueryMock).toHaveBeenLastCalledWith(expect.stringContaining("calendar_color = $2"), ["1", "#4285F4"]);
+
+    expect(await ContainerPlanningRepository.updateCalendarColor("1", null)).toBe(true);
+    expect(poolQueryMock).toHaveBeenLastCalledWith(expect.stringContaining("calendar_color = $2"), ["1", null]);
+  });
+
   it("getContainer returns null when not found, mapped row otherwise", async () => {
     poolQueryMock.mockResolvedValue({ rowCount: 0, rows: [] });
     expect(await ContainerPlanningRepository.getContainer("1")).toBeNull();
@@ -121,7 +131,7 @@ describe("ContainerPlanningRepository status/details updates", () => {
       rowCount: 1,
       rows: [{
         status: "draft", container_number: "C-1", eta: "2026-01-01", cbm_capacity: 80,
-        factory_name: null, dest_warehouse: null, note: null, est_loading: null, etd_ngb: null, eta_lax_lgb: null,
+        factory_name: null, dest_warehouse: null, note: null, calendar_color: null, est_loading: null, etd_ngb: null, eta_lax_lgb: null,
         confirmed_date: null, confirmed_time: null,
       }],
     });

@@ -17,12 +17,16 @@ import {
 } from "@/features/planning/mock-data";
 import { apiPath } from "@/lib/api-path";
 import { ContainerHistoryTab } from "../container-timeline/container-history-tab";
+import { ContainerColorPicker } from "@/components/planning/container-color-picker";
+import { offsetContainerDate } from "@/lib/planning/container-schedule-dates";
 
 type ContainerItem = MockContainer["items"][number];
 // SWC is a real category_code value (see src/app/api/planning/sku-master/route.ts), kept page-local
 // rather than widening the shared mock-data ProductKey.
 type ContainerProductKey = ProductKey | "swc";
 type PlanningProductFilter = ContainerProductKey | "empty" | null;
+type ContainerListSortKey = "date" | "name";
+type ContainerListSortDirection = "asc" | "desc";
 
 type ContainerFormState = {
   number: string;
@@ -130,6 +134,7 @@ type ApiContainer = {
   confirmedDate: string | null;
   confirmedTime: string | null;
   status: string;
+  calendarColor: string | null;
   cbmCapacity: number;
   factoryName: string | null;
   origin: string | null;
@@ -198,6 +203,22 @@ const productFilterIcons: Record<ContainerProductKey, string> = {
 };
 
 const SKU_LIST_COLLAPSED_STORAGE_KEY = "container-planning-sku-list-collapsed";
+const TIMELINE_CACHE_KEY = "container-timeline:data:v2";
+
+function updateTimelineColorCache(containerId: string, calendarColor: string | null) {
+  try {
+    const raw = window.sessionStorage.getItem(TIMELINE_CACHE_KEY);
+    if (!raw) return;
+    const cached = JSON.parse(raw) as { containers?: Array<{ id?: unknown; calendarColor?: string | null }>; cachedAt?: number };
+    if (!Array.isArray(cached.containers) || typeof cached.cachedAt !== "number") return;
+    cached.containers = cached.containers.map((container) =>
+      String(container.id ?? "") === containerId ? { ...container, calendarColor } : container
+    );
+    window.sessionStorage.setItem(TIMELINE_CACHE_KEY, JSON.stringify(cached));
+  } catch {
+    // A fresh Timeline API request remains the fallback when session storage is unavailable.
+  }
+}
 
 function inferProductKey(sku: string): ContainerProductKey {
   const matchedSku = mockSkus.find((item) => item.id === sku);
@@ -258,6 +279,7 @@ function mapApiContainer(container: ApiContainer): MockContainer {
     confirmedDate: container.confirmedDate ?? null,
     confirmedTime: container.confirmedTime ?? null,
     status: normalizeContainerStatus(container.status),
+    calendarColor: container.calendarColor,
     cbmCapacity: container.cbmCapacity || 80,
     factory: container.factoryName ?? "",
     origin: container.origin ?? "",
@@ -379,6 +401,10 @@ export function ContainerPlanningPage() {
   const [skuListCollapsed, setSkuListCollapsed] = useState<boolean | null>(() => (targetSku ? false : null));
   const [summaryCollapsed, setSummaryCollapsed] = useState(true);
   const [exportContainerIds, setExportContainerIds] = useState<string[]>([]);
+  const [containerListSort, setContainerListSort] = useState<{
+    key: ContainerListSortKey;
+    direction: ContainerListSortDirection;
+  }>({ key: "date", direction: "asc" });
 
   useEffect(() => {
     if (targetSku) return;
@@ -432,7 +458,7 @@ export function ContainerPlanningPage() {
 
   const filteredContainers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return containers.filter((container) => {
+    const filtered = containers.filter((container) => {
       if (normalizedQuery) {
         if (/^\d+$/.test(normalizedQuery)) {
           return container.number.toLowerCase().includes(normalizedQuery);
@@ -461,7 +487,19 @@ export function ContainerPlanningPage() {
       if (productFilter && !getContainerProducts(container).has(productFilter)) return false;
       return true;
     });
-  }, [containerListTab, containers, query, statusFilter, productFilter]);
+    return filtered.sort((left, right) => {
+      let result = 0;
+      if (containerListSort.key === "name") {
+        result = left.number.localeCompare(right.number, undefined, { numeric: true, sensitivity: "base" });
+      } else {
+        if (!left.eta && !right.eta) result = left.number.localeCompare(right.number, undefined, { numeric: true });
+        else if (!left.eta) return 1;
+        else if (!right.eta) return -1;
+        else result = left.eta.localeCompare(right.eta);
+      }
+      return containerListSort.direction === "asc" ? result : -result;
+    });
+  }, [containerListSort, containerListTab, containers, query, statusFilter, productFilter]);
   const selectedContainer = containers.find((container) => container.id === expandedId) ?? null;
   const selectedExportContainers = useMemo(
     () => exportContainerIds
@@ -654,8 +692,8 @@ export function ContainerPlanningPage() {
     setEditingContainerId(container.id);
     setForm({
       number: container.number,
-      eta: container.eta,
-      estLoading: container.estLoadingDate ?? "",
+      eta: container.eta || offsetContainerDate(container.etaLaxLgbDate ?? "", 7),
+      estLoading: container.estLoadingDate || offsetContainerDate(container.etdNgbDate ?? "", -7),
       etdNgb: container.etdNgbDate ?? "",
       etaLaxLgb: container.etaLaxLgbDate ?? "",
       status: container.status,
@@ -673,7 +711,22 @@ export function ContainerPlanningPage() {
   }
 
   function updateForm<K extends keyof ContainerFormState>(key: K, value: ContainerFormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "etdNgb") {
+        next.estLoading = offsetContainerDate(String(value), -7);
+      } else if (key === "etaLaxLgb") {
+        next.eta = offsetContainerDate(String(value), 7);
+      }
+      return next;
+    });
+  }
+
+  function toggleContainerListSort(key: ContainerListSortKey) {
+    setContainerListSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
   }
 
   async function lookupSkuMaster(masterSku: string): Promise<SkuMasterLookup | null> {
@@ -1168,6 +1221,34 @@ export function ContainerPlanningPage() {
       setExpandedId(containerId);
     } catch {
       toast.error(pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
+    }
+  }
+
+  async function changeContainerColor(containerId: string, calendarColor: string | null) {
+    if (!canEditContainers) {
+      toast.error(pick("컨테이너 수정 권한이 없습니다.", "Container edit access is required."));
+      return;
+    }
+
+    const previous = containers;
+    setContainers((current) => current.map((container) =>
+      container.id === containerId ? { ...container, calendarColor } : container
+    ));
+
+    try {
+      const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}&colorOnly=true`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ calendarColor }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to update container color");
+      updateTimelineColorCache(containerId, calendarColor);
+      toast.success(pick("컨테이너 색상이 변경되었습니다.", "Container color updated."));
+    } catch (error) {
+      setContainers(previous);
+      toast.error(error instanceof Error ? error.message : pick("색상 변경에 실패했습니다.", "Failed to update the color."));
+      throw error;
     }
   }
 
@@ -2243,19 +2324,36 @@ export function ContainerPlanningPage() {
                 {pick("SKU없음", "No SKU")}
               </button>
             </div>
-            <div className="flex items-center justify-between gap-3 border-t border-[#e2dfd8] pt-2 text-[11px] text-muted-foreground dark:border-slate-700">
-              <label className="flex items-center gap-2">
+            <div className="flex items-center gap-1 border-t border-[#e2dfd8] pt-2 text-[11px] text-muted-foreground dark:border-slate-700">
+              <label className="flex items-center gap-1.5 whitespace-nowrap">
                 <input
                   type="checkbox"
                   disabled={filteredContainers.length === 0}
                   checked={filteredContainers.length > 0 && filteredContainers.every((container) => exportContainerIds.includes(container.id))}
                   onChange={(event) => toggleVisibleExportContainers(event.target.checked)}
                 />
-                <span>{pick("표시된 항목 선택", "Select visible")}</span>
+                <span>{pick("전체 선택", "Select all")}</span>
               </label>
-              <span>
+              <span className="whitespace-nowrap">
                 {pick(`${selectedExportContainers.length}개 선택됨`, `${selectedExportContainers.length} selected`)}
               </span>
+              <div className="ml-auto flex shrink-0 items-center gap-1">
+                {(["date", "name"] as const).map((key) => {
+                  const active = containerListSort.key === key;
+                  const arrow = active ? (containerListSort.direction === "asc" ? "↑" : "↓") : "↕";
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => toggleContainerListSort(key)}
+                      aria-pressed={active}
+                      className={`h-7 rounded-md border px-2 text-[10px] font-semibold transition-colors ${active ? "border-[#9db7f5] bg-[#ebf0fd] text-[#1a5cdb]" : "border-[#d8d6ce] bg-white text-muted-foreground hover:bg-[#f5f4f0] hover:text-foreground"}`}
+                    >
+                      {key === "date" ? pick("날짜순", "Date") : pick("이름순", "Name")} {arrow}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -2298,8 +2396,8 @@ export function ContainerPlanningPage() {
                     <span
                       className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-black/10"
                       style={{
-                        backgroundColor: statusColors[container.status],
-                        boxShadow: `0 0 0 3px ${statusColors[container.status]}30`,
+                        backgroundColor: container.calendarColor ?? statusColors[container.status],
+                        boxShadow: `0 0 0 3px ${container.calendarColor ?? statusColors[container.status]}30`,
                       }}
                     />
                     <span className="min-w-0 flex-1">
@@ -2417,6 +2515,8 @@ export function ContainerPlanningPage() {
                 onRemoveAvailableAllocations={removeAvailableStockAllocations}
                 canDeleteContainers={canDeleteContainers}
                 canRevertStatus={canEditContainers}
+                canEditColor={canEditContainers}
+                onChangeColor={changeContainerColor}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
@@ -3095,6 +3195,8 @@ function ContainerCard({
   onRemoveAvailableAllocations,
   canDeleteContainers = false,
   canRevertStatus = false,
+  canEditColor = false,
+  onChangeColor,
   onChangeStatus,
   onDeleteContainer,
   warehouseNameByCode,
@@ -3129,6 +3231,8 @@ function ContainerCard({
   onRemoveAvailableAllocations: (allocationIds: string[], containerId: string) => void | Promise<boolean>;
   canDeleteContainers?: boolean;
   canRevertStatus?: boolean;
+  canEditColor?: boolean;
+  onChangeColor: (containerId: string, color: string | null) => void | Promise<void>;
   onChangeStatus: (containerId: string) => void;
   onDeleteContainer: (containerId: string) => void;
   warehouseNameByCode?: Map<string, string>;
@@ -3220,20 +3324,36 @@ function ContainerCard({
           </div>
         </div>
       ) : null}
-      <button
-        type="button"
+      <div
+        role={detailMode ? undefined : "button"}
+        tabIndex={detailMode ? undefined : 0}
         onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") onToggle();
+        }}
         className={`flex w-full items-center gap-4 px-5 py-4 text-left transition-colors ${
           detailMode ? "cursor-default bg-white" : "hover:bg-[#f8f7f4]"
         }`}
       >
-        <span
-          className="h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 border-black/10"
-          style={{
-            backgroundColor: statusColors[container.status],
-            boxShadow: `0 0 0 3px ${statusColors[container.status]}30`,
-          }}
-        />
+        {detailMode ? (
+          <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+            <ContainerColorPicker
+              value={container.calendarColor}
+              defaultColor={statusColors[container.status]}
+              disabled={!canEditColor}
+              compact
+              onChange={(color) => onChangeColor(container.id, color)}
+            />
+          </div>
+        ) : (
+          <span
+            className="h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 border-black/10"
+            style={{
+              backgroundColor: container.calendarColor ?? statusColors[container.status],
+              boxShadow: `0 0 0 3px ${container.calendarColor ?? statusColors[container.status]}30`,
+            }}
+          />
+        )}
 
         <div className="min-w-[60px] font-mono text-sm font-semibold">{container.number}</div>
 
@@ -3266,7 +3386,7 @@ function ContainerCard({
             }`}
           />
         )}
-      </button>
+      </div>
 
       {expanded ? (
         <div className="border-t">

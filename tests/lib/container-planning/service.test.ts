@@ -9,6 +9,7 @@ const repositoryMock = {
   getContainer: vi.fn(),
   lockContainer: vi.fn(),
   updateStatus: vi.fn(),
+  updateCalendarColor: vi.fn(),
   updateConfirmed: vi.fn(),
   updateDetails: vi.fn(),
   updateEta: vi.fn(),
@@ -94,7 +95,7 @@ describe("ContainerPlanningService PATCH branches", () => {
   const existing = {
     status: "draft", containerNumber: "C-1", eta: "2026-01-01", cbmCapacity: 80,
     factoryName: null, destWarehouse: null, note: null, estLoading: null, etdNgb: null, etaLaxLgb: null,
-    confirmedDate: null, confirmedTime: null,
+    confirmedDate: null, confirmedTime: null, calendarColor: null,
   };
 
   it("getExistingOrThrow throws NotFoundError when missing", async () => {
@@ -117,6 +118,23 @@ describe("ContainerPlanningService PATCH branches", () => {
 
     await ContainerPlanningService.updateStatus("1", existing, "complete", WHO);
     expect(logContainerAuditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "status_change" }));
+  });
+
+  it("updates and audits a custom calendar color, including resetting to default", async () => {
+    repositoryMock.updateCalendarColor.mockResolvedValue(true);
+
+    await ContainerPlanningService.updateCalendarColor("1", existing, "#4285F4", WHO);
+    expect(repositoryMock.updateCalendarColor).toHaveBeenCalledWith("1", "#4285F4");
+    expect(logContainerAuditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: "color_change",
+      before: { calendarColor: null },
+      after: { calendarColor: "#4285F4" },
+    }));
+
+    vi.clearAllMocks();
+    repositoryMock.updateCalendarColor.mockResolvedValue(true);
+    await ContainerPlanningService.updateCalendarColor("1", { ...existing, calendarColor: "#4285F4" }, null, WHO);
+    expect(repositoryMock.updateCalendarColor).toHaveBeenCalledWith("1", null);
   });
 
   it("maps DB shipped to blue Shipped and packing_received to amber Final without false status changes", async () => {

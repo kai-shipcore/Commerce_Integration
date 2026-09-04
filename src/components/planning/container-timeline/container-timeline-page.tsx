@@ -12,6 +12,9 @@ import { apiPath, withBasePath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
 import type { DemandPlanningData, DemandRow } from "@/types/demand-planning";
 import { getUrgency, recommendedContainerQty } from "@/components/planning/sku-forecasts/types";
+import { ContainerColorPicker } from "@/components/planning/container-color-picker";
+import { CalendarEventEditorDrawer, type TimelineCalendarEvent, type TimelineCalendarEventInput } from "./calendar-event-editor-drawer";
+import { ContainerDateFieldsEditor, type ContainerDateValues } from "./container-date-fields-editor";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +63,7 @@ interface Container {
   confirmedDate: string | null;
   confirmedTime: string | null;
   status: ContainerStatus;
+  calendarColor: string | null;
   cbmCapacity: number;
   factoryName: string | null;
   origin: string | null;
@@ -90,6 +94,7 @@ interface ContainerApiRow {
   confirmedDate?: unknown;
   confirmedTime?: unknown;
   status?: unknown;
+  calendarColor?: unknown;
   cbmCapacity?: unknown;
   factoryName?: unknown;
   origin?: unknown;
@@ -126,6 +131,7 @@ function mapTimelineContainers(rows: ContainerApiRow[]): Container[] {
     confirmedDate: row.confirmedDate ? String(row.confirmedDate) : null,
     confirmedTime: row.confirmedTime ? String(row.confirmedTime) : null,
     status: normalizeStatus(String(row.status ?? "")),
+    calendarColor: typeof row.calendarColor === "string" ? row.calendarColor : null,
     cbmCapacity: Number(row.cbmCapacity ?? 0),
     factoryName: row.factoryName ? String(row.factoryName) : null,
     origin: row.origin ? String(row.origin) : null,
@@ -145,17 +151,19 @@ function mapTimelineContainers(rows: ContainerApiRow[]): Container[] {
 }
 
 function getCachedTimelineContainers(): Container[] | null {
-  if (timelineMemoryCache) return timelineMemoryCache.containers;
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") return timelineMemoryCache?.containers ?? null;
   try {
     const raw = window.sessionStorage.getItem(TIMELINE_CACHE_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      timelineMemoryCache = null;
+      return null;
+    }
     const parsed = JSON.parse(raw) as { containers?: Container[]; cachedAt?: number };
     if (!Array.isArray(parsed.containers) || typeof parsed.cachedAt !== "number") return null;
     timelineMemoryCache = { containers: parsed.containers, cachedAt: parsed.cachedAt };
     return parsed.containers;
   } catch {
-    return null;
+    return timelineMemoryCache?.containers ?? null;
   }
 }
 
@@ -204,6 +212,10 @@ const STATUS_PILL: Record<ContainerStatus, string> = {
   draft: "bg-[#fce4ec] text-[#880e4f]",
   complete: "bg-[#e6f7ee] text-[#166534]",
 };
+
+function containerDisplayColor(container: Pick<Container, "status" | "calendarColor">): string {
+  return container.calendarColor ?? STATUS_COLOR[container.status];
+}
 
 const PERIOD_OPTIONS: { value: Period; label: string; labelEn: string; days: number | null }[] = [
   { value: "monthly", label: "월별 보기", labelEn: "Month View",  days: null },
@@ -373,12 +385,15 @@ export function ContainerTimelinePage() {
   const didAutoSelect = useRef(false);
   const prefSaveTimerRef = useRef<number | null>(null);
 
-  const [containers, setContainers] = useState<Container[]>(() => timelineMemoryCache?.containers ?? []);
+  const [containers, setContainers] = useState<Container[]>(() => getCachedTimelineContainers() ?? []);
   const [planningRowsBySku, setPlanningRowsBySku] = useState<Record<string, DemandRow>>({});
-  const [loading, setLoading] = useState(() => !timelineMemoryCache);
+  const [loading, setLoading] = useState(() => getCachedTimelineContainers() === null);
   const [planningLoading, setPlanningLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Container | null>(null);
+  const [createEventDate, setCreateEventDate] = useState<string | null>(null);
+  const [calendarEvents, setCalendarEvents] = useState<TimelineCalendarEvent[]>([]);
+  const [editingCalendarEvent, setEditingCalendarEvent] = useState<TimelineCalendarEvent | null>(null);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
   const [productFilter, setProductFilter] = useState<TimelineProductFilter>(() => {
     const p = searchParams.get("product");
@@ -446,6 +461,20 @@ export function ContainerTimelinePage() {
     return () => {
       cancelled = true;
     };
+  }, [pick]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(apiPath("/api/container-calendar-events"), { cache: "no-store" })
+      .then(async (response) => {
+        const json = await response.json() as { success?: boolean; data?: TimelineCalendarEvent[]; error?: string };
+        if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to load calendar events");
+        if (!cancelled) setCalendarEvents(Array.isArray(json.data) ? json.data : []);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : pick("Calendar Event를 불러오지 못했습니다.", "Failed to load Calendar Events."));
+      });
+    return () => { cancelled = true; };
   }, [pick]);
 
   useEffect(() => {
@@ -805,6 +834,156 @@ export function ContainerTimelinePage() {
     }
   }
 
+  async function changeContainerColor(containerId: string, calendarColor: string | null) {
+    if (!canEditTimeline) {
+      toast.error(pick("컨테이너 타임라인 수정 권한이 없습니다.", "Container Timeline edit access is required."));
+      return;
+    }
+
+    const previous = containers;
+    const previousSelected = selected;
+    const optimistic = containers.map((container) =>
+      container.id === containerId ? { ...container, calendarColor } : container
+    );
+    setContainers(optimistic);
+    setCachedTimelineContainers(optimistic);
+    setSelected((current) => current?.id === containerId ? { ...current, calendarColor } : current);
+
+    try {
+      const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}&colorOnly=true`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ calendarColor }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to update container color");
+      toast.success(pick("컨테이너 색상이 변경되었습니다.", "Container color updated."));
+    } catch (error) {
+      setContainers(previous);
+      setCachedTimelineContainers(previous);
+      setSelected(previousSelected);
+      toast.error(error instanceof Error ? error.message : pick("색상 변경에 실패했습니다.", "Failed to update the color."));
+      throw error;
+    }
+  }
+
+  async function saveContainerDates(containerId: string, dates: ContainerDateValues) {
+    if (!canEditTimeline) {
+      toast.error(pick("Calendar 수정 권한이 없습니다.", "Calendar edit access is required."));
+      throw new Error("Permission denied");
+    }
+    const container = containers.find((item) => item.id === containerId);
+    if (!container) throw new Error("Container not found");
+    if (!dates.etaDate) {
+      toast.error(pick("Warehouse ETA를 입력해 주세요.", "Warehouse ETA is required."));
+      throw new Error("Warehouse ETA is required");
+    }
+
+    const previous = containers;
+    const previousSelected = selected;
+    const updatedContainer: Container = {
+      ...container,
+      etaDate: dates.etaDate,
+      estLoadingDate: dates.estLoadingDate || null,
+      etdNgbDate: dates.etdNgbDate || null,
+      etaLaxLgbDate: dates.etaLaxLgbDate || null,
+    };
+    const optimistic = containers.map((item) => item.id === containerId ? updatedContainer : item);
+    setContainers(optimistic);
+    setCachedTimelineContainers(optimistic);
+    setSelected((current) => current?.id === containerId ? updatedContainer : current);
+
+    try {
+      const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}&detailsOnly=true`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          number: container.containerNumber,
+          eta: dates.etaDate,
+          cbmCapacity: container.cbmCapacity,
+          factory: container.factoryName ?? "",
+          destination: container.destWarehouse ?? "",
+          note: container.note ?? "",
+          estLoading: dates.estLoadingDate,
+          etdNgb: dates.etdNgbDate,
+          etaLaxLgb: dates.etaLaxLgbDate,
+        }),
+      });
+      const json = await response.json() as { success?: boolean; error?: string };
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to save calendar event");
+      setCreateEventDate(null);
+      setSelected(updatedContainer);
+      toast.success(pick("Calendar Event가 저장되었습니다.", "Calendar Event saved."));
+    } catch (error) {
+      setContainers(previous);
+      setCachedTimelineContainers(previous);
+      setSelected(previousSelected);
+      toast.error(error instanceof Error ? error.message : pick("Calendar Event 저장에 실패했습니다.", "Failed to save Calendar Event."));
+      throw error;
+    }
+  }
+
+  async function saveTimelineCalendarEvent(input: TimelineCalendarEventInput, eventId?: string) {
+    try {
+      const response = await fetch(apiPath(`/api/container-calendar-events${eventId ? `?id=${encodeURIComponent(eventId)}` : ""}`), {
+        method: eventId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const json = await response.json() as { success?: boolean; data?: TimelineCalendarEvent; error?: string };
+      if (!response.ok || !json.success || !json.data) throw new Error(json.error ?? "Failed to save Calendar Event");
+      setCalendarEvents((current) => eventId
+        ? current.map((event) => event.id === eventId ? json.data! : event)
+        : [...current, json.data!]);
+      setCreateEventDate(null);
+      setEditingCalendarEvent(null);
+      toast.success(eventId ? pick("Calendar Event가 수정되었습니다.", "Calendar Event updated.") : pick("Calendar Event가 생성되었습니다.", "Calendar Event created."));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("Calendar Event 저장에 실패했습니다.", "Failed to save Calendar Event."));
+      throw error;
+    }
+  }
+
+  async function deleteTimelineCalendarEvent(eventId: string) {
+    try {
+      const response = await fetch(apiPath(`/api/container-calendar-events?id=${encodeURIComponent(eventId)}`), { method: "DELETE" });
+      const json = await response.json() as { success?: boolean; error?: string };
+      if (!response.ok || !json.success) throw new Error(json.error ?? "Failed to delete Calendar Event");
+      setCalendarEvents((current) => current.filter((event) => event.id !== eventId));
+      setEditingCalendarEvent(null);
+      toast.success(pick("Calendar Event가 삭제되었습니다.", "Calendar Event deleted."));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("Calendar Event 삭제에 실패했습니다.", "Failed to delete Calendar Event."));
+      throw error;
+    }
+  }
+
+  async function moveTimelineCalendarEvent(eventId: string, eventDate: string) {
+    if (!canEditTimeline) {
+      toast.error(pick("Calendar 수정 권한이 없습니다.", "Calendar edit access is required."));
+      return;
+    }
+    const event = calendarEvents.find((item) => item.id === eventId);
+    if (!event || event.eventDate === eventDate) return;
+    const previous = calendarEvents;
+    const moved = { ...event, eventDate };
+    setCalendarEvents((current) => current.map((item) => item.id === eventId ? moved : item));
+    try {
+      const response = await fetch(apiPath(`/api/container-calendar-events?id=${encodeURIComponent(eventId)}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: event.title, eventDate, calendarColor: event.calendarColor }),
+      });
+      const json = await response.json() as { success?: boolean; data?: TimelineCalendarEvent; error?: string };
+      if (!response.ok || !json.success || !json.data) throw new Error(json.error ?? "Failed to move Calendar Event");
+      setCalendarEvents((current) => current.map((item) => item.id === eventId ? json.data! : item));
+      toast.success(pick("Calendar Event 날짜가 변경되었습니다.", "Calendar Event date updated."));
+    } catch (error) {
+      setCalendarEvents(previous);
+      toast.error(error instanceof Error ? error.message : pick("Calendar Event 이동에 실패했습니다.", "Failed to move Calendar Event."));
+    }
+  }
+
   function exportToExcel() {
     const visibleContainers = grouped.flatMap((g) => g.items);
     const rows: (string | number)[][] = [
@@ -1093,6 +1272,7 @@ export function ContainerTimelinePage() {
         {period === "monthly" && (
           <CalendarMonthView
             containers={searchMatchedContainers}
+            calendarEvents={calendarEvents}
             activeStatuses={activeStatuses}
             calendarMonth={calendarMonth}
             setCalendarMonth={setCalendarMonth}
@@ -1102,6 +1282,17 @@ export function ContainerTimelinePage() {
             pick={pick}
             canDragDrop={canEditTimeline}
             onMoveContainer={moveContainerToDate}
+            onDateClick={(date) => {
+              setSelected(null);
+              setEditingCalendarEvent(null);
+              setCreateEventDate(date);
+            }}
+            onCalendarEventClick={(event) => {
+              setSelected(null);
+              setCreateEventDate(null);
+              setEditingCalendarEvent(event);
+            }}
+            onMoveCalendarEvent={moveTimelineCalendarEvent}
           />
         )}
 
@@ -1223,7 +1414,7 @@ export function ContainerTimelinePage() {
                         >
                           <span
                             className="w-2 h-2 rounded-full shrink-0 border border-black/10"
-                            style={{ backgroundColor: STATUS_COLOR[c.status] }}
+                            style={{ backgroundColor: containerDisplayColor(c) }}
                           />
                           <span className="font-mono text-[11px] font-bold text-[#1a1917] truncate flex-1">
                             {confirmedChipLabel(c, pick)}
@@ -1247,8 +1438,8 @@ export function ContainerTimelinePage() {
                             <span
                               className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10"
                               style={{
-                                backgroundColor: STATUS_COLOR[c.status],
-                                boxShadow: `0 0 0 3px ${STATUS_COLOR[c.status]}30`,
+                                backgroundColor: containerDisplayColor(c),
+                                boxShadow: `0 0 0 3px ${containerDisplayColor(c)}30`,
                               }}
                             />
                             <span className="font-mono text-[12px] font-bold text-[#1a1917] truncate">
@@ -1314,7 +1505,7 @@ export function ContainerTimelinePage() {
                               left: `${bar.left}%`,
                               width: `${bar.width}%`,
                               minWidth: 56,
-                              background: STATUS_COLOR[c.status],
+                              background: containerDisplayColor(c),
                               opacity: isDraft ? 0.8 : 1,
                               ...(isDraft
                                 ? { border: "2px dashed rgba(255,255,255,0.45)" }
@@ -1388,7 +1579,21 @@ export function ContainerTimelinePage() {
           planningRowsBySku={planningRowsBySku}
           planningLoading={planningLoading}
           skuSearchQuery={searchQuery}
+          canEditColor={canEditTimeline}
+          onColorChange={changeContainerColor}
+          onDatesChange={saveContainerDates}
           onClose={() => setSelected(null)}
+        />
+      )}
+      {(createEventDate || editingCalendarEvent) && (
+        <CalendarEventEditorDrawer
+          key={editingCalendarEvent?.id ?? createEventDate}
+          date={editingCalendarEvent?.eventDate ?? createEventDate ?? ""}
+          event={editingCalendarEvent}
+          canEdit={canEditTimeline}
+          onSave={saveTimelineCalendarEvent}
+          onDelete={deleteTimelineCalendarEvent}
+          onClose={() => { setCreateEventDate(null); setEditingCalendarEvent(null); }}
         />
       )}
     </>
@@ -1404,11 +1609,15 @@ function CalendarDayCell({
   isSat,
   isSun,
   dayCells,
+  calendarEvents,
   selected,
   setSelected,
   pick,
   canDragDrop,
   onDropContainer,
+  onDateClick,
+  onCalendarEventClick,
+  onDropCalendarEvent,
 }: {
   date: Date;
   isCurrentMonth: boolean;
@@ -1416,15 +1625,20 @@ function CalendarDayCell({
   isSat: boolean;
   isSun: boolean;
   dayCells: Container[];
+  calendarEvents: TimelineCalendarEvent[];
   selected: Container | null;
   setSelected: (c: Container | null) => void;
   pick: (ko: string, en: string) => string;
   canDragDrop: boolean;
   onDropContainer: (containerId: string) => void;
+  onDateClick: () => void;
+  onCalendarEventClick: (event: TimelineCalendarEvent) => void;
+  onDropCalendarEvent: (eventId: string) => void;
 }) {
   const MAX_VISIBLE = 4;
-  const visible = dayCells.slice(0, MAX_VISIBLE);
-  const overflow = dayCells.length - MAX_VISIBLE;
+  const visibleEvents = calendarEvents.slice(0, MAX_VISIBLE);
+  const visible = dayCells.slice(0, Math.max(0, MAX_VISIBLE - visibleEvents.length));
+  const overflow = calendarEvents.length + dayCells.length - MAX_VISIBLE;
 
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
@@ -1456,6 +1670,11 @@ function CalendarDayCell({
     event.preventDefault();
     dragCounter.current = 0;
     setDragOver(false);
+    const calendarEventId = event.dataTransfer.getData("application/x-timeline-calendar-event");
+    if (calendarEventId) {
+      onDropCalendarEvent(calendarEventId);
+      return;
+    }
     const containerId = event.dataTransfer.getData("text/plain");
     if (containerId) onDropContainer(containerId);
   }
@@ -1471,7 +1690,7 @@ function CalendarDayCell({
       const spaceRight = window.innerWidth - rect.left;
       const x = spaceRight < 272 ? rect.right - 260 : rect.left;
       const spaceBelow = window.innerHeight - rect.bottom;
-      const y = spaceBelow < 300 ? rect.top - 8 - Math.min(dayCells.length * 38 + 48, 300) : rect.bottom + 4;
+      const y = spaceBelow < 300 ? rect.top - 8 - Math.min((dayCells.length + calendarEvents.length) * 38 + 48, 300) : rect.bottom + 4;
       setPopupPos({ x, y });
     }
     setPopupOpen(true);
@@ -1487,6 +1706,7 @@ function CalendarDayCell({
 
   return (
     <div
+      onClick={onDateClick}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
@@ -1522,6 +1742,24 @@ function CalendarDayCell({
 
       {/* Visible chips */}
       <div className="flex flex-col gap-0.5">
+        {visibleEvents.map((event) => (
+          <button
+            key={`event-${event.id}`}
+            type="button"
+            draggable={canDragDrop}
+            onDragStart={(dragEvent) => {
+              if (!canDragDrop) return;
+              dragEvent.dataTransfer.setData("application/x-timeline-calendar-event", event.id);
+              dragEvent.dataTransfer.effectAllowed = "move";
+            }}
+            onClick={(clickEvent) => { clickEvent.stopPropagation(); onCalendarEventClick(event); }}
+            title={event.title}
+            className={`flex w-full items-center rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity hover:opacity-90 ${canDragDrop ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+            style={{ backgroundColor: event.calendarColor }}
+          >
+            <span className="min-w-0 flex-1 truncate">{event.title}</span>
+          </button>
+        ))}
         {visible.map((c) => {
           const isSelected = selected?.id === c.id;
           return (
@@ -1534,12 +1772,15 @@ function CalendarDayCell({
                 event.dataTransfer.setData("text/plain", c.id);
                 event.dataTransfer.effectAllowed = "move";
               }}
-              onClick={() => setSelected(isSelected ? null : c)}
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelected(isSelected ? null : c);
+              }}
               title={`${c.containerNumber} · ${STATUS_LABEL_FULL[c.status]}${c.confirmedDate ? ` · ${pick("확정", "Confirmed")} ${c.confirmedDate}${c.confirmedTime ? ` ${c.confirmedTime}` : ""}${c.destWarehouse ? ` · ${c.destWarehouse}` : ""}` : ""}`}
               className={`flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-white transition-opacity hover:opacity-90 ${canDragDrop ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
                 isSelected ? "ring-2 ring-white ring-offset-1" : ""
               }`}
-              style={{ backgroundColor: STATUS_COLOR[c.status] }}
+              style={{ backgroundColor: containerDisplayColor(c) }}
             >
               <span className="min-w-0 flex-1 truncate">{confirmedChipLabel(c, pick)}</span>
               {c.itemCount > 0 && (
@@ -1556,6 +1797,7 @@ function CalendarDayCell({
           <button
             ref={overflowRef}
             type="button"
+            onClick={(event) => event.stopPropagation()}
             onMouseEnter={openPopup}
             onMouseLeave={scheduleClose}
             className="px-1.5 text-left text-[10px] font-semibold text-[#1a5cdb] hover:underline"
@@ -1568,6 +1810,7 @@ function CalendarDayCell({
       {/* Overflow popup (fixed-positioned so it escapes the cell) */}
       {popupOpen && popupPos && (
         <div
+          onClick={(event) => event.stopPropagation()}
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
           className="fixed z-50 w-64 overflow-hidden rounded-xl border border-[#e2dfd8] bg-white shadow-2xl"
@@ -1579,12 +1822,18 @@ function CalendarDayCell({
               {date.toLocaleDateString(pick("ko-KR", "en-US"), { month: "long", day: "numeric" })}
             </span>
             <span className="ml-1.5 text-[11px] text-muted-foreground">
-              · {dayCells.length}{pick("개", " containers")}
+              · {dayCells.length + calendarEvents.length}{pick("개", " events")}
             </span>
           </div>
 
           {/* All containers list */}
           <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto p-2">
+            {calendarEvents.map((event) => (
+              <button key={`event-${event.id}`} type="button" draggable={canDragDrop} onDragStart={(dragEvent) => { if (!canDragDrop) return; dragEvent.dataTransfer.setData("application/x-timeline-calendar-event", event.id); dragEvent.dataTransfer.effectAllowed = "move"; setPopupOpen(false); }} onClick={() => { onCalendarEventClick(event); setPopupOpen(false); }} className={`flex w-full items-center rounded-lg px-2.5 py-2 text-left text-white transition-opacity hover:opacity-90 ${canDragDrop ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`} style={{ backgroundColor: event.calendarColor }}>
+                <span className="flex-1 truncate text-[11px] font-bold">{event.title}</span>
+                <span className="text-[9px] font-semibold opacity-80">Event</span>
+              </button>
+            ))}
             {dayCells.map((c) => {
               const isSelected = selected?.id === c.id;
               return (
@@ -1605,7 +1854,7 @@ function CalendarDayCell({
                   className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-white transition-opacity hover:opacity-90 ${canDragDrop ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${
                     isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-white" : ""
                   }`}
-                  style={{ backgroundColor: STATUS_COLOR[c.status] }}
+                  style={{ backgroundColor: containerDisplayColor(c) }}
                 >
                   <span className="flex-1 truncate text-[11px] font-bold">{confirmedChipLabel(c, pick)}</span>
                   <span className="shrink-0 text-[9px] font-semibold opacity-80">
@@ -1633,6 +1882,7 @@ const DAY_NAMES_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function CalendarMonthView({
   containers,
+  calendarEvents,
   activeStatuses,
   calendarMonth,
   setCalendarMonth,
@@ -1642,8 +1892,12 @@ function CalendarMonthView({
   pick,
   canDragDrop,
   onMoveContainer,
+  onDateClick,
+  onCalendarEventClick,
+  onMoveCalendarEvent,
 }: {
   containers: Container[];
+  calendarEvents: TimelineCalendarEvent[];
   activeStatuses: Set<ContainerStatus>;
   calendarMonth: Date;
   setCalendarMonth: (d: Date) => void;
@@ -1653,6 +1907,9 @@ function CalendarMonthView({
   pick: (ko: string, en: string) => string;
   canDragDrop: boolean;
   onMoveContainer: (containerId: string, newDate: string) => void;
+  onDateClick: (date: string) => void;
+  onCalendarEventClick: (event: TimelineCalendarEvent) => void;
+  onMoveCalendarEvent: (eventId: string, newDate: string) => void;
 }) {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
@@ -1668,6 +1925,7 @@ function CalendarMonthView({
 
   // Build date-keyed map of containers (filtered by status)
   const containersByDate = new Map<string, Container[]>();
+  const eventsByDate = new Map<string, TimelineCalendarEvent[]>();
   let monthTotal = 0;
   for (const c of containers) {
     if (!activeStatuses.has(c.status)) continue;
@@ -1678,6 +1936,13 @@ function CalendarMonthView({
     containersByDate.set(dateStr, list);
     // Count only containers whose date falls in the displayed month
     const d = new Date(dateStr + "T00:00:00");
+    if (d.getFullYear() === year && d.getMonth() === month) monthTotal++;
+  }
+  for (const event of calendarEvents) {
+    const list = eventsByDate.get(event.eventDate) ?? [];
+    list.push(event);
+    eventsByDate.set(event.eventDate, list);
+    const d = new Date(event.eventDate + "T00:00:00");
     if (d.getFullYear() === year && d.getMonth() === month) monthTotal++;
   }
 
@@ -1771,11 +2036,15 @@ function CalendarMonthView({
                 isSat={di === 5}
                 isSun={di === 6}
                 dayCells={containersByDate.get(dateKey) ?? []}
+                calendarEvents={eventsByDate.get(dateKey) ?? []}
                 selected={selected}
                 setSelected={setSelected}
                 pick={pick}
                 canDragDrop={canDragDrop}
                 onDropContainer={(containerId) => onMoveContainer(containerId, dateKey)}
+                onDateClick={() => onDateClick(dateKey)}
+                onCalendarEventClick={onCalendarEventClick}
+                onDropCalendarEvent={(eventId) => onMoveCalendarEvent(eventId, dateKey)}
               />
             );
           })}
@@ -1943,7 +2212,7 @@ function ContainerScheduleView({
                           isSelected ? "border-[#9db7f5] bg-[#ebf0fd] ring-1 ring-inset ring-[#9db7f5]" : "border-[#e2dfd8] bg-white"
                         }`}
                       >
-                        <span className="mt-1.5 h-2.5 w-2.5 rounded-full border border-black/10" style={{ background: STATUS_COLOR[container.status] }} />
+                        <span className="mt-1.5 h-2.5 w-2.5 rounded-full border border-black/10" style={{ background: containerDisplayColor(container) }} />
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-1.5">
                             <span className="truncate font-mono text-[13px] font-bold text-[#1a1917]">
@@ -1981,12 +2250,18 @@ function ContainerDetailDrawer({
   planningRowsBySku,
   planningLoading,
   skuSearchQuery,
+  canEditColor,
+  onColorChange,
+  onDatesChange,
   onClose,
 }: {
   container: Container;
   planningRowsBySku: Record<string, DemandRow>;
   planningLoading: boolean;
   skuSearchQuery: string;
+  canEditColor: boolean;
+  onColorChange: (containerId: string, color: string | null) => void | Promise<void>;
+  onDatesChange: (containerId: string, dates: ContainerDateValues) => Promise<void>;
   onClose: () => void;
 }) {
   const { pick } = useI18n();
@@ -1994,6 +2269,14 @@ function ContainerDetailDrawer({
   const [activeTab, setActiveTab] = useState<"sku" | "history">("sku");
   const [localSkuFilter, setLocalSkuFilter] = useState("");
   const [selectedSkuRowId, setSelectedSkuRowId] = useState<string | null>(null);
+  const [editingDates, setEditingDates] = useState(false);
+  const [savingDates, setSavingDates] = useState(false);
+  const [dateDraft, setDateDraft] = useState<ContainerDateValues>({
+    estLoadingDate: c.estLoadingDate ?? "",
+    etdNgbDate: c.etdNgbDate ?? "",
+    etaLaxLgbDate: c.etaLaxLgbDate ?? "",
+    etaDate: c.etaDate ?? "",
+  });
   const highlightedSkuRowRef = useRef<HTMLTableRowElement | null>(null);
   const [skuSort, setSkuSort] = useState<{ key: SkuImpactSortKey; direction: SortDirection }>({
     key: "sku",
@@ -2083,25 +2366,16 @@ function ContainerDetailDrawer({
     );
   }
 
-  const displayDate =
-    c.status === "complete" && c.actualArrivalDate ? c.actualArrivalDate : c.etaDate;
-  const dateFields = [
-    { label: pick("예상 선적일", "Est. Loading"), value: c.estLoadingDate },
-    { label: "ETD NGB", value: c.etdNgbDate },
-    { label: "ETA LAX/LGB", value: c.etaLaxLgbDate },
-    {
-      label: c.status === "complete" ? pick("실제 입고", "Actual Arrival") : pick("창고 입고일 (ETA)", "Warehouse (ETA)"),
-      value: displayDate,
-      accent: c.status === "complete",
-    },
-    ...(c.confirmedDate
-      ? [{
-          label: pick("입고 확정", "Confirmed Delivery"),
-          value: [c.confirmedDate, c.confirmedTime, c.destWarehouse].filter(Boolean).join(" · "),
-          accent: true,
-        }]
-      : []),
-  ];
+  async function saveDates() {
+    if (!dateDraft.etaDate || savingDates) return;
+    setSavingDates(true);
+    try {
+      await onDatesChange(c.id, dateDraft);
+      setEditingDates(false);
+    } finally {
+      setSavingDates(false);
+    }
+  }
 
   return (
     <>
@@ -2123,16 +2397,23 @@ function ContainerDetailDrawer({
         <div className="flex items-start justify-between px-6 py-4 border-b border-[#e2dfd8] bg-white shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-base font-bold text-[#1a1917]">
+              <span className="inline-flex h-7 items-center font-mono text-base font-bold text-[#1a1917]">
                 {c.containerNumber}
               </span>
               <span
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${STATUS_PILL[c.status]}`}
+                className={`inline-flex h-7 items-center rounded-md px-2 text-[11px] font-semibold ${STATUS_PILL[c.status]}`}
               >
                 {STATUS_LABEL_FULL[c.status]}
               </span>
+              <ContainerColorPicker
+                value={c.calendarColor}
+                defaultColor={STATUS_COLOR[c.status]}
+                disabled={!canEditColor}
+                compact
+                onChange={(color) => onColorChange(c.id, color)}
+              />
               {detailProductKeys.map((key) => (
-                <span key={key} className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${PRODUCT_BADGE[key]}`}>
+                <span key={key} className={`inline-flex h-7 items-center rounded px-1.5 text-[10px] font-bold ${PRODUCT_BADGE[key]}`}>
                   {key.toUpperCase()}
                 </span>
               ))}
@@ -2176,17 +2457,24 @@ function ContainerDetailDrawer({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {dateFields.map((field) => (
-                <div key={field.label} className="rounded-lg border border-[#e2dfd8] bg-[#fafaf7] px-3 py-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-                    {field.label}
-                  </div>
-                  <div className={`mt-0.5 font-mono text-xs font-semibold ${field.accent ? "text-[#22a666]" : "text-foreground"}`}>
-                    {field.value ?? "—"}
-                  </div>
-                </div>
-              ))}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Calendar Event</span>
+                {canEditColor && c.status !== "complete" && (
+                  editingDates ? (
+                    <div className="flex items-center gap-1.5">
+                      <button type="button" disabled={savingDates} onClick={() => { setDateDraft({ estLoadingDate: c.estLoadingDate ?? "", etdNgbDate: c.etdNgbDate ?? "", etaLaxLgbDate: c.etaLaxLgbDate ?? "", etaDate: c.etaDate ?? "" }); setEditingDates(false); }} className="h-7 rounded-md border border-[#d8d6ce] bg-white px-3 text-[10px] font-semibold hover:bg-stone-50 disabled:opacity-50">{pick("취소", "Cancel")}</button>
+                      <button type="button" disabled={savingDates || !dateDraft.etaDate} onClick={() => void saveDates()} className="h-7 rounded-md bg-[#1a5cdb] px-3 text-[10px] font-semibold text-white hover:bg-[#1650c4] disabled:opacity-50">{savingDates ? pick("저장 중...", "Saving...") : pick("저장", "Save")}</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => setEditingDates(true)} className="h-7 rounded-md border border-[#b9c9ee] bg-white px-3 text-[10px] font-semibold text-[#1a5cdb] hover:bg-blue-50">{pick("날짜 수정", "Edit dates")}</button>
+                  )
+                )}
+              </div>
+              <ContainerDateFieldsEditor value={dateDraft} onChange={setDateDraft} disabled={!editingDates || savingDates} />
+              {c.confirmedDate && (
+                <div className="mt-2 text-[10px] font-semibold text-emerald-600">{pick("입고 확정", "Confirmed Delivery")}: {[c.confirmedDate, c.confirmedTime, c.destWarehouse].filter(Boolean).join(" · ")}</div>
+              )}
             </div>
 
             {(c.actualArrivalDate && c.status !== "complete" || c.origin) && (
@@ -2212,7 +2500,7 @@ function ContainerDetailDrawer({
               <div className="h-2 rounded-full bg-[#f0eee9] overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all"
-                  style={{ width: `${cbmUsedPct}%`, background: STATUS_COLOR[c.status] }}
+                  style={{ width: `${cbmUsedPct}%`, background: containerDisplayColor(c) }}
                 />
               </div>
             </div>

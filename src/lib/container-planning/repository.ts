@@ -88,6 +88,7 @@ export interface ContainerListRow {
   origin: string | null;
   destWarehouse: string | null;
   note: string | null;
+  calendarColor: string | null;
   itemCount: number;
   totalQty: number;
   totalCbm: number;
@@ -129,6 +130,7 @@ export interface ExistingContainerRow {
   factoryName: string | null;
   destWarehouse: string | null;
   note: string | null;
+  calendarColor: string | null;
   estLoading: string | null;
   etdNgb: string | null;
   etaLaxLgb: string | null;
@@ -209,6 +211,7 @@ export const AUDIT_ACTIONS = new Set([
   "eta_change",
   "eta_lax_lgb_change",
   "confirmed_change",
+  "color_change",
   "items_update",
   "note_added",
   "create",
@@ -276,6 +279,7 @@ export const ContainerPlanningRepository = {
          c.origin,
          c.dest_warehouse,
          c.note,
+         c.calendar_color,
          c.est_loading_date,
          c.etd_ngb_date,
          c.eta_lax_lgb_date,
@@ -354,6 +358,7 @@ export const ContainerPlanningRepository = {
       origin: row.origin as string | null,
       destWarehouse: row.dest_warehouse as string | null,
       note: row.note as string | null,
+      calendarColor: row.calendar_color as string | null,
       itemCount: Number(row.item_count ?? 0),
       totalQty: Number(row.total_qty ?? 0),
       totalCbm: Number(row.total_cbm ?? 0),
@@ -456,6 +461,7 @@ export const ContainerPlanningRepository = {
               factory_name,
               dest_warehouse,
               note,
+              calendar_color,
               est_loading_date::text AS est_loading,
               etd_ngb_date::text AS etd_ngb,
               eta_lax_lgb_date::text AS eta_lax_lgb,
@@ -474,6 +480,7 @@ export const ContainerPlanningRepository = {
       factoryName: row.factory_name,
       destWarehouse: row.dest_warehouse,
       note: row.note,
+      calendarColor: row.calendar_color,
       estLoading: row.est_loading,
       etdNgb: row.etd_ngb,
       etaLaxLgb: row.eta_lax_lgb,
@@ -495,6 +502,18 @@ export const ContainerPlanningRepository = {
        WHERE id = $1::bigint
        RETURNING id`,
       [id, dbStatus],
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  async updateCalendarColor(id: string, calendarColor: string | null, executor: SqlExecutor = pool()): Promise<boolean> {
+    const result = await executor.query(
+      `UPDATE shipcore.fc_containers
+       SET calendar_color = $2,
+           updated_at = NOW()
+       WHERE id = $1::bigint
+       RETURNING id`,
+      [id, calendarColor],
     );
     return (result.rowCount ?? 0) > 0;
   },

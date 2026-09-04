@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Calendar, CheckCircle2, Clock, MessageSquare, Package, Pencil, Plus, PlusCircle, Trash2 } from "lucide-react";
+import { Calendar, CheckCircle2, Clock, MessageSquare, Package, Palette, Pencil, Plus, PlusCircle, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
@@ -76,6 +76,7 @@ function EntryIcon({ action }: { action: ContainerAuditAction }) {
     eta_change:     { Icon: Calendar,       bg: "bg-amber-50",   color: "text-amber-500" },
     eta_lax_lgb_change: { Icon: Calendar,   bg: "bg-amber-50",   color: "text-amber-500" },
     confirmed_change: { Icon: CheckCircle2, bg: "bg-teal-50",    color: "text-teal-600" },
+    color_change:   { Icon: Palette,        bg: "bg-violet-50",  color: "text-violet-500" },
     details_update: { Icon: Pencil,         bg: "bg-stone-100",  color: "text-stone-500" },
     items_update:   { Icon: Package,        bg: "bg-purple-50",  color: "text-purple-500" },
     note_added:     { Icon: MessageSquare,  bg: "bg-green-50",   color: "text-green-600" },
@@ -153,6 +154,17 @@ function BeforeAfter({ action, before, after }: Pick<AuditEntry, "action" | "bef
       </div>
     );
   }
+  if (action === "color_change") {
+    const beforeColor = typeof before?.calendarColor === "string" ? before.calendarColor : null;
+    const afterColor = typeof after?.calendarColor === "string" ? after.calendarColor : null;
+    return (
+      <div className="flex shrink-0 items-center gap-2 text-[11px]">
+        <span className="h-5 w-5 rounded-full border border-stone-300 bg-stone-100" style={beforeColor ? { backgroundColor: beforeColor } : undefined} />
+        <span className="text-stone-300">→</span>
+        <span className="h-5 w-5 rounded-full border border-stone-300 bg-stone-100" style={afterColor ? { backgroundColor: afterColor } : undefined} />
+      </div>
+    );
+  }
   if (action === "items_update" && before && after) {
     return (
       <div className="flex shrink-0 items-center gap-2 text-[11px]">
@@ -212,6 +224,7 @@ function HistoryEntry({
       case "eta_change":     return pick("ETA 변경", "ETA changed");
       case "eta_lax_lgb_change": return pick("ETA LAX/LGB 변경", "ETA LAX/LGB changed");
       case "confirmed_change": return pick("입고 확정일 변경", "Confirmed delivery changed");
+      case "color_change": return pick("색상 변경", "Color changed");
       case "details_update": return pick("정보 수정", "Details updated");
       case "items_update": {
         const n = Number(entry.after?.skuCount ?? 0);
@@ -242,6 +255,8 @@ function HistoryEntry({
           v?.confirmedDate ? `${String(v.confirmedDate)}${v.confirmedTime ? ` ${String(v.confirmedTime)}` : ""}` : pick("확정 안됨", "Not confirmed");
         return `${fmt(entry.before)} → ${fmt(entry.after)}`;
       }
+      case "color_change":
+        return entry.after?.calendarColor ? pick("사용자 지정 색상", "Custom color") : pick("기본 상태 색상", "Default status color");
       case "items_update":
         return pick("SKU 추가·삭제 또는 수량 변경", "Items added, removed, or quantity changed");
       case "details_update": {
@@ -515,6 +530,7 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
             <option value="eta_change">{pick("ETA 수정", "ETA Change")}</option>
             <option value="eta_lax_lgb_change">{pick("ETA LAX/LGB 변경", "ETA LAX/LGB Change")}</option>
             <option value="confirmed_change">{pick("입고 확정일 변경", "Confirmed Delivery")}</option>
+            <option value="color_change">{pick("색상 변경", "Color Change")}</option>
             <option value="details_update">{pick("정보 수정", "Details Update")}</option>
             <option value="items_update">{pick("수량/SKU 변경", "Item Change")}</option>
             <option value="note_added">{pick("메모", "Note")}</option>

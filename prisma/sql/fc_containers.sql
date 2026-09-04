@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS shipcore.fc_containers (
   factory_name        VARCHAR(128),
   origin              VARCHAR(128),
   dest_warehouse      VARCHAR(128),
+  calendar_color      VARCHAR(7),
   created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
   CONSTRAINT fc_containers_number_uk UNIQUE (container_number)

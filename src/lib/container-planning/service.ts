@@ -1,7 +1,7 @@
 /**
  * Business logic for the Container Planning domain: container CRUD, the
- * five PATCH sub-contracts multiplexed onto /api/containers (status-only,
- * confirmed-only, details-only, eta-only, eta-lax-lgb-only, and full
+ * focused PATCH sub-contracts multiplexed onto /api/containers (status-only,
+ * color-only, confirmed-only, details-only, eta-only, eta-lax-lgb-only, and full
  * replace), container item mutations, auto-fill, container audit history,
  * and the manual allocate/deallocate flow.
  *
@@ -133,6 +133,27 @@ export const ContainerPlanningService = {
         action: "status_change",
         before: { status: oldStatus },
         after: { status: newStatus },
+        ip: who.ip,
+      });
+    }
+
+    return { id };
+  },
+
+  async updateCalendarColor(id: string, existing: ExistingContainerRow, calendarColor: string | null, who: Who): Promise<{ id: string }> {
+    const updated = await ContainerPlanningRepository.updateCalendarColor(id, calendarColor);
+    if (!updated) throw new NotFoundError("Container not found");
+
+    if (existing.calendarColor !== calendarColor) {
+      void logContainerAudit({
+        containerId: id,
+        containerNumber: existing.containerNumber,
+        userId: who.userId,
+        userName: who.userName,
+        userEmail: who.userEmail,
+        action: "color_change",
+        before: { calendarColor: existing.calendarColor },
+        after: { calendarColor },
         ip: who.ip,
       });
     }

@@ -33,6 +33,7 @@ export interface MockContainer {
   confirmedDate?: string | null;
   confirmedTime?: string | null;
   status: ContainerStatus;
+  calendarColor?: string | null;
   cbmCapacity: number;
   factory: string;
   origin?: string;
