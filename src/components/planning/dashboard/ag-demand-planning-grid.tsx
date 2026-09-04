@@ -3480,6 +3480,8 @@ export function AgDemandPlanningGrid({
   const selectionListenersRef = useRef(new Set<() => void>());
   const dragSelectionFrameRef = useRef<number | null>(null);
   const pendingDragSelectionRef = useRef<SelectedAgCell[] | null>(null);
+  const columnDragAutoScrollRef = useRef({ active: false, clientX: 0, clientY: 0, frame: null as number | null });
+  const columnDragAutoScrollTickRef = useRef<() => void>(() => {});
   const appliedColumnStructureRef = useRef<string | null>(null);
   const columnWidthsRef = useRef(columnWidths);
   const columnTextFormatsRef = useRef(columnTextFormats);
@@ -3859,6 +3861,69 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const observer = new ResizeObserver(updateWidth);
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const dragState = columnDragAutoScrollRef.current;
+    const handleMouseMove = (event: MouseEvent) => {
+      dragState.clientX = event.clientX;
+      dragState.clientY = event.clientY;
+    };
+    const stopAutoScroll = () => {
+      dragState.active = false;
+      if (dragState.frame !== null) window.cancelAnimationFrame(dragState.frame);
+      dragState.frame = null;
+    };
+    const tick = () => {
+      dragState.frame = null;
+      if (!dragState.active) return;
+      const host = gridHostRef.current;
+      const centerViewport = host?.querySelector<HTMLElement>(".ag-center-cols-viewport");
+      const horizontalViewport = host?.querySelector<HTMLElement>(".ag-body-horizontal-scroll-viewport");
+      if (host && centerViewport) {
+        const rect = centerViewport.getBoundingClientRect();
+        const edgeSize = Math.min(96, Math.max(48, rect.width * 0.14));
+        let delta = 0;
+        if (dragState.clientX > rect.right - edgeSize) {
+          const ratio = Math.min(1, (dragState.clientX - (rect.right - edgeSize)) / edgeSize);
+          delta = Math.ceil(4 + ratio * 24);
+        } else if (dragState.clientX < rect.left + edgeSize) {
+          const ratio = Math.min(1, ((rect.left + edgeSize) - dragState.clientX) / edgeSize);
+          delta = -Math.ceil(4 + ratio * 24);
+        }
+
+        if (delta !== 0) {
+          const candidates = [horizontalViewport, centerViewport, host].filter((element): element is HTMLElement => Boolean(element));
+          const scrollTarget = candidates.reduce((best, element) => {
+            const overflow = element.scrollWidth - element.clientWidth;
+            const bestOverflow = best.scrollWidth - best.clientWidth;
+            return overflow > bestOverflow ? element : best;
+          }, candidates[0]);
+          const before = scrollTarget.scrollLeft;
+          scrollTarget.scrollLeft += delta;
+          if (scrollTarget.scrollLeft !== before) {
+            const pointerTarget = document.elementFromPoint(dragState.clientX, dragState.clientY);
+            pointerTarget?.dispatchEvent(new MouseEvent("mousemove", {
+              bubbles: true,
+              buttons: 1,
+              clientX: dragState.clientX,
+              clientY: dragState.clientY,
+            }));
+          }
+        }
+      }
+      dragState.frame = window.requestAnimationFrame(tick);
+    };
+    columnDragAutoScrollTickRef.current = tick;
+    window.addEventListener("mousemove", handleMouseMove, true);
+    window.addEventListener("mouseup", stopAutoScroll, true);
+    window.addEventListener("blur", stopAutoScroll);
+    return () => {
+      stopAutoScroll();
+      window.removeEventListener("mousemove", handleMouseMove, true);
+      window.removeEventListener("mouseup", stopAutoScroll, true);
+      window.removeEventListener("blur", stopAutoScroll);
+    };
   }, []);
 
   useEffect(() => {
@@ -6629,6 +6694,33 @@ autoFilling3: autoFillingContainers3.has(container.name),
             suppressCellFocus
             maintainColumnOrder
             suppressDragLeaveHidesColumns
+            onDragStarted={(event) => {
+              const target = event.target instanceof Element ? event.target : null;
+              const pointerTarget = document.elementFromPoint(
+                columnDragAutoScrollRef.current.clientX,
+                columnDragAutoScrollRef.current.clientY,
+              );
+              const header = target?.closest(".ag-header-cell, .ag-header-group-cell")
+                ?? pointerTarget?.closest(".ag-header-cell, .ag-header-group-cell");
+              if (!header || pointerTarget?.closest(".ag-header-cell-resize")) return;
+              const dragState = columnDragAutoScrollRef.current;
+              dragState.active = true;
+              if (dragState.frame === null) {
+                dragState.frame = window.requestAnimationFrame(columnDragAutoScrollTickRef.current);
+              }
+            }}
+            onDragStopped={() => {
+              const dragState = columnDragAutoScrollRef.current;
+              dragState.active = false;
+              if (dragState.frame !== null) window.cancelAnimationFrame(dragState.frame);
+              dragState.frame = null;
+            }}
+            onDragCancelled={() => {
+              const dragState = columnDragAutoScrollRef.current;
+              dragState.active = false;
+              if (dragState.frame !== null) window.cancelAnimationFrame(dragState.frame);
+              dragState.frame = null;
+            }}
             onColumnMoved={(event) => {
               if (!event.finished || event.source !== "uiColumnMoved") return;
               const affectedColumns = new Set(event.columns ?? (event.column ? [event.column] : []));
