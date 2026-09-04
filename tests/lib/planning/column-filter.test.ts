@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyColumnFilters, matchesCondition, type ColumnFilter, type ConditionFilter,
+  applyColumnFilters, distinctColumnValues, distinctColumnValuesExcluding,
+  matchesCondition, type ColumnFilter, type ConditionFilter,
 } from "@/lib/planning/column-filter";
 
 describe("matchesCondition", () => {
@@ -104,5 +105,70 @@ describe("applyColumnFilters with ColumnFilter (values + condition)", () => {
     const fillColors = { qty: (_row: Row) => "#f0f" };
     const textColors = { qty: (row: Row) => row.sku === "C" ? "#f0f" : "" };
     expect(applyColumnFilters(rows, filters, accessors, undefined, fillColors, textColors).map((row) => row.sku)).toEqual(["C"]);
+  });
+});
+
+describe("distinctColumnValues", () => {
+  type NumRow = { n: number | null | string };
+
+  const distinctOf = (rows: NumRow[]) =>
+    distinctColumnValues(rows, (row) => row.n, {
+      formatValue: (row) => String(row.n),
+      blankLabel: "(Blank)",
+    });
+
+  it("sorts numeric values as numbers, not by first appearance or as text", () => {
+    // The reported case: the rows happen to arrive 2, 4, 1, 10.
+    const values = distinctOf([{ n: 2 }, { n: 4 }, { n: 1 }, { n: 10 }]);
+    expect(values.map((v) => v.label)).toEqual(["1", "2", "4", "10"]);
+    // Not the lexicographic order a naive sort would have produced.
+    expect(values.map((v) => v.label)).not.toEqual(["1", "10", "2", "4"]);
+  });
+
+  it("puts negatives in the right place", () => {
+    const values = distinctOf([{ n: 3 }, { n: -5 }, { n: 0 }, { n: -10 }]);
+    expect(values.map((v) => v.label)).toEqual(["-10", "-5", "0", "3"]);
+  });
+
+  it("sorts text with numeric collation so SKU-2 precedes SKU-10", () => {
+    const values = distinctOf([{ n: "SKU-10" }, { n: "SKU-2" }, { n: "SKU-1" }]);
+    expect(values.map((v) => v.label)).toEqual(["SKU-1", "SKU-2", "SKU-10"]);
+  });
+
+  it("keeps blanks last whatever row they first appear in, with the blank label", () => {
+    const values = distinctOf([{ n: null }, { n: 7 }, { n: 2 }]);
+    expect(values.map((v) => v.label)).toEqual(["2", "7", "(Blank)"]);
+  });
+
+  it("puts numbers above text when one column holds both", () => {
+    const values = distinctOf([{ n: "N/A" }, { n: 5 }, { n: "TBD" }, { n: -1 }]);
+    expect(values.map((v) => v.label)).toEqual(["-1", "5", "N/A", "TBD"]);
+  });
+
+  it("counts each distinct value regardless of the new ordering", () => {
+    const values = distinctOf([{ n: 10 }, { n: 2 }, { n: 10 }, { n: null }, { n: 2 }, { n: 10 }]);
+    expect(values).toEqual([
+      { value: "2", label: "2", count: 2 },
+      { value: "10", label: "10", count: 3 },
+      { value: expect.any(String), label: "(Blank)", count: 1 },
+    ]);
+  });
+
+  it("sorts the list distinctColumnValuesExcluding builds under other active filters", () => {
+    type Row = { sku: string; qty: number };
+    const rows: Row[] = [
+      { sku: "A", qty: 2 },
+      { sku: "A", qty: 10 },
+      { sku: "A", qty: 1 },
+      { sku: "B", qty: 99 },
+    ];
+    const accessors = { sku: (row: Row) => row.sku, qty: (row: Row) => row.qty };
+    const formatters = { sku: (row: Row) => row.sku, qty: (row: Row) => String(row.qty) };
+    const filters = new Map<"sku" | "qty", ColumnFilter>([
+      ["sku", { mode: "values", values: new Set(["A"]) }],
+    ]);
+
+    const values = distinctColumnValuesExcluding(rows, filters, accessors, formatters, "qty", "(Blank)");
+    expect(values.map((v) => v.label)).toEqual(["1", "2", "10"]);
   });
 });
