@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Calendar, CheckCircle2, Clock, MessageSquare, Package, Palette, Pencil, Plus, PlusCircle, Trash2 } from "lucide-react";
+import { Calendar, CheckCircle2, Clock, FileSpreadsheet, MessageSquare, Package, Palette, Pencil, Plus, PlusCircle, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { apiPath } from "@/lib/api-path";
 import { usePermissions } from "@/lib/hooks/use-permissions";
@@ -77,6 +77,8 @@ function EntryIcon({ action }: { action: ContainerAuditAction }) {
     eta_lax_lgb_change: { Icon: Calendar,   bg: "bg-amber-50",   color: "text-amber-500" },
     confirmed_change: { Icon: CheckCircle2, bg: "bg-teal-50",    color: "text-teal-600" },
     color_change:   { Icon: Palette,        bg: "bg-violet-50",  color: "text-violet-500" },
+    packing_list_upload: { Icon: FileSpreadsheet, bg: "bg-sky-50", color: "text-sky-600" },
+    packing_list_delete: { Icon: Trash2, bg: "bg-red-50", color: "text-red-500" },
     details_update: { Icon: Pencil,         bg: "bg-stone-100",  color: "text-stone-500" },
     items_update:   { Icon: Package,        bg: "bg-purple-50",  color: "text-purple-500" },
     note_added:     { Icon: MessageSquare,  bg: "bg-green-50",   color: "text-green-600" },
@@ -225,6 +227,8 @@ function HistoryEntry({
       case "eta_lax_lgb_change": return pick("ETA LAX/LGB 변경", "ETA LAX/LGB changed");
       case "confirmed_change": return pick("입고 확정일 변경", "Confirmed delivery changed");
       case "color_change": return pick("색상 변경", "Color changed");
+      case "packing_list_upload": return pick("Packing List 첨부", "Packing List attached");
+      case "packing_list_delete": return pick("Packing List 삭제", "Packing List deleted");
       case "details_update": return pick("정보 수정", "Details updated");
       case "items_update": {
         const n = Number(entry.after?.skuCount ?? 0);
@@ -257,6 +261,10 @@ function HistoryEntry({
       }
       case "color_change":
         return entry.after?.calendarColor ? pick("사용자 지정 색상", "Custom color") : pick("기본 상태 색상", "Default status color");
+      case "packing_list_upload":
+        return String(entry.after?.fileName ?? "");
+      case "packing_list_delete":
+        return String(entry.before?.fileName ?? "");
       case "items_update":
         return pick("SKU 추가·삭제 또는 수량 변경", "Items added, removed, or quantity changed");
       case "details_update": {
@@ -531,6 +539,8 @@ export function ContainerHistoryTab({ containerId }: { containerId: string }) {
             <option value="eta_lax_lgb_change">{pick("ETA LAX/LGB 변경", "ETA LAX/LGB Change")}</option>
             <option value="confirmed_change">{pick("입고 확정일 변경", "Confirmed Delivery")}</option>
             <option value="color_change">{pick("색상 변경", "Color Change")}</option>
+            <option value="packing_list_upload">{pick("Packing List 첨부", "Packing List Attachment")}</option>
+            <option value="packing_list_delete">{pick("Packing List 삭제", "Packing List Deletion")}</option>
             <option value="details_update">{pick("정보 수정", "Details Update")}</option>
             <option value="items_update">{pick("수량/SKU 변경", "Item Change")}</option>
             <option value="note_added">{pick("메모", "Note")}</option>

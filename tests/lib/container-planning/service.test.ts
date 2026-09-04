@@ -9,6 +9,9 @@ const repositoryMock = {
   getContainer: vi.fn(),
   lockContainer: vi.fn(),
   updateStatus: vi.fn(),
+  upsertPackingListFile: vi.fn(),
+  getPackingListFile: vi.fn(),
+  deletePackingListFile: vi.fn(),
   updateCalendarColor: vi.fn(),
   updateConfirmed: vi.fn(),
   updateDetails: vi.fn(),
@@ -95,7 +98,7 @@ describe("ContainerPlanningService PATCH branches", () => {
   const existing = {
     status: "draft", containerNumber: "C-1", eta: "2026-01-01", cbmCapacity: 80,
     factoryName: null, destWarehouse: null, note: null, estLoading: null, etdNgb: null, etaLaxLgb: null,
-    confirmedDate: null, confirmedTime: null, calendarColor: null,
+    confirmedDate: null, confirmedTime: null, calendarColor: null, packingListFileId: null,
   };
 
   it("getExistingOrThrow throws NotFoundError when missing", async () => {
@@ -118,6 +121,56 @@ describe("ContainerPlanningService PATCH branches", () => {
 
     await ContainerPlanningService.updateStatus("1", existing, "complete", WHO);
     expect(logContainerAuditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "status_change" }));
+  });
+
+  it("requires a Packing List before changing the status to Shipped", async () => {
+    await expect(
+      ContainerPlanningService.updateStatus("1", existing, "packing-list-received", WHO),
+    ).rejects.toThrow("A Packing List file is required");
+    expect(repositoryMock.updateStatus).not.toHaveBeenCalled();
+
+    repositoryMock.updateStatus.mockResolvedValue(true);
+    await expect(
+      ContainerPlanningService.updateStatus("1", { ...existing, packingListFileId: "9" }, "packing-list-received", WHO),
+    ).resolves.toEqual({ id: "1" });
+    expect(repositoryMock.updateStatus).toHaveBeenCalledWith("1", "shipped");
+  });
+
+  it("stores an Excel Packing List and rejects unsupported files", async () => {
+    repositoryMock.getContainer.mockResolvedValue(existing);
+    repositoryMock.upsertPackingListFile.mockResolvedValue({ id: "9", originalName: "packing-list.xlsx" });
+
+    const file = new File([new Uint8Array([1, 2, 3])], "packing-list.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    await expect(ContainerPlanningService.uploadPackingList("1", file, WHO)).resolves.toEqual({
+      id: "9",
+      originalName: "packing-list.xlsx",
+    });
+    expect(repositoryMock.upsertPackingListFile).toHaveBeenCalledWith(expect.objectContaining({
+      containerId: "1",
+      originalName: "packing-list.xlsx",
+      sizeBytes: 3,
+    }));
+
+    await expect(
+      ContainerPlanningService.uploadPackingList("1", new File(["x"], "packing-list.txt"), WHO),
+    ).rejects.toThrow("Excel or CSV");
+  });
+
+  it("deletes a Packing List before shipment and blocks deletion after shipment", async () => {
+    repositoryMock.getContainer.mockResolvedValue({ ...existing, packingListFileId: "9" });
+    repositoryMock.deletePackingListFile.mockResolvedValue({ id: "9", originalName: "packing-list.xlsx" });
+
+    await expect(ContainerPlanningService.deletePackingList("1", WHO)).resolves.toEqual({ id: "1" });
+    expect(repositoryMock.deletePackingListFile).toHaveBeenCalledWith("1");
+    expect(logContainerAuditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: "packing_list_delete",
+      before: { fileId: "9", fileName: "packing-list.xlsx" },
+    }));
+
+    repositoryMock.getContainer.mockResolvedValue({ ...existing, status: "shipped", packingListFileId: "9" });
+    await expect(ContainerPlanningService.deletePackingList("1", WHO)).rejects.toThrow(ConflictError);
   });
 
   it("updates and audits a custom calendar color, including resetting to default", async () => {

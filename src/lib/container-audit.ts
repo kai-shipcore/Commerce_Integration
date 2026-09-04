@@ -7,6 +7,8 @@ export type ContainerAuditAction =
   | "eta_lax_lgb_change"
   | "confirmed_change"
   | "color_change"
+  | "packing_list_upload"
+  | "packing_list_delete"
   | "items_update"
   | "note_added"
   | "create"

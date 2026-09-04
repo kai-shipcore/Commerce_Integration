@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
-import { CalendarRange, ChevronDown, ChevronUp, History, List, PackageOpen, Plus, Ship, X } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronUp, Download, FileSpreadsheet, History, List, PackageOpen, Plus, Ship, Trash2, Upload, X } from "lucide-react";
 import {
   containerStatusLabels,
   mockSkus,
@@ -135,6 +135,8 @@ type ApiContainer = {
   confirmedTime: string | null;
   status: string;
   calendarColor: string | null;
+  packingListFileId: string | null;
+  packingListFileName: string | null;
   cbmCapacity: number;
   factoryName: string | null;
   origin: string | null;
@@ -280,6 +282,8 @@ function mapApiContainer(container: ApiContainer): MockContainer {
     confirmedTime: container.confirmedTime ?? null,
     status: normalizeContainerStatus(container.status),
     calendarColor: container.calendarColor,
+    packingListFileId: container.packingListFileId,
+    packingListFileName: container.packingListFileName,
     cbmCapacity: container.cbmCapacity || 80,
     factory: container.factoryName ?? "",
     origin: container.origin ?? "",
@@ -1184,25 +1188,44 @@ export function ContainerPlanningPage() {
     );
   }
 
-  async function changeContainerStatus(containerId: string, newStatus: ContainerStatus) {
+  async function changeContainerStatus(containerId: string, newStatus: ContainerStatus, packingListFile?: File): Promise<boolean> {
     if (!canEditContainers) {
       toast.error(pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action."));
       setStatusModalContainerId(null);
-      return;
+      return false;
     }
     const container = containers.find((entry) => entry.id === containerId);
-    setStatusModalContainerId(null);
 
-    if (!container || container.status === newStatus) return;
+    if (!container || container.status === newStatus) return false;
+
+    if (newStatus === "packing-list-received" && !container.packingListFileId && !packingListFile) {
+      toast.error(pick("Shipped 상태로 변경하려면 Packing List 파일을 첨부하세요.", "Attach a Packing List file before changing the status to Shipped."));
+      return false;
+    }
 
     if (!/^\d+$/.test(containerId)) {
       setContainers((current) =>
         current.map((entry) => entry.id === containerId ? { ...entry, status: newStatus } : entry)
       );
-      return;
+      setStatusModalContainerId(null);
+      return true;
     }
 
     try {
+      if (packingListFile) {
+        const formData = new FormData();
+        formData.append("file", packingListFile);
+        const uploadResponse = await fetch(apiPath(`/api/containers/${encodeURIComponent(containerId)}/packing-list`), {
+          method: "POST",
+          body: formData,
+        });
+        const uploadJson = await uploadResponse.json().catch(() => null) as { success?: boolean; error?: string } | null;
+        if (!uploadResponse.ok || !uploadJson?.success) {
+          toast.error(uploadJson?.error ?? pick("Packing List 업로드에 실패했습니다.", "Failed to upload the Packing List."));
+          return false;
+        }
+      }
+
       const response = await fetch(apiPath(`/api/containers?id=${encodeURIComponent(containerId)}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1214,13 +1237,50 @@ export function ContainerPlanningPage() {
         toast.error(response.status === 403
           ? pick("이 작업을 수행할 권한이 없습니다.", "You don't have permission to perform this action.")
           : (json.error ?? pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status.")));
-        return;
+        return false;
       }
 
       await fetchContainers();
       setExpandedId(containerId);
+      setStatusModalContainerId(null);
+      return true;
     } catch {
       toast.error(pick("컨테이너 상태 변경에 실패했습니다.", "Failed to update container status."));
+      return false;
+    }
+  }
+
+  async function deletePackingList(containerId: string): Promise<boolean> {
+    if (!canEditContainers) {
+      toast.error(pick("컨테이너 수정 권한이 필요합니다.", "Container edit access is required."));
+      return false;
+    }
+    const container = containers.find((entry) => entry.id === containerId);
+    if (!container?.packingListFileId) return false;
+    if (container.status === "packing-list-received" || container.status === "complete") {
+      toast.error(pick("Shipped 또는 입고 완료 상태에서는 Packing List를 삭제할 수 없습니다.", "The Packing List cannot be deleted after shipment."));
+      return false;
+    }
+    if (!window.confirm(pick(`'${container.packingListFileName ?? "Packing List"}' 파일을 삭제할까요?`, `Delete '${container.packingListFileName ?? "Packing List"}'?`))) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(apiPath(`/api/containers/${encodeURIComponent(containerId)}/packing-list`), {
+        method: "DELETE",
+      });
+      const json = await response.json().catch(() => null) as { success?: boolean; error?: string } | null;
+      if (!response.ok || !json?.success) {
+        toast.error(json?.error ?? pick("Packing List 삭제에 실패했습니다.", "Failed to delete the Packing List."));
+        return false;
+      }
+      await fetchContainers();
+      setExpandedId(containerId);
+      toast.success(pick("Packing List 파일을 삭제했습니다.", "Packing List deleted."));
+      return true;
+    } catch {
+      toast.error(pick("Packing List 삭제에 실패했습니다.", "Failed to delete the Packing List."));
+      return false;
     }
   }
 
@@ -1260,12 +1320,24 @@ export function ContainerPlanningPage() {
     }
 
     const targetContainers = selectedExportContainers.filter((container) => container.status !== newStatus);
-    setBulkStatusModalOpen(false);
 
     if (targetContainers.length === 0) {
       toast.info(pick("선택한 컨테이너가 이미 해당 상태입니다.", "Selected containers already have that status."));
       return;
     }
+
+    if (newStatus === "packing-list-received") {
+      const missingPackingLists = targetContainers.filter((container) => !container.packingListFileId);
+      if (missingPackingLists.length > 0) {
+        toast.error(pick(
+          `${missingPackingLists.length}개 컨테이너에 Packing List 파일이 없습니다. 각 컨테이너에서 먼저 첨부하세요.`,
+          `${missingPackingLists.length} container(s) have no Packing List. Attach each file first.`
+        ));
+        return;
+      }
+    }
+
+    setBulkStatusModalOpen(false);
 
     setSavingContainer(true);
     try {
@@ -2517,6 +2589,7 @@ export function ContainerPlanningPage() {
                 canRevertStatus={canEditContainers}
                 canEditColor={canEditContainers}
                 onChangeColor={changeContainerColor}
+                onDeletePackingList={deletePackingList}
                 onChangeStatus={(id) => setStatusModalContainerId(id)}
                 onDeleteContainer={deleteContainer}
                 warehouseNameByCode={warehouseNameByCode}
@@ -2545,7 +2618,11 @@ export function ContainerPlanningPage() {
       {statusModalContainerId ? (
         <StatusChangeModal
           currentStatus={containers.find((c) => c.id === statusModalContainerId)?.status ?? "draft"}
-          onConfirm={(newStatus) => changeContainerStatus(statusModalContainerId, newStatus)}
+          packingListFileId={containers.find((c) => c.id === statusModalContainerId)?.packingListFileId ?? null}
+          packingListFileName={containers.find((c) => c.id === statusModalContainerId)?.packingListFileName ?? null}
+          packingListDownloadUrl={apiPath(`/api/containers/${encodeURIComponent(statusModalContainerId)}/packing-list`)}
+          onDeletePackingList={() => deletePackingList(statusModalContainerId)}
+          onConfirm={(newStatus, file) => changeContainerStatus(statusModalContainerId, newStatus, file)}
           onClose={() => setStatusModalContainerId(null)}
           canRevert={session?.user?.role === "admin" || session?.user?.role === "planner"}
           confirmedDate={containers.find((c) => c.id === statusModalContainerId)?.confirmedDate ?? null}
@@ -3197,6 +3274,7 @@ function ContainerCard({
   canRevertStatus = false,
   canEditColor = false,
   onChangeColor,
+  onDeletePackingList,
   onChangeStatus,
   onDeleteContainer,
   warehouseNameByCode,
@@ -3233,6 +3311,7 @@ function ContainerCard({
   canRevertStatus?: boolean;
   canEditColor?: boolean;
   onChangeColor: (containerId: string, color: string | null) => void | Promise<void>;
+  onDeletePackingList: (containerId: string) => boolean | Promise<boolean>;
   onChangeStatus: (containerId: string) => void;
   onDeleteContainer: (containerId: string) => void;
   warehouseNameByCode?: Map<string, string>;
@@ -3434,6 +3513,30 @@ function ContainerCard({
                 )}
               </div>
             </div>
+            {container.packingListFileId && container.packingListFileName ? (
+              <div className="mt-3 flex min-w-0 items-center gap-2">
+                <a
+                  href={apiPath(`/api/containers/${encodeURIComponent(container.id)}/packing-list`)}
+                  onClick={(event) => event.stopPropagation()}
+                  className="inline-flex min-w-0 items-center gap-1.5 text-xs font-semibold text-[#1a5cdb] hover:underline"
+                  title={container.packingListFileName}
+                >
+                  <Download className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{container.packingListFileName}</span>
+                </a>
+                {canEditColor && container.status !== "packing-list-received" && container.status !== "complete" ? (
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); void onDeletePackingList(container.id); }}
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#c42b2b] hover:bg-red-50"
+                    title={pick("Packing List 삭제", "Delete Packing List")}
+                    aria-label={pick("Packing List 삭제", "Delete Packing List")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {container.note ? (
             <div className="border-b border-[#e2dfd8] bg-[#fffdf8] px-5 py-3">
@@ -4454,6 +4557,10 @@ function StatusChangeModal({
   currentStatus,
   onConfirm,
   onClose,
+  packingListFileId = null,
+  packingListFileName = null,
+  packingListDownloadUrl,
+  onDeletePackingList,
   canRevert = false,
   confirmedDate = null,
   confirmedTime = null,
@@ -4461,8 +4568,12 @@ function StatusChangeModal({
   onSaveConfirmed,
 }: {
   currentStatus: ContainerStatus;
-  onConfirm: (newStatus: ContainerStatus) => void;
+  onConfirm: (newStatus: ContainerStatus, packingListFile?: File) => boolean | Promise<boolean>;
   onClose: () => void;
+  packingListFileId?: string | null;
+  packingListFileName?: string | null;
+  packingListDownloadUrl: string;
+  onDeletePackingList: () => boolean | Promise<boolean>;
   canRevert?: boolean;
   confirmedDate?: string | null;
   confirmedTime?: string | null;
@@ -4471,12 +4582,37 @@ function StatusChangeModal({
 }) {
   const { pick } = useI18n();
   const [revertConfirming, setRevertConfirming] = useState(false);
+  const [packingListFile, setPackingListFile] = useState<File | null>(null);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [deletingPackingList, setDeletingPackingList] = useState(false);
   const [dateInput, setDateInput] = useState(confirmedDate ?? "");
   const [timeInput, setTimeInput] = useState(confirmedTime ?? "");
   const currentIdx = STATUS_ORDER.indexOf(currentStatus);
   const nextStatus = STATUS_ORDER[currentIdx + 1];
   const prevStatus = STATUS_ORDER[currentIdx - 1];
   const showRevert = canRevert && prevStatus !== undefined;
+  const needsPackingList = nextStatus === "packing-list-received";
+  const hasPackingList = Boolean(packingListFileId || packingListFile);
+
+  async function confirmNextStatus() {
+    if (!nextStatus || savingStatus || (needsPackingList && !hasPackingList)) return;
+    setSavingStatus(true);
+    try {
+      await onConfirm(nextStatus, packingListFile ?? undefined);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function removePackingList() {
+    if (deletingPackingList || savingStatus) return;
+    setDeletingPackingList(true);
+    try {
+      await onDeletePackingList();
+    } finally {
+      setDeletingPackingList(false);
+    }
+  }
 
   if (revertConfirming && prevStatus) {
     return (
@@ -4539,6 +4675,54 @@ function StatusChangeModal({
             {pick("더 이상 변경할 상태가 없습니다.", "No further status changes available.")}
           </p>
         )}
+        {needsPackingList ? (
+          <div className="mt-6 rounded-xl border border-[#d8d6ce] bg-[#fafaf7] p-4">
+            <div className="mb-2 text-sm font-semibold">Packing List</div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              {pick("Shipped 확정 전에 Packing List 원본 파일을 첨부해야 합니다.", "Attach the original Packing List before confirming Shipped.")}
+            </p>
+            {packingListFileId && packingListFileName ? (
+              <div className="mb-3 flex min-w-0 items-center gap-2">
+                <a
+                  href={packingListDownloadUrl}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-[#1a5cdb] hover:underline"
+                  title={packingListFileName}
+                >
+                  <FileSpreadsheet className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{packingListFileName}</span>
+                  <Download className="h-3.5 w-3.5 shrink-0" />
+                </a>
+                <button
+                  type="button"
+                  disabled={deletingPackingList || savingStatus}
+                  onClick={() => void removePackingList()}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#c42b2b] hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-45"
+                  title={pick("Packing List 삭제", "Delete Packing List")}
+                  aria-label={pick("Packing List 삭제", "Delete Packing List")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#9ca3af] bg-white px-4 py-3 text-xs font-semibold hover:bg-[#f0eee9]">
+              <Upload className="h-4 w-4" />
+              <span className="truncate">
+                {packingListFile?.name ?? (packingListFileId ? pick("다른 파일로 교체", "Replace file") : pick("Packing List 파일 선택", "Select Packing List"))}
+              </span>
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(event) => setPackingListFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            {!hasPackingList ? (
+              <div className="mt-2 text-xs font-medium text-[#c42b2b]">
+                {pick("Packing List 파일을 선택해야 확인할 수 있습니다.", "Select a Packing List file to continue.")}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
@@ -4559,10 +4743,11 @@ function StatusChangeModal({
           {nextStatus && (
             <button
               type="button"
-              onClick={() => onConfirm(nextStatus)}
-              className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4]"
+              onClick={() => void confirmNextStatus()}
+              disabled={savingStatus || (needsPackingList && !hasPackingList)}
+              className="rounded-lg bg-[#1a5cdb] px-4 py-2 text-sm font-medium text-white hover:bg-[#1650c4] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {pick("확인", "Confirm")}
+              {savingStatus ? pick("저장 중...", "Saving...") : pick("확인", "Confirm")}
             </button>
           )}
         </div>

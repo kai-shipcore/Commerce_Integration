@@ -89,6 +89,8 @@ export interface ContainerListRow {
   destWarehouse: string | null;
   note: string | null;
   calendarColor: string | null;
+  packingListFileId: string | null;
+  packingListFileName: string | null;
   itemCount: number;
   totalQty: number;
   totalCbm: number;
@@ -131,6 +133,7 @@ export interface ExistingContainerRow {
   destWarehouse: string | null;
   note: string | null;
   calendarColor: string | null;
+  packingListFileId: string | null;
   estLoading: string | null;
   etdNgb: string | null;
   etaLaxLgb: string | null;
@@ -212,6 +215,8 @@ export const AUDIT_ACTIONS = new Set([
   "eta_lax_lgb_change",
   "confirmed_change",
   "color_change",
+  "packing_list_upload",
+  "packing_list_delete",
   "items_update",
   "note_added",
   "create",
@@ -280,6 +285,8 @@ export const ContainerPlanningRepository = {
          c.dest_warehouse,
          c.note,
          c.calendar_color,
+         packing_list_file.id::text AS packing_list_file_id,
+         packing_list_file.original_name AS packing_list_file_name,
          c.est_loading_date,
          c.etd_ngb_date,
          c.eta_lax_lgb_date,
@@ -290,6 +297,8 @@ export const ContainerPlanningRepository = {
          COALESCE(item_summary.total_cbm, 0)::text AS total_cbm,
          COALESCE(item_summary.items, '[]'::json) AS items
        FROM shipcore.fc_containers c
+       LEFT JOIN shipcore.fc_container_packing_list_files packing_list_file
+         ON packing_list_file.container_id = c.id
        LEFT JOIN (
          SELECT
            fc_container_items.container_id,
@@ -359,6 +368,8 @@ export const ContainerPlanningRepository = {
       destWarehouse: row.dest_warehouse as string | null,
       note: row.note as string | null,
       calendarColor: row.calendar_color as string | null,
+      packingListFileId: row.packing_list_file_id as string | null,
+      packingListFileName: row.packing_list_file_name as string | null,
       itemCount: Number(row.item_count ?? 0),
       totalQty: Number(row.total_qty ?? 0),
       totalCbm: Number(row.total_cbm ?? 0),
@@ -462,12 +473,16 @@ export const ContainerPlanningRepository = {
               dest_warehouse,
               note,
               calendar_color,
+              packing_list_file.id::text AS packing_list_file_id,
               est_loading_date::text AS est_loading,
               etd_ngb_date::text AS etd_ngb,
               eta_lax_lgb_date::text AS eta_lax_lgb,
               confirmed_date::text AS confirmed_date,
               confirmed_time::text AS confirmed_time
-       FROM shipcore.fc_containers WHERE id = $1::bigint`,
+       FROM shipcore.fc_containers
+       LEFT JOIN shipcore.fc_container_packing_list_files packing_list_file
+         ON packing_list_file.container_id = fc_containers.id
+       WHERE fc_containers.id = $1::bigint`,
       [id],
     );
     if (result.rowCount === 0) return null;
@@ -481,6 +496,7 @@ export const ContainerPlanningRepository = {
       destWarehouse: row.dest_warehouse,
       note: row.note,
       calendarColor: row.calendar_color,
+      packingListFileId: row.packing_list_file_id,
       estLoading: row.est_loading,
       etdNgb: row.etd_ngb,
       etaLaxLgb: row.eta_lax_lgb,
@@ -504,6 +520,64 @@ export const ContainerPlanningRepository = {
       [id, dbStatus],
     );
     return (result.rowCount ?? 0) > 0;
+  },
+
+  async upsertPackingListFile(
+    input: { containerId: string; originalName: string; mimeType: string | null; sizeBytes: number; fileData: Buffer; uploadedBy: string | null },
+    executor: SqlExecutor = pool(),
+  ): Promise<{ id: string; originalName: string }> {
+    const result = await executor.query<{ id: string; original_name: string }>(
+      `INSERT INTO shipcore.fc_container_packing_list_files
+         (container_id, original_name, mime_type, size_bytes, file_data, uploaded_by, created_at, updated_at)
+       VALUES ($1::bigint, $2, $3, $4, $5, $6, NOW(), NOW())
+       ON CONFLICT (container_id) DO UPDATE
+         SET original_name = EXCLUDED.original_name,
+             mime_type = EXCLUDED.mime_type,
+             size_bytes = EXCLUDED.size_bytes,
+             file_data = EXCLUDED.file_data,
+             uploaded_by = EXCLUDED.uploaded_by,
+             updated_at = NOW()
+       RETURNING id::text, original_name`,
+      [input.containerId, input.originalName, input.mimeType, input.sizeBytes, input.fileData, input.uploadedBy],
+    );
+    return { id: result.rows[0].id, originalName: result.rows[0].original_name };
+  },
+
+  async getPackingListFile(containerId: string): Promise<{
+    id: string;
+    originalName: string;
+    mimeType: string | null;
+    fileData: Buffer;
+  } | null> {
+    const result = await pool().query<{
+      id: string;
+      original_name: string;
+      mime_type: string | null;
+      file_data: Buffer;
+    }>(
+      `SELECT id::text, original_name, mime_type, file_data
+       FROM shipcore.fc_container_packing_list_files
+       WHERE container_id = $1::bigint`,
+      [containerId],
+    );
+    const row = result.rows[0];
+    return row
+      ? { id: row.id, originalName: row.original_name, mimeType: row.mime_type, fileData: row.file_data }
+      : null;
+  },
+
+  async deletePackingListFile(containerId: string, executor: SqlExecutor = pool()): Promise<{
+    id: string;
+    originalName: string;
+  } | null> {
+    const result = await executor.query<{ id: string; original_name: string }>(
+      `DELETE FROM shipcore.fc_container_packing_list_files
+       WHERE container_id = $1::bigint
+       RETURNING id::text, original_name`,
+      [containerId],
+    );
+    const row = result.rows[0];
+    return row ? { id: row.id, originalName: row.original_name } : null;
   },
 
   async updateCalendarColor(id: string, calendarColor: string | null, executor: SqlExecutor = pool()): Promise<boolean> {

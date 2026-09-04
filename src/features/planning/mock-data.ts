@@ -34,6 +34,8 @@ export interface MockContainer {
   confirmedTime?: string | null;
   status: ContainerStatus;
   calendarColor?: string | null;
+  packingListFileId?: string | null;
+  packingListFileName?: string | null;
   cbmCapacity: number;
   factory: string;
   origin?: string;

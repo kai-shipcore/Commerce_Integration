@@ -61,6 +61,9 @@ export const ContainerPlanningService = {
 
   async createContainer(input: ContainerSaveInput, who: Who): Promise<{ id: string }> {
     const createStatus = input.status ?? "draft";
+    if (createStatus === "packing-list-received") {
+      throw new ValidationError("A Packing List file is required before changing the status to Shipped.");
+    }
     const distinctSkus = [...new Set(input.items.map((item) => item.sku.trim().toUpperCase()))];
 
     const containerId = await withTransaction(async (client) => {
@@ -117,12 +120,15 @@ export const ContainerPlanningService = {
   },
 
   async updateStatus(id: string, existing: ExistingContainerRow, newStatus: ContainerStatus, who: Who): Promise<{ id: string }> {
+    const oldStatus = fromDbStatus(existing.status);
+    if (newStatus === "packing-list-received" && oldStatus !== newStatus && !existing.packingListFileId) {
+      throw new ValidationError("A Packing List file is required before changing the status to Shipped.");
+    }
     const updated = await ContainerPlanningRepository.updateStatus(id, toDbStatus(newStatus));
     if (!updated) throw new NotFoundError("Container not found");
 
     await invalidatePlanningDashboardCache();
 
-    const oldStatus = fromDbStatus(existing.status);
     if (oldStatus !== newStatus) {
       void logContainerAudit({
         containerId: id,
@@ -136,6 +142,72 @@ export const ContainerPlanningService = {
         ip: who.ip,
       });
     }
+
+    return { id };
+  },
+
+  async uploadPackingList(id: string, file: File, who: Who): Promise<{ id: string; originalName: string }> {
+    const existing = await ContainerPlanningRepository.getContainer(id);
+    if (!existing) throw new NotFoundError("Container not found");
+    this.assertNotComplete(existing);
+
+    if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
+      throw new ValidationError("Packing List must be an Excel or CSV file.");
+    }
+    const buffer = Buffer.from(await file.arrayBuffer());
+    if (buffer.byteLength === 0) throw new ValidationError("Packing List file is empty.");
+    if (buffer.byteLength > 20 * 1024 * 1024) throw new ValidationError("Packing List file must be 20 MB or smaller.");
+
+    const saved = await ContainerPlanningRepository.upsertPackingListFile({
+      containerId: id,
+      originalName: file.name,
+      mimeType: file.type || null,
+      sizeBytes: buffer.byteLength,
+      fileData: buffer,
+      uploadedBy: who.userId,
+    });
+
+    void logContainerAudit({
+      containerId: id,
+      containerNumber: existing.containerNumber,
+      userId: who.userId,
+      userName: who.userName,
+      userEmail: who.userEmail,
+      action: "packing_list_upload",
+      before: existing.packingListFileId ? { fileId: existing.packingListFileId } : null,
+      after: { fileId: saved.id, fileName: saved.originalName },
+      ip: who.ip,
+    });
+
+    return saved;
+  },
+
+  findPackingListFile(containerId: string) {
+    return ContainerPlanningRepository.getPackingListFile(containerId);
+  },
+
+  async deletePackingList(id: string, who: Who): Promise<{ id: string }> {
+    const existing = await ContainerPlanningRepository.getContainer(id);
+    if (!existing) throw new NotFoundError("Container not found");
+    this.assertNotComplete(existing);
+    if (fromDbStatus(existing.status) === "packing-list-received") {
+      throw new ConflictError("The Packing List cannot be deleted while the container status is Shipped.");
+    }
+
+    const deleted = await ContainerPlanningRepository.deletePackingListFile(id);
+    if (!deleted) throw new NotFoundError("Packing List file not found");
+
+    void logContainerAudit({
+      containerId: id,
+      containerNumber: existing.containerNumber,
+      userId: who.userId,
+      userName: who.userName,
+      userEmail: who.userEmail,
+      action: "packing_list_delete",
+      before: { fileId: deleted.id, fileName: deleted.originalName },
+      after: null,
+      ip: who.ip,
+    });
 
     return { id };
   },
