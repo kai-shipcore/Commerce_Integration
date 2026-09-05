@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import type { SalesWindowWeights } from "@/lib/planning/sales-window-weights";
+import type { ConditionalFormatRule } from "@/lib/planning/conditional-formatting";
 import type {
   CategoryFilter,
   ColumnGroupKey,
@@ -88,6 +89,7 @@ export interface DemandPlanningGridProps {
   cellColors?: CellColorSettings;
   columnTextFormats?: ColumnTextFormatSettings;
   cellTextFormats?: CellTextFormatSettings;
+  conditionalFormatRules?: ConditionalFormatRule[];
   onFormatHistoryRecorderReady?: (recorder: PlanningFormatHistoryRecorder | null) => void;
   onApplyFormatHistoryChanges?: (changes: PlanningFormatHistoryChange[], direction: "undo" | "redo") => void;
   skuCellNotes?: Record<string, string>;

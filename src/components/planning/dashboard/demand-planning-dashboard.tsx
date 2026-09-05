@@ -4,9 +4,11 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState, use
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import { ClipboardPaste, Copy, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2 } from "lucide-react";
+import { ClipboardPaste, Copy, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2, WandSparkles } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder } from "./demand-planning-grid";
+import { ConditionalFormattingPanel } from "./conditional-formatting-panel";
+import { PlanningColorPalettePopover } from "./planning-color-palette";
 import { StatusBar } from "./status-bar";
 import {
   ALL_COLS,
@@ -99,6 +101,13 @@ import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta,
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
+import {
+  CONDITIONAL_FORMAT_RULES_STORAGE_KEY,
+  loadSavedConditionalFormatRules,
+  normalizeConditionalFormatRules,
+  type ConditionalFormatRange,
+  type ConditionalFormatRule,
+} from "@/lib/planning/conditional-formatting";
 
 const AgDemandPlanningGrid = dynamic(
   () => import("./ag-demand-planning-grid").then((module) => module.AgDemandPlanningGrid),
@@ -349,18 +358,14 @@ function FillColorPopover({
   onApply: (color: string) => void;
   onReset: () => boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const applyAndClose = (color: string) => {
-    onApply(color);
-    setOpen(false);
-  };
-  const resetAndClose = () => {
-    if (onReset()) setOpen(false);
-  };
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <PlanningColorPalettePopover
+      currentColor={currentColor}
+      targetLabel={targetLabel}
+      ariaKind="fill"
+      onApply={onApply}
+      onReset={onReset}
+      trigger={
         <button
           type="button"
           disabled={!enabled}
@@ -385,64 +390,8 @@ function FillColorPopover({
           <PaintBucket size={15} aria-hidden="true" />
           <span aria-hidden="true" style={{ backgroundColor: enabled ? currentColor : "#A8A49E", border: enabled && currentColor.toUpperCase() === "#FFFFFF" ? "1px solid #94A3B8" : "none", boxSizing: "border-box", display: "block", flexShrink: 0, height: 4, marginTop: 1, width: 18 }} />
         </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" sideOffset={4} style={{ background: "#FFFFFF", boxShadow: "0 10px 28px rgba(15,23,42,.2)", opacity: 1, width: 244, padding: 10 }}>
-        <div style={{ color: "#64748B", fontSize: 10, fontWeight: 700, marginBottom: 7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={targetLabel}>
-          {targetLabel}
-        </div>
-        <button
-          type="button"
-          onClick={resetAndClose}
-          style={{ alignItems: "center", background: "transparent", border: "none", color: "#334155", cursor: "pointer", display: "flex", fontSize: 12, gap: 7, marginBottom: 8, padding: "2px 0" }}
-        >
-          <RotateCcw size={14} aria-hidden="true" /> Reset
-        </button>
-        <div style={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(10, 19px)" }}>
-          {FILL_COLOR_ROWS.flat().map((color, index) => (
-            <button
-              key={`${color}-${index}`}
-              type="button"
-              aria-label={`Set fill color ${color}`}
-              title={color}
-              onClick={() => applyAndClose(color)}
-              style={{
-                background: color,
-                alignItems: "center",
-                border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent",
-                borderRadius: "50%",
-                color: paletteCheckColor(color),
-                cursor: "pointer",
-                display: "inline-flex",
-                fontSize: 13,
-                fontWeight: 800,
-                height: 19,
-                justifyContent: "center",
-                lineHeight: 1,
-                padding: 0,
-                width: 19,
-              }}
-            >
-              {currentColor.toUpperCase() === color ? "✓" : null}
-            </button>
-          ))}
-        </div>
-        <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>STANDARD</div>
-        <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
-          {STANDARD_FILL_COLORS.map((color) => (
-            <button key={color} type="button" aria-label={`Set standard fill color ${color}`} onClick={() => applyAndClose(color)} style={{ alignItems: "center", background: color, border: color === "#FFFFFF" ? "1px solid #CBD5E1" : "1px solid transparent", borderRadius: "50%", color: paletteCheckColor(color), cursor: "pointer", display: "inline-flex", fontSize: 13, fontWeight: 800, height: 19, justifyContent: "center", lineHeight: 1, padding: 0, width: 19 }}>
-              {currentColor.toUpperCase() === color ? "✓" : null}
-            </button>
-          ))}
-        </div>
-        <div style={{ borderTop: "1px solid #CBD5E1", color: "#475569", fontSize: 9, fontWeight: 700, letterSpacing: ".04em", marginTop: 9, paddingTop: 7 }}>CUSTOM</div>
-        <label title="Choose custom color" style={{ alignItems: "center", cursor: "pointer", display: "inline-flex", gap: 6, marginTop: 6 }}>
-          <span aria-hidden="true" style={{ background: currentColor, border: "1px solid #CBD5E1", borderRadius: "50%", height: 19, width: 19 }} />
-          <Pipette size={15} aria-hidden="true" />
-          <span style={{ color: "#475569", fontSize: 11 }}>Custom color</span>
-          <DeferredColorInput key={currentColor} value={currentColor} ariaLabel="Custom fill color" onCommit={applyAndClose} />
-        </label>
-      </PopoverContent>
-    </Popover>
+      }
+    />
   );
 }
 
@@ -1066,6 +1015,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
   const [columnTextFormats, setColumnTextFormats] = useState<ColumnTextFormatSettings>({});
   const [cellTextFormats, setCellTextFormats] = useState<CellTextFormatSettings>({});
+  const [conditionalFormatRules, setConditionalFormatRules] = useState<ConditionalFormatRule[]>([]);
+  const [isConditionalFormattingOpen, setIsConditionalFormattingOpen] = useState(false);
   const formatHistoryRecorderRef = useRef<PlanningFormatHistoryRecorder | null>(null);
   const [isColorSettingsOpen, setIsColorSettingsOpen] = useState(true);
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
@@ -1084,6 +1035,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
+  const conditionalFormatLocalSaveTimerRef = useRef<number | null>(null);
   const skuFiltersRef = useRef<HTMLDivElement>(null);
 
   const containersWithEtaOverrides = useMemo(() => data.containers.map((container) => (
@@ -1181,6 +1133,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Stored browser preference is available only after hydration.
     setColumnTextFormats(loadSavedColumnTextFormats());
     setCellTextFormats(loadSavedCellTextFormats());
+    setConditionalFormatRules(loadSavedConditionalFormatRules());
   }, []);
 
   useEffect(() => {
@@ -1357,6 +1310,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setCellTextFormats({});
         }
 
+        const conditionalRules = normalizeConditionalFormatRules(d[CONDITIONAL_FORMAT_RULES_STORAGE_KEY]);
+        if (conditionalRules.length > 0) {
+          window.localStorage.setItem(CONDITIONAL_FORMAT_RULES_STORAGE_KEY, JSON.stringify(conditionalRules));
+        } else {
+          window.localStorage.removeItem(CONDITIONAL_FORMAT_RULES_STORAGE_KEY);
+        }
+        setConditionalFormatRules(conditionalRules);
+
         // Per-user custom column header names
         const headerNames = d[COLUMN_HEADER_NAMES_STORAGE_KEY];
         if (headerNames && typeof headerNames === "object" && !Array.isArray(headerNames)) {
@@ -1470,6 +1431,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [CELL_COLORS_STORAGE_KEY]: cellColors,
       [COLUMN_TEXT_FORMATS_STORAGE_KEY]: columnTextFormats,
       [CELL_TEXT_FORMATS_STORAGE_KEY]: cellTextFormats,
+      [CONDITIONAL_FORMAT_RULES_STORAGE_KEY]: conditionalFormatRules,
       [CONTAINER_VISIBILITY_STORAGE_KEY]: {
         hiddenContainers: Array.from(hiddenContainers).sort(),
         hiddenBases: Array.from(hiddenBases).sort(),
@@ -1481,7 +1443,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -1937,6 +1899,44 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     () => selectedAgCells.map((cell) => `${cell.rowId}::${cell.columnId}`),
     [selectedAgCells],
   );
+
+  const conditionalFormatRange = useMemo<ConditionalFormatRange | null>(() => {
+    if (activeColorTarget === "columns" && selectedFullColumnIds.length > 0) {
+      return { kind: "columns", columnIds: Array.from(new Set(selectedFullColumnIds)) };
+    }
+    const cells = selectedAgCells.length > 0
+      ? selectedAgCells
+      : selectedAgCell ? [selectedAgCell] : [];
+    if (cells.length === 0) return null;
+    return { kind: "cells", cellKeys: Array.from(new Set(cells.map((cell) => `${cell.rowId}::${cell.columnId}`))) };
+  }, [activeColorTarget, selectedAgCell, selectedAgCells, selectedFullColumnIds]);
+
+  const handleConditionalFormatRulesChange = useCallback((rules: ConditionalFormatRule[]) => {
+    // Rules created by the panel are already typed and normalized. Deferring
+    // localStorage serialization is important for large selected ranges: the
+    // native color picker can emit dozens of changes while the user drags.
+    setConditionalFormatRules(rules);
+  }, []);
+
+  useEffect(() => {
+    if (conditionalFormatLocalSaveTimerRef.current !== null) {
+      window.clearTimeout(conditionalFormatLocalSaveTimerRef.current);
+    }
+    conditionalFormatLocalSaveTimerRef.current = window.setTimeout(() => {
+      conditionalFormatLocalSaveTimerRef.current = null;
+      if (conditionalFormatRules.length > 0) {
+        window.localStorage.setItem(CONDITIONAL_FORMAT_RULES_STORAGE_KEY, JSON.stringify(conditionalFormatRules));
+      } else {
+        window.localStorage.removeItem(CONDITIONAL_FORMAT_RULES_STORAGE_KEY);
+      }
+    }, 300);
+    return () => {
+      if (conditionalFormatLocalSaveTimerRef.current !== null) {
+        window.clearTimeout(conditionalFormatLocalSaveTimerRef.current);
+        conditionalFormatLocalSaveTimerRef.current = null;
+      }
+    };
+  }, [conditionalFormatRules]);
 
   const selectedCellColorInfo = useMemo(() => {
     if (!selectedAgCell) return { color: "#FFFFFF", label: "No cell" };
@@ -3729,6 +3729,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             onApply={handleFillColorApply}
             onReset={handleFillColorReset}
           />
+          <button
+            type="button"
+            title={conditionalFormatRange ? pick("선택 영역에 조건부 서식 설정", "Set conditioning formatting for the selection") : pick("먼저 셀 또는 전체 컬럼을 선택하세요", "Select cells or full columns first")}
+            onClick={() => setIsConditionalFormattingOpen(true)}
+            style={{ height: 30, display: "inline-flex", alignItems: "center", gap: 6, padding: "0 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: isConditionalFormattingOpen ? "#EFF6FF" : "#fff", color: "#334155", cursor: "pointer", fontSize: 11, fontWeight: 650 }}
+          >
+            <WandSparkles size={15} /> {pick("조건부 서식", "Conditioning formatting")}
+          </button>
           </>
         )}
 
@@ -3978,6 +3986,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           cellColors={cellColors}
           columnTextFormats={columnTextFormats}
           cellTextFormats={cellTextFormats}
+          conditionalFormatRules={conditionalFormatRules}
           onFormatHistoryRecorderReady={handleFormatHistoryRecorderReady}
           onApplyFormatHistoryChanges={applyFormatHistoryChanges}
           skuCellNotes={skuCellNotes}
@@ -4047,12 +4056,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           cellColors={cellColors}
           columnTextFormats={columnTextFormats}
           cellTextFormats={cellTextFormats}
+          conditionalFormatRules={conditionalFormatRules}
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
           canEditSkuNotes={canEditSkuNotes}
           selectedCellKeys={selectedCellKeys}
         />}
       </div>
+      <ConditionalFormattingPanel
+        open={isConditionalFormattingOpen}
+        rules={conditionalFormatRules}
+        currentRange={conditionalFormatRange}
+        onChange={handleConditionalFormatRulesChange}
+        onClose={() => setIsConditionalFormattingOpen(false)}
+      />
     </div>
   );
 }

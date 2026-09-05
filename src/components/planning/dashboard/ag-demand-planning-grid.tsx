@@ -71,6 +71,7 @@ import {
   applyColumnFilters, distinctColumnValuesExcluding, distinctColumnColorsExcluding, CONDITION_OPERATORS,
   type ColumnFilter, type ConditionFilter, type DistinctColor, type DistinctValue,
 } from "@/lib/planning/column-filter";
+import { conditionalFormatForCell } from "@/lib/planning/conditional-formatting";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -3529,6 +3530,7 @@ export function AgDemandPlanningGrid({
   cellColors = {},
   columnTextFormats = {},
   cellTextFormats = {},
+  conditionalFormatRules = [],
   onFormatHistoryRecorderReady,
   onApplyFormatHistoryChanges,
   skuCellNotes = {},
@@ -3562,6 +3564,8 @@ export function AgDemandPlanningGrid({
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
+  const conditionalFormatRulesRef = useRef(conditionalFormatRules);
+  conditionalFormatRulesRef.current = conditionalFormatRules;
   // The grid-wide height and the per-row overrides are read from refs by
   // getRowHeight and by the drag handle, so neither the grid callbacks nor the
   // column definitions have to be rebuilt when either changes.
@@ -6133,6 +6137,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         },
         cellClassRules: {
           "planning-status-cell": () => column.id === "status",
+          "planning-conditional-format": (params) => {
+            const key = cellColorKey(params.data?.sku, column.id);
+            return conditionalFormatForCell(conditionalFormatRulesRef.current, key, column.id, params.value) !== null;
+          },
           "planning-user-text-color": (params) => {
             const key = cellColorKey(params.data?.sku, column.id);
             return Boolean(cellTextFormatsRef.current[key]?.color ?? columnTextFormatsRef.current[column.id]?.cell?.color);
@@ -6151,15 +6159,23 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           const selected = selectedCellsRef.current.has(key);
           const fullColumnSelected = selectedFullColumnIdsRef.current.has(column.id);
           const textFormat = { ...(columnTextFormatsRef.current[column.id]?.cell ?? {}), ...(cellTextFormatsRef.current[key] ?? {}) };
+          const conditionalFormat = conditionalFormatForCell(conditionalFormatRulesRef.current, key, column.id, params.value);
+          const conditionalDecoration = conditionalFormat
+            ? [conditionalFormat.underline ? "underline" : "", conditionalFormat.strikethrough ? "line-through" : ""].filter(Boolean).join(" ")
+            : undefined;
           return {
             backgroundColor: selected
               ? SELECTED_CELL_FILL
+              : conditionalFormat?.fillColor
+                ? conditionalFormat.fillColor
               : column.id === "tavg_c" && params.data?.total_avg_curr_override != null
                 ? "#fecaca"
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
-            color: textFormat.color ?? "#000000",
-            fontSize: textFormat.fontSize ?? 11,
-            fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : 400,
+            color: conditionalFormat?.textColor ?? textFormat.color ?? "#000000",
+            fontSize: conditionalFormat?.fontSize ?? textFormat.fontSize ?? 11,
+            fontWeight: conditionalFormat?.bold !== undefined ? (conditionalFormat.bold ? 700 : 400) : textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : 400,
+            ...(conditionalFormat?.italic !== undefined ? { fontStyle: conditionalFormat.italic ? "italic" : "normal" } : {}),
+            ...(conditionalDecoration ? { textDecoration: conditionalDecoration } : conditionalFormat && (conditionalFormat.underline === false || conditionalFormat.strikethrough === false) ? { textDecoration: "none" } : {}),
             textAlign: "center",
             ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
             ...(selected
@@ -6341,6 +6357,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             };
           } : undefined,
           cellClassRules: {
+            "planning-conditional-format": (params) => {
+              const columnId = `${container.name}::${column.id}`;
+              const key = cellColorKey(params.data?.sku, columnId);
+              return conditionalFormatForCell(conditionalFormatRulesRef.current, key, columnId, params.value) !== null;
+            },
             "planning-user-text-color": (params) => {
               const columnId = `${container.name}::${column.id}`;
               const key = cellColorKey(params.data?.sku, columnId);
@@ -6373,6 +6394,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               ...(columnTextFormatsRef.current[physicalColumnId]?.cell ?? {}),
               ...(cellTextFormatsRef.current[key] ?? {}),
             };
+            const conditionalFormat = conditionalFormatForCell(conditionalFormatRulesRef.current, key, columnId, params.value);
+            const conditionalDecoration = conditionalFormat
+              ? [conditionalFormat.underline ? "underline" : "", conditionalFormat.strikethrough ? "line-through" : ""].filter(Boolean).join(" ")
+              : undefined;
             const displayedColumns = params.column.getParent()?.getDisplayedLeafColumns() ?? [];
             const isFirstDisplayedColumn = displayedColumns[0] === params.column;
             const isConQty = column.id === CON_QTY_COLUMN_ID;
@@ -6381,13 +6406,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               // user's cell/column colour returns when selection is cleared.
               backgroundColor: selected
                 ? SELECTED_CELL_FILL
+                : conditionalFormat?.fillColor
+                  ? conditionalFormat.fillColor
                 : cellColors[key]
                   ?? columnColors[physicalColumnId]?.cell
                   ?? columnColors[sharedColumnId]?.cell
                   ?? (baseline ? "#E2E0DC" : isConQty ? CON_QTY_TINT : TINT_COLORS[column.tint] || "#fff"),
-              color: textFormat.color ?? "#000000",
-              fontSize: textFormat.fontSize ?? 11,
-              fontWeight: textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : 400,
+              color: conditionalFormat?.textColor ?? textFormat.color ?? "#000000",
+              fontSize: conditionalFormat?.fontSize ?? textFormat.fontSize ?? 11,
+              fontWeight: conditionalFormat?.bold !== undefined ? (conditionalFormat.bold ? 700 : 400) : textFormat.bold !== undefined ? (textFormat.bold ? 700 : 400) : 400,
+              ...(conditionalFormat?.italic !== undefined ? { fontStyle: conditionalFormat.italic ? "italic" : "normal" } : {}),
+              ...(conditionalDecoration ? { textDecoration: conditionalDecoration } : conditionalFormat && (conditionalFormat.underline === false || conditionalFormat.strikethrough === false) ? { textDecoration: "none" } : {}),
               textAlign: "center",
               borderLeft: isFirstDisplayedColumn
                 ? CONTAINER_BLOCK_RAIL
@@ -6513,6 +6542,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
     }
     return groups;
   }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+
+  useEffect(() => {
+    conditionalFormatRulesRef.current = conditionalFormatRules;
+    gridRef.current?.api?.refreshCells({ force: true });
+  }, [conditionalFormatRules]);
 
   useEffect(() => {
     const api = gridRef.current?.api;
@@ -6695,16 +6729,16 @@ autoFilling3: autoFillingContainers3.has(container.name),
         .planning-ag-grid .planning-rendered-cell-value * {
           font-size: inherit !important;
         }
-        .planning-ag-grid .ag-cell:not(.planning-user-text-color):not(.planning-status-cell),
-        .planning-ag-grid .ag-cell:not(.planning-user-text-color):not(.planning-status-cell) * {
+        .planning-ag-grid .ag-cell:not(.planning-user-text-color):not(.planning-status-cell):not(.planning-conditional-format),
+        .planning-ag-grid .ag-cell:not(.planning-user-text-color):not(.planning-status-cell):not(.planning-conditional-format) * {
           color: #000000 !important;
         }
-        .planning-ag-grid .ag-cell:not(.planning-user-font-weight):not(.planning-status-cell),
-        .planning-ag-grid .ag-cell:not(.planning-user-font-weight):not(.planning-status-cell) * {
+        .planning-ag-grid .ag-cell:not(.planning-user-font-weight):not(.planning-status-cell):not(.planning-conditional-format),
+        .planning-ag-grid .ag-cell:not(.planning-user-font-weight):not(.planning-status-cell):not(.planning-conditional-format) * {
           font-weight: 400 !important;
         }
-        .planning-ag-grid .ag-cell:not(.planning-user-font-size):not(.planning-status-cell),
-        .planning-ag-grid .ag-cell:not(.planning-user-font-size):not(.planning-status-cell) * {
+        .planning-ag-grid .ag-cell:not(.planning-user-font-size):not(.planning-status-cell):not(.planning-conditional-format),
+        .planning-ag-grid .ag-cell:not(.planning-user-font-size):not(.planning-status-cell):not(.planning-conditional-format) * {
           font-size: 11px !important;
         }
         .planning-ag-grid .ag-cell.planning-user-text-color * {
@@ -6715,6 +6749,13 @@ autoFilling3: autoFillingContainers3.has(container.name),
         }
         .planning-ag-grid .ag-cell.planning-user-font-size * {
           font-size: inherit !important;
+        }
+        .planning-ag-grid .ag-cell.planning-conditional-format * {
+          color: inherit !important;
+          font-size: inherit !important;
+          font-weight: inherit !important;
+          font-style: inherit !important;
+          text-decoration: inherit !important;
         }
         .planning-ag-grid .ag-header-cell.planning-user-header-text-color *,
         .planning-ag-grid .ag-header-group-cell.planning-user-header-text-color * {
