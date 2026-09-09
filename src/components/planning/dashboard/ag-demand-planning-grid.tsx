@@ -2509,7 +2509,7 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
         const rect = event.currentTarget.getBoundingClientRect();
         setEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
       }}
-      style={{ alignItems: "center", cursor: "text", display: "flex", fontWeight: 700, height: "100%", justifyContent: "center", overflow: "hidden", textAlign: "center", width: "100%" }}
+      style={{ alignItems: "center", boxSizing: "border-box", cursor: "text", display: "flex", fontWeight: 700, height: "100%", justifyContent: "center", overflow: "hidden", paddingTop: 22, textAlign: "center", width: "100%" }}
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{params.displayName}</span>
     </div>
@@ -2537,13 +2537,26 @@ function SelectableHeader(params: IHeaderParams & {
   const [editing, setEditing] = useState(false);
   const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
   const [, setSelectionVersion] = useState(0);
+  const [, setColumnOrderVersion] = useState(0);
   const subscribeSelection = params.subscribeSelection;
   useEffect(
     () => subscribeSelection(() => setSelectionVersion((version) => version + 1)),
     [subscribeSelection],
   );
+  useEffect(() => {
+    const refreshLetter = () => setColumnOrderVersion((version) => version + 1);
+    params.api.addEventListener("displayedColumnsChanged", refreshLetter);
+    return () => {
+      if (!params.api.isDestroyed()) {
+        params.api.removeEventListener("displayedColumnsChanged", refreshLetter);
+      }
+    };
+  }, [params.api]);
   const selected = params.isSelected();
   const fullColumnSelected = params.isFullColumnSelected();
+  const columnLetter = spreadsheetColumnName(
+    params.api.getAllDisplayedColumns().findIndex((column) => column.getColId() === params.selectionId),
+  );
 
   if (editing && editorAnchor) {
     return (
@@ -2563,7 +2576,7 @@ function SelectableHeader(params: IHeaderParams & {
     <div style={{ display: "flex", height: "100%", position: "relative", width: "calc(100% + 16px)", marginLeft: -8, marginRight: -8, boxShadow: fullColumnSelected ? "inset 1px 0 #2563EB, inset -1px 0 #2563EB, inset 0 4px #60A5FA" : undefined }}>
       <button
         type="button"
-        aria-label={`Select entire ${params.displayName} column`}
+        aria-label={`Select entire ${params.displayName} column (${columnLetter})`}
         aria-pressed={fullColumnSelected}
         title="Select entire column. Ctrl/Cmd + click for multiple columns; Shift + click for a range."
         onClick={(event) => {
@@ -2583,8 +2596,30 @@ function SelectableHeader(params: IHeaderParams & {
           }
           params.onRightClick?.(event.clientX, event.clientY);
         } : undefined}
-        style={{ background: fullColumnSelected ? "#60A5FA" : "rgba(255,255,255,.16)", border: "none", borderBottom: "1px solid rgba(127,127,127,.3)", cursor: "pointer", height: 7, left: 0, padding: 0, position: "absolute", right: 0, top: 0, zIndex: 2 }}
-      />
+        style={{
+          alignItems: "center",
+          background: fullColumnSelected ? "#60A5FA" : "#3f3e3a",
+          border: "none",
+          borderBottom: "1px solid #73716b",
+          borderRight: "1px solid #5a5954",
+          color: fullColumnSelected ? "#ffffff" : "#e7e5e0",
+          cursor: "pointer",
+          display: "flex",
+          fontSize: 10,
+          fontWeight: 700,
+          height: 22,
+          justifyContent: "center",
+          left: 0,
+          lineHeight: "22px",
+          padding: 0,
+          position: "absolute",
+          right: 0,
+          top: -72,
+          zIndex: 8,
+        }}
+      >
+        {columnLetter}
+      </button>
       <div
         role="button"
         tabIndex={0}
@@ -2634,7 +2669,7 @@ function SelectableHeader(params: IHeaderParams & {
           height: "100%",
           justifyContent: "center",
           minWidth: 0,
-          padding: "7px 3px 0",
+          padding: "3px",
           textAlign: "center",
           userSelect: "none",
           whiteSpace: "normal",
@@ -2665,6 +2700,18 @@ function SelectableHeader(params: IHeaderParams & {
       {params.restoreMarkerRight && <HideGapRestoreMarker side="right" info={params.restoreMarkerRight} />}
     </div>
   );
+}
+
+function spreadsheetColumnName(index: number): string {
+  if (index < 0) return "";
+  let value = index + 1;
+  let name = "";
+  while (value > 0) {
+    value -= 1;
+    name = String.fromCharCode(65 + (value % 26)) + name;
+    value = Math.floor(value / 26);
+  }
+  return name;
 }
 
 /** A hidden run's restore arrow — Google Sheets' own hidden-column sliver,
@@ -3294,9 +3341,11 @@ function ContainerGroupHeader(
       className={`flex w-full flex-col overflow-hidden whitespace-nowrap text-[11px] ${statusBg}`}
       style={{
         boxShadow: selected ? "inset 0 0 0 1px #60A5FA" : undefined,
+        boxSizing: "border-box",
         height: "100%",
         marginLeft: -8,
         marginRight: -8,
+        paddingTop: 22,
         width: "calc(100% + 16px)",
       }}
       onContextMenu={props.onRightClick ? (event) => {
@@ -6847,6 +6896,18 @@ autoFilling3: autoFillingContainers3.has(container.name),
           overflow: visible !important;
           z-index: 5;
         }
+        /* Spreadsheet column letters live in the leaf-header components but
+           are raised into the top of the group-header row. Keeping them tied
+           to the real leaf cells makes widths, pinning, and horizontal scroll
+           stay aligned without a second synchronized header grid. */
+        .planning-ag-grid .ag-header-cell,
+        .planning-ag-grid .ag-header-cell-comp-wrapper,
+        .planning-ag-grid .ag-header-cell-comp-wrapper > div {
+          overflow: visible !important;
+        }
+        .planning-ag-grid .ag-header-cell {
+          z-index: 6;
+        }
       `}</style>
       <div className="h-full min-h-0" style={{ minWidth: gridMinWidth }}>
         <AgGridProvider modules={modules}>
@@ -6978,7 +7039,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
             rowHeight={rowHeight}
             getRowHeight={getRowHeight}
             headerHeight={45}
-            groupHeaderHeight={50}
+            groupHeaderHeight={72}
             animateRows={false}
             suppressCellFocus
             maintainColumnOrder
@@ -6998,11 +7059,20 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 dragState.frame = window.requestAnimationFrame(columnDragAutoScrollTickRef.current);
               }
             }}
-            onDragStopped={() => {
+            onDragStopped={(event) => {
               const dragState = columnDragAutoScrollRef.current;
+              const wasColumnDrag = dragState.active;
               dragState.active = false;
               if (dragState.frame !== null) window.cancelAnimationFrame(dragState.frame);
               dragState.frame = null;
+              // Use the actual displayed order after the drag settles. AG's
+              // internal column state can temporarily retain the pre-drag
+              // order for grouped headers, leaving Column Visibility stale.
+              if (wasColumnDrag) {
+                onColumnOrderChange?.(
+                  event.api.getAllDisplayedColumns().map((column) => column.getColId()),
+                );
+              }
             }}
             onDragCancelled={() => {
               const dragState = columnDragAutoScrollRef.current;
@@ -7036,7 +7106,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
               }
               event.api.refreshHeader();
               if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });
-              onColumnOrderChange?.(event.api.getColumnState().map((state) => state.colId));
+              onColumnOrderChange?.(
+                event.api.getAllDisplayedColumns().map((column) => column.getColId()),
+              );
             }}
             onColumnResized={(event) => {
               if (!event.column || event.source !== "uiColumnResized") return;

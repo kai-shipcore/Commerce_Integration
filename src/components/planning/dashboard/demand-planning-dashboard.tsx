@@ -1494,6 +1494,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setColumnOrder((current) => {
       const moved = new Set(movedOrder);
       const next = [...movedOrder, ...current.filter((id) => !moved.has(id))];
+      if (next.length === current.length && next.every((id, index) => id === current[index])) {
+        return current;
+      }
       window.localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -2355,13 +2358,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleDraftToggleColumnGroup = useCallback((group: ColumnGroupKey) => {
+  const handleDraftToggleColumnRun = useCallback((columnIds: string[]) => {
     setColumnSettingsDraft((current) => {
       if (!current) return current;
-      const items = COLUMN_VISIBILITY_ITEMS.filter((item) => item.group === group);
-      const allVisible = items.every((item) => current.columnVis[item.id] !== false);
+      const allVisible = columnIds.every((id) => current.columnVis[id] !== false);
       const nextColumnVis = { ...current.columnVis };
-      items.forEach((item) => { nextColumnVis[item.id] = !allVisible; });
+      columnIds.forEach((id) => { nextColumnVis[id] = !allVisible; });
       return {
         ...current,
         columnVis: nextColumnVis,
@@ -2425,17 +2427,23 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       }))
       .sort((a, b) => a.orderRank - b.orderRank || a.fallbackIndex - b.fallbackIndex);
   }, [columnHeaderNames, effectiveColumnOrder]);
-  const orderedColumnVisibilityGroupKeys = useMemo(() => {
-    const movableGroups = COLUMN_VISIBILITY_GROUP_KEYS.filter((group) => group !== "con");
-    const fallbackGroupIndex = new Map(movableGroups.map((group, index) => [group, index]));
-    const orderedMovableGroups = [...movableGroups].sort((a, b) => {
-      const firstA = orderedColumnVisibilityItems.findIndex((item) => item.group === a);
-      const firstB = orderedColumnVisibilityItems.findIndex((item) => item.group === b);
-      const rankA = firstA < 0 ? Number.POSITIVE_INFINITY : firstA;
-      const rankB = firstB < 0 ? Number.POSITIVE_INFINITY : firstB;
-      return rankA - rankB || (fallbackGroupIndex.get(a) ?? 0) - (fallbackGroupIndex.get(b) ?? 0);
-    });
-    return [...orderedMovableGroups, "con" as ColumnGroupKey];
+  const orderedColumnVisibilityRuns = useMemo(() => {
+    // A group can be split when a leaf column is dragged across a group
+    // boundary. Preserve those runs instead of regrouping every item by its
+    // original semantic group, which would destroy the visible grid order.
+    return orderedColumnVisibilityItems.reduce<Array<{
+      key: string;
+      group: ColumnGroupKey;
+      items: typeof orderedColumnVisibilityItems;
+    }>>((runs, item) => {
+      const previous = runs.at(-1);
+      if (previous?.group === item.group) {
+        previous.items.push(item);
+      } else {
+        runs.push({ key: `${item.group}:${runs.length}`, group: item.group, items: [item] });
+      }
+      return runs;
+    }, []);
   }, [orderedColumnVisibilityItems]);
   const draftActiveSkuPartFilters = useMemo(() => {
     const next = { ...EMPTY_SKU_PART_FILTERS };
@@ -3411,8 +3419,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                   {pick("컬럼 표시", "Column Visibility")}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 }}>
-                  {orderedColumnVisibilityGroupKeys.map((group) => {
-                    const groupItems = orderedColumnVisibilityItems.filter((item) => item.group === group);
+                  {orderedColumnVisibilityRuns.map((run) => {
+                    const { group, items: groupItems } = run;
                     const groupLabel = columnHeaderNames[`group:${group}`]
                       ?? GROUP_LABELS[group]
                       ?? GROUP_BTN_LABELS[group]
@@ -3422,7 +3430,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                     const someChecked = checkedCount > 0 && checkedCount < groupItems.length;
                     const isOpen = openColumnVisibilityGroups[group];
                     return (
-                      <div key={group} style={{ borderRadius: 5, background: checkedCount ? "rgba(59,130,246,.04)" : "transparent" }}>
+                      <div key={run.key} style={{ borderRadius: 5, background: checkedCount ? "rgba(59,130,246,.04)" : "transparent" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, padding: "4px 5px" }}>
                           <button
                             type="button"
@@ -3438,7 +3446,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                             ref={(node) => {
                               if (node) node.indeterminate = someChecked;
                             }}
-                            onChange={() => handleDraftToggleColumnGroup(group)}
+                            onChange={() => handleDraftToggleColumnRun(groupItems.map((item) => item.id))}
                             style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#3B82F6" }}
                           />
                           <button
