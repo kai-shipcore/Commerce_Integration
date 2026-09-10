@@ -1020,6 +1020,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnTextFormats, setColumnTextFormats] = useState<ColumnTextFormatSettings>({});
   const [cellTextFormats, setCellTextFormats] = useState<CellTextFormatSettings>({});
   const [conditionalFormatRules, setConditionalFormatRules] = useState<ConditionalFormatRule[]>([]);
+  const [conditionalFormatPreviewRules, setConditionalFormatPreviewRules] = useState<ConditionalFormatRule[] | null>(null);
   const [isConditionalFormattingOpen, setIsConditionalFormattingOpen] = useState(false);
   const formatHistoryRecorderRef = useRef<PlanningFormatHistoryRecorder | null>(null);
   const [isColorSettingsOpen, setIsColorSettingsOpen] = useState(true);
@@ -1932,6 +1933,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   );
 
   const conditionalFormatRange = useMemo<ConditionalFormatRange | null>(() => {
+    // Header selection and spreadsheet-style full-column selection both identify
+    // the data columns that conditional formatting should cover. Since the
+    // spreadsheet header redesign these are stored in separate state buckets;
+    // ignoring the header bucket left "Apply to range" empty (or showing a
+    // previously selected cell) when the column header itself was selected.
+    if (activeColorTarget === "headers" && selectedColorColumns.length > 0) {
+      return { kind: "columns", columnIds: Array.from(new Set(selectedColorColumns)) };
+    }
     if (activeColorTarget === "columns" && selectedFullColumnIds.length > 0) {
       return { kind: "columns", columnIds: Array.from(new Set(selectedFullColumnIds)) };
     }
@@ -1940,7 +1949,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       : selectedAgCell ? [selectedAgCell] : [];
     if (cells.length === 0) return null;
     return { kind: "cells", cellKeys: Array.from(new Set(cells.map((cell) => `${cell.rowId}::${cell.columnId}`))) };
-  }, [activeColorTarget, selectedAgCell, selectedAgCells, selectedFullColumnIds]);
+  }, [activeColorTarget, selectedAgCell, selectedAgCells, selectedColorColumns, selectedFullColumnIds]);
 
   const handleConditionalFormatRulesChange = useCallback((rules: ConditionalFormatRule[]) => {
     // Rules created by the panel are already typed and normalized. Deferring
@@ -2009,6 +2018,21 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const uniqueColors = Array.from(new Set(colors.map((color) => color.toUpperCase())));
     return { color: uniqueColors[0] ?? "#FFFFFF", mixed: uniqueColors.length > 1 };
   }, [columnColors, data.containers, selectedFullColumnIds]);
+
+  const conditionalFormatDefaultFillColor = useMemo(() => {
+    const columnIds = activeColorTarget === "headers"
+      ? selectedColorColumns
+      : activeColorTarget === "columns" ? selectedFullColumnIds : [];
+    if (columnIds.length === 0) return selectedCellColorInfo.color;
+    const colors = columnIds.map((id) => {
+      const sharedColumnId = sharedContainerColumnId(id);
+      return columnColors[id]?.cell
+        ?? (sharedColumnId ? columnColors[sharedColumnId]?.cell : undefined)
+        ?? defaultCellFillColor(id, data.containers);
+    });
+    const uniqueColors = Array.from(new Set(colors.map((color) => color.toUpperCase())));
+    return uniqueColors.length === 1 ? uniqueColors[0] : "#FFFFFF";
+  }, [activeColorTarget, columnColors, data.containers, selectedCellColorInfo.color, selectedColorColumns, selectedFullColumnIds]);
 
   const fillPaletteEnabled = activeColorTarget === "headers"
     ? selectedColorColumns.length > 0
@@ -4013,7 +4037,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           cellColors={cellColors}
           columnTextFormats={columnTextFormats}
           cellTextFormats={cellTextFormats}
-          conditionalFormatRules={conditionalFormatRules}
+          conditionalFormatRules={conditionalFormatPreviewRules ?? conditionalFormatRules}
           onFormatHistoryRecorderReady={handleFormatHistoryRecorderReady}
           onApplyFormatHistoryChanges={applyFormatHistoryChanges}
           skuCellNotes={skuCellNotes}
@@ -4083,20 +4107,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           cellColors={cellColors}
           columnTextFormats={columnTextFormats}
           cellTextFormats={cellTextFormats}
-          conditionalFormatRules={conditionalFormatRules}
+          conditionalFormatRules={conditionalFormatPreviewRules ?? conditionalFormatRules}
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
           canEditSkuNotes={canEditSkuNotes}
           selectedCellKeys={selectedCellKeys}
         />}
       </div>
-      <ConditionalFormattingPanel
+      {isConditionalFormattingOpen && <ConditionalFormattingPanel
         open={isConditionalFormattingOpen}
         rules={conditionalFormatRules}
         currentRange={conditionalFormatRange}
+        defaultFillColor={conditionalFormatDefaultFillColor}
         onChange={handleConditionalFormatRulesChange}
+        onPreview={setConditionalFormatPreviewRules}
         onClose={() => setIsConditionalFormattingOpen(false)}
-      />
+      />}
     </div>
   );
 }

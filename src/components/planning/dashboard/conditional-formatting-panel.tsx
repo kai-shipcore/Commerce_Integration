@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { PlanningColorPalettePopover } from "./planning-color-palette";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -32,6 +33,24 @@ const OPERATORS: Array<{ value: ConditionalFormatOperator; ko: string; en: strin
 
 const needsValue = (operator: ConditionalFormatOperator) => operator !== "isEmpty" && operator !== "isNotEmpty";
 
+function sameRange(left: ConditionalFormatRange, right: ConditionalFormatRange): boolean {
+  if (left.kind !== right.kind) return false;
+  const leftEntries = left.kind === "columns" ? left.columnIds : left.cellKeys;
+  const rightEntries = right.kind === "columns" ? right.columnIds : right.cellKeys;
+  return leftEntries.length === rightEntries.length
+    && leftEntries.every((entry, index) => entry === rightEntries[index]);
+}
+
+function newRule(range: ConditionalFormatRange, fillColor: string): ConditionalFormatRule {
+  const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `rule-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return {
+    id, range, operator: "greaterThan", value: "0", enabled: true,
+    style: { fillColor, textColor: "#000000", bold: false, fontSize: 11 },
+  };
+}
+
 export function conditionalRangeLabel(range: ConditionalFormatRange, pick: (ko: string, en: string) => string): string {
   if (range.kind === "columns") {
     const visible = range.columnIds.slice(0, 2).join(", ");
@@ -55,35 +74,60 @@ function styleButton(active: boolean) {
 
 export function ConditionalFormattingPanel({
   open,
-  rules,
+  rules: savedRules,
   currentRange,
+  defaultFillColor,
   onChange,
+  onPreview,
   onClose,
 }: {
   open: boolean;
   rules: ConditionalFormatRule[];
   currentRange: ConditionalFormatRange | null;
+  defaultFillColor: string;
   onChange: (rules: ConditionalFormatRule[]) => void;
+  onPreview: (rules: ConditionalFormatRule[] | null) => void;
   onClose: () => void;
 }) {
   const { pick } = useI18n();
+  const initialDraft = currentRange && !savedRules.some((rule) => sameRange(rule.range, currentRange))
+    ? newRule(currentRange, defaultFillColor)
+    : null;
+  const [rules, setRules] = useState<ConditionalFormatRule[]>(() => (
+    // Put a new selection first so its live Apply-to-range field is visible
+    // immediately instead of being buried below previously saved rules.
+    initialDraft ? [initialDraft, ...savedRules] : savedRules
+  ));
+  const [draftRuleId, setDraftRuleId] = useState<string | null>(initialDraft?.id ?? null);
+  const previewRules = useMemo(() => rules.map((rule) => (
+    rule.id === draftRuleId && currentRange ? { ...rule, range: currentRange } : rule
+  )), [currentRange, draftRuleId, rules]);
+
+  useEffect(() => {
+    onPreview(previewRules);
+    return () => onPreview(null);
+  }, [onPreview, previewRules]);
+
   if (!open) return null;
 
   const updateRule = (id: string, patch: Partial<ConditionalFormatRule>) => {
-    onChange(rules.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
+    setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...patch } : rule));
   };
   const updateStyle = (id: string, patch: Partial<ConditionalFormatStyle>) => {
-    onChange(rules.map((rule) => rule.id === id ? { ...rule, style: { ...rule.style, ...patch } } : rule));
+    setRules((current) => current.map((rule) => rule.id === id ? { ...rule, style: { ...rule.style, ...patch } } : rule));
   };
   const addRule = () => {
     if (!currentRange) return;
-    const id = typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `rule-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    onChange([...rules, {
-      id, range: currentRange, operator: "greaterThan", value: "0", enabled: true,
-      style: { fillColor: "#FFFFFF", textColor: "#000000", bold: false, fontSize: 11 },
-    }]);
+    const nextRule = newRule(currentRange, defaultFillColor);
+    setRules((current) => [
+      ...current.map((rule) => rule.id === draftRuleId ? { ...rule, range: currentRange } : rule),
+      nextRule,
+    ]);
+    setDraftRuleId(nextRule.id);
+  };
+  const saveAndClose = () => {
+    onChange(previewRules);
+    onClose();
   };
 
   return (
@@ -105,13 +149,10 @@ export function ConditionalFormattingPanel({
           <section key={rule.id} style={{ border: "1px solid #CBD5E1", borderRadius: 8, padding: 14, marginBottom: 14, background: "#F8FAFC" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <strong style={{ fontSize: 13 }}>{pick(`규칙 ${index + 1}`, `Rule ${index + 1}`)}</strong>
-              <button type="button" onClick={() => onChange(rules.filter((item) => item.id !== rule.id))} aria-label={pick("규칙 삭제", "Delete rule")} style={{ border: 0, background: "transparent", color: "#64748B", cursor: "pointer" }}><Trash2 size={17} /></button>
+              <button type="button" onClick={() => setRules((current) => current.filter((item) => item.id !== rule.id))} aria-label={pick("규칙 삭제", "Delete rule")} style={{ border: 0, background: "transparent", color: "#64748B", cursor: "pointer" }}><Trash2 size={17} /></button>
             </div>
             <label style={{ display: "block", fontSize: 12, color: "#475569", marginBottom: 6 }}>{pick("적용 범위", "Apply to range")}</label>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-              <div style={{ flex: 1, padding: "9px 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: "#fff", fontSize: 12 }}>{conditionalRangeLabel(rule.range, pick)}</div>
-              <button type="button" disabled={!currentRange} onClick={() => currentRange && updateRule(rule.id, { range: currentRange })} style={{ border: "1px solid #CBD5E1", borderRadius: 5, background: "#fff", padding: "0 9px", cursor: currentRange ? "pointer" : "default", fontSize: 11 }}>{pick("현재 선택", "Current selection")}</button>
-            </div>
+            <div style={{ padding: "9px 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: "#fff", fontSize: 12, marginBottom: 14 }}>{conditionalRangeLabel(rule.id === draftRuleId && currentRange ? currentRange : rule.range, pick)}</div>
             <label style={{ display: "block", fontSize: 12, color: "#475569", marginBottom: 6 }}>{pick("다음 조건일 때 셀 서식 지정", "Format cells if...")}</label>
             <select value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as ConditionalFormatOperator })} style={{ width: "100%", padding: "9px 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: "#fff", marginBottom: 8 }}>
               {OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{pick(operator.ko, operator.en)}</option>)}
@@ -153,8 +194,8 @@ export function ConditionalFormattingPanel({
         ))}
       </div>
       <div style={{ padding: 16, borderTop: "1px solid #E2E8F0", display: "flex", gap: 8 }}>
-        <button type="button" disabled={!currentRange} onClick={addRule} style={{ flex: 1, padding: 10, border: "1px solid #15803D", borderRadius: 6, color: currentRange ? "#15803D" : "#94A3B8", background: "#fff", cursor: currentRange ? "pointer" : "default", fontWeight: 700 }}><Plus size={16} style={{ display: "inline", verticalAlign: "-3px", marginRight: 5 }} />{pick("규칙 추가", "Add another rule")}</button>
-        <button type="button" onClick={onClose} style={{ padding: "10px 20px", border: 0, borderRadius: 6, background: "#15803D", color: "#fff", cursor: "pointer", fontWeight: 700 }}>{pick("완료", "Done")}</button>
+        <button type="button" disabled={!currentRange} onClick={addRule} style={{ flex: 1, padding: 10, border: "1px solid #15803D", borderRadius: 6, color: currentRange ? "#15803D" : "#94A3B8", background: "#fff", cursor: currentRange ? "pointer" : "default", fontWeight: 700 }}><Plus size={16} style={{ display: "inline", verticalAlign: "-3px", marginRight: 5 }} />{pick("현재 선택에 새 규칙 추가", "Add rule for current selection")}</button>
+        <button type="button" onClick={saveAndClose} style={{ padding: "10px 20px", border: 0, borderRadius: 6, background: "#15803D", color: "#fff", cursor: "pointer", fontWeight: 700 }}>{pick("완료", "Done")}</button>
       </div>
     </aside>
   );
