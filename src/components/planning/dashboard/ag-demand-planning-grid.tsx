@@ -171,9 +171,13 @@ type SheetHistoryChange = {
   before: string;
   after: string;
 };
+type SheetViewHistoryChange =
+  | { kind: "filter"; key: string; before: ColumnFilter | null; after: ColumnFilter | null }
+  | { kind: "columnVisibility"; baseColumnIds: string[]; physicalColumnIds: string[] };
 type SheetHistoryEntry = {
   valueChanges: SheetHistoryChange[];
   formatChanges: PlanningFormatHistoryChange[];
+  viewChanges: SheetViewHistoryChange[];
 };
 type SheetClipboardFormat = { background: string | null; textColor: string | null };
 type SheetClipboardPayload = { text: string; formats: Array<Array<SheetClipboardFormat | null>> };
@@ -3791,20 +3795,24 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const formatChanges = entry.formatChanges.filter(
       (change) => JSON.stringify(change.before) !== JSON.stringify(change.after),
     );
-    if (!valueChanges.length && !formatChanges.length) return;
+    if (!valueChanges.length && !formatChanges.length && !entry.viewChanges.length) return;
     sheetUndoStackRef.current = [
       ...sheetUndoStackRef.current.slice(-(MAX_SHEET_HISTORY - 1)),
-      { valueChanges, formatChanges },
+      { valueChanges, formatChanges, viewChanges: entry.viewChanges },
     ];
     sheetRedoStackRef.current = [];
   }, []);
 
   const pushSheetHistory = useCallback((changes: SheetHistoryChange[]) => {
-    pushHistoryEntry({ valueChanges: changes, formatChanges: [] });
+    pushHistoryEntry({ valueChanges: changes, formatChanges: [], viewChanges: [] });
   }, [pushHistoryEntry]);
 
   const pushFormatHistory = useCallback((changes: PlanningFormatHistoryChange[]) => {
-    pushHistoryEntry({ valueChanges: [], formatChanges: changes });
+    pushHistoryEntry({ valueChanges: [], formatChanges: changes, viewChanges: [] });
+  }, [pushHistoryEntry]);
+
+  const pushViewHistory = useCallback((changes: SheetViewHistoryChange[]) => {
+    pushHistoryEntry({ valueChanges: [], formatChanges: [], viewChanges: changes });
   }, [pushHistoryEntry]);
 
   useEffect(() => {
@@ -4809,6 +4817,11 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       .filter((columnId) => !columnId.startsWith("container:") && columnVis[columnId] !== false);
     if (!hideKeys.length && !physicalKeys.length) return;
 
+    pushViewHistory([{
+      kind: "columnVisibility",
+      baseColumnIds: hideKeys,
+      physicalColumnIds: physicalKeys,
+    }]);
     if (onHideColumns) onHideColumns(hideKeys);
     else for (const columnId of hideKeys) onHideColumn?.(columnId);
     if (physicalKeys.length) onToggleContainerColumns?.(physicalKeys);
@@ -4821,14 +4834,36 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     lastFullColumnSelectionRef.current = null;
     notifySelectionChanged();
     startTransition(() => onCellSelectionChange?.([]));
-  }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns, onToggleContainerColumns]);
+  }, [columnVis, notifySelectionChanged, onCellSelectionChange, onHideColumn, onHideColumns, onToggleContainerColumns, pushViewHistory]);
 
   const hideGroupColumns = useCallback((columnIds: string[]) => {
     const visibleColumnIds = columnIds.filter((columnId) => columnVis[columnId] !== false);
     if (!visibleColumnIds.length) return;
+    pushViewHistory([{
+      kind: "columnVisibility",
+      baseColumnIds: visibleColumnIds,
+      physicalColumnIds: [],
+    }]);
     if (onHideColumns) onHideColumns(visibleColumnIds);
     else for (const columnId of visibleColumnIds) onHideColumn?.(columnId);
-  }, [columnVis, onHideColumn, onHideColumns]);
+  }, [columnVis, onHideColumn, onHideColumns, pushViewHistory]);
+
+  const applyColumnFilterWithHistory = useCallback((key: string, nextFilter: ColumnFilter | null) => {
+    const previousFilter = columnFilters.get(key) ?? null;
+    if (JSON.stringify(previousFilter) === JSON.stringify(nextFilter)) return;
+    pushViewHistory([{
+      kind: "filter",
+      key,
+      before: previousFilter,
+      after: nextFilter,
+    }]);
+    setColumnFilters((current) => {
+      const next = new Map(current);
+      if (nextFilter === null) next.delete(key);
+      else next.set(key, nextFilter);
+      return next;
+    });
+  }, [columnFilters, pushViewHistory]);
 
   useEffect(() => () => {
     if (dragSelectionFrameRef.current !== null) window.cancelAnimationFrame(dragSelectionFrameRef.current);
@@ -5322,7 +5357,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       return result?.status === "fulfilled" && result.value;
     });
     if (formatChanges.length) onApplyFormatHistoryChanges?.(formatChanges, "redo");
-    pushHistoryEntry({ valueChanges: successfulValueChanges, formatChanges });
+    pushHistoryEntry({ valueChanges: successfulValueChanges, formatChanges, viewChanges: [] });
     return results;
   }, [applyValueToTarget, onApplyFormatHistoryChanges, pushHistoryEntry]);
 
@@ -5708,6 +5743,20 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   }, [performFillDown]);
 
   const applySheetHistoryEntry = useCallback(async (entry: SheetHistoryEntry, direction: "undo" | "redo") => {
+    for (const change of entry.viewChanges) {
+      if (change.kind === "filter") {
+        const value = direction === "undo" ? change.before : change.after;
+        setColumnFilters((current) => {
+          const next = new Map(current);
+          if (value === null) next.delete(change.key);
+          else next.set(change.key, value);
+          return next;
+        });
+        continue;
+      }
+      for (const columnId of change.baseColumnIds) onHideColumn?.(columnId);
+      if (change.physicalColumnIds.length) onToggleContainerColumns?.(change.physicalColumnIds);
+    }
     const results = await Promise.all(entry.valueChanges.map((change) => {
       const target = resolveEditableTarget(change.rowId, change.columnId);
       if (!target) return Promise.resolve(false);
@@ -5720,15 +5769,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       onApplyFormatHistoryChanges(entry.formatChanges, direction);
     }
     return true;
-  }, [applyValueToTarget, onApplyFormatHistoryChanges, resolveEditableTarget]);
+  }, [applyValueToTarget, onApplyFormatHistoryChanges, onHideColumn, onToggleContainerColumns, resolveEditableTarget]);
 
   // Shared by the Ctrl+Z/Y shortcut below and the Edit menu's Undo/Redo items
   // — same action, two triggers. Returns whether an entry was actually
   // popped (and thus whether the caller should preventDefault), independent
   // of whether applying it eventually succeeds.
   const runSheetHistoryStep = useCallback((direction: "undo" | "redo"): boolean => {
-    if (!canEditPlanning || sheetHistoryBusyRef.current) return false;
+    if (sheetHistoryBusyRef.current) return false;
     const source = direction === "undo" ? sheetUndoStackRef.current : sheetRedoStackRef.current;
+    const nextEntry = source.at(-1);
+    if (nextEntry && (nextEntry.valueChanges.length > 0 || nextEntry.formatChanges.length > 0) && !canEditPlanning) return false;
     const entry = source.pop();
     if (!entry) return false;
 
@@ -6859,9 +6910,15 @@ autoFilling3: autoFillingContainers3.has(container.name),
     // A column picked by its letter is a selection for copying, even though no
     // individual cell is selected.
     const hasCopyableSelection = hasSelection || selectedFullColumnIdsRef.current.size > 0;
+    const undoEntry = sheetUndoStackRef.current.at(-1);
+    const redoEntry = sheetRedoStackRef.current.at(-1);
     return {
-      canUndo: canEditPlanning && !sheetHistoryBusyRef.current && sheetUndoStackRef.current.length > 0,
-      canRedo: canEditPlanning && !sheetHistoryBusyRef.current && sheetRedoStackRef.current.length > 0,
+      canUndo: !sheetHistoryBusyRef.current && Boolean(undoEntry) && (
+        canEditPlanning || (undoEntry?.valueChanges.length === 0 && undoEntry.formatChanges.length === 0)
+      ),
+      canRedo: !sheetHistoryBusyRef.current && Boolean(redoEntry) && (
+        canEditPlanning || (redoEntry?.valueChanges.length === 0 && redoEntry.formatChanges.length === 0)
+      ),
       canCut: canEditPlanning && hasSelection && (
         [...selectedCellsRef.current].some((key) => {
           const separator = key.indexOf("::");
@@ -7286,12 +7343,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
           getFillColors={() => (filterOpenKey === columnMenu.key ? columnFillColorsForOpenKey : [])}
           getTextColors={() => (filterOpenKey === columnMenu.key ? columnTextColorsForOpenKey : [])}
           onOpenColumnData={() => setFilterOpenKey(columnMenu.key)}
-          onApplyFilter={(next) => setColumnFilters((prev) => {
-            const nextMap = new Map(prev);
-            if (next === null) nextMap.delete(columnMenu.key);
-            else nextMap.set(columnMenu.key, next);
-            return nextMap;
-          })}
+          onApplyFilter={(next) => applyColumnFilterWithHistory(columnMenu.key, next)}
           onClose={() => { setColumnMenu(null); setFilterOpenKey(null); }}
         />
       )}
