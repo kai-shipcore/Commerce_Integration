@@ -39,6 +39,13 @@ describe("inferProduct", () => {
     expect(inferProduct("CL-SC-10-F-1TO").productKey).toBe("sc");
   });
 
+  it("classifies the aggregate seat-cover part rows as seat covers, not accessories", () => {
+    for (const sku of ["BACK-SEAT-COVER-PARTS", "FRONT-SEAT-COVER-PARTS", "INDV-SEAT-COVER-PART"]) {
+      expect(inferProduct(sku).productKey, sku).toBe("sc");
+      expect(inferProduct(sku).categoryCode, sku).toBe("SC");
+    }
+  });
+
   it("classifies floor mats", () => {
     expect(inferProduct("CA-FM-01").productKey).toBe("fm");
   });

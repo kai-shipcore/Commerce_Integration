@@ -158,6 +158,14 @@ export function inferProduct(masterSku: string): {
     return { productKey: "fm", category: "Floor Mat", categoryCode: "FM", moq: 5, cbmPerUnit: 0.125, caseQty: 1, weightKg: 1.4 };
   }
 
+  // The aggregate seat-cover part rows (BACK-/FRONT-SEAT-COVER-PARTS,
+  // INDV-SEAT-COVER-PART) do not carry the CA-SC- prefix, so they used to fall
+  // through to Accessories and turned up under Car Cover once that group
+  // absorbed AC. They are seat covers by any reading of their name.
+  if (sku.includes("SEAT-COVER-PART")) {
+    return { productKey: "sc", category: "Seat Cover", categoryCode: "SC", moq: 5, cbmPerUnit: 0.048, caseQty: 1, weightKg: 0.9 };
+  }
+
   return { productKey: "ac", category: "Accessories", categoryCode: "AC", moq: 1, cbmPerUnit: 0.05, caseQty: 1, weightKg: 0.5 };
 }
 
