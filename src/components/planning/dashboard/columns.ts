@@ -1,6 +1,6 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
-import type { ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyStatus } from "@/types/demand-planning";
+import type { CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyStatus } from "@/types/demand-planning";
 
 export const TINT_COLORS: Record<string, string> = {
   "t-stock":   "#F5F9FF",
@@ -151,6 +151,7 @@ export const ALL_COLS: ColDef[] = [
   // Always-visible base columns
   { id: "row_num",   grp: "fix", label: "#",                w: 36,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
   { id: "cont_info", grp: "fix", label: "Container\nInfo.", w: 190, align: "left", tint: "",        gh: "gh-fix",    fontSize: 10, val: (r) => r.container_info || "" },
+  { id: "qty_ctn",   grp: "fix", label: "Qty/Ctn",          w: 52,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.case_qty ?? 1, sortVal: (r) => r.case_qty ?? 1 },
   { id: "cbm",       grp: "fix", label: "CBM",              w: 56,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => r.cbm_per_unit ? r.cbm_per_unit.toFixed(4) : "", sortVal: (r) => r.cbm_per_unit ?? -1 },
   { id: "workflow_note", grp: "fix", label: "Note",          w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note ?? "", sortVal: (r) => r.workflow_note ?? "" },
   { id: "workflow_note_2", grp: "fix", label: "Note 2",      w: 110, align: "left", tint: "",        gh: "gh-fix",    val: (r) => r.workflow_note_2 ?? "", sortVal: (r) => r.workflow_note_2 ?? "" },
@@ -259,6 +260,23 @@ export const GROUP_BTN_LABELS: Record<string, string> = {
   inb:    "🚢 Inbound/SOD",
   con:    "📋 Container 컬럼",
 };
+
+/** Columns that only mean something for some categories, and are left out of
+ *  the grid entirely for the rest.
+ *
+ *  Qty/Ctn is units per carton, and Car Cover is the only category that packs
+ *  more than one (2 or 3); Seat Cover, Floor Mat, Accessories and SWC are all
+ *  1, so everywhere else the column would be a stripe of ones. Read-only here
+ *  — fc_products.case_qty is edited on the SKU Master page, which stays the
+ *  one place it changes. */
+const CATEGORY_SCOPED_COLUMNS: Record<string, CategoryFilter[]> = {
+  qty_ctn: ["cc"],
+};
+
+export function columnAppliesToCategories(columnId: string, categories: CategoryFilter[]): boolean {
+  const scope = CATEGORY_SCOPED_COLUMNS[columnId];
+  return !scope || scope.some((category) => categories.includes(category));
+}
 
 export const DEFAULT_FREEZE = "sod";
 export const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";

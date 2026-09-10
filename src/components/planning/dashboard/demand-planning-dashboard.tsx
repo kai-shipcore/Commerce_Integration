@@ -14,6 +14,7 @@ import {
   ALL_COLS,
   ALL_GROUP_KEYS,
   COMPACT_COLUMN_IDS,
+  columnAppliesToCategories,
   CON_SUBCOLS,
   CELL_COLORS_STORAGE_KEY,
   CELL_TEXT_FORMATS_STORAGE_KEY,
@@ -2390,6 +2391,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     };
 
     return COLUMN_VISIBILITY_ITEMS
+      // A column the current category does not use is not in the grid, so it
+      // has no business offering a checkbox here either.
+      .filter((item) => item.kind !== "base" || columnAppliesToCategories(item.id, categoryFilter))
       .map((item, fallbackIndex) => ({
         ...item,
         label: columnHeaderNames[item.id] ?? item.label,
@@ -2397,7 +2401,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         fallbackIndex,
       }))
       .sort((a, b) => a.orderRank - b.orderRank || a.fallbackIndex - b.fallbackIndex);
-  }, [columnHeaderNames, effectiveColumnOrder]);
+  }, [categoryFilter, columnHeaderNames, effectiveColumnOrder]);
   const orderedColumnVisibilityRuns = useMemo(() => {
     // A group can be split when a leaf column is dragged across a group
     // boundary. Preserve those runs instead of regrouping every item by its

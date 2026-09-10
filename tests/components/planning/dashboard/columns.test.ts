@@ -6,6 +6,7 @@ import {
   MAX_ROW_HEIGHT,
   MIN_ROW_HEIGHT,
   WRAPPING_ROW_COLUMN_IDS,
+  columnAppliesToCategories,
   ensureAdditionalNotesInColumnOrder,
   loadSavedRowHeight,
   normalizeRowHeight,
@@ -99,6 +100,32 @@ describe("normalizeRowHeights", () => {
   it("returns an empty map for anything that is not an object", () => {
     for (const value of [undefined, null, 40, "x", []]) {
       expect(normalizeRowHeights(value)).toEqual({});
+    }
+  });
+});
+
+describe("Qty/Ctn column", () => {
+  it("sits immediately left of CBM", () => {
+    const ids = ALL_COLS.map((column) => column.id);
+    expect(ids.indexOf("qty_ctn")).toBe(ids.indexOf("cbm") - 1);
+  });
+
+  it("reads case_qty, falling back to one per carton", () => {
+    const column = ALL_COLS.find((candidate) => candidate.id === "qty_ctn");
+    expect(column?.val({ case_qty: 3 } as never, 0, "ok")).toBe(3);
+    expect(column?.val({} as never, 0, "ok")).toBe(1);
+  });
+
+  it("is offered to the Car Cover group only — every other category packs one per carton", () => {
+    expect(columnAppliesToCategories("qty_ctn", ["cc", "swc", "ac"])).toBe(true);
+    expect(columnAppliesToCategories("qty_ctn", ["sc"])).toBe(false);
+    expect(columnAppliesToCategories("qty_ctn", ["fm"])).toBe(false);
+  });
+
+  it("leaves every other column alone", () => {
+    for (const id of ["cbm", "sku", "row_num", "total"]) {
+      expect(columnAppliesToCategories(id, ["sc"]), id).toBe(true);
+      expect(columnAppliesToCategories(id, ["fm"]), id).toBe(true);
     }
   });
 });

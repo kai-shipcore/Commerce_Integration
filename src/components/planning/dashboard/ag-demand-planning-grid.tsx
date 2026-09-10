@@ -29,6 +29,7 @@ import {
   TINT_COLORS,
   TODAY,
   WRAPPING_ROW_COLUMN_IDS,
+  columnAppliesToCategories,
   normalizeColumnFilterMenuSize,
   normalizeRowHeight,
   type RowHeights,
@@ -6027,8 +6028,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   // both get a restore indicator. Shared by pinning and columnDefs below so
   // the two can't disagree about where a hidden run falls.
   const baseCandidates = useMemo(
-    () => ALL_COLS.filter((column) => column.grp === "fix" || groupVis[column.grp]),
-    [groupVis],
+    () => ALL_COLS.filter((column) => (column.grp === "fix" || groupVis[column.grp])
+      && columnAppliesToCategories(column.id, categoryFilter)),
+    [categoryFilter, groupVis],
   );
 
   const baseHiddenRuns = useMemo(() => {

@@ -17,6 +17,7 @@ import {
   TINT_COLORS,
   TODAY,
   clampColumnWidth,
+  columnAppliesToCategories,
   daysTo,
   isResizableColumnId,
   skuMatchesPartFilters,
@@ -426,6 +427,7 @@ export function DemandPlanningGrid({
   const visCols = useMemo<ColDef[]>(
     () => ALL_COLS
       .filter((c) => c.grp === "fix" || groupVis[c.grp])
+      .filter((c) => columnAppliesToCategories(c.id, categoryFilter))
       .filter((c) => columnVis[c.id] !== false)
       .filter((c) => !compactMode || COMPACT_COLUMN_IDS.has(c.id))
       .map((col) => {
@@ -433,7 +435,7 @@ export function DemandPlanningGrid({
         const savedWidth = columnWidths[col.id];
         return typeof savedWidth === "number" ? { ...col, w: savedWidth } : col;
       }),
-    [columnVis, columnWidths, compactMode, groupVis],
+    [categoryFilter, columnVis, columnWidths, compactMode, groupVis],
   );
 
   const showCon = groupVis["con"];
