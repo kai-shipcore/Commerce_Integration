@@ -4,8 +4,9 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState, use
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import { ClipboardPaste, Copy, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2, WandSparkles } from "lucide-react";
+import { ClipboardPaste, Copy, FilterX, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2, WandSparkles } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
+import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder } from "./demand-planning-grid";
 import { ConditionalFormattingPanel } from "./conditional-formatting-panel";
 import { PlanningColorPalettePopover } from "./planning-color-palette";
@@ -14,7 +15,11 @@ import {
   ALL_COLS,
   ALL_GROUP_KEYS,
   COMPACT_COLUMN_IDS,
+  DASHBOARD_FILTERS_STORAGE_KEY,
   columnAppliesToCategories,
+  loadSavedDashboardFilters,
+  normalizeDashboardFilters,
+  serializeDashboardFilters,
   CON_SUBCOLS,
   CELL_COLORS_STORAGE_KEY,
   CELL_TEXT_FORMATS_STORAGE_KEY,
@@ -878,10 +883,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, false, categoryFilter, salesWindowWeights, oosLostDemandWeights);
   const [isCategoryPending, startCategoryTransition] = useTransition();
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
-  const [productFilter, setProductFilter] = useState<ProductFilter>("all");
-  const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(null);
+  // Read once, before the filter states below take their initial values.
+  const [savedFilters] = useState(loadSavedDashboardFilters);
+  const [productFilter, setProductFilter] = useState<ProductFilter>(savedFilters.productFilter);
+  const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(savedFilters.urgencyFilter);
+  // Not restored: a search is typed to find one thing, and one restored days
+  // later reads as rows gone missing.
   const [search, setSearch] = useState("");
-  const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(EMPTY_SKU_PART_FILTERS);
+  const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(savedFilters.skuPartFilters);
+  // Held here rather than in the grid so a reload can put them back; the grid
+  // reads them, edits them through the setter, and reports how many of them
+  // the current view can apply.
+  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(savedFilters.columnFilters);
+  const [columnFilterCount, setColumnFilterCount] = useState(savedFilters.columnFilters.size);
   const [isSkuFiltersOpen, setIsSkuFiltersOpen] = useState(true);
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
@@ -909,6 +923,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Everything the toolbar and the column headers can narrow the grid by. The
+  // category group is not in here: it chooses which products are being planned
+  // at all, not which of them are shown, and clearing it would leave nothing
+  // selected.
+  const activeFilterCount = useMemo(() => (
+    columnFilterCount
+    + (productFilter !== "all" ? 1 : 0)
+    + (urgencyFilter ? 1 : 0)
+    + (search.trim() ? 1 : 0)
+    + Object.values(skuPartFilters).filter((values) => values.length > 0).length
+  ), [columnFilterCount, productFilter, search, skuPartFilters, urgencyFilter]);
 
   const handleProductFilter = useCallback((filter: ProductFilter) => {
     setProductFilter(filter);
@@ -1232,6 +1258,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setRowHeight(normalizedHeight);
         }
 
+        const savedDashboardFilters = d[DASHBOARD_FILTERS_STORAGE_KEY];
+        if (savedDashboardFilters && typeof savedDashboardFilters === "object" && !Array.isArray(savedDashboardFilters)) {
+          const filters = normalizeDashboardFilters(savedDashboardFilters);
+          window.localStorage.setItem(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters(filters)));
+          setColumnFilters(filters.columnFilters);
+          setProductFilter(filters.productFilter);
+          setSkuPartFilters(filters.skuPartFilters);
+          // The URL wins for urgency: a link shared with ?status= is asking to
+          // be opened on that status, whatever the reader last looked at.
+          // Read from the address bar rather than the hook's value: this
+          // effect runs once, at load, and must not re-run on later URL edits.
+          if (!new URLSearchParams(window.location.search).get("status")) setUrgencyFilter(filters.urgencyFilter);
+        }
+
         const savedRowHeights = d[ROW_HEIGHTS_STORAGE_KEY];
         if (savedRowHeights && typeof savedRowHeights === "object" && !Array.isArray(savedRowHeights)) {
           const normalizedHeights = normalizeRowHeights(savedRowHeights);
@@ -1387,6 +1427,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     );
   }, [columnSettingsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil]);
 
+  useEffect(() => {
+    if (!dbPrefsLoaded) return;
+    window.localStorage.setItem(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters({
+      columnFilters, productFilter, urgencyFilter, skuPartFilters,
+    })));
+  }, [columnFilters, dbPrefsLoaded, productFilter, skuPartFilters, urgencyFilter]);
+
   // Save all preferences to DB whenever any setting changes (debounced, after initial load)
   useEffect(() => {
     if (!columnSettingsLoaded || !dbPrefsLoaded) return;
@@ -1396,6 +1443,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_FILTER_MENU_SIZE_STORAGE_KEY]: columnFilterMenuSize,
       [ROW_HEIGHT_STORAGE_KEY]: rowHeight,
       [ROW_HEIGHTS_STORAGE_KEY]: rowHeights,
+      [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
+        columnFilters, productFilter, urgencyFilter, skuPartFilters,
+      }),
       [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
       [CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY]: containerOrderCustomized,
       [COLUMN_COLORS_STORAGE_KEY]: columnColors,
@@ -1415,7 +1465,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnFilters, productFilter, urgencyFilter, skuPartFilters, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -2470,6 +2520,17 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     agGridEditActionsRef.current = actions;
   }, []);
 
+  const clearAllFilters = useCallback(() => {
+    // Through the grid, so the whole reset lands in the undo history as one
+    // step rather than vanishing.
+    agGridEditActionsRef.current?.clearColumnFilters();
+    setColumnFilters(new Map());
+    setProductFilter("all");
+    setUrgencyFilter(null);
+    setSearch("");
+    setSkuPartFilters(EMPTY_SKU_PART_FILTERS);
+  }, []);
+
   const handleEditMenuOpenChange = useCallback((open: boolean) => {
     setIsEditMenuOpen(open);
     if (open) {
@@ -2645,6 +2706,42 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           <option value="warn">Warning</option>
           <option value="bo">BackOrder</option>
         </select>
+
+        <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
+
+        <button
+          type="button"
+          onClick={clearAllFilters}
+          disabled={activeFilterCount === 0}
+          aria-label={pick("모든 필터 해제", "Clear all filters")}
+          title={activeFilterCount === 0
+            ? pick("적용된 필터가 없습니다", "No filters applied")
+            : pick(`${activeFilterCount}개 필터 해제 (카테고리는 유지)`, `Clear ${activeFilterCount} filters (category is kept)`)}
+          style={{
+            alignItems: "center",
+            background: activeFilterCount > 0 ? "#FEF2F2" : "#fff",
+            border: `1px solid ${activeFilterCount > 0 ? "#FCA5A5" : "#C2BFB5"}`,
+            borderRadius: 4,
+            color: activeFilterCount > 0 ? "#B91C1C" : "#9A968E",
+            cursor: activeFilterCount > 0 ? "pointer" : "default",
+            display: "inline-flex",
+            flexShrink: 0,
+            fontSize: 11,
+            fontWeight: 600,
+            gap: 4,
+            height: 26,
+            padding: "0 8px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <FilterX aria-hidden="true" size={13} />
+          {pick("필터 해제", "Clear filters")}
+          {activeFilterCount > 0 ? (
+            <span style={{ background: "#B91C1C", borderRadius: 8, color: "#fff", fontSize: 10, lineHeight: "14px", minWidth: 14, padding: "0 4px", textAlign: "center" }}>
+              {activeFilterCount}
+            </span>
+          ) : null}
+        </button>
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
@@ -3893,6 +3990,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           rowHeight={rowHeight}
           rowHeights={rowHeights}
           onRowHeightsChange={handleRowHeightsChange}
+          columnFilters={columnFilters}
+          onColumnFiltersChange={setColumnFilters}
+          onColumnFilterCountChange={setColumnFilterCount}
           onColumnFilterMenuSizeChange={handleColumnFilterMenuSizeChange}
           columnOrder={effectiveColumnOrder}
           onColumnOrderChange={handleColumnOrderChange}

@@ -23,6 +23,7 @@ import {
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
+import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
@@ -79,6 +80,12 @@ export interface DemandPlanningGridProps {
   /** The grid-wide default, set by the Row Height stepper in the dashboard. */
   rowHeight?: number;
   /** Per-row overrides, keyed by master SKU — the rows the user has dragged. */
+  /** Column-header filters live in the dashboard so they can be persisted;
+   *  the AG grid reads them, edits them through the callback, and reports how
+   *  many of them this view can actually apply. */
+  columnFilters?: Map<string, ColumnFilter>;
+  onColumnFiltersChange?: (next: Map<string, ColumnFilter>) => void;
+  onColumnFilterCountChange?: (count: number) => void;
   rowHeights?: RowHeights;
   onRowHeightsChange?: (skus: string[], height: number) => void;
   columnOrder?: ColumnOrder;

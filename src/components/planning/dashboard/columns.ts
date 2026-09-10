@@ -1,6 +1,11 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
-import type { CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyStatus } from "@/types/demand-planning";
+import {
+  parseColumnFilters,
+  serializeColumnFilters,
+  type ColumnFilter,
+} from "@/lib/planning/column-filter";
+import type { CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, ProductFilter, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
 
 export const TINT_COLORS: Record<string, string> = {
   "t-stock":   "#F5F9FF",
@@ -334,6 +339,76 @@ export function loadSavedRowHeight(): number {
   }
 }
 
+export const DASHBOARD_FILTERS_STORAGE_KEY = "planning-dashboard-filters";
+
+/** What the dashboard narrows the grid by, kept across a reload — losing a
+ *  set of filters to a refresh means rebuilding them by hand.
+ *
+ *  The search box is deliberately not here: it is typed to find one thing,
+ *  not to set up a view, and a search restored days later reads as rows gone
+ *  missing. The category group is not here either — it rides the URL, so a
+ *  shared link opens on what the sender was looking at. */
+export interface DashboardFiltersState {
+  columnFilters: Map<string, ColumnFilter>;
+  productFilter: ProductFilter;
+  urgencyFilter: UrgencyFilter | null;
+  skuPartFilters: SkuPartFilters;
+}
+
+const PRODUCT_FILTER_VALUES = new Set<ProductFilter>(["all", "orig", "cust", "part"]);
+const URGENCY_FILTER_VALUES = new Set<UrgencyFilter>(["crit", "warn", "bo", "over"]);
+
+export function serializeDashboardFilters(filters: DashboardFiltersState): Record<string, unknown> {
+  return {
+    columnFilters: serializeColumnFilters(filters.columnFilters),
+    productFilter: filters.productFilter,
+    urgencyFilter: filters.urgencyFilter,
+    skuPartFilters: filters.skuPartFilters,
+  };
+}
+
+export function normalizeDashboardFilters(value: unknown): DashboardFiltersState {
+  const empty: DashboardFiltersState = {
+    columnFilters: new Map(),
+    productFilter: "all",
+    urgencyFilter: null,
+    skuPartFilters: EMPTY_SKU_PART_FILTERS,
+  };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
+  const candidate = value as Record<string, unknown>;
+
+  const skuPartFilters = { ...EMPTY_SKU_PART_FILTERS };
+  const storedParts = candidate.skuPartFilters;
+  if (storedParts && typeof storedParts === "object" && !Array.isArray(storedParts)) {
+    for (const [key, values] of Object.entries(storedParts as Record<string, unknown>)) {
+      if (!(key in skuPartFilters)) continue;
+      if (Array.isArray(values) && values.every((entry) => typeof entry === "string")) {
+        skuPartFilters[key as SkuPartFilterKey] = values as string[];
+      }
+    }
+  }
+
+  return {
+    columnFilters: parseColumnFilters(candidate.columnFilters),
+    productFilter: PRODUCT_FILTER_VALUES.has(candidate.productFilter as ProductFilter)
+      ? candidate.productFilter as ProductFilter
+      : "all",
+    urgencyFilter: URGENCY_FILTER_VALUES.has(candidate.urgencyFilter as UrgencyFilter)
+      ? candidate.urgencyFilter as UrgencyFilter
+      : null,
+    skuPartFilters,
+  };
+}
+
+export function loadSavedDashboardFilters(): DashboardFiltersState {
+  if (typeof window === "undefined") return normalizeDashboardFilters(null);
+  try {
+    return normalizeDashboardFilters(JSON.parse(window.localStorage.getItem(DASHBOARD_FILTERS_STORAGE_KEY) ?? "null"));
+  } catch {
+    return normalizeDashboardFilters(null);
+  }
+}
+
 export const ROW_HEIGHTS_STORAGE_KEY = "planning-dashboard-row-heights";
 
 /** Per-row height overrides, keyed by master SKU. Only rows the user has
@@ -399,6 +474,9 @@ export type EditMenuActions = {
   paste: () => void;
   deleteSelection: () => void;
   getAvailability: () => EditMenuAvailability;
+  /** Drops every column-header filter at once, as one undoable step. The
+   *  toolbar's own filters are the dashboard's to reset. */
+  clearColumnFilters: () => void;
 };
 
 export const EMPTY_SKU_PART_FILTERS: SkuPartFilters = {

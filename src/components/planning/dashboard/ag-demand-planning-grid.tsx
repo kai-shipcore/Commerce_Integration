@@ -112,6 +112,8 @@ const CONTAINER_BLOCK_RAIL = "2px solid #5A5750";
 //
 // Handled here rather than in CON_SUBCOLS because that list is shared with the
 // native grid, which is deliberately unchanged.
+const EMPTY_COLUMN_FILTERS: Map<string, ColumnFilter> = new Map();
+
 const CON_QTY_COLUMN_ID = "inb_qty";
 const CON_QTY_TINT = "#CFE8F7";
 const CON_QTY_RAIL = "1px solid #5B8FC9";
@@ -3634,6 +3636,9 @@ export function AgDemandPlanningGrid({
   rowHeight = DEFAULT_ROW_HEIGHT,
   rowHeights = {},
   onRowHeightsChange,
+  columnFilters: storedColumnFilters = EMPTY_COLUMN_FILTERS,
+  onColumnFiltersChange,
+  onColumnFilterCountChange,
   columnOrder = [],
   onColumnOrderChange,
   onContainerOrderCustomized,
@@ -3760,7 +3765,13 @@ export function AgDemandPlanningGrid({
   // Right-click column menu (Sort A→Z, Sort Z→A, Filter, Hide), keyed the
   // same way `colId` already is: a base column's own id, or
   // `<containerName>::<subColumnId>` for a container sub-column.
-  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
+  // Filters are the dashboard's to hold — it is the half that survives a
+  // reload — but they are still edited from here, so the setter shape the
+  // call sites already use is kept and forwarded upwards.
+  const setColumnFilters = useCallback((updater: (current: Map<string, ColumnFilter>) => Map<string, ColumnFilter>) => {
+    onColumnFiltersChange?.(updater(storedColumnFilters));
+  }, [onColumnFiltersChange, storedColumnFilters]);
+
   const [sort, setSort] = useState<GridSort | null>(null);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
   const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; label: string; columnIds: string[] } | null>(null);
@@ -3867,6 +3878,27 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     return [...baseline, ...ordered];
   }, [categoryFilter, data.containers, etaOverrides, hiddenContainers]);
+
+  // A stored filter can name a column this view does not have: another
+  // category's column, or a container that has since shipped. Those are
+  // ignored rather than dropped — switching back brings them with it — but a
+  // filter nobody can see must not be quietly narrowing the grid.
+  const columnFilters = useMemo(() => {
+    if (storedColumnFilters.size === 0) return storedColumnFilters;
+    const containerNames = new Set(containers.map((container) => container.name));
+    const baseColumnIds = new Set(ALL_COLS
+      .filter((column) => columnAppliesToCategories(column.id, categoryFilter))
+      .map((column) => column.id));
+    const active = new Map<string, ColumnFilter>();
+    for (const [key, filter] of storedColumnFilters) {
+      const separator = key.indexOf("::");
+      const usable = separator < 0
+        ? baseColumnIds.has(key)
+        : containerNames.has(key.slice(0, separator));
+      if (usable) active.set(key, filter);
+    }
+    return active;
+  }, [categoryFilter, containers, storedColumnFilters]);
 
   // Raw, comparable value for a container sub-column, mirroring the "merged"
   // object each cell already builds from base data + qty override + chain
@@ -4863,7 +4895,23 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       else next.set(key, nextFilter);
       return next;
     });
-  }, [columnFilters, pushViewHistory]);
+  }, [columnFilters, pushViewHistory, setColumnFilters]);
+
+  // One entry for the lot, so Ctrl+Z puts every filter back in a single step.
+  const clearColumnFilters = useCallback(() => {
+    if (storedColumnFilters.size === 0) return;
+    pushViewHistory([...storedColumnFilters].map(([key, filter]) => ({
+      kind: "filter" as const,
+      key,
+      before: filter,
+      after: null,
+    })));
+    onColumnFiltersChange?.(new Map());
+  }, [onColumnFiltersChange, pushViewHistory, storedColumnFilters]);
+
+  useEffect(() => {
+    onColumnFilterCountChange?.(columnFilters.size);
+  }, [columnFilters, onColumnFilterCountChange]);
 
   useEffect(() => () => {
     if (dragSelectionFrameRef.current !== null) window.cancelAnimationFrame(dragSelectionFrameRef.current);
@@ -5769,7 +5817,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       onApplyFormatHistoryChanges(entry.formatChanges, direction);
     }
     return true;
-  }, [applyValueToTarget, onApplyFormatHistoryChanges, onHideColumn, onToggleContainerColumns, resolveEditableTarget]);
+  }, [applyValueToTarget, onApplyFormatHistoryChanges, onHideColumn, onToggleContainerColumns, resolveEditableTarget, setColumnFilters]);
 
   // Shared by the Ctrl+Z/Y shortcut below and the Edit menu's Undo/Redo items
   // — same action, two triggers. Returns whether an entry was actually
@@ -6934,6 +6982,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
   useEffect(() => {
     if (!onEditActionsReady) return;
     const actions: EditMenuActions = {
+      clearColumnFilters,
       undo: performUndo,
       redo: performRedo,
       cut: () => void performCut(),
@@ -6944,7 +6993,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
     };
     onEditActionsReady(actions);
     return () => onEditActionsReady(null);
-  }, [getEditMenuAvailability, onEditActionsReady, performCopy, performCut, performDelete, performPaste, performRedo, performUndo]);
+  }, [clearColumnFilters, getEditMenuAvailability, onEditActionsReady, performCopy, performCut, performDelete, performPaste, performRedo, performUndo]);
 
   return (
     <>

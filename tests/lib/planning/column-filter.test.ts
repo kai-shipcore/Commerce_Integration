@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   applyColumnFilters, distinctColumnValues, distinctColumnValuesExcluding,
-  matchesCondition, type ColumnFilter, type ConditionFilter,
+  matchesCondition, parseColumnFilters, serializeColumnFilters,
+  type ColumnFilter, type ConditionFilter,
 } from "@/lib/planning/column-filter";
 
 describe("matchesCondition", () => {
@@ -170,5 +171,48 @@ describe("distinctColumnValues", () => {
 
     const values = distinctColumnValuesExcluding(rows, filters, accessors, formatters, "qty", "(Blank)");
     expect(values.map((v) => v.label)).toEqual(["1", "2", "10"]);
+  });
+});
+
+describe("serializeColumnFilters / parseColumnFilters", () => {
+  it("round-trips every filter mode", () => {
+    const filters = new Map<string, ColumnFilter>([
+      ["sku", { mode: "values", values: new Set(["A", "B"]) }],
+      ["back", { mode: "condition", condition: { operator: "between", value: "1", value2: "9" } }],
+      ["CONT-2411::inb_qty", { mode: "color", colorType: "text", colors: new Set(["#fff"]) }],
+    ]);
+
+    // Through JSON, which is where the Sets would otherwise be lost.
+    const restored = parseColumnFilters(JSON.parse(JSON.stringify(serializeColumnFilters(filters))));
+
+    expect([...restored.keys()].sort()).toEqual(["CONT-2411::inb_qty", "back", "sku"]);
+    expect(restored.get("sku")).toEqual({ mode: "values", values: new Set(["A", "B"]) });
+    expect(restored.get("back")).toEqual({ mode: "condition", condition: { operator: "between", value: "1", value2: "9" } });
+    expect(restored.get("CONT-2411::inb_qty")).toEqual({ mode: "color", colorType: "text", colors: new Set(["#fff"]) });
+  });
+
+  it("keeps a value filter usable — a Set, not the {} JSON would leave behind", () => {
+    const stored = JSON.parse(JSON.stringify(serializeColumnFilters(
+      new Map<string, ColumnFilter>([["sku", { mode: "values", values: new Set(["A"]) }]]),
+    )));
+    const filter = parseColumnFilters(stored).get("sku");
+    expect(filter?.mode === "values" && filter.values.has("A")).toBe(true);
+  });
+
+  it("drops entries it cannot read, and keeps the rest", () => {
+    const restored = parseColumnFilters({
+      good: { mode: "values", values: ["A"] },
+      badMode: { mode: "nonsense", values: ["A"] },
+      badValues: { mode: "values", values: "A" },
+      badOperator: { mode: "condition", condition: { operator: "drop table" } },
+      notAnObject: 5,
+    });
+    expect([...restored.keys()]).toEqual(["good"]);
+  });
+
+  it("returns nothing for input that is not an object", () => {
+    for (const value of [null, undefined, 5, "x", []]) {
+      expect(parseColumnFilters(value).size).toBe(0);
+    }
   });
 });

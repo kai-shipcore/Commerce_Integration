@@ -8,6 +8,7 @@ import {
   WRAPPING_ROW_COLUMN_IDS,
   columnAppliesToCategories,
   ensureAdditionalNotesInColumnOrder,
+  normalizeDashboardFilters,
   loadSavedRowHeight,
   normalizeRowHeight,
   normalizeRowHeights,
@@ -127,5 +128,43 @@ describe("Qty/Ctn column", () => {
       expect(columnAppliesToCategories(id, ["sc"]), id).toBe(true);
       expect(columnAppliesToCategories(id, ["fm"]), id).toBe(true);
     }
+  });
+});
+
+describe("normalizeDashboardFilters", () => {
+  it("restores what was stored", () => {
+    const filters = normalizeDashboardFilters({
+      columnFilters: { sku: { mode: "values", values: ["A"] } },
+      productFilter: "cust",
+      urgencyFilter: "crit",
+      skuPartFilters: { seat: ["FRONT"], color: ["BK"] },
+    });
+    expect(filters.columnFilters.size).toBe(1);
+    expect(filters.productFilter).toBe("cust");
+    expect(filters.urgencyFilter).toBe("crit");
+    expect(filters.skuPartFilters.seat).toEqual(["FRONT"]);
+    expect(filters.skuPartFilters.color).toEqual(["BK"]);
+    expect(filters.skuPartFilters.make).toEqual([]);
+  });
+
+  it("falls back to no filters for anything unreadable", () => {
+    for (const value of [null, undefined, "x", 5, []]) {
+      const filters = normalizeDashboardFilters(value);
+      expect(filters.columnFilters.size).toBe(0);
+      expect(filters.productFilter).toBe("all");
+      expect(filters.urgencyFilter).toBeNull();
+    }
+  });
+
+  it("rejects values outside the known sets rather than trusting storage", () => {
+    const filters = normalizeDashboardFilters({
+      productFilter: "bogus",
+      urgencyFilter: "bogus",
+      skuPartFilters: { seat: "FRONT", unknownKey: ["x"] },
+    });
+    expect(filters.productFilter).toBe("all");
+    expect(filters.urgencyFilter).toBeNull();
+    expect(filters.skuPartFilters.seat).toEqual([]);
+    expect("unknownKey" in filters.skuPartFilters).toBe(false);
   });
 });
