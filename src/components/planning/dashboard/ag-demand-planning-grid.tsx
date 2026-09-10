@@ -137,7 +137,7 @@ type ChainDerived = {
   plan_sod: string | null;
 };
 
-type ContainerColumnTotals = Partial<Record<"ccbm" | "inb_qty" | "remaining" | "mistake" | "oo", number>>;
+type ContainerColumnTotals = Partial<Record<"ccbm" | "inb_qty" | "remaining" | "mistake" | "oo" | "avail" | "carry", number>>;
 
 type ContainerTotalColumn = {
   id: string;
@@ -2470,8 +2470,49 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
   selectionId: string;
   onRename: (columnId: string, name: string) => void;
   onRightClick?: (x: number, y: number) => void;
+  totalColumns?: ContainerTotalColumn[];
 }) {
   const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
+  const [liveColumnWidths, setLiveColumnWidths] = useState<Record<string, number>>({});
+  const [liveColumnOrder, setLiveColumnOrder] = useState<string[]>(() => (
+    params.totalColumns?.map((column) => column.columnId) ?? []
+  ));
+  const totalColumns = useMemo(() => params.totalColumns ?? [], [params.totalColumns]);
+
+  useEffect(() => {
+    if (!totalColumns.length) return;
+    const columnIds = new Set(totalColumns.map((column) => column.columnId));
+    const syncLayout = () => {
+      const nextWidths: Record<string, number> = {};
+      for (const column of totalColumns) {
+        nextWidths[column.columnId] = params.api.getColumn(column.columnId)?.getActualWidth() ?? column.width;
+      }
+      setLiveColumnWidths(nextWidths);
+      const displayedOrder = params.api.getAllDisplayedColumns()
+        .map((column) => column.getColId())
+        .filter((columnId) => columnIds.has(columnId));
+      setLiveColumnOrder(displayedOrder);
+    };
+
+    syncLayout();
+    params.api.addEventListener("columnResized", syncLayout);
+    params.api.addEventListener("columnMoved", syncLayout);
+    params.api.addEventListener("displayedColumnsChanged", syncLayout);
+    return () => {
+      if (params.api.isDestroyed()) return;
+      params.api.removeEventListener("columnResized", syncLayout);
+      params.api.removeEventListener("columnMoved", syncLayout);
+      params.api.removeEventListener("displayedColumnsChanged", syncLayout);
+    };
+  }, [params.api, totalColumns]);
+
+  const orderedTotalColumns = useMemo(() => {
+    const byId = new Map(totalColumns.map((column) => [column.columnId, column]));
+    const liveSet = new Set(liveColumnOrder);
+    return [...liveColumnOrder, ...totalColumns.map((column) => column.columnId).filter((id) => !liveSet.has(id))]
+      .map((columnId) => byId.get(columnId))
+      .filter((column): column is ContainerTotalColumn => Boolean(column));
+  }, [liveColumnOrder, totalColumns]);
 
   if (editorAnchor) {
     return (
@@ -2510,9 +2551,29 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
         const rect = event.currentTarget.getBoundingClientRect();
         setEditorAnchor({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
       }}
-      style={{ alignItems: "center", boxSizing: "border-box", cursor: "text", display: "flex", fontWeight: 700, height: "100%", justifyContent: "center", overflow: "hidden", paddingTop: 22, textAlign: "center", width: "100%" }}
+      style={{ alignItems: "center", boxSizing: "border-box", cursor: "text", display: "flex", flexDirection: "column", fontWeight: 700, height: "100%", justifyContent: "center", marginLeft: -8, marginRight: -8, overflow: "hidden", paddingTop: 22, textAlign: "center", width: "calc(100% + 16px)" }}
     >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{params.displayName}</span>
+      <span style={{ alignItems: "center", display: "flex", flex: "1 1 auto", minHeight: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {params.displayName}
+      </span>
+      {orderedTotalColumns.length ? (
+        <div className="relative top-[8px] flex w-full flex-none text-[12px] leading-tight font-extrabold text-[#8FE6A6]">
+          {orderedTotalColumns.map((column) => {
+            const totalLabel = column.total === undefined ? "" : Math.round(column.total).toLocaleString();
+            return (
+              <span
+                key={column.columnId}
+                data-summary-column-id={column.columnId}
+                title={totalLabel ? `Total: ${totalLabel}` : undefined}
+                className="shrink-0 overflow-visible whitespace-nowrap text-center text-[12px] font-bold"
+                style={{ width: liveColumnWidths[column.columnId] ?? column.width }}
+              >
+                {totalLabel}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3531,9 +3592,7 @@ function ContainerGroupHeader(
                 key={column.id}
                 data-summary-column-id={column.columnId}
                 title={totalLabel ? `Total: ${totalLabel}` : undefined}
-                className={`shrink-0 overflow-visible whitespace-nowrap text-center${
-                  column.id === CON_QTY_COLUMN_ID ? " font-bold" : ""
-                }`}
+                className="shrink-0 overflow-visible whitespace-nowrap text-center text-[12px] font-bold"
                 style={{
                   width: liveColumnWidths[column.columnId] ?? column.width,
                 }}
@@ -4184,6 +4243,8 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         remaining: 0,
         mistake: 0,
         oo: 0,
+        avail: 0,
+        carry: 0,
       };
       for (const row of visibleRows) {
         const key = `${row.sku}::${container.name}`;
@@ -4197,11 +4258,25 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         containerTotals.remaining! += row.remaining ?? 0;
         containerTotals.mistake! += row.mistake ?? 0;
         containerTotals.oo! += derived?.open_orders ?? raw?.open_orders ?? 0;
+        containerTotals.avail! += derived?.avail_qty ?? override?.avail_qty ?? raw?.avail_qty ?? 0;
+        containerTotals.carry! += derived?.carryover ?? raw?.carryover ?? 0;
       }
       totals.set(container.name, containerTotals);
     }
     return totals;
   }, [chainMap, containers, qtyOverrides, visibleRows]);
+
+  const inventoryColumnTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const column of ALL_COLS) {
+      if (column.grp !== "stock") continue;
+      totals.set(column.id, visibleRows.reduce((sum, row, index) => {
+        const value = column.val(row, index, urgStatus(row));
+        return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+      }, 0));
+    }
+    return totals;
+  }, [visibleRows]);
 
   useEffect(() => {
     if (!containerDetailsLoaded) return;
@@ -6291,6 +6366,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       const groupColumnIds = currentGroupChildren
         .map((column) => column.colId)
         .filter((id): id is string => Boolean(id));
+      const totalColumns: ContainerTotalColumn[] = groupId === "stock"
+        ? groupColumnIds.map((columnId) => {
+            const column = baseCandidates.find((candidate) => candidate.id === columnId);
+            return {
+              id: columnId,
+              columnId,
+              width: columnWidths[columnId] ?? column?.w ?? 50,
+              total: inventoryColumnTotals.get(columnId),
+            };
+          })
+        : [];
       const groupHeaderName = columnHeaderNames[`group:${groupId}`] ?? GROUP_LABELS[groupId] ?? groupId;
       groups.push({
         groupId,
@@ -6304,6 +6390,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             setFilterOpenKey(null);
             setGroupMenu({ x, y, label: groupHeaderName, columnIds: groupColumnIds });
           },
+          totalColumns,
         },
         children: currentGroupChildren,
       });
@@ -6634,7 +6721,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     conditionalFormatRulesRef.current = conditionalFormatRules;
