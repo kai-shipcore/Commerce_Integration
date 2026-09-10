@@ -4677,6 +4677,20 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         return qty != null ? String(qty) : "";
       }
     }
+    // Ask the grid for the value before reading the DOM: only rendered rows
+    // have cells, and copying a whole column reaches far past them.
+    const rowNode = api?.getRowNode(rowId);
+    if (api && rowNode) {
+      const value = api.getCellValue<CellContent>({ rowNode, colKey: columnId });
+      if (value !== null && value !== undefined) {
+        // Columns that render markup (the status pill, the SKU dot) carry it
+        // in the value itself; a spreadsheet wants the text that markup shows.
+        if (typeof value === "object" && "html" in value) {
+          return value.html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        }
+        return String(value);
+      }
+    }
     const host = gridHostRef.current;
     if (!host) return "";
     const rowEl = host.querySelector<HTMLElement>(`[row-id="${cssEscapeAttr(rowId)}"]`);
@@ -5335,27 +5349,55 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     return () => window.removeEventListener("keydown", handleSheetSelectionKeyboard, true);
   }, [canEditPlanning, extendSheetCellSelection, getActiveCellEditor, navigateActiveBaseEditorCell, navigateActiveQtyCell, resolveEditableTarget]);
 
+  /** What a copy acts on. Clicking a column's spreadsheet letter selects the
+   *  column without selecting any cell — nothing to copy, as far as the cell
+   *  selection knows — so that case is expanded here to every row the grid is
+   *  currently showing, filters and sort included, which is the column a
+   *  reader means when they click its letter. */
+  const getClipboardSelection = useCallback((): {
+    rowIds: string[];
+    columnIds: string[];
+    includes: (key: string) => boolean;
+  } | null => {
+    if (selectedCellsRef.current.size > 0) {
+      const bounds = getSelectionBoundsOrdered();
+      return bounds ? { ...bounds, includes: (key: string) => selectedCellsRef.current.has(key) } : null;
+    }
+    const api = gridRef.current?.api;
+    if (!api || selectedFullColumnIdsRef.current.size === 0) return null;
+    const columnIds = api.getAllDisplayedColumns()
+      .map((column) => column.getColId())
+      .filter((columnId) => selectedFullColumnIdsRef.current.has(columnId));
+    if (!columnIds.length) return null;
+    const rowIds: string[] = [];
+    api.forEachNodeAfterFilterAndSort((node) => {
+      if (node.data && !node.rowPinned) rowIds.push(node.data.sku);
+    });
+    if (!rowIds.length) return null;
+    return { rowIds, columnIds, includes: () => true };
+  }, [getSelectionBoundsOrdered]);
+
   const getSelectedCellsTsv = useCallback((): string | null => {
-    const bounds = getSelectionBoundsOrdered();
-    if (!bounds) return null;
-    const { rowIds, columnIds } = bounds;
+    const selection = getClipboardSelection();
+    if (!selection) return null;
+    const { rowIds, columnIds, includes } = selection;
     return rowIds.map((rowId) => columnIds.map((columnId) => {
       const key = `${rowId}::${columnId}`;
-      return selectedCellsRef.current.has(key) ? getCellCopyValue(rowId, columnId) : "";
+      return includes(key) ? getCellCopyValue(rowId, columnId) : "";
     }).join("\t")).join("\n");
-  }, [getCellCopyValue, getSelectionBoundsOrdered]);
+  }, [getCellCopyValue, getClipboardSelection]);
 
   const getSelectedClipboardPayload = useCallback((): SheetClipboardPayload | null => {
-    const bounds = getSelectionBoundsOrdered();
+    const selection = getClipboardSelection();
     const text = getSelectedCellsTsv();
     const api = gridRef.current?.api;
-    if (!bounds || text === null || !api) return null;
+    if (!selection || text === null || !api) return null;
     return {
       text,
-      formats: bounds.rowIds.map((rowId) => {
+      formats: selection.rowIds.map((rowId) => {
         const row = api.getRowNode(rowId)?.data;
-        return bounds.columnIds.map((columnId) => {
-          if (!row || !selectedCellsRef.current.has(`${rowId}::${columnId}`)) return null;
+        return selection.columnIds.map((columnId) => {
+          if (!row || !selection.includes(`${rowId}::${columnId}`)) return null;
           return {
             background: columnMenuFillColor(columnId, row) || null,
             textColor: columnMenuTextColor(columnId, row) || null,
@@ -5363,7 +5405,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         });
       }),
     };
-  }, [columnMenuFillColor, columnMenuTextColor, getSelectedCellsTsv, getSelectionBoundsOrdered]);
+  }, [columnMenuFillColor, columnMenuTextColor, getClipboardSelection, getSelectedCellsTsv]);
 
   const buildCellFormatChanges = useCallback((targets: Array<{
     rowId: string;
@@ -6725,6 +6767,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
 
   const getEditMenuAvailability = useCallback((): EditMenuAvailability => {
     const hasSelection = selectedCellsRef.current.size > 0;
+    // A column picked by its letter is a selection for copying, even though no
+    // individual cell is selected.
+    const hasCopyableSelection = hasSelection || selectedFullColumnIdsRef.current.size > 0;
     return {
       canUndo: canEditPlanning && !sheetHistoryBusyRef.current && sheetUndoStackRef.current.length > 0,
       canRedo: canEditPlanning && !sheetHistoryBusyRef.current && sheetRedoStackRef.current.length > 0,
@@ -6734,7 +6779,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
           return separator >= 0 && resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2)) !== null;
         }) || selectionHasCuttableFormat()
       ),
-      canCopy: hasSelection,
+      canCopy: hasCopyableSelection,
       canPaste: canEditPlanning && hasSelection,
       canDelete: canEditPlanning && collectDeletableTargets().length > 0,
     };
