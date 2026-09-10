@@ -43,7 +43,7 @@ import {
   type OosLostDemandWeights,
 } from "@/lib/planning/oos-lost-demand-weights";
 import { OosImpactService } from "@/lib/oos-impact/service";
-import { DemandPlanningRepository, type VelRow } from "@/lib/demand-planning/repository";
+import { DemandPlanningRepository, type DashboardCategoryCode, type VelRow } from "@/lib/demand-planning/repository";
 import { SkuMasterRepository } from "@/lib/sku-master/repository";
 import { TransitStockRepository } from "@/lib/transit-stock/repository";
 import type { ContainerMeta, ContainerRowData, DemandPlanningData, DemandRow } from "@/types/demand-planning";
@@ -86,6 +86,12 @@ const SALES_WINDOW_KEYS = [
 
 type SalesWindows = Record<(typeof SALES_WINDOW_KEYS)[number], number>;
 
+/** The dashboard cache is keyed per category scope; the codes are sorted so
+ *  the same selection never produces two entries. */
+function categoryCacheKey(categoryCodes: DashboardCategoryCode[] | null): string | undefined {
+  return categoryCodes?.length ? [...categoryCodes].sort().join("+") : undefined;
+}
+
 function categoryCodeForStatsRow(r: Record<string, unknown>, masterSku: string): "SC" | "CC" | "FM" | "AC" | "SWC" {
   return r.category_code === "SC" || r.category_code === "CC" || r.category_code === "FM" || r.category_code === "AC" || r.category_code === "SWC"
     ? r.category_code
@@ -100,7 +106,7 @@ export interface DashboardQuery {
   includeContainers: boolean;
   rawContainers: boolean;
   includeDrafts: boolean;
-  categoryCode: "SC" | "CC" | "FM" | "AC" | null;
+  categoryCodes: DashboardCategoryCode[] | null;
   asOf: string | null;
   salesWeightsParam: string | null;
 }
@@ -128,18 +134,18 @@ export const DemandPlanningService = {
 
     const cached = await getPlanningDashboardCache(
       query.mode, query.includeContainers, isToday ? undefined : todayStr,
-      query.includeDrafts, query.categoryCode ?? undefined, query.rawContainers, salesWeightsCacheKey,
+      query.includeDrafts, categoryCacheKey(query.categoryCodes), query.rawContainers, salesWeightsCacheKey,
     );
     if (cached) {
       return { data: (cached as { data: DemandPlanningData }).data, cacheStatus: "HIT" };
     }
 
-    const filters = { mode: query.mode, categoryCode: query.categoryCode, inboundStatuses };
+    const filters = { mode: query.mode, categoryCodes: query.categoryCodes, inboundStatuses };
 
     const [containersResult, rowsResult, availStockResult, lastSync] = await Promise.all([
-      DemandPlanningRepository.getContainerHeaders(query.categoryCode),
+      DemandPlanningRepository.getContainerHeaders(query.categoryCodes),
       DemandPlanningRepository.getStatsRows(filters),
-      DemandPlanningRepository.getAvailableStockTotals(query.categoryCode),
+      DemandPlanningRepository.getAvailableStockTotals(query.categoryCodes),
       DemandPlanningRepository.getLastSync(),
     ]);
 
@@ -581,7 +587,7 @@ export const DemandPlanningService = {
     const response = { success: true as const, data };
     setPlanningDashboardCache(
       query.mode, response, query.includeContainers, isToday ? undefined : todayStr,
-      query.includeDrafts, query.categoryCode ?? undefined, query.rawContainers, salesWeightsCacheKey,
+      query.includeDrafts, categoryCacheKey(query.categoryCodes), query.rawContainers, salesWeightsCacheKey,
     );
 
     return { data, cacheStatus: "MISS" };

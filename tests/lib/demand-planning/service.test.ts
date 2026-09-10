@@ -63,7 +63,7 @@ const baseQuery = {
   includeContainers: false,
   rawContainers: false,
   includeDrafts: false,
-  categoryCode: null,
+  categoryCodes: null,
   asOf: null,
   salesWeightsParam: null,
 };

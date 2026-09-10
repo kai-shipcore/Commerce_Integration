@@ -19,30 +19,37 @@ describe("DemandPlanningRepository.getContainerHeaders", () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getContainerHeaders(null);
     const [sql, params] = primaryQueryMock.mock.calls[0];
-    expect(sql).not.toContain("p.category_code = $1");
+    expect(sql).not.toContain("p.category_code = ANY($1::text[])");
     expect(params).toEqual([]);
   });
 
   it("adds the category existence filter when categoryCode is set", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getContainerHeaders("FM");
+    await DemandPlanningRepository.getContainerHeaders(["FM"]);
     const [sql, params] = primaryQueryMock.mock.calls[0];
-    expect(sql).toContain("p.category_code = $1");
-    expect(params).toEqual(["FM"]);
+    expect(sql).toContain("p.category_code = ANY($1::text[])");
+    expect(params).toEqual([["FM"]]);
+  });
+
+  it("passes a whole category group through as one parameter", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getContainerHeaders(["CC", "SWC", "AC"]);
+    const [, params] = primaryQueryMock.mock.calls[0];
+    expect(params).toEqual([["CC", "SWC", "AC"]]);
   });
 });
 
 describe("DemandPlanningRepository.getStatsRows", () => {
   it("uses fc_stats_custom directly in custom mode", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "custom", categoryCode: null, inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "custom", categoryCodes: null, inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
     expect(sql).toContain("FROM shipcore.fc_stats_custom s");
   });
 
   it("returns every stored FBA sales window for today's dashboard", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "custom", categoryCode: "CC", inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "custom", categoryCodes: ["CC"], inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
     for (const column of [
       "fba_90d_sales", "fba_60d_sales", "fba_30d_sales",
@@ -54,14 +61,14 @@ describe("DemandPlanningRepository.getStatsRows", () => {
 
   it("loads the manual T. Avg current override separately from calculated stats", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: "SC", inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["SC"], inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
     expect(sql).toContain("p.total_avg_curr_override::float8");
   });
 
   it("uses fc_stats directly for SC category in link mode", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: "SC", inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["SC"], inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
     expect(sql).toContain("FROM shipcore.fc_stats s");
     expect(sql).not.toContain("UNION ALL");
@@ -69,21 +76,50 @@ describe("DemandPlanningRepository.getStatsRows", () => {
 
   it("uses a UNION of custom+link for uncategorized link mode", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: null, inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: null, inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
     expect(sql).toContain("UNION ALL");
   });
 
   it("uses the home-stats mirror WHERE clause for FM category", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: "FM", inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["FM"], inboundStatuses: "('shipped')" });
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("UPPER(p.category_code) = ANY($1::text[])");
+    expect(sql).toContain("'FM' = ANY(string_to_array(UPPER(s.master_sku), '-'))");
+    expect(params).toEqual([["FM"]]);
+  });
+
+  it("scopes the Car Cover group to its three codes, with CC's SKU-pattern fallback kept", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["CC", "SWC", "AC"], inboundStatuses: "('shipped')" });
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("AND p.category_code = ANY($1::text[])");
+    expect(sql).toContain("UPPER(s.master_sku) LIKE 'CC-%'");
+    expect(params).toEqual([["CC", "SWC", "AC"]]);
+  });
+
+  it("reads a mixed group from each category's own velocity lane", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    // CC and SWC are planned off custom velocity, AC off link — so the group
+    // cannot take either single-table shortcut.
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["CC", "SWC", "AC"], inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
-    expect(sql).toContain("UPPER(p.category_code) = 'FM'");
+    expect(sql).toContain("UNION ALL");
+  });
+
+  it("still takes the single-table shortcut for a group that shares one lane", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: ["CC", "SWC"], inboundStatuses: "('shipped')" });
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("FROM shipcore.fc_stats_custom s");
+    expect(sql).not.toContain("UNION ALL");
+    expect(params).toEqual([["CC", "SWC"]]);
   });
 
   it("selects Container Info from the most recent completed container per SKU", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: null, inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: null, inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
     expect(sql).toContain("SELECT DISTINCT ON (ci.master_sku)");
     expect(sql).toContain("WHERE c.status = 'complete'");
@@ -94,7 +130,7 @@ describe("DemandPlanningRepository.getStatsRows", () => {
 
   it("reports a part SKU as Part, ahead of the order-derived Original/Custom", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
-    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCode: null, inboundStatuses: "('shipped')" });
+    await DemandPlanningRepository.getStatsRows({ mode: "link", categoryCodes: null, inboundStatuses: "('shipped')" });
     const [sql] = primaryQueryMock.mock.calls[0];
     // Manual override first, then the SKU-derived Part, then the stats value.
     expect(sql).toContain("p.sales_status,");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { BaseCategoryFilter, CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
+import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
 import { DEFAULT_SALES_WINDOW_WEIGHTS, salesWindowWeightsParam, type SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
@@ -9,15 +9,15 @@ import { runPlanningStatsRefresh } from "@/features/planning/planning-stats-refr
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], pinned_rows: [], last_sync: null };
 const dashboardMemoryCache = new Map<string, DemandPlanningData>();
-const BASE_CATEGORIES: BaseCategoryFilter[] = ["sc", "cc", "fm", "ac"];
+const CATEGORY_CODES: CategoryFilter[] = ["sc", "cc", "fm", "ac", "swc"];
 
-// Server-side category scoping only applies when exactly one base category (sc/cc/fm/ac)
-// is selected — SWC and multi-category combinations fetch the full dataset and are
-// scoped client-side instead.
-function fastPathCategory(category?: CategoryFilter[]): BaseCategoryFilter | undefined {
-  if (!category || category.length !== 1) return undefined;
-  const [only] = category;
-  return (BASE_CATEGORIES as CategoryFilter[]).includes(only) ? (only as BaseCategoryFilter) : undefined;
+// Every selection is scoped server-side: the API takes the category codes as
+// given. It used to accept only one, so anything else fell back to fetching all
+// 11k+ rows and filtering them in the browser — slow enough that the dashboard's
+// picker could not usefully offer a combination at all.
+function categoryScopeParam(category?: CategoryFilter[]): string {
+  const codes = (category ?? []).filter((value) => CATEGORY_CODES.includes(value));
+  return codes.length ? [...new Set(codes)].join(",") : "";
 }
 
 export type VelocityMode = "link" | "custom";
@@ -78,7 +78,8 @@ export function useDemandPlanningData(
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    const categorySuffix = fastPathCategory(category) ? `&product=${fastPathCategory(category)}` : "";
+    const categoryScope = categoryScopeParam(category);
+    const categorySuffix = categoryScope ? `&product=${categoryScope}` : "";
     const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(effectiveSalesWeights)}`;
     const dashUrl = apiPath(`/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}${salesWeightsSuffix}`);
     const dashFetch = withRefresh
@@ -151,7 +152,8 @@ export function useDemandPlanningData(
 
     const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
     const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    const categorySuffix = fastPathCategory(category) ? `&product=${fastPathCategory(category)}` : "";
+    const categoryScope = categoryScopeParam(category);
+    const categorySuffix = categoryScope ? `&product=${categoryScope}` : "";
     const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(salesWindowWeights)}`;
     const abortController = new AbortController();
     const timeoutId = window.setTimeout(() => abortController.abort(), 60_000);

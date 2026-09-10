@@ -15,10 +15,13 @@
 import { NextResponse } from "next/server";
 import { guardPermission } from "@/lib/permissions";
 import { DemandPlanningService } from "@/lib/demand-planning/service";
+import type { DashboardCategoryCode } from "@/lib/demand-planning/repository";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Unknown error";
 }
+
+const VALID_CATEGORY_CODES = new Set<DashboardCategoryCode>(["SC", "CC", "FM", "AC", "SWC"]);
 
 export async function GET(req: Request) {
   const denied = await guardPermission("demand-planning", "read");
@@ -30,17 +33,20 @@ export async function GET(req: Request) {
     const includeContainers = searchParams.get("includeContainers") === "1";
     const rawContainers = includeContainers && searchParams.get("rawContainers") === "1";
     const includeDrafts = searchParams.get("includeDrafts") === "1";
+    // A list, because the dashboard's picker groups categories that are always
+    // read together (Car Cover with SWC and Accessories). A single code still
+    // works, which is what every other caller and every older link sends.
     const categoryParam = (searchParams.get("product") ?? searchParams.get("category") ?? "").toUpperCase();
-    const categoryCode = categoryParam === "SC" || categoryParam === "CC" || categoryParam === "FM" || categoryParam === "AC"
-      ? categoryParam
-      : null;
+    const parsedCategories = [...new Set(categoryParam.split(",").map((token) => token.trim()))]
+      .filter((token): token is DashboardCategoryCode => VALID_CATEGORY_CODES.has(token as DashboardCategoryCode));
+    const categoryCodes = parsedCategories.length ? parsedCategories : null;
 
     const { data, cacheStatus } = await DemandPlanningService.getDashboardData({
       mode,
       includeContainers,
       rawContainers,
       includeDrafts,
-      categoryCode,
+      categoryCodes,
       asOf: searchParams.get("asOf"),
       salesWeightsParam: searchParams.get("salesWeights"),
     });

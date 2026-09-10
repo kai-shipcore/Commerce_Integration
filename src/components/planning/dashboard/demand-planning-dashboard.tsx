@@ -98,6 +98,12 @@ import {
   type GradientTier,
 } from "@/lib/planning/gradient-config";
 import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+import {
+  CATEGORY_GROUP_OPTIONS,
+  categoryCodesForGroup,
+  parseCategoryGroupParam,
+  type CategoryGroup,
+} from "./category-groups";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
@@ -632,31 +638,7 @@ function skuFilterSummary(values: string[]) {
   return `${values.slice(0, 2).join(", ")} +${values.length - 2}`;
 }
 
-const CATEGORY_FILTER_OPTIONS: { value: CategoryFilter; label: string }[] = [
-  { value: "sc", label: "Seat Cover" },
-  { value: "cc", label: "Car Cover" },
-  { value: "fm", label: "Floor Mat" },
-  { value: "ac", label: "Accessories" },
-  { value: "swc", label: "SWC" },
-];
-
 const BASE_CATEGORY_ORDER: BaseCategoryFilter[] = ["sc", "cc", "fm", "ac"];
-
-function categoryFilterSummary(selected: CategoryFilter[]) {
-  if (!selected.length) return "None";
-  const labelByValue = new Map(CATEGORY_FILTER_OPTIONS.map((option) => [option.value, option.label]));
-  const labels = selected.map((value) => labelByValue.get(value) ?? value);
-  if (labels.length <= 2) return labels.join(", ");
-  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
-}
-
-const VALID_CATEGORY_FILTER_VALUES = new Set<CategoryFilter>(CATEGORY_FILTER_OPTIONS.map((option) => option.value));
-
-function parseCategoryFilterParam(value: string | null): CategoryFilter[] {
-  if (!value) return ["sc"];
-  const parsed = value.split(",").filter((token): token is CategoryFilter => VALID_CATEGORY_FILTER_VALUES.has(token as CategoryFilter));
-  return parsed.length ? parsed : ["sc"];
-}
 
 function skuFilterLabel(key: SkuPartFilterKey, product: BaseCategoryFilter | undefined) {
   if (product === "sc" && key === "seat") return "Seat Position";
@@ -877,7 +859,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
   const searchParams = useSearchParams();
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter[]>(() => parseCategoryFilterParam(searchParams.get("product")));
+  const [categoryGroup, setCategoryGroup] = useState<CategoryGroup>(() => parseCategoryGroupParam(searchParams.get("product")));
+  // Everything downstream — the data hook, both grids, the container list —
+  // still works in raw category codes, so the group is expanded here and
+  // nothing else has to know the picker changed shape.
+  const categoryFilter = useMemo(() => categoryCodesForGroup(categoryGroup), [categoryGroup]);
   const [salesWindowWeights, setSalesWindowWeights] = useState<SalesWindowWeights>(DEFAULT_SALES_WINDOW_WEIGHTS);
   const [oosLostDemandWeights, setOosLostDemandWeights] = useState<OosLostDemandWeights>(DEFAULT_OOS_LOST_DEMAND_WEIGHTS);
   const {
@@ -897,8 +883,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(EMPTY_SKU_PART_FILTERS);
   const [isSkuFiltersOpen, setIsSkuFiltersOpen] = useState(true);
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  const [categoryDropdownPos, setCategoryDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>([]);
   const [selectedFullColumnIds, setSelectedFullColumnIds] = useState<string[]>([]);
@@ -916,7 +900,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
     const productParam = searchParams.get("product");
     if (productParam) {
-      setCategoryFilter(parseCategoryFilterParam(productParam));
+      setCategoryGroup(parseCategoryGroupParam(productParam));
     }
     const statusParam = searchParams.get("status");
     if (statusParam === "crit" || statusParam === "warn" || statusParam === "bo" || statusParam === "over") {
@@ -930,24 +914,23 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setUrgencyFilter(null);
   }, []);
 
-  const handleCategoryFilter = useCallback((value: CategoryFilter) => {
-    const next = categoryFilter.includes(value)
-      ? categoryFilter.filter((v) => v !== value)
-      : [...categoryFilter, value];
+  const handleCategoryGroup = useCallback((next: CategoryGroup) => {
     if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
 
+    // A different category means a different set of containers, so a colour
+    // selection pinned to one of them no longer refers to anything.
     setSelectedColorColumns((current) => current.some((id) => id.startsWith("container:")) ? (BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []) : current);
     setIsCategoryLoading(true);
     const params = new URLSearchParams(searchParams.toString());
-    if (next.length) params.set("product", next.join(",")); else params.delete("product");
+    params.set("product", next);
     router.replace(`?${params.toString()}`, { scroll: false });
     categoryChangeTimerRef.current = window.setTimeout(() => {
       startCategoryTransition(() => {
-        setCategoryFilter(next);
+        setCategoryGroup(next);
       });
       categoryChangeTimerRef.current = null;
     }, 60);
-  }, [categoryFilter, router, searchParams]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     if (!isCategoryLoading) return;
@@ -971,17 +954,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openSkuFilterKey]);
-
-  useEffect(() => {
-    if (!isCategoryDropdownOpen) return;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && categoryFilterRef.current?.contains(target)) return;
-      setIsCategoryDropdownOpen(false);
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [isCategoryDropdownOpen]);
 
   // ── Column visibility state (lifted from grid) ──────────────────────────────
   const [hiddenContainers, setHiddenContainers] = useState<Set<string>>(new Set());
@@ -1048,7 +1020,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       ? columnOrder
       : resetContainerGroupsToEtaOrder(columnOrder, containersWithEtaOverrides)
   ), [columnOrder, containerOrderCustomized, containersWithEtaOverrides]);
-  const categoryFilterRef = useRef<HTMLDivElement>(null);
   const categoryChangeTimerRef = useRef<number | null>(null);
   const agGridExportRef = useRef<(() => Promise<void>) | null>(null);
   const agGridEditActionsRef = useRef<EditMenuActions | null>(null);
@@ -2598,91 +2569,27 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           overflowY: "hidden",
         }}
       >
-<div ref={categoryFilterRef} style={{ position: "relative", flexShrink: 0 }}>
-          <details open={isCategoryDropdownOpen} style={{ position: "relative" }}>
-            <summary
-              aria-label="Product category"
-              onClick={(event) => {
-                event.preventDefault();
-                setIsCategoryDropdownOpen((open) => {
-                  const next = !open;
-                  if (next) {
-                    const rect = categoryFilterRef.current?.getBoundingClientRect();
-                    if (rect) setCategoryDropdownPos({ top: rect.bottom + 4, left: rect.left });
-                  }
-                  return next;
-                });
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                minWidth: 112,
-                height: 26,
-                boxSizing: "border-box",
-                padding: "2px 7px",
-                borderRadius: 4,
-                border: "1px solid #C2BFB5",
-                background: "#E3F5EC",
-                color: "#0A6A45",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                listStyle: "none",
-              }}
-            >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {categoryFilterSummary(categoryFilter)}
-              </span>
-              <span style={{ marginLeft: "auto", fontSize: 9 }}>▼</span>
-            </summary>
-            <div
-              style={{
-                // Fixed (not absolute) so this escapes the toolbar's overflowX:auto ancestor,
-                // which otherwise clips anything extending past its 42px height.
-                position: "fixed",
-                top: categoryDropdownPos?.top ?? 0,
-                left: categoryDropdownPos?.left ?? 0,
-                zIndex: 50,
-                minWidth: 140,
-                borderRadius: 5,
-                border: "1px solid #CBD5E1",
-                background: "#fff",
-                boxShadow: "0 8px 20px rgba(15, 23, 42, .16)",
-                padding: 5,
-              }}
-            >
-              {CATEGORY_FILTER_OPTIONS.map((option) => {
-                const checked = categoryFilter.includes(option.value);
-                return (
-                  <label
-                    key={option.value}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "3px 5px",
-                      borderRadius: 4,
-                      cursor: "pointer",
-                      background: checked ? "rgba(10,106,69,.08)" : "transparent",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => handleCategoryFilter(option.value)}
-                      style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#0A6A45" }}
-                    />
-                    <span style={{ fontSize: 12, color: checked ? "#0A6A45" : "#334155", fontWeight: checked ? 700 : 500 }}>
-                      {option.label}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </details>
-        </div>
+<select
+          aria-label="Product category"
+          value={categoryGroup}
+          onChange={(event) => handleCategoryGroup(event.target.value as CategoryGroup)}
+          style={{
+            height: 26,
+            padding: "2px 7px",
+            borderRadius: 4,
+            border: "1px solid #C2BFB5",
+            background: "#E3F5EC",
+            color: "#0A6A45",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          {CATEGORY_GROUP_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 

@@ -71,27 +71,57 @@ export type VelRow = {
   fba_90d: number; fba_60d: number; fba_30d: number; fba_15d: number; fba_7d: number; fba_30d_pre: number;
 };
 
+export type DashboardCategoryCode = "SC" | "CC" | "FM" | "AC" | "SWC";
+
 export interface DashboardFilters {
   mode: "link" | "custom";
-  categoryCode: "SC" | "CC" | "FM" | "AC" | null;
+  /** The categories the dashboard is scoped to, or null for every category.
+   *  A list rather than one code because the picker groups categories that
+   *  are always wanted together (Car Cover with SWC and Accessories). */
+  categoryCodes: DashboardCategoryCode[] | null;
   inboundStatuses: string;
 }
 
 // Mirrors the home-stats pattern: rows count if fc_products matches OR
 // (no fc_products row AND SKU pattern matches) — keeps the planning grid's
 // per-category counts aligned with the home dashboard's.
-function productCategoryWhere(categoryCode: DashboardFilters["categoryCode"]): string {
-  if (!categoryCode) return "";
-  if (categoryCode === "SC") return `WHERE (UPPER(p.category_code) = 'SC' OR (p.category_code IS NULL AND (UPPER(s.master_sku) LIKE 'CA-SC-%' OR UPPER(s.master_sku) LIKE 'CL-SC-%')))`;
-  if (categoryCode === "CC") return `WHERE (UPPER(p.category_code) = 'CC' OR (p.category_code IS NULL AND UPPER(s.master_sku) LIKE 'CC-%'))`;
-  if (categoryCode === "FM") return `WHERE (UPPER(p.category_code) = 'FM' OR (p.category_code IS NULL AND (UPPER(s.master_sku) LIKE 'CA-FM-%' OR 'FM' = ANY(string_to_array(UPPER(s.master_sku), '-')))))`;
-  return "WHERE p.category_code = $1";
+function categoryParamsFor(categoryCodes: DashboardFilters["categoryCodes"]): string[][] {
+  return categoryCodes?.length ? [categoryCodes] : [];
 }
 
-function statsSourceSql(mode: "link" | "custom", categoryCode: DashboardFilters["categoryCode"]): string {
+// Rows count if fc_products matches OR (no fc_products row AND the SKU pattern
+// matches), which keeps the planning grid's per-category counts aligned with
+// the home dashboard's. Only SC/CC/FM have a pattern to fall back on; the rest
+// are matched by their stored code alone.
+const CATEGORY_PATTERN_FALLBACK: Partial<Record<DashboardCategoryCode, string>> = {
+  SC: `(UPPER(s.master_sku) LIKE 'CA-SC-%' OR UPPER(s.master_sku) LIKE 'CL-SC-%')`,
+  CC: `UPPER(s.master_sku) LIKE 'CC-%'`,
+  FM: `(UPPER(s.master_sku) LIKE 'CA-FM-%' OR 'FM' = ANY(string_to_array(UPPER(s.master_sku), '-')))`,
+};
+
+function productCategoryWhere(categoryCodes: DashboardFilters["categoryCodes"]): string {
+  if (!categoryCodes?.length) return "";
+  const patterns = categoryCodes
+    .map((code) => CATEGORY_PATTERN_FALLBACK[code])
+    .filter((pattern): pattern is string => Boolean(pattern));
+  const fallback = patterns.length
+    ? ` OR (p.category_code IS NULL AND (${patterns.join(" OR ")}))`
+    : "";
+  return `WHERE (UPPER(p.category_code) = ANY($1::text[])${fallback})`;
+}
+
+// Which velocity lane a category reads from in link mode: Car Cover, Floor Mat
+// and SWC are planned off custom-order velocity, everything else off link.
+const CUSTOM_VELOCITY_CATEGORIES = new Set<DashboardCategoryCode>(["CC", "FM", "SWC"]);
+
+function statsSourceSql(mode: "link" | "custom", categoryCodes: DashboardFilters["categoryCodes"]): string {
   if (mode === "custom") return "shipcore.fc_stats_custom";
-  if (categoryCode === "CC" || categoryCode === "FM") return "shipcore.fc_stats_custom";
-  if (categoryCode === "SC") return "shipcore.fc_stats";
+  if (categoryCodes?.length) {
+    if (categoryCodes.every((code) => CUSTOM_VELOCITY_CATEGORIES.has(code))) return "shipcore.fc_stats_custom";
+    if (categoryCodes.every((code) => !CUSTOM_VELOCITY_CATEGORIES.has(code))) return "shipcore.fc_stats";
+  }
+  // A mix (the picker's Car Cover group pairs CC and SWC with Accessories) or
+  // no filter at all: each row still comes from its own category's lane.
   return `(
       SELECT s.* FROM shipcore.fc_stats_custom s
       WHERE EXISTS (
@@ -110,8 +140,8 @@ function statsSourceSql(mode: "link" | "custom", categoryCode: DashboardFilters[
 export const DemandPlanningRepository = {
   // ─── Dashboard reads ──────────────────────────────────────────────
 
-  async getContainerHeaders(categoryCode: DashboardFilters["categoryCode"]): Promise<ContainerHeaderRow[]> {
-    const categoryParams = categoryCode ? [categoryCode] : [];
+  async getContainerHeaders(categoryCodes: DashboardFilters["categoryCodes"]): Promise<ContainerHeaderRow[]> {
+    const categoryParams = categoryParamsFor(categoryCodes);
     const result = await primary().query<{ id: number; name: string; eta: string; cbm_cap: number; status: string }>(`
       SELECT
         id::int                   AS id,
@@ -121,7 +151,7 @@ export const DemandPlanningRepository = {
         status
       FROM shipcore.fc_containers
       WHERE status != 'complete'
-        ${categoryCode ? `AND (
+        ${categoryCodes?.length ? `AND (
           NOT EXISTS (
             SELECT 1
             FROM shipcore.fc_container_items ci_any
@@ -133,7 +163,7 @@ export const DemandPlanningRepository = {
             JOIN shipcore.fc_products p ON p.master_sku = ci.master_sku
             WHERE ci.container_id = fc_containers.id
               AND ci.qty > 0
-              AND p.category_code = $1
+              AND p.category_code = ANY($1::text[])
           )
         )` : ""}
       ORDER BY
@@ -144,10 +174,10 @@ export const DemandPlanningRepository = {
   },
 
   async getStatsRows(filters: DashboardFilters): Promise<Record<string, unknown>[]> {
-    const categoryCode = filters.categoryCode;
-    const categoryParams = categoryCode ? [categoryCode] : [];
-    const categoryWhere = categoryCode ? "AND p.category_code = $1" : "";
-    const statsSource = statsSourceSql(filters.mode, categoryCode);
+    const categoryCodes = filters.categoryCodes;
+    const categoryParams = categoryParamsFor(categoryCodes);
+    const categoryWhere = categoryCodes?.length ? "AND p.category_code = ANY($1::text[])" : "";
+    const statsSource = statsSourceSql(filters.mode, categoryCodes);
 
     const result = await primary().query(`
       SELECT
@@ -257,14 +287,14 @@ export const DemandPlanningRepository = {
         COALESCE(c.actual_arrival_date, c.eta_date) DESC NULLS LAST,
         c.id DESC
     ) completed ON completed.master_sku = s.master_sku
-    ${productCategoryWhere(categoryCode)}
+    ${productCategoryWhere(categoryCodes)}
     ORDER BY s.master_sku
   `, categoryParams);
     return result.rows;
   },
 
-  async getAvailableStockTotals(categoryCode: DashboardFilters["categoryCode"]): Promise<AvailStockRow[]> {
-    const categoryParams = categoryCode ? [categoryCode] : [];
+  async getAvailableStockTotals(categoryCodes: DashboardFilters["categoryCodes"]): Promise<AvailStockRow[]> {
+    const categoryParams = categoryParamsFor(categoryCodes);
     const result = await primary().query<AvailStockRow>(`
       SELECT
         s.master_sku,
@@ -277,7 +307,7 @@ export const DemandPlanningRepository = {
         FROM shipcore.fc_container_item_allocations
         GROUP BY source_stock_id
       ) alloc ON alloc.source_stock_id = s.id
-      ${categoryCode ? "WHERE p.category_code = $1" : ""}
+      ${categoryCodes?.length ? "WHERE p.category_code = ANY($1::text[])" : ""}
       GROUP BY s.master_sku, s.source_type
     `, categoryParams);
     return result.rows;
@@ -305,9 +335,9 @@ export const DemandPlanningRepository = {
   },
 
   async getCrossData(filters: DashboardFilters & { rawContainers: boolean }): Promise<CrossRow[]> {
-    const categoryCode = filters.categoryCode;
-    const categoryParams = categoryCode ? [categoryCode] : [];
-    const categoryJoinWhere = categoryCode ? "AND p.category_code = $1" : "";
+    const categoryCodes = filters.categoryCodes;
+    const categoryParams = categoryParamsFor(categoryCodes);
+    const categoryJoinWhere = categoryCodes?.length ? "AND p.category_code = ANY($1::text[])" : "";
     const result = await primary().query<CrossRow>(`
       SELECT
         ci.id::int                 AS item_id,
