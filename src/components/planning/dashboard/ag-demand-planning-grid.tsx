@@ -54,6 +54,12 @@ import {
 import { addSheetDays } from "@/lib/planning/date-utils";
 import { seasonalFactorForEta, type SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import {
+  compareSortValues,
+  createSalesGroupComparator,
+  type SalesGroupSortOrder,
+} from "@/lib/planning/sales-group-sort";
+import type { GridSort } from "@/lib/planning/grid-sort";
+import {
   DEFAULT_SALES_WINDOW_WEIGHTS,
   labelWithSalesWindowWeight,
 } from "@/lib/planning/sales-window-weights";
@@ -156,9 +162,18 @@ type HideGapRestoreInfo = { hiddenLabels: string[]; onRestore: () => void };
  *  Sheets-style "Sort by color" — a one-off partition (rows whose cell in
  *  this column matches `color` first, everything else after, each half
  *  keeping its prior relative order) rather than a persistent value order. */
-type GridSort =
-  | { key: string; kind: "value"; dir: "asc" | "desc" }
-  | { key: string; kind: "color"; colorType: "fill" | "text"; color: string };
+/** The four ways to read the two sales types apart, in menu order. Each label
+ *  reads as the resulting layout: the block named first sits on top. */
+const SALES_GROUP_SORT_CHOICES: { order: SalesGroupSortOrder; ko: string; en: string }[] = [
+  { order: { first: "Original", originalDir: "asc", customDir: "desc" }, ko: "Original ↑ · Custom ↓", en: "Original ↑ · Custom ↓" },
+  { order: { first: "Original", originalDir: "desc", customDir: "asc" }, ko: "Original ↓ · Custom ↑", en: "Original ↓ · Custom ↑" },
+  { order: { first: "Custom", originalDir: "desc", customDir: "asc" }, ko: "Custom ↑ · Original ↓", en: "Custom ↑ · Original ↓" },
+  { order: { first: "Custom", originalDir: "asc", customDir: "desc" }, ko: "Custom ↓ · Original ↑", en: "Custom ↓ · Original ↑" },
+];
+
+function sameSalesGroupOrder(a: SalesGroupSortOrder | null, b: SalesGroupSortOrder): boolean {
+  return a !== null && a.first === b.first && a.originalDir === b.originalDir && a.customDir === b.customDir;
+}
 
 type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
@@ -701,6 +716,7 @@ function ClipboardContextMenu({
  *  by sorting and filtering actions. */
 function GridColumnMenu({
   x, y, label, sortDir, onSortAsc, onSortDesc, activeColorSort, onSortByColor,
+  activeSalesGroupSort, onSortBySalesGroup,
   canHide, onHide, committed, getValues, getFillColors, getTextColors, onOpenColumnData, onApplyFilter, onClose,
   size, onSizeChange,
 }: {
@@ -712,6 +728,8 @@ function GridColumnMenu({
   onSortDesc: () => void;
   activeColorSort: { type: "fill" | "text"; color: string } | null;
   onSortByColor: (type: "fill" | "text", color: string) => void;
+  activeSalesGroupSort: SalesGroupSortOrder | null;
+  onSortBySalesGroup: (order: SalesGroupSortOrder) => void;
   canHide: boolean;
   onHide: () => void;
   committed: ColumnFilter | null;
@@ -729,6 +747,7 @@ function GridColumnMenu({
 }) {
   const { pick } = useI18n();
   const [colorMenu, setColorMenu] = useState<"sortColor" | "filterColor" | null>(null);
+  const [salesGroupMenuOpen, setSalesGroupMenuOpen] = useState(false);
   // "Filter by values" starts expanded by default — only a committed
   // condition filter overrides that to expand "Filter by condition" instead.
   const [filterSection, setFilterSection] = useState<"condition" | "values" | null>(
@@ -842,6 +861,35 @@ function GridColumnMenu({
             <MenuItem onClick={() => { onSortDesc(); onClose(); }}>
               {sortDir === "desc" ? "✓ " : ""}{pick("내림차순 정렬 (Z→A)", "Sort Z → A")}
             </MenuItem>
+            <div
+              style={{ position: "relative" }}
+              onMouseEnter={() => setSalesGroupMenuOpen(true)}
+              onMouseLeave={() => setSalesGroupMenuOpen(false)}
+              onFocusCapture={() => setSalesGroupMenuOpen(true)}
+            >
+              <MenuItem onClick={() => setSalesGroupMenuOpen((open) => !open)} trailing="▶">
+                {activeSalesGroupSort ? "✓ " : ""}{pick("판매 구분별 정렬", "Sort by sales type")}
+              </MenuItem>
+              {salesGroupMenuOpen && (
+                <div
+                  style={{
+                    position: "absolute", top: 0, [openColorMenusLeft ? "right" : "left"]: "100%",
+                    zIndex: 1001, minWidth: 190, padding: 4,
+                    background: "#fff", border: "1px solid #E2E8F0", borderRadius: 6,
+                    boxShadow: "0 4px 16px rgba(15,23,42,.16)",
+                  }}
+                >
+                  {SALES_GROUP_SORT_CHOICES.map((choice) => (
+                    <MenuItem
+                      key={`${choice.order.first}-${choice.order.originalDir}-${choice.order.customDir}`}
+                      onClick={() => { onSortBySalesGroup(choice.order); onClose(); }}
+                    >
+                      {sameSalesGroupOrder(activeSalesGroupSort, choice.order) ? "✓ " : ""}{pick(choice.ko, choice.en)}
+                    </MenuItem>
+                  ))}
+                </div>
+              )}
+            </div>
             <div
               style={{ position: "relative" }}
               onMouseEnter={() => openColorMenu("sortColor")}
@@ -3638,6 +3686,8 @@ export function AgDemandPlanningGrid({
   onRowHeightsChange,
   columnFilters: storedColumnFilters = EMPTY_COLUMN_FILTERS,
   onColumnFiltersChange,
+  sort: storedSort = null,
+  onSortChange,
   onColumnFilterCountChange,
   columnOrder = [],
   onColumnOrderChange,
@@ -3772,7 +3822,7 @@ export function AgDemandPlanningGrid({
     onColumnFiltersChange?.(updater(storedColumnFilters));
   }, [onColumnFiltersChange, storedColumnFilters]);
 
-  const [sort, setSort] = useState<GridSort | null>(null);
+  const setSort = useCallback((next: GridSort | null) => onSortChange?.(next), [onSortChange]);
   const [columnMenu, setColumnMenu] = useState<{ x: number; y: number; key: string; label: string } | null>(null);
   const [groupMenu, setGroupMenu] = useState<{ x: number; y: number; label: string; columnIds: string[] } | null>(null);
   const [containerMenu, setContainerMenu] = useState<{ x: number; y: number; label: string; containerName: string; baseline: boolean } | null>(null);
@@ -3883,6 +3933,17 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   // category's column, or a container that has since shipped. Those are
   // ignored rather than dropped — switching back brings them with it — but a
   // filter nobody can see must not be quietly narrowing the grid.
+  const columnKeyIsInView = useCallback((key: string) => {
+    const separator = key.indexOf("::");
+    if (separator >= 0) return containers.some((container) => container.name === key.slice(0, separator));
+    return ALL_COLS.some((column) => column.id === key && columnAppliesToCategories(column.id, categoryFilter));
+  }, [categoryFilter, containers]);
+
+  const sort = useMemo(
+    () => (storedSort && columnKeyIsInView(storedSort.key) ? storedSort : null),
+    [columnKeyIsInView, storedSort],
+  );
+
   const columnFilters = useMemo(() => {
     if (storedColumnFilters.size === 0) return storedColumnFilters;
     const containerNames = new Set(containers.map((container) => container.name));
@@ -4097,21 +4158,14 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     }
     const accessor = (row: DemandRow) => columnMenuValue(sort.key, row);
-    const dir = sort.dir === "asc" ? 1 : -1;
-    return [...visibleRows].sort((a, b) => {
-      const av = accessor(a);
-      const bv = accessor(b);
-      const aEmpty = av === null || av === undefined || av === "";
-      const bEmpty = bv === null || bv === undefined || bv === "";
-      if (aEmpty || bEmpty) {
-        if (aEmpty && bEmpty) return 0;
-        return (aEmpty ? 1 : -1) * dir;
-      }
-      const cmp = typeof av === "number" && typeof bv === "number"
-        ? av - bv
-        : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
-      return cmp * dir;
-    });
+    if (sort.kind === "sales-group") {
+      return [...visibleRows].sort(createSalesGroupComparator<DemandRow>({
+        getStatus: (row) => row.sales_status,
+        getValue: accessor,
+        order: sort.order,
+      }));
+    }
+    return [...visibleRows].sort((a, b) => compareSortValues(accessor(a), accessor(b), sort.dir));
   }, [visibleRows, sort, columnMenuFillColor, columnMenuTextColor, columnMenuValue]);
 
   useEffect(() => {
@@ -7385,6 +7439,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
             ? { type: sort.colorType, color: sort.color }
             : null}
           onSortByColor={(colorType, color) => setSort({ key: columnMenu.key, kind: "color", colorType, color })}
+          activeSalesGroupSort={sort?.kind === "sales-group" && sort.key === columnMenu.key ? sort.order : null}
+          onSortBySalesGroup={(order) => setSort({ key: columnMenu.key, kind: "sales-group", order })}
           canHide={onHideColumn !== undefined || onHideColumns !== undefined}
           onHide={() => hideColumnsFromMenu(columnMenu.key)}
           committed={columnFilters.get(columnMenu.key) ?? null}

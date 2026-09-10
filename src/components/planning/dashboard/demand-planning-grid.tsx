@@ -24,6 +24,7 @@ import {
   urgStatus,
 } from "./columns";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
+import type { GridSort } from "@/lib/planning/grid-sort";
 import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
@@ -86,6 +87,10 @@ export interface DemandPlanningGridProps {
   columnFilters?: Map<string, ColumnFilter>;
   onColumnFiltersChange?: (next: Map<string, ColumnFilter>) => void;
   onColumnFilterCountChange?: (count: number) => void;
+  /** Held with the filters, and for the same reason: a planner who set up an
+   *  order should still have it after a reload. */
+  sort?: GridSort | null;
+  onSortChange?: (next: GridSort | null) => void;
   rowHeights?: RowHeights;
   onRowHeightsChange?: (skus: string[], height: number) => void;
   columnOrder?: ColumnOrder;

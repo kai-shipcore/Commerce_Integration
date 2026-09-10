@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ClipboardPaste, Copy, FilterX, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2, WandSparkles } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
+import type { GridSort } from "@/lib/planning/grid-sort";
 import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder } from "./demand-planning-grid";
 import { ConditionalFormattingPanel } from "./conditional-formatting-panel";
 import { PlanningColorPalettePopover } from "./planning-color-palette";
@@ -895,6 +896,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // reads them, edits them through the setter, and reports how many of them
   // the current view can apply.
   const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(savedFilters.columnFilters);
+  // Kept with the filters, but deliberately apart from them: a sort is an
+  // ordering, not a narrowing, so the filter reset does not clear it and it
+  // does not count towards the button's badge.
+  const [gridSort, setGridSort] = useState<GridSort | null>(savedFilters.sort);
   const [columnFilterCount, setColumnFilterCount] = useState(savedFilters.columnFilters.size);
   const [isSkuFiltersOpen, setIsSkuFiltersOpen] = useState(true);
   const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
@@ -1265,6 +1270,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           setColumnFilters(filters.columnFilters);
           setProductFilter(filters.productFilter);
           setSkuPartFilters(filters.skuPartFilters);
+          setGridSort(filters.sort);
           // The URL wins for urgency: a link shared with ?status= is asking to
           // be opened on that status, whatever the reader last looked at.
           // Read from the address bar rather than the hook's value: this
@@ -1430,9 +1436,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     if (!dbPrefsLoaded) return;
     window.localStorage.setItem(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters({
-      columnFilters, productFilter, urgencyFilter, skuPartFilters,
+      columnFilters, productFilter, urgencyFilter, skuPartFilters, sort: gridSort,
     })));
-  }, [columnFilters, dbPrefsLoaded, productFilter, skuPartFilters, urgencyFilter]);
+  }, [columnFilters, dbPrefsLoaded, gridSort, productFilter, skuPartFilters, urgencyFilter]);
 
   // Save all preferences to DB whenever any setting changes (debounced, after initial load)
   useEffect(() => {
@@ -1444,7 +1450,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [ROW_HEIGHT_STORAGE_KEY]: rowHeight,
       [ROW_HEIGHTS_STORAGE_KEY]: rowHeights,
       [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
-        columnFilters, productFilter, urgencyFilter, skuPartFilters,
+        columnFilters, productFilter, urgencyFilter, skuPartFilters, sort: gridSort,
       }),
       [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
       [CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY]: containerOrderCustomized,
@@ -1465,7 +1471,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnFilters, productFilter, urgencyFilter, skuPartFilters, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnFilters, productFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -3992,6 +3998,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onRowHeightsChange={handleRowHeightsChange}
           columnFilters={columnFilters}
           onColumnFiltersChange={setColumnFilters}
+          sort={gridSort}
+          onSortChange={setGridSort}
           onColumnFilterCountChange={setColumnFilterCount}
           onColumnFilterMenuSizeChange={handleColumnFilterMenuSizeChange}
           columnOrder={effectiveColumnOrder}

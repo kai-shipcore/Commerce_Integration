@@ -5,6 +5,7 @@ import {
   serializeColumnFilters,
   type ColumnFilter,
 } from "@/lib/planning/column-filter";
+import { normalizeGridSort, type GridSort } from "@/lib/planning/grid-sort";
 import type { CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, ProductFilter, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
 
 export const TINT_COLORS: Record<string, string> = {
@@ -353,6 +354,10 @@ export interface DashboardFiltersState {
   productFilter: ProductFilter;
   urgencyFilter: UrgencyFilter | null;
   skuPartFilters: SkuPartFilters;
+  /** Stored alongside the filters because it is remembered for the same
+   *  reason, but it is not one of them: the toolbar's filter reset leaves the
+   *  sort alone, and an ordering does not count towards its badge. */
+  sort: GridSort | null;
 }
 
 const PRODUCT_FILTER_VALUES = new Set<ProductFilter>(["all", "orig", "cust", "part"]);
@@ -364,6 +369,7 @@ export function serializeDashboardFilters(filters: DashboardFiltersState): Recor
     productFilter: filters.productFilter,
     urgencyFilter: filters.urgencyFilter,
     skuPartFilters: filters.skuPartFilters,
+    sort: filters.sort,
   };
 }
 
@@ -373,6 +379,7 @@ export function normalizeDashboardFilters(value: unknown): DashboardFiltersState
     productFilter: "all",
     urgencyFilter: null,
     skuPartFilters: EMPTY_SKU_PART_FILTERS,
+    sort: null,
   };
   if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
   const candidate = value as Record<string, unknown>;
@@ -397,6 +404,7 @@ export function normalizeDashboardFilters(value: unknown): DashboardFiltersState
       ? candidate.urgencyFilter as UrgencyFilter
       : null,
     skuPartFilters,
+    sort: normalizeGridSort(candidate.sort),
   };
 }
 

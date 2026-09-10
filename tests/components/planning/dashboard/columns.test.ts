@@ -147,6 +147,19 @@ describe("normalizeDashboardFilters", () => {
     expect(filters.skuPartFilters.make).toEqual([]);
   });
 
+  it("restores a stored sort, and treats an unreadable one as none", () => {
+    const withSort = normalizeDashboardFilters({
+      sort: { key: "tot30", kind: "sales-group", order: { first: "Custom", originalDir: "asc", customDir: "desc" } },
+    });
+    expect(withSort.sort).toEqual({
+      key: "tot30",
+      kind: "sales-group",
+      order: { first: "Custom", originalDir: "asc", customDir: "desc" },
+    });
+    expect(normalizeDashboardFilters({ sort: { key: "tot30", kind: "value" } }).sort).toBeNull();
+    expect(normalizeDashboardFilters({}).sort).toBeNull();
+  });
+
   it("falls back to no filters for anything unreadable", () => {
     for (const value of [null, undefined, "x", 5, []]) {
       const filters = normalizeDashboardFilters(value);
