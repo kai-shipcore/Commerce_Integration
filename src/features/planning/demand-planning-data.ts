@@ -1,26 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { CategoryFilter, DemandPlanningData } from "@/types/demand-planning";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CategoryFilter, DemandPlanningContainerDetails, DemandPlanningData } from "@/types/demand-planning";
 import { apiPath } from "@/lib/api-path";
-import { DEFAULT_SALES_WINDOW_WEIGHTS, salesWindowWeightsParam, type SalesWindowWeights } from "@/lib/planning/sales-window-weights";
+import { DEFAULT_SALES_WINDOW_WEIGHTS, type SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import { DEFAULT_OOS_LOST_DEMAND_WEIGHTS, type OosLostDemandWeights } from "@/lib/planning/oos-lost-demand-weights";
 import { runPlanningStatsRefresh } from "@/features/planning/planning-stats-refresh";
+import { DashboardRequestLane } from "./dashboard-requests";
 
 const EMPTY: DemandPlanningData = { containers: [], rows: [], pinned_rows: [], last_sync: null };
 const dashboardMemoryCache = new Map<string, DemandPlanningData>();
 const CATEGORY_CODES: CategoryFilter[] = ["sc", "cc", "fm", "ac", "swc"];
-
-// Every selection is scoped server-side: the API takes the category codes as
-// given. It used to accept only one, so anything else fell back to fetching all
-// 11k+ rows and filtering them in the browser — slow enough that the dashboard's
-// picker could not usefully offer a combination at all.
-function categoryScopeParam(category?: CategoryFilter[]): string {
-  const codes = (category ?? []).filter((value) => CATEGORY_CODES.includes(value));
-  return codes.length ? [...new Set(codes)].join(",") : "";
-}
-
 export type VelocityMode = "link" | "custom";
+type RefreshSettings = { salesWindowWeights: SalesWindowWeights; oosLostDemandWeights: OosLostDemandWeights };
 
 export interface DemandPlanningDataState {
   data: DemandPlanningData;
@@ -28,11 +20,16 @@ export interface DemandPlanningDataState {
   containerDetailsLoading: boolean;
   containerDetailsLoaded: boolean;
   error: string | null;
-  reload: (settings?: {
-    salesWindowWeights: SalesWindowWeights;
-    oosLostDemandWeights: OosLostDemandWeights;
-  }) => void;
+  reload: (settings?: RefreshSettings) => void;
   loadContainerDetails: () => void;
+}
+
+// Compare setting values, not object identity or property insertion order.
+function weightsKey(weights: SalesWindowWeights): string {
+  return JSON.stringify({
+    d90: weights.d90, d60: weights.d60, d30: weights.d30,
+    d15: weights.d15, d7: weights.d7, pre: weights.pre,
+  });
 }
 
 export function useDemandPlanningData(
@@ -48,151 +45,139 @@ export function useDemandPlanningData(
   const [containerDetailsLoading, setContainerDetailsLoading] = useState(false);
   const [containerDetailsLoaded, setContainerDetailsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dataScopeRef = useRef<string>("");
-  const containerDetailsInFlightRef = useRef<string | null>(null);
+  const [ready, setReady] = useState<{ scope: string } | null>(null);
+  const summaryLane = useRef(new DashboardRequestLane());
+  const detailLane = useRef(new DashboardRequestLane());
+  const dataScopeRef = useRef("");
+  const detailsLoadedRef = useRef(false);
   const syncInFlightRef = useRef(false);
-
-  const scopeKey = () => `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category && category.length ? [...category].sort().join(",") : "all"}|${JSON.stringify(salesWindowWeights)}`;
-
-  function fetchDashboard(withRefresh: boolean, settings?: {
-    salesWindowWeights: SalesWindowWeights;
-    oosLostDemandWeights: OosLostDemandWeights;
-  }) {
-    let cancelled = false;
-    const effectiveSalesWeights = settings?.salesWindowWeights ?? salesWindowWeights;
-    const effectiveOosWeights = settings?.oosLostDemandWeights ?? oosLostDemandWeights;
-    const requestScopeKey = `${mode}|${asOfDate ?? "current"}|${includeDrafts ? "drafts" : "active"}|${category && category.length ? [...category].sort().join(",") : "all"}|${JSON.stringify(effectiveSalesWeights)}`;
-    const cachedData = dashboardMemoryCache.get(requestScopeKey);
-    if (!withRefresh && cachedData) {
-      setData(cachedData);
-      dataScopeRef.current = requestScopeKey;
-      setContainerDetailsLoaded(false);
-      setLoading(false);
-      setError(null);
-    }
-
-    // Sync clicks must show the loading state even when cached data already exists —
-    // otherwise the Sync button never disables and can be double-clicked mid-refresh.
-    if (!cachedData || withRefresh) setLoading(true);
-    setError(null);
-
-    const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
-    const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    const categoryScope = categoryScopeParam(category);
-    const categorySuffix = categoryScope ? `&product=${categoryScope}` : "";
-    const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(effectiveSalesWeights)}`;
-    const dashUrl = apiPath(`/api/planning/dashboard?mode=${mode}${asOfSuffix}${draftSuffix}${categorySuffix}${salesWeightsSuffix}`);
-    const dashFetch = withRefresh
-      ? runPlanningStatsRefresh(
-          { salesWindowWeights: effectiveSalesWeights, oosLostDemandWeights: effectiveOosWeights },
-          { isCancelled: () => cancelled },
-        ).then(() => fetch(dashUrl))
-      : fetch(dashUrl);
-
-    dashFetch
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
-      })
-      .then((json) => {
-        if (cancelled) return;
-        if (json.success && json.data) {
-          setData((current) => {
-            const d = json.data!;
-            const next: DemandPlanningData = {
-              containers:  d.containers  ?? current.containers,
-              last_sync:   d.last_sync   ?? current.last_sync,
-              rows:        d.rows,
-              pinned_rows: d.pinned_rows ?? current.pinned_rows,
-            };
-            dashboardMemoryCache.set(requestScopeKey, next);
-            dataScopeRef.current = requestScopeKey;
-            return next;
-          });
-          setContainerDetailsLoaded(false);
-        }
-        else setError(json.error ?? "Failed to load data");
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Network error");
-      })
-      .finally(() => {
-        if (withRefresh) syncInFlightRef.current = false;
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }
-
-  // Auto-load on mount and whenever mode, date, or inbound scope changes
+  const refreshSettingsRef = useRef({ salesWindowWeights, oosLostDemandWeights });
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial API load is intentionally started after mode/date changes.
-    return fetchDashboard(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchDashboard closes over the active mode, date, and inbound scope.
-  }, [mode, asOfDate, includeDrafts, category, salesWindowWeights]);
+    refreshSettingsRef.current = { salesWindowWeights, oosLostDemandWeights };
+  }, [salesWindowWeights, oosLostDemandWeights]);
 
-  // Sync button: refresh stats first, then load. Ref guard blocks a second click
-  // firing before the disabled/loading state has re-rendered onto the button.
-  function reload(settings?: {
-    salesWindowWeights: SalesWindowWeights;
-    oosLostDemandWeights: OosLostDemandWeights;
-  }) {
+  const categoryScope = [...new Set((category ?? []).filter(value => CATEGORY_CODES.includes(value)))].sort().join(",");
+  const salesKey = weightsKey(salesWindowWeights);
+  const baseParams = useMemo(() => {
+    const params = new URLSearchParams({ mode });
+    if (asOfDate) params.set("asOf", asOfDate);
+    if (includeDrafts) params.set("includeDrafts", "1");
+    if (categoryScope) params.set("product", categoryScope);
+    return params.toString();
+  }, [mode, asOfDate, includeDrafts, categoryScope]);
+  const scope = baseParams + "&salesWeights=" + encodeURIComponent(salesKey);
+
+  const fetchDashboard = useCallback((withRefresh: boolean, settings?: RefreshSettings) => {
+    const effectiveSettings = settings ?? refreshSettingsRef.current;
+    const requestScope = baseParams + "&salesWeights=" + encodeURIComponent(
+      settings ? weightsKey(settings.salesWindowWeights) : salesKey,
+    );
+    const request = summaryLane.current.start();
+    detailLane.current.cancel();
+    dataScopeRef.current = "";
+    detailsLoadedRef.current = false;
+    setReady(null);
+    setContainerDetailsLoaded(false);
+    setContainerDetailsLoading(false);
+    setError(null);
+    const cached = !withRefresh ? dashboardMemoryCache.get(requestScope) : undefined;
+    if (cached) setData(cached);
+    setLoading(!cached || withRefresh);
+
+    void (async () => {
+      try {
+        // Let effect cleanup cancel Strict Mode's discarded mount before it
+        // sends an otherwise identical request to the server.
+        await Promise.resolve();
+        if (!summaryLane.current.isCurrent(request)) return;
+        if (withRefresh) {
+          await runPlanningStatsRefresh(effectiveSettings, { isCancelled: () => request.signal.aborted });
+        }
+        if (!summaryLane.current.isCurrent(request)) return;
+        const response = await fetch(apiPath("/api/planning/dashboard?" + requestScope), { signal: request.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const json = await response.json() as { success: boolean; data?: DemandPlanningData; error?: string };
+        if (!summaryLane.current.isCurrent(request)) return;
+        if (!json.success || !json.data) throw new Error(json.error ?? "Failed to load data");
+        const incoming = json.data;
+        dataScopeRef.current = requestScope;
+        setData(current => {
+          const next = {
+            containers: incoming.containers ?? current.containers,
+            last_sync: incoming.last_sync ?? current.last_sync,
+            rows: incoming.rows,
+            pinned_rows: incoming.pinned_rows ?? current.pinned_rows,
+          };
+          dashboardMemoryCache.set(requestScope, next);
+          return next;
+        });
+        // Also distinguishes refreshes of the same scope.
+        setReady({ scope: requestScope });
+      } catch (err) {
+        if (summaryLane.current.isCurrent(request)) setError(err instanceof Error ? err.message : "Network error");
+      } finally {
+        if (summaryLane.current.finish(request)) {
+          syncInFlightRef.current = false;
+          setLoading(false);
+        }
+      }
+    })();
+  }, [baseParams, salesKey]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Start the scoped API read after commit.
+    fetchDashboard(false);
+    const summaries = summaryLane.current;
+    const details = detailLane.current;
+    return () => {
+      summaries.cancel();
+      details.cancel();
+      syncInFlightRef.current = false;
+    };
+  }, [fetchDashboard]);
+
+  const reload = useCallback((settings?: RefreshSettings) => {
     if (syncInFlightRef.current) return;
     syncInFlightRef.current = true;
     fetchDashboard(true, settings);
-  }
+  }, [fetchDashboard]);
 
-  function loadContainerDetails() {
-    const requestKey = scopeKey();
-    if (containerDetailsLoaded || containerDetailsInFlightRef.current === requestKey) return;
-    containerDetailsInFlightRef.current = requestKey;
+  const loadContainerDetails = useCallback(() => {
+    if (!ready || ready.scope !== scope || dataScopeRef.current !== scope
+      || detailsLoadedRef.current || detailLane.current.isPending()) return;
+    const request = detailLane.current.start();
     setContainerDetailsLoading(true);
     setError(null);
-
-    const asOfSuffix = asOfDate ? `&asOf=${asOfDate}` : "";
-    const draftSuffix = includeDrafts ? "&includeDrafts=1" : "";
-    const categoryScope = categoryScopeParam(category);
-    const categorySuffix = categoryScope ? `&product=${categoryScope}` : "";
-    const salesWeightsSuffix = `&salesWeights=${salesWindowWeightsParam(salesWindowWeights)}`;
-    const abortController = new AbortController();
-    const timeoutId = window.setTimeout(() => abortController.abort(), 60_000);
-    fetch(apiPath(`/api/planning/dashboard?mode=${mode}&includeContainers=1&rawContainers=1${asOfSuffix}${draftSuffix}${categorySuffix}${salesWeightsSuffix}`), {
-      signal: abortController.signal,
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Container details failed: HTTP ${res.status}`);
-        return res.json() as Promise<{ success: boolean; data?: DemandPlanningData; error?: string }>;
-      })
-      .then((json) => {
-        if (!json.success || !json.data) {
-          throw new Error(json.error ?? "Failed to load container details");
-        }
-        if (dataScopeRef.current !== requestKey) return;
-        const detailBySku = new Map(json.data.rows.map((row) => [row.sku, row.containers]));
-        setData((current) => ({
+    const timeoutId = window.setTimeout(() => request.abort(), 60_000);
+    void (async () => {
+      try {
+        const response = await fetch(apiPath("/api/planning/dashboard/container-details?" + scope), { signal: request.signal });
+        if (!response.ok) throw new Error(`Container details failed: HTTP ${response.status}`);
+        const json = await response.json() as { success: boolean; data?: DemandPlanningContainerDetails; error?: string };
+        if (!detailLane.current.isCurrent(request) || dataScopeRef.current !== scope) return;
+        if (!json.success || !json.data) throw new Error(json.error ?? "Failed to load container details");
+        const detail = json.data;
+        const bySku = new Map(detail.rows.map(row => [row.sku, row.containers]));
+        setData(current => ({
           ...current,
-          containers: json.data?.containers ?? current.containers,
-          rows: current.rows.map((row) => ({
-            ...row,
-            containers: detailBySku.get(row.sku) ?? row.containers,
-          })),
+          containers: detail.containers,
+          // Summary determines row membership. Missing raw details are {}.
+          rows: current.rows.map(row => ({ ...row, containers: bySku.get(row.sku) ?? {} })),
         }));
+        detailsLoadedRef.current = true;
         setContainerDetailsLoaded(true);
-      })
-      .catch((err: unknown) => {
-        if (dataScopeRef.current === requestKey) {
+      } catch (err) {
+        // Obsolete requests stay silent; current failures/timeouts are shown.
+        if (detailLane.current.finish(request)) {
           setError(err instanceof Error ? err.message : "Network error");
-        }
-      })
-      .finally(() => {
-        window.clearTimeout(timeoutId);
-        if (containerDetailsInFlightRef.current === requestKey) {
-          containerDetailsInFlightRef.current = null;
           setContainerDetailsLoading(false);
         }
-      });
-  }
+      } finally {
+        window.clearTimeout(timeoutId);
+        if (detailLane.current.finish(request)) setContainerDetailsLoading(false);
+      }
+    })();
+  }, [ready, scope]);
 
   return { data, loading, containerDetailsLoading, containerDetailsLoaded, error, reload, loadContainerDetails };
 }

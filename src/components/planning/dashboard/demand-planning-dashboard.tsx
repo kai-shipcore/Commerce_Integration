@@ -1062,6 +1062,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [scenarioBusy, setScenarioBusy] = useState(false);
   const [scenarioOverlay, setScenarioOverlay] = useState<ScenarioOverlay | null>(null);
+  // Only the latest tab switch may hydrate the dashboard. A slower response
+  // for a tab that was already left must not overwrite the current tab.
+  const tabHydrationRequestRef = useRef(0);
   const [applyDialog, setApplyDialog] = useState<{ scenario: ScenarioSummary; diff: ScenarioApplyDiff } | null>(null);
   const activeScenario = useMemo(
     () => scenarios.find((scenario) => scenario.id === activeScenarioId) ?? null,
@@ -1591,10 +1594,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   /** Loads a tab's saved view (and, for a scenario, its container overlay). */
   const hydrateTab = useCallback(async (id: string | null) => {
+    const requestId = ++tabHydrationRequestRef.current;
     // Anything still sitting in the debounce belongs to the tab being left.
     flushPrefs(false);
     setDbPrefsLoaded(false);
     setScenarioBusy(true);
+    // Prevent the incoming tab from rendering with the outgoing tab's data.
+    setScenarioOverlay(null);
     // These guard the mount race, not a deliberate switch: the incoming tab's
     // own order must be allowed to win here.
     columnOrderChangedRef.current = false;
@@ -1602,8 +1608,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
     try {
       if (id === null) {
-        const response = await fetch(apiPath("/api/user/preferences"));
+        const response = await fetch(apiPath("/api/user/preferences"), { cache: "no-store" });
         const json = await response.json() as { success: boolean; data?: Record<string, unknown> };
+        if (requestId !== tabHydrationRequestRef.current) return;
         if (json.success && json.data) applyPreferenceBlob(json.data, true);
         setScenarioOverlay(null);
       } else {
@@ -1611,6 +1618,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           ScenarioApi.get(id),
           ScenarioApi.overlay(id),
         ]);
+        if (requestId !== tabHydrationRequestRef.current) return;
         applyPreferenceBlob(detail.view_state, false);
         setScenarioOverlay(overlay);
         setScenarios((previous) => previous.map((scenario) => (
@@ -1618,10 +1626,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         )));
       }
     } catch {
+      if (requestId !== tabHydrationRequestRef.current) return;
       toast.error(pick("탭을 불러오지 못했습니다.", "Could not load that tab."));
     } finally {
-      setScenarioBusy(false);
-      setDbPrefsLoaded(true);
+      if (requestId === tabHydrationRequestRef.current) {
+        setScenarioBusy(false);
+        setDbPrefsLoaded(true);
+      }
     }
   }, [applyPreferenceBlob, flushPrefs, pick]);
 
@@ -1645,20 +1656,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     }
   }, [handleSelectTab, scenarios]);
 
-  const handleCreateTab = useCallback(async (copyLive: boolean) => {
+  const handleCreateTab = useCallback(async () => {
     setScenarioBusy(true);
     try {
-      const created = copyLive
-        ? await ScenarioApi.create({
-          name: pick("Live 복사본", "Copy of Live"),
-          view_state: buildPreferenceBlob(),
-          copy_from: "live",
-          include_drafts: INCLUDE_DRAFT_CONTAINERS,
-        })
-        : await ScenarioApi.create({
-          name: pick(`시나리오 ${scenarios.length + 1}`, `Scenario ${scenarios.length + 1}`),
-          view_state: buildPreferenceBlob(),
-        });
+      const created = await ScenarioApi.create({
+        name: pick("Live 복사본", "Copy of Live"),
+        view_state: buildPreferenceBlob(),
+        copy_from: "live",
+        include_drafts: INCLUDE_DRAFT_CONTAINERS,
+      });
       await refreshScenarios();
       handleSelectTab(created.id);
     } catch (error) {
@@ -1666,11 +1672,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     } finally {
       setScenarioBusy(false);
     }
-  }, [buildPreferenceBlob, handleSelectTab, pick, refreshScenarios, scenarios.length]);
+  }, [buildPreferenceBlob, handleSelectTab, pick, refreshScenarios]);
 
   const handleDuplicateTab = useCallback(async (id: string | null) => {
     if (id === null) {
-      await handleCreateTab(true);
+      await handleCreateTab();
       return;
     }
     setScenarioBusy(true);
@@ -4435,7 +4441,6 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           busy={scenarioBusy}
           canEditPlanning={canEditDemandPlanning}
           onSelect={handleSelectTab}
-          onCreate={() => { void handleCreateTab(false); }}
           onDuplicate={(id) => { void handleDuplicateTab(id); }}
           onRename={(id, name) => { void handleRenameTab(id, name); }}
           onToggleShared={(scenario) => { void handleToggleShared(scenario); }}

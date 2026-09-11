@@ -159,6 +159,22 @@ describe("DemandPlanningRepository.getVelocitySnapshot", () => {
   });
 });
 
+describe("raw container detail scope", () => {
+  it("keeps all non-complete statuses and the original allocation join", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getCrossData({
+      mode: "custom", categoryCodes: ["SC", "FM"],
+      inboundStatuses: "('shipped', 'packing_received')", rawContainers: true,
+    });
+    const [sql, params] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("WHERE c.status != 'complete'");
+    expect(sql).not.toContain("WHERE c.status IN");
+    expect(sql).toContain("COALESCE(ar.allocated_remaining_qty, 0)");
+    expect(sql).toContain("s.source_type IN ('remaining', 'mistake')");
+    expect(params).toEqual([["SC", "FM"]]);
+  });
+});
+
 describe("DemandPlanningRepository.getInventoryByWarehouse", () => {
   it("returns null when no lookup pool is available", async () => {
     lookupPool = null;

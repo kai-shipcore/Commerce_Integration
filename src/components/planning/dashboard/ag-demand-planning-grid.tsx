@@ -4271,12 +4271,11 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, []);
 
   useEffect(() => {
-    if (!groupVis.con || containerDetailsLoaded || containerDetailsLoading) return;
-    const timer = window.setTimeout(() => {
-      window.requestAnimationFrame(() => onLoadContainerDetails());
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [containerDetailsLoaded, containerDetailsLoading, groupVis.con, onLoadContainerDetails]);
+    if (!groupVis.con) return;
+    // The hook waits for the current summary and deduplicates requests.
+    const frame = window.requestAnimationFrame(onLoadContainerDetails);
+    return () => window.cancelAnimationFrame(frame);
+  }, [groupVis.con, onLoadContainerDetails]);
 
   // CON_SUBCOLS reordered with "ccbm" moved to the front — the same reorder
   // `subColumns` used to apply only after filtering. Doing it unconditionally
@@ -4480,6 +4479,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   }, [containerDetailsLoaded, scenario?.id, scenarioOverlay]);
 
   useEffect(() => {
+    // When container columns are requested, the summary has no quantities.
+    // Wait for details instead of calculating every SKU twice on first load.
+    if (groupVis.con && !containerDetailsLoaded) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
@@ -4493,7 +4495,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       setChainReadyAfterLoad(true);
     });
     return () => { cancelled = true; };
-  }, [containers, data.rows, seasonalFactors]);
+  }, [containerDetailsLoaded, containers, data.rows, groupVis.con, seasonalFactors]);
 
   // Quantity edits affect only their SKU chain. Recomputing every row after
   // each keystroke made Con. Qty edits increasingly slow on large datasets.
@@ -5275,17 +5277,20 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     // Keep keyboard entry responsive: the grid is updated optimistically and
     // persistence finishes in the background. A failed request rolls back
     // only if this cell has not been edited again in the meantime.
-    const previousPersistence = qtyPersistenceQueueRef.current.get(key) ?? Promise.resolve();
+    // Capture the destination at edit time. Reading scenarioRef later inside
+    // the queue can route the write into a different tab after a fast switch.
+    const targetScenario = scenarioRef.current;
+    const persistenceKey = `${targetScenario?.id ?? "live"}::${key}`;
+    const previousPersistence = qtyPersistenceQueueRef.current.get(persistenceKey) ?? Promise.resolve();
     const persistence = previousPersistence.catch(() => {}).then(async () => {
       try {
         let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
         const serverItemId = qtyServerItemIdsRef.current.get(key) ?? itemId;
-        const scenario = scenarioRef.current;
-        if (scenario) {
+        if (targetScenario) {
           // A scenario tab writes only to its own overlay. The real container
           // item is left alone, so allocation syncing and the container audit
           // log stay out of it until the tab is applied to Live.
-          const response = await fetch(apiPath(`/api/planning/scenarios/${scenario.id}/items`), {
+          const response = await fetch(apiPath(`/api/planning/scenarios/${targetScenario.id}/items`), {
             method: "PUT",
             headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
             body: JSON.stringify({
@@ -5428,9 +5433,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         scheduleQtyRenderSync();
       }
     });
-    qtyPersistenceQueueRef.current.set(key, persistence);
+    qtyPersistenceQueueRef.current.set(persistenceKey, persistence);
     void persistence.finally(() => {
-      if (qtyPersistenceQueueRef.current.get(key) === persistence) qtyPersistenceQueueRef.current.delete(key);
+      if (qtyPersistenceQueueRef.current.get(persistenceKey) === persistence) qtyPersistenceQueueRef.current.delete(persistenceKey);
     });
     return true;
   }, [canEditPlanning, containers, pushSheetHistory, scheduleQtyRenderSync, seasonalFactors]);

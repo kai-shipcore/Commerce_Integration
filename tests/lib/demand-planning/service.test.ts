@@ -68,6 +68,72 @@ const baseQuery = {
   salesWeightsParam: null,
 };
 
+describe("lightweight container details", () => {
+  const configurations = [
+    { mode: "custom" as const, categoryCodes: ["SC"], asOf: null, includeDrafts: false },
+    { mode: "link" as const, categoryCodes: ["CC", "SWC", "AC"], asOf: "2020-01-01", includeDrafts: true },
+    { mode: "custom" as const, categoryCodes: ["FM"], asOf: "2020-01-01", includeDrafts: false },
+    { mode: "link" as const, categoryCodes: null, asOf: null, includeDrafts: true },
+  ];
+
+  it.each(configurations)("preserves the old raw projection for %j", async configuration => {
+    const stats = {
+      ...Object.fromEntries(("back total_stock total_avg_real west_90d west_60d west_30d west_30d_pre west_15d west_7d " +
+        "east_90d east_60d east_30d east_30d_pre east_15d east_7d avg_daily_prev east_avg_prev " +
+        "fba_avg_prev fba_30d").split(" ").map(key => [key, 0])),
+      sku: "CA-SC-10-F-10-BK-1TO", category_code: "SC",
+    };
+    repositoryMock.getStatsRows.mockResolvedValue([stats, { ...stats, sku: "EMPTY" }]);
+    repositoryMock.getContainerHeaders.mockResolvedValue([
+      { id: 2, name: "Z", eta: "2026-10-01", cbm_cap: null, status: "draft" },
+      { id: 1, name: "A", eta: "2026-10-01", cbm_cap: 70, status: "shipped" },
+      { id: 3, name: "No date", eta: null, cbm_cap: 60, status: "packing_received" },
+    ]);
+    repositoryMock.getContainerCategories.mockResolvedValue([{ container_id: 1, category_code: "SC" }]);
+    const first = {
+      sku: stats.sku, container_name: "A", item_id: 1, cbm_unit: 0.125,
+      inbound_qty: 12, allocated_remaining_qty: null, avail_qty: 12, cbm: 1.5,
+      eta: "2026-10-01", open_orders: null, est_sales: null, backorder: null,
+      inv_life: null, est_sod: null, plan_sod: null,
+    };
+    repositoryMock.getCrossData.mockResolvedValue([
+      first,
+      { ...first, item_id: 2, inbound_qty: 0, avail_qty: 0, cbm: 0, allocated_remaining_qty: 3 },
+      { ...first, container_name: "Z", item_id: 3 },
+      { ...first, sku: "NOT-IN-STATS" },
+    ]);
+    const query = { ...baseQuery, ...configuration, categoryCodes: configuration.categoryCodes as ("SC" | "CC" | "FM" | "AC" | "SWC")[] | null,
+      includeContainers: true, rawContainers: true, salesWeightsParam: '{"d30":0.7}' };
+    const old = await DemandPlanningService.getDashboardData(query);
+    vi.clearAllMocks();
+    const result = await DemandPlanningService.getContainerDetails(query);
+    const bySku = new Map(result.data.rows.map(row => [row.sku, row.containers]));
+    expect(result.data.containers).toEqual(old.data.containers);
+    expect(old.data.rows.map(row => ({ sku: row.sku, containers: bySku.get(row.sku) ?? {} })))
+      .toEqual(old.data.rows.map(({ sku, containers }) => ({ sku, containers })));
+    expect(result.data.containers.map(row => row.name)).toEqual(["Base", "A", "Z", "No date"]);
+    expect(bySku.get(stats.sku)?.A).toMatchObject({ inbound_qty: 0, item_id: 2, allocated_remaining_qty: 3, cbm: 0 });
+    expect(bySku.get(stats.sku)?.Z.allocated_remaining_qty).toBe(0);
+    expect(repositoryMock.getStatsRows).not.toHaveBeenCalled();
+    expect(repositoryMock.getAvailableStockTotals).not.toHaveBeenCalled();
+    expect(repositoryMock.getVelocitySnapshot).not.toHaveBeenCalled();
+    expect(repositoryMock.getLastSync).not.toHaveBeenCalled();
+    expect(repositoryMock.getCrossData).toHaveBeenCalledWith(expect.objectContaining({
+      rawContainers: true, categoryCodes: query.categoryCodes, mode: query.mode,
+    }));
+    expect(setCacheMock.mock.calls[0][7]).toMatch(/^containers-only-v1:/);
+  });
+
+  it("uses its own typed cache without any repository reads", async () => {
+    const data = { containers: [], rows: [] };
+    getCacheMock.mockResolvedValue({ success: true, data });
+    expect(await DemandPlanningService.getContainerDetails(baseQuery)).toEqual({ data, cacheStatus: "HIT" });
+    expect(getCacheMock.mock.calls[0][6]).toMatch(/^containers-only-v1:/);
+    expect(repositoryMock.getCrossData).not.toHaveBeenCalled();
+    expect(repositoryMock.getStatsRows).not.toHaveBeenCalled();
+  });
+});
+
 describe("DemandPlanningService.getDashboardData", () => {
   it("returns a cache HIT without calling the repository when cached", async () => {
     getCacheMock.mockResolvedValue({ success: true, data: { containers: [], rows: [], pinned_rows: [], last_sync: null } });

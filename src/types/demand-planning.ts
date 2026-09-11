@@ -141,3 +141,9 @@ export interface DemandPlanningData {
   pinned_rows?: DemandRow[];
   last_sync: string | null;
 }
+
+/** Sparse raw detail rows; absent SKUs have an empty container map. */
+export interface DemandPlanningContainerDetails {
+  containers: ContainerMeta[];
+  rows: Array<Pick<DemandRow, "sku" | "containers">>;
+}

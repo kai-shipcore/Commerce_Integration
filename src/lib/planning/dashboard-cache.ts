@@ -3,9 +3,9 @@ import type { DemandPlanningData } from "@/types/demand-planning";
 import { gzip, gunzip } from "node:zlib";
 import { promisify } from "node:util";
 
-type DashboardCachePayload = {
+type DashboardCachePayload<T = DemandPlanningData> = {
   success: true;
-  data: DemandPlanningData;
+  data: T;
 };
 
 type CompressedDashboardCachePayload = {
@@ -51,10 +51,10 @@ async function withTimeoutMs<T>(work: Promise<T>, fallback: T, timeoutMs: number
   }
 }
 
-export async function getPlanningDashboardCache(mode: string, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false, variant?: string) {
+export async function getPlanningDashboardCache<T = DemandPlanningData>(mode: string, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false, variant?: string) {
   if (!hasRedisEnv) return null;
   const cached = await withTimeout(
-    CacheManager.get<DashboardCachePayload | CompressedDashboardCachePayload | string>(
+    CacheManager.get<DashboardCachePayload<T> | CompressedDashboardCachePayload | string>(
       planningDashboardCacheKey(mode, includeContainers, asOfDate, includeDrafts, category, rawContainers, variant),
     ),
     null,
@@ -64,7 +64,7 @@ export async function getPlanningDashboardCache(mode: string, includeContainers 
   const parsed = typeof cached === "string"
     ? (() => {
         try {
-          return JSON.parse(cached) as DashboardCachePayload | CompressedDashboardCachePayload;
+          return JSON.parse(cached) as DashboardCachePayload<T> | CompressedDashboardCachePayload;
         } catch {
           return null;
         }
@@ -77,15 +77,15 @@ export async function getPlanningDashboardCache(mode: string, includeContainers 
       const buffer = Buffer.from(parsed.body, "base64");
       const json = await withTimeoutMs(gunzipAsync(buffer), null, DASHBOARD_CACHE_DECOMPRESS_TIMEOUT_MS);
       if (!json) return null;
-      return JSON.parse(json.toString("utf8")) as DashboardCachePayload;
+      return JSON.parse(json.toString("utf8")) as DashboardCachePayload<T>;
     } catch {
       return null;
     }
   }
-  return parsed;
+  return "data" in parsed ? parsed : null;
 }
 
-export function setPlanningDashboardCache(mode: string, payload: DashboardCachePayload, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false, variant?: string) {
+export function setPlanningDashboardCache<T = DemandPlanningData>(mode: string, payload: DashboardCachePayload<T>, includeContainers = false, asOfDate?: string, includeDrafts = false, category?: string, rawContainers = false, variant?: string) {
   if (!hasRedisEnv) return;
   setTimeout(() => void (async () => {
     try {

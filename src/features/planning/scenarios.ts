@@ -55,7 +55,7 @@ const PLANNING_HEADERS = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiPath(path), init);
+  const response = await fetch(apiPath(path), { cache: "no-store", ...init });
   const json = await response.json().catch(() => null) as
     | { success?: boolean; data?: T; error?: string }
     | null;

@@ -46,7 +46,8 @@ import { OosImpactService } from "@/lib/oos-impact/service";
 import { DemandPlanningRepository, type DashboardCategoryCode, type VelRow } from "@/lib/demand-planning/repository";
 import { SkuMasterRepository } from "@/lib/sku-master/repository";
 import { TransitStockRepository } from "@/lib/transit-stock/repository";
-import type { ContainerMeta, ContainerRowData, DemandPlanningData, DemandRow } from "@/types/demand-planning";
+import type { ContainerRowData, DemandPlanningData, DemandPlanningContainerDetails, DemandRow } from "@/types/demand-planning";
+import { mapContainerDetails } from "./container-details";
 
 // ─── Shared parsing helpers ─────────────────────────────────────────────
 
@@ -117,6 +118,40 @@ export interface DashboardResult {
 }
 
 export const DemandPlanningService = {
+  async getContainerDetails(query: Omit<DashboardQuery, "includeContainers" | "rawContainers">): Promise<{
+    data: DemandPlanningContainerDetails;
+    cacheStatus: "HIT" | "MISS";
+  }> {
+    const todayDefault = planningLocalDateString();
+    const todayStr = query.asOf && /^\d{4}-\d{2}-\d{2}$/.test(query.asOf) ? query.asOf : todayDefault;
+    const dateKey = todayStr === todayDefault ? undefined : todayStr;
+    // Distinct payload type and namespace, still under planning:dashboard:* so
+    // all existing container writes and Sync invalidate this cache as well.
+    const variant = "containers-only-v1:" + encodeURIComponent(JSON.stringify(parseSalesWindowWeightsParam(query.salesWeightsParam)));
+    const cached = await getPlanningDashboardCache<DemandPlanningContainerDetails>(
+      query.mode, true, dateKey, query.includeDrafts, categoryCacheKey(query.categoryCodes), true, variant,
+    );
+    if (cached) return { data: cached.data, cacheStatus: "HIT" };
+    const [headers, cross] = await Promise.all([
+      DemandPlanningRepository.getContainerHeaders(query.categoryCodes),
+      DemandPlanningRepository.getCrossData({
+        mode: query.mode,
+        categoryCodes: query.categoryCodes,
+        inboundStatuses: query.includeDrafts ? "('shipped', 'packing_received', 'draft')" : ACTIVE,
+        rawContainers: true,
+      }),
+    ]);
+    const categories = await DemandPlanningRepository.getContainerCategories(headers.map(row => row.id));
+    const { containers, crossMap } = mapContainerDetails(headers, categories, cross, todayStr);
+    const data: DemandPlanningContainerDetails = {
+      containers,
+      rows: Array.from(crossMap, ([sku, entries]) => ({ sku, containers: Object.fromEntries(entries) })),
+    };
+    setPlanningDashboardCache(
+      query.mode, { success: true, data }, true, dateKey, query.includeDrafts, categoryCacheKey(query.categoryCodes), true, variant,
+    );
+    return { data, cacheStatus: "MISS" };
+  },
   // Exposed standalone (not just as part of getDashboardData) for pages like
   // OOS Impact that trigger the same refreshStats pipeline via its "Sync"
   // button but don't otherwise need the full demand-planning dashboard payload.
@@ -156,13 +191,6 @@ export const DemandPlanningService = {
         ? DemandPlanningRepository.getCrossData({ ...filters, rawContainers: query.rawContainers })
         : Promise.resolve([]),
     ]);
-
-    const categoriesByContainer = new Map<number, string[]>();
-    for (const row of categoriesResult) {
-      const arr = categoriesByContainer.get(row.container_id) ?? [];
-      arr.push(row.category_code);
-      categoriesByContainer.set(row.container_id, arr);
-    }
 
     const availStockMap = new Map<string, { remaining: number; mistake: number }>();
     for (const r of availStockResult) {
@@ -251,50 +279,7 @@ export const DemandPlanningService = {
 
     // ── Assemble response ──────────────────────────────────────────────
 
-    const containers: ContainerMeta[] = [
-      { col: 0, name: "Base", eta: todayStr, cbm_cap: 0, status: "baseline" },
-      ...containersResult.map((r, i) => ({
-        col: i + 1,
-        container_id: r.id,
-        name: r.name,
-        eta: r.eta,
-        cbm_cap: r.cbm_cap ?? 0,
-        status: r.status,
-        categories: categoriesByContainer.get(r.id) ?? [],
-      })),
-    ];
-
-    containers[0] = { col: 0, name: "Base", eta: todayStr, cbm_cap: 0, status: "baseline" };
-    const orderedContainers = containers.slice(1).sort((a, b) => {
-      const aTime = a.eta ? new Date(a.eta).getTime() : Number.POSITIVE_INFINITY;
-      const bTime = b.eta ? new Date(b.eta).getTime() : Number.POSITIVE_INFINITY;
-      if (aTime !== bTime) return aTime - bTime;
-      return a.name.localeCompare(b.name);
-    });
-    containers.splice(1, containers.length - 1, ...orderedContainers.map((container, i) => ({
-      ...container,
-      col: i + 1,
-    })));
-
-    const crossMap = new Map<string, Map<string, ContainerRowData>>();
-    for (const r of crossResult) {
-      if (!crossMap.has(r.sku)) crossMap.set(r.sku, new Map());
-      crossMap.get(r.sku)!.set(r.container_name, {
-        item_id: r.item_id,
-        cbm_unit: r.cbm_unit,
-        inbound_qty: r.inbound_qty,
-        allocated_remaining_qty: r.allocated_remaining_qty ?? 0,
-        open_orders: r.open_orders,
-        avail_qty: r.avail_qty,
-        est_sales: r.est_sales,
-        backorder: r.backorder,
-        eta: r.eta,
-        inv_life: r.inv_life,
-        est_sod: r.est_sod,
-        plan_sod: r.plan_sod,
-        cbm: r.cbm,
-      });
-    }
+    const { containers, crossMap } = mapContainerDetails(containersResult, categoriesResult, crossResult, todayStr);
 
     // ── Final-SKU sales roll-up (TN→TNS, BKGR→BKLG) ────────────────────
     //

@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Lock, Users, ChevronDown, Loader2 } from "lucide-react";
+import { Lock, Users, ChevronDown, Loader2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
   DropdownMenu,
@@ -30,7 +30,6 @@ export interface ScenarioTabBarProps {
   busy: boolean;
   canEditPlanning: boolean;
   onSelect: (id: string | null) => void;
-  onCreate: () => void;
   onDuplicate: (id: string | null) => void;
   onRename: (id: string, name: string) => void;
   onToggleShared: (scenario: ScenarioSummary) => void;
@@ -46,7 +45,6 @@ export function ScenarioTabBar({
   busy,
   canEditPlanning,
   onSelect,
-  onCreate,
   onDuplicate,
   onRename,
   onToggleShared,
@@ -214,20 +212,9 @@ export function ScenarioTabBar({
 
       <button
         type="button"
-        onClick={onCreate}
-        disabled={!canEditPlanning || busy}
-        className="ml-1 rounded p-1 text-slate-500 hover:bg-slate-200 disabled:opacity-40 dark:hover:bg-slate-700"
-        title={pick("새 탭", "New tab")}
-        aria-label={pick("새 탭", "New tab")}
-      >
-        <Plus className="size-4" />
-      </button>
-
-      <button
-        type="button"
         onClick={() => onDuplicate(null)}
         disabled={!canEditPlanning || busy}
-        className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-200 disabled:opacity-40 dark:hover:bg-slate-700"
+        className="ml-1 rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-200 disabled:opacity-40 dark:hover:bg-slate-700"
         title={pick(
           "지금 Live 수량을 그대로 복사한 새 탭을 만듭니다.",
           "Creates a new tab starting from the current Live quantities.",
