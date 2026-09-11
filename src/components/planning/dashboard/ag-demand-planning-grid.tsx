@@ -3729,6 +3729,8 @@ export function AgDemandPlanningGrid({
   onHideColumns,
   onHideContainer,
   onToggleContainerColumns,
+  scenario = null,
+  scenarioOverlay = null,
 }: DemandPlanningGridProps) {
   const { pick } = useI18n();
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
@@ -3799,6 +3801,10 @@ export function AgDemandPlanningGrid({
   const [qtyOverrides, setQtyOverrides] = useState<Map<string, QtyOverride>>(new Map());
   const qtyOverridesRef = useRef(qtyOverrides);
   const lastChainedQtyOverridesRef = useRef(qtyOverrides);
+  // Read inside the persistence queue, which must see the tab that was active
+  // when the edit was made rather than rebuild every save callback on a switch.
+  const scenarioRef = useRef(scenario);
+  scenarioRef.current = scenario;
   const clearingSelectedEditableCellsRef = useRef(false);
   const sheetUndoStackRef = useRef<SheetHistoryEntry[]>([]);
   const sheetRedoStackRef = useRef<SheetHistoryEntry[]>([]);
@@ -4398,6 +4404,80 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerDetailsLoaded]);
+
+  /**
+   * Rebuilds the quantity and ETA overrides for whichever tab is now active.
+   *
+   * Runs once per tab, not per edit: the dashboard replaces `scenarioOverlay`
+   * only when a tab is loaded, so a keystroke never lands back here. The Live
+   * values are laid down first and the scenario's overlay goes on top
+   * unconditionally — a stored qty of 0 means "this tab ships none of this SKU
+   * in that container", which has to beat the Live quantity rather than be
+   * skipped the way an absent/empty cell is.
+   */
+  const seededScenarioRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!containerDetailsLoaded) return;
+    const tabKey = scenario?.id ?? null;
+    // A scenario tab is not ready until its overlay has arrived, or the grid
+    // would briefly show Live's numbers under the new tab's name.
+    if (tabKey !== null && scenarioOverlay === null) return;
+    if (seededScenarioRef.current === tabKey) return;
+    seededScenarioRef.current = tabKey;
+
+    const byContainerId = new Map<string, ContainerMeta>();
+    for (const container of data.containers) {
+      if (container.container_id !== undefined) byContainerId.set(String(container.container_id), container);
+    }
+
+    const seeded = new Map<string, QtyOverride>();
+    for (const row of data.rows) {
+      for (const [containerName, cd] of Object.entries(row.containers ?? {})) {
+        if (!cd || (cd.inbound_qty ?? 0) <= 0) continue;
+        seeded.set(`${row.sku}::${containerName}`, {
+          inbound_qty: cd.inbound_qty ?? null,
+          avail_qty: cd.inbound_qty ?? null,
+          cbm: cd.cbm ?? null,
+          item_id: cd.item_id ?? undefined,
+          cbm_unit: cd.cbm_unit ?? undefined,
+        });
+      }
+    }
+
+    for (const item of scenarioOverlay?.items ?? []) {
+      const container = byContainerId.get(item.container_id);
+      if (!container) continue;
+      const key = `${item.master_sku}::${container.name}`;
+      const base = seeded.get(key);
+      const cbmUnit = base?.cbm_unit
+        ?? data.rows.find((row) => row.sku === item.master_sku)?.cbm_per_unit
+        ?? 0;
+      seeded.set(key, {
+        inbound_qty: item.qty === 0 ? null : item.qty,
+        avail_qty: item.qty === 0 ? null : item.qty,
+        cbm: item.qty === 0 ? null : item.qty * cbmUnit,
+        cbm_unit: cbmUnit,
+        // Item ids belong to the real plan; a scenario cell has none.
+        item_id: undefined,
+        allocated_remaining_qty: base?.allocated_remaining_qty ?? null,
+      });
+    }
+
+    const etas = new Map<number, string>();
+    for (const override of scenarioOverlay?.containers ?? []) {
+      if (override.eta_date) etas.set(Number(override.container_id), override.eta_date);
+    }
+
+    qtyOverridesRef.current = seeded;
+    lastChainedQtyOverridesRef.current = seeded;
+    // Server item ids and edit history both belong to the tab being left.
+    qtyServerItemIdsRef.current = new Map();
+    sheetUndoStackRef.current = [];
+    sheetRedoStackRef.current = [];
+    setQtyOverrides(seeded);
+    setEtaOverrides(etas);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerDetailsLoaded, scenario?.id, scenarioOverlay]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5008,11 +5088,19 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
 
   const updateEta = useCallback(async (container: ContainerMeta, eta: string) => {
     if (!canEditPlanning || !eta || !container.container_id) return;
-    const response = await fetch(apiPath(`/api/containers?id=${container.container_id}`), {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
-      body: JSON.stringify({ eta }),
-    });
+    // On a scenario tab the new ETA is the tab's own; the container keeps the
+    // date everyone else sees until the tab is applied to Live.
+    const response = scenario
+      ? await fetch(apiPath(`/api/planning/scenarios/${scenario.id}/items`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+        body: JSON.stringify({ containers: [{ container_id: container.container_id, eta_date: eta }] }),
+      })
+      : await fetch(apiPath(`/api/containers?id=${container.container_id}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+        body: JSON.stringify({ eta }),
+      });
     if (!response.ok) {
       toast.error(pick("ETA 변경에 실패했습니다.", "Failed to update ETA."));
       return;
@@ -5023,11 +5111,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       return;
     }
     setEtaOverrides((current) => new Map(current).set(container.container_id!, eta));
-    onContainerEtaChange?.({ id: container.container_id, name: container.name, eta });
+    // Only Live tells the rest of the page a container actually moved.
+    if (!scenario) onContainerEtaChange?.({ id: container.container_id, name: container.name, eta });
     const nextContainers = containers.map((entry) => entry.container_id === container.container_id ? { ...entry, eta } : entry);
     setChainMap(new Map(data.rows.map((row) => [row.sku, computeContainerChain(row, nextContainers, qtyOverrides, seasonalFactors)])));
     toast.success(pick("변경되었습니다.", "Updated."));
-  }, [canEditPlanning, containers, data.rows, onContainerEtaChange, pick, qtyOverrides, seasonalFactors]);
+  }, [canEditPlanning, containers, data.rows, onContainerEtaChange, pick, qtyOverrides, scenario, seasonalFactors]);
 
   const saveCbm = useCallback(async (
     row: DemandRow,
@@ -5191,7 +5280,32 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       try {
         let json: { success: boolean; qty?: number; total_cbm?: number; item_id?: number; allocated_qty?: number };
         const serverItemId = qtyServerItemIdsRef.current.get(key) ?? itemId;
-        if (serverItemId && nextQty === 0) {
+        const scenario = scenarioRef.current;
+        if (scenario) {
+          // A scenario tab writes only to its own overlay. The real container
+          // item is left alone, so allocation syncing and the container audit
+          // log stay out of it until the tab is applied to Live.
+          const response = await fetch(apiPath(`/api/planning/scenarios/${scenario.id}/items`), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+            body: JSON.stringify({
+              items: [{
+                container_id: container.container_id,
+                master_sku: row.sku,
+                qty: nextQty,
+              }],
+            }),
+          });
+          const saved = await response.json() as { success: boolean };
+          // The overlay carries no item id and moves no allocations, so the
+          // optimistic values are already the whole truth.
+          json = {
+            success: saved.success,
+            qty: nextQty,
+            total_cbm: optimisticOverride.cbm ?? undefined,
+            allocated_qty: oldAllocatedQty,
+          };
+        } else if (serverItemId && nextQty === 0) {
           json = await fetch(apiPath(`/api/planning/containers/items/${serverItemId}`), {
             method: "DELETE",
             headers: DEMAND_PLANNING_MUTATION_HEADER,
@@ -6012,6 +6126,44 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       return;
     }
 
+    // The optimizer runs here either way; only where the numbers land differs.
+    // On a scenario tab they go into that tab's overlay, leaving the real
+    // container untouched.
+    if (scenario) {
+      const res = await fetch(apiPath(`/api/planning/scenarios/${scenario.id}/items`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+        body: JSON.stringify({
+          items: orders.map((o) => ({
+            container_id: container.container_id,
+            master_sku: o.sku,
+            qty: o.qty,
+          })),
+        }),
+      });
+      const saved = await res.json() as { success: boolean };
+      if (!saved.success) return;
+
+      const rowMap = new Map(visibleRows.map((r) => [r.sku, r]));
+      setQtyOverrides((cur) => {
+        const next = new Map(cur);
+        for (const order of orders) {
+          const raw = rowMap.get(order.sku);
+          const cbmUnit = raw?.containers?.[container.name]?.cbm_unit ?? raw?.cbm_per_unit ?? 0;
+          next.set(`${order.sku}::${container.name}`, {
+            inbound_qty: order.qty,
+            avail_qty: order.qty,
+            cbm: order.qty * cbmUnit,
+            cbm_unit: cbmUnit,
+            item_id: undefined,
+            allocated_remaining_qty: raw?.containers?.[container.name]?.allocated_remaining_qty ?? null,
+          });
+        }
+        return next;
+      });
+      return;
+    }
+
     const res = await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
@@ -6037,7 +6189,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       }
       return next;
     });
-  }, [canEditPlanning, categoryFilter, containers, chainMap, visibleRows, gradient, gradientSC, qtyOverrides, seasonalFactors]);
+  }, [canEditPlanning, categoryFilter, containers, chainMap, visibleRows, gradient, gradientSC, qtyOverrides, scenario, seasonalFactors]);
 
   const calculateTargetOrders = useCallback((
     container: ContainerMeta,
@@ -6232,11 +6384,23 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         if ((val.inbound_qty ?? 0) > 0) items.push({ sku, qty: val.inbound_qty! });
       }
       if (items.length === 0) return;
-      const response = await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
-        body: JSON.stringify({ items }),
-      });
+      const response = scenario
+        ? await fetch(apiPath(`/api/planning/scenarios/${scenario.id}/items`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+          body: JSON.stringify({
+            items: items.map((item) => ({
+              container_id: container.container_id,
+              master_sku: item.sku,
+              qty: item.qty,
+            })),
+          }),
+        })
+        : await fetch(apiPath(`/api/planning/containers/${container.container_id}/auto-fill`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
+          body: JSON.stringify({ items }),
+        });
       const result = await response.json().catch(() => null) as { success?: boolean } | null;
       saved = response.ok && result?.success === true;
     } finally {
@@ -6245,7 +6409,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         setDirtyContainers((s) => { const n = new Set(s); n.delete(container.name); return n; });
       }
     }
-  }, [canEditPlanning, qtyOverrides]);
+  }, [canEditPlanning, qtyOverrides, scenario]);
 
   // The full base-column list minus only the group-visibility filter.
   // Compact mode is deliberately NOT filtered out here: turning it on

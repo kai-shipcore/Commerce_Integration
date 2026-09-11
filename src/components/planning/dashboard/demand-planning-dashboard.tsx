@@ -71,6 +71,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
+import { ScenarioApi } from "@/features/planning/scenarios";
+import type {
+  ScenarioApplyDiff,
+  ScenarioOverlay,
+  ScenarioSummary,
+} from "@/features/planning/scenarios";
+import { ScenarioTabBar } from "./scenario-tab-bar";
+import { ApplyToLiveDialog } from "./apply-to-live-dialog";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
 import {
   DEFAULT_SEASONAL_FACTORS,
@@ -142,6 +150,12 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
   inb: true,
   con: false,
 };
+
+/** Whether draft containers count as inbound. The dashboard has always shown
+ *  only shipped and packing-received containers; the scenario tabs read the
+ *  same set, so the two cannot drift into disagreeing about which columns
+ *  exist. */
+const INCLUDE_DRAFT_CONTAINERS = false;
 
 const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
 const CONTAINER_VISIBILITY_STORAGE_KEY = "planning-dashboard-container-visibility";
@@ -881,7 +895,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     error: loadError,
     reload,
     loadContainerDetails,
-  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, false, categoryFilter, salesWindowWeights, oosLostDemandWeights);
+  } = useDemandPlanningData(velocityMode, isHistoricalDate ? asOfDate : undefined, INCLUDE_DRAFT_CONTAINERS, categoryFilter, salesWindowWeights, oosLostDemandWeights);
   const [isCategoryPending, startCategoryTransition] = useTransition();
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
   // Read once, before the filter states below take their initial values.
@@ -1037,7 +1051,30 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const confirmedSkuWorkNotesRef = useRef<Array<Record<string, string>>>([{}, {}, {}]);
   const skuWorkNoteSaveQueuesRef = useRef<Map<string, Promise<void>>>(new Map());
   const skuWorkNoteRenderScheduledRef = useRef([false, false, false]);
+  // Doubles as the "the active tab's view is hydrated" gate: it goes false at
+  // the start of a tab switch so the save effect cannot write the outgoing
+  // tab's settings onto the incoming one before its own view has loaded.
   const [dbPrefsLoaded, setDbPrefsLoaded] = useState(false);
+
+  // Sheet tabs. `null` is the Live tab — the real container plan, which has no
+  // row of its own in fc_planning_scenarios.
+  const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [scenarioBusy, setScenarioBusy] = useState(false);
+  const [scenarioOverlay, setScenarioOverlay] = useState<ScenarioOverlay | null>(null);
+  const [applyDialog, setApplyDialog] = useState<{ scenario: ScenarioSummary; diff: ScenarioApplyDiff } | null>(null);
+  const activeScenario = useMemo(
+    () => scenarios.find((scenario) => scenario.id === activeScenarioId) ?? null,
+    [scenarios, activeScenarioId],
+  );
+  /** A locked tab is read-only for everyone but its holder. Nothing on it can
+   *  be edited, SKU master fields included: "this tab is locked" is a rule
+   *  people can act on, where "some of these cells are shared across tabs and
+   *  some are not" is one they would have to rediscover per cell. Editing the
+   *  master data is still a tab away, on Live. */
+  const canEditActiveTab = canEditDemandPlanning && (activeScenario === null || activeScenario.can_edit);
+  const canEditActiveTabSkuNotes = canEditSkuNotes && (activeScenario === null || activeScenario.can_edit);
+
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
   const conditionalFormatLocalSaveTimerRef = useRef<number | null>(null);
@@ -1071,42 +1108,62 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // next load's GET would stomp the correct local value right back to the old
   // one. `latestPrefsRef` plus the pagehide/beforeunload flush below exist
   // specifically to close that window.
-  const latestPrefsRef = useRef<Record<string, unknown> | null>(null);
-  const putPrefs = useCallback((prefs: Record<string, unknown>, keepalive: boolean) => {
-    fetch(apiPath("/api/user/preferences"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ preferences: prefs }),
+  // The destination travels with the payload. A tab switch inside the debounce
+  // window would otherwise flush the outgoing tab's settings into the incoming
+  // tab, which is how one tab quietly overwrites another's layout.
+  const latestPrefsRef = useRef<{ prefs: Record<string, unknown>; scenarioId: string | null } | null>(null);
+  const putPrefs = useCallback((prefs: Record<string, unknown>, scenarioId: string | null, keepalive: boolean) => {
+    if (scenarioId === null) {
+      fetch(apiPath("/api/user/preferences"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferences: prefs }),
+        keepalive,
+      }).catch(() => {});
+      return;
+    }
+    // A scenario tab's view belongs to the tab, not to the viewer, so it is
+    // saved on the scenario row instead of in this user's preferences.
+    fetch(apiPath(`/api/planning/scenarios/${scenarioId}`), {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Planning-Permission-Context": "demand-planning",
+      },
+      body: JSON.stringify({ view_state: prefs }),
       keepalive,
     }).catch(() => {});
   }, []);
-  const savePrefsToDb = useCallback((prefs: Record<string, unknown>) => {
-    latestPrefsRef.current = prefs;
+  const savePrefsToDb = useCallback((prefs: Record<string, unknown>, scenarioId: string | null) => {
+    latestPrefsRef.current = { prefs, scenarioId };
     if (prefSaveTimerRef.current !== null) window.clearTimeout(prefSaveTimerRef.current);
     prefSaveTimerRef.current = window.setTimeout(() => {
       prefSaveTimerRef.current = null;
       latestPrefsRef.current = null;
-      putPrefs(prefs, false);
+      putPrefs(prefs, scenarioId, false);
     }, 1500);
   }, [putPrefs]);
 
+  const flushPrefs = useCallback((keepalive: boolean) => {
+    if (prefSaveTimerRef.current === null || latestPrefsRef.current === null) return;
+    window.clearTimeout(prefSaveTimerRef.current);
+    prefSaveTimerRef.current = null;
+    const pending = latestPrefsRef.current;
+    latestPrefsRef.current = null;
+    // `keepalive` lets this fetch survive the page actually unloading —
+    // a plain fetch gets aborted along with everything else at that point.
+    putPrefs(pending.prefs, pending.scenarioId, keepalive);
+  }, [putPrefs]);
+
   useEffect(() => {
-    const flush = () => {
-      if (prefSaveTimerRef.current === null || latestPrefsRef.current === null) return;
-      window.clearTimeout(prefSaveTimerRef.current);
-      prefSaveTimerRef.current = null;
-      // `keepalive` lets this fetch survive the page actually unloading —
-      // a plain fetch gets aborted along with everything else at that point.
-      putPrefs(latestPrefsRef.current, true);
-      latestPrefsRef.current = null;
-    };
+    const flush = () => flushPrefs(true);
     window.addEventListener("pagehide", flush);
     window.addEventListener("beforeunload", flush);
     return () => {
       window.removeEventListener("pagehide", flush);
       window.removeEventListener("beforeunload", flush);
     };
-  }, [putPrefs]);
+  }, [flushPrefs]);
 
   useEffect(() => {
     const saved = loadSavedColumnWidths();
@@ -1220,207 +1277,226 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  // Load all preferences from DB on mount — overrides localStorage if DB has newer values
+  /**
+   * Applies a saved settings blob to the grid. Used both for the Live tab on
+   * mount and for every tab switch, so a tab always hydrates the same way.
+   *
+   * `mirrorLocal` is on only for the Live tab: localStorage is Live's offline
+   * cache, and letting a scenario tab write into it would mean a failed
+   * preferences fetch leaves Live wearing some scenario's layout.
+   */
+  const applyPreferenceBlob = useCallback((d: Record<string, unknown>, mirrorLocal: boolean) => {
+    const mirrorSet = (key: string, value: string) => {
+      if (mirrorLocal) window.localStorage.setItem(key, value);
+    };
+    const mirrorRemove = (key: string) => {
+      if (mirrorLocal) window.localStorage.removeItem(key);
+    };
+
+    // Column settings
+    const cs = d[COLUMN_SETTINGS_STORAGE_KEY];
+    if (cs && typeof cs === "object" && !Array.isArray(cs)) {
+      mirrorSet(COLUMN_SETTINGS_STORAGE_KEY, JSON.stringify(cs));
+      const saved = cs as Record<string, unknown>;
+      const colVis = normalizeColumnVisibility(saved.columnVis);
+      if (colVis) { setColumnVis(colVis); setGroupVis(getGroupVisibilityFromColumns(colVis)); }
+      if (typeof saved.compactMode === "boolean") setCompactMode(saved.compactMode);
+      if (typeof saved.showMistake === "boolean") setShowMistake(saved.showMistake);
+      if (typeof saved.showZeroSales === "boolean") setShowZeroSales(saved.showZeroSales);
+      if (typeof saved.freezeUntil === "string") setFreezeUntil(saved.freezeUntil);
+    }
+
+    // Column widths
+    const cw = d[COLUMN_WIDTHS_STORAGE_KEY];
+    if (cw && typeof cw === "object" && !Array.isArray(cw)) {
+      mirrorSet(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(cw));
+      const widths = cw as ColumnWidths;
+      columnWidthsRef.current = widths;
+      setColumnWidths(widths);
+    }
+
+    const filterMenuSize = d[COLUMN_FILTER_MENU_SIZE_STORAGE_KEY];
+    if (filterMenuSize && typeof filterMenuSize === "object" && !Array.isArray(filterMenuSize)) {
+      const normalizedSize = normalizeColumnFilterMenuSize(filterMenuSize);
+      mirrorSet(COLUMN_FILTER_MENU_SIZE_STORAGE_KEY, JSON.stringify(normalizedSize));
+      setColumnFilterMenuSize(normalizedSize);
+    }
+
+    const savedRowHeight = d[ROW_HEIGHT_STORAGE_KEY];
+    if (typeof savedRowHeight === "number") {
+      const normalizedHeight = normalizeRowHeight(savedRowHeight);
+      mirrorSet(ROW_HEIGHT_STORAGE_KEY, JSON.stringify(normalizedHeight));
+      setRowHeight(normalizedHeight);
+    }
+
+    const savedDashboardFilters = d[DASHBOARD_FILTERS_STORAGE_KEY];
+    if (savedDashboardFilters && typeof savedDashboardFilters === "object" && !Array.isArray(savedDashboardFilters)) {
+      const filters = normalizeDashboardFilters(savedDashboardFilters);
+      mirrorSet(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters(filters)));
+      setColumnFilters(filters.columnFilters);
+      setProductFilter(filters.productFilter);
+      setSkuPartFilters(filters.skuPartFilters);
+      setGridSort(filters.sort);
+      // The URL wins for urgency: a link shared with ?status= is asking to
+      // be opened on that status, whatever the reader last looked at.
+      // Read from the address bar rather than the hook's value: this
+      // effect runs once, at load, and must not re-run on later URL edits.
+      if (!new URLSearchParams(window.location.search).get("status")) setUrgencyFilter(filters.urgencyFilter);
+    }
+
+    const savedRowHeights = d[ROW_HEIGHTS_STORAGE_KEY];
+    if (savedRowHeights && typeof savedRowHeights === "object" && !Array.isArray(savedRowHeights)) {
+      const normalizedHeights = normalizeRowHeights(savedRowHeights);
+      mirrorSet(ROW_HEIGHTS_STORAGE_KEY, JSON.stringify(normalizedHeights));
+      setRowHeights(normalizedHeights);
+    }
+
+    const savedOrder = d[COLUMN_ORDER_STORAGE_KEY];
+    if (!columnOrderChangedRef.current && Array.isArray(savedOrder)) {
+      const normalizedOrder = ensureAdditionalNotesInColumnOrder(Array.from(new Set(
+        savedOrder.filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300),
+      )).slice(0, 5000));
+      mirrorSet(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(normalizedOrder));
+      setColumnOrder(normalizedOrder);
+    } else if (!columnOrderChangedRef.current) {
+      mirrorRemove(COLUMN_ORDER_STORAGE_KEY);
+      setColumnOrder([]);
+    }
+
+    if (!containerOrderCustomizedChangedRef.current) {
+      const customized = d[CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY] === true;
+      mirrorSet(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, String(customized));
+      setContainerOrderCustomized(customized);
+    }
+
+    // Column colors
+    const cc = d[COLUMN_COLORS_STORAGE_KEY];
+    if (cc && typeof cc === "object" && !Array.isArray(cc)) {
+      mirrorSet(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(cc));
+      setColumnColors(cc as ColumnColorSettings);
+    }
+
+    const columnFormats = d[COLUMN_TEXT_FORMATS_STORAGE_KEY];
+    if (columnFormats && typeof columnFormats === "object" && !Array.isArray(columnFormats)) {
+      mirrorSet(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(columnFormats));
+      setColumnTextFormats(columnFormats as ColumnTextFormatSettings);
+    } else {
+      mirrorRemove(COLUMN_TEXT_FORMATS_STORAGE_KEY);
+      setColumnTextFormats({});
+    }
+
+    const cellFormats = d[CELL_TEXT_FORMATS_STORAGE_KEY];
+    if (cellFormats && typeof cellFormats === "object" && !Array.isArray(cellFormats)) {
+      mirrorSet(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(cellFormats));
+      setCellTextFormats(cellFormats as CellTextFormatSettings);
+    } else {
+      mirrorRemove(CELL_TEXT_FORMATS_STORAGE_KEY);
+      setCellTextFormats({});
+    }
+
+    const conditionalRules = normalizeConditionalFormatRules(d[CONDITIONAL_FORMAT_RULES_STORAGE_KEY]);
+    if (conditionalRules.length > 0) {
+      mirrorSet(CONDITIONAL_FORMAT_RULES_STORAGE_KEY, JSON.stringify(conditionalRules));
+    } else {
+      mirrorRemove(CONDITIONAL_FORMAT_RULES_STORAGE_KEY);
+    }
+    setConditionalFormatRules(conditionalRules);
+
+    // Per-user custom column header names
+    const headerNames = d[COLUMN_HEADER_NAMES_STORAGE_KEY];
+    if (headerNames && typeof headerNames === "object" && !Array.isArray(headerNames)) {
+      const normalized = Object.fromEntries(
+        Object.entries(headerNames).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+      );
+      mirrorSet(COLUMN_HEADER_NAMES_STORAGE_KEY, JSON.stringify(normalized));
+      setColumnHeaderNames(normalized);
+    } else {
+      // localStorage is shared by accounts using the same browser. A successful
+      // server response with no saved names must therefore restore defaults,
+      // rather than briefly loaded names from a different signed-in user.
+      mirrorRemove(COLUMN_HEADER_NAMES_STORAGE_KEY);
+      setColumnHeaderNames({});
+    }
+
+    // Cell colors
+    const cellC = d[CELL_COLORS_STORAGE_KEY];
+    if (cellC && typeof cellC === "object" && !Array.isArray(cellC)) {
+      mirrorSet(CELL_COLORS_STORAGE_KEY, JSON.stringify(cellC));
+      setCellColors(cellC as CellColorSettings);
+    }
+
+    // Container visibility
+    const containerVisibility = d[CONTAINER_VISIBILITY_STORAGE_KEY];
+    if (containerVisibility && typeof containerVisibility === "object" && !Array.isArray(containerVisibility)) {
+      const saved = containerVisibility as Record<string, unknown>;
+      if (Array.isArray(saved.hiddenContainers)) {
+        setHiddenContainers(new Set(saved.hiddenContainers.filter((name): name is string => typeof name === "string")));
+      }
+      if (Array.isArray(saved.hiddenBases)) {
+        setHiddenBases(new Set(saved.hiddenBases.filter((name): name is string => typeof name === "string")));
+      }
+      if (Array.isArray(saved.hiddenContainerColumns)) {
+        setHiddenContainerColumns(new Set(saved.hiddenContainerColumns.filter((id): id is string => typeof id === "string")));
+      } else {
+        setHiddenContainerColumns(new Set());
+      }
+    } else {
+      setHiddenContainerColumns(new Set());
+    }
+
+    // Seasonal factors
+    const sf = d[SEASONAL_FACTORS_STORAGE_KEY];
+    if (sf && typeof sf === "object" && !Array.isArray(sf)) {
+      mirrorSet(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(sf));
+      setSeasonalFactors(sf as SeasonalFactors);
+    }
+
+    // Sales window weights
+    const sw = d[SALES_WINDOW_WEIGHTS_STORAGE_KEY];
+    if (sw && typeof sw === "object" && !Array.isArray(sw)) {
+      const normalized = normalizeSalesWindowWeights(sw);
+      mirrorSet(SALES_WINDOW_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
+      setSalesWindowWeights(normalized);
+    }
+
+    // OOS lost-demand marketplace weights
+    const ldw = d[OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY];
+    if (ldw && typeof ldw === "object" && !Array.isArray(ldw)) {
+      const normalized = normalizeOosLostDemandWeights(ldw);
+      mirrorSet(OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
+      setOosLostDemandWeights(normalized);
+    }
+
+    // Gradient tiers
+    const gd = d[GRADIENT_STORAGE_KEY];
+    if (Array.isArray(gd) && gd.length > 0) {
+      mirrorSet(GRADIENT_STORAGE_KEY, JSON.stringify(gd));
+      setGradient(gd as GradientTier[]);
+    }
+
+    const gdSC = d[GRADIENT_SC_STORAGE_KEY];
+    if (Array.isArray(gdSC) && gdSC.length > 0) {
+      mirrorSet(GRADIENT_SC_STORAGE_KEY, JSON.stringify(gdSC));
+      setGradientSC(gdSC as GradientTier[]);
+    }
+  }, []);
+
+  // Load the Live tab's preferences from the DB on mount — overrides
+  // localStorage if the DB has newer values.
   useEffect(() => {
     fetch(apiPath("/api/user/preferences"))
       .then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>)
       .then((json) => {
         if (!json.success || !json.data) return;
-        const d = json.data;
-
-        // Column settings
-        const cs = d[COLUMN_SETTINGS_STORAGE_KEY];
-        if (cs && typeof cs === "object" && !Array.isArray(cs)) {
-          window.localStorage.setItem(COLUMN_SETTINGS_STORAGE_KEY, JSON.stringify(cs));
-          const saved = cs as Record<string, unknown>;
-          const colVis = normalizeColumnVisibility(saved.columnVis);
-          if (colVis) { setColumnVis(colVis); setGroupVis(getGroupVisibilityFromColumns(colVis)); }
-          if (typeof saved.compactMode === "boolean") setCompactMode(saved.compactMode);
-          if (typeof saved.showMistake === "boolean") setShowMistake(saved.showMistake);
-          if (typeof saved.showZeroSales === "boolean") setShowZeroSales(saved.showZeroSales);
-          if (typeof saved.freezeUntil === "string") setFreezeUntil(saved.freezeUntil);
-        }
-
-        // Column widths
-        const cw = d[COLUMN_WIDTHS_STORAGE_KEY];
-        if (cw && typeof cw === "object" && !Array.isArray(cw)) {
-          window.localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(cw));
-          const widths = cw as ColumnWidths;
-          columnWidthsRef.current = widths;
-          setColumnWidths(widths);
-        }
-
-        const filterMenuSize = d[COLUMN_FILTER_MENU_SIZE_STORAGE_KEY];
-        if (filterMenuSize && typeof filterMenuSize === "object" && !Array.isArray(filterMenuSize)) {
-          const normalizedSize = normalizeColumnFilterMenuSize(filterMenuSize);
-          window.localStorage.setItem(COLUMN_FILTER_MENU_SIZE_STORAGE_KEY, JSON.stringify(normalizedSize));
-          setColumnFilterMenuSize(normalizedSize);
-        }
-
-        const savedRowHeight = d[ROW_HEIGHT_STORAGE_KEY];
-        if (typeof savedRowHeight === "number") {
-          const normalizedHeight = normalizeRowHeight(savedRowHeight);
-          window.localStorage.setItem(ROW_HEIGHT_STORAGE_KEY, JSON.stringify(normalizedHeight));
-          setRowHeight(normalizedHeight);
-        }
-
-        const savedDashboardFilters = d[DASHBOARD_FILTERS_STORAGE_KEY];
-        if (savedDashboardFilters && typeof savedDashboardFilters === "object" && !Array.isArray(savedDashboardFilters)) {
-          const filters = normalizeDashboardFilters(savedDashboardFilters);
-          window.localStorage.setItem(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters(filters)));
-          setColumnFilters(filters.columnFilters);
-          setProductFilter(filters.productFilter);
-          setSkuPartFilters(filters.skuPartFilters);
-          setGridSort(filters.sort);
-          // The URL wins for urgency: a link shared with ?status= is asking to
-          // be opened on that status, whatever the reader last looked at.
-          // Read from the address bar rather than the hook's value: this
-          // effect runs once, at load, and must not re-run on later URL edits.
-          if (!new URLSearchParams(window.location.search).get("status")) setUrgencyFilter(filters.urgencyFilter);
-        }
-
-        const savedRowHeights = d[ROW_HEIGHTS_STORAGE_KEY];
-        if (savedRowHeights && typeof savedRowHeights === "object" && !Array.isArray(savedRowHeights)) {
-          const normalizedHeights = normalizeRowHeights(savedRowHeights);
-          window.localStorage.setItem(ROW_HEIGHTS_STORAGE_KEY, JSON.stringify(normalizedHeights));
-          setRowHeights(normalizedHeights);
-        }
-
-        const savedOrder = d[COLUMN_ORDER_STORAGE_KEY];
-        if (!columnOrderChangedRef.current && Array.isArray(savedOrder)) {
-          const normalizedOrder = ensureAdditionalNotesInColumnOrder(Array.from(new Set(
-            savedOrder.filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300),
-          )).slice(0, 5000));
-          window.localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(normalizedOrder));
-          setColumnOrder(normalizedOrder);
-        } else if (!columnOrderChangedRef.current) {
-          window.localStorage.removeItem(COLUMN_ORDER_STORAGE_KEY);
-          setColumnOrder([]);
-        }
-
-        if (!containerOrderCustomizedChangedRef.current) {
-          const customized = d[CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY] === true;
-          window.localStorage.setItem(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, String(customized));
-          setContainerOrderCustomized(customized);
-        }
-
-        // Column colors
-        const cc = d[COLUMN_COLORS_STORAGE_KEY];
-        if (cc && typeof cc === "object" && !Array.isArray(cc)) {
-          window.localStorage.setItem(COLUMN_COLORS_STORAGE_KEY, JSON.stringify(cc));
-          setColumnColors(cc as ColumnColorSettings);
-        }
-
-        const columnFormats = d[COLUMN_TEXT_FORMATS_STORAGE_KEY];
-        if (columnFormats && typeof columnFormats === "object" && !Array.isArray(columnFormats)) {
-          window.localStorage.setItem(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(columnFormats));
-          setColumnTextFormats(columnFormats as ColumnTextFormatSettings);
-        } else {
-          window.localStorage.removeItem(COLUMN_TEXT_FORMATS_STORAGE_KEY);
-          setColumnTextFormats({});
-        }
-
-        const cellFormats = d[CELL_TEXT_FORMATS_STORAGE_KEY];
-        if (cellFormats && typeof cellFormats === "object" && !Array.isArray(cellFormats)) {
-          window.localStorage.setItem(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(cellFormats));
-          setCellTextFormats(cellFormats as CellTextFormatSettings);
-        } else {
-          window.localStorage.removeItem(CELL_TEXT_FORMATS_STORAGE_KEY);
-          setCellTextFormats({});
-        }
-
-        const conditionalRules = normalizeConditionalFormatRules(d[CONDITIONAL_FORMAT_RULES_STORAGE_KEY]);
-        if (conditionalRules.length > 0) {
-          window.localStorage.setItem(CONDITIONAL_FORMAT_RULES_STORAGE_KEY, JSON.stringify(conditionalRules));
-        } else {
-          window.localStorage.removeItem(CONDITIONAL_FORMAT_RULES_STORAGE_KEY);
-        }
-        setConditionalFormatRules(conditionalRules);
-
-        // Per-user custom column header names
-        const headerNames = d[COLUMN_HEADER_NAMES_STORAGE_KEY];
-        if (headerNames && typeof headerNames === "object" && !Array.isArray(headerNames)) {
-          const normalized = Object.fromEntries(
-            Object.entries(headerNames).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-          );
-          window.localStorage.setItem(COLUMN_HEADER_NAMES_STORAGE_KEY, JSON.stringify(normalized));
-          setColumnHeaderNames(normalized);
-        } else {
-          // localStorage is shared by accounts using the same browser. A successful
-          // server response with no saved names must therefore restore defaults,
-          // rather than briefly loaded names from a different signed-in user.
-          window.localStorage.removeItem(COLUMN_HEADER_NAMES_STORAGE_KEY);
-          setColumnHeaderNames({});
-        }
-
-        // Cell colors
-        const cellC = d[CELL_COLORS_STORAGE_KEY];
-        if (cellC && typeof cellC === "object" && !Array.isArray(cellC)) {
-          window.localStorage.setItem(CELL_COLORS_STORAGE_KEY, JSON.stringify(cellC));
-          setCellColors(cellC as CellColorSettings);
-        }
-
-        // Container visibility
-        const containerVisibility = d[CONTAINER_VISIBILITY_STORAGE_KEY];
-        if (containerVisibility && typeof containerVisibility === "object" && !Array.isArray(containerVisibility)) {
-          const saved = containerVisibility as Record<string, unknown>;
-          if (Array.isArray(saved.hiddenContainers)) {
-            setHiddenContainers(new Set(saved.hiddenContainers.filter((name): name is string => typeof name === "string")));
-          }
-          if (Array.isArray(saved.hiddenBases)) {
-            setHiddenBases(new Set(saved.hiddenBases.filter((name): name is string => typeof name === "string")));
-          }
-          if (Array.isArray(saved.hiddenContainerColumns)) {
-            setHiddenContainerColumns(new Set(saved.hiddenContainerColumns.filter((id): id is string => typeof id === "string")));
-          } else {
-            setHiddenContainerColumns(new Set());
-          }
-        } else {
-          setHiddenContainerColumns(new Set());
-        }
-
-        // Seasonal factors
-        const sf = d[SEASONAL_FACTORS_STORAGE_KEY];
-        if (sf && typeof sf === "object" && !Array.isArray(sf)) {
-          window.localStorage.setItem(SEASONAL_FACTORS_STORAGE_KEY, JSON.stringify(sf));
-          setSeasonalFactors(sf as SeasonalFactors);
-        }
-
-        // Sales window weights
-        const sw = d[SALES_WINDOW_WEIGHTS_STORAGE_KEY];
-        if (sw && typeof sw === "object" && !Array.isArray(sw)) {
-          const normalized = normalizeSalesWindowWeights(sw);
-          window.localStorage.setItem(SALES_WINDOW_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
-          setSalesWindowWeights(normalized);
-        }
-
-        // OOS lost-demand marketplace weights
-        const ldw = d[OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY];
-        if (ldw && typeof ldw === "object" && !Array.isArray(ldw)) {
-          const normalized = normalizeOosLostDemandWeights(ldw);
-          window.localStorage.setItem(OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY, JSON.stringify(normalized));
-          setOosLostDemandWeights(normalized);
-        }
-
-        // Gradient tiers
-        const gd = d[GRADIENT_STORAGE_KEY];
-        if (Array.isArray(gd) && gd.length > 0) {
-          window.localStorage.setItem(GRADIENT_STORAGE_KEY, JSON.stringify(gd));
-          setGradient(gd as GradientTier[]);
-        }
-
-        const gdSC = d[GRADIENT_SC_STORAGE_KEY];
-        if (Array.isArray(gdSC) && gdSC.length > 0) {
-          window.localStorage.setItem(GRADIENT_SC_STORAGE_KEY, JSON.stringify(gdSC));
-          setGradientSC(gdSC as GradientTier[]);
-        }
+        applyPreferenceBlob(json.data, true);
       })
       .catch(() => {})
       .finally(() => setDbPrefsLoaded(true));
-  }, []);
+  }, [applyPreferenceBlob]);
 
+  // localStorage mirrors the Live tab only — see applyPreferenceBlob.
   useEffect(() => {
-    if (!columnSettingsLoaded) return;
+    if (!columnSettingsLoaded || activeScenarioId !== null) return;
     window.localStorage.setItem(
       COLUMN_SETTINGS_STORAGE_KEY,
       JSON.stringify({
@@ -1432,19 +1508,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         freezeUntil,
       }),
     );
-  }, [columnSettingsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil]);
+  }, [activeScenarioId, columnSettingsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil]);
 
   useEffect(() => {
-    if (!dbPrefsLoaded) return;
+    if (!dbPrefsLoaded || activeScenarioId !== null) return;
     window.localStorage.setItem(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters({
       columnFilters, productFilter, urgencyFilter, skuPartFilters, sort: gridSort,
     })));
-  }, [columnFilters, dbPrefsLoaded, gridSort, productFilter, skuPartFilters, urgencyFilter]);
+  }, [activeScenarioId, columnFilters, dbPrefsLoaded, gridSort, productFilter, skuPartFilters, urgencyFilter]);
 
-  // Save all preferences to DB whenever any setting changes (debounced, after initial load)
-  useEffect(() => {
-    if (!columnSettingsLoaded || !dbPrefsLoaded) return;
-    savePrefsToDb({
+  /** Everything that makes up "how this tab looks", in one blob. The save
+   *  effect writes it, and creating a tab seeds the new tab with it so a copy
+   *  opens on the layout you were just looking at. */
+  const buildPreferenceBlob = useCallback((): Record<string, unknown> => {
+    return {
       [COLUMN_SETTINGS_STORAGE_KEY]: { groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil },
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
       [COLUMN_FILTER_MENU_SIZE_STORAGE_KEY]: columnFilterMenuSize,
@@ -1471,8 +1548,238 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [OOS_LOST_DEMAND_WEIGHTS_STORAGE_KEY]: oosLostDemandWeights,
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
+    };
+  }, [groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnFilters, productFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
+
+  // Save all preferences whenever any setting changes (debounced, after the
+  // active tab's view has loaded). The Live tab saves to this user's
+  // preferences; a scenario tab saves onto the tab itself.
+  useEffect(() => {
+    if (!columnSettingsLoaded || !dbPrefsLoaded) return;
+    // A locked tab is read-only for everyone but its holder: keep their local
+    // tweaks on screen, just do not write them back to the shared tab.
+    if (activeScenario && !activeScenario.can_edit) return;
+    savePrefsToDb(buildPreferenceBlob(), activeScenarioId);
+  }, [activeScenario, activeScenarioId, buildPreferenceBlob, columnSettingsLoaded, dbPrefsLoaded, savePrefsToDb]);
+
+  // ─── Sheet tabs ──────────────────────────────────────────────────────
+
+  const refreshScenarios = useCallback(async (): Promise<ScenarioSummary[]> => {
+    try {
+      const list = await ScenarioApi.list();
+      setScenarios(list);
+      return list;
+    } catch {
+      // Tabs are additive: if the list cannot be fetched the page still works
+      // as it always did, on Live.
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    ScenarioApi.list().then(setScenarios).catch(() => {
+      // Tabs are additive: without the list the page still works on Live.
     });
-  }, [columnSettingsLoaded, dbPrefsLoaded, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnFilters, productFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC, savePrefsToDb]);
+  }, []);
+
+  const writeTabParam = useCallback((id: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (id === null) params.delete("tab");
+    else params.set("tab", id);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
+
+  /** Loads a tab's saved view (and, for a scenario, its container overlay). */
+  const hydrateTab = useCallback(async (id: string | null) => {
+    // Anything still sitting in the debounce belongs to the tab being left.
+    flushPrefs(false);
+    setDbPrefsLoaded(false);
+    setScenarioBusy(true);
+    // These guard the mount race, not a deliberate switch: the incoming tab's
+    // own order must be allowed to win here.
+    columnOrderChangedRef.current = false;
+    containerOrderCustomizedChangedRef.current = false;
+
+    try {
+      if (id === null) {
+        const response = await fetch(apiPath("/api/user/preferences"));
+        const json = await response.json() as { success: boolean; data?: Record<string, unknown> };
+        if (json.success && json.data) applyPreferenceBlob(json.data, true);
+        setScenarioOverlay(null);
+      } else {
+        const [detail, overlay] = await Promise.all([
+          ScenarioApi.get(id),
+          ScenarioApi.overlay(id),
+        ]);
+        applyPreferenceBlob(detail.view_state, false);
+        setScenarioOverlay(overlay);
+        setScenarios((previous) => previous.map((scenario) => (
+          scenario.id === id ? { ...scenario, ...detail } : scenario
+        )));
+      }
+    } catch {
+      toast.error(pick("탭을 불러오지 못했습니다.", "Could not load that tab."));
+    } finally {
+      setScenarioBusy(false);
+      setDbPrefsLoaded(true);
+    }
+  }, [applyPreferenceBlob, flushPrefs, pick]);
+
+  const handleSelectTab = useCallback((id: string | null) => {
+    if (id === activeScenarioId) return;
+    setActiveScenarioId(id);
+    writeTabParam(id);
+    void hydrateTab(id);
+  }, [activeScenarioId, hydrateTab, writeTabParam]);
+
+  // A ?tab= link opens on that tab, but only once the list confirms the id is
+  // one this user can actually see — the same way ?product= and ?status= work.
+  const initialTabAppliedRef = useRef(false);
+  useEffect(() => {
+    if (initialTabAppliedRef.current || scenarios.length === 0) return;
+    initialTabAppliedRef.current = true;
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (requested && scenarios.some((scenario) => scenario.id === requested)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- The tab to open is only knowable once the server has said which tabs exist.
+      handleSelectTab(requested);
+    }
+  }, [handleSelectTab, scenarios]);
+
+  const handleCreateTab = useCallback(async (copyLive: boolean) => {
+    setScenarioBusy(true);
+    try {
+      const created = copyLive
+        ? await ScenarioApi.create({
+          name: pick("Live 복사본", "Copy of Live"),
+          view_state: buildPreferenceBlob(),
+          copy_from: "live",
+          include_drafts: INCLUDE_DRAFT_CONTAINERS,
+        })
+        : await ScenarioApi.create({
+          name: pick(`시나리오 ${scenarios.length + 1}`, `Scenario ${scenarios.length + 1}`),
+          view_state: buildPreferenceBlob(),
+        });
+      await refreshScenarios();
+      handleSelectTab(created.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("탭을 만들지 못했습니다.", "Could not create the tab."));
+    } finally {
+      setScenarioBusy(false);
+    }
+  }, [buildPreferenceBlob, handleSelectTab, pick, refreshScenarios, scenarios.length]);
+
+  const handleDuplicateTab = useCallback(async (id: string | null) => {
+    if (id === null) {
+      await handleCreateTab(true);
+      return;
+    }
+    setScenarioBusy(true);
+    try {
+      const source = scenarios.find((scenario) => scenario.id === id);
+      const created = await ScenarioApi.duplicate(
+        id,
+        pick(`${source?.name ?? "탭"} 복사본`, `Copy of ${source?.name ?? "tab"}`),
+      );
+      await refreshScenarios();
+      handleSelectTab(created.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("복사하지 못했습니다.", "Could not duplicate the tab."));
+    } finally {
+      setScenarioBusy(false);
+    }
+  }, [handleCreateTab, handleSelectTab, pick, refreshScenarios, scenarios]);
+
+  const handleRenameTab = useCallback(async (id: string, name: string) => {
+    setScenarios((previous) => previous.map((s) => (s.id === id ? { ...s, name } : s)));
+    try {
+      await ScenarioApi.update(id, { name });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("이름을 바꾸지 못했습니다.", "Could not rename the tab."));
+      await refreshScenarios();
+    }
+  }, [pick, refreshScenarios]);
+
+  const handleToggleShared = useCallback(async (scenario: ScenarioSummary) => {
+    const next = scenario.visibility === "shared" ? "private" : "shared";
+    try {
+      await ScenarioApi.update(scenario.id, { visibility: next });
+      await refreshScenarios();
+      toast.success(next === "shared"
+        ? pick("팀에 공유했습니다.", "Shared with the team.")
+        : pick("공유를 해제했습니다.", "Sharing turned off."));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("변경하지 못했습니다.", "Could not change sharing."));
+    }
+  }, [pick, refreshScenarios]);
+
+  const handleToggleLock = useCallback(async (scenario: ScenarioSummary) => {
+    try {
+      if (scenario.locked_by) await ScenarioApi.unlock(scenario.id);
+      else await ScenarioApi.lock(scenario.id);
+      await refreshScenarios();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("잠금을 바꾸지 못했습니다.", "Could not change the lock."));
+    }
+  }, [pick, refreshScenarios]);
+
+  const handleDeleteTab = useCallback(async (scenario: ScenarioSummary) => {
+    const confirmed = window.confirm(pick(
+      `"${scenario.name}" 탭을 삭제합니다. 이 탭의 컨테이너 수량도 함께 사라집니다. 계속할까요?`,
+      `Delete the "${scenario.name}" tab? Its container quantities go with it.`,
+    ));
+    if (!confirmed) return;
+
+    try {
+      await ScenarioApi.remove(scenario.id);
+      if (activeScenarioId === scenario.id) handleSelectTab(null);
+      await refreshScenarios();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("삭제하지 못했습니다.", "Could not delete the tab."));
+    }
+  }, [activeScenarioId, handleSelectTab, pick, refreshScenarios]);
+
+  const handleReorderTabs = useCallback(async (orderedIds: string[]) => {
+    setScenarios((previous) => {
+      const byId = new Map(previous.map((scenario) => [scenario.id, scenario]));
+      return orderedIds.map((id) => byId.get(id)).filter((s): s is ScenarioSummary => Boolean(s));
+    });
+    try {
+      await ScenarioApi.reorder(orderedIds);
+    } catch {
+      await refreshScenarios();
+    }
+  }, [refreshScenarios]);
+
+  const handleApplyToLive = useCallback(async (scenario: ScenarioSummary) => {
+    setScenarioBusy(true);
+    try {
+      const diff = await ScenarioApi.apply(scenario.id, { confirm: false, includeDrafts: INCLUDE_DRAFT_CONTAINERS });
+      setApplyDialog({ scenario, diff });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("반영할 내용을 확인하지 못했습니다.", "Could not work out what would change."));
+    } finally {
+      setScenarioBusy(false);
+    }
+  }, [pick]);
+
+  const confirmApplyToLive = useCallback(async () => {
+    if (!applyDialog) return;
+    const { scenario } = applyDialog;
+    setApplyDialog(null);
+    setScenarioBusy(true);
+    try {
+      const result = await ScenarioApi.apply(scenario.id, { confirm: true, includeDrafts: INCLUDE_DRAFT_CONTAINERS });
+      toast.success(pick(
+        `Live에 ${result.applied}건을 반영했습니다.`,
+        `Applied ${result.applied} change${result.applied === 1 ? "" : "s"} to Live.`,
+      ));
+      reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : pick("반영하지 못했습니다.", "Could not apply to Live."));
+    } finally {
+      setScenarioBusy(false);
+    }
+  }, [applyDialog, pick, reload]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -3994,6 +4301,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               "Read only: Demand Planning edit permission is required to update CBM, ETA, container quantities, notes, or automatic orders.",
             )}
           </div>
+        ) : activeScenario && !activeScenario.can_edit ? (
+          <div className="flex shrink-0 items-center justify-center border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+            {pick(
+              `"${activeScenario.name}" 탭은 수정 잠금 상태입니다. 잠근 사람이나 탭 소유자만 수정할 수 있습니다.`,
+              `The "${activeScenario.name}" tab is locked for editing. Only whoever locked it or the tab owner can change it.`,
+            )}
+          </div>
         ) : null}
         {gridMode === "ag-grid" ? <AgDemandPlanningGrid
           data={data}
@@ -4041,13 +4355,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onFormatHistoryRecorderReady={handleFormatHistoryRecorderReady}
           onApplyFormatHistoryChanges={applyFormatHistoryChanges}
           skuCellNotes={skuCellNotes}
-          onSkuCellNoteChange={canEditSkuNotes ? handleSkuCellNoteChange : undefined}
+          onSkuCellNoteChange={canEditActiveTabSkuNotes ? handleSkuCellNoteChange : undefined}
           skuWorkNotes={skuWorkNotes}
           skuWorkNotes2={skuWorkNotes2}
           skuWorkNotes3={skuWorkNotes3}
-          onSkuWorkNoteChange={canEditSkuNotes ? handleSkuWorkNoteChange : undefined}
-          canEditSkuNotes={canEditSkuNotes}
-          canEditPlanning={canEditDemandPlanning}
+          onSkuWorkNoteChange={canEditActiveTabSkuNotes ? handleSkuWorkNoteChange : undefined}
+          canEditSkuNotes={canEditActiveTabSkuNotes}
+          canEditPlanning={canEditActiveTab}
+          scenario={activeScenario ? { id: activeScenario.id, canEdit: activeScenario.can_edit } : null}
+          scenarioOverlay={scenarioOverlay}
           selectedCellKeys={selectedCellKeys}
           selectedColumnIds={selectedColorColumns}
           onColumnHeaderSelect={handleGridColumnSelect}
@@ -4113,7 +4429,30 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           canEditSkuNotes={canEditSkuNotes}
           selectedCellKeys={selectedCellKeys}
         />}
+        <ScenarioTabBar
+          scenarios={scenarios}
+          activeId={activeScenarioId}
+          busy={scenarioBusy}
+          canEditPlanning={canEditDemandPlanning}
+          onSelect={handleSelectTab}
+          onCreate={() => { void handleCreateTab(false); }}
+          onDuplicate={(id) => { void handleDuplicateTab(id); }}
+          onRename={(id, name) => { void handleRenameTab(id, name); }}
+          onToggleShared={(scenario) => { void handleToggleShared(scenario); }}
+          onToggleLock={(scenario) => { void handleToggleLock(scenario); }}
+          onDelete={(scenario) => { void handleDeleteTab(scenario); }}
+          onApplyToLive={(scenario) => { void handleApplyToLive(scenario); }}
+          onReorder={(orderedIds) => { void handleReorderTabs(orderedIds); }}
+        />
       </div>
+      {applyDialog && (
+        <ApplyToLiveDialog
+          scenarioName={applyDialog.scenario.name}
+          diff={applyDialog.diff}
+          onCancel={() => setApplyDialog(null)}
+          onConfirm={() => { void confirmApplyToLive(); }}
+        />
+      )}
       {isConditionalFormattingOpen && <ConditionalFormattingPanel
         open={isConditionalFormattingOpen}
         rules={conditionalFormatRules}

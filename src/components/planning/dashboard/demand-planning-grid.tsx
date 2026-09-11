@@ -31,6 +31,7 @@ import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-c
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
 import type { SalesWindowWeights } from "@/lib/planning/sales-window-weights";
 import type { ConditionalFormatRule } from "@/lib/planning/conditional-formatting";
+import type { ScenarioOverlay } from "@/features/planning/scenarios";
 import type {
   CategoryFilter,
   ColumnGroupKey,
@@ -139,6 +140,13 @@ export interface DemandPlanningGridProps {
   onHideContainer?: (containerName: string, baseline: boolean) => void;
   /** Hides or restores specific `<containerName>::<subColumnId>` columns. */
   onToggleContainerColumns?: (columnIds: string[]) => void;
+  /** The active sheet tab, or null on Live. On a scenario tab the grid reads
+   *  and writes that tab's container overlay instead of the real
+   *  fc_container_items / fc_containers rows. Only the AG Grid variant. */
+  scenario?: { id: string; canEdit: boolean } | null;
+  /** The active scenario's saved quantities and ETAs, seeded into the grid's
+   *  own override maps once container details have loaded. */
+  scenarioOverlay?: ScenarioOverlay | null;
 }
 
 const ROW_HEIGHT = 28;

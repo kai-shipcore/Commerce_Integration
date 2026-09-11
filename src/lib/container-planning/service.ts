@@ -489,6 +489,18 @@ export const ContainerPlanningService = {
 
   // ─── Container items ────────────────────────────────────────────────
 
+  /**
+   * Which of these SKUs `upsertItem` would reject for having no CBM on file.
+   * Lets a bulk caller check the whole batch up front instead of discovering
+   * the problem partway through and leaving half of it written.
+   */
+  async findSkusMissingCbm(skus: string[]): Promise<string[]> {
+    if (skus.length === 0) return [];
+    const normalized = [...new Set(skus.map((sku) => sku.toUpperCase()))];
+    const cbmMap = await ContainerPlanningRepository.getProductCbmMap(normalized);
+    return normalized.filter((sku) => !((cbmMap.get(sku) ?? 0) > 0));
+  },
+
   async upsertItem(
     containerId: number,
     masterSku: string,
