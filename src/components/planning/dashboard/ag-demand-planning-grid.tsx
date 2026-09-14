@@ -75,7 +75,7 @@ import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from 
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
-  applyColumnFilters, distinctColumnValuesExcluding, distinctColumnColorsExcluding, CONDITION_OPERATORS,
+  applyColumnFilters, columnFilterEquals, distinctColumnValuesExcluding, distinctColumnColorsExcluding, CONDITION_OPERATORS,
   type ColumnFilter, type ConditionFilter, type DistinctColor, type DistinctValue,
 } from "@/lib/planning/column-filter";
 import { conditionalFormatForCell } from "@/lib/planning/conditional-formatting";
@@ -5018,7 +5018,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
 
   const applyColumnFilterWithHistory = useCallback((key: string, nextFilter: ColumnFilter | null) => {
     const previousFilter = columnFilters.get(key) ?? null;
-    if (JSON.stringify(previousFilter) === JSON.stringify(nextFilter)) return;
+    if (columnFilterEquals(previousFilter, nextFilter)) return;
     pushViewHistory([{
       kind: "filter",
       key,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   applyColumnFilters, distinctColumnValues, distinctColumnValuesExcluding,
-  matchesCondition, parseColumnFilters, serializeColumnFilters,
+  columnFilterEquals, matchesCondition, parseColumnFilters, serializeColumnFilters,
   type ColumnFilter, type ConditionFilter,
 } from "@/lib/planning/column-filter";
 
@@ -214,5 +214,62 @@ describe("serializeColumnFilters / parseColumnFilters", () => {
     for (const value of [null, undefined, 5, "x", []]) {
       expect(parseColumnFilters(value).size).toBe(0);
     }
+  });
+});
+
+describe("columnFilterEquals", () => {
+  const values = (...v: string[]): ColumnFilter => ({ mode: "values", values: new Set(v) });
+
+  it("separates two values filters that differ by one value", () => {
+    // The bug this replaced JSON.stringify for: Sets stringify to {}, so
+    // every pair of values filters compared equal, and re-opening a column's
+    // filter to check one more value was dropped as "no change".
+    expect(JSON.stringify(values("A", "B", "C"))).toBe(JSON.stringify(values("A", "B", "C", "D")));
+    expect(columnFilterEquals(values("A", "B", "C"), values("A", "B", "C", "D"))).toBe(false);
+    expect(columnFilterEquals(values("A", "B", "C", "D"), values("A", "B", "C"))).toBe(false);
+    expect(columnFilterEquals(values("A", "B", "C"), values("A", "B", "X"))).toBe(false);
+  });
+
+  it("ignores the order values were checked in", () => {
+    expect(columnFilterEquals(values("A", "B", "C"), values("C", "A", "B"))).toBe(true);
+  });
+
+  it("treats an empty set as its own filter, not as no filter", () => {
+    expect(columnFilterEquals(values(), null)).toBe(false);
+    expect(columnFilterEquals(values(), values())).toBe(true);
+  });
+
+  it("compares null against null and against a filter", () => {
+    expect(columnFilterEquals(null, null)).toBe(true);
+    expect(columnFilterEquals(null, values("A"))).toBe(false);
+    expect(columnFilterEquals(values("A"), null)).toBe(false);
+  });
+
+  it("never calls two different modes equal", () => {
+    const condition: ColumnFilter = { mode: "condition", condition: { operator: "gt", value: "5" } };
+    const color: ColumnFilter = { mode: "color", colorType: "fill", colors: new Set(["#fff"]) };
+    expect(columnFilterEquals(values("A"), condition)).toBe(false);
+    expect(columnFilterEquals(condition, color)).toBe(false);
+    expect(columnFilterEquals(color, values("A"))).toBe(false);
+  });
+
+  it("separates color filters by swatch and by fill-vs-text", () => {
+    const fill = (...c: string[]): ColumnFilter => ({ mode: "color", colorType: "fill", colors: new Set(c) });
+    expect(columnFilterEquals(fill("#fff"), fill("#fff", "#000"))).toBe(false);
+    expect(columnFilterEquals(fill("#fff"), fill("#000"))).toBe(false);
+    expect(columnFilterEquals(fill("#fff"), { mode: "color", colorType: "text", colors: new Set(["#fff"]) })).toBe(false);
+    expect(columnFilterEquals(fill("#fff", "#000"), fill("#000", "#fff"))).toBe(true);
+  });
+
+  it("separates condition filters by operator and by either bound", () => {
+    const cond = (c: ConditionFilter): ColumnFilter => ({ mode: "condition", condition: c });
+    expect(columnFilterEquals(cond({ operator: "gt", value: "5" }), cond({ operator: "gt", value: "6" }))).toBe(false);
+    expect(columnFilterEquals(cond({ operator: "gt", value: "5" }), cond({ operator: "lt", value: "5" }))).toBe(false);
+    expect(columnFilterEquals(
+      cond({ operator: "between", value: "1", value2: "5" }),
+      cond({ operator: "between", value: "1", value2: "9" }),
+    )).toBe(false);
+    expect(columnFilterEquals(cond({ operator: "isEmpty" }), cond({ operator: "isEmpty" }))).toBe(true);
+    expect(columnFilterEquals(cond({ operator: "gt", value: "5" }), cond({ operator: "gt", value: "5" }))).toBe(true);
   });
 });
