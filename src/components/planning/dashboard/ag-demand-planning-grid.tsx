@@ -1570,9 +1570,9 @@ function CopyableCellRenderer({
   );
 }
 
-// Master SKU cell: a plain click only selects the cell. Existing notes expose
-// the editor on hover; copy, navigation, and explicit note editing remain
-// available from the right-click menu.
+// Master SKU cell: a plain click selects the cell and opens an existing note.
+// Copy, navigation, and explicit note editing remain available from the
+// right-click menu.
 function SkuCellRenderer({
   value,
   node,
@@ -1592,45 +1592,8 @@ function SkuCellRenderer({
   const [noteSaved, setNoteSaved] = useState(false);
   const [noteError, setNoteError] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
-  const [memoPreviewOpen, setMemoPreviewOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const memo = initialMemo?.trim() ?? "";
-  const memoPreviewCloseTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (memoPreviewCloseTimerRef.current !== null) {
-        window.clearTimeout(memoPreviewCloseTimerRef.current);
-      }
-    };
-  }, []);
-
-  const cancelMemoPreviewClose = () => {
-    if (memoPreviewCloseTimerRef.current !== null) {
-      window.clearTimeout(memoPreviewCloseTimerRef.current);
-      memoPreviewCloseTimerRef.current = null;
-    }
-  };
-
-  const openMemoPreview = () => {
-    if (!memo || memoOpen) return;
-    cancelMemoPreviewClose();
-    if (!memoPreviewOpen) {
-      setNoteDraft(initialMemo ?? "");
-      setNoteSaved(false);
-      setNoteError(false);
-      setMemoPreviewOpen(true);
-    }
-  };
-
-  const scheduleMemoPreviewClose = () => {
-    if (memoOpen) return;
-    cancelMemoPreviewClose();
-    memoPreviewCloseTimerRef.current = window.setTimeout(() => {
-      setMemoPreviewOpen(false);
-      memoPreviewCloseTimerRef.current = null;
-    }, 160);
-  };
 
   const handleNoteSave = async (overrideValue?: string) => {
     if (!onMemoSave) return;
@@ -1650,8 +1613,6 @@ function SkuCellRenderer({
   };
 
   const openMemo = () => {
-    cancelMemoPreviewClose();
-    setMemoPreviewOpen(false);
     setNoteDraft(initialMemo ?? "");
     setNoteSaved(false);
     setNoteError(false);
@@ -1661,12 +1622,10 @@ function SkuCellRenderer({
   return (
     <>
       <Popover
-        open={memoOpen || memoPreviewOpen}
+        open={memoOpen}
         onOpenChange={(open) => {
           if (!open) {
-            cancelMemoPreviewClose();
             setMemoOpen(false);
-            setMemoPreviewOpen(false);
           }
         }}
       >
@@ -1674,12 +1633,12 @@ function SkuCellRenderer({
           <button
             type="button"
             title="Master SKU"
-            onClick={() => node.setSelected(true, true)}
-            onMouseEnter={openMemoPreview}
-            onMouseLeave={scheduleMemoPreviewClose}
+            onClick={() => {
+              node.setSelected(true, true);
+              if (memo) openMemo();
+            }}
             onContextMenu={(event) => {
               event.preventDefault();
-              setMemoPreviewOpen(false);
               setCtxMenu({ x: event.clientX, y: event.clientY });
             }}
             className="flex h-full w-full min-w-0 items-center text-left"
@@ -1698,16 +1657,7 @@ function SkuCellRenderer({
           <PopoverContent
             align="start"
             sideOffset={4}
-            onOpenAutoFocus={(event) => {
-              if (!memoOpen) event.preventDefault();
-            }}
             onCloseAutoFocus={(event) => event.preventDefault()}
-            onMouseEnter={cancelMemoPreviewClose}
-            onMouseLeave={(event) => {
-              if (!event.currentTarget.contains(document.activeElement)) {
-                scheduleMemoPreviewClose();
-              }
-            }}
             className="w-[min(420px,calc(100vw-32px))] p-4"
           >
             {onMemoSave ? (
