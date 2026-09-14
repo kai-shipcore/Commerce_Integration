@@ -131,6 +131,80 @@ export const PlanningDashboardService = {
     return { totalAvgCurrentOverride: value };
   },
 
+  async updateTotalAvgPrevOverride(sku: string, rawValue: unknown, ip: string | null) {
+    const parsedValue = rawValue === null || rawValue === ""
+      ? null
+      : Number(rawValue);
+    if (!sku || (parsedValue !== null && (!Number.isFinite(parsedValue) || parsedValue < 0))) {
+      throw new ValidationError("Invalid sku or total_avg_prev_override");
+    }
+    const value = parsedValue === null ? null : Math.round(parsedValue * 10_000) / 10_000;
+
+    const previousValue = await withTransaction(async (client) => {
+      const previous = await PlanningDashboardRepository.getTotalAvgPrevOverrideForUpdate(sku, client);
+      await PlanningDashboardRepository.updateTotalAvgPrevOverride(sku, value, client);
+      return previous;
+    });
+
+    await invalidatePlanningDashboardCache();
+
+    if (previousValue !== value) {
+      const session = await auth();
+      await logAudit({
+        entityType: "sku",
+        entityId: sku,
+        entityLabel: sku,
+        userId: session?.user?.id ?? null,
+        userName: session?.user?.name ?? null,
+        userEmail: session?.user?.email ?? null,
+        action: "update",
+        before: { totalAvgPrevOverride: previousValue },
+        after: { totalAvgPrevOverride: value },
+        note: "Planning dashboard T. Avg previous manual override",
+        ip,
+      });
+    }
+
+    return { totalAvgPrevOverride: value };
+  },
+
+  async updateTotalAvgRealOverride(sku: string, rawValue: unknown, ip: string | null) {
+    const parsedValue = rawValue === null || rawValue === ""
+      ? null
+      : Number(rawValue);
+    if (!sku || (parsedValue !== null && (!Number.isFinite(parsedValue) || parsedValue < 0))) {
+      throw new ValidationError("Invalid sku or total_avg_real_override");
+    }
+    const value = parsedValue === null ? null : Math.round(parsedValue * 10_000) / 10_000;
+
+    const previousValue = await withTransaction(async (client) => {
+      const previous = await PlanningDashboardRepository.getTotalAvgRealOverrideForUpdate(sku, client);
+      await PlanningDashboardRepository.updateTotalAvgRealOverride(sku, value, client);
+      return previous;
+    });
+
+    await invalidatePlanningDashboardCache();
+
+    if (previousValue !== value) {
+      const session = await auth();
+      await logAudit({
+        entityType: "sku",
+        entityId: sku,
+        entityLabel: sku,
+        userId: session?.user?.id ?? null,
+        userName: session?.user?.name ?? null,
+        userEmail: session?.user?.email ?? null,
+        action: "update",
+        before: { totalAvgRealOverride: previousValue },
+        after: { totalAvgRealOverride: value },
+        note: "Planning dashboard T. Avg actual manual override",
+        ip,
+      });
+    }
+
+    return { totalAvgRealOverride: value };
+  },
+
   async getOosLostDemandWeights(): Promise<Record<CategoryKey, Record<string, number>>> {
     const rows = await PlanningDashboardRepository.getOosLostDemandChannelTotals();
     const byCategory = new Map(rows.map((row) => [row.category_code, row]));

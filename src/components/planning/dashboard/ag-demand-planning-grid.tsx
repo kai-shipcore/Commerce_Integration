@@ -182,7 +182,7 @@ type SelectedAgCell = { rowId: string; columnId: string; label: string };
 type DragCellAnchor = { rowIndex: number; columnId: string };
 type EditableCellTarget =
   | { kind: "cbm"; row: DemandRow }
-  | { kind: "tavg"; row: DemandRow }
+  | { kind: "tavg"; row: DemandRow; columnId: string }
   | { kind: "note"; row: DemandRow; slot: 1 | 2 | 3 }
   | { kind: "qty"; row: DemandRow; container: ContainerMeta; raw: ContainerRowData };
 type SheetHistoryChange = {
@@ -2160,6 +2160,9 @@ function CbmCellRenderer({
   );
 }
 
+const totalAvgField = (columnId: string) => columnId === "tavg_p" ? "total_avg_prev" as const : columnId === "tavg_r" ? "total_avg_real" as const : "total_avg_curr" as const;
+const isTotalAvgColumn = (columnId: string) => ["tavg_p", "tavg_r", "tavg_c"].includes(columnId);
+
 function TotalAvgCurrentCellRenderer({
   value,
   data,
@@ -2174,8 +2177,9 @@ function TotalAvgCurrentCellRenderer({
   onSelectCell: (rowIndex: number, columnId: string) => void;
 }) {
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
-  const override = data?.total_avg_curr_override ?? null;
-  const autoValue = data?.total_avg_curr_auto ?? data?.total_avg_curr ?? 0;
+  const field = totalAvgField(column?.getColId() ?? "");
+  const override = data?.[`${field}_override`] ?? null;
+  const autoValue = data?.[`${field}_auto`] ?? data?.[field] ?? 0;
   const editValue = override === null ? displayValue : String(override);
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState(editValue);
@@ -2228,7 +2232,7 @@ function TotalAvgCurrentCellRenderer({
       return;
     }
     const nextValue = parsedValue === null ? null : Math.round(parsedValue * 10_000) / 10_000;
-    if (nextValue === override || (override === null && nextValue === data?.total_avg_curr)) {
+    if (nextValue === override || (override === null && nextValue === data?.[field])) {
       if (activeQtyEditorKey === qtyEditorKey(rowId, columnId)) activeQtyEditorKey = null;
       setEditing(false);
       return;
@@ -4989,7 +4993,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     if (row) {
       if (columnId === "sku") return row.sku;
       if (columnId === "cbm") return row.cbm_per_unit ? row.cbm_per_unit.toFixed(6) : "";
-      if (columnId === "tavg_c") return String(row.total_avg_curr ?? "");
+      if (isTotalAvgColumn(columnId)) return String(row[totalAvgField(columnId)] ?? "");
       if (columnId === "workflow_note") return row.workflow_note ?? "";
       if (columnId === "workflow_note_2") return row.workflow_note_2 ?? "";
       if (columnId === "workflow_note_3") return row.workflow_note_3 ?? "";
@@ -5250,16 +5254,19 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const saveTotalAvgCurrent = useCallback(async (
     row: DemandRow,
     nextOverride: number | null,
-    options: { recordHistory?: boolean } = {},
+    options: { recordHistory?: boolean; columnId?: string } = {},
   ) => {
+    const columnId = options.columnId ?? "tavg_c";
+    const field = totalAvgField(columnId);
+    const overrideField = `${field}_override` as const;
     if (!canEditPlanning) return false;
     if (nextOverride !== null && (!Number.isFinite(nextOverride) || nextOverride < 0)) return false;
     const normalizedOverride = nextOverride === null ? null : Math.round(nextOverride * 10_000) / 10_000;
-    if (normalizedOverride === (row.total_avg_curr_override ?? null)) return true;
+    if (normalizedOverride === (row[overrideField] ?? null)) return true;
     const response = await fetch(apiPath(`/api/planning/products/${encodeURIComponent(row.sku)}`), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...DEMAND_PLANNING_MUTATION_HEADER },
-      body: JSON.stringify({ total_avg_curr_override: normalizedOverride }),
+      body: JSON.stringify({ [overrideField]: normalizedOverride }),
     });
     const json = await response.json().catch(() => null) as { success?: boolean } | null;
     if (!json?.success) return false;
@@ -5267,24 +5274,24 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     if (options.recordHistory !== false) {
       pushSheetHistory([{
         rowId: row.sku,
-        columnId: "tavg_c",
-        before: row.total_avg_curr_override == null ? "" : String(row.total_avg_curr_override),
+        columnId,
+        before: row[overrideField] == null ? "" : String(row[overrideField]),
         after: normalizedOverride === null ? "" : String(normalizedOverride),
       }]);
     }
 
-    const effectiveValue = normalizedOverride ?? row.total_avg_curr_auto ?? row.total_avg_curr;
+    const effectiveValue = normalizedOverride ?? row[`${field}_auto`] ?? row[field];
     const updatedRow = {
       ...row,
-      total_avg_curr: effectiveValue,
-      total_avg_curr_override: normalizedOverride,
+      [field]: effectiveValue,
+      [overrideField]: normalizedOverride,
     };
     setRowOverrides((current) => {
       const next = new Map(current);
       next.set(row.sku, {
         ...(current.get(row.sku) ?? {}),
-        total_avg_curr: effectiveValue,
-        total_avg_curr_override: normalizedOverride,
+        [field]: effectiveValue,
+        [overrideField]: normalizedOverride,
       });
       return next;
     });
@@ -5551,7 +5558,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const row = api?.getRowNode(rowId)?.data;
     if (!row) return null;
     if (columnId === "cbm") return { kind: "cbm", row };
-    if (columnId === "tavg_c") return { kind: "tavg", row };
+    if (isTotalAvgColumn(columnId)) return { kind: "tavg", row, columnId };
     if (columnId === "workflow_note") return { kind: "note", row, slot: 1 };
     if (columnId === "workflow_note_2") return { kind: "note", row, slot: 2 };
     if (columnId === "workflow_note_3") return { kind: "note", row, slot: 3 };
@@ -5583,7 +5590,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     if (target.kind === "tavg") {
       const value = trimmed === "" ? null : Number(trimmed.replace(/,/g, ""));
       if (value !== null && (!Number.isFinite(value) || value < 0)) return false;
-      return saveTotalAvgCurrent(target.row, value, { recordHistory: options.recordSheetHistory });
+      return saveTotalAvgCurrent(target.row, value, { columnId: target.columnId, recordHistory: options.recordSheetHistory });
     }
     const numeric = trimmed === "" ? 0 : Number(trimmed.replace(/,/g, ""));
     if (!Number.isFinite(numeric) || numeric < 0) return false;
@@ -5608,7 +5615,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         : target.kind === "cbm"
           ? "cbm"
           : target.kind === "tavg"
-            ? "tavg_c"
+            ? target.columnId
             : target.slot === 2 ? "workflow_note_2" : target.slot === 3 ? "workflow_note_3" : "workflow_note";
       const key = `${target.row.sku}::${columnId}`;
       if (seenKeys.has(key)) continue;
@@ -5625,7 +5632,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         const numeric = value.trim() === "" ? null : Number(value.trim().replace(/,/g, ""));
         if (numeric !== null && (!Number.isFinite(numeric) || numeric < 0)) continue;
         after = numeric === null ? "" : String(numeric);
-        before = target.row.total_avg_curr_override == null ? "" : String(target.row.total_avg_curr_override);
+        const previous = target.row[`${totalAvgField(target.columnId)}_override`];
+        before = previous == null ? "" : String(previous);
       } else {
         const numeric = value.trim() === "" ? 0 : Number(value.trim().replace(/,/g, ""));
         if (!Number.isFinite(numeric) || numeric < 0) continue;
@@ -6631,7 +6639,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           ? SkuCellRenderer
           : column.id === "inb_lst"
             ? CopyableCellRenderer
-            : column.id === "tavg_c" && canEditPlanning
+            : isTotalAvgColumn(column.id) && canEditPlanning
               ? TotalAvgCurrentCellRenderer
             : column.id === "cbm" && canEditPlanning
               ? CbmCellRenderer
@@ -6661,10 +6669,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 copyValue: params.data?.containers_list ?? "",
                 label: "Containers List",
               })
-          : column.id === "tavg_c" && canEditPlanning
+          : isTotalAvgColumn(column.id) && canEditPlanning
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
                 onSave: (value: number | null) => params.data
-                  ? saveTotalAvgCurrent(params.data, value)
+                  ? saveTotalAvgCurrent(params.data, value, { columnId: column.id })
                   : Promise.resolve(false),
                 onRequestEdit: handleQtyEditRequest,
                 onSelectCell: selectSingleGridCell,
@@ -6741,7 +6749,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               ? SELECTED_CELL_FILL
               : conditionalFormat?.fillColor
                 ? conditionalFormat.fillColor
-              : column.id === "tavg_c" && params.data?.total_avg_curr_override != null
+              : isTotalAvgColumn(column.id) && params.data?.[`${totalAvgField(column.id)}_override`] != null
                 ? "#fecaca"
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             color: conditionalFormat?.textColor ?? textFormat.color ?? "#000000",

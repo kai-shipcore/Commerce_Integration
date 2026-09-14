@@ -13,6 +13,10 @@ const repositoryMock = {
   cascadeContainerItemsCbm: vi.fn(),
   getTotalAvgCurrentOverrideForUpdate: vi.fn(),
   updateTotalAvgCurrentOverride: vi.fn(),
+  getTotalAvgPrevOverrideForUpdate: vi.fn(),
+  updateTotalAvgPrevOverride: vi.fn(),
+  getTotalAvgRealOverrideForUpdate: vi.fn(),
+  updateTotalAvgRealOverride: vi.fn(),
   getOosLostDemandChannelTotals: vi.fn(),
 };
 
@@ -150,6 +154,19 @@ describe("PlanningDashboardService.updateTotalAvgCurrentOverride", () => {
   it("rejects negative and non-numeric overrides", async () => {
     await expect(PlanningDashboardService.updateTotalAvgCurrentOverride("SKU-1", -1, null)).rejects.toThrow(ValidationError);
     await expect(PlanningDashboardService.updateTotalAvgCurrentOverride("SKU-1", "bad", null)).rejects.toThrow(ValidationError);
+  });
+});
+
+describe.each(["Prev", "Real"] as const)("T. Avg %s override", (period) => {
+  it("persists a manual value and clears only that override on Delete", async () => {
+    repositoryMock[`getTotalAvg${period}OverrideForUpdate`].mockResolvedValue(2.5);
+    const save = PlanningDashboardService[`updateTotalAvg${period}Override`];
+    await save("SKU-1", 1.23456, null);
+    expect(repositoryMock[`updateTotalAvg${period}Override`]).toHaveBeenLastCalledWith("SKU-1", 1.2346, expect.anything());
+    await save("SKU-1", null, null);
+    expect(repositoryMock[`updateTotalAvg${period}Override`]).toHaveBeenLastCalledWith("SKU-1", null, expect.anything());
+    expect(invalidateCacheMock).toHaveBeenCalled();
+    await expect(save("SKU-1", -1, null)).rejects.toThrow(ValidationError);
   });
 });
 

@@ -160,6 +160,46 @@ export const PlanningDashboardRepository = {
     );
   },
 
+  async getTotalAvgPrevOverrideForUpdate(sku: string, executor: SqlExecutor): Promise<number | null> {
+    const result = await executor.query<{ total_avg_prev_override: number | null }>(
+      `SELECT total_avg_prev_override::float8 AS total_avg_prev_override
+       FROM shipcore.fc_products
+       WHERE master_sku = $1
+       FOR UPDATE`,
+      [sku],
+    );
+    return result.rows[0]?.total_avg_prev_override ?? null;
+  },
+
+  async updateTotalAvgPrevOverride(sku: string, value: number | null, executor: SqlExecutor): Promise<void> {
+    await executor.query(
+      `UPDATE shipcore.fc_products
+       SET total_avg_prev_override = $2::numeric(14,4), updated_at = NOW()
+       WHERE master_sku = $1`,
+      [sku, value],
+    );
+  },
+
+  async getTotalAvgRealOverrideForUpdate(sku: string, executor: SqlExecutor): Promise<number | null> {
+    const result = await executor.query<{ total_avg_real_override: number | null }>(
+      `SELECT total_avg_real_override::float8 AS total_avg_real_override
+       FROM shipcore.fc_products
+       WHERE master_sku = $1
+       FOR UPDATE`,
+      [sku],
+    );
+    return result.rows[0]?.total_avg_real_override ?? null;
+  },
+
+  async updateTotalAvgRealOverride(sku: string, value: number | null, executor: SqlExecutor): Promise<void> {
+    await executor.query(
+      `UPDATE shipcore.fc_products
+       SET total_avg_real_override = $2::numeric(14,4), updated_at = NOW()
+       WHERE master_sku = $1`,
+      [sku, value],
+    );
+  },
+
   async cascadeContainerItemsCbm(sku: string, cbm: number, executor: SqlExecutor): Promise<ContainerItemCbmRow[]> {
     const result = await executor.query<{ item_id: number; container_name: string; cbm_unit: number; total_cbm: number }>(
       `UPDATE shipcore.fc_container_items ci

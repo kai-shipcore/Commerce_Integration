@@ -407,12 +407,16 @@ export const DemandPlanningService = {
         west_7d + east_7d,
       );
       const total_30d = (isCarCover ? fbm_30d : west_fbm_30d + east_fbm_30d) + fba_30d;
-      const total_avg_prev = isCarCover
+      const total_avg_prev_auto = isCarCover
         ? fbm_avg_prev + fba_avg_prev
         : Math.max(0.03, avg_daily_prev + east_avg_prev + fba_avg_prev);
-      const total_avg_real = isCarCover
+      const total_avg_real_auto = isCarCover
         ? fbm_avg_real + fba_avg_real
         : Math.max(0.03, avg_daily_real + east_avg_real + fba_avg_real);
+      const total_avg_prev_override = r.total_avg_prev_override == null ? null : Number(r.total_avg_prev_override);
+      const total_avg_real_override = r.total_avg_real_override == null ? null : Number(r.total_avg_real_override);
+      const total_avg_prev = total_avg_prev_override ?? total_avg_prev_auto;
+      const total_avg_real = total_avg_real_override ?? total_avg_real_auto;
       const total_avg_curr_auto = isCarCover
         ? fbm_avg_curr + fba_avg_curr
         : Math.max(0.03, avg_daily_curr + east_avg_curr + fba_avg_curr);
@@ -555,6 +559,10 @@ export const DemandPlanningService = {
         total_avg_curr: isCarCover ? total_avg_curr : Math.round(total_avg_curr * 100) / 100,
         total_avg_curr_auto: isCarCover ? total_avg_curr_auto : Math.round(total_avg_curr_auto * 100) / 100,
         total_avg_curr_override,
+        total_avg_prev_override,
+        total_avg_real_override,
+        total_avg_prev_auto: isCarCover ? total_avg_prev_auto : Math.round(total_avg_prev_auto * 100) / 100,
+        total_avg_real_auto: isCarCover ? total_avg_real_auto : Math.round(total_avg_real_auto * 100) / 100,
         oos_days_90d, oos_lost_demand_90d,
         total_inbound_qty: r.total_inbound_qty as number | null,
         containers_list: (r.containers_list as string | null) ?? null,

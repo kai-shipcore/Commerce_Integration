@@ -19,7 +19,15 @@ export async function PATCH(
 
   try {
     const { sku } = await params;
-    const body = await req.json() as { cbm_per_unit?: unknown; total_avg_curr_override?: unknown };
+    const body = await req.json() as { cbm_per_unit?: unknown; total_avg_prev_override?: unknown; total_avg_real_override?: unknown; total_avg_curr_override?: unknown };
+    if (Object.prototype.hasOwnProperty.call(body, "total_avg_prev_override")) {
+      const result = await PlanningDashboardService.updateTotalAvgPrevOverride(sku, body.total_avg_prev_override, getIp(req.headers));
+      return apiSuccess({ total_avg_prev_override: result.totalAvgPrevOverride });
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "total_avg_real_override")) {
+      const result = await PlanningDashboardService.updateTotalAvgRealOverride(sku, body.total_avg_real_override, getIp(req.headers));
+      return apiSuccess({ total_avg_real_override: result.totalAvgRealOverride });
+    }
     if (Object.prototype.hasOwnProperty.call(body, "total_avg_curr_override")) {
       const result = await PlanningDashboardService.updateTotalAvgCurrentOverride(
         sku,
