@@ -3765,6 +3765,7 @@ export function AgDemandPlanningGrid({
   skuWorkNotes3 = {},
   canEditSkuNotes = false,
   canEditPlanning = false,
+  canCreatePlanning = false,
   onSkuCellNoteChange,
   onSkuWorkNoteChange,
   onAgCellSelected,
@@ -5275,7 +5276,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const columnId = options.columnId ?? "tavg_c";
     const field = totalAvgField(columnId);
     const overrideField = `${field}_override` as const;
-    if (!canEditPlanning) return false;
+    if (!canCreatePlanning) return false;
     if (nextOverride !== null && (!Number.isFinite(nextOverride) || nextOverride < 0)) return false;
     const normalizedOverride = nextOverride === null ? null : Math.round(nextOverride * 10_000) / 10_000;
     if (normalizedOverride === (row[overrideField] ?? null)) return true;
@@ -5318,7 +5319,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     chainMapRef.current = nextChain;
     setChainMap(nextChain);
     return true;
-  }, [canEditPlanning, containers, pushSheetHistory, seasonalFactors]);
+  }, [canCreatePlanning, containers, pushSheetHistory, seasonalFactors]);
 
   const saveQty = useCallback(async (
     row: DemandRow,
@@ -5574,7 +5575,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const row = api?.getRowNode(rowId)?.data;
     if (!row) return null;
     if (columnId === "cbm") return { kind: "cbm", row };
-    if (isTotalAvgColumn(columnId)) return { kind: "tavg", row, columnId };
+    if (isTotalAvgColumn(columnId)) return canCreatePlanning ? { kind: "tavg", row, columnId } : null;
     if (columnId === "workflow_note") return { kind: "note", row, slot: 1 };
     if (columnId === "workflow_note_2") return { kind: "note", row, slot: 2 };
     if (columnId === "workflow_note_3") return { kind: "note", row, slot: 3 };
@@ -5592,7 +5593,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       return { kind: "qty", row, container, raw };
     }
     return null;
-  }, [canEditPlanning, containers]);
+  }, [canEditPlanning, canCreatePlanning, containers]);
 
   const applyValueToTarget = useCallback(async (
     target: EditableCellTarget,
@@ -6662,7 +6663,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           ? SkuCellRenderer
           : column.id === "inb_lst"
             ? CopyableCellRenderer
-            : isTotalAvgColumn(column.id) && canEditPlanning
+            : isTotalAvgColumn(column.id) && canCreatePlanning
               ? TotalAvgCurrentCellRenderer
             : column.id === "cbm" && canEditPlanning
               ? CbmCellRenderer
@@ -6692,7 +6693,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 copyValue: params.data?.containers_list ?? "",
                 label: "Containers List",
               })
-          : isTotalAvgColumn(column.id) && canEditPlanning
+          : isTotalAvgColumn(column.id) && canCreatePlanning
             ? (params: ICellRendererParams<DemandRow, CellContent>) => ({
                 onSave: (value: number | null) => params.data
                   ? saveTotalAvgCurrent(params.data, value, { columnId: column.id })
@@ -7164,7 +7165,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [pushViewHistory, baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+  }, [pushViewHistory, baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canCreatePlanning, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     conditionalFormatRulesRef.current = conditionalFormatRules;

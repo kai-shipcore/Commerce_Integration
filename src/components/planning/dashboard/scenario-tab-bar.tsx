@@ -29,6 +29,7 @@ export interface ScenarioTabBarProps {
   activeId: string | null;
   busy: boolean;
   canEditPlanning: boolean;
+  canCreatePlanning: boolean;
   onSelect: (id: string | null) => void;
   onDuplicate: (id: string | null) => void;
   onRename: (id: string, name: string) => void;
@@ -44,6 +45,7 @@ export function ScenarioTabBar({
   activeId,
   busy,
   canEditPlanning,
+  canCreatePlanning,
   onSelect,
   onDuplicate,
   onRename,
@@ -190,7 +192,7 @@ export function ScenarioTabBar({
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    disabled={!canEditPlanning}
+                    disabled={!canCreatePlanning}
                     onClick={() => onApplyToLive(scenario)}
                   >
                     {pick("Live에 반영…", "Apply to Live…")}

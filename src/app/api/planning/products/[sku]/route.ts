@@ -14,12 +14,13 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ sku: string }> },
 ) {
-  const denied = await guardPermission("demand-planning", "edit");
-  if (denied) return denied;
-
   try {
     const { sku } = await params;
     const body = await req.json() as { cbm_per_unit?: unknown; total_avg_prev_override?: unknown; total_avg_real_override?: unknown; total_avg_curr_override?: unknown };
+    const isAverageOverride = ["total_avg_prev_override", "total_avg_real_override", "total_avg_curr_override"]
+      .some((field) => Object.prototype.hasOwnProperty.call(body, field));
+    const denied = await guardPermission("demand-planning", isAverageOverride ? "create" : "edit");
+    if (denied) return denied;
     if (Object.prototype.hasOwnProperty.call(body, "total_avg_prev_override")) {
       const result = await PlanningDashboardService.updateTotalAvgPrevOverride(sku, body.total_avg_prev_override, getIp(req.headers));
       return apiSuccess({ total_avg_prev_override: result.totalAvgPrevOverride });

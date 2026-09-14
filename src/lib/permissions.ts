@@ -21,7 +21,7 @@ import {
 // Exported so the User-Admin domain (which owns the write side of these two
 // tables) can invalidate the same cache entries this module reads from —
 // keeping the key/TTL in one place instead of duplicated per consumer.
-export const ROLES_CACHE_KEY = "perm:roles:all:v2";
+export const ROLES_CACHE_KEY = "perm:roles:all:v3";
 export const PERMISSION_CACHE_TTL = 600;
 export function userOverridesCacheKey(userId: string): string {
   return `perm:user:${userId}`;

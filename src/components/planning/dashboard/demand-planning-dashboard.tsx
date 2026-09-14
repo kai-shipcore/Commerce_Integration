@@ -966,6 +966,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnHeaderNames, setColumnHeaderNames] = useState<Record<string, string>>({});
   const [activeColorTarget, setActiveColorTarget] = useState<"headers" | "columns" | "cells">("headers");
   const canEditDemandPlanning = permissionsReady && can("demand-planning", "edit");
+  const canCreateDemandPlanning = permissionsReady && can("demand-planning", "create");
   const canEditSkuNotes = canEditDemandPlanning;
 
   useEffect(() => {
@@ -1890,6 +1891,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [refreshScenarios]);
 
   const handleApplyToLive = useCallback(async (scenario: ScenarioSummary) => {
+    if (!canCreateDemandPlanning) return;
     setScenarioBusy(true);
     try {
       const diff = await ScenarioApi.apply(scenario.id, { confirm: false, includeDrafts: INCLUDE_DRAFT_CONTAINERS });
@@ -1899,10 +1901,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     } finally {
       setScenarioBusy(false);
     }
-  }, [pick]);
+  }, [pick, canCreateDemandPlanning]);
 
   const confirmApplyToLive = useCallback(async () => {
-    if (!applyDialog) return;
+    if (!applyDialog || !canCreateDemandPlanning) return;
     const { scenario } = applyDialog;
     setApplyDialog(null);
     setScenarioBusy(true);
@@ -1918,7 +1920,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     } finally {
       setScenarioBusy(false);
     }
-  }, [applyDialog, pick, reload]);
+  }, [applyDialog, pick, reload, canCreateDemandPlanning]);
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
@@ -4491,6 +4493,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onSkuWorkNoteChange={canEditActiveTabSkuNotes ? handleSkuWorkNoteChange : undefined}
           canEditSkuNotes={canEditActiveTabSkuNotes}
           canEditPlanning={canEditActiveTab}
+          canCreatePlanning={canCreateDemandPlanning && canEditActiveTab}
           scenario={activeScenario ? { id: activeScenario.id, canEdit: activeScenario.can_edit } : null}
           scenarioOverlay={scenarioOverlay}
           selectedCellKeys={selectedCellKeys}
@@ -4563,6 +4566,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           activeId={activeScenarioId}
           busy={scenarioBusy}
           canEditPlanning={canEditDemandPlanning}
+          canCreatePlanning={canCreateDemandPlanning}
           onSelect={handleSelectTab}
           onDuplicate={(id) => { void handleDuplicateTab(id); }}
           onRename={(id, name) => { void handleRenameTab(id, name); }}

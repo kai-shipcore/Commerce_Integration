@@ -145,6 +145,7 @@ export interface DemandPlanningGridProps {
   onSkuWorkNoteChange?: (sku: string, note: string, slot?: 1 | 2 | 3) => void | Promise<void>;
   canEditSkuNotes?: boolean;
   canEditPlanning?: boolean;
+  canCreatePlanning?: boolean;
   selectedCellKeys?: string[];
   selectedColumnIds?: string[];
   onColumnHeaderSelect?: (columnId: string, additive: boolean, selection?: string[]) => void;

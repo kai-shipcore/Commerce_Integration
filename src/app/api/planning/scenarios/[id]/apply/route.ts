@@ -10,7 +10,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiSuccess, apiError, handleApiError } from "@/lib/api-response";
-import { guardPlanningMutation } from "@/lib/planning/mutation-permission";
+import { guardPermission } from "@/lib/permissions";
 import { requireScenarioActor } from "@/lib/planning-scenarios/actor";
 import { PlanningScenarioService } from "@/lib/planning-scenarios/service";
 
@@ -24,7 +24,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const denied = await guardPlanningMutation(request, "demand-planning", "edit");
+    const denied = await guardPermission("demand-planning", "create");
     if (denied) return denied;
 
     const body = await request.json().catch(() => ({}));
