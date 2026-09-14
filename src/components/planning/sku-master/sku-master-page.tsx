@@ -108,12 +108,16 @@ type ExcelSkuImportRow = {
   cbmPerUnit?: number;
   moq?: number;
   orderMultiple?: number;
+  status?: SkuStatus;
+  salesStatus?: OverrideSalesStatus;
 };
 
 type ImportPreviewValue = {
   cbmPerUnit: number | null;
   moq: number | null;
   orderMultiple: number | null;
+  status: SkuStatus;
+  salesStatus: OverrideSalesStatus | null;
 };
 
 type ImportPreviewRow = {
@@ -148,6 +152,19 @@ function parseNumberCell(value: unknown): number | null {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseStatusCell(value: unknown): SkuStatus | undefined {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "active" || normalized === "inactive" ? normalized : undefined;
+}
+
+function parseTypeCell(value: unknown): OverrideSalesStatus | undefined {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "hold") return "Hold";
+  if (normalized === "discontinued") return "Discontinued";
+  if (normalized === "tbd") return "TBD";
+  return undefined;
 }
 
 function decimalPlaces(value: number): number {
@@ -200,8 +217,14 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
       const orderMultipleIndex = normalizedHeaders.findIndex(
         (header) => header === "ordermultiple" || header === "orderqtymultiple" || header === "ordermultiples"
       );
+      const statusIndex = normalizedHeaders.findIndex(
+        (header) => header === "status" || header === "productstatus"
+      );
+      const typeIndex = normalizedHeaders.findIndex(
+        (header) => header === "type" || header === "salesstatus"
+      );
 
-      if (cbmIndex < 0 && moqIndex < 0 && orderMultipleIndex < 0) continue;
+      if (cbmIndex < 0 && moqIndex < 0 && orderMultipleIndex < 0 && statusIndex < 0 && typeIndex < 0) continue;
 
       for (let dataRowIndex = rowIndex + 1; dataRowIndex < matrix.length; dataRowIndex += 1) {
         const dataRow = matrix[dataRowIndex];
@@ -214,9 +237,20 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
         const orderMultiple = parsedOrderMultiple != null && Number.isInteger(parsedOrderMultiple) && parsedOrderMultiple >= 1
           ? parsedOrderMultiple
           : undefined;
+        const status = statusIndex >= 0 ? parseStatusCell(dataRow[statusIndex]) : undefined;
+        const salesStatus = typeIndex >= 0 ? parseTypeCell(dataRow[typeIndex]) : undefined;
+        const rawStatus = statusIndex >= 0 ? String(dataRow[statusIndex] ?? "").trim() : "";
+        const rawType = typeIndex >= 0 ? String(dataRow[typeIndex] ?? "").trim() : "";
+
+        if (rawStatus && !status) {
+          throw new Error(`Invalid Status for ${masterSku || `row ${dataRowIndex + 1}`}: ${rawStatus}`);
+        }
+        if (rawType && !salesStatus) {
+          throw new Error(`Invalid Type for ${masterSku || `row ${dataRowIndex + 1}`}: ${rawType}`);
+        }
 
         if (!masterSku || !masterSku.includes("-")) continue;
-        if (cbmPerUnit == null && moq == null && orderMultiple == null) continue;
+        if (cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null) continue;
 
         const precision = cbmPerUnit == null ? 0 : decimalPlaces(cbmPerUnit);
         const existing = rowsBySku.get(masterSku);
@@ -225,7 +259,7 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
           sheetPriority < existing.sheetPriority ||
           (sheetPriority === existing.sheetPriority && precision > existing.precision)
         ) {
-          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, precision, sheetPriority });
+          rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus, precision, sheetPriority });
         }
       }
 
@@ -233,11 +267,13 @@ function extractExcelSkuRows(workbook: XLSX.WorkBook): ExcelSkuImportRow[] {
     }
   }
 
-  return [...rowsBySku.values()].map(({ masterSku, cbmPerUnit, moq, orderMultiple }) => ({
+  return [...rowsBySku.values()].map(({ masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus }) => ({
     masterSku,
     cbmPerUnit,
     moq,
     orderMultiple,
+    status,
+    salesStatus,
   }));
 }
 
@@ -499,15 +535,15 @@ export function SkuMasterPage() {
 
   function downloadImportTemplate() {
     const worksheet = XLSX.utils.aoa_to_sheet([
-      ["Master SKU", "CBM", "MOQ", "Order Multiple"],
-      ["CC-EXAMPLE-001", 0.012345, 12, 6],
-      ["CC-EXAMPLE-002", 0.023456, 10, 5],
+      ["Master SKU", "CBM", "MOQ", "Order Multiple", "Status", "Type"],
+      ["CC-EXAMPLE-001", 0.012345, 12, 6, "active", "Discontinued"],
+      ["CC-EXAMPLE-002", 0.023456, 10, 5, "inactive", "Hold"],
     ]);
-    worksheet["!cols"] = [{ wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 18 }];
+    worksheet["!cols"] = [{ wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 12 }, { wch: 18 }];
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "SKU CBM Import");
-    XLSX.writeFile(workbook, "sku-master-cbm-import-template.xlsx");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "SKU Master Import");
+    XLSX.writeFile(workbook, "sku-master-import-template.xlsx");
   }
 
   async function downloadCsv() {
@@ -541,6 +577,7 @@ export function SkuMasterPage() {
         "category",
         "category_code",
         "status",
+        "type",
         "cbm_per_unit",
         "moq",
         "order_multiple",
@@ -557,6 +594,7 @@ export function SkuMasterPage() {
             sku.category,
             sku.categoryCode,
             sku.status,
+            sku.salesStatus ?? "",
             sku.cbmPerUnit,
             sku.moq,
             sku.orderMultiple,
@@ -753,7 +791,7 @@ export function SkuMasterPage() {
       </header>
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="overflow-hidden p-0 sm:max-w-2xl">
+        <DialogContent className="overflow-hidden p-0 sm:max-w-4xl">
           <DialogHeader className="border-b border-[#e2dfd8] bg-[#f8f7f3] px-6 py-5 pr-12">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
@@ -763,8 +801,8 @@ export function SkuMasterPage() {
                 <DialogTitle>{pick("SKU Master 엑셀 가져오기", "SKU Master Excel Import")}</DialogTitle>
                 <DialogDescription>
                   {pick(
-                    "아래 템플릿 형식으로 SKU별 CBM, MOQ, 주문 배수를 준비해 주세요.",
-                    "Prepare CBM, MOQ, and order multiple values for each SKU using the template below."
+                    "아래 템플릿 형식으로 SKU별 CBM, MOQ, 주문 배수, Status, Type을 준비해 주세요.",
+                    "Prepare CBM, MOQ, order multiple, Status, and Type values for each SKU using the template below."
                   )}
                 </DialogDescription>
               </div>
@@ -779,14 +817,16 @@ export function SkuMasterPage() {
                   {pick("첫 행 헤더 필수", "Header row required")}
                 </span>
               </div>
-              <div className="overflow-hidden rounded-lg border border-[#d8d6ce]">
-                <table className="w-full border-collapse text-left text-sm">
+              <div className="overflow-x-auto rounded-lg border border-[#d8d6ce]">
+                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                   <thead className="bg-[#292724] text-white">
                     <tr>
                       <th className="border-r border-white/15 px-4 py-2.5 font-semibold">Master SKU</th>
                       <th className="border-r border-white/15 px-4 py-2.5 font-semibold">CBM</th>
                       <th className="border-r border-white/15 px-4 py-2.5 font-semibold">MOQ</th>
-                      <th className="px-4 py-2.5 font-semibold">Order Multiple</th>
+                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">Order Multiple</th>
+                      <th className="border-r border-white/15 px-4 py-2.5 font-semibold">Status</th>
+                      <th className="px-4 py-2.5 font-semibold">Type</th>
                     </tr>
                   </thead>
                   <tbody className="font-mono text-xs">
@@ -794,13 +834,17 @@ export function SkuMasterPage() {
                       <td className="border-r border-[#e2dfd8] px-4 py-2.5">CC-EXAMPLE-001</td>
                       <td className="border-r border-[#e2dfd8] px-4 py-2.5">0.012345</td>
                       <td className="border-r border-[#e2dfd8] px-4 py-2.5">12</td>
-                      <td className="px-4 py-2.5">6</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">6</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">active</td>
+                      <td className="px-4 py-2.5">Discontinued</td>
                     </tr>
                     <tr className="border-t border-[#e2dfd8] bg-[#faf9f6]">
                       <td className="border-r border-[#e2dfd8] px-4 py-2.5">CC-EXAMPLE-002</td>
                       <td className="border-r border-[#e2dfd8] px-4 py-2.5">0.023456</td>
                       <td className="border-r border-[#e2dfd8] px-4 py-2.5">10</td>
-                      <td className="px-4 py-2.5">5</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">5</td>
+                      <td className="border-r border-[#e2dfd8] px-4 py-2.5">inactive</td>
+                      <td className="px-4 py-2.5">Hold</td>
                     </tr>
                   </tbody>
                 </table>
@@ -812,6 +856,7 @@ export function SkuMasterPage() {
                 <li>{pick("지원 파일: .xlsx, .xls 또는 .csv", "Supported files: .xlsx, .xls, or .csv")}</li>
                 <li>{pick("Master SKU는 필수이며, 나머지는 입력된 컬럼만 업데이트됩니다.", "Master SKU is required; only populated value columns are updated.")}</li>
                 <li>{pick("CBM은 0보다 큰 숫자, MOQ와 주문 배수는 1 이상의 정수로 입력해 주세요.", "CBM must be greater than zero; MOQ and Order Multiple must be integers of at least 1.")}</li>
+                <li>{pick("Status는 active 또는 inactive, Type은 Hold, Discontinued 또는 TBD를 입력해 주세요.", "Status accepts active or inactive; Type accepts Hold, Discontinued, or TBD.")}</li>
                 <li>{pick("동일 SKU가 여러 번 나오면 우선순위가 높은 시트의 값이 적용됩니다.", "If a SKU appears more than once, the value from the higher-priority sheet is used.")}</li>
               </ul>
             </div>
@@ -879,14 +924,16 @@ export function SkuMasterPage() {
               </div>
 
               <div className="max-h-[55vh] overflow-auto">
-                <table className="w-full min-w-[880px] border-collapse text-left text-xs">
+                <table className="w-full min-w-[1120px] border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-[#292724] text-white">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">{pick("상태", "Status")}</th>
+                      <th className="px-4 py-3 font-semibold">{pick("작업", "Action")}</th>
                       <th className="px-4 py-3 font-semibold">Master SKU</th>
                       <th className="px-4 py-3 font-semibold">CBM</th>
                       <th className="px-4 py-3 font-semibold">MOQ</th>
                       <th className="px-4 py-3 font-semibold">Order Multiple</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Type</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -923,6 +970,16 @@ export function SkuMasterPage() {
                           current={row.current?.orderMultiple ?? null}
                           next={row.next.orderMultiple}
                           changed={row.changedFields.includes("orderMultiple")}
+                        />
+                        <ImportValueChange
+                          current={row.current?.status ?? null}
+                          next={row.next.status}
+                          changed={row.changedFields.includes("status")}
+                        />
+                        <ImportValueChange
+                          current={row.current?.salesStatus ?? null}
+                          next={row.next.salesStatus}
+                          changed={row.changedFields.includes("salesStatus")}
                         />
                       </tr>
                     ))}
@@ -1350,16 +1407,18 @@ function ImportValueChange({
   changed,
   decimals = 0,
 }: {
-  current: number | null;
-  next: number | null;
+  current: number | string | null;
+  next: number | string | null;
   changed: boolean;
   decimals?: number;
 }) {
-  const format = (value: number | null) => value == null
+  const format = (value: number | string | null) => value == null
     ? "—"
-    : decimals > 0
+    : typeof value === "number" && decimals > 0
       ? value.toFixed(decimals)
-      : numberFormatter.format(value);
+      : typeof value === "number"
+        ? numberFormatter.format(value)
+        : value;
 
   return (
     <td className={`px-4 py-3 font-mono ${changed ? "bg-amber-50" : ""}`}>

@@ -35,12 +35,16 @@ export interface ExcelSkuRow {
   cbmPerUnit?: number;
   moq?: number;
   orderMultiple?: number;
+  status?: "active" | "inactive";
+  salesStatus?: "Hold" | "Discontinued" | "TBD";
 }
 
 export interface ExistingProductValues {
   cbmPerUnit: number | null;
   moq: number | null;
   orderMultiple: number | null;
+  status: "active" | "inactive";
+  salesStatus: "Hold" | "Discontinued" | "TBD" | null;
 }
 
 export interface UpdateProductFields {
@@ -496,8 +500,12 @@ export const SkuMasterRepository = {
       cbm_per_unit: string | null;
       moq: number | null;
       order_multiple: number | null;
+      status: "active" | "inactive";
+      sales_status: "Hold" | "Discontinued" | "TBD" | null;
     }>(
-      `SELECT master_sku, cbm_per_unit::text, moq, order_multiple
+      `SELECT master_sku, cbm_per_unit::text, moq, order_multiple,
+              status::text AS status,
+              CASE WHEN sales_status IN ('Hold', 'Discontinued', 'TBD') THEN sales_status ELSE NULL END AS sales_status
        FROM shipcore.fc_products
        WHERE master_sku = ANY($1::text[])`,
       [masterSkus]
@@ -509,6 +517,8 @@ export const SkuMasterRepository = {
           cbmPerUnit: row.cbm_per_unit == null ? null : Number(row.cbm_per_unit),
           moq: row.moq,
           orderMultiple: row.order_multiple,
+          status: row.status,
+          salesStatus: row.sales_status,
         },
       ])
     );
@@ -529,6 +539,8 @@ export const SkuMasterRepository = {
           imported_moq INT,
           imported_order_multiple INT,
           imported_cbm_per_unit NUMERIC,
+          imported_status shipcore.fc_product_status,
+          imported_sales_status TEXT,
           default_moq INT,
           default_order_multiple INT,
           default_cbm_per_unit NUMERIC,
@@ -547,13 +559,15 @@ export const SkuMasterRepository = {
           importedCbmPerUnit: row.cbmPerUnit ?? null,
           importedMoq: row.moq ?? null,
           importedOrderMultiple: row.orderMultiple ?? null,
+          importedStatus: row.status ?? null,
+          importedSalesStatus: row.salesStatus ?? null,
         };
       });
 
       await client.query(
         `INSERT INTO stg_excel_sku
            (master_sku, product_name, category, category_code,
-            imported_moq, imported_order_multiple, imported_cbm_per_unit,
+            imported_moq, imported_order_multiple, imported_cbm_per_unit, imported_status, imported_sales_status,
             default_moq, default_order_multiple, default_cbm_per_unit,
             case_qty, weight_kg)
          SELECT
@@ -564,11 +578,13 @@ export const SkuMasterRepository = {
            unnest($5::int[]),
            unnest($6::int[]),
            unnest($7::numeric[]),
-           unnest($8::int[]),
-           unnest($9::int[]),
-           unnest($10::numeric[]),
+           unnest($8::shipcore.fc_product_status[]),
+           unnest($9::text[]),
+           unnest($10::int[]),
            unnest($11::int[]),
-           unnest($12::numeric[])`,
+           unnest($12::numeric[]),
+           unnest($13::int[]),
+           unnest($14::numeric[])`,
         [
           inferredRows.map((row) => row.masterSku),
           inferredRows.map((row) => row.masterSku),
@@ -577,6 +593,8 @@ export const SkuMasterRepository = {
           inferredRows.map((row) => row.importedMoq),
           inferredRows.map((row) => row.importedOrderMultiple),
           inferredRows.map((row) => row.importedCbmPerUnit),
+          inferredRows.map((row) => row.importedStatus),
+          inferredRows.map((row) => row.importedSalesStatus),
           inferredRows.map((row) => row.moq),
           inferredRows.map((row) => row.moq),
           inferredRows.map((row) => row.cbmPerUnit),
@@ -591,6 +609,8 @@ export const SkuMasterRepository = {
           cbm_per_unit = COALESCE(stg.imported_cbm_per_unit, product.cbm_per_unit),
           moq = COALESCE(stg.imported_moq, product.moq),
           order_multiple = COALESCE(stg.imported_order_multiple, product.order_multiple),
+          status = COALESCE(stg.imported_status, product.status),
+          sales_status = COALESCE(stg.imported_sales_status, product.sales_status),
           product_name = COALESCE(NULLIF(product.product_name, ''), stg.product_name),
           category = COALESCE(product.category, stg.category),
           category_code = COALESCE(product.category_code, stg.category_code),
@@ -602,15 +622,15 @@ export const SkuMasterRepository = {
       const insertedResult = await client.query(`
         INSERT INTO shipcore.fc_products (
           master_sku, product_name, category, category_code, status,
-          moq, order_multiple, cbm_per_unit, case_qty, weight_kg,
+          moq, order_multiple, cbm_per_unit, case_qty, weight_kg, sales_status,
           created_at, updated_at
         )
         SELECT
-          master_sku, product_name, category, category_code, 'active',
+          master_sku, product_name, category, category_code, COALESCE(imported_status, 'active'::shipcore.fc_product_status),
           COALESCE(imported_moq, default_moq),
           COALESCE(imported_order_multiple, default_order_multiple),
           COALESCE(imported_cbm_per_unit, default_cbm_per_unit),
-          case_qty, weight_kg,
+          case_qty, weight_kg, imported_sales_status,
           NOW(), NOW()
         FROM stg_excel_sku stg
         WHERE NOT EXISTS (

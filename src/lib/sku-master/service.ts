@@ -34,6 +34,9 @@ export interface UpdateSkuMasterInput {
 
 const VALID_TYPE_FILTERS = ["Hold", "Discontinued", "TBD"] as const;
 const VALID_SALES_STATUSES = ["Hold", "Discontinued", "TBD"] as const;
+const SALES_STATUS_BY_LOWERCASE = new Map(
+  VALID_SALES_STATUSES.map((value) => [value.toLowerCase(), value] as const)
+);
 
 function shapeProduct(row: ProductRow) {
   const inferred = inferProduct(row.master_sku);
@@ -181,12 +184,24 @@ export const SkuMasterService = {
       const cbmPerUnit = Number.isFinite(parsedCbm) && parsedCbm > 0 ? parsedCbm : undefined;
       const moq = Number.isInteger(parsedMoq) && parsedMoq >= 1 ? parsedMoq : undefined;
       const orderMultiple = Number.isInteger(parsedOrderMultiple) && parsedOrderMultiple >= 1 ? parsedOrderMultiple : undefined;
+      const rawStatus = String(row?.status ?? "").trim();
+      const normalizedStatus = rawStatus.toLowerCase();
+      const status = normalizedStatus === "active" || normalizedStatus === "inactive" ? normalizedStatus : undefined;
+      const rawSalesStatus = String(row?.salesStatus ?? "").trim();
+      const salesStatus = SALES_STATUS_BY_LOWERCASE.get(rawSalesStatus.toLowerCase());
 
-      if (!masterSku || (cbmPerUnit == null && moq == null && orderMultiple == null)) {
+      if (rawStatus && !status) {
+        throw new ValidationError(`Invalid Status for ${masterSku || "SKU row"}: ${rawStatus}`);
+      }
+      if (rawSalesStatus && !salesStatus) {
+        throw new ValidationError(`Invalid Type for ${masterSku || "SKU row"}: ${rawSalesStatus}`);
+      }
+
+      if (!masterSku || (cbmPerUnit == null && moq == null && orderMultiple == null && status == null && salesStatus == null)) {
         continue;
       }
 
-      rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple });
+      rowsBySku.set(masterSku, { masterSku, cbmPerUnit, moq, orderMultiple, status, salesStatus });
     }
 
     return [...rowsBySku.values()];
@@ -195,7 +210,7 @@ export const SkuMasterService = {
   async previewExcelImport(rawRows: unknown[]) {
     const rows = this.parseExcelRows(rawRows);
     if (rows.length === 0) {
-      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple rows found");
+      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Type rows found");
     }
 
     const existingBySku = await SkuMasterRepository.findExistingValuesBySkus(rows.map((row) => row.masterSku));
@@ -207,14 +222,18 @@ export const SkuMasterService = {
         cbmPerUnit: existing ? row.cbmPerUnit ?? existing.cbmPerUnit : row.cbmPerUnit ?? defaults.cbmPerUnit,
         moq: existing ? row.moq ?? existing.moq : row.moq ?? defaults.moq,
         orderMultiple: existing ? row.orderMultiple ?? existing.orderMultiple : row.orderMultiple ?? defaults.moq,
+        status: existing ? row.status ?? existing.status : row.status ?? "active",
+        salesStatus: existing ? row.salesStatus ?? existing.salesStatus : row.salesStatus ?? null,
       };
       const changedFields = existing
         ? [
             existing.cbmPerUnit !== next.cbmPerUnit ? "cbmPerUnit" : null,
             existing.moq !== next.moq ? "moq" : null,
             existing.orderMultiple !== next.orderMultiple ? "orderMultiple" : null,
+            existing.status !== next.status ? "status" : null,
+            existing.salesStatus !== next.salesStatus ? "salesStatus" : null,
           ].filter((field): field is string => field !== null)
-        : ["cbmPerUnit", "moq", "orderMultiple"];
+        : ["cbmPerUnit", "moq", "orderMultiple", "status", "salesStatus"];
       const action: "insert" | "update" | "unchanged" = existing
         ? changedFields.length > 0
           ? "update"
@@ -235,7 +254,7 @@ export const SkuMasterService = {
   async applyExcelImport(rawRows: unknown[]) {
     const rows = this.parseExcelRows(rawRows);
     if (rows.length === 0) {
-      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple rows found");
+      throw new ValidationError("No valid Master SKU / CBM / MOQ / Order Multiple / Status / Type rows found");
     }
 
     const { updated, inserted } = await SkuMasterRepository.applyExcelImport(rows);

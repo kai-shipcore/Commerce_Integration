@@ -183,6 +183,37 @@ describe("SkuMasterService excel import", () => {
     expect(result.rows[0]).toMatchObject({ masterSku: "CA-FM-99", action: "insert" });
   });
 
+  it("normalizes and previews imported Status and Type values", async () => {
+    repositoryMock.findExistingValuesBySkus.mockResolvedValue(
+      new Map([["CA-FM-99", {
+        cbmPerUnit: 0.1,
+        moq: 10,
+        orderMultiple: 10,
+        status: "active",
+        salesStatus: null,
+      }]])
+    );
+
+    const result = await SkuMasterService.previewExcelImport([
+      { masterSku: "ca-fm-99", status: "INACTIVE", salesStatus: "discontinued" },
+    ]);
+
+    expect(result.rows[0]).toMatchObject({
+      action: "update",
+      next: { status: "inactive", salesStatus: "Discontinued" },
+      changedFields: ["status", "salesStatus"],
+    });
+  });
+
+  it("rejects invalid imported Status and Type values", async () => {
+    await expect(
+      SkuMasterService.previewExcelImport([{ masterSku: "CA-FM-99", status: "archived" }])
+    ).rejects.toThrow("Invalid Status");
+    await expect(
+      SkuMasterService.previewExcelImport([{ masterSku: "CA-FM-99", salesStatus: "Original" }])
+    ).rejects.toThrow("Invalid Type");
+  });
+
   it("previews unchanged when imported values match the existing row", async () => {
     repositoryMock.findExistingValuesBySkus.mockResolvedValue(
       new Map([["CA-FM-99", { cbmPerUnit: 0.1, moq: 10, orderMultiple: 10 }]])
@@ -199,6 +230,9 @@ describe("SkuMasterService excel import", () => {
     const result = await SkuMasterService.applyExcelImport([{ masterSku: "ca-fm-99", moq: 10 }]);
 
     expect(result).toEqual({ imported: 1, upserted: 3, updated: 1, inserted: 2 });
+    expect(repositoryMock.applyExcelImport).toHaveBeenCalledWith([
+      expect.objectContaining({ masterSku: "CA-FM-99", moq: 10 }),
+    ]);
   });
 });
 

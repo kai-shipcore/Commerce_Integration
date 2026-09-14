@@ -219,11 +219,23 @@ describe("SkuMasterRepository.applyExcelImport", () => {
       return { rows: [] };
     });
 
-    const result = await SkuMasterRepository.applyExcelImport([{ masterSku: "SKU-1", moq: 5 }]);
+    const result = await SkuMasterRepository.applyExcelImport([
+      { masterSku: "SKU-1", moq: 5, status: "inactive", salesStatus: "Discontinued" },
+    ]);
 
     expect(result).toEqual({ updated: 1, inserted: 2 });
     expect(clientQueryMock).not.toHaveBeenCalledWith(expect.stringContaining("ALTER TABLE"));
     expect(clientQueryMock).toHaveBeenCalledWith("COMMIT");
+
+    const stagingInsert = clientQueryMock.mock.calls.find(([sql, params]) =>
+      typeof sql === "string" && sql.includes("INSERT INTO stg_excel_sku") && Array.isArray(params));
+    expect(stagingInsert?.[1]?.[7]).toEqual(["inactive"]);
+    expect(stagingInsert?.[1]?.[8]).toEqual(["Discontinued"]);
+
+    const productUpdate = clientQueryMock.mock.calls.find(([sql]) =>
+      typeof sql === "string" && sql.includes("UPDATE shipcore.fc_products"));
+    expect(productUpdate?.[0]).toContain("status = COALESCE(stg.imported_status");
+    expect(productUpdate?.[0]).toContain("sales_status = COALESCE(stg.imported_sales_status");
   });
 
   it("runs the CBM precision migration when scale is insufficient", async () => {
