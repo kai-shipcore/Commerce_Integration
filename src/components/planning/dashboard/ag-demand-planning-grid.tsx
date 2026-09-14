@@ -75,7 +75,7 @@ import {
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
 import type { CellContent, ColumnFilterMenuSize, EditMenuActions, EditMenuAvailability, TextFormatSettings } from "./columns";
-import type { DemandPlanningGridProps, PlanningFormatHistoryChange } from "./demand-planning-grid";
+import type { DemandPlanningGridProps, PlanningFormatHistoryChange, PlanningViewStatePatch } from "./demand-planning-grid";
 import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -195,7 +195,12 @@ type SheetHistoryChange = {
 };
 type SheetViewHistoryChange =
   | { kind: "filter"; key: string; before: ColumnFilter | null; after: ColumnFilter | null }
-  | { kind: "columnVisibility"; baseColumnIds: string[]; physicalColumnIds: string[] };
+  | { kind: "columnVisibility"; baseColumnIds: string[]; physicalColumnIds: string[] }
+  /** Everything the dashboard owns: column order, widths, heights, sort, the
+   *  toolbar filters. One kind rather than one per setting — the alternative
+   *  was a callback prop per kind, which is why this list stayed at two for
+   *  so long. Carries only the keys that changed, in both directions. */
+  | { kind: "viewState"; before: PlanningViewStatePatch; after: PlanningViewStatePatch };
 type SheetHistoryEntry = {
   valueChanges: SheetHistoryChange[];
   formatChanges: PlanningFormatHistoryChange[];
@@ -3743,7 +3748,6 @@ export function AgDemandPlanningGrid({
   onColumnFilterCountChange,
   columnOrder = [],
   onColumnOrderChange,
-  onContainerOrderCustomized,
   onContainerEtaChange,
   seasonalFactors,
   columnColors = {},
@@ -3752,6 +3756,8 @@ export function AgDemandPlanningGrid({
   cellTextFormats = {},
   conditionalFormatRules = [],
   onFormatHistoryRecorderReady,
+  onViewHistoryRecorderReady,
+  onApplyViewStatePatch,
   onApplyFormatHistoryChanges,
   skuCellNotes = {},
   skuWorkNotes = {},
@@ -3941,6 +3947,17 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   const pushViewHistory = useCallback((changes: SheetViewHistoryChange[]) => {
     pushHistoryEntry({ valueChanges: [], formatChanges: [], viewChanges: changes });
   }, [pushHistoryEntry]);
+
+  const pushViewStateHistory = useCallback((before: PlanningViewStatePatch, after: PlanningViewStatePatch) => {
+    if (Object.keys(after).length === 0) return;
+    pushViewHistory([{ kind: "viewState", before, after }]);
+  }, [pushViewHistory]);
+
+  useEffect(() => {
+    if (!onViewHistoryRecorderReady) return;
+    onViewHistoryRecorderReady(pushViewStateHistory);
+    return () => onViewHistoryRecorderReady(null);
+  }, [onViewHistoryRecorderReady, pushViewStateHistory]);
 
   useEffect(() => {
     if (!onFormatHistoryRecorderReady) return;
@@ -4377,14 +4394,18 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const left = new Map<string, HideGapRestoreInfo>();
     const right = new Map<string, HideGapRestoreInfo>();
     for (const run of conHiddenRuns) {
-      const onRestore = () => run.hiddenIds.forEach((id) => onHideColumn?.(`con:${id}`));
+      const onRestore = () => {
+        const physicalColumnIds = run.hiddenIds.map((id) => `con:${id}`);
+        pushViewHistory([{ kind: "columnVisibility", baseColumnIds: physicalColumnIds, physicalColumnIds: [] }]);
+        physicalColumnIds.forEach((id) => onHideColumn?.(id));
+      };
       const afterId = conCandidates[run.startIndex + run.hiddenIds.length]?.id;
       if (afterId) { left.set(afterId, { hiddenLabels: run.hiddenLabels, onRestore }); continue; }
       const beforeId = conCandidates[run.startIndex - 1]?.id;
       if (beforeId) right.set(beforeId, { hiddenLabels: run.hiddenLabels, onRestore });
     }
     return { left, right };
-  }, [conCandidates, conHiddenRuns, onHideColumn]);
+  }, [conCandidates, conHiddenRuns, onHideColumn, pushViewHistory]);
 
   const containerColumnTotals = useMemo(() => {
     const totals = new Map<string, ContainerColumnTotals>();
@@ -6048,6 +6069,10 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const applySheetHistoryEntry = useCallback(async (entry: SheetHistoryEntry, direction: "undo" | "redo") => {
     for (const change of entry.viewChanges) {
+      if (change.kind === "viewState") {
+        onApplyViewStatePatch?.(direction === "undo" ? change.before : change.after);
+        continue;
+      }
       if (change.kind === "filter") {
         const value = direction === "undo" ? change.before : change.after;
         setColumnFilters((current) => {
@@ -6073,7 +6098,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       onApplyFormatHistoryChanges(entry.formatChanges, direction);
     }
     return true;
-  }, [applyValueToTarget, onApplyFormatHistoryChanges, onHideColumn, onToggleContainerColumns, resolveEditableTarget, setColumnFilters]);
+  }, [applyValueToTarget, onApplyFormatHistoryChanges, onApplyViewStatePatch, onHideColumn, onToggleContainerColumns, resolveEditableTarget, setColumnFilters]);
 
   // Shared by the Ctrl+Z/Y shortcut below and the Edit menu's Undo/Redo items
   // — same action, two triggers. Returns whether an entry was actually
@@ -6569,14 +6594,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const left = new Map<string, HideGapRestoreInfo>();
     const right = new Map<string, HideGapRestoreInfo>();
     for (const run of baseHiddenRuns) {
-      const onRestore = () => run.hiddenIds.forEach((id) => onHideColumn?.(id));
+      const onRestore = () => {
+        pushViewHistory([{ kind: "columnVisibility", baseColumnIds: run.hiddenIds, physicalColumnIds: [] }]);
+        run.hiddenIds.forEach((id) => onHideColumn?.(id));
+      };
       const afterId = baseCandidates[run.startIndex + run.hiddenIds.length]?.id;
       if (afterId) { left.set(afterId, { hiddenLabels: run.hiddenLabels, onRestore }); continue; }
       const beforeId = baseCandidates[run.startIndex - 1]?.id;
       if (beforeId) right.set(beforeId, { hiddenLabels: run.hiddenLabels, onRestore });
     }
     return { left, right };
-  }, [baseCandidates, baseHiddenRuns, onHideColumn]);
+  }, [baseCandidates, baseHiddenRuns, onHideColumn, pushViewHistory]);
 
   const gridMinWidth = Math.max(
     gridWidth,
@@ -6846,7 +6874,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         flushContainerHiddenRun();
         const containerRestoreMarkers = { left: new Map<string, HideGapRestoreInfo>(), right: new Map<string, HideGapRestoreInfo>() };
         for (const run of containerHiddenRuns) {
-          const onRestore = () => onToggleContainerColumns?.(run.hiddenIds.map((id) => `${container.name}::${id}`));
+          const onRestore = () => {
+            const physicalColumnIds = run.hiddenIds.map((id) => `${container.name}::${id}`);
+            pushViewHistory([{ kind: "columnVisibility", baseColumnIds: [], physicalColumnIds }]);
+            onToggleContainerColumns?.(physicalColumnIds);
+          };
           const afterId = globallyVisibleSubColumns[run.startIndex + run.hiddenIds.length]?.id;
           if (afterId) {
             containerRestoreMarkers.left.set(afterId, { hiddenLabels: run.hiddenLabels, onRestore });
@@ -7132,7 +7164,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+  }, [pushViewHistory, baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     conditionalFormatRulesRef.current = conditionalFormatRules;
@@ -7672,7 +7704,6 @@ autoFilling3: autoFillingContainers3.has(container.name),
               }
               const movedContainerColumns = [...affectedColumns].some((column) => column.getColId().includes("::"));
               if (movedContainerColumns) {
-                onContainerOrderCustomized?.();
                 // Container groups may be reordered among themselves, but the
                 // whole planning block must stay after the fixed/base columns
                 // (the Inbound / Container / SOD boundary).
@@ -7692,6 +7723,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });
               onColumnOrderChange?.(
                 event.api.getAllDisplayedColumns().map((column) => column.getColId()),
+                movedContainerColumns ? { containerOrderCustomized: true } : undefined,
               );
             }}
             onColumnResized={(event) => {

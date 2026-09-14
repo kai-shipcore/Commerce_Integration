@@ -55,6 +55,18 @@ export type PlanningFormatHistoryChange =
 
 export type PlanningFormatHistoryRecorder = (changes: PlanningFormatHistoryChange[]) => void;
 
+/**
+ * One undo step's worth of view state, keyed by the same storage keys the
+ * saved-preferences blob uses. Only the keys an action actually changed are
+ * present — a hundred-deep stack of whole blobs would carry every cell colour
+ * a hundred times over, and a missing key has to mean "leave it alone".
+ */
+export type PlanningViewStatePatch = Record<string, unknown>;
+export type PlanningViewHistoryRecorder = (
+  before: PlanningViewStatePatch,
+  after: PlanningViewStatePatch,
+) => void;
+
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
   categoryFilter: CategoryFilter[];
@@ -105,8 +117,11 @@ export interface DemandPlanningGridProps {
   rowHeights?: RowHeights;
   onRowHeightsChange?: (skus: string[], height: number) => void;
   columnOrder?: ColumnOrder;
-  onColumnOrderChange?: (next: ColumnOrder) => void;
-  onContainerOrderCustomized?: () => void;
+  /** Moving a container block also pins the container order, so both travel
+   *  together: reported separately they would land in the undo history as two
+   *  steps, and undoing one of them would restore an order the other half
+   *  immediately overrode. */
+  onColumnOrderChange?: (next: ColumnOrder, options?: { containerOrderCustomized?: boolean }) => void;
   onContainerEtaChange?: (container: { id: number; name: string; eta: string }) => void;
   seasonalFactors: SeasonalFactors;
   columnColors?: ColumnColorSettings;
@@ -116,6 +131,12 @@ export interface DemandPlanningGridProps {
   conditionalFormatRules?: ConditionalFormatRule[];
   onFormatHistoryRecorderReady?: (recorder: PlanningFormatHistoryRecorder | null) => void;
   onApplyFormatHistoryChanges?: (changes: PlanningFormatHistoryChange[], direction: "undo" | "redo") => void;
+  /** Same pair as the format one above, for the view state the dashboard owns
+   *  — column order, widths, heights, sort, the toolbar filters. The history
+   *  stacks live in the grid, the state does not, so the grid hands out a
+   *  recorder and calls back to apply. AG Grid variant only. */
+  onViewHistoryRecorderReady?: (recorder: PlanningViewHistoryRecorder | null) => void;
+  onApplyViewStatePatch?: (patch: PlanningViewStatePatch) => void;
   skuCellNotes?: Record<string, string>;
   onSkuCellNoteChange?: (sku: string, note: string) => void | Promise<void>;
   skuWorkNotes?: Record<string, string>;

@@ -440,6 +440,35 @@ export function matchesUrgencySelection(row: DemandRow, selected: UrgencyFilter[
   ));
 }
 
+/**
+ * The column order after a drag. AG Grid reports the columns it displayed, so
+ * anything currently hidden is absent from that list and has to be carried
+ * over rather than dropped — hiding a column and moving another must not
+ * forget where the hidden one sat.
+ */
+export function mergeMovedColumnOrder(current: ColumnOrder, movedOrder: ColumnOrder): ColumnOrder {
+  const moved = new Set(movedOrder);
+  return [...movedOrder, ...current.filter((id) => !moved.has(id))];
+}
+
+export function sameColumnOrder(a: ColumnOrder, b: ColumnOrder): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
+/**
+ * The half of a view-state blob an undo step needs to remember. Recording the
+ * whole blob per step would put every cell colour on a hundred-deep stack; a
+ * step only ever restores the keys it changed.
+ */
+export function viewStateSubset(
+  blob: Record<string, unknown>,
+  keys: string[],
+): Record<string, unknown> {
+  const subset: Record<string, unknown> = {};
+  for (const key of keys) subset[key] = blob[key];
+  return subset;
+}
+
 export const DASHBOARD_FILTERS_STORAGE_KEY = "planning-dashboard-filters";
 
 /** What the dashboard narrows the grid by, kept across a reload — losing a

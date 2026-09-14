@@ -8,7 +8,7 @@ import { ClipboardPaste, Copy, FilterX, PaintBucket, Pipette, Redo2, RotateCcw, 
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { GridSort } from "@/lib/planning/grid-sort";
-import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder } from "./demand-planning-grid";
+import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder, PlanningViewHistoryRecorder, PlanningViewStatePatch } from "./demand-planning-grid";
 import { ConditionalFormattingPanel } from "./conditional-formatting-panel";
 import { PlanningColorPalettePopover } from "./planning-color-palette";
 import { StatusBar } from "./status-bar";
@@ -19,7 +19,10 @@ import {
   DASHBOARD_FILTERS_STORAGE_KEY,
   columnAppliesToCategories,
   loadSavedDashboardFilters,
+  mergeMovedColumnOrder,
   normalizeDashboardFilters,
+  sameColumnOrder,
+  viewStateSubset,
   parseUrgencyParam,
   serializeDashboardFilters,
   CON_SUBCOLS,
@@ -60,7 +63,7 @@ import {
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, RowHeights, SalesStatus, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, DashboardFiltersState, RowHeights, SalesStatus, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
@@ -191,6 +194,10 @@ const URGENCY_FILTER_OPTIONS: ToolbarMultiSelectOption<UrgencyFilter>[] = [
 ];
 
 const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
+/** Undo-only. The category selection rides `?product=` rather than the saved
+ *  preference blob, so it has no storage key of its own to be recorded under
+ *  — but it still has to be undoable like the other two toolbar filters. */
+const CATEGORY_FILTER_HISTORY_KEY = "planning-dashboard-category-filter";
 const CONTAINER_VISIBILITY_STORAGE_KEY = "planning-dashboard-container-visibility";
 const CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY = "planning-dashboard-container-order-customized";
 const COLUMN_HEADER_NAMES_STORAGE_KEY = "planning-dashboard-column-header-names";
@@ -1073,6 +1080,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [conditionalFormatPreviewRules, setConditionalFormatPreviewRules] = useState<ConditionalFormatRule[] | null>(null);
   const [isConditionalFormattingOpen, setIsConditionalFormattingOpen] = useState(false);
   const formatHistoryRecorderRef = useRef<PlanningFormatHistoryRecorder | null>(null);
+  const viewHistoryRecorderRef = useRef<PlanningViewHistoryRecorder | null>(null);
+  // Read through refs: both are defined further down, and commitView must not
+  // be rebuilt every time the view state it snapshots changes.
+  const buildPreferenceBlobRef = useRef<(() => Record<string, unknown>) | null>(null);
+  const activeScenarioIdRef = useRef<string | null>(null);
+  /** View state that is undoable but lives outside the saved blob. */
+  const viewStateExtrasRef = useRef<() => PlanningViewStatePatch>(() => ({}));
+  const handleCategoryFilterRef = useRef<((next: CategoryFilter[]) => void) | null>(null);
   const [isColorSettingsOpen, setIsColorSettingsOpen] = useState(true);
   const [selectedAgCell, setSelectedAgCell] = useState<{ rowId: string; columnId: string; label: string } | null>(null);
   const [selectedAgCells, setSelectedAgCells] = useState<{ rowId: string; columnId: string; label: string }[]>([]);
@@ -1323,8 +1338,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
    * `mirrorLocal` is on only for the Live tab: localStorage is Live's offline
    * cache, and letting a scenario tab write into it would mean a failed
    * preferences fetch leaves Live wearing some scenario's layout.
+   *
+   * `patchOnly` is how undo reuses this. A tab's blob is the whole view, so a
+   * missing key there means "this tab has no saved value, use the default" and
+   * the branches below reset. An undo step carries only the keys it changed,
+   * where a missing key means "leave that alone" — so in patch mode every
+   * reset branch is skipped and the rest still goes through the same
+   * normalizers the saved blob is validated by.
    */
-  const applyPreferenceBlob = useCallback((d: Record<string, unknown>, mirrorLocal: boolean) => {
+  const applyPreferenceBlob = useCallback((
+    d: Record<string, unknown>,
+    mirrorLocal: boolean,
+    patchOnly = false,
+  ) => {
     const mirrorSet = (key: string, value: string) => {
       if (mirrorLocal) window.localStorage.setItem(key, value);
     };
@@ -1398,18 +1424,24 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     }
 
     const savedOrder = d[COLUMN_ORDER_STORAGE_KEY];
-    if (!columnOrderChangedRef.current && Array.isArray(savedOrder)) {
+    const mayApplyOrder = patchOnly ? COLUMN_ORDER_STORAGE_KEY in d : !columnOrderChangedRef.current;
+    if (mayApplyOrder && Array.isArray(savedOrder)) {
       const normalizedOrder = ensureAdditionalNotesInColumnOrder(Array.from(new Set(
         savedOrder.filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 300),
       )).slice(0, 5000));
       mirrorSet(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(normalizedOrder));
       setColumnOrder(normalizedOrder);
-    } else if (!columnOrderChangedRef.current) {
+    } else if (!columnOrderChangedRef.current && !patchOnly) {
       mirrorRemove(COLUMN_ORDER_STORAGE_KEY);
       setColumnOrder([]);
     }
 
-    if (!containerOrderCustomizedChangedRef.current) {
+    // The "changed" refs guard the mount race, where a saved blob must not
+    // stomp an edit the reader made while it was in flight. An undo is the
+    // reader, so it is never the thing being guarded against.
+    if (patchOnly
+      ? CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY in d
+      : !containerOrderCustomizedChangedRef.current) {
       const customized = d[CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY] === true;
       mirrorSet(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, String(customized));
       setContainerOrderCustomized(customized);
@@ -1426,7 +1458,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     if (columnFormats && typeof columnFormats === "object" && !Array.isArray(columnFormats)) {
       mirrorSet(COLUMN_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(columnFormats));
       setColumnTextFormats(columnFormats as ColumnTextFormatSettings);
-    } else {
+    } else if (!patchOnly) {
       mirrorRemove(COLUMN_TEXT_FORMATS_STORAGE_KEY);
       setColumnTextFormats({});
     }
@@ -1435,18 +1467,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     if (cellFormats && typeof cellFormats === "object" && !Array.isArray(cellFormats)) {
       mirrorSet(CELL_TEXT_FORMATS_STORAGE_KEY, JSON.stringify(cellFormats));
       setCellTextFormats(cellFormats as CellTextFormatSettings);
-    } else {
+    } else if (!patchOnly) {
       mirrorRemove(CELL_TEXT_FORMATS_STORAGE_KEY);
       setCellTextFormats({});
     }
 
-    const conditionalRules = normalizeConditionalFormatRules(d[CONDITIONAL_FORMAT_RULES_STORAGE_KEY]);
-    if (conditionalRules.length > 0) {
-      mirrorSet(CONDITIONAL_FORMAT_RULES_STORAGE_KEY, JSON.stringify(conditionalRules));
-    } else {
-      mirrorRemove(CONDITIONAL_FORMAT_RULES_STORAGE_KEY);
+    if (!patchOnly || CONDITIONAL_FORMAT_RULES_STORAGE_KEY in d) {
+      const conditionalRules = normalizeConditionalFormatRules(d[CONDITIONAL_FORMAT_RULES_STORAGE_KEY]);
+      if (conditionalRules.length > 0) {
+        mirrorSet(CONDITIONAL_FORMAT_RULES_STORAGE_KEY, JSON.stringify(conditionalRules));
+      } else {
+        mirrorRemove(CONDITIONAL_FORMAT_RULES_STORAGE_KEY);
+      }
+      setConditionalFormatRules(conditionalRules);
     }
-    setConditionalFormatRules(conditionalRules);
 
     // Per-user custom column header names
     const headerNames = d[COLUMN_HEADER_NAMES_STORAGE_KEY];
@@ -1456,7 +1490,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       );
       mirrorSet(COLUMN_HEADER_NAMES_STORAGE_KEY, JSON.stringify(normalized));
       setColumnHeaderNames(normalized);
-    } else {
+    } else if (!patchOnly) {
       // localStorage is shared by accounts using the same browser. A successful
       // server response with no saved names must therefore restore defaults,
       // rather than briefly loaded names from a different signed-in user.
@@ -1486,7 +1520,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       } else {
         setHiddenContainerColumns(new Set());
       }
-    } else {
+    } else if (!patchOnly) {
       setHiddenContainerColumns(new Set());
     }
 
@@ -1526,6 +1560,44 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       setGradientSC(gdSC as GradientTier[]);
     }
   }, []);
+
+  const handleViewHistoryRecorderReady = useCallback((recorder: PlanningViewHistoryRecorder | null) => {
+    viewHistoryRecorderRef.current = recorder;
+  }, []);
+
+  /**
+   * Undo/redo for the view state this component owns. The patch goes back
+   * through the same applier a saved tab does, in patch mode so the keys it
+   * does not mention are left alone.
+   *
+   * It deliberately does not record: an undo that pushed its own entry would
+   * bury the redo it is supposed to enable.
+   */
+  const applyViewStatePatch = useCallback((patch: PlanningViewStatePatch) => {
+    if (CATEGORY_FILTER_HISTORY_KEY in patch) {
+      // Back through the same handler a click goes through, so the URL and the
+      // refetch stay in step with the selection.
+      handleCategoryFilterRef.current?.(
+        parseCategoryCodesParam(String(patch[CATEGORY_FILTER_HISTORY_KEY] ?? "")),
+      );
+    }
+    applyPreferenceBlob(patch, activeScenarioIdRef.current === null, true);
+  }, [applyPreferenceBlob]);
+
+  /**
+   * Records a view change and applies it in one step. `before` is read off the
+   * live state for exactly the keys the patch carries — a whole-blob snapshot
+   * per step would put every cell colour on the stack a hundred times.
+   */
+  const commitView = useCallback((patch: PlanningViewStatePatch) => {
+    const blob = buildPreferenceBlobRef.current
+      ? { ...buildPreferenceBlobRef.current(), ...viewStateExtrasRef.current() }
+      : null;
+    if (blob) {
+      viewHistoryRecorderRef.current?.(viewStateSubset(blob, Object.keys(patch)), patch);
+    }
+    applyViewStatePatch(patch);
+  }, [applyViewStatePatch]);
 
   // Load the Live tab's preferences from the DB on mount — overrides
   // localStorage if the DB has newer values.
@@ -1597,6 +1669,23 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     };
   }, [groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
+
+  // Kept on refs so commitView can read the current view without being rebuilt
+  // — and therefore re-registered — every time any of it changes.
+  useEffect(() => {
+    buildPreferenceBlobRef.current = buildPreferenceBlob;
+  }, [buildPreferenceBlob]);
+  useEffect(() => {
+    activeScenarioIdRef.current = activeScenarioId;
+  }, [activeScenarioId]);
+  useEffect(() => {
+    viewStateExtrasRef.current = () => ({
+      [CATEGORY_FILTER_HISTORY_KEY]: serializeCategoryCodes(categoryFilter),
+    });
+  }, [categoryFilter]);
+  useEffect(() => {
+    handleCategoryFilterRef.current = handleCategoryFilter;
+  }, [handleCategoryFilter]);
 
   // Save all preferences whenever any setting changes (debounced, after the
   // active tab's view has loaded). The Live tab saves to this user's
@@ -1833,8 +1922,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   const handleColumnWidthsChange = useCallback((next: ColumnWidths) => {
     columnWidthsRef.current = next;
-    setColumnWidths(next);
-  }, []);
+    commitView({ [COLUMN_WIDTHS_STORAGE_KEY]: next });
+  }, [commitView]);
 
   const handleColumnFilterMenuSizeChange = useCallback((next: ColumnFilterMenuSize) => {
     const normalizedSize = normalizeColumnFilterMenuSize(next);
@@ -1842,57 +1931,66 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     window.localStorage.setItem(COLUMN_FILTER_MENU_SIZE_STORAGE_KEY, JSON.stringify(normalizedSize));
   }, []);
 
+  const handleHeaderHeightChange = useCallback((next: number) => {
+    commitView({ [HEADER_HEIGHT_STORAGE_KEY]: normalizeHeaderHeight(next) });
+  }, [commitView]);
+
+  /** The filters and the sort travel as one stored value, so a change to any
+   *  of them is recorded as that whole value — undoing a sort must not drop
+   *  the filters that were saved beside it. */
+  const commitDashboardFilters = useCallback((patch: Partial<DashboardFiltersState>) => {
+    commitView({
+      [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
+        columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, sort: gridSort,
+        ...patch,
+      }),
+    });
+  }, [columnFilters, commitView, gridSort, salesStatusFilter, skuPartFilters, urgencyFilter]);
+
+  const handleSortChange = useCallback((next: GridSort | null) => {
+    commitDashboardFilters({ sort: next });
+  }, [commitDashboardFilters]);
+
   const handleRowHeightChange = useCallback((next: number) => {
-    const normalizedHeight = normalizeRowHeight(next);
-    setRowHeight(normalizedHeight);
-    window.localStorage.setItem(ROW_HEIGHT_STORAGE_KEY, JSON.stringify(normalizedHeight));
-  }, []);
+    commitView({ [ROW_HEIGHT_STORAGE_KEY]: normalizeRowHeight(next) });
+  }, [commitView]);
 
   // The rows a drag on a # border applied to: one row, or the whole selection
   // when the dragged row was part of it.
   const handleRowHeightsChange = useCallback((skus: string[], height: number) => {
     if (skus.length === 0) return;
-    setRowHeights((current) => {
-      const normalizedHeight = normalizeRowHeight(height);
-      const next = { ...current };
-      for (const sku of skus) next[sku] = normalizedHeight;
-      window.localStorage.setItem(ROW_HEIGHTS_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+    const normalizedHeight = normalizeRowHeight(height);
+    const next = { ...rowHeights };
+    for (const sku of skus) next[sku] = normalizedHeight;
+    commitView({ [ROW_HEIGHTS_STORAGE_KEY]: next });
+  }, [commitView, rowHeights]);
 
   // Resets both halves: the grid-wide height and every row dragged off it.
   const resetRowHeight = useCallback(() => {
-    setRowHeight(DEFAULT_ROW_HEIGHT);
-    setRowHeights({});
-    window.localStorage.removeItem(ROW_HEIGHT_STORAGE_KEY);
-    window.localStorage.removeItem(ROW_HEIGHTS_STORAGE_KEY);
-  }, []);
+    commitView({ [ROW_HEIGHT_STORAGE_KEY]: DEFAULT_ROW_HEIGHT, [ROW_HEIGHTS_STORAGE_KEY]: {} });
+  }, [commitView]);
 
   const resetColumnWidths = useCallback(() => {
     columnWidthsRef.current = {};
-    setColumnWidths({});
-    window.localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
-  }, []);
+    commitView({ [COLUMN_WIDTHS_STORAGE_KEY]: {} });
+  }, [commitView]);
 
-  const handleColumnOrderChange = useCallback((movedOrder: ColumnOrder) => {
+  const handleColumnOrderChange = useCallback((
+    movedOrder: ColumnOrder,
+    options?: { containerOrderCustomized?: boolean },
+  ) => {
     columnOrderChangedRef.current = true;
-    setColumnOrder((current) => {
-      const moved = new Set(movedOrder);
-      const next = [...movedOrder, ...current.filter((id) => !moved.has(id))];
-      if (next.length === current.length && next.every((id, index) => id === current[index])) {
-        return current;
-      }
-      window.localStorage.setItem(COLUMN_ORDER_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+    const next = mergeMovedColumnOrder(columnOrder, movedOrder);
+    const orderUnchanged = sameColumnOrder(next, columnOrder);
+    const pinsContainerOrder = options?.containerOrderCustomized === true && !containerOrderCustomized;
+    if (orderUnchanged && !pinsContainerOrder) return;
 
-  const handleContainerOrderCustomized = useCallback(() => {
-    containerOrderCustomizedChangedRef.current = true;
-    setContainerOrderCustomized(true);
-    window.localStorage.setItem(CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY, "true");
-  }, []);
+    if (pinsContainerOrder) containerOrderCustomizedChangedRef.current = true;
+    commitView({
+      ...(orderUnchanged ? {} : { [COLUMN_ORDER_STORAGE_KEY]: next }),
+      ...(pinsContainerOrder ? { [CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY]: true } : {}),
+    });
+  }, [columnOrder, commitView, containerOrderCustomized]);
 
   const applyContainerEtaOrder = useCallback((containers: ContainerMeta[]) => {
     columnOrderChangedRef.current = true;
@@ -1934,6 +2032,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const handleFormatHistoryRecorderReady = useCallback((recorder: PlanningFormatHistoryRecorder | null) => {
     formatHistoryRecorderRef.current = recorder;
   }, []);
+
 
   const applyFormatHistoryChanges = useCallback((changes: PlanningFormatHistoryChange[], direction: "undo" | "redo") => {
     const valueFor = <T,>(change: { before: T; after: T }) => direction === "undo" ? change.before : change.after;
@@ -2043,14 +2142,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   const handleGridColumnRename = useCallback((columnId: string, name: string) => {
     const normalizedName = name.trim().slice(0, 80);
-    setColumnHeaderNames((current) => {
-      const next = { ...current };
-      if (normalizedName) next[columnId] = normalizedName;
-      else delete next[columnId];
-      window.localStorage.setItem(COLUMN_HEADER_NAMES_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
+    const next = { ...columnHeaderNames };
+    if (normalizedName) next[columnId] = normalizedName;
+    else delete next[columnId];
+    commitView({ [COLUMN_HEADER_NAMES_STORAGE_KEY]: next });
+  }, [columnHeaderNames, commitView]);
 
   const resetSelectedColumnColor = useCallback(() => {
     setColumnColors((current) => {
@@ -2644,14 +2740,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [freezeUntil]);
 
   const handleHideContainer = useCallback((containerName: string, baseline: boolean) => {
-    const update = (current: Set<string>) => {
-      const next = new Set(current);
-      next.add(containerName);
-      return next;
-    };
-    if (baseline) setHiddenBases(update);
-    else setHiddenContainers(update);
-  }, []);
+    const nextBases = new Set(hiddenBases);
+    const nextContainers = new Set(hiddenContainers);
+    if (baseline) nextBases.add(containerName);
+    else nextContainers.add(containerName);
+    commitView({
+      [CONTAINER_VISIBILITY_STORAGE_KEY]: {
+        hiddenContainers: Array.from(nextContainers).sort(),
+        hiddenBases: Array.from(nextBases).sort(),
+        hiddenContainerColumns: Array.from(hiddenContainerColumns).sort(),
+      },
+    });
+  }, [commitView, hiddenBases, hiddenContainerColumns, hiddenContainers]);
 
   const handleToggleContainerColumns = useCallback((columnIds: string[]) => {
     setHiddenContainerColumns((current) => {
@@ -2729,19 +2829,31 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
   const applyColumnSettingsDraft = useCallback(() => {
     if (!columnSettingsDraft) return;
-    setColumnVis({ ...columnSettingsDraft.columnVis });
-    setGroupVis(getGroupVisibilityFromColumns(columnSettingsDraft.columnVis));
-    setCompactMode(columnSettingsDraft.compactMode);
-    setShowZeroSales(columnSettingsDraft.showZeroSales);
-    setFreezeUntil(columnSettingsDraft.freezeUntil);
-    setSkuPartFilters(cloneSkuPartFilters(columnSettingsDraft.skuPartFilters));
-    setHiddenContainers(new Set(columnSettingsDraft.hiddenContainers));
-    setHiddenBases(new Set(columnSettingsDraft.hiddenBases));
-    setHiddenContainerColumns(new Set(columnSettingsDraft.hiddenContainerColumns));
+    // The panel is already staged behind its own Apply, so the whole panel is
+    // one undo step — not one per checkbox the reader ticked inside it.
+    commitView({
+      [COLUMN_SETTINGS_STORAGE_KEY]: {
+        groupVis: getGroupVisibilityFromColumns(columnSettingsDraft.columnVis),
+        columnVis: { ...columnSettingsDraft.columnVis },
+        compactMode: columnSettingsDraft.compactMode,
+        showMistake,
+        showZeroSales: columnSettingsDraft.showZeroSales,
+        freezeUntil: columnSettingsDraft.freezeUntil,
+      },
+      [CONTAINER_VISIBILITY_STORAGE_KEY]: {
+        hiddenContainers: Array.from(columnSettingsDraft.hiddenContainers).sort(),
+        hiddenBases: Array.from(columnSettingsDraft.hiddenBases).sort(),
+        hiddenContainerColumns: Array.from(columnSettingsDraft.hiddenContainerColumns).sort(),
+      },
+      [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
+        columnFilters, salesStatusFilter, urgencyFilter, sort: gridSort,
+        skuPartFilters: cloneSkuPartFilters(columnSettingsDraft.skuPartFilters),
+      }),
+    });
     setIsColumnSettingsOpen(false);
     setColumnSettingsDraft(null);
     setOpenSkuFilterKey(null);
-  }, [columnSettingsDraft]);
+  }, [columnFilters, columnSettingsDraft, commitView, gridSort, salesStatusFilter, showMistake, urgencyFilter]);
 
   const handleDraftPreset = useCallback((preset: "all" | "core" | "compact") => {
     setColumnSettingsDraft((current) => {
@@ -2908,15 +3020,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, []);
 
   const clearAllFilters = useCallback(() => {
-    // Through the grid, so the whole reset lands in the undo history as one
-    // step rather than vanishing.
-    agGridEditActionsRef.current?.clearColumnFilters();
-    setColumnFilters(new Map());
-    setSalesStatusFilter([]);
-    setUrgencyFilter([]);
+    // One history step for the whole reset. It used to record only the column
+    // filters — through the grid — and clear the other four silently, so a
+    // Ctrl+Z afterwards put the column filters back and left the rest cleared.
+    commitDashboardFilters({
+      columnFilters: new Map(),
+      salesStatusFilter: [],
+      urgencyFilter: [],
+      skuPartFilters: EMPTY_SKU_PART_FILTERS,
+    });
+    // Not recorded: a search is typed, and undoing it a character at a time
+    // reads as the box fighting back.
     setSearch("");
-    setSkuPartFilters(EMPTY_SKU_PART_FILTERS);
-  }, []);
+  }, [commitDashboardFilters]);
 
   const handleEditMenuOpenChange = useCallback((open: boolean) => {
     setIsEditMenuOpen(open);
@@ -3026,7 +3142,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           allLabel={pick("전체 카테고리", "All categories")}
           options={CATEGORY_CODE_OPTIONS}
           value={categoryFilter}
-          onChange={handleCategoryFilter}
+          onChange={(next) => commitView({ [CATEGORY_FILTER_HISTORY_KEY]: serializeCategoryCodes(next) })}
           presets={CATEGORY_GROUP_OPTIONS.map((group) => ({ label: group.label, values: group.codes }))}
           commit="apply"
           width={170}
@@ -3039,7 +3155,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           allLabel="All Types"
           options={SALES_STATUS_FILTER_OPTIONS}
           value={salesStatusFilter}
-          onChange={setSalesStatusFilter}
+          onChange={(next) => commitDashboardFilters({ salesStatusFilter: next })}
           width={150}
         />
 
@@ -3050,7 +3166,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           allLabel="— All Status"
           options={URGENCY_FILTER_OPTIONS}
           value={urgencyFilter}
-          onChange={setUrgencyFilter}
+          onChange={(next) => commitDashboardFilters({ urgencyFilter: next })}
           width={140}
         />
 
@@ -4344,17 +4460,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           rowHeight={rowHeight}
           rowHeights={rowHeights}
           headerHeight={headerHeight}
-          onHeaderHeightChange={setHeaderHeight}
+          onHeaderHeightChange={handleHeaderHeightChange}
           onRowHeightsChange={handleRowHeightsChange}
           columnFilters={columnFilters}
           onColumnFiltersChange={setColumnFilters}
           sort={gridSort}
-          onSortChange={setGridSort}
+          onSortChange={handleSortChange}
           onColumnFilterCountChange={setColumnFilterCount}
           onColumnFilterMenuSizeChange={handleColumnFilterMenuSizeChange}
           columnOrder={effectiveColumnOrder}
           onColumnOrderChange={handleColumnOrderChange}
-          onContainerOrderCustomized={handleContainerOrderCustomized}
           onContainerEtaChange={handleContainerEtaChange}
           seasonalFactors={seasonalFactors}
           gradient={gradient}
@@ -4366,6 +4481,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           conditionalFormatRules={conditionalFormatPreviewRules ?? conditionalFormatRules}
           onFormatHistoryRecorderReady={handleFormatHistoryRecorderReady}
           onApplyFormatHistoryChanges={applyFormatHistoryChanges}
+          onViewHistoryRecorderReady={handleViewHistoryRecorderReady}
+          onApplyViewStatePatch={applyViewStatePatch}
           skuCellNotes={skuCellNotes}
           onSkuCellNoteChange={canEditActiveTabSkuNotes ? handleSkuCellNoteChange : undefined}
           skuWorkNotes={skuWorkNotes}

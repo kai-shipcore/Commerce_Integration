@@ -15,7 +15,7 @@
  * request for every box on the way to the set the reader actually wanted.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 
 export interface ToolbarMultiSelectOption<T extends string> {
@@ -71,10 +71,12 @@ export function ToolbarMultiSelect<T extends string>({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const closeAndDiscard = () => {
+  // Memoised because the outside-click listener below closes over it: a stale
+  // copy would reseed the boxes from a value that has since moved on.
+  const closeAndDiscard = useCallback(() => {
     setStaged(value);
     setOpen(false);
-  };
+  }, [value]);
 
   useEffect(() => {
     if (!open) return;
@@ -93,7 +95,7 @@ export function ToolbarMultiSelect<T extends string>({
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [closeAndDiscard, open]);
 
   // The button always reports what is committed, never what is staged: it has
   // to keep saying what the grid is actually showing.

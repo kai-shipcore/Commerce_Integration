@@ -14,6 +14,9 @@ import {
   normalizeDashboardFilters,
   loadSavedRowHeight,
   matchesAnyLogicalColumnId,
+  mergeMovedColumnOrder,
+  sameColumnOrder,
+  viewStateSubset,
   matchesCategorySelection,
   matchesSalesStatusSelection,
   matchesUrgencySelection,
@@ -390,5 +393,52 @@ describe("matchesCategorySelection", () => {
     const swcRow = row({ category_code: "SC", sales_status: "SWC" });
     expect(matchesCategorySelection(swcRow, ["swc"])).toBe(true);
     expect(matchesCategorySelection(row({ category_code: "SC" }), ["swc"])).toBe(false);
+  });
+});
+
+describe("mergeMovedColumnOrder", () => {
+  it("takes the dragged order as the new one", () => {
+    expect(mergeMovedColumnOrder(["a", "b", "c"], ["c", "a", "b"])).toEqual(["c", "a", "b"]);
+  });
+
+  it("keeps columns the grid did not report, which is where hidden ones live", () => {
+    // AG Grid reports displayed columns only, so a hidden column is absent
+    // from the drag result and would be dropped by a plain assignment.
+    expect(mergeMovedColumnOrder(["a", "hidden", "b"], ["b", "a"])).toEqual(["b", "a", "hidden"]);
+  });
+
+  it("is stable when nothing actually moved", () => {
+    const current = ["a", "b", "c"];
+    expect(sameColumnOrder(mergeMovedColumnOrder(current, current), current)).toBe(true);
+  });
+});
+
+describe("sameColumnOrder", () => {
+  it("compares position, not membership", () => {
+    expect(sameColumnOrder(["a", "b"], ["a", "b"])).toBe(true);
+    expect(sameColumnOrder(["a", "b"], ["b", "a"])).toBe(false);
+    expect(sameColumnOrder(["a"], ["a", "b"])).toBe(false);
+    expect(sameColumnOrder([], [])).toBe(true);
+  });
+});
+
+describe("viewStateSubset", () => {
+  const blob = { width: 1, height: 2, colour: "red" };
+
+  it("takes only the keys asked for", () => {
+    expect(viewStateSubset(blob, ["width"])).toEqual({ width: 1 });
+    expect(viewStateSubset(blob, ["width", "colour"])).toEqual({ width: 1, colour: "red" });
+  });
+
+  it("keeps a key that is absent from the blob, as undefined", () => {
+    // An undo step has to be able to say "this had no value before", which is
+    // different from "leave this alone" — the latter is the key not appearing.
+    const subset = viewStateSubset(blob, ["missing"]);
+    expect("missing" in subset).toBe(true);
+    expect(subset.missing).toBeUndefined();
+  });
+
+  it("takes nothing for no keys", () => {
+    expect(viewStateSubset(blob, [])).toEqual({});
   });
 });
