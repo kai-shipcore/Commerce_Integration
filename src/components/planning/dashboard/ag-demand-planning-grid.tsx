@@ -23,6 +23,7 @@ import {
   ALL_COLS,
   DEFAULT_COLUMN_FILTER_MENU_SIZE,
   DEFAULT_ROW_HEIGHT,
+  DEFAULT_HEADER_HEIGHT,
   COLUMN_WIDTHS_STORAGE_KEY,
   CON_SUBCOLS,
   GROUP_LABELS,
@@ -30,7 +31,9 @@ import {
   TODAY,
   WRAPPING_ROW_COLUMN_IDS,
   columnAppliesToCategories,
+  matchesAnyLogicalColumnId,
   normalizeColumnFilterMenuSize,
+  normalizeHeaderHeight,
   normalizeRowHeight,
   type RowHeights,
   skuMatchesPartFilters,
@@ -2633,6 +2636,12 @@ function SelectableHeader(params: IHeaderParams & {
    *  `HideGapRestoreMarker`. At most one of these two is set per column. */
   restoreMarkerLeft?: HideGapRestoreInfo;
   restoreMarkerRight?: HideGapRestoreInfo;
+  /** Read rather than passed as a value: the column definitions are rebuilt
+   *  from a ~50-entry memo, and a height that changed on every drag frame
+   *  would rebuild every column on every frame. */
+  getHeaderHeight?: () => number;
+  onHeaderHeightCommit?: (height: number) => void;
+  headerResizeLabel?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [editorAnchor, setEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
@@ -2652,6 +2661,46 @@ function SelectableHeader(params: IHeaderParams & {
       }
     };
   }, [params.api]);
+  // Same gesture as the row-height handle, one row up: drag the boundary
+  // under any column header and the whole header row follows. The live
+  // feedback goes straight through the grid API so the drag does not rebuild
+  // the column definitions; only the released height reaches React.
+  const headerResizeCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => headerResizeCleanupRef.current?.(), []);
+
+  const { getHeaderHeight, onHeaderHeightCommit } = params;
+  const startHeaderResize = (event: React.PointerEvent<HTMLSpanElement>) => {
+    if (!getHeaderHeight || !onHeaderHeightCommit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    headerResizeCleanupRef.current?.();
+    const startY = event.clientY;
+    const startHeight = getHeaderHeight();
+    let latestHeight = startHeight;
+    const onMove = (moveEvent: PointerEvent) => {
+      latestHeight = normalizeHeaderHeight(startHeight + moveEvent.clientY - startY);
+      if (!params.api.isDestroyed()) params.api.setGridOption("headerHeight", latestHeight);
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      // The pointer leaves this header almost immediately, so the cursor and
+      // the no-select guard have to sit on the document.
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+      headerResizeCleanupRef.current = null;
+    };
+    const onUp = () => {
+      cleanup();
+      onHeaderHeightCommit(latestHeight);
+    };
+    headerResizeCleanupRef.current = cleanup;
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   const selected = params.isSelected();
   const fullColumnSelected = params.isFullColumnSelected();
   const columnLetter = spreadsheetColumnName(
@@ -2798,6 +2847,17 @@ function SelectableHeader(params: IHeaderParams & {
       </div>
       {params.restoreMarkerLeft && <HideGapRestoreMarker side="left" info={params.restoreMarkerLeft} />}
       {params.restoreMarkerRight && <HideGapRestoreMarker side="right" info={params.restoreMarkerRight} />}
+      {getHeaderHeight && onHeaderHeightCommit && (
+        <span
+          role="separator"
+          aria-label={params.headerResizeLabel}
+          title={params.headerResizeLabel}
+          className="planning-header-resize-handle"
+          onPointerDown={startHeaderResize}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+        />
+      )}
     </div>
   );
 }
@@ -3668,6 +3728,8 @@ export function AgDemandPlanningGrid({
   rowHeight = DEFAULT_ROW_HEIGHT,
   rowHeights = {},
   onRowHeightsChange,
+  headerHeight = DEFAULT_HEADER_HEIGHT,
+  onHeaderHeightChange,
   columnFilters: storedColumnFilters = EMPTY_COLUMN_FILTERS,
   onColumnFiltersChange,
   sort: storedSort = null,
@@ -3726,6 +3788,14 @@ export function AgDemandPlanningGrid({
   const rowHeightRef = useRef(rowHeight);
   const rowHeightsRef = useRef<RowHeights>(rowHeights);
   const onRowHeightsChangeRef = useRef(onRowHeightsChange);
+  // The header-resize handle reads both through refs — see getHeaderHeight in
+  // the header params for why a plain value would be expensive here.
+  const headerHeightRef = useRef(headerHeight);
+  headerHeightRef.current = headerHeight;
+  const onHeaderHeightChangeRef = useRef(onHeaderHeightChange);
+  useEffect(() => {
+    onHeaderHeightChangeRef.current = onHeaderHeightChange;
+  }, [onHeaderHeightChange]);
   useEffect(() => {
     onRowHeightsChangeRef.current = onRowHeightsChange;
   }, [onRowHeightsChange]);
@@ -4524,17 +4594,33 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     if (!logicalIds.size) return;
     const api = gridRef.current?.api;
     if (!api) return;
-    const columns = (api.getColumns() ?? []).filter((column) => {
-      const columnId = column.getColId();
-      for (const logicalId of logicalIds) {
-        if (logicalId.includes("::") && columnId === logicalId) return true;
-        if (logicalId.startsWith("con:") && columnId.endsWith(`::${logicalId.slice(4)}`)) return true;
-        if (!logicalId.startsWith("container:") && columnId === logicalId) return true;
-      }
-      return false;
-    });
+    const columns = (api.getColumns() ?? []).filter(
+      (column) => matchesAnyLogicalColumnId(column.getColId(), logicalIds),
+    );
     if (columns.length) api.refreshCells({ columns, force: true });
   }, []);
+
+  /** Drops the cell selection, the way clicking a column header in a
+   *  spreadsheet replaces whatever was selected before. Without this a stale
+   *  cell selection outlives the header click and keeps winning the clipboard,
+   *  so Ctrl+C copies the old cell instead of the column just picked. */
+  const clearCellSelection = useCallback(() => {
+    const cleared = selectedCellsRef.current;
+    if (cleared.size === 0) return;
+    selectedCellsRef.current = new Set();
+    cellSelectionAnchorRef.current = null;
+    const api = gridRef.current?.api;
+    if (api) {
+      const columnIds = new Set<string>();
+      for (const key of cleared) {
+        const separator = key.indexOf("::");
+        if (separator >= 0) columnIds.add(key.slice(separator + 2));
+      }
+      const columns = (api.getColumns() ?? []).filter((column) => columnIds.has(column.getColId()));
+      if (columns.length) api.refreshCells({ columns, force: true });
+    }
+    startTransition(() => onCellSelectionChange?.([]));
+  }, [onCellSelectionChange]);
 
   const subscribeSelection = useCallback((listener: () => void) => {
     selectionListenersRef.current.add(listener);
@@ -4596,12 +4682,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       }
     }
     const clearedFullColumns = new Set(selectedFullColumnIdsRef.current);
+    clearCellSelection();
     selectedColumnIdsRef.current = next;
     selectedFullColumnIdsRef.current = new Set();
     notifySelectionChanged();
     refreshFullSelectionColumns(clearedFullColumns);
     startTransition(() => onColumnHeaderSelect?.(columnId, modifiers.toggle || modifiers.range, [...next]));
-  }, [headerSelectionRange, notifySelectionChanged, onColumnHeaderSelect, refreshFullSelectionColumns]);
+  }, [clearCellSelection, headerSelectionRange, notifySelectionChanged, onColumnHeaderSelect, refreshFullSelectionColumns]);
 
   const handleFullColumnSelectFast = useCallback((columnId: string, modifiers: SelectionModifiers) => {
     const previous = new Set(selectedFullColumnIdsRef.current);
@@ -4621,12 +4708,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         lastFullColumnSelectionRef.current = columnId;
       }
     }
+    clearCellSelection();
     selectedColumnIdsRef.current = new Set();
     selectedFullColumnIdsRef.current = next;
     notifySelectionChanged();
     refreshFullSelectionColumns(new Set([...previous, ...next]));
     startTransition(() => onFullColumnSelect?.(columnId, modifiers.toggle || modifiers.range, [...next]));
-  }, [headerSelectionRange, notifySelectionChanged, onFullColumnSelect, refreshFullSelectionColumns]);
+  }, [clearCellSelection, headerSelectionRange, notifySelectionChanged, onFullColumnSelect, refreshFullSelectionColumns]);
 
   useEffect(() => {
     const nextHeaders = new Set(selectedColumnIds);
@@ -5680,10 +5768,18 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       return bounds ? { ...bounds, includes: (key: string) => selectedCellsRef.current.has(key) } : null;
     }
     const api = gridRef.current?.api;
-    if (!api || selectedFullColumnIdsRef.current.size === 0) return null;
+    if (!api) return null;
+    // Either way of picking a column counts as a selection to copy: the column
+    // letter above the header selects the whole column, and clicking the
+    // header itself selects it for colouring. Both read as "this column is
+    // selected", so Ctrl+C should mean the same thing for each.
+    const selectedColumns = selectedFullColumnIdsRef.current.size > 0
+      ? selectedFullColumnIdsRef.current
+      : selectedColumnIdsRef.current;
+    if (selectedColumns.size === 0) return null;
     const columnIds = api.getAllDisplayedColumns()
       .map((column) => column.getColId())
-      .filter((columnId) => selectedFullColumnIdsRef.current.has(columnId));
+      .filter((columnId) => matchesAnyLogicalColumnId(columnId, selectedColumns));
     if (!columnIds.length) return null;
     const rowIds: string[] = [];
     api.forEachNodeAfterFilterAndSort((node) => {
@@ -6602,6 +6698,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(column.id),
           onFullColumnSelect: handleFullColumnSelectFast,
           onRename: onColumnHeaderRename ?? (() => {}),
+          getHeaderHeight: () => headerHeightRef.current,
+          onHeaderHeightCommit: (height: number) => onHeaderHeightChangeRef.current?.(height),
+          headerResizeLabel: pick("드래그하여 헤더 높이 조절", "Drag to resize the header row"),
           isFiltered: columnFilters.has(column.id),
           onRightClick: (x: number, y: number) => setColumnMenu({ x, y, key: column.id, label: headerName }),
           shouldPreserveContextSelection,
@@ -6782,6 +6881,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(physicalColumnId),
             onFullColumnSelect: handleFullColumnSelectFast,
             onRename: onColumnHeaderRename ?? (() => {}),
+            getHeaderHeight: () => headerHeightRef.current,
+            onHeaderHeightCommit: (height: number) => onHeaderHeightChangeRef.current?.(height),
+            headerResizeLabel: pick("드래그하여 헤더 높이 조절", "Drag to resize the header row"),
             isFiltered: columnFilters.has(`${container.name}::${column.id}`),
             onRightClick: (x: number, y: number) => setColumnMenu({
               x, y,
@@ -7162,9 +7264,14 @@ autoFilling3: autoFillingContainers3.has(container.name),
 
   const getEditMenuAvailability = useCallback((): EditMenuAvailability => {
     const hasSelection = selectedCellsRef.current.size > 0;
-    // A column picked by its letter is a selection for copying, even though no
-    // individual cell is selected.
-    const hasCopyableSelection = hasSelection || selectedFullColumnIdsRef.current.size > 0;
+    // A picked column is a selection for copying even though no individual
+    // cell is selected — by its letter above the header, or by the header
+    // itself. Kept in step with getClipboardSelection, which copies both.
+    // A group header (`container:<name>`) names no column of its own, so it is
+    // not something Copy can act on.
+    const hasCopyableSelection = hasSelection
+      || selectedFullColumnIdsRef.current.size > 0
+      || [...selectedColumnIdsRef.current].some((id) => !id.startsWith("container:"));
     const undoEntry = sheetUndoStackRef.current.at(-1);
     const redoEntry = sheetRedoStackRef.current.at(-1);
     return {
@@ -7305,6 +7412,33 @@ autoFilling3: autoFillingContainers3.has(container.name),
           z-index: 3;
           cursor: ns-resize;
           touch-action: none;
+        }
+        /* The column header's own bottom boundary, same 9px target as the row
+           handle. It sits above AG's column-resize grip, which is a vertical
+           strip at the cell's right edge, so the two do not fight for the
+           corner: this one stops short of it. */
+        .planning-ag-grid .planning-header-resize-handle {
+          position: absolute;
+          left: 0;
+          right: 6px;
+          bottom: -4px;
+          height: 9px;
+          z-index: 4;
+          cursor: ns-resize;
+          touch-action: none;
+        }
+        .planning-ag-grid .planning-header-resize-handle::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 3px;
+          height: 3px;
+          background: rgba(96, 165, 250, .85);
+          opacity: 0;
+        }
+        .planning-ag-grid .planning-header-resize-handle:hover::after {
+          opacity: 1;
         }
         .planning-ag-grid .planning-row-resize-handle::after {
           content: "";
@@ -7485,7 +7619,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
             }}
             rowHeight={rowHeight}
             getRowHeight={getRowHeight}
-            headerHeight={45}
+            headerHeight={headerHeight}
             groupHeaderHeight={72}
             animateRows={false}
             suppressCellFocus

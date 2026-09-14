@@ -29,6 +29,7 @@ import {
   MAX_ROW_HEIGHT,
   MIN_ROW_HEIGHT,
   ROW_HEIGHT_STORAGE_KEY,
+  HEADER_HEIGHT_STORAGE_KEY,
   ROW_HEIGHTS_STORAGE_KEY,
   COLUMN_COLORS_STORAGE_KEY,
   COLUMN_ORDER_STORAGE_KEY,
@@ -47,8 +48,10 @@ import {
   loadSavedColumnTextFormats,
   loadSavedCellTextFormats,
   loadSavedColumnFilterMenuSize,
+  loadSavedHeaderHeight,
   loadSavedRowHeight,
   loadSavedRowHeights,
+  normalizeHeaderHeight,
   normalizeRowHeight,
   normalizeRowHeights,
   loadSavedColumnWidths,
@@ -1024,6 +1027,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [columnFilterMenuSize, setColumnFilterMenuSize] = useState<ColumnFilterMenuSize>(loadSavedColumnFilterMenuSize);
   const [rowHeight, setRowHeight] = useState<number>(loadSavedRowHeight);
   const [rowHeights, setRowHeights] = useState<RowHeights>(loadSavedRowHeights);
+  const [headerHeight, setHeaderHeight] = useState<number>(loadSavedHeaderHeight);
   const [columnOrder, setColumnOrder] = useState<ColumnOrder>([]);
   const [containerOrderCustomized, setContainerOrderCustomized] = useState(false);
   const [containerEtaOverrides, setContainerEtaOverrides] = useState<Map<number, string>>(new Map());
@@ -1332,6 +1336,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       setRowHeight(normalizedHeight);
     }
 
+    const savedHeaderHeight = d[HEADER_HEIGHT_STORAGE_KEY];
+    if (typeof savedHeaderHeight === "number") {
+      const normalizedHeaderHeight = normalizeHeaderHeight(savedHeaderHeight);
+      mirrorSet(HEADER_HEIGHT_STORAGE_KEY, JSON.stringify(normalizedHeaderHeight));
+      setHeaderHeight(normalizedHeaderHeight);
+    }
+
     const savedDashboardFilters = d[DASHBOARD_FILTERS_STORAGE_KEY];
     if (savedDashboardFilters && typeof savedDashboardFilters === "object" && !Array.isArray(savedDashboardFilters)) {
       const filters = normalizeDashboardFilters(savedDashboardFilters);
@@ -1530,6 +1541,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [COLUMN_FILTER_MENU_SIZE_STORAGE_KEY]: columnFilterMenuSize,
       [ROW_HEIGHT_STORAGE_KEY]: rowHeight,
       [ROW_HEIGHTS_STORAGE_KEY]: rowHeights,
+      [HEADER_HEIGHT_STORAGE_KEY]: headerHeight,
       [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
         columnFilters, productFilter, urgencyFilter, skuPartFilters, sort: gridSort,
       }),
@@ -1552,7 +1564,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     };
-  }, [groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, columnFilters, productFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
+  }, [groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, productFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
 
   // Save all preferences whenever any setting changes (debounced, after the
   // active tab's view has loaded). The Live tab saves to this user's
@@ -4339,6 +4351,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           columnFilterMenuSize={columnFilterMenuSize}
           rowHeight={rowHeight}
           rowHeights={rowHeights}
+          headerHeight={headerHeight}
+          onHeaderHeightChange={setHeaderHeight}
           onRowHeightsChange={handleRowHeightsChange}
           columnFilters={columnFilters}
           onColumnFiltersChange={setColumnFilters}

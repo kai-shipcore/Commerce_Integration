@@ -284,6 +284,23 @@ export function columnAppliesToCategories(columnId: string, categories: Category
   return !scope || scope.some((category) => categories.includes(category));
 }
 
+/** Whether a physical AG Grid column id is covered by one of the logical ids
+ *  the selection state holds. A base column is its own id; a container cell is
+ *  `<container>::<subColumn>`; `con:<subColumn>` stands for that sub-column
+ *  across every container; `container:<name>` names a group, never a column. */
+export function matchesAnyLogicalColumnId(columnId: string, logicalIds: Set<string>): boolean {
+  for (const logicalId of logicalIds) {
+    if (logicalId.includes("::")) {
+      if (columnId === logicalId) return true;
+    } else if (logicalId.startsWith("con:")) {
+      if (columnId.endsWith(`::${logicalId.slice(4)}`)) return true;
+    } else if (!logicalId.startsWith("container:") && columnId === logicalId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export const DEFAULT_FREEZE = "sod";
 export const COLUMN_WIDTHS_STORAGE_KEY = "planning-dashboard-column-widths";
 export const COLUMN_ORDER_STORAGE_KEY = "planning-dashboard-column-order";
@@ -337,6 +354,30 @@ export function loadSavedRowHeight(): number {
     return normalizeRowHeight(JSON.parse(window.localStorage.getItem(ROW_HEIGHT_STORAGE_KEY) ?? "null"));
   } catch {
     return DEFAULT_ROW_HEIGHT;
+  }
+}
+
+export const HEADER_HEIGHT_STORAGE_KEY = "planning-dashboard-header-height";
+
+/** The column-header row — the one holding the individual column names, not
+ *  the group row above it. Dragging its bottom edge is how a long header gets
+ *  room to wrap instead of being cut off. The default matches the height the
+ *  grid used before it was adjustable, so an untouched grid looks unchanged. */
+export const DEFAULT_HEADER_HEIGHT = 45;
+export const MIN_HEADER_HEIGHT = 32;
+export const MAX_HEADER_HEIGHT = 240;
+
+export function normalizeHeaderHeight(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_HEADER_HEIGHT;
+  return Math.max(MIN_HEADER_HEIGHT, Math.min(MAX_HEADER_HEIGHT, Math.round(value)));
+}
+
+export function loadSavedHeaderHeight(): number {
+  if (typeof window === "undefined") return DEFAULT_HEADER_HEIGHT;
+  try {
+    return normalizeHeaderHeight(JSON.parse(window.localStorage.getItem(HEADER_HEIGHT_STORAGE_KEY) ?? "null"));
+  } catch {
+    return DEFAULT_HEADER_HEIGHT;
   }
 }
 

@@ -81,6 +81,11 @@ export interface DemandPlanningGridProps {
   // height here would mean reworking the scroll math, not passing a number.
   /** The grid-wide default, set by the Row Height stepper in the dashboard. */
   rowHeight?: number;
+  /** Height of the column-header row, dragged by its bottom edge. AG Grid
+   *  variant only — this grid's header height is baked into its scroll math
+   *  the same way ROW_HEIGHT is. */
+  headerHeight?: number;
+  onHeaderHeightChange?: (height: number) => void;
   /** Per-row overrides, keyed by master SKU — the rows the user has dragged. */
   /** Column-header filters live in the dashboard so they can be persisted;
    *  the AG grid reads them, edits them through the callback, and reports how
