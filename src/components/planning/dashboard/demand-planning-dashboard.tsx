@@ -20,6 +20,7 @@ import {
   columnAppliesToCategories,
   loadSavedDashboardFilters,
   normalizeDashboardFilters,
+  parseUrgencyParam,
   serializeDashboardFilters,
   CON_SUBCOLS,
   CELL_COLORS_STORAGE_KEY,
@@ -59,7 +60,7 @@ import {
   skuFilterKeysForProduct,
   skuPartsForRow,
 } from "./columns";
-import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, RowHeights, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellTextFormatSettings, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, EditMenuAvailability, RowHeights, SalesStatus, SkuPartFilterKey, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
@@ -81,6 +82,7 @@ import type {
   ScenarioSummary,
 } from "@/features/planning/scenarios";
 import { ScenarioTabBar } from "./scenario-tab-bar";
+import { ToolbarMultiSelect, type ToolbarMultiSelectOption } from "./toolbar-multi-select";
 import { ApplyToLiveDialog } from "./apply-to-live-dialog";
 import { planningLocalDateString } from "@/lib/planning/date-utils";
 import {
@@ -115,12 +117,12 @@ import {
   saveGradientSC,
   type GradientTier,
 } from "@/lib/planning/gradient-config";
-import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, ProductFilter, UrgencyFilter } from "@/types/demand-planning";
+import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta, DemandRow, UrgencyFilter } from "@/types/demand-planning";
 import {
+  CATEGORY_CODE_OPTIONS,
   CATEGORY_GROUP_OPTIONS,
-  categoryCodesForGroup,
-  parseCategoryGroupParam,
-  type CategoryGroup,
+  parseCategoryCodesParam,
+  serializeCategoryCodes,
 } from "./category-groups";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
@@ -159,6 +161,34 @@ const DEFAULT_GROUP_VIS: Record<ColumnGroupKey, boolean> = {
  *  same set, so the two cannot drift into disagreeing about which columns
  *  exist. */
 const INCLUDE_DRAFT_CONTAINERS = false;
+
+/** How long a category change waits before refetching. Short, because the
+ *  category picker commits on its Apply button rather than on each tick, so
+ *  this only ever covers one change at a time. */
+const CATEGORY_CHANGE_DEBOUNCE_MS = 60;
+
+/** Every sales status a row can carry, in the order the status badge already
+ *  ranks them: the two that make up almost the whole catalogue first, then the
+ *  exceptions. All seven occur in production. */
+const SALES_STATUS_FILTER_OPTIONS: ToolbarMultiSelectOption<SalesStatus>[] = [
+  { value: "Original", label: "Original" },
+  { value: "Custom", label: "Custom" },
+  { value: "Part", label: "Part" },
+  { value: "SWC", label: "SWC" },
+  { value: "Hold", label: "Hold" },
+  { value: "Discontinued", label: "Discontinued" },
+  { value: "TBD", label: "TBD" },
+];
+
+/** The urgency bands, keeping the colours the single-choice select used to
+ *  paint itself with. "Overstock" had no option at all before, even though a
+ *  `?status=over` link from the home dashboard could switch it on. */
+const URGENCY_FILTER_OPTIONS: ToolbarMultiSelectOption<UrgencyFilter>[] = [
+  { value: "crit", label: "Critical", tone: { border: "#f0aaaa", background: "#FFEDED", color: "#C42020" } },
+  { value: "warn", label: "Warning", tone: { border: "#f0d0aa", background: "#FEF3D8", color: "#9A5200" } },
+  { value: "bo", label: "BackOrder", tone: { border: "#aac0f0", background: "#E5EEFF", color: "#1A4FC0" } },
+  { value: "over", label: "Overstock", tone: { border: "#a0b4f0", background: "#EEF3FF", color: "#1940B0" } },
+];
 
 const COLUMN_SETTINGS_STORAGE_KEY = "planning-dashboard-column-settings";
 const CONTAINER_VISIBILITY_STORAGE_KEY = "planning-dashboard-container-visibility";
@@ -883,11 +913,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
   const searchParams = useSearchParams();
-  const [categoryGroup, setCategoryGroup] = useState<CategoryGroup>(() => parseCategoryGroupParam(searchParams.get("product")));
-  // Everything downstream — the data hook, both grids, the container list —
-  // still works in raw category codes, so the group is expanded here and
-  // nothing else has to know the picker changed shape.
-  const categoryFilter = useMemo(() => categoryCodesForGroup(categoryGroup), [categoryGroup]);
+  // Raw category codes, straight from `?product=`. Everything downstream — the
+  // data hook, both grids, the container list — has always worked in codes.
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter[]>(
+    () => parseCategoryCodesParam(searchParams.get("product")),
+  );
   const [salesWindowWeights, setSalesWindowWeights] = useState<SalesWindowWeights>(DEFAULT_SALES_WINDOW_WEIGHTS);
   const [oosLostDemandWeights, setOosLostDemandWeights] = useState<OosLostDemandWeights>(DEFAULT_OOS_LOST_DEMAND_WEIGHTS);
   const {
@@ -903,8 +933,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
   // Read once, before the filter states below take their initial values.
   const [savedFilters] = useState(loadSavedDashboardFilters);
-  const [productFilter, setProductFilter] = useState<ProductFilter>(savedFilters.productFilter);
-  const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter | null>(savedFilters.urgencyFilter);
+  // Both empty means no narrowing, which is what the toolbar's "All …" labels
+  // say. Held as arrays rather than Sets so their identity is stable across
+  // renders: the grid's row memo takes them as dependencies, over ~11k rows.
+  const [salesStatusFilter, setSalesStatusFilter] = useState<SalesStatus[]>(savedFilters.salesStatusFilter);
+  const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter[]>(savedFilters.urgencyFilter);
   // Not restored: a search is typed to find one thing, and one restored days
   // later reads as rows gone missing.
   const [search, setSearch] = useState("");
@@ -937,33 +970,30 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
 
     const productParam = searchParams.get("product");
     if (productParam) {
-      setCategoryGroup(parseCategoryGroupParam(productParam));
+      setCategoryFilter(parseCategoryCodesParam(productParam));
     }
-    const statusParam = searchParams.get("status");
-    if (statusParam === "crit" || statusParam === "warn" || statusParam === "bo" || statusParam === "over") {
+    // `?status=` takes a comma list too, so a link can open on more than one
+    // band. The home dashboard's cards still send a single value.
+    const statusParam = parseUrgencyParam(searchParams.get("status"));
+    if (statusParam.length) {
       setUrgencyFilter(statusParam);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Everything the toolbar and the column headers can narrow the grid by. The
-  // category group is not in here: it chooses which products are being planned
+  // category picker is not in here: it chooses which products are being planned
   // at all, not which of them are shown, and clearing it would leave nothing
   // selected.
   const activeFilterCount = useMemo(() => (
     columnFilterCount
-    + (productFilter !== "all" ? 1 : 0)
-    + (urgencyFilter ? 1 : 0)
+    + (salesStatusFilter.length > 0 ? 1 : 0)
+    + (urgencyFilter.length > 0 ? 1 : 0)
     + (search.trim() ? 1 : 0)
     + Object.values(skuPartFilters).filter((values) => values.length > 0).length
-  ), [columnFilterCount, productFilter, search, skuPartFilters, urgencyFilter]);
+  ), [columnFilterCount, salesStatusFilter, search, skuPartFilters, urgencyFilter]);
 
-  const handleProductFilter = useCallback((filter: ProductFilter) => {
-    setProductFilter(filter);
-    setUrgencyFilter(null);
-  }, []);
-
-  const handleCategoryGroup = useCallback((next: CategoryGroup) => {
+  const handleCategoryFilter = useCallback((next: CategoryFilter[]) => {
     if (categoryChangeTimerRef.current) window.clearTimeout(categoryChangeTimerRef.current);
 
     // A different category means a different set of containers, so a colour
@@ -971,19 +1001,21 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setSelectedColorColumns((current) => current.some((id) => id.startsWith("container:")) ? (BASE_COLORABLE_COLUMNS[0] ? [BASE_COLORABLE_COLUMNS[0].id] : []) : current);
     setIsCategoryLoading(true);
     const params = new URLSearchParams(searchParams.toString());
-    params.set("product", next);
+    const encoded = serializeCategoryCodes(next);
+    if (encoded) params.set("product", encoded);
+    else params.delete("product");
     router.replace(`?${params.toString()}`, { scroll: false });
     categoryChangeTimerRef.current = window.setTimeout(() => {
       startCategoryTransition(() => {
-        setCategoryGroup(next);
+        setCategoryFilter(next);
       });
       categoryChangeTimerRef.current = null;
-    }, 60);
+    }, CATEGORY_CHANGE_DEBOUNCE_MS);
   }, [router, searchParams]);
 
   useEffect(() => {
     if (!isCategoryLoading) return;
-    const hideTimer = window.setTimeout(() => setIsCategoryLoading(false), 250);
+    const hideTimer = window.setTimeout(() => setIsCategoryLoading(false), CATEGORY_CHANGE_DEBOUNCE_MS + 250);
     return () => window.clearTimeout(hideTimer);
   }, [categoryFilter, isCategoryLoading]);
 
@@ -1348,7 +1380,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       const filters = normalizeDashboardFilters(savedDashboardFilters);
       mirrorSet(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters(filters)));
       setColumnFilters(filters.columnFilters);
-      setProductFilter(filters.productFilter);
+      setSalesStatusFilter(filters.salesStatusFilter);
       setSkuPartFilters(filters.skuPartFilters);
       setGridSort(filters.sort);
       // The URL wins for urgency: a link shared with ?status= is asking to
@@ -1527,9 +1559,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   useEffect(() => {
     if (!dbPrefsLoaded || activeScenarioId !== null) return;
     window.localStorage.setItem(DASHBOARD_FILTERS_STORAGE_KEY, JSON.stringify(serializeDashboardFilters({
-      columnFilters, productFilter, urgencyFilter, skuPartFilters, sort: gridSort,
+      columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, sort: gridSort,
     })));
-  }, [activeScenarioId, columnFilters, dbPrefsLoaded, gridSort, productFilter, skuPartFilters, urgencyFilter]);
+  }, [activeScenarioId, columnFilters, dbPrefsLoaded, gridSort, salesStatusFilter, skuPartFilters, urgencyFilter]);
 
   /** Everything that makes up "how this tab looks", in one blob. The save
    *  effect writes it, and creating a tab seeds the new tab with it so a copy
@@ -1543,7 +1575,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [ROW_HEIGHTS_STORAGE_KEY]: rowHeights,
       [HEADER_HEIGHT_STORAGE_KEY]: headerHeight,
       [DASHBOARD_FILTERS_STORAGE_KEY]: serializeDashboardFilters({
-        columnFilters, productFilter, urgencyFilter, skuPartFilters, sort: gridSort,
+        columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, sort: gridSort,
       }),
       [COLUMN_ORDER_STORAGE_KEY]: columnOrder,
       [CONTAINER_ORDER_CUSTOMIZED_STORAGE_KEY]: containerOrderCustomized,
@@ -1564,7 +1596,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     };
-  }, [groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, productFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
+  }, [groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
 
   // Save all preferences whenever any setting changes (debounced, after the
   // active tab's view has loaded). The Live tab saves to this user's
@@ -2880,8 +2912,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     // step rather than vanishing.
     agGridEditActionsRef.current?.clearColumnFilters();
     setColumnFilters(new Map());
-    setProductFilter("all");
-    setUrgencyFilter(null);
+    setSalesStatusFilter([]);
+    setUrgencyFilter([]);
     setSearch("");
     setSkuPartFilters(EMPTY_SKU_PART_FILTERS);
   }, []);
@@ -2989,78 +3021,38 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           overflowY: "hidden",
         }}
       >
-<select
-          aria-label="Product category"
-          value={categoryGroup}
-          onChange={(event) => handleCategoryGroup(event.target.value as CategoryGroup)}
-          style={{
-            height: 26,
-            padding: "2px 7px",
-            borderRadius: 4,
-            border: "1px solid #C2BFB5",
-            background: "#E3F5EC",
-            color: "#0A6A45",
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
-        >
-          {CATEGORY_GROUP_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+        <ToolbarMultiSelect<CategoryFilter>
+          ariaLabel="Product category"
+          allLabel={pick("전체 카테고리", "All categories")}
+          options={CATEGORY_CODE_OPTIONS}
+          value={categoryFilter}
+          onChange={handleCategoryFilter}
+          presets={CATEGORY_GROUP_OPTIONS.map((group) => ({ label: group.label, values: group.codes }))}
+          commit="apply"
+          width={170}
+        />
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
-        <select
-          aria-label="Product type filter"
-          value={productFilter}
-          onChange={(e) => handleProductFilter(e.target.value as ProductFilter)}
-          style={{
-            height: 26,
-            padding: "2px 7px",
-            borderRadius: 4,
-            border: "1px solid #C2BFB5",
-            background: productFilter !== "all" ? "#E5EEFF" : "#fff",
-            color: productFilter !== "all" ? "#1A4FC0" : "#1A1917",
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
-        >
-          <option value="all">All Types</option>
-          <option value="orig">Original</option>
-          <option value="cust">Custom</option>
-          <option value="part">Part</option>
-        </select>
+        <ToolbarMultiSelect<SalesStatus>
+          ariaLabel="Product type filter"
+          allLabel="All Types"
+          options={SALES_STATUS_FILTER_OPTIONS}
+          value={salesStatusFilter}
+          onChange={setSalesStatusFilter}
+          width={150}
+        />
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
-        <select
-          aria-label="Urgency filter"
-          value={urgencyFilter ?? ""}
-          onChange={(e) => setUrgencyFilter(e.target.value === "" ? null : e.target.value as UrgencyFilter)}
-          style={{
-            height: 26,
-            padding: "2px 7px",
-            borderRadius: 4,
-            border: "1px solid",
-            borderColor: urgencyFilter === "crit" ? "#f0aaaa" : urgencyFilter === "warn" ? "#f0d0aa" : urgencyFilter === "bo" ? "#aac0f0" : urgencyFilter === "over" ? "#a0b4f0" : "#C2BFB5",
-            background: urgencyFilter === "crit" ? "#FFEDED" : urgencyFilter === "warn" ? "#FEF3D8" : urgencyFilter === "bo" ? "#E5EEFF" : urgencyFilter === "over" ? "#EEF3FF" : "#fff",
-            color: urgencyFilter === "crit" ? "#C42020" : urgencyFilter === "warn" ? "#9A5200" : urgencyFilter === "bo" ? "#1A4FC0" : urgencyFilter === "over" ? "#1940B0" : "#1A1917",
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
-        >
-          <option value="">— All Status</option>
-          <option value="crit">Critical</option>
-          <option value="warn">Warning</option>
-          <option value="bo">BackOrder</option>
-        </select>
+        <ToolbarMultiSelect<UrgencyFilter>
+          ariaLabel="Urgency filter"
+          allLabel="— All Status"
+          options={URGENCY_FILTER_OPTIONS}
+          value={urgencyFilter}
+          onChange={setUrgencyFilter}
+          width={140}
+        />
 
         <div style={{ width: 1, height: 18, background: "#C2BFB5", margin: "0 2px", flexShrink: 0 }} />
 
@@ -4331,7 +4323,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           data={data}
           loading={loading}
           categoryFilter={categoryFilter}
-          productFilter={productFilter}
+          salesStatusFilter={salesStatusFilter}
           urgencyFilter={urgencyFilter}
           search={search}
           skuPartFilters={activeSkuPartFilters}
@@ -4421,7 +4413,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           data={data}
           loading={loading}
           categoryFilter={categoryFilter}
-          productFilter={productFilter}
+          salesStatusFilter={salesStatusFilter}
           urgencyFilter={urgencyFilter}
           search={search}
           skuPartFilters={activeSkuPartFilters}

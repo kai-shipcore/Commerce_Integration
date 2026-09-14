@@ -32,6 +32,8 @@ import {
   WRAPPING_ROW_COLUMN_IDS,
   columnAppliesToCategories,
   matchesAnyLogicalColumnId,
+  matchesSalesStatusSelection,
+  matchesUrgencySelection,
   normalizeColumnFilterMenuSize,
   normalizeHeaderHeight,
   normalizeRowHeight,
@@ -3713,7 +3715,7 @@ export function AgDemandPlanningGrid({
   data,
   loading,
   categoryFilter,
-  productFilter,
+  salesStatusFilter,
   urgencyFilter,
   search,
   skuPartFilters,
@@ -4115,17 +4117,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (!showZeroSales && !urgencyFilter &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
-      if (productFilter === "orig" && row.sales_status !== "Original")      return false;
-      if (productFilter === "cust" && row.sales_status !== "Custom")        return false;
-      if (productFilter === "part" && row.sales_status !== "Part")          return false;
+      if (!matchesSalesStatusSelection(row, salesStatusFilter)) return false;
       if (!skuMatchesPartFilters(row, skuPartFilters)) return false;
       if (query && !row.sku.toLowerCase().includes(query) && !(row.containers_list ?? "").toLowerCase().includes(query)) return false;
-      const urgency = urgStatus(row);
-      if (urgencyFilter === "crit") return urgency === "crit";
-      if (urgencyFilter === "warn") return urgency === "warn";
-      if (urgencyFilter === "bo") return (row.back ?? 0) < 0;
-      if (urgencyFilter === "over") return urgency === "over";
-      return true;
+      return matchesUrgencySelection(row, urgencyFilter);
     });
     return filtered.map((row) => {
       const merged: DemandRow = {
@@ -4139,7 +4134,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       merged.stock_mode = "available";
       return merged;
     });
-  }, [categoryFilter, cbmOverrides, data.rows, productFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
+  }, [categoryFilter, cbmOverrides, data.rows, salesStatusFilter, rowOverrides, search, showZeroSales, skuPartFilters, skuWorkNotes, skuWorkNotes2, skuWorkNotes3, urgencyFilter]);
 
   const visibleRows = useMemo(
     () => applyColumnFilters(

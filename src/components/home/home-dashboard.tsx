@@ -20,6 +20,7 @@ import { CriticalSkuList, type TopCriticalSku } from "./critical-sku-list";
 import { DelayedContainerTable, type DelayedContainer } from "./delayed-container-table";
 import { InboundContainerTable, type InboundContainer } from "./inbound-container-table";
 import { apiPath } from "@/lib/api-path";
+import { categoryCodesForGroup } from "@/components/planning/dashboard/category-groups";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -246,7 +247,11 @@ export function HomeDashboard({
   const inboundContainers    = stats?.inboundContainers    ?? [];
   const delayedContainersCount = stats?.kpis.delayedContainers ?? 0;
 
-  const dashLink = `/planning/dashboard-ag-grid?product=${activeCat}`;
+  // The planning dashboard's `?product=` names raw category codes, and these
+  // cards stand for the sets that are planned together — Car Cover's card
+  // covers SWC and Accessories too. Sending the set keeps the card and the
+  // page it opens showing the same products.
+  const dashLink = `/planning/dashboard-ag-grid?product=${categoryCodesForGroup(activeCat).join(",")}`;
 
   const canOpenHref = useCallback((href: string) => {
     const pathname = href.startsWith("http") ? new URL(href).pathname : href.split("?")[0];

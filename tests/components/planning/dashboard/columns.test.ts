@@ -14,10 +14,15 @@ import {
   normalizeDashboardFilters,
   loadSavedRowHeight,
   matchesAnyLogicalColumnId,
+  matchesCategorySelection,
+  matchesSalesStatusSelection,
+  matchesUrgencySelection,
+  parseUrgencyParam,
   normalizeHeaderHeight,
   normalizeRowHeight,
   normalizeRowHeights,
 } from "@/components/planning/dashboard/columns";
+import type { DemandRow } from "@/types/demand-planning";
 
 describe("FBA sales columns", () => {
   it("places the FBA Sales group directly after East FBM Sales", () => {
@@ -203,13 +208,13 @@ describe("normalizeDashboardFilters", () => {
   it("restores what was stored", () => {
     const filters = normalizeDashboardFilters({
       columnFilters: { sku: { mode: "values", values: ["A"] } },
-      productFilter: "cust",
-      urgencyFilter: "crit",
+      salesStatusFilter: ["Original", "Custom"],
+      urgencyFilter: ["crit", "warn"],
       skuPartFilters: { seat: ["FRONT"], color: ["BK"] },
     });
     expect(filters.columnFilters.size).toBe(1);
-    expect(filters.productFilter).toBe("cust");
-    expect(filters.urgencyFilter).toBe("crit");
+    expect(filters.salesStatusFilter).toEqual(["Original", "Custom"]);
+    expect(filters.urgencyFilter).toEqual(["crit", "warn"]);
     expect(filters.skuPartFilters.seat).toEqual(["FRONT"]);
     expect(filters.skuPartFilters.color).toEqual(["BK"]);
     expect(filters.skuPartFilters.make).toEqual([]);
@@ -232,20 +237,158 @@ describe("normalizeDashboardFilters", () => {
     for (const value of [null, undefined, "x", 5, []]) {
       const filters = normalizeDashboardFilters(value);
       expect(filters.columnFilters.size).toBe(0);
-      expect(filters.productFilter).toBe("all");
-      expect(filters.urgencyFilter).toBeNull();
+      expect(filters.salesStatusFilter).toEqual([]);
+      expect(filters.urgencyFilter).toEqual([]);
     }
   });
 
   it("rejects values outside the known sets rather than trusting storage", () => {
     const filters = normalizeDashboardFilters({
-      productFilter: "bogus",
-      urgencyFilter: "bogus",
+      salesStatusFilter: ["Original", "bogus"],
+      urgencyFilter: ["crit", "bogus"],
       skuPartFilters: { seat: "FRONT", unknownKey: ["x"] },
     });
-    expect(filters.productFilter).toBe("all");
-    expect(filters.urgencyFilter).toBeNull();
+    expect(filters.salesStatusFilter).toEqual(["Original"]);
+    expect(filters.urgencyFilter).toEqual(["crit"]);
     expect(filters.skuPartFilters.seat).toEqual([]);
     expect("unknownKey" in filters.skuPartFilters).toBe(false);
+  });
+});
+
+/** Only the fields the filter predicates read. */
+function row(overrides: Partial<DemandRow> = {}): DemandRow {
+  return {
+    sku: "CA-SC-10-B-02-BK-1TO",
+    sales_status: "Original",
+    back: 0,
+    ...overrides,
+  } as DemandRow;
+}
+
+describe("normalizeDashboardFilters — reading what the single-choice selects stored", () => {
+  it("reads each old product code as the one status it stood for", () => {
+    const read = (productFilter: unknown) => normalizeDashboardFilters({ productFilter }).salesStatusFilter;
+    expect(read("orig")).toEqual(["Original"]);
+    expect(read("cust")).toEqual(["Custom"]);
+    expect(read("part")).toEqual(["Part"]);
+  });
+
+  it("reads the old 'all' as no narrowing", () => {
+    expect(normalizeDashboardFilters({ productFilter: "all" }).salesStatusFilter).toEqual([]);
+    expect(normalizeDashboardFilters({ productFilter: "bogus" }).salesStatusFilter).toEqual([]);
+  });
+
+  it("reads a single stored urgency as a one-band selection", () => {
+    expect(normalizeDashboardFilters({ urgencyFilter: "crit" }).urgencyFilter).toEqual(["crit"]);
+    expect(normalizeDashboardFilters({ urgencyFilter: null }).urgencyFilter).toEqual([]);
+    expect(normalizeDashboardFilters({ urgencyFilter: "bogus" }).urgencyFilter).toEqual([]);
+  });
+
+  it("prefers the new key when a blob carries both", () => {
+    const filters = normalizeDashboardFilters({
+      salesStatusFilter: ["Hold", "TBD"],
+      productFilter: "orig",
+    });
+    expect(filters.salesStatusFilter).toEqual(["Hold", "TBD"]);
+  });
+});
+
+describe("parseUrgencyParam", () => {
+  it("reads the single value the home dashboard cards send", () => {
+    expect(parseUrgencyParam("crit")).toEqual(["crit"]);
+    expect(parseUrgencyParam("over")).toEqual(["over"]);
+  });
+
+  it("reads a comma list, and drops what it does not know", () => {
+    expect(parseUrgencyParam("crit,warn")).toEqual(["crit", "warn"]);
+    expect(parseUrgencyParam(" CRIT , bogus ")).toEqual(["crit"]);
+    expect(parseUrgencyParam("crit,crit")).toEqual(["crit"]);
+  });
+
+  it("reads nothing as no selection", () => {
+    expect(parseUrgencyParam(null)).toEqual([]);
+    expect(parseUrgencyParam("")).toEqual([]);
+    expect(parseUrgencyParam("nonsense")).toEqual([]);
+  });
+});
+
+describe("matchesSalesStatusSelection", () => {
+  it("lets everything through when nothing is ticked", () => {
+    for (const status of ["Original", "Custom", "Part", "SWC", "Hold", "Discontinued", "TBD"] as const) {
+      expect(matchesSalesStatusSelection(row({ sales_status: status }), [])).toBe(true);
+    }
+  });
+
+  it("is an OR over the ticked statuses", () => {
+    const picked = ["Original", "Custom"] as const;
+    expect(matchesSalesStatusSelection(row({ sales_status: "Original" }), [...picked])).toBe(true);
+    expect(matchesSalesStatusSelection(row({ sales_status: "Custom" }), [...picked])).toBe(true);
+    // The combination the toolbar could not express before: Original and
+    // Custom, with SWC and Discontinued left out.
+    expect(matchesSalesStatusSelection(row({ sales_status: "SWC" }), [...picked])).toBe(false);
+    expect(matchesSalesStatusSelection(row({ sales_status: "Discontinued" }), [...picked])).toBe(false);
+  });
+
+  it("can pick the four statuses the old select had no option for", () => {
+    for (const status of ["SWC", "Hold", "Discontinued", "TBD"] as const) {
+      expect(matchesSalesStatusSelection(row({ sales_status: status }), [status])).toBe(true);
+      expect(matchesSalesStatusSelection(row({ sales_status: "Original" }), [status])).toBe(false);
+    }
+  });
+});
+
+describe("matchesUrgencySelection", () => {
+  const critical = row({ back: -5 });
+  const warning = row({ sod_days_raw: 45 } as Partial<DemandRow>);
+  const healthy = row({ sod_days_raw: 100 } as Partial<DemandRow>);
+  const overstocked = row({ sod_days_raw: 400 } as Partial<DemandRow>);
+
+  it("lets everything through when nothing is ticked, healthy rows included", () => {
+    for (const candidate of [critical, warning, healthy, overstocked]) {
+      expect(matchesUrgencySelection(candidate, [])).toBe(true);
+    }
+  });
+
+  it("is an OR over the ticked bands", () => {
+    expect(matchesUrgencySelection(warning, ["crit", "warn"])).toBe(true);
+    expect(matchesUrgencySelection(critical, ["crit", "warn"])).toBe(true);
+    expect(matchesUrgencySelection(healthy, ["crit", "warn"])).toBe(false);
+  });
+
+  it("offers Overstock, which the old select had no option for at all", () => {
+    expect(matchesUrgencySelection(overstocked, ["over"])).toBe(true);
+    expect(matchesUrgencySelection(healthy, ["over"])).toBe(false);
+  });
+
+  it("reads BackOrder off the row rather than the urgency band", () => {
+    expect(matchesUrgencySelection(critical, ["bo"])).toBe(true);
+    expect(matchesUrgencySelection(row({ back: 3 }), ["bo"])).toBe(false);
+    // A back-ordered row is also "crit" by urgStatus, so ticking both adds
+    // nothing to ticking crit alone. Worth pinning: it looks like a bug.
+    expect(matchesUrgencySelection(critical, ["crit"])).toBe(true);
+  });
+});
+
+describe("matchesCategorySelection", () => {
+  it("lets everything through when nothing is ticked", () => {
+    expect(matchesCategorySelection(row({ category_code: "FM" }), [])).toBe(true);
+  });
+
+  it("matches on the stored category code", () => {
+    expect(matchesCategorySelection(row({ category_code: "CC" }), ["cc"])).toBe(true);
+    expect(matchesCategorySelection(row({ category_code: "CC" }), ["sc"])).toBe(false);
+    expect(matchesCategorySelection(row({ category_code: "CC" }), ["sc", "cc"])).toBe(true);
+  });
+
+  it("falls back to the SKU string when the row has no category", () => {
+    expect(matchesCategorySelection(row({ sku: "CC-1234" }), ["cc"])).toBe(true);
+    expect(matchesCategorySelection(row({ sku: "CA-FM-9" }), ["fm"])).toBe(true);
+    expect(matchesCategorySelection(row({ sku: "SOMETHING-ELSE" }), ["ac"])).toBe(true);
+  });
+
+  it("treats a ticked SWC as additive, pulling in rows from other categories", () => {
+    const swcRow = row({ category_code: "SC", sales_status: "SWC" });
+    expect(matchesCategorySelection(swcRow, ["swc"])).toBe(true);
+    expect(matchesCategorySelection(row({ category_code: "SC" }), ["swc"])).toBe(false);
   });
 });

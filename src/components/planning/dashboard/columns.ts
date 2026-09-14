@@ -6,7 +6,7 @@ import {
   type ColumnFilter,
 } from "@/lib/planning/column-filter";
 import { normalizeGridSort, type GridSort } from "@/lib/planning/grid-sort";
-import type { CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, ProductFilter, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
+import type { CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
 
 export const TINT_COLORS: Record<string, string> = {
   "t-stock":   "#F5F9FF",
@@ -381,6 +381,65 @@ export function loadSavedHeaderHeight(): number {
   }
 }
 
+/** The sales statuses a row can carry. Not a new union — the row type already
+ *  spells out all seven, and the toolbar filter offers exactly those. */
+export type SalesStatus = DemandRow["sales_status"];
+
+export const SALES_STATUS_VALUES: SalesStatus[] = [
+  "Original", "Custom", "Part", "SWC", "Hold", "Discontinued", "TBD",
+];
+
+/** Where a row sits when `fc_products` has no category for it: the SKU string
+ *  is the fallback, same order of checks the server's mirror clause uses. */
+export function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
+  if (row.category_code) return row.category_code;
+  const normalized = row.sku.toUpperCase();
+  if (normalized.includes("SWC")) return "SWC";
+  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
+  if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
+  return "AC";
+}
+
+// Base categories (sc/cc/fm/ac) checked in the multi-select — SWC is excluded since
+// it's a cross-cutting status filter, not a category.
+export function checkedBaseCategories(selected: CategoryFilter[]): ("sc" | "cc" | "fm" | "ac")[] {
+  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "swc");
+}
+
+/**
+ * The three toolbar filters, as row predicates. An empty selection is no
+ * constraint rather than "match nothing" — a filter nobody has touched must
+ * not empty the grid, and it is what the toolbar's "All …" label says.
+ *
+ * Both grids ran byte-identical copies of the category rule; they share these
+ * now, so the next change to a filter happens once.
+ */
+export function matchesCategorySelection(row: DemandRow, selected: CategoryFilter[]): boolean {
+  if (selected.length === 0) return true;
+  // A row matches if it belongs to a checked base category, OR if its status matches a checked
+  // SWC chip (regardless of the row's own category) — the SWC chip pulls in rows from
+  // outside the checked categories rather than narrowing the checked categories.
+  if (checkedBaseCategories(selected).some((c) => c.toUpperCase() === categoryCodeForRow(row))) return true;
+  if (selected.includes("swc") && row.sales_status === "SWC") return true;
+  return false;
+}
+
+export function matchesSalesStatusSelection(row: DemandRow, selected: SalesStatus[]): boolean {
+  if (selected.length === 0) return true;
+  return selected.includes(row.sales_status);
+}
+
+export function matchesUrgencySelection(row: DemandRow, selected: UrgencyFilter[]): boolean {
+  if (selected.length === 0) return true;
+  const urgency = urgStatus(row);
+  return selected.some((choice) => (
+    // "bo" is not an urgency band but a fact about the row, which is why it
+    // reads `back` directly instead of going through urgStatus.
+    choice === "bo" ? (row.back ?? 0) < 0 : urgency === choice
+  ));
+}
+
 export const DASHBOARD_FILTERS_STORAGE_KEY = "planning-dashboard-filters";
 
 /** What the dashboard narrows the grid by, kept across a reload — losing a
@@ -392,8 +451,10 @@ export const DASHBOARD_FILTERS_STORAGE_KEY = "planning-dashboard-filters";
  *  shared link opens on what the sender was looking at. */
 export interface DashboardFiltersState {
   columnFilters: Map<string, ColumnFilter>;
-  productFilter: ProductFilter;
-  urgencyFilter: UrgencyFilter | null;
+  /** Empty means every status, not none. */
+  salesStatusFilter: SalesStatus[];
+  /** Empty means every urgency, not none. */
+  urgencyFilter: UrgencyFilter[];
   skuPartFilters: SkuPartFilters;
   /** Stored alongside the filters because it is remembered for the same
    *  reason, but it is not one of them: the toolbar's filter reset leaves the
@@ -401,13 +462,49 @@ export interface DashboardFiltersState {
   sort: GridSort | null;
 }
 
-const PRODUCT_FILTER_VALUES = new Set<ProductFilter>(["all", "orig", "cust", "part"]);
 const URGENCY_FILTER_VALUES = new Set<UrgencyFilter>(["crit", "warn", "bo", "over"]);
+const SALES_STATUS_SET = new Set<string>(SALES_STATUS_VALUES);
+
+/** What the single-choice "All Types" select used to store, and the status
+ *  each of its values stood for. Saved preferences outlive the widget, so a
+ *  stored scalar is read as the one-status selection it always meant. */
+const LEGACY_PRODUCT_FILTER: Record<string, SalesStatus[]> = {
+  all: [],
+  orig: ["Original"],
+  cust: ["Custom"],
+  part: ["Part"],
+};
+
+function parseSalesStatusFilter(value: unknown): SalesStatus[] {
+  if (typeof value === "string") return LEGACY_PRODUCT_FILTER[value] ?? [];
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is SalesStatus => typeof entry === "string" && SALES_STATUS_SET.has(entry));
+}
+
+/** Reads `?status=`, which may name more than one band. A link from the home
+ *  dashboard's cards still carries a single value and still works. */
+export function parseUrgencyParam(value: string | null): UrgencyFilter[] {
+  if (!value) return [];
+  const bands = value
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token): token is UrgencyFilter => URGENCY_FILTER_VALUES.has(token as UrgencyFilter));
+  return [...new Set(bands)];
+}
+
+function parseUrgencyFilter(value: unknown): UrgencyFilter[] {
+  // The single-choice select stored one value or null.
+  if (typeof value === "string") {
+    return URGENCY_FILTER_VALUES.has(value as UrgencyFilter) ? [value as UrgencyFilter] : [];
+  }
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is UrgencyFilter => typeof entry === "string" && URGENCY_FILTER_VALUES.has(entry as UrgencyFilter));
+}
 
 export function serializeDashboardFilters(filters: DashboardFiltersState): Record<string, unknown> {
   return {
     columnFilters: serializeColumnFilters(filters.columnFilters),
-    productFilter: filters.productFilter,
+    salesStatusFilter: filters.salesStatusFilter,
     urgencyFilter: filters.urgencyFilter,
     skuPartFilters: filters.skuPartFilters,
     sort: filters.sort,
@@ -417,8 +514,8 @@ export function serializeDashboardFilters(filters: DashboardFiltersState): Recor
 export function normalizeDashboardFilters(value: unknown): DashboardFiltersState {
   const empty: DashboardFiltersState = {
     columnFilters: new Map(),
-    productFilter: "all",
-    urgencyFilter: null,
+    salesStatusFilter: [],
+    urgencyFilter: [],
     skuPartFilters: EMPTY_SKU_PART_FILTERS,
     sort: null,
   };
@@ -438,12 +535,10 @@ export function normalizeDashboardFilters(value: unknown): DashboardFiltersState
 
   return {
     columnFilters: parseColumnFilters(candidate.columnFilters),
-    productFilter: PRODUCT_FILTER_VALUES.has(candidate.productFilter as ProductFilter)
-      ? candidate.productFilter as ProductFilter
-      : "all",
-    urgencyFilter: URGENCY_FILTER_VALUES.has(candidate.urgencyFilter as UrgencyFilter)
-      ? candidate.urgencyFilter as UrgencyFilter
-      : null,
+    // `productFilter` is the key the single-choice select wrote; anything
+    // saved before this became a multi-select still comes back through it.
+    salesStatusFilter: parseSalesStatusFilter(candidate.salesStatusFilter ?? candidate.productFilter),
+    urgencyFilter: parseUrgencyFilter(candidate.urgencyFilter),
     skuPartFilters,
     sort: normalizeGridSort(candidate.sort),
   };

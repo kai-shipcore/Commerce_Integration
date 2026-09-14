@@ -20,12 +20,16 @@ import {
   columnAppliesToCategories,
   daysTo,
   isResizableColumnId,
+  checkedBaseCategories,
+  matchesCategorySelection,
+  matchesSalesStatusSelection,
+  matchesUrgencySelection,
   skuMatchesPartFilters,
   urgStatus,
 } from "./columns";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { GridSort } from "@/lib/planning/grid-sort";
-import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SalesStatus, SkuPartFilters, TextFormatSettings } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -37,7 +41,6 @@ import type {
   ColumnGroupKey,
   DemandPlanningData,
   DemandRow,
-  ProductFilter,
   UrgencyFilter,
   UrgencyStatus,
 } from "@/types/demand-planning";
@@ -55,8 +58,10 @@ export type PlanningFormatHistoryRecorder = (changes: PlanningFormatHistoryChang
 export interface DemandPlanningGridProps {
   data: DemandPlanningData;
   categoryFilter: CategoryFilter[];
-  productFilter: ProductFilter;
-  urgencyFilter: UrgencyFilter | null;
+  /** Empty means every status — see matchesSalesStatusSelection. */
+  salesStatusFilter: SalesStatus[];
+  /** Empty means every urgency band. */
+  urgencyFilter: UrgencyFilter[];
   search: string;
   skuPartFilters: SkuPartFilters;
   onFilteredRowsChange: (rows: DemandRow[]) => void;
@@ -223,31 +228,6 @@ function compareAscending(left: SortValue, right: SortValue): number {
   return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | "SWC" {
-  if (row.category_code) return row.category_code;
-  const normalized = row.sku.toUpperCase();
-  if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-")) return "CC";
-  if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
-  if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
-  return "AC";
-}
-
-// Base categories (sc/cc/fm/ac) checked in the multi-select — SWC is excluded since
-// it's a cross-cutting status filter, not a category.
-function checkedBaseCategories(selected: CategoryFilter[]): ("sc" | "cc" | "fm" | "ac")[] {
-  return selected.filter((c): c is "sc" | "cc" | "fm" | "ac" => c !== "swc");
-}
-
-// A row matches if it belongs to a checked base category, OR if its status matches a checked
-// SWC chip (regardless of the row's own category) — the SWC chip pulls in rows from
-// outside the checked categories rather than narrowing the checked categories.
-function matchesCategorySelection(row: DemandRow, selected: CategoryFilter[]): boolean {
-  if (checkedBaseCategories(selected).some((c) => c.toUpperCase() === categoryCodeForRow(row))) return true;
-  if (selected.includes("swc") && row.sales_status === "SWC") return true;
-  return false;
-}
-
 function renderCell(content: CellContent): React.ReactNode {
   if (content === null || content === undefined) return "";
   if (typeof content === "object" && "html" in content) {
@@ -351,7 +331,7 @@ function cellStyle(col: ColDef): React.CSSProperties {
 export function DemandPlanningGrid({
   data,
   categoryFilter,
-  productFilter,
+  salesStatusFilter,
   urgencyFilter,
   search,
   skuPartFilters,
@@ -483,19 +463,12 @@ export function DemandPlanningGrid({
       if (!showZeroSales && !urgencyFilter &&
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
-      if (productFilter === "orig" && r.sales_status !== "Original")      return false;
-      if (productFilter === "cust" && r.sales_status !== "Custom")        return false;
-      if (productFilter === "part" && r.sales_status !== "Part")          return false;
+      if (!matchesSalesStatusSelection(r, salesStatusFilter)) return false;
       if (!skuMatchesPartFilters(r, skuPartFilters)) return false;
       if (q && !r.sku.toLowerCase().includes(q) && !(r.containers_list || "").toLowerCase().includes(q)) return false;
-      const u: UrgencyStatus = urgStatus(r);
-      if (urgencyFilter === "crit") return u === "crit";
-      if (urgencyFilter === "warn") return u === "warn";
-      if (urgencyFilter === "bo")   return (r.back || 0) < 0;
-      if (urgencyFilter === "over") return u === "over";
-      return true;
+      return matchesUrgencySelection(r, urgencyFilter);
     });
-  }, [ROWS, categoryFilter, productFilter, skuPartFilters, urgencyFilter, search, showZeroSales]);
+  }, [ROWS, categoryFilter, salesStatusFilter, skuPartFilters, urgencyFilter, search, showZeroSales]);
 
   const displayedRows = useMemo(() => {
     const getSortValue = sortColumnId ? SORT_VALUE_BY_COLUMN[sortColumnId] : undefined;
@@ -569,7 +542,7 @@ export function DemandPlanningGrid({
     if (!element) return;
     element.scrollTop = 0;
     setScrollState((current) => current.top === 0 ? current : { ...current, top: 0 });
-  }, [categoryFilter, productFilter, urgencyFilter, search, sortColumnId, sortDirection]);
+  }, [categoryFilter, salesStatusFilter, urgencyFilter, search, sortColumnId, sortDirection]);
 
   const virtualRows = useMemo(() => {
     if (!showCon) {

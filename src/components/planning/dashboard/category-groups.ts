@@ -1,17 +1,20 @@
 import type { CategoryFilter } from "@/types/demand-planning";
 
 /**
- * The dashboard's category picker: one choice, three groups.
+ * The dashboard's category picker: a checkbox list over the five raw codes,
+ * with the three common sets offered as one-click presets.
  *
- * It used to be a checkbox list over the five raw category codes, and picking
- * more than one was slow enough to be unusable — the server only scopes a
- * query when a single base category is selected, so any combination fell back
- * to fetching all 11k+ rows and filtering them in the browser, with the whole
- * set still passing through the grid and the container chain maths.
+ * It was briefly one choice of three groups. The reason was that picking more
+ * than one category defeated server scoping entirely — the endpoint took a
+ * single code and dropped it for any combination, so the browser received all
+ * 11k+ rows and filtered them itself. That was fixed in the same commit
+ * (`1989984`): the endpoint now takes the codes as a list and filters on ANY
+ * of them. What remains is only the row volume of a wide selection, which is
+ * the reader's call to make.
  *
- * The groups are the sets that are always read together: SWC and Accessories
+ * The presets are the sets that are usually read together: SWC and Accessories
  * are planned alongside Car Cover, and Seat Cover parts (CA-SC-PART-*)
- * already carry the SC category code, so that group's second half needs no
+ * already carry the SC category code, so that preset's second half needs no
  * code of its own — the label just says so.
  */
 export type CategoryGroup = "sc" | "cc" | "fm";
@@ -24,26 +27,51 @@ export const CATEGORY_GROUP_OPTIONS: { value: CategoryGroup; label: string; code
 
 export const DEFAULT_CATEGORY_GROUP: CategoryGroup = "sc";
 
-const GROUP_BY_CODE = new Map<string, CategoryGroup>(
-  CATEGORY_GROUP_OPTIONS.flatMap((option) => option.codes.map((code) => [code, option.value] as const)),
-);
-
 export function categoryCodesForGroup(group: CategoryGroup): CategoryFilter[] {
   return CATEGORY_GROUP_OPTIONS.find((option) => option.value === group)?.codes
     ?? CATEGORY_GROUP_OPTIONS[0].codes;
 }
 
+export const CATEGORY_CODE_OPTIONS: { value: CategoryFilter; label: string }[] = [
+  { value: "sc", label: "Seat Cover" },
+  { value: "cc", label: "Car Cover" },
+  { value: "fm", label: "Floor Mat" },
+  { value: "ac", label: "Accessories" },
+  { value: "swc", label: "SWC" },
+];
+
+const VALID_CATEGORY_CODES = new Set<string>(CATEGORY_CODE_OPTIONS.map((option) => option.value));
+
+/** The codes a bare dashboard opens on. Kept at Seat Cover so the first screen
+ *  is what it has always been, rather than all five categories at once. */
+export const DEFAULT_CATEGORY_CODES: CategoryFilter[] = categoryCodesForGroup(DEFAULT_CATEGORY_GROUP);
+
 /**
- * Reads the `product` query parameter. Links written before the picker became
- * single-choice carry a comma list (`?product=sc,cc`); rather than break them,
- * the first value that names a group wins — a shared link then opens on
- * something the reader asked for instead of a default.
+ * Reads the `product` query parameter as the set of category codes to show.
+ * Every token counts, so `?product=sc,cc` opens both — which is what such a
+ * link meant when it was written, and what it means again now.
+ *
+ * Note this reads raw codes, not preset names. They spell the same for three
+ * of them, so a link saying `?product=cc` now opens Car Cover alone rather
+ * than the Car Cover + SWC + Accessories preset.
  */
-export function parseCategoryGroupParam(value: string | null): CategoryGroup {
-  if (!value) return DEFAULT_CATEGORY_GROUP;
-  for (const token of value.split(",")) {
-    const group = GROUP_BY_CODE.get(token.trim().toLowerCase());
-    if (group) return group;
-  }
-  return DEFAULT_CATEGORY_GROUP;
+export function parseCategoryCodesParam(value: string | null): CategoryFilter[] {
+  if (!value) return DEFAULT_CATEGORY_CODES;
+  const codes = value
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token): token is CategoryFilter => VALID_CATEGORY_CODES.has(token));
+  // An unreadable parameter is treated as no parameter: an empty selection
+  // would mean every category, which is not what a broken link should do.
+  return codes.length ? [...new Set(codes)] : DEFAULT_CATEGORY_CODES;
+}
+
+/** Serializes back into `?product=`, in the option order so the URL is stable
+ *  regardless of the order boxes were ticked. */
+export function serializeCategoryCodes(codes: CategoryFilter[]): string {
+  const selected = new Set(codes);
+  return CATEGORY_CODE_OPTIONS
+    .filter((option) => selected.has(option.value))
+    .map((option) => option.value)
+    .join(",");
 }
