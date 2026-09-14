@@ -4,7 +4,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ClipboardPaste, Copy, ExternalLink, Scissors, Search } from "lucide-react";
+import { ArrowUpDown, CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ClipboardPaste, Copy, ExternalLink, Scissors, Search } from "lucide-react";
 import {
   AllCommunityModule,
   themeQuartz,
@@ -765,7 +765,17 @@ function GridColumnMenu({
   const [search, setSearch] = useState("");
   const [menuSize, setMenuSize] = useState(() => normalizeColumnFilterMenuSize(size));
   const resizeCleanupRef = useRef<(() => void) | null>(null);
-  const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
+  /** Which way the checkbox list itself reads. Separate from the column's own
+   *  A→Z / Z→A above, which reorders grid rows — this only reorders the list
+   *  you are picking from, so a value near the end of a long column is one
+   *  click away instead of a scroll away. `values` already arrives ascending
+   *  from `distinctColumnValues`, so descending is that order reversed. */
+  const [valueSort, setValueSort] = useState<"asc" | "desc">("asc");
+  const shown = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const matched = values.filter((v) => v.label.toLowerCase().includes(term));
+    return valueSort === "asc" ? matched : matched.reverse();
+  }, [values, search, valueSort]);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
@@ -844,13 +854,17 @@ function GridColumnMenu({
         style={{
           position: "fixed", top: menuTop, left: menuLeft, zIndex: 1000, background: "#fff",
           border: "1px solid #E2E8F0", borderRadius: 6, boxShadow: "0 4px 16px rgba(15,23,42,.16)",
-          width: menuSize.width, height: menuSize.height, minWidth: 200, minHeight: 400, overflow: "visible",
+          width: menuSize.width, height: menuSize.height, minWidth: 200, minHeight: 400,
+          // Stays visible so the colour and sales-type submenus can hang off
+          // the side; the scrolling happens on the value list itself.
+          overflow: "visible",
+          display: "flex", flexDirection: "column",
         }}
       >
-        <div style={{ padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #F1F5F9" }}>
+        <div style={{ flexShrink: 0, padding: "6px 10px 4px", fontSize: 11, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #F1F5F9" }}>
           {label}
         </div>
-        <div style={{ boxSizing: "border-box", display: "flex", flexDirection: "column", height: "calc(100% - 28px)", minHeight: 0, overflow: "visible", padding: 6, width: "100%" }}>
+        <div style={{ boxSizing: "border-box", display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "visible", padding: 6, width: "100%" }}>
             <MenuItem disabled={!canHide} onClick={() => { onHide(); onClose(); }}>
               {pick("열 숨기기", "Hide column")}
             </MenuItem>
@@ -950,15 +964,26 @@ function GridColumnMenu({
             </MenuItem>
             {filterSection === "values" && (
               <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0, padding: "0 8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
+                <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 4px 6px", fontSize: 11, color: "#64748B" }}>
                   <span>
                     <button type="button" onClick={() => setStaged(new Set(shown.map((v) => v.value)))} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 선택", "Select all")} {shown.length}</button>
                     {" - "}
                     <button type="button" onClick={() => setStaged(new Set())} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0 }}>{pick("모두 지우기", "Clear")}</button>
                   </span>
-                  <span>{pick("표시 중", "Displaying")} {shown.length}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setValueSort((current) => (current === "asc" ? "desc" : "asc"))}
+                      title={pick("목록 정렬 순서 바꾸기", "Reverse the list order")}
+                      style={{ display: "flex", alignItems: "center", gap: 2, background: "none", border: "none", cursor: "pointer", color: "#64748B", padding: 0, fontSize: 11 }}
+                    >
+                      {valueSort === "asc" ? "A→Z" : "Z→A"}
+                      <ArrowUpDown size={11} strokeWidth={2} />
+                    </button>
+                    <span>{pick("표시 중", "Displaying")} {shown.length}</span>
+                  </span>
                 </div>
-                <div style={{ position: "relative", marginBottom: 4 }}>
+                <div style={{ flexShrink: 0, position: "relative", marginBottom: 4 }}>
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -969,8 +994,17 @@ function GridColumnMenu({
                 </div>
                 <div
                   style={{
-                    flex: "none",
-                    height: Math.max(24, 96 + menuSize.height - DEFAULT_COLUMN_FILTER_MENU_SIZE.height),
+                    // Takes whatever is left after the menu items, the search
+                    // box and the footer, rather than a height derived from
+                    // how much the window was resized by. That arithmetic
+                    // assumed a fixed amount of chrome above it, so anything
+                    // taller than the guess — a column label long enough to
+                    // wrap, most often — pushed the list over the footer, and
+                    // the value rows and their counts were drawn on top of
+                    // Reset size / Cancel / Apply. The explicit minHeight is
+                    // what lets a flex child shrink below its content at all,
+                    // held at one row so the list never disappears entirely.
+                    flex: 1,
                     minHeight: 24,
                     overflowY: "auto",
                   }}
