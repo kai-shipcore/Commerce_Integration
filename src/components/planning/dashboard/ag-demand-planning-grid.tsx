@@ -75,6 +75,7 @@ import {
   type SkuOrderInput,
 } from "@/lib/planning/order-optimizer";
 import type { CellContent, ColumnFilterMenuSize, EditMenuActions, EditMenuAvailability, TextFormatSettings } from "./columns";
+import { findSheetDownBoundary } from "./sheet-navigation";
 import type { DemandPlanningGridProps, PlanningFormatHistoryChange, PlanningViewStatePatch } from "./demand-planning-grid";
 import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from "@/types/demand-planning";
 import { apiPath, withBasePath } from "@/lib/api-path";
@@ -4846,7 +4847,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       || selectedCellsRef.current.size > 1
   ), []);
 
-  const extendSheetCellSelection = useCallback((direction: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight") => {
+  const extendSheetCellSelection = useCallback((
+    direction: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight",
+    toDataBoundary = false,
+  ) => {
     const api = gridRef.current?.api;
     const active = activeSelectedCellRef.current;
     if (!api || !active) return false;
@@ -4856,19 +4860,22 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     let nextColumnId = active.columnId;
 
     if (direction === "ArrowUp" || direction === "ArrowDown") {
-      nextRowIndex += direction === "ArrowUp" ? -1 : 1;
+      if (direction === "ArrowDown" && toDataBoundary) {
+        const column = api.getColumn(active.columnId);
+        if (!column) return false;
+        const values = Array.from({ length: api.getDisplayedRowCount() }, (_, rowIndex) => {
+          const rowNode = api.getDisplayedRowAtIndex(rowIndex);
+          return rowNode ? api.getCellValue({ colKey: column, rowNode }) : null;
+        });
+        nextRowIndex = findSheetDownBoundary(values, currentRowIndex);
+      } else {
+        nextRowIndex += direction === "ArrowUp" ? -1 : 1;
+      }
     } else {
-      // Horizontal range extension is intentionally limited to adjacent Note
-      // columns. If another column sits between them, do not select through it.
       const displayedColumns = api.getAllDisplayedColumns();
       const currentColumnIndex = displayedColumns.findIndex((column) => column.getColId() === active.columnId);
       const nextColumn = displayedColumns[currentColumnIndex + (direction === "ArrowLeft" ? -1 : 1)];
-      if (
-        currentColumnIndex < 0
-        || workNoteSlotForColumnId(active.columnId) === null
-        || !nextColumn
-        || workNoteSlotForColumnId(nextColumn.getColId()) === null
-      ) return false;
+      if (currentColumnIndex < 0 || !nextColumn) return false;
       nextColumnId = nextColumn.getColId();
     }
     if (nextRowIndex < 0 || nextRowIndex >= api.getDisplayedRowCount()) return false;
@@ -4893,6 +4900,30 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
     return true;
   }, [onAgCellSelected, onCellSelectionChange, refreshChangedCells]);
+
+  const navigateActiveGridCell = useCallback((direction: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight") => {
+    const api = gridRef.current?.api;
+    const active = activeSelectedCellRef.current;
+    if (!api || !active) return false;
+    const currentRowIndex = api.getRowNode(active.rowId)?.rowIndex;
+    if (currentRowIndex === null || currentRowIndex === undefined) return false;
+    const displayedColumns = api.getAllDisplayedColumns();
+    const currentColumnIndex = displayedColumns.findIndex((column) => column.getColId() === active.columnId);
+    if (currentColumnIndex < 0) return false;
+
+    const nextRowIndex = currentRowIndex
+      + (direction === "ArrowUp" ? -1 : direction === "ArrowDown" ? 1 : 0);
+    const nextColumnIndex = currentColumnIndex
+      + (direction === "ArrowLeft" ? -1 : direction === "ArrowRight" ? 1 : 0);
+    const nextColumn = displayedColumns[nextColumnIndex];
+    if (
+      nextRowIndex < 0
+      || nextRowIndex >= api.getDisplayedRowCount()
+      || !nextColumn
+    ) return false;
+    selectSingleGridCell(nextRowIndex, nextColumn.getColId());
+    return true;
+  }, [selectSingleGridCell]);
 
   // Modifier-assisted or existing multi-selections survive a right-click,
   // including when the clicked cell is outside the selected range.
@@ -5725,23 +5756,37 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   useEffect(() => {
     const handleSheetSelectionKeyboard = (event: KeyboardEvent) => {
-      if (!canEditPlanning || event.ctrlKey || event.metaKey || event.altKey || activeQtyEditorKey) return;
+      if (event.altKey || activeQtyEditorKey) return;
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
       const active = activeSelectedCellRef.current;
       if (!active || !selectedCellsRef.current.has(`${active.rowId}::${active.columnId}`)) return;
+
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "ArrowDown") {
+        if (!extendSheetCellSelection("ArrowDown", true)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (event.ctrlKey || event.metaKey) return;
 
       if (event.shiftKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         // Range selection must not depend on the current cell renderer still
         // being mounted. A forced refresh after the first Shift+Arrow can
         // briefly recreate Note renderers, which previously made rapid range
         // extension stop after one row.
-        if (!resolveEditableTarget(active.rowId, active.columnId)) return;
         if (!extendSheetCellSelection(event.key as "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight")) return;
         event.preventDefault();
         event.stopPropagation();
         return;
       }
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        if (!navigateActiveGridCell(event.key as "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (!canEditPlanning) return;
       const editor = getActiveCellEditor();
       if (!editor) return;
       if (event.key === "F2") {
@@ -5776,7 +5821,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
     window.addEventListener("keydown", handleSheetSelectionKeyboard, true);
     return () => window.removeEventListener("keydown", handleSheetSelectionKeyboard, true);
-  }, [canEditPlanning, extendSheetCellSelection, getActiveCellEditor, navigateActiveBaseEditorCell, navigateActiveQtyCell, resolveEditableTarget]);
+  }, [canEditPlanning, extendSheetCellSelection, getActiveCellEditor, navigateActiveBaseEditorCell, navigateActiveGridCell, navigateActiveQtyCell]);
 
   /** What a copy acts on. Clicking a column's spreadsheet letter selects the
    *  column without selecting any cell — nothing to copy, as far as the cell
