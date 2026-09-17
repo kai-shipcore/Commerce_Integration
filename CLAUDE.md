@@ -70,6 +70,43 @@ Also note the snapshot sync's `GROUP BY 1, 2, 3, 4, 5, 7` is positional against
 `LINK_SELECT` / `CUSTOM_SELECT`. Changing the select list shifts those numbers, and a
 wrong-but-valid number groups the wrong column without raising an error.
 
+### The As-of date replays what there is history for, and nothing else
+
+The Demand Planning toolbar's As of control (`?asOf=`) recomputes the view for a past
+date. Two sources can actually answer for a past date, and only two:
+
+- **Sales** — `fc_velocity_*_snapshot`, re-aggregated by `getVelocitySnapshot`.
+- **Stock** — Supabase `ecommerce_data.vw_coverland_inventory_history`, via
+  `getInventorySnapshotAsOf`. That view is a **change log**, not a daily snapshot: a SKU
+  gets a row only on a day it moved (~500 rows/day against ~11.3k SKUs). The state as of a
+  date is each SKU's most recent row at or before it, carried forward. `snapshot_date = D`
+  would return a few hundred SKUs and read as though the rest held nothing.
+
+Everything else is current and stays current, because nothing records its past:
+`transit_stock` (`fc_transit_records` logs no status change and hard-deletes), remaining /
+mistake (`fc_available_stock.total_qty` is mutated in place), and container quantities
+(`fc_container_audit_log` stores `items_update` as `{skuCount, totalQty}` only). Per-warehouse
+stock is blanked to `null` on a historical view rather than shown — the history keeps SKU
+totals, and the two columns it does carry (`fullerton_qty`, `ttmgroup_qty`) do not map onto
+the five buckets the grid shows. A historical view is therefore *that day's sales and stock
+against today's transit and container plan*, and the toolbar says so.
+
+Do not widen the As-of date range without checking both floors. The picker's lower bound is
+`as_of_min_date` = the later of:
+
+- the first day the inventory history holds quantities (**2026-03-28**; every earlier row is
+  a zero written when the view was consumed for out-of-stock detection alone), and
+- the oldest velocity `order_date` **plus 96 days** — `getVelocitySnapshot` reads back to
+  `asOf - 96` to fill the "previous period" windows, so a nearer date silently returns a
+  truncated 90-day window: sales come out low and inventory life correspondingly long, with
+  nothing in the response saying so.
+
+On the client, the grid's "today" is `getPlanningAnchor()` in
+`src/components/planning/dashboard/columns.ts`, set from the As of date during the
+dashboard's render. It used to be `export const TODAY`, frozen at module import, which meant
+a historical view redrew its container chain from the real today the moment any cell was
+edited. Keep it a getter — `REAL_TODAY` is there for the callers that genuinely mean today.
+
 ### Key Layers
 
 | Layer | Location | Notes |

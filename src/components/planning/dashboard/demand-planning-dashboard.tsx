@@ -43,7 +43,8 @@ import {
   DEFAULT_FREEZE,
   COLUMN_WIDTHS_STORAGE_KEY,
   TINT_COLORS,
-  TODAY,
+  getPlanningAnchor,
+  setPlanningAnchor,
   EMPTY_SKU_PART_FILTERS,
   loadSavedColumnColors,
   loadSavedColumnOrder,
@@ -919,6 +920,11 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [todayStr, setTodayStr] = useState("");
   const [asOfDate, setAsOfDate] = useState("");
   const isHistoricalDate = Boolean(todayStr && asOfDate && asOfDate !== todayStr);
+  // Set during render rather than from an effect: the column renderers and both
+  // grids' chain recompute read the anchor synchronously as they render, so an
+  // effect would leave the first paint after a date change still measuring
+  // against the previous anchor. Idempotent, so a double render is harmless.
+  setPlanningAnchor(isHistoricalDate ? asOfDate : null);
   const searchParams = useSearchParams();
   // Raw category codes, straight from `?product=`. Everything downstream — the
   // data hook, both grids, the container list — has always worked in codes.
@@ -3095,7 +3101,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `planning_${TODAY}.csv`;
+    anchor.download = `planning_${getPlanningAnchor()}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   }, [filteredRows, gridMode]);
@@ -4250,6 +4256,19 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               type="date"
               value={asOfDate}
               max={todayStr || undefined}
+              min={data.as_of_min_date ?? undefined}
+              title={pick(
+                `선택한 날짜 기준으로 판매와 재고를 다시 계산합니다.${
+                  data.as_of_min_date
+                    ? `\n${data.as_of_min_date} 이전은 판매·재고 이력이 그 날짜를 온전히 답할 만큼 남아 있지 않아 선택할 수 없습니다.`
+                    : ""
+                }`,
+                `Recomputes sales and stock for the chosen date.${
+                  data.as_of_min_date
+                    ? `\nDates before ${data.as_of_min_date} cannot be chosen — neither the sales nor the inventory history reaches far enough to answer them in full.`
+                    : ""
+                }`,
+              )}
               onChange={(e) => setAsOfDate(e.target.value || todayStr)}
               style={{
                 height: 26,
@@ -4284,6 +4303,28 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
               >
                 Today
               </button>
+            )}
+            {isHistoricalDate && (
+              <span
+                title={pick(
+                  "판매는 이 날짜 기준으로 다시 집계됩니다.\n재고는 SKU 합계만 재현되며, 창고별 재고는 이력이 없어 —로 표시됩니다.\nTransit 재고, Remaining/Mistake, 컨테이너 목록·수량은 이력이 없어 현재 값 그대로입니다.",
+                  "Sales are re-aggregated for this date.\nStock is replayed as SKU totals only — per-warehouse figures have no history and show as —.\nTransit stock, remaining/mistake and the container list and quantities have no history either, so they stay at today's values.",
+                )}
+                style={{
+                  fontSize: 10,
+                  color: "#1A4FC0",
+                  whiteSpace: "nowrap",
+                  cursor: "help",
+                  borderBottom: "1px dotted #aac0f0",
+                }}
+              >
+                {data.inventory_historical
+                  ? pick(
+                      `재고 ${data.inventory_snapshot_date ?? asOfDate} 기준 · Transit/컨테이너는 현재값`,
+                      `stock to ${data.inventory_snapshot_date ?? asOfDate} · transit + containers current`,
+                    )
+                  : pick("판매만 과거 기준 · 재고는 현재값", "sales only · stock is current")}
+              </span>
             )}
           </label>
           <button

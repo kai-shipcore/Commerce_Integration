@@ -71,6 +71,23 @@ export type VelRow = {
   fba_90d: number; fba_60d: number; fba_30d: number; fba_15d: number; fba_7d: number; fba_30d_pre: number;
 };
 
+export type InventorySnapshotRow = {
+  master_sku: string;
+  /** The day the returned quantities were last observed — at or before the
+   *  requested as-of date, and often well before it (see the change-log note
+   *  on getInventorySnapshotAsOf). */
+  snapshot_date: string;
+  available_stock: number;
+  /** Positive count of units on back order. fc_stats stores this negated, as
+   *  `back`, so the service flips the sign when it overrides. */
+  backorder: number;
+};
+
+export type InventoryHistoryCoverage = { min_date: string | null; max_date: string | null };
+
+const INVENTORY_COVERAGE_TTL_MS = 6 * 60 * 60 * 1000;
+let inventoryCoverageCache: { value: InventoryHistoryCoverage | null; expiresAt: number } | null = null;
+
 export type DashboardCategoryCode = "SC" | "CC" | "FM" | "AC" | "SWC";
 
 export interface DashboardFilters {
@@ -413,6 +430,104 @@ export const DemandPlanningRepository = {
       GROUP BY ${skuCol}
     `, [asOfDate]);
     return result.rows;
+  },
+
+
+  // ─── As-of reads: inventory (historical dashboard) ─────────────────
+  //
+  // vw_coverland_inventory_history is a CHANGE LOG, not a full daily snapshot:
+  // a SKU only gets a row on a day its inventory moved (~500 rows/day against
+  // ~11.3k distinct SKUs, 472k rows over 383 days). The state "as of D" is
+  // therefore each SKU's most recent row at or before D, carried forward. A
+  // plain `snapshot_date = D` filter would return a few hundred SKUs and read
+  // as though every other SKU held nothing.
+  //
+  // Checked against coverland_inventory_by_warehouse for D = today: all 11,204
+  // current SKUs are covered, 10,907 of them matching the live view exactly.
+  // The rest are same-day movements the history has not caught up on, which is
+  // inherent to a log that is written once per change.
+  //
+  // Quantities only exist from 2026-03-28. Every earlier row carries
+  // available = 0 for every SKU because the view was originally consumed for
+  // out-of-stock detection alone (getOosEpisodes below reads it as a boolean).
+  // getInventoryHistoryCoverage reports that floor so the UI can stop callers
+  // picking a date where the honest answer is "no data" but the rendered one
+  // would be a confident zero.
+  async getInventorySnapshotAsOf(asOfDate: string): Promise<InventorySnapshotRow[]> {
+    const lookup = getLookupPool();
+    if (!lookup) return [];
+    // Normalised first, then aggregated: normalizedMasterSkuSql folds several
+    // source SKUs onto one master (the SWC rewrite and the exact remaps), so
+    // after picking each master's latest day its rows still have to be summed
+    // — matching how getInventoryByWarehouse builds the fc_stats values these
+    // numbers stand in for.
+    const result = await lookup.query<InventorySnapshotRow>(`
+      WITH normalized AS (
+        SELECT
+          ${normalizedMasterSkuSql("master_sku")} AS master_sku,
+          snapshot_date,
+          COALESCE(available, 0)::int AS available,
+          COALESCE(backorder, 0)::int AS backorder
+        FROM ecommerce_data.vw_coverland_inventory_history
+        WHERE master_sku IS NOT NULL AND BTRIM(master_sku) <> ''
+          AND snapshot_date <= $1::date
+      ),
+      latest AS (
+        SELECT master_sku, MAX(snapshot_date) AS snapshot_date
+        FROM normalized
+        GROUP BY master_sku
+      )
+      SELECT
+        n.master_sku,
+        l.snapshot_date::text   AS snapshot_date,
+        SUM(n.available)::int   AS available_stock,
+        SUM(n.backorder)::int   AS backorder
+      FROM normalized n
+      JOIN latest l ON l.master_sku = n.master_sku AND l.snapshot_date = n.snapshot_date
+      GROUP BY n.master_sku, l.snapshot_date
+    `, [asOfDate]);
+    return result.rows;
+  },
+
+  // Earliest/latest day the history carries real quantities. Deliberately not
+  // MIN(snapshot_date): that is ~8 months earlier and every row there is a
+  // zero written for out-of-stock tracking.
+  //
+  // Memoised per process because it is a full scan of a ~470k-row view (~1s)
+  // whose answer moves at most once a day, and every dashboard request wants it
+  // so the date picker can refuse dates the history cannot answer.
+  async getInventoryHistoryCoverage(): Promise<InventoryHistoryCoverage | null> {
+    const now = Date.now();
+    if (inventoryCoverageCache && inventoryCoverageCache.expiresAt > now) {
+      return inventoryCoverageCache.value;
+    }
+    const lookup = getLookupPool();
+    if (!lookup) return null;
+    const result = await lookup.query<InventoryHistoryCoverage>(`
+      SELECT MIN(snapshot_date)::text AS min_date,
+             MAX(snapshot_date)::text AS max_date
+      FROM ecommerce_data.vw_coverland_inventory_history
+      WHERE COALESCE(available, 0) > 0
+         OR COALESCE(fullerton_qty, 0) > 0
+         OR COALESCE(ttmgroup_qty, 0) > 0
+    `);
+    const value = result.rows[0] ?? null;
+    inventoryCoverageCache = { value, expiresAt: now + INVENTORY_COVERAGE_TTL_MS };
+    return value;
+  },
+
+  // The oldest order date both velocity snapshots can answer for. Taken as
+  // the later of the two minimums, since a dashboard row can be sourced from
+  // either table depending on its category, and the sync prunes them on the
+  // same schedule but not necessarily to the same day.
+  async getVelocityHistoryMinDate(): Promise<string | null> {
+    const result = await primary().query<{ min_date: string | null }>(`
+      SELECT GREATEST(
+        (SELECT MIN(order_date) FROM shipcore.fc_velocity_link_snapshot),
+        (SELECT MIN(order_date) FROM shipcore.fc_velocity_custom_snapshot)
+      )::text AS min_date
+    `);
+    return result.rows[0]?.min_date ?? null;
   },
 
   // ─── Stats refresh: Step 1 (inventory) ─────────────────────────────

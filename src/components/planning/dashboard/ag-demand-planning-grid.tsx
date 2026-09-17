@@ -28,7 +28,7 @@ import {
   CON_SUBCOLS,
   GROUP_LABELS,
   TINT_COLORS,
-  TODAY,
+  getPlanningAnchor,
   WRAPPING_ROW_COLUMN_IDS,
   columnAppliesToCategories,
   matchesAnyLogicalColumnId,
@@ -1218,22 +1218,27 @@ function computeContainerChain(
   seasonalFactors: SeasonalFactors,
 ): Map<string, ChainDerived> {
   const result = new Map<string, ChainDerived>();
-  const effectiveTotal = (row.west_available_stock ?? 0) + (row.east_available_stock ?? 0) + (row.transit_stock ?? 0);
+  // The server already sums this (and is the only side that can, once the
+  // per-warehouse figures are blank on a historical view).
+  const effectiveTotal = row.total_stock ?? 0;
   const availableQty = effectiveTotal + (row.back ?? 0);
   const dailyRate = row.total_avg_curr ?? 0;
   let previousCarryover = Math.max(0, availableQty);
   let previousBackorder = sheetBaselineBackorderQty(row.sku, availableQty, row.total_30d ?? 0);
   let previousSod = row.sod;
-  let previousEta = TODAY;
+  // Seed from the baseline column the server built, which already sits on the
+  // As of date; falling back to the anchor only when there is no Base column.
+  const baselineContainer = containers.find((c) => c.status === "baseline");
+  let previousEta = baselineContainer?.eta ?? getPlanningAnchor();
   const baseline = containers[0];
   const baselineInventoryLife = inventoryLifeDays(
     previousCarryover,
     dailyRate,
-    seasonalFactorForEta(baseline?.eta ?? TODAY, seasonalFactors),
+    seasonalFactorForEta(baseline?.eta ?? getPlanningAnchor(), seasonalFactors),
   );
   const baselinePlanSod = baselineInventoryLife === null
     ? null
-    : addSheetDays(baseline?.eta ?? TODAY, baselineInventoryLife);
+    : addSheetDays(baseline?.eta ?? getPlanningAnchor(), baselineInventoryLife);
 
   if (baseline) {
     result.set(baseline.name, {
@@ -1252,7 +1257,7 @@ function computeContainerChain(
     const key = `${row.sku}::${container.name}`;
     const raw = row.containers?.[container.name];
     const qty = overrides.get(key)?.inbound_qty ?? raw?.inbound_qty ?? 0;
-    const eta = container.eta ?? TODAY;
+    const eta = container.eta ?? getPlanningAnchor();
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
     const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
     const days = Math.round((new Date(eta).getTime() - new Date(previousEta).getTime()) / 86400000);
@@ -7334,7 +7339,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
     }));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Planning");
-    XLSX.writeFile(workbook, `planning_${TODAY}.xlsx`);
+    // Names the file after the date being looked at, not the date it was
+    // exported on — otherwise two exports of different As of dates collide.
+    XLSX.writeFile(workbook, `planning_${getPlanningAnchor()}.xlsx`);
   }, [containers]);
 
   useEffect(() => {

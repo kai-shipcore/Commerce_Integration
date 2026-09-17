@@ -250,3 +250,48 @@ describe("DemandPlanningRepository.batchUpsert", () => {
     expect(firstParams).toEqual(["SKU-0", 0, "SKU-1", 1]);
   });
 });
+
+describe("DemandPlanningRepository.getInventorySnapshotAsOf", () => {
+  it("takes each SKU's latest row at or before the as-of date", async () => {
+    lookupQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getInventorySnapshotAsOf("2026-08-12");
+    const [sql, params] = lookupQueryMock.mock.calls[0];
+    expect(sql).toContain("ecommerce_data.vw_coverland_inventory_history");
+    // The view only records a SKU on days it moved, so an equality filter
+    // would drop every SKU that happened not to move that day.
+    expect(sql).toContain("snapshot_date <= $1::date");
+    expect(sql).toContain("MAX(snapshot_date)");
+    expect(params).toEqual(["2026-08-12"]);
+  });
+
+  it("sums the rows that normalise onto one master SKU", async () => {
+    lookupQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getInventorySnapshotAsOf("2026-08-12");
+    const [sql] = lookupQueryMock.mock.calls[0];
+    expect(sql).toContain("SUM(n.available)::int");
+    expect(sql).toContain("SUM(n.backorder)::int");
+    expect(sql).toContain("GROUP BY n.master_sku, l.snapshot_date");
+  });
+
+  it("returns nothing when the lookup DB is not configured", async () => {
+    lookupPool = null;
+    await expect(DemandPlanningRepository.getInventorySnapshotAsOf("2026-08-12")).resolves.toEqual([]);
+    expect(lookupQueryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("DemandPlanningRepository.getInventoryHistoryCoverage", () => {
+  it("skips the zero rows written for out-of-stock tracking, and memoises the answer", async () => {
+    lookupQueryMock.mockResolvedValue({ rows: [{ min_date: "2026-03-28", max_date: "2026-09-16" }] });
+
+    const first = await DemandPlanningRepository.getInventoryHistoryCoverage();
+    const [sql] = lookupQueryMock.mock.calls[0];
+    expect(sql).toContain("COALESCE(available, 0) > 0");
+    expect(first).toEqual({ min_date: "2026-03-28", max_date: "2026-09-16" });
+
+    // A full scan of the view, for an answer that moves once a day at most.
+    const second = await DemandPlanningRepository.getInventoryHistoryCoverage();
+    expect(second).toEqual(first);
+    expect(lookupQueryMock).toHaveBeenCalledTimes(1);
+  });
+});

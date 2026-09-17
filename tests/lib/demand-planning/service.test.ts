@@ -8,6 +8,9 @@ const repositoryMock = {
   getContainerCategories: vi.fn(),
   getCrossData: vi.fn(),
   getVelocitySnapshot: vi.fn(),
+  getInventorySnapshotAsOf: vi.fn(),
+  getInventoryHistoryCoverage: vi.fn(),
+  getVelocityHistoryMinDate: vi.fn(),
   getInventoryByWarehouse: vi.fn(),
   getOosEpisodes: vi.fn(),
   getOosAgg: vi.fn(),
@@ -54,6 +57,9 @@ beforeEach(() => {
   repositoryMock.getContainerCategories.mockResolvedValue([]);
   repositoryMock.getCrossData.mockResolvedValue([]);
   repositoryMock.getVelocitySnapshot.mockResolvedValue([]);
+  repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([]);
+  repositoryMock.getInventoryHistoryCoverage.mockResolvedValue(null);
+  repositoryMock.getVelocityHistoryMinDate.mockResolvedValue(null);
   getCacheMock.mockResolvedValue(null);
   insertMissingProductsMock.mockResolvedValue({ inserted: 0 });
 });
@@ -220,6 +226,175 @@ describe("DemandPlanningService.getDashboardData", () => {
   it("does not query cross data or link velocity in custom mode without includeContainers", async () => {
     await DemandPlanningService.getDashboardData({ ...baseQuery, mode: "custom" });
     expect(repositoryMock.getCrossData).not.toHaveBeenCalled();
+  });
+});
+
+describe("DemandPlanningService.getDashboardData — historical inventory", () => {
+  // Current stock: 40 available across the warehouses plus 5 in transit.
+  // total_avg_real is what sod_days_raw divides by, so it is kept round.
+  function statsRow(overrides: Record<string, unknown> = {}) {
+    return {
+      sku: "SKU-1", total_inbound_qty: 0, containers_list: null, next_eta: null, cbm_unit: null,
+      latest_container: null, latest_eta: null, latest_qty: null,
+      sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
+      back: -3, west_stock: 30, east_stock: 10, west_available_stock: 30, east_available_stock: 10, transit_stock: 5,
+      fullerton_stock: 20, canary_stock: 10, ttm_stock: 6, ttm_jeff_stock: 4,
+      fullerton_available_stock: 20, canary_available_stock: 10, ttm_available_stock: 6, ttm_jeff_available_stock: 4,
+      total_stock: 45, west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
+      east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
+      avg_daily_prev: 1, avg_daily_real: 1, avg_daily_curr: 1, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
+      fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0, fba_30d: 0,
+      total_avg_prev: 10, total_avg_real: 10, total_avg_curr: 10,
+      oos_days_90d: 0, oos_lost_demand_90d: 0,
+      ...overrides,
+    };
+  }
+
+  const snapshot = (overrides: Record<string, unknown> = {}) => ({
+    master_sku: "SKU-1", snapshot_date: "2026-08-10", available_stock: 100, backorder: 0, ...overrides,
+  });
+
+  beforeEach(() => {
+    repositoryMock.getStatsRows.mockResolvedValue([statsRow()]);
+    repositoryMock.getInventoryHistoryCoverage.mockResolvedValue({ min_date: "2026-03-28", max_date: "2026-09-16" });
+  });
+
+  it("leaves the inventory history alone when asOf is today or absent", async () => {
+    const result = await DemandPlanningService.getDashboardData(baseQuery);
+
+    expect(repositoryMock.getInventorySnapshotAsOf).not.toHaveBeenCalled();
+    expect(result.data.rows[0].total_stock).toBe(45);
+    expect(result.data.rows[0].west_available_stock).toBe(30);
+    expect(result.data.inventory_historical).toBe(false);
+  });
+
+  it("replays stock from the history for a past date, keeping transit current", async () => {
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([snapshot()]);
+
+    const result = await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" });
+    const row = result.data.rows[0];
+
+    expect(repositoryMock.getInventorySnapshotAsOf).toHaveBeenCalledWith("2026-08-12");
+    // 100 available on the history plus the 5 still in transit today, since
+    // transit has no history of its own.
+    expect(row.total_stock).toBe(105);
+    expect(row.transit_stock).toBe(5);
+    expect(result.data.inventory_historical).toBe(true);
+    expect(result.data.inventory_snapshot_date).toBe("2026-08-10");
+    expect(result.data.as_of).toBe("2026-08-12");
+  });
+
+  it("blanks the per-warehouse columns rather than showing today's split", async () => {
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([snapshot()]);
+
+    const row = (await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" })).data.rows[0];
+
+    expect(row.west_stock).toBeNull();
+    expect(row.east_stock).toBeNull();
+    expect(row.west_available_stock).toBeNull();
+    expect(row.east_available_stock).toBeNull();
+    expect(row.fullerton_available_stock).toBeNull();
+    expect(row.canary_available_stock).toBeNull();
+    expect(row.ttm_available_stock).toBeNull();
+    expect(row.ttm_jeff_available_stock).toBeNull();
+  });
+
+  it("flips the sign on back orders, which the history stores positive", async () => {
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([snapshot({ backorder: 7 })]);
+
+    const row = (await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" })).data.rows[0];
+
+    expect(row.back).toBe(-7);
+    // A SKU on back order is critical regardless of how much stock it shows.
+    expect(row.sod_days_raw).toBe(-1);
+  });
+
+  it("derives S.O.D. from the replayed stock, not the current stock", async () => {
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([snapshot()]);
+
+    const row = (await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" })).data.rows[0];
+
+    // floor(105 / total_avg_real 10) — against current stock it would be 4.
+    expect(row.sod_days_raw).toBe(10);
+  });
+
+  it("falls back to current stock for a SKU the history does not cover", async () => {
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([snapshot({ master_sku: "SOME-OTHER-SKU" })]);
+
+    const row = (await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" })).data.rows[0];
+
+    expect(row.total_stock).toBe(45);
+    expect(row.west_available_stock).toBe(30);
+    expect(row.back).toBe(-3);
+  });
+
+  it("keeps current stock for a date before the history carries quantities", async () => {
+    // Rows do come back for such a date, but every quantity in them is a zero
+    // written for out-of-stock tracking; replaying those would read as "the
+    // whole catalogue was empty" rather than "this is not knowable".
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([
+      snapshot({ snapshot_date: "2026-01-15", available_stock: 0 }),
+    ]);
+
+    const result = await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-02-01" });
+
+    expect(result.data.rows[0].total_stock).toBe(45);
+    expect(result.data.rows[0].west_available_stock).toBe(30);
+    expect(result.data.inventory_historical).toBe(false);
+    expect(result.data.inventory_history_min_date).toBe("2026-03-28");
+  });
+
+  it("floors the picker where both histories can answer completely", async () => {
+    repositoryMock.getInventoryHistoryCoverage.mockResolvedValue({ min_date: "2026-03-28", max_date: "2026-09-16" });
+    repositoryMock.getVelocityHistoryMinDate.mockResolvedValue("2026-02-08");
+
+    const result = await DemandPlanningService.getDashboardData(baseQuery);
+
+    // The velocity snapshot reads back 96 days behind the as-of date to fill
+    // the "previous period" windows, so the first date with a whole 90-day
+    // window is 2026-02-08 + 96 = 2026-05-15 — later than the inventory floor,
+    // so it is the binding one.
+    expect(result.data.as_of_min_date).toBe("2026-05-15");
+    expect(result.data.sales_history_min_date).toBe("2026-02-08");
+    expect(result.data.inventory_history_min_date).toBe("2026-03-28");
+  });
+
+  it("falls back to the inventory floor when the sales history reaches further back", async () => {
+    repositoryMock.getInventoryHistoryCoverage.mockResolvedValue({ min_date: "2026-03-28", max_date: "2026-09-16" });
+    repositoryMock.getVelocityHistoryMinDate.mockResolvedValue("2025-01-01");
+
+    const result = await DemandPlanningService.getDashboardData(baseQuery);
+
+    expect(result.data.as_of_min_date).toBe("2026-03-28");
+  });
+
+  it("leaves the picker unbounded when neither history can be read", async () => {
+    repositoryMock.getInventoryHistoryCoverage.mockResolvedValue(null);
+    repositoryMock.getVelocityHistoryMinDate.mockResolvedValue(null);
+
+    const result = await DemandPlanningService.getDashboardData(baseQuery);
+
+    expect(result.data.as_of_min_date).toBeNull();
+  });
+
+  it("still replays stock when the coverage lookup is unavailable", async () => {
+    repositoryMock.getInventoryHistoryCoverage.mockResolvedValue(null);
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([snapshot()]);
+
+    const result = await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" });
+
+    expect(result.data.rows[0].total_stock).toBe(105);
+    expect(result.data.inventory_history_min_date).toBeNull();
+  });
+
+  it("survives the lookup DB being down, leaving stock current", async () => {
+    repositoryMock.getInventoryHistoryCoverage.mockRejectedValue(new Error("lookup unavailable"));
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([]);
+
+    const result = await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-08-12" });
+
+    expect(result.data.rows[0].total_stock).toBe(45);
+    expect(result.data.inventory_historical).toBe(false);
   });
 });
 

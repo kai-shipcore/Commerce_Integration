@@ -14,6 +14,7 @@ function row(sku: string): DemandRow {
     west_available_stock: 10,
     east_available_stock: 0,
     transit_stock: 0,
+    total_stock: 10,
     back: 0,
     total_avg_curr: 2,
     total_30d: 60,

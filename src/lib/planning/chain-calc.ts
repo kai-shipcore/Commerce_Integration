@@ -28,7 +28,9 @@ export function computeContainerChain(
 ): Map<string, ChainDerived> {
   const result = new Map<string, ChainDerived>();
 
-  const effectiveTotal = (row.west_available_stock ?? 0) + (row.east_available_stock ?? 0) + (row.transit_stock ?? 0);
+  // The server already sums this (and is the only side that can, once the
+  // per-warehouse figures are blank on a historical view).
+  const effectiveTotal = row.total_stock ?? 0;
   const availQty  = effectiveTotal + (row.back ?? 0);
   const carryover = availQty >= 0 ? availQty : 0;
   const dailyRate = row.total_avg_curr ?? 0;

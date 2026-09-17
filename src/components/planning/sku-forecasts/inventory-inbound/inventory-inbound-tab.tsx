@@ -98,8 +98,8 @@ export function InventoryInboundTab({
 
       <div className="planning-panel rounded-lg border p-4">
         <div className="grid gap-3 md:grid-cols-4">
-          <Summary label={pick(language, "West 재고", "West Stock")} value={sku.west_stock} />
-          <Summary label={pick(language, "East 재고", "East Stock")} value={sku.east_stock} />
+          <Summary label={pick(language, "West 재고", "West Stock")} value={sku.west_stock ?? "-"} />
+          <Summary label={pick(language, "East 재고", "East Stock")} value={sku.east_stock ?? "-"} />
           <Summary label={pick(language, "백오더", "Backorder")} value={sku.back} danger={sku.back < 0} />
           <Summary label="SOD" value={sku.sod ?? "-"} sub={days === null ? undefined : `${days}${pick(language, "일", " days")}`} />
         </div>

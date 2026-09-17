@@ -15,7 +15,7 @@ import {
   GROUP_HEADER_COLORS,
   GROUP_LABELS,
   TINT_COLORS,
-  TODAY,
+  getPlanningAnchor,
   clampColumnWidth,
   columnAppliesToCategories,
   daysTo,
@@ -445,7 +445,7 @@ export function DemandPlanningGrid({
     queueMicrotask(() => {
       if (cancelled) return;
       setContainerChainMap(new Map(
-        ROWS.map((row) => [row.sku, computeContainerChain(row, CONS, qtyOverrides, TODAY, seasonalFactors)]),
+        ROWS.map((row) => [row.sku, computeContainerChain(row, CONS, qtyOverrides, getPlanningAnchor(), seasonalFactors)]),
       ));
     });
     return () => { cancelled = true; };
@@ -816,7 +816,7 @@ export function DemandPlanningGrid({
                             setContainerChainMap((prev) => {
                               const next = new Map(prev);
                               for (const r of ROWS) {
-                                next.set(r.sku, computeContainerChain(r, newCons, qtyOverrides, TODAY, seasonalFactors));
+                                next.set(r.sku, computeContainerChain(r, newCons, qtyOverrides, getPlanningAnchor(), seasonalFactors));
                               }
                               return next;
                             });
@@ -1196,7 +1196,7 @@ export function DemandPlanningGrid({
                                 const nextOverrides = new Map(qtyOverrides);
                                 nextOverrides.set(eKey, { inbound_qty: null, avail_qty: null, cbm: null, item_id: undefined });
                                 setQtyOverrides(nextOverrides);
-                                const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY, seasonalFactors);
+                                const chainResult = computeContainerChain(r, CONS, nextOverrides, getPlanningAnchor(), seasonalFactors);
                                 setContainerChainMap((prev) => new Map(prev).set(r.sku, chainResult));
                                 if (isActiveContainer) {
                                   setRowTotalOverrides((prev) => {
@@ -1243,7 +1243,7 @@ export function DemandPlanningGrid({
                                 item_id: json.item_id ?? effectiveItemId ?? undefined,
                               });
                               setQtyOverrides(nextOverrides);
-                              const chainResult = computeContainerChain(r, CONS, nextOverrides, TODAY, seasonalFactors);
+                              const chainResult = computeContainerChain(r, CONS, nextOverrides, getPlanningAnchor(), seasonalFactors);
                               setContainerChainMap((prev) => new Map(prev).set(r.sku, chainResult));
                               if (isActiveContainer) {
                                 setRowTotalOverrides((prev) => {

@@ -64,12 +64,32 @@ export const GROUP_BTN_COLORS: Record<string, string> = {
   con:    "#0D2535",
 };
 
-export const TODAY = planningLocalDateString();
+// The date every "days from here" figure in the grid is measured against.
+//
+// Deliberately not a constant. The As of control can move the whole view to a
+// past date, and a module constant frozen at import time kept the grid pinned
+// to the real today regardless — so a historical view redrew its container
+// chain from the wrong end the moment anything was edited, and the urgency
+// colours never matched the dates being shown. REAL_TODAY stays separate for
+// the few callers that genuinely mean today.
+export const REAL_TODAY = planningLocalDateString();
+
+let anchorDate = REAL_TODAY;
+
+/** Called by the dashboard when the As of date changes. Passing nothing (or
+ *  today's date) puts the grid back on the real today. */
+export function setPlanningAnchor(date?: string | null): void {
+  anchorDate = date || REAL_TODAY;
+}
+
+export function getPlanningAnchor(): string {
+  return anchorDate;
+}
 
 export function daysTo(d: string | null | undefined): number | null {
   if (!d) return null;
   try {
-    return differenceInCalendarDays(parseISO(d), parseISO(TODAY));
+    return differenceInCalendarDays(parseISO(d), parseISO(anchorDate));
   } catch {
     return null;
   }
@@ -153,6 +173,13 @@ export interface ConSubColDef {
   val: (cd: ContainerRowData, container: ContainerMeta, row: DemandRow) => CellContent;
 }
 
+/** Per-warehouse stock is null on a historical (As of) view — the inventory
+ *  history carries SKU totals only. Rendering that as 0 would read as "this
+ *  warehouse was empty" rather than "this is not knowable for that date". */
+function warehouseCell(v: number | null | undefined): string | number {
+  return v ?? "\u2014";
+}
+
 export const ALL_COLS: ColDef[] = [
   // Always-visible base columns
   { id: "row_num",   grp: "fix", label: "#",                w: 36,  align: "num",  tint: "",        gh: "gh-fix",    val: (_r, i) => i + 1 },
@@ -165,13 +192,13 @@ export const ALL_COLS: ColDef[] = [
   { id: "back",      grp: "fix", label: "Back",             w: 38,  align: "num",  tint: "",        gh: "gh-fix",    val: (r) => { const b = r.back || 0; return b < 0 ? { html: `<span class="bo-pos">${b}</span>` } : (b || ""); }, sortVal: (r) => r.back ?? 0 },
   { id: "status",    grp: "fix", label: "Sales\nStatus",    w: 72,  align: "ctr",  tint: "",        gh: "gh-fix",    val: (r) => ({ html: `<span class="sc ${r.sales_status === "Custom" ? "sc-cust" : r.sales_status === "Part" ? "sc-part" : r.sales_status === "Hold" ? "sc-hold" : r.sales_status === "Discontinued" ? "sc-disc" : r.sales_status === "TBD" ? "sc-tbd" : r.sales_status === "SWC" ? "sc-swc" : "sc-orig"}">${r.sales_status || ""}</span>` }), sortVal: (r) => r.sales_status ?? "" },
   { id: "sku",       grp: "fix", label: "Master SKU",       w: 180, align: "left", tint: "",        gh: "gh-fix",    val: (r, _i, u) => ({ html: `<span class="dot ${u === "crit" ? "d-crit" : u === "warn" ? "d-warn" : "d-ok"}"></span>${r.sku}${rollupMark(r)}` }), sortVal: (r) => r.sku },
-  { id: "fullerton", grp: "stock", label: "Fullerton\nStock", w: 64,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.fullerton_available_stock || 0 },
-  { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.canary_available_stock || 0 },
-  { id: "ttm",       grp: "stock", label: "TTM\nStock",       w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.ttm_available_stock || 0 },
-  { id: "ttm_jeff",  grp: "stock", label: "TTM Jeff\nStock",  w: 68,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.ttm_jeff_available_stock || 0 },
-  { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.west_available_stock || 0 },
-  { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.east_available_stock || 0 },
-  { id: "total",     grp: "stock", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => (r.west_available_stock || 0) + (r.east_available_stock || 0) + (r.transit_stock || 0), bold: true },
+  { id: "fullerton", grp: "stock", label: "Fullerton\nStock", w: 64,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.fullerton_available_stock) },
+  { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.canary_available_stock) },
+  { id: "ttm",       grp: "stock", label: "TTM\nStock",       w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_available_stock) },
+  { id: "ttm_jeff",  grp: "stock", label: "TTM Jeff\nStock",  w: 68,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_jeff_available_stock) },
+  { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.west_available_stock) },
+  { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.east_available_stock) },
+  { id: "total",     grp: "stock", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.total_stock ?? 0, bold: true },
   { id: "transit",   grp: "stock", label: "Transit\nStock",   w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.transit_stock || 0 },
   // West Sales
   { id: "w90",  grp: "wsales", label: "West\n90D",  w: 44, align: "num", tint: "t-wsales", gh: "gh-wsales", val: (r) => r.west_90d || 0 },

@@ -63,19 +63,23 @@ export interface DemandRow {
    * units appear twice across the grid by design.
    */
   rolled_up_from?: string[];
-  west_stock: number;
-  east_stock: number;
-  west_available_stock?: number;
-  east_available_stock?: number;
+  /** Per-warehouse figures are null on a historical (As of) view: the
+   *  inventory history carries SKU totals only, so there is nothing to split
+   *  them by. total_stock stays populated. */
+  west_stock: number | null;
+  east_stock: number | null;
+  west_available_stock?: number | null;
+  east_available_stock?: number | null;
+  /** Always current — transit has no history to replay. */
   transit_stock?: number;
-  fullerton_stock?: number;
-  canary_stock?: number;
-  ttm_stock?: number;
-  ttm_jeff_stock?: number;
-  fullerton_available_stock?: number;
-  canary_available_stock?: number;
-  ttm_available_stock?: number;
-  ttm_jeff_available_stock?: number;
+  fullerton_stock?: number | null;
+  canary_stock?: number | null;
+  ttm_stock?: number | null;
+  ttm_jeff_stock?: number | null;
+  fullerton_available_stock?: number | null;
+  canary_available_stock?: number | null;
+  ttm_available_stock?: number | null;
+  ttm_jeff_available_stock?: number | null;
   total_stock: number;
   stock_mode?: 'onhand' | 'available';
   west_90d: number;
@@ -143,6 +147,23 @@ export interface DemandPlanningData {
   rows: DemandRow[];
   pinned_rows?: DemandRow[];
   last_sync: string | null;
+  /** The date the figures are computed against — the As of date, or today. */
+  as_of?: string;
+  /** True when stock figures came from the inventory history rather than
+   *  fc_stats, i.e. the per-warehouse columns are blank and transit,
+   *  remaining/mistake and the containers are still current. */
+  inventory_historical?: boolean;
+  /** Newest day the replayed inventory actually came from. The history only
+   *  records a SKU on days it moved, so this trails the As of date. */
+  inventory_snapshot_date?: string | null;
+  /** Earliest date the history carries quantities; before it the view holds
+   *  zeroes written for out-of-stock tracking only. */
+  inventory_history_min_date?: string | null;
+  /** Oldest order date the velocity snapshots still hold. */
+  sales_history_min_date?: string | null;
+  /** Earliest As of date that returns a complete answer on both counts —
+   *  what the date picker offers as its lower bound. */
+  as_of_min_date?: string | null;
 }
 
 /** Sparse raw detail rows; absent SKUs have an empty container map. */

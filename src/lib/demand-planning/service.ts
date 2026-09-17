@@ -43,7 +43,7 @@ import {
   type OosLostDemandWeights,
 } from "@/lib/planning/oos-lost-demand-weights";
 import { OosImpactService } from "@/lib/oos-impact/service";
-import { DemandPlanningRepository, type DashboardCategoryCode, type VelRow } from "@/lib/demand-planning/repository";
+import { DemandPlanningRepository, type DashboardCategoryCode, type VelRow, type InventorySnapshotRow } from "@/lib/demand-planning/repository";
 import { SkuMasterRepository } from "@/lib/sku-master/repository";
 import { TransitStockRepository } from "@/lib/transit-stock/repository";
 import type { ContainerRowData, DemandPlanningData, DemandPlanningContainerDetails, DemandRow } from "@/types/demand-planning";
@@ -86,6 +86,18 @@ const SALES_WINDOW_KEYS = [
 ] as const;
 
 type SalesWindows = Record<(typeof SALES_WINDOW_KEYS)[number], number>;
+
+/** How far getVelocitySnapshot reaches behind its as-of date to fill the
+ *  "previous period" windows. */
+const VELOCITY_WINDOW_LOOKBACK_DAYS = 96;
+
+/** Later of two YYYY-MM-DD strings, ignoring nulls. Lexicographic comparison
+ *  is ordering for this format. */
+function maxDateString(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
 
 /** The dashboard cache is keyed per category scope; the codes are sorted so
  *  the same selection never produces two entries. */
@@ -177,11 +189,18 @@ export const DemandPlanningService = {
 
     const filters = { mode: query.mode, categoryCodes: query.categoryCodes, inboundStatuses };
 
-    const [containersResult, rowsResult, availStockResult, lastSync] = await Promise.all([
+    const [containersResult, rowsResult, availStockResult, lastSync, invSnapshotRows, invCoverage, velocityMinDate] = await Promise.all([
       DemandPlanningRepository.getContainerHeaders(query.categoryCodes),
       DemandPlanningRepository.getStatsRows(filters),
       DemandPlanningRepository.getAvailableStockTotals(query.categoryCodes),
       DemandPlanningRepository.getLastSync(),
+      isToday
+        ? Promise.resolve([] as InventorySnapshotRow[])
+        : DemandPlanningRepository.getInventorySnapshotAsOf(todayStr),
+      // Neither lookup may take the dashboard down with it; the date picker
+      // just loses the corresponding half of its lower bound.
+      DemandPlanningRepository.getInventoryHistoryCoverage().catch(() => null),
+      DemandPlanningRepository.getVelocityHistoryMinDate().catch(() => null),
     ]);
 
     const containerIds = containersResult.map((r) => r.id);
@@ -240,6 +259,57 @@ export const DemandPlanningService = {
       ]);
       for (const r of linkVelRows) linkVelMap.set(r.master_sku, buildVelEntry(r));
       for (const r of customVelRows) customVelMap.set(r.master_sku, buildVelEntry(r));
+    }
+
+    // -- Historical inventory (when asOf != today) ---------------------
+    //
+    // Same shape as the velocity maps above: only populated when asOf != today,
+    // and the row loop switches on whether a SKU is in the map rather than on
+    // isToday. A SKU with no history row falls back to its current fc_stats
+    // values, as the velocity path does - in practice that is rare, since every
+    // SKU in the live inventory view is covered by the history.
+    //
+    // Only SKU totals come back. vw_coverland_inventory_history has no
+    // warehouse breakdown matching the five buckets the grid shows (it carries
+    // fullerton_qty and ttmgroup_qty - no Canary, and TTM Group and Jefferson
+    // are not split), so the per-warehouse columns are blanked for a historical
+    // date rather than filled with today's numbers dressed up as the past.
+    //
+    // transit_stock has no history at all: fc_transit_records keeps no
+    // status-change log and deletes rows outright. It stays current, and
+    // total_stock is historical available plus that current transit, so the
+    // column keeps the same definition it has in the live view.
+    //
+    // Before the history starts carrying quantities every row in it is a zero,
+    // written when the view was consumed for out-of-stock tracking alone.
+    // Replaying those would render the whole catalogue as empty, which reads as
+    // a fact rather than as an absence, so such a date keeps the current stock
+    // and says so through inventory_historical.
+    const inventoryHistoryMinDate = invCoverage?.min_date ?? null;
+    const inventoryUsable = !inventoryHistoryMinDate || todayStr >= inventoryHistoryMinDate;
+
+    // The earliest date both halves of the view can answer completely, which is
+    // what the picker offers as its lower bound.
+    //
+    // The velocity side needs more than it looks: getVelocitySnapshot reads back
+    // to asOf - 96 days to fill the "previous" windows, so a date any closer
+    // than that to the oldest order in the snapshots returns a truncated 90-day
+    // window. Nothing about the result says so — the sales figures simply come
+    // out low, and inventory life correspondingly long, which is the shape of
+    // mistake that is hardest to notice.
+    const asOfMinDate = maxDateString(
+      inventoryHistoryMinDate,
+      velocityMinDate ? addSheetDays(velocityMinDate, VELOCITY_WINDOW_LOOKBACK_DAYS) : null,
+    );
+    const invMap = new Map<string, InventorySnapshotRow>();
+    let inventorySnapshotDate: string | null = null;
+    if (inventoryUsable) {
+      for (const row of invSnapshotRows) {
+        invMap.set(row.master_sku, row);
+        if (!inventorySnapshotDate || row.snapshot_date > inventorySnapshotDate) {
+          inventorySnapshotDate = row.snapshot_date;
+        }
+      }
     }
 
     // Both the roll-up pre-pass and the row loop below have to resolve a SKU's
@@ -322,6 +392,17 @@ export const DemandPlanningService = {
       const containerInfo = r.latest_container
         ? `${r.latest_eta ?? ""} - (${r.latest_container}) - ${r.latest_qty ?? ""}`
         : "";
+
+      const inv = invMap.get(masterSku);
+      const transitStock = Number(r.transit_stock ?? 0);
+      // fc_stats.total_stock is west_available + east_available + transit; the
+      // historical equivalent is the view's SKU-total available plus that same
+      // (current) transit figure.
+      const totalStock = inv ? inv.available_stock + transitStock : (r.total_stock as number);
+      // fc_stats stores back orders negated; the history view stores them positive.
+      const back = inv ? -inv.backorder : (r.back as number);
+      // Blanked rather than zeroed for a historical date - see the note above.
+      const warehouseStock = <T,>(current: T) => (inv ? null : current);
 
       const skuCross = query.includeContainers ? crossMap.get(masterSku) : undefined;
       const containersObj: Record<string, ContainerRowData> = {};
@@ -425,22 +506,22 @@ export const DemandPlanningService = {
         : Number(r.total_avg_curr_override);
       const total_avg_curr = total_avg_curr_override ?? total_avg_curr_auto;
 
-      const availQty = (r.total_stock as number) + (r.back as number);
+      const availQty = totalStock + back;
       const carryover = availQty >= 0 ? availQty : 0;
       const baselineBackorder = sheetBaselineBackorderQty(masterSku, availQty, total_30d);
       const dailyRate = total_avg_curr;
       const invLife = inventoryLifeDays(carryover, dailyRate, seasonalFactorForEta(todayStr, DEFAULT_SEASONAL_FACTORS));
       const asOfMs = new Date(todayStr).getTime();
       const rawAvgReal = r.total_avg_real as number;
-      const sod_days_raw = (r.back as number) < 0
+      const sod_days_raw = back < 0
         ? -1
         : rawAvgReal > 0
-          ? Math.floor((r.total_stock as number) / rawAvgReal)
+          ? Math.floor(totalStock / rawAvgReal)
           : 9999;
       const sod = (() => {
         const rate = total_avg_real;
         if (!rate) return null;
-        const days = Math.floor((r.total_stock as number) / rate);
+        const days = Math.floor(totalStock / rate);
         const d = new Date(asOfMs);
         d.setDate(d.getDate() + days);
         return d.toISOString().slice(0, 10);
@@ -521,25 +602,25 @@ export const DemandPlanningService = {
         moq: (r.moq as number) ?? 1,
         order_multiple: (r.order_multiple as number) ?? (r.moq as number) ?? 1,
         seat, no, color, tone,
-        back: r.back as number,
+        back,
         sales_status: (r.sales_status as DemandRow["sales_status"]),
         category_code: categoryCode,
         sku: rowSku,
         ...(rolledUpFrom ? { rolled_up_from: rolledUpFrom } : {}),
-        west_stock: r.west_stock,
-        east_stock: r.east_stock,
-        west_available_stock: r.west_available_stock,
-        east_available_stock: r.east_available_stock,
+        west_stock: warehouseStock(r.west_stock),
+        east_stock: warehouseStock(r.east_stock),
+        west_available_stock: warehouseStock(r.west_available_stock),
+        east_available_stock: warehouseStock(r.east_available_stock),
         transit_stock: r.transit_stock,
-        fullerton_stock: r.fullerton_stock,
-        canary_stock: r.canary_stock,
-        ttm_stock: r.ttm_stock,
-        ttm_jeff_stock: r.ttm_jeff_stock,
-        fullerton_available_stock: r.fullerton_available_stock,
-        canary_available_stock: r.canary_available_stock,
-        ttm_available_stock: r.ttm_available_stock,
-        ttm_jeff_available_stock: r.ttm_jeff_available_stock,
-        total_stock: r.total_stock,
+        fullerton_stock: warehouseStock(r.fullerton_stock),
+        canary_stock: warehouseStock(r.canary_stock),
+        ttm_stock: warehouseStock(r.ttm_stock),
+        ttm_jeff_stock: warehouseStock(r.ttm_jeff_stock),
+        fullerton_available_stock: warehouseStock(r.fullerton_available_stock),
+        canary_available_stock: warehouseStock(r.canary_available_stock),
+        ttm_available_stock: warehouseStock(r.ttm_available_stock),
+        ttm_jeff_available_stock: warehouseStock(r.ttm_jeff_available_stock),
+        total_stock: totalStock,
         stock_mode: "available",
         west_90d, west_60d, west_30d, west_15d, west_7d, west_30d_pre,
         east_90d, east_60d, east_30d, east_15d, east_7d, east_30d_pre,
@@ -576,7 +657,15 @@ export const DemandPlanningService = {
       } as DemandRow;
     });
 
-    const data: DemandPlanningData = { containers, rows, pinned_rows: [], last_sync: lastSync };
+    const data: DemandPlanningData = {
+      containers, rows, pinned_rows: [], last_sync: lastSync,
+      as_of: todayStr,
+      inventory_historical: invMap.size > 0,
+      inventory_snapshot_date: inventorySnapshotDate,
+      inventory_history_min_date: inventoryHistoryMinDate,
+      sales_history_min_date: velocityMinDate,
+      as_of_min_date: asOfMinDate,
+    };
     const response = { success: true as const, data };
     setPlanningDashboardCache(
       query.mode, response, query.includeContainers, isToday ? undefined : todayStr,
