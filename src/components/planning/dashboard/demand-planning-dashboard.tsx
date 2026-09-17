@@ -4220,7 +4220,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
             type="button"
             title={conditionalFormatRange ? pick("선택 영역에 조건부 서식 설정", "Set conditioning formatting for the selection") : pick("먼저 셀 또는 전체 컬럼을 선택하세요", "Select cells or full columns first")}
             onClick={() => setIsConditionalFormattingOpen(true)}
-            style={{ height: 30, display: "inline-flex", alignItems: "center", gap: 6, padding: "0 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: isConditionalFormattingOpen ? "#EFF6FF" : "#fff", color: "#334155", cursor: "pointer", fontSize: 11, fontWeight: 650 }}
+            style={{ height: 30, display: "inline-flex", alignItems: "center", gap: 6, padding: "0 10px", border: "1px solid #CBD5E1", borderRadius: 5, background: isConditionalFormattingOpen ? "#EFF6FF" : "#fff", color: "#334155", cursor: "pointer", fontSize: 11, fontWeight: 650, flexShrink: 0, whiteSpace: "nowrap" }}
           >
             <WandSparkles size={15} /> {pick("조건부 서식", "Conditioning formatting")}
           </button>
