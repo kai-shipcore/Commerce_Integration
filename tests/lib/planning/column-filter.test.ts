@@ -107,6 +107,51 @@ describe("applyColumnFilters with ColumnFilter (values + condition)", () => {
     const textColors = { qty: (row: Row) => row.sku === "C" ? "#f0f" : "" };
     expect(applyColumnFilters(rows, filters, accessors, undefined, fillColors, textColors).map((row) => row.sku)).toEqual(["C"]);
   });
+
+  it("keeps only the edited row visible when its new value is filtered out", () => {
+    const editedRows: Row[] = [
+      { sku: "A", qty: 1 },
+      { sku: "B", qty: 1 },
+      { sku: "C", qty: 3 },
+    ];
+    const filters = new Map<"sku" | "qty", ColumnFilter>([
+      ["qty", { mode: "values", values: new Set(["2", "3"]) }],
+    ]);
+    const exceptions = new Map<"sku" | "qty", ReadonlySet<string>>([
+      ["qty", new Set(["B"])],
+    ]);
+
+    expect(applyColumnFilters(
+      editedRows,
+      filters,
+      accessors,
+      undefined,
+      undefined,
+      undefined,
+      { getRowId: (row) => row.sku, byFilter: exceptions },
+    ).map((row) => row.sku)).toEqual(["B", "C"]);
+  });
+
+  it("does not let an edit exception bypass a filter on another column", () => {
+    const editedRows: Row[] = [{ sku: "B", qty: 1 }];
+    const filters = new Map<"sku" | "qty", ColumnFilter>([
+      ["sku", { mode: "values", values: new Set(["A"]) }],
+      ["qty", { mode: "values", values: new Set(["2", "3"]) }],
+    ]);
+    const exceptions = new Map<"sku" | "qty", ReadonlySet<string>>([
+      ["qty", new Set(["B"])],
+    ]);
+
+    expect(applyColumnFilters(
+      editedRows,
+      filters,
+      accessors,
+      undefined,
+      undefined,
+      undefined,
+      { getRowId: (row) => row.sku, byFilter: exceptions },
+    )).toEqual([]);
+  });
 });
 
 describe("distinctColumnValues", () => {

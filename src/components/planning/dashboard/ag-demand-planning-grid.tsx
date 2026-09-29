@@ -125,6 +125,7 @@ const CONTAINER_BLOCK_RAIL = "2px solid #5A5750";
 // Handled here rather than in CON_SUBCOLS because that list is shared with the
 // native grid, which is deliberately unchanged.
 const EMPTY_COLUMN_FILTERS: Map<string, ColumnFilter> = new Map();
+const EMPTY_FILTER_EDIT_EXCEPTIONS: ReadonlyMap<string, ReadonlySet<string>> = new Map();
 
 const CON_QTY_COLUMN_ID = "inb_qty";
 const CON_QTY_TINT = "#CFE8F7";
@@ -3890,6 +3891,13 @@ export function AgDemandPlanningGrid({
   const [chainReadyAfterLoad, setChainReadyAfterLoad] = useState(true);
   const [cbmOverrides, setCbmOverrides] = useState<Map<string, number>>(new Map());
   const [rowOverrides, setRowOverrides] = useState<Map<string, Partial<DemandRow>>>(new Map());
+  // Google Sheets keeps a visible row in place when an edit changes its value
+  // to one excluded by the current filter. The exception lasts until filters
+  // are changed/reapplied; other rows with that excluded value stay hidden.
+  const [filterEditExceptions, setFilterEditExceptions] = useState<{
+    source: Map<string, ColumnFilter>;
+    byFilter: Map<string, Set<string>>;
+  }>(() => ({ source: storedColumnFilters, byFilter: new Map() }));
   const [gridWidth, setGridWidth] = useState(0);
   // Right-click column menu (Sort A→Z, Sort Z→A, Filter, Hide), keyed the
   // same way `colId` already is: a base column's own id, or
@@ -4051,6 +4059,18 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return active;
   }, [categoryFilter, containers, storedColumnFilters]);
 
+  const preserveEditedRowUnderFilter = useCallback((rowId: string, columnId: string) => {
+    if (!columnFilters.has(columnId)) return;
+    setFilterEditExceptions((current) => {
+      const currentExceptions = current.source === storedColumnFilters ? current.byFilter : new Map<string, Set<string>>();
+      const existing = currentExceptions.get(columnId);
+      if (existing?.has(rowId) && current.source === storedColumnFilters) return current;
+      const next = new Map(currentExceptions);
+      next.set(columnId, new Set([...(existing ?? []), rowId]));
+      return { source: storedColumnFilters, byFilter: next };
+    });
+  }, [columnFilters, storedColumnFilters]);
+
   // Raw, comparable value for a container sub-column, mirroring the "merged"
   // object each cell already builds from base data + qty override + chain
   // calc. "Rem. Qty" reads the ROW rather than the container on purpose —
@@ -4168,8 +4188,12 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       undefined,
       columnMenuFillColorAccessors(columnFilters.keys()),
       columnMenuTextColorAccessors(columnFilters.keys()),
+      {
+        getRowId: (row) => row.sku,
+        byFilter: filterEditExceptions.source === storedColumnFilters ? filterEditExceptions.byFilter : EMPTY_FILTER_EDIT_EXCEPTIONS,
+      },
     ),
-    [bespokeFilteredRows, columnFilters, columnMenuAccessors, columnMenuFillColorAccessors, columnMenuTextColorAccessors],
+    [bespokeFilteredRows, columnFilters, columnMenuAccessors, columnMenuFillColorAccessors, columnMenuTextColorAccessors, filterEditExceptions, storedColumnFilters],
   );
 
   // The right-clicked column's distinct values, computed from every OTHER
@@ -5272,6 +5296,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       }>;
     };
     if (!json.success) return false;
+    preserveEditedRowUnderFilter(row.sku, "cbm");
     if (options.recordHistory !== false) {
       pushSheetHistory([{
         rowId: row.sku,
@@ -5302,7 +5327,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       });
     }
     return true;
-  }, [canEditPlanning, pushSheetHistory]);
+  }, [canEditPlanning, preserveEditedRowUnderFilter, pushSheetHistory]);
 
   const saveTotalAvgCurrent = useCallback(async (
     row: DemandRow,
@@ -5323,6 +5348,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     });
     const json = await response.json().catch(() => null) as { success?: boolean } | null;
     if (!json?.success) return false;
+    preserveEditedRowUnderFilter(row.sku, columnId);
 
     if (options.recordHistory !== false) {
       pushSheetHistory([{
@@ -5355,7 +5381,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     chainMapRef.current = nextChain;
     setChainMap(nextChain);
     return true;
-  }, [canCreatePlanning, containers, pushSheetHistory, seasonalFactors]);
+  }, [canCreatePlanning, containers, preserveEditedRowUnderFilter, pushSheetHistory, seasonalFactors]);
 
   const saveQty = useCallback(async (
     row: DemandRow,
@@ -5372,6 +5398,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     if (itemId) qtyServerItemIdsRef.current.set(key, itemId);
     const oldQty = previous !== undefined ? previous.inbound_qty ?? 0 : raw.inbound_qty ?? 0;
     if (nextQty === oldQty || (previous === undefined && !itemId && nextQty === 0)) return true;
+    preserveEditedRowUnderFilter(row.sku, `${container.name}::inb_qty`);
     if (options.recordHistory !== false) {
       pushSheetHistory([{
         rowId: row.sku,
@@ -5570,18 +5597,19 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (qtyPersistenceQueueRef.current.get(persistenceKey) === persistence) qtyPersistenceQueueRef.current.delete(persistenceKey);
     });
     return true;
-  }, [canEditPlanning, containers, pushSheetHistory, scheduleQtyRenderSync, seasonalFactors]);
+  }, [canEditPlanning, containers, preserveEditedRowUnderFilter, pushSheetHistory, scheduleQtyRenderSync, seasonalFactors]);
 
 const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void> => {
     if (!canEditPlanning || !onSkuCellNoteChange) return;
     await onSkuCellNoteChange(row.sku, memo);
+    preserveEditedRowUnderFilter(row.sku, "memo");
     // rowOverrides만 업데이트 — refreshCells 호출 안 함 (팝업 열린 상태 유지)
     setRowOverrides((cur) => {
       const map = new Map(cur);
       map.set(row.sku, { ...(cur.get(row.sku) ?? {}), memo });
       return map;
     });
-  }, [canEditPlanning, onSkuCellNoteChange]);
+  }, [canEditPlanning, onSkuCellNoteChange, preserveEditedRowUnderFilter]);
 
   const saveWorkNote = useCallback(async (
     row: DemandRow,
@@ -5592,13 +5620,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     if (!canEditPlanning || !onSkuWorkNoteChange) return false;
     const normalizedNote = note.trim().replace(/\s*[\r\n]+\s*/g, " ");
     await onSkuWorkNoteChange(row.sku, normalizedNote, slot);
+    const columnId = slot === 2 ? "workflow_note_2" : slot === 3 ? "workflow_note_3" : "workflow_note";
+    preserveEditedRowUnderFilter(row.sku, columnId);
     if (options.recordHistory !== false) {
-      const columnId = slot === 2 ? "workflow_note_2" : slot === 3 ? "workflow_note_3" : "workflow_note";
       const before = slot === 2 ? row.workflow_note_2 ?? "" : slot === 3 ? row.workflow_note_3 ?? "" : row.workflow_note ?? "";
       pushSheetHistory([{ rowId: row.sku, columnId, before, after: normalizedNote }]);
     }
     return true;
-  }, [canEditPlanning, onSkuWorkNoteChange, pushSheetHistory]);
+  }, [canEditPlanning, onSkuWorkNoteChange, preserveEditedRowUnderFilter, pushSheetHistory]);
 
   // Paste and fill both need to know, for an arbitrary "rowId::columnId" key,
   // whether it's one of the few genuinely-editable cells (Con. Qty, CBM,
