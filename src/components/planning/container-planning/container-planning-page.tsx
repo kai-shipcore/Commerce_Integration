@@ -19,8 +19,25 @@ import { apiPath } from "@/lib/api-path";
 import { ContainerHistoryTab } from "../container-timeline/container-history-tab";
 import { ContainerColorPicker } from "@/components/planning/container-color-picker";
 import { offsetContainerDate } from "@/lib/planning/container-schedule-dates";
+import { ScenarioApi, type ScenarioSummary } from "@/features/planning/scenarios";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type ContainerItem = MockContainer["items"][number];
+/** Where an Import lands. `null` is Live — the real container plan, which is
+ *  the only thing this page displays. Any other id is a Demand Planning tab,
+ *  whose quantities live in that tab's overlay and never reach Live until it
+ *  is applied there. */
+type ImportTarget = { id: string | null; name: string };
+/** The target used when there is nothing to choose between — no Demand
+ *  Planning tabs, or no permission to write them. */
+const LIVE_IMPORT_TARGET: ImportTarget = { id: null, name: "Live" };
 // SWC is a real category_code value (see src/app/api/planning/sku-master/route.ts), kept page-local
 // rather than widening the shared mock-data ProductKey.
 type ContainerProductKey = ProductKey | "swc";
@@ -353,11 +370,15 @@ export function ContainerPlanningPage() {
   const { can } = usePermissions();
   const canEditContainers = can("container-planning", "edit");
   const canDeleteContainers = can("container-planning", "delete");
+  // Writing a Demand Planning tab is that page's permission, not this one's —
+  // the tab API checks demand-planning.edit regardless of what is offered here.
+  const canEditDemandPlanning = can("demand-planning", "edit");
   const searchParams = useSearchParams();
   const targetContainerId = searchParams.get("containerId");
   const targetSku = searchParams.get("sku")?.trim().toUpperCase() ?? "";
 
   const [containers, setContainers] = useState<MockContainer[]>([]);
+  const [scenarioTabs, setScenarioTabs] = useState<ScenarioSummary[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(targetContainerId);
   const [loadingContainers, setLoadingContainers] = useState(true);
   const [containersError, setContainersError] = useState<string | null>(null);
@@ -652,6 +673,38 @@ export function ContainerPlanningPage() {
       void fetchFactories();
     });
   }, []);
+
+  // The Demand Planning tabs an Import can be aimed at. A failure here is not
+  // worth a toast: the Import menu simply offers Live on its own, which is what
+  // this page did before tabs existed.
+  useEffect(() => {
+    if (!canEditDemandPlanning) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      void ScenarioApi.list()
+        .then((tabs) => { if (!cancelled) setScenarioTabs(tabs); })
+        .catch(() => {});
+    });
+    return () => { cancelled = true; };
+  }, [canEditDemandPlanning]);
+
+  /** Live first, then every tab the caller may actually write to. */
+  const importTargets = useMemo<ImportTarget[]>(() => [
+    { id: null, name: pick("Live (실제 계획)", "Live (real plan)") },
+    ...(canEditDemandPlanning
+      ? scenarioTabs.filter((tab) => tab.can_edit).map((tab) => ({ id: tab.id, name: tab.name }))
+      : []),
+  ], [canEditDemandPlanning, pick, scenarioTabs]);
+
+  /** One entry point for the Import menu: Live keeps the original path, a tab
+   *  goes to that tab's overlay. */
+  async function importItemsIntoTarget(containerId: string, file: File, target: ImportTarget) {
+    if (target.id === null) {
+      await importContainerItems(containerId, file);
+      return;
+    }
+    await importContainerItemsIntoScenario(containerId, file, { ...target, id: target.id });
+  }
 
   function getDefaultWarehouseCode(list: WarehouseOption[]): string {
     const primary = list.find(
@@ -1832,12 +1885,13 @@ export function ContainerPlanningPage() {
     cancelInlineSkuAdd(containerId);
   }
 
-  async function importContainerItems(containerId: string, file: File) {
-    const container = containers.find((item) => item.id === containerId);
-    if (!container || container.status === "complete") return;
-
-    const toastId = toast.loading(pick("파일 처리 중...", "Processing file..."));
-
+  /**
+   * Reads a packing-list / final-order / template sheet into container items.
+   *
+   * Returns null when the file cannot be used; the reason has already been
+   * shown on `toastId` by then, so callers just bail out.
+   */
+  async function parseContainerItemsFile(file: File, toastId: string | number): Promise<ContainerItem[] | null> {
     const extension = file.name.split(".").pop()?.toLowerCase();
     let rows: unknown[][] = [];
 
@@ -1860,7 +1914,7 @@ export function ContainerPlanningPage() {
       const headerIdx = rows.findIndex((r) => String(r[0] ?? "").trim() === "Master SKU");
       if (headerIdx < 0) {
         toast.error(pick("헤더를 찾을 수 없습니다.", "Header row not found."), { id: toastId });
-        return;
+        return null;
       }
       dataStartIdx = headerIdx + 1;
     }
@@ -1895,13 +1949,25 @@ export function ContainerPlanningPage() {
 
     if (missingSkus.length > 0) {
       toast.error(`SKU Master에 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, { id: toastId });
-      return;
+      return null;
     }
 
     if (validImportedItems.length === 0) {
       toast.error(pick("가져올 SKU가 없습니다.", "No SKUs to import."), { id: toastId });
-      return;
+      return null;
     }
+
+    return validImportedItems;
+  }
+
+  async function importContainerItems(containerId: string, file: File) {
+    const container = containers.find((item) => item.id === containerId);
+    if (!container || container.status === "complete") return;
+
+    const toastId = toast.loading(pick("파일 처리 중...", "Processing file..."));
+
+    const validImportedItems = await parseContainerItemsFile(file, toastId);
+    if (!validImportedItems) return;
 
     const updatedContainer = getMergedContainer(container, validImportedItems, "overwrite");
     if (!(await persistContainer(updatedContainer))) {
@@ -1909,6 +1975,78 @@ export function ContainerPlanningPage() {
       return;
     }
     toast.success(pick(`${validImportedItems.length}개 SKU 가져오기 완료`, `Imported ${validImportedItems.length} SKU(s).`), { id: toastId });
+  }
+
+  /**
+   * Imports into a Demand Planning tab instead of Live.
+   *
+   * The tab's overlay is the whole truth for that tab, so "overwrite" has to
+   * mean the same thing it means on Live: the SKUs in the file are what this
+   * container holds there. SKUs the tab currently has in this container but
+   * the file does not are written as qty 0 — an explicit "ships none of this
+   * here" — rather than deleted, which would leave the cell with no opinion.
+   *
+   * Only quantities carry over. fc_planning_scenario_items has no CBM or memo
+   * column, so those sheet columns are ignored and the grid computes CBM from
+   * the SKU Master unit figure.
+   */
+  async function importContainerItemsIntoScenario(
+    containerId: string,
+    file: File,
+    target: ImportTarget & { id: string },
+  ) {
+    const container = containers.find((item) => item.id === containerId);
+    if (!container || container.status === "complete") return;
+    if (!/^\d+$/.test(containerId)) return;
+
+    const toastId = toast.loading(pick("파일 처리 중...", "Processing file..."));
+
+    const validImportedItems = await parseContainerItemsFile(file, toastId);
+    if (!validImportedItems) return;
+
+    const numericContainerId = Number(containerId);
+
+    // A sheet may list the same SKU on more than one line. Live tolerates that
+    // — fc_container_items has no unique key and the dashboard sums duplicate
+    // rows — but the overlay is keyed on (scenario, container, SKU), and
+    // sending the same key twice in one upsert is an error Postgres raises
+    // rather than a last-one-wins. Sum them here so the tab agrees with Live.
+    const qtyBySku = new Map<string, number>();
+    for (const item of validImportedItems) {
+      qtyBySku.set(item.sku, (qtyBySku.get(item.sku) ?? 0) + item.qty);
+    }
+
+    try {
+      const overlay = await ScenarioApi.overlay(target.id);
+      const cleared = overlay.items
+        .filter((item) => Number(item.container_id) === numericContainerId
+          && item.qty > 0
+          && !qtyBySku.has(item.master_sku))
+        .map((item) => ({ container_id: numericContainerId, master_sku: item.master_sku, qty: 0 }));
+
+      await ScenarioApi.saveItems(target.id, [
+        ...[...qtyBySku].map(([master_sku, qty]) => ({
+          container_id: numericContainerId,
+          master_sku,
+          qty,
+        })),
+        ...cleared,
+      ]);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : pick("탭에 반영하지 못했습니다.", "Could not apply to that tab."),
+        { id: toastId },
+      );
+      return;
+    }
+
+    // Live is untouched, so nothing on this page changes — say where it went.
+    toast.success(pick(
+      `"${target.name}" 탭에 ${qtyBySku.size}개 SKU를 반영했습니다. Demand Planning의 해당 탭에서 확인하세요.`,
+      `Applied ${qtyBySku.size} SKU(s) to the "${target.name}" tab. Open that tab in Demand Planning to see it.`,
+    ), { id: toastId, duration: 6000 });
   }
 
   async function exportContainerItems(containerId: string) {
@@ -2055,69 +2193,8 @@ export function ContainerPlanningPage() {
   async function importCreateFormItems(file: File) {
     const toastId = toast.loading(pick("파일 처리 중...", "Processing file..."));
 
-    const extension = file.name.split(".").pop()?.toLowerCase();
-    let rows: unknown[][] = [];
-
-    if (extension === "csv") {
-      const text = await file.text();
-      rows = text
-        .split(/\r?\n/)
-        .map((line) => line.split(",").map((cell) => cell.trim()))
-        .filter((row) => row.some(Boolean));
-    } else {
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as unknown[][];
-    }
-
-    const format = detectImportFormat(rows);
-    let dataStartIdx = 1;
-    if (format === "packing-list") {
-      const headerIdx = rows.findIndex((r) => String(r[0] ?? "").trim() === "Master SKU");
-      if (headerIdx < 0) {
-        toast.error(pick("헤더를 찾을 수 없습니다.", "Header row not found."), { id: toastId });
-        return;
-      }
-      dataStartIdx = headerIdx + 1;
-    }
-
-    const parsedItems = rows
-      .slice(dataStartIdx)
-      .map((row) => {
-        const sku = String(row[0] ?? "").trim().toUpperCase();
-        const qty = Math.trunc(parseNumberCell(row[1]));
-        const cbm = parseNumberCell(row[2]);
-        // row[3] = Total CBM (computed, skip)
-        const memo = String(row[4] ?? "").trim();
-        return { sku, qty, cbm, memo };
-      })
-      .filter((item) => Boolean(item.sku) && item.sku !== "TOTAL" && item.qty > 0);
-
-    const importedItems = await Promise.all(
-      parsedItems.map(async (item) => {
-        const found = await lookupSkuMaster(item.sku);
-        if (!found) return null;
-        const cbm = item.cbm > 0 ? item.cbm : found.cbmPerUnit;
-        if (cbm <= 0) return null;
-        const result: ContainerItem = { sku: found.masterSku, qty: item.qty, cbm };
-        if (item.memo) result.skuMemo = item.memo;
-        return result;
-      })
-    );
-    const validImportedItems = importedItems.filter((item): item is ContainerItem => item !== null);
-    const missingSkus = parsedItems
-      .filter((item) => !validImportedItems.some((v) => v.sku === item.sku))
-      .map((item) => item.sku);
-
-    if (missingSkus.length > 0) {
-      toast.error(`SKU Master에 없는 SKU: ${[...new Set(missingSkus)].join(", ")}`, { id: toastId });
-      return;
-    }
-    if (validImportedItems.length === 0) {
-      toast.error(pick("가져올 SKU가 없습니다.", "No SKUs to import."), { id: toastId });
-      return;
-    }
+    const validImportedItems = await parseContainerItemsFile(file, toastId);
+    if (!validImportedItems) return;
 
     setDraftItems(validImportedItems);
     toast.success(pick(`${validImportedItems.length}개 SKU 가져오기 완료`, `Imported ${validImportedItems.length} SKU(s).`), { id: toastId });
@@ -2579,7 +2656,8 @@ export function ContainerPlanningPage() {
                 onFillInlineSkuCbm={fillInlineSkuCbm}
                 onUpdateInlineSkuCbm={updateInlineSkuCbm}
                 onCancelInlineSkuDraft={cancelInlineSkuAdd}
-                onImportItems={importContainerItems}
+                onImportItems={importItemsIntoTarget}
+                importTargets={importTargets}
                 onExportItems={exportContainerItems}
                 onEditContainer={openEditForm}
                 onAddAvailableStock={(id) => setAvailableStockContainerId(id)}
@@ -3265,6 +3343,7 @@ function ContainerCard({
   onUpdateInlineSkuCbm,
   onCancelInlineSkuDraft,
   onImportItems,
+  importTargets,
   onExportItems,
   onEditContainer,
   onAddAvailableStock,
@@ -3301,7 +3380,8 @@ function ContainerCard({
   onFillInlineSkuCbm: (containerId: string) => void | Promise<void>;
   onUpdateInlineSkuCbm: (containerId: string) => void | Promise<void>;
   onCancelInlineSkuDraft: (containerId: string) => void;
-  onImportItems: (containerId: string, file: File) => void | Promise<void>;
+  onImportItems: (containerId: string, file: File, target: ImportTarget) => void | Promise<void>;
+  importTargets: ImportTarget[];
   onExportItems: (containerId: string) => void | Promise<void>;
   onEditContainer: (container: MockContainer) => void;
   onAddAvailableStock: (containerId: string) => void;
@@ -3342,6 +3422,10 @@ function ContainerCard({
   const [detailPanel, setDetailPanel] = useState<"sku" | "history">("sku");
   const inlineSkuRowRef = useRef<HTMLDivElement | null>(null);
   const inlineSkuInputRef = useRef<HTMLInputElement | null>(null);
+  // The Import menu picks a target, then opens the file dialog; the choice has
+  // to survive that round trip without re-rendering the menu away.
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importTargetRef = useRef<ImportTarget | null>(null);
   const hasInlineSkuDraft = Boolean(inlineSkuDraft);
   const normalizedSkuSearch = skuSearch.trim().toLowerCase();
   const visibleItems = normalizedSkuSearch
@@ -3624,19 +3708,65 @@ function ContainerCard({
               </button>
             ) : null}
             {container.status !== "complete" && (
-              <label className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
-                <span>{pick("가져오기", "Import")}</span>
-                <input
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = "";
-                    if (file) void onImportItems(container.id, file);
-                  }}
-                />
-              </label>
+              importTargets.length > 1 ? (
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]"
+                      >
+                        {pick("가져오기", "Import")}
+                        <ChevronDown className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-64">
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                        {pick("어디에 반영할까요?", "Where should this land?")}
+                      </DropdownMenuLabel>
+                      {importTargets.map((target, index) => (
+                        <div key={target.id ?? "live"}>
+                          {index === 1 ? <DropdownMenuSeparator /> : null}
+                          <DropdownMenuItem
+                            onClick={() => {
+                              importTargetRef.current = target;
+                              importInputRef.current?.click();
+                            }}
+                          >
+                            <span className="truncate">{target.name}</span>
+                          </DropdownMenuItem>
+                        </div>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <input
+                    ref={importInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      const target = importTargetRef.current;
+                      if (file && target) void onImportItems(container.id, file, target);
+                    }}
+                  />
+                </>
+              ) : (
+                <label className="shrink-0 cursor-pointer whitespace-nowrap rounded-lg border border-[#cccac4] bg-white px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-[#f8f7f4]">
+                  <span>{pick("가져오기", "Import")}</span>
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void onImportItems(container.id, file, LIVE_IMPORT_TARGET);
+                    }}
+                  />
+                </label>
+              )
             )}
             <button
               type="button"

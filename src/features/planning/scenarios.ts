@@ -34,7 +34,7 @@ export interface ScenarioOverlay {
 export interface ScenarioItemPatch {
   container_id: number;
   master_sku: string;
-  /** null clears the override; 0 means "ship none of this here". */
+  /** null drops the cell entirely; 0 means "ship none of this here". */
   qty: number | null;
 }
 

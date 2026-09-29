@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         visibility: input.visibility,
         color: input.color ?? null,
         viewState: input.view_state,
+        includeDrafts: input.include_drafts ?? false,
       });
 
     return apiSuccess({ data }, 201);
