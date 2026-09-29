@@ -213,7 +213,8 @@ export const PlanningScenarioRepository = {
     );
   },
 
-  /** Drops overlay rows so those cells fall back to the Live quantity. */
+  /** Drops overlay rows. The overlay is the whole truth for its tab, so a
+   *  dropped cell reads as empty rather than falling back to Live. */
   async deleteItems(
     scenarioId: number,
     cells: Array<{ container_id: number; master_sku: string }>,

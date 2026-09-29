@@ -4487,6 +4487,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     setChainReadyAfterLoad(false);
     // Seed qtyOverrides with DB values so the grid displays them immediately.
     // Only sets keys not already overridden by the user.
+    //
+    // `data` is already the active tab's own quantities — the dashboard
+    // projects a scenario's overlay onto it before the grid ever sees it — so
+    // this seeds the tab, not Live. The tab-switch effect below owns the
+    // scenario case outright, and running both would let a half-loaded overlay
+    // leave the previous tab's numbers behind.
+    if (scenarioRef.current) return;
     setQtyOverrides((prev) => {
       const next = new Map(prev);
       for (const row of data.rows) {
@@ -4513,10 +4520,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
    * Rebuilds the quantity and ETA overrides for whichever tab is now active.
    *
    * Runs once per tab, not per edit: the dashboard replaces `scenarioOverlay`
-   * only when a tab is loaded, so a keystroke never lands back here. The Live
-   * values are laid down first and the scenario's overlay goes on top
-   * unconditionally — a stored qty of 0 means "this tab ships none of this SKU
-   * in that container", which has to beat the Live quantity rather than be
+   * only when a tab is loaded, so a keystroke never lands back here.
+   *
+   * `data` already carries the active tab's quantities (the dashboard projects
+   * the overlay onto it), so the first pass below seeds the tab's own numbers,
+   * not Live's. The overlay is then applied again on top: it is the authority
+   * on cells `data` has nothing for, and a stored qty of 0 — "this tab ships
+   * none of this SKU in that container" — has to survive rather than be
    * skipped the way an absent/empty cell is.
    */
   const seededScenarioRef = useRef<string | null | undefined>(undefined);

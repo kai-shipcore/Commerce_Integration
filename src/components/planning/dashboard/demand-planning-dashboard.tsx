@@ -80,6 +80,7 @@ import {
 import { useDemandPlanningData } from "@/features/planning/demand-planning-data";
 import type { VelocityMode } from "@/features/planning/demand-planning-data";
 import { ScenarioApi } from "@/features/planning/scenarios";
+import { projectRowsForScenario } from "@/features/planning/scenario-projection";
 import type {
   ScenarioApplyDiff,
   ScenarioOverlay,
@@ -1135,6 +1136,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
    *  master data is still a tab away, on Live. */
   const canEditActiveTab = canEditDemandPlanning && (activeScenario === null || activeScenario.can_edit);
   const canEditActiveTabSkuNotes = canEditSkuNotes && (activeScenario === null || activeScenario.can_edit);
+
+  /**
+   * What the grid is given: the real plan on Live, the tab's own overlay on a
+   * scenario. Projecting here rather than inside the grid means every reader of
+   * `row.containers` — renderers, column totals, the container chain — sees one
+   * consistent set of quantities, instead of each one needing to know which tab
+   * is open and fall back to Live when the overlay has no row for a cell. That
+   * fallback is what let a Container Planning Excel import into Live surface on
+   * every other tab.
+   */
+  const gridData = useMemo(
+    () => (activeScenarioId === null ? data : projectRowsForScenario(data, scenarioOverlay)),
+    [activeScenarioId, data, scenarioOverlay],
+  );
 
   const columnWidthsRef = useRef<ColumnWidths>({});
   const prefSaveTimerRef = useRef<number | null>(null);
@@ -4479,7 +4494,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           </div>
         ) : null}
         {gridMode === "ag-grid" ? <AgDemandPlanningGrid
-          data={data}
+          data={gridData}
           loading={loading}
           categoryFilter={categoryFilter}
           salesStatusFilter={salesStatusFilter}
@@ -4571,7 +4586,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onHideContainer={handleHideContainer}
           onToggleContainerColumns={handleToggleContainerColumns}
         /> : <DemandPlanningGrid
-          data={data}
+          data={gridData}
           loading={loading}
           categoryFilter={categoryFilter}
           salesStatusFilter={salesStatusFilter}

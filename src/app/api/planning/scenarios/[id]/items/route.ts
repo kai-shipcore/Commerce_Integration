@@ -4,8 +4,9 @@
 // fc_container_items or fc_containers.
 //
 // GET — the whole overlay for one tab
-// PUT — upsert cells. qty null clears the override so the cell falls back to
-//       the Live quantity; qty 0 is an explicit "ship none of this here".
+// PUT — upsert cells. A tab's overlay is complete: it is the only source of its
+//       quantities, so qty null drops the row and leaves the cell empty, and
+//       qty 0 is an explicit "ship none of this here".
 
 import { NextRequest } from "next/server";
 import { z } from "zod";

@@ -44,9 +44,10 @@ export interface ScenarioDetail extends ScenarioSummary {
   view_state: Record<string, unknown>;
 }
 
-/** One cell as the grid sends it. A null qty clears the override so the cell
- *  falls back to the Live quantity — distinct from qty 0, which means "this
- *  scenario deliberately ships none of this SKU in that container". */
+/** One cell as the grid sends it. A null qty drops the row entirely, leaving
+ *  the cell empty; qty 0 is the explicit "this scenario ships none of this SKU
+ *  in that container". The grid only ever sends a number — it writes 0 when a
+ *  cell is cleared — so null arrives from API callers, not from the sheet. */
 export interface ScenarioItemPatch {
   container_id: number;
   master_sku: string;
@@ -131,11 +132,18 @@ export const PlanningScenarioService = {
     return toDetail(await loadViewable(rawId, actor), actor);
   },
 
+  /**
+   * A new tab still starts from the Live quantities. It has to: an overlay is
+   * now the whole truth for its tab — a cell with no row shows as empty rather
+   * than falling back to Live — so a tab created without a snapshot would open
+   * on an empty plan.
+   */
   async create(actor: ScenarioActor, input: {
     name: string;
     visibility?: ScenarioVisibility;
     color?: string | null;
     viewState?: Record<string, unknown>;
+    includeDrafts?: boolean;
   }): Promise<ScenarioDetail> {
     const name = input.name.trim();
     if (!name) throw new ValidationError("Tab name is required");
@@ -147,6 +155,10 @@ export const PlanningScenarioService = {
       color: input.color ?? null,
       viewState: input.viewState ?? {},
     });
+    await PlanningScenarioRepository.snapshotLiveIntoScenario(
+      parseId(row.id),
+      input.includeDrafts ?? false,
+    );
     return toDetail(row, actor);
   },
 
