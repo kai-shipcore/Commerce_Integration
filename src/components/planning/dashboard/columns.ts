@@ -6,7 +6,7 @@ import {
   type ColumnFilter,
 } from "@/lib/planning/column-filter";
 import { normalizeGridSort, type GridSort } from "@/lib/planning/grid-sort";
-import type { CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
+import type { BaseCategoryFilter, CategoryFilter, ColumnGroupKey, ContainerMeta, ContainerRowData, DemandRow, UrgencyFilter, UrgencyStatus } from "@/types/demand-planning";
 
 export const TINT_COLORS: Record<string, string> = {
   "t-stock":   "#F5F9FF",
@@ -511,7 +511,7 @@ export interface DashboardFiltersState {
   salesStatusFilter: SalesStatus[];
   /** Empty means every urgency, not none. */
   urgencyFilter: UrgencyFilter[];
-  skuPartFilters: SkuPartFilters;
+  skuPartFilters: SkuPartFiltersByCategory;
   /** Stored alongside the filters because it is remembered for the same
    *  reason, but it is not one of them: the toolbar's filter reset leaves the
    *  sort alone, and an ordering does not count towards its badge. */
@@ -567,27 +567,69 @@ export function serializeDashboardFilters(filters: DashboardFiltersState): Recor
   };
 }
 
+const BASE_CATEGORIES: BaseCategoryFilter[] = ["sc", "cc", "fm", "ac"];
+
+function readSkuPartFilterGroup(value: unknown): SkuPartFilters | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const filters = emptySkuPartFilters();
+  let any = false;
+  for (const [key, values] of Object.entries(value as Record<string, unknown>)) {
+    if (!(key in filters)) continue;
+    if (Array.isArray(values) && values.every((entry) => typeof entry === "string")) {
+      filters[key as SkuPartFilterKey] = values as string[];
+      if (values.length) any = true;
+    }
+  }
+  return any ? filters : null;
+}
+
+/**
+ * Reads stored SKU part filters, in either shape.
+ *
+ * They used to be one flat set applied to every row. Such a blob names no
+ * category, so it goes to the first category whose key set accounts for every
+ * key that carries values, in `sc, cc, fm, ac` order — Seat Cover and
+ * Accessories share a vocabulary, so nothing could tell those two apart, and
+ * `sc` is both the earlier and the dashboard's default. A blob no category can
+ * account for is dropped rather than guessed: restoring it onto the wrong one
+ * would silently empty that category, which is the bug this shape replaced.
+ */
+function parseSkuPartFilters(value: unknown): SkuPartFiltersByCategory {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const candidate = value as Record<string, unknown>;
+
+  const byCategory: SkuPartFiltersByCategory = {};
+  let sawCategoryKey = false;
+  for (const category of BASE_CATEGORIES) {
+    if (!(category in candidate)) continue;
+    sawCategoryKey = true;
+    const group = readSkuPartFilterGroup(candidate[category]);
+    if (group) byCategory[category] = group;
+  }
+  if (sawCategoryKey) return byCategory;
+
+  const flat = readSkuPartFilterGroup(candidate);
+  if (!flat) return {};
+  const usedKeys = (Object.keys(flat) as SkuPartFilterKey[]).filter((key) => flat[key].length > 0);
+  const owners = BASE_CATEGORIES.filter((category) => {
+    const keys = new Set(skuFilterKeysForProduct(category));
+    return usedKeys.every((key) => keys.has(key));
+  });
+  return owners.length > 0 ? { [owners[0]]: flat } : {};
+}
+
 export function normalizeDashboardFilters(value: unknown): DashboardFiltersState {
   const empty: DashboardFiltersState = {
     columnFilters: new Map(),
     salesStatusFilter: [],
     urgencyFilter: [],
-    skuPartFilters: EMPTY_SKU_PART_FILTERS,
+    skuPartFilters: {},
     sort: null,
   };
   if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
   const candidate = value as Record<string, unknown>;
 
-  const skuPartFilters = { ...EMPTY_SKU_PART_FILTERS };
-  const storedParts = candidate.skuPartFilters;
-  if (storedParts && typeof storedParts === "object" && !Array.isArray(storedParts)) {
-    for (const [key, values] of Object.entries(storedParts as Record<string, unknown>)) {
-      if (!(key in skuPartFilters)) continue;
-      if (Array.isArray(values) && values.every((entry) => typeof entry === "string")) {
-        skuPartFilters[key as SkuPartFilterKey] = values as string[];
-      }
-    }
-  }
+  const skuPartFilters = parseSkuPartFilters(candidate.skuPartFilters);
 
   return {
     columnFilters: parseColumnFilters(candidate.columnFilters),
@@ -654,6 +696,16 @@ export type CellTextFormatSettings = Record<string, TextFormatSettings>;
 export type SkuPartFilterKey = "formula" | "fabric" | "seat" | "no" | "size" | "color" | "tone" | "type" | "prefix" | "productCode" | "surface" | "material" | "vehiclePosition" | "make" | "model";
 export type SkuParts = Record<SkuPartFilterKey, string>;
 export type SkuPartFilters = Record<SkuPartFilterKey, string[]>;
+/**
+ * SKU part filters, kept per product category.
+ *
+ * They have to be: the keys mean different things per category — `no` is a
+ * Seat Cover's size, `fabric` is a Car Cover's — and the option lists are
+ * harvested from one category's rows. Held flat and applied to every row, a
+ * Seat Cover "Size 15" matched `no: ""` on every Car Cover row and wiped the
+ * whole category out of the grid.
+ */
+export type SkuPartFiltersByCategory = Partial<Record<BaseCategoryFilter, SkuPartFilters>>;
 
 export type EditMenuAvailability = {
   canUndo: boolean;
@@ -678,6 +730,16 @@ export type EditMenuActions = {
    *  toolbar's own filters are the dashboard's to reset. */
   clearColumnFilters: () => void;
 };
+
+/** A fresh, unshared set of empty filters. Returned by call rather than held
+ *  as a module constant: the values are arrays, and the old shared object was
+ *  handed out by reference to every consumer. */
+export function emptySkuPartFilters(): SkuPartFilters {
+  return {
+    formula: [], fabric: [], seat: [], no: [], size: [], color: [], tone: [], type: [],
+    prefix: [], productCode: [], surface: [], material: [], vehiclePosition: [], make: [], model: [],
+  };
+}
 
 export const EMPTY_SKU_PART_FILTERS: SkuPartFilters = {
   formula: [],
@@ -875,6 +937,31 @@ function normalizeSkuNumber(value: string | undefined) {
   return /^\d+$/.test(value) ? String(Number.parseInt(value, 10)) : value;
 }
 
+/** Which category's SKU filters apply to a row. Mirrors the dashboard's own
+ *  inference so a row and its filter agree on where it belongs; SWC rides with
+ *  Car Cover, which is the vocabulary its SKUs are built from. */
+export function baseCategoryForRow(
+  row: Pick<DemandRow, "sku" | "category_code">,
+): BaseCategoryFilter | null {
+  const code = row.category_code ?? inferCategoryCodeFromSku(row.sku);
+  if (code === "SC") return "sc";
+  if (code === "CC" || code === "SWC") return "cc";
+  if (code === "FM") return "fm";
+  if (code === "AC") return "ac";
+  return null;
+}
+
+function inferCategoryCodeFromSku(sku: string): "SC" | "CC" | "FM" | "AC" | "SWC" | null {
+  const normalized = String(sku ?? "").trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized.includes("SWC")) return "SWC";
+  if (normalized.startsWith("CC-")) return "CC";
+  const parts = normalized.split("-");
+  if (parts[1] === "SC") return "SC";
+  if (parts[1] === "FM" || parts.includes("FM")) return "FM";
+  return null;
+}
+
 export function skuFilterKeysForProduct(product: "sc" | "cc" | "fm" | "ac"): SkuPartFilterKey[] {
   if (product === "cc") return ["formula", "fabric", "size", "color", "type"];
   if (product === "fm") return ["prefix", "productCode", "surface", "material", "vehiclePosition", "make", "model"];
@@ -909,7 +996,10 @@ export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "col
         return { ...EMPTY_SKU_PARTS, seat, no: normalizeSkuNumber(no), color, tone };
       }
     }
-    return EMPTY_SKU_PARTS;
+    // No position/size quadruple in the SKU. Fall through to the row's own
+    // seat/no/color/tone rather than returning all blanks: ~360 Seat Cover
+    // SKUs do not match the pattern, and a blank part can never satisfy a
+    // filter, so they vanished the moment any SKU filter was set.
   }
   if ((parts[0] === "CA" || parts[0] === "CL") && parts[1] === "FM" && parts.length >= 4) {
     return {
@@ -936,15 +1026,33 @@ export function skuPartsForRow(row: Pick<DemandRow, "sku" | "seat" | "no" | "col
   return EMPTY_SKU_PARTS;
 }
 
+/**
+ * Whether a row survives the SKU part filters.
+ *
+ * Only the filters belonging to the row's own category are applied. A Car
+ * Cover row is not asked to satisfy a Seat Cover's "Size", which it has no
+ * value for and could never match.
+ */
 export function skuMatchesPartFilters(
   row: Pick<DemandRow, "sku" | "seat" | "no" | "color" | "tone" | "category_code">,
-  filters: SkuPartFilters,
+  filtersByCategory: SkuPartFiltersByCategory,
 ): boolean {
+  const category = baseCategoryForRow(row);
+  const filters = category ? filtersByCategory[category] : undefined;
+  if (!filters) return true;
+
   const parts = skuPartsForRow(row);
   return (Object.keys(filters) as SkuPartFilterKey[]).every((key) => {
     const filterValues = filters[key];
     return !filterValues.length || filterValues.includes(parts[key]);
   });
+}
+
+/** Whether anything is actually being filtered, across every category. */
+export function hasAnySkuPartFilter(filtersByCategory: SkuPartFiltersByCategory): boolean {
+  return Object.values(filtersByCategory).some(
+    (filters) => filters && Object.values(filters).some((values) => values.length > 0),
+  );
 }
 
 export function loadSavedCellColors(): CellColorSettings {

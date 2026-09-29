@@ -45,7 +45,10 @@ import {
   TINT_COLORS,
   getPlanningAnchor,
   setPlanningAnchor,
-  EMPTY_SKU_PART_FILTERS,
+  emptySkuPartFilters,
+  baseCategoryForRow,
+  hasAnySkuPartFilter,
+  type SkuPartFiltersByCategory,
   loadSavedColumnColors,
   loadSavedColumnOrder,
   ensureAdditionalNotesInColumnOrder,
@@ -606,7 +609,7 @@ type ColumnSettingsDraft = {
   compactMode: boolean;
   showZeroSales: boolean;
   freezeUntil: string;
-  skuPartFilters: SkuPartFilters;
+  skuPartFilters: SkuPartFiltersByCategory;
   hiddenContainers: Set<string>;
   hiddenBases: Set<string>;
   hiddenContainerColumns: Set<string>;
@@ -682,10 +685,13 @@ function sortSkuFilterValues(values: Iterable<string>) {
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
 }
 
-function cloneSkuPartFilters(filters: SkuPartFilters): SkuPartFilters {
+function cloneSkuPartFilters(filters: SkuPartFiltersByCategory): SkuPartFiltersByCategory {
   return Object.fromEntries(
-    Object.entries(filters).map(([key, values]) => [key, [...values]]),
-  ) as SkuPartFilters;
+    Object.entries(filters).map(([category, group]) => [
+      category,
+      Object.fromEntries(Object.entries(group).map(([key, values]) => [key, [...values]])),
+    ]),
+  ) as SkuPartFiltersByCategory;
 }
 
 function freezeColumnForVisibility(columnVis: ColumnVisibility, currentFreeze: string): string {
@@ -955,7 +961,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // Not restored: a search is typed to find one thing, and one restored days
   // later reads as rows gone missing.
   const [search, setSearch] = useState("");
-  const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFilters>(savedFilters.skuPartFilters);
+  const [skuPartFilters, setSkuPartFilters] = useState<SkuPartFiltersByCategory>(savedFilters.skuPartFilters);
   // Held here rather than in the grid so a reload can put them back; the grid
   // reads them, edits them through the setter, and reports how many of them
   // the current view can apply.
@@ -966,7 +972,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [gridSort, setGridSort] = useState<GridSort | null>(savedFilters.sort);
   const [columnFilterCount, setColumnFilterCount] = useState(savedFilters.columnFilters.size);
   const [isSkuFiltersOpen, setIsSkuFiltersOpen] = useState(true);
-  const [openSkuFilterKey, setOpenSkuFilterKey] = useState<SkuPartFilterKey | null>(null);
+  // `${category}::${key}` — two categories can both offer a "Color".
+  const [openSkuFilterKey, setOpenSkuFilterKey] = useState<string | null>(null);
   const [filteredRows, setFilteredRows] = useState<DemandRow[]>([]);
   const [selectedColorColumns, setSelectedColorColumns] = useState<string[]>([]);
   const [selectedFullColumnIds, setSelectedFullColumnIds] = useState<string[]>([]);
@@ -1005,7 +1012,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     + (salesStatusFilter.length > 0 ? 1 : 0)
     + (urgencyFilter.length > 0 ? 1 : 0)
     + (search.trim() ? 1 : 0)
-    + Object.values(skuPartFilters).filter((values) => values.length > 0).length
+    + Object.values(skuPartFilters)
+      .flatMap((group) => Object.values(group ?? {}))
+      .filter((values) => values.length > 0).length
   ), [columnFilterCount, salesStatusFilter, search, skuPartFilters, urgencyFilter]);
 
   const handleCategoryFilter = useCallback((next: CategoryFilter[]) => {
@@ -2798,38 +2807,56 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // SKU sub-filters (Fabric/Seat/Size/Color/etc.) are shaped per base category. When multiple
   // base categories are checked, key off the first one in a fixed priority; hide the panel
   // entirely when only SWC is checked (it has no sub-filter shape).
-  const primaryBaseCategory = useMemo(
-    () => BASE_CATEGORY_ORDER.find((c) => categoryFilter.includes(c)),
+  /** Every checked category gets its own SKU filters. One shared set could
+   *  only ever describe one category's SKU shape, and was applied to all of
+   *  them — a Seat Cover "Size" wiped out every Car Cover row. */
+  const activeSkuFilterCategories = useMemo(
+    () => BASE_CATEGORY_ORDER.filter((c) => categoryFilter.includes(c)),
     [categoryFilter],
   );
-  const activeSkuFilterKeys = useMemo(
-    () => primaryBaseCategory ? skuFilterKeysForProduct(primaryBaseCategory) : [],
-    [primaryBaseCategory],
+  const activeSkuFilterKeysByCategory = useMemo(
+    () => Object.fromEntries(
+      activeSkuFilterCategories.map((category) => [category, skuFilterKeysForProduct(category)]),
+    ) as Record<BaseCategoryFilter, SkuPartFilterKey[]>,
+    [activeSkuFilterCategories],
   );
   const activeSkuPartFilters = useMemo(() => {
-    const next = { ...EMPTY_SKU_PART_FILTERS };
-    activeSkuFilterKeys.forEach((key) => {
-      next[key] = skuPartFilters[key];
-    });
+    const next: SkuPartFiltersByCategory = {};
+    for (const category of activeSkuFilterCategories) {
+      const stored = skuPartFilters[category];
+      if (!stored) continue;
+      const scoped = emptySkuPartFilters();
+      for (const key of activeSkuFilterKeysByCategory[category]) scoped[key] = stored[key];
+      next[category] = scoped;
+    }
     return next;
-  }, [activeSkuFilterKeys, skuPartFilters]);
+  }, [activeSkuFilterCategories, activeSkuFilterKeysByCategory, skuPartFilters]);
 
   const skuFilterOptions = useMemo(() => {
-    const activeKeys = activeSkuFilterKeys;
-    const options = Object.fromEntries(
-      activeKeys.map((key) => [key, new Set<string>()]),
-    ) as Record<SkuPartFilterKey, Set<string>>;
+    const options: Partial<Record<BaseCategoryFilter, Record<SkuPartFilterKey, Set<string>>>> = {};
+    for (const category of activeSkuFilterCategories) {
+      options[category] = Object.fromEntries(
+        activeSkuFilterKeysByCategory[category].map((key) => [key, new Set<string>()]),
+      ) as Record<SkuPartFilterKey, Set<string>>;
+    }
     for (const row of data.rows) {
-      if (!primaryBaseCategory || categoryCodeForRow(row) !== primaryBaseCategory.toUpperCase()) continue;
+      const category = baseCategoryForRow(row);
+      const bucket = category ? options[category] : undefined;
+      if (!category || !bucket) continue;
       const parts = skuPartsForRow(row);
-      activeKeys.forEach((key) => {
-        if (parts[key]) options[key].add(parts[key]);
-      });
+      for (const key of activeSkuFilterKeysByCategory[category]) {
+        if (parts[key]) bucket[key].add(parts[key]);
+      }
     }
     return Object.fromEntries(
-      activeKeys.map((key) => [key, sortSkuFilterValues(options[key])]),
-    ) as Record<SkuPartFilterKey, string[]>;
-  }, [activeSkuFilterKeys, primaryBaseCategory, data.rows]);
+      activeSkuFilterCategories.map((category) => [
+        category,
+        Object.fromEntries(
+          activeSkuFilterKeysByCategory[category].map((key) => [key, sortSkuFilterValues(options[category]![key])]),
+        ) as Record<SkuPartFilterKey, string[]>,
+      ]),
+    ) as Partial<Record<BaseCategoryFilter, Record<SkuPartFilterKey, string[]>>>;
+  }, [activeSkuFilterCategories, activeSkuFilterKeysByCategory, data.rows]);
 
   const handleColumnSettingsOpenChange = useCallback((open: boolean) => {
     setIsColumnSettingsOpen(open);
@@ -2930,14 +2957,22 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleDraftSkuPartFilterToggle = useCallback((key: SkuPartFilterKey, value: string) => {
+  const handleDraftSkuPartFilterToggle = useCallback((
+    category: BaseCategoryFilter,
+    key: SkuPartFilterKey,
+    value: string,
+  ) => {
     setColumnSettingsDraft((current) => {
       if (!current) return current;
-      const selected = new Set(current.skuPartFilters[key]);
+      const group = current.skuPartFilters[category] ?? emptySkuPartFilters();
+      const selected = new Set(group[key]);
       if (selected.has(value)) selected.delete(value); else selected.add(value);
       return {
         ...current,
-        skuPartFilters: { ...current.skuPartFilters, [key]: sortSkuFilterValues(selected) },
+        skuPartFilters: {
+          ...current.skuPartFilters,
+          [category]: { ...group, [key]: sortSkuFilterValues(selected) },
+        },
       };
     });
   }, []);
@@ -2993,11 +3028,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     }, []);
   }, [orderedColumnVisibilityItems]);
   const draftActiveSkuPartFilters = useMemo(() => {
-    const next = { ...EMPTY_SKU_PART_FILTERS };
-    activeSkuFilterKeys.forEach((key) => { next[key] = draftSkuPartFilters[key]; });
+    const next: SkuPartFiltersByCategory = {};
+    for (const category of activeSkuFilterCategories) {
+      const stored = draftSkuPartFilters[category];
+      const scoped = emptySkuPartFilters();
+      if (stored) {
+        for (const key of activeSkuFilterKeysByCategory[category]) scoped[key] = stored[key];
+      }
+      next[category] = scoped;
+    }
     return next;
-  }, [activeSkuFilterKeys, draftSkuPartFilters]);
-  const draftHasSkuPartFilters = activeSkuFilterKeys.some((key) => draftActiveSkuPartFilters[key].length > 0);
+  }, [activeSkuFilterCategories, activeSkuFilterKeysByCategory, draftSkuPartFilters]);
+  const draftHasSkuPartFilters = hasAnySkuPartFilter(draftActiveSkuPartFilters);
   const draftAllPresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("all"));
   const draftCorePresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("core"));
   const draftCompactPresetActive = draftCompactMode && columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("compact"));
@@ -3019,8 +3061,12 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     if (columnSettingsDraft.compactMode !== compactMode) count += 1;
     if (columnSettingsDraft.showZeroSales !== showZeroSales) count += 1;
     if (columnSettingsDraft.freezeUntil !== freezeUntil) count += 1;
-    for (const key of Object.keys(EMPTY_SKU_PART_FILTERS) as SkuPartFilterKey[]) {
-      if (columnSettingsDraft.skuPartFilters[key].join("\u0000") !== skuPartFilters[key].join("\u0000")) count += 1;
+    for (const category of BASE_CATEGORY_ORDER) {
+      const draftGroup = columnSettingsDraft.skuPartFilters[category];
+      const appliedGroup = skuPartFilters[category];
+      for (const key of Object.keys(emptySkuPartFilters()) as SkuPartFilterKey[]) {
+        if ((draftGroup?.[key] ?? []).join("\u0000") !== (appliedGroup?.[key] ?? []).join("\u0000")) count += 1;
+      }
     }
     const draftContainers = Array.from(columnSettingsDraft.hiddenContainers).sort().join("\u0000");
     const appliedContainers = Array.from(hiddenContainers).sort().join("\u0000");
@@ -3050,7 +3096,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       columnFilters: new Map(),
       salesStatusFilter: [],
       urgencyFilter: [],
-      skuPartFilters: EMPTY_SKU_PART_FILTERS,
+      skuPartFilters: {},
     });
     // Not recorded: a search is typed, and undoing it a character at a time
     // reads as the box fighting back.
@@ -3538,7 +3584,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         type="button"
                         disabled={!draftHasSkuPartFilters}
                         onClick={() => {
-                          setColumnSettingsDraft((current) => current ? { ...current, skuPartFilters: cloneSkuPartFilters(EMPTY_SKU_PART_FILTERS) } : current);
+                          setColumnSettingsDraft((current) => current ? { ...current, skuPartFilters: {} } : current);
                         }}
                         style={{
                           fontSize: 10,
@@ -3566,19 +3612,28 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                       </button>
                     </div>
                     {isSkuFiltersOpen ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      {activeSkuFilterKeys.map((key) => {
-                        const selectedValues = draftActiveSkuPartFilters[key];
-                        const optionValues = skuFilterOptions[key] ?? [];
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {activeSkuFilterCategories.map((category) => (
+                      <div key={category} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {activeSkuFilterCategories.length > 1 ? (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: .4 }}>
+                            {CATEGORY_CODE_OPTIONS.find((option) => option.value === category)?.label ?? category}
+                          </span>
+                        ) : null}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      {activeSkuFilterKeysByCategory[category].map((key) => {
+                        const openKey = `${category}::${key}`;
+                        const selectedValues = draftActiveSkuPartFilters[category]?.[key] ?? [];
+                        const optionValues = skuFilterOptions[category]?.[key] ?? [];
                         return (
-                          <div key={key} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{skuFilterLabel(key, primaryBaseCategory)}</span>
-                            <details open={openSkuFilterKey === key} style={{ position: "relative" }}>
+                          <div key={openKey} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748B" }}>{skuFilterLabel(key, category)}</span>
+                            <details open={openSkuFilterKey === openKey} style={{ position: "relative" }}>
                               <summary
                                 title={selectedValues.length ? selectedValues.join(", ") : "All"}
                                 onClick={(event) => {
                                   event.preventDefault();
-                                  setOpenSkuFilterKey((current) => current === key ? null : key);
+                                  setOpenSkuFilterKey((current) => current === openKey ? null : openKey);
                                 }}
                                 style={{
                                   display: "flex",
@@ -3624,7 +3679,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                 <button
                                   type="button"
                                   disabled={!selectedValues.length}
-                                  onClick={() => setColumnSettingsDraft((current) => current ? { ...current, skuPartFilters: { ...current.skuPartFilters, [key]: [] } } : current)}
+                                  onClick={() => setColumnSettingsDraft((current) => current ? {
+                                    ...current,
+                                    skuPartFilters: {
+                                      ...current.skuPartFilters,
+                                      [category]: { ...(current.skuPartFilters[category] ?? emptySkuPartFilters()), [key]: [] },
+                                    },
+                                  } : current)}
                                   style={{
                                     width: "100%",
                                     marginBottom: 4,
@@ -3659,7 +3720,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                                       <input
                                         type="checkbox"
                                         checked={checked}
-                                        onChange={() => handleDraftSkuPartFilterToggle(key, value)}
+                                        onChange={() => handleDraftSkuPartFilterToggle(category, key, value)}
                                         style={{ width: 13, height: 13, cursor: "pointer", accentColor: "#3B82F6" }}
                                       />
                                       <span style={{ fontSize: 12, color: checked ? "#1D4ED8" : "#334155", fontWeight: checked ? 700 : 500 }}>
@@ -3673,6 +3734,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                           </div>
                         );
                       })}
+                        </div>
+                      </div>
+                      ))}
                     </div>
                     ) : null}
                   </div>

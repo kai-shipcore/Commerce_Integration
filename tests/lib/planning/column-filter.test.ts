@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   applyColumnFilters, distinctColumnValues, distinctColumnValuesExcluding,
-  columnFilterEquals, matchesCondition, parseColumnFilters, serializeColumnFilters,
+  columnFilterEquals, matchesCondition, migrateLegacyValueFilters,
+  parseColumnFilters, serializeColumnFilters, BLANK_TOKEN,
   type ColumnFilter, type ConditionFilter,
 } from "@/lib/planning/column-filter";
 
@@ -84,7 +85,7 @@ describe("applyColumnFilters with ColumnFilter (values + condition)", () => {
 
   it("AND-composes a values filter on one column with a condition filter on another", () => {
     const filters = new Map<"sku" | "qty", ColumnFilter>([
-      ["sku", { mode: "values", values: new Set(["A", "B", "C"]) }],
+      ["sku", { mode: "values", hidden: new Set<string>() }],
       ["qty", { mode: "condition", condition: { operator: "between", value: "1", value2: "10" } }],
     ]);
     expect(applyColumnFilters(rows, filters, accessors).map((r) => r.sku)).toEqual(["B"]);
@@ -115,7 +116,7 @@ describe("applyColumnFilters with ColumnFilter (values + condition)", () => {
       { sku: "C", qty: 3 },
     ];
     const filters = new Map<"sku" | "qty", ColumnFilter>([
-      ["qty", { mode: "values", values: new Set(["2", "3"]) }],
+      ["qty", { mode: "values", hidden: new Set(["1"]) }],
     ]);
     const exceptions = new Map<"sku" | "qty", ReadonlySet<string>>([
       ["qty", new Set(["B"])],
@@ -135,8 +136,8 @@ describe("applyColumnFilters with ColumnFilter (values + condition)", () => {
   it("does not let an edit exception bypass a filter on another column", () => {
     const editedRows: Row[] = [{ sku: "B", qty: 1 }];
     const filters = new Map<"sku" | "qty", ColumnFilter>([
-      ["sku", { mode: "values", values: new Set(["A"]) }],
-      ["qty", { mode: "values", values: new Set(["2", "3"]) }],
+      ["sku", { mode: "values", hidden: new Set(["B"]) }],
+      ["qty", { mode: "values", hidden: new Set(["1"]) }],
     ]);
     const exceptions = new Map<"sku" | "qty", ReadonlySet<string>>([
       ["qty", new Set(["B"])],
@@ -211,7 +212,7 @@ describe("distinctColumnValues", () => {
     const accessors = { sku: (row: Row) => row.sku, qty: (row: Row) => row.qty };
     const formatters = { sku: (row: Row) => row.sku, qty: (row: Row) => String(row.qty) };
     const filters = new Map<"sku" | "qty", ColumnFilter>([
-      ["sku", { mode: "values", values: new Set(["A"]) }],
+      ["sku", { mode: "values", hidden: new Set(["B"]) }],
     ]);
 
     const values = distinctColumnValuesExcluding(rows, filters, accessors, formatters, "qty", "(Blank)");
@@ -219,10 +220,87 @@ describe("distinctColumnValues", () => {
   });
 });
 
+describe("values filters record what is hidden, not what is kept", () => {
+  type Row = { sku: string; back: number };
+  const accessors = { back: (row: Row) => row.back };
+  const formatters = { back: (row: Row) => String(row.back) };
+
+  // What "non-zeros in Backorders" is: open the Back Order column, untick 0.
+  const hideZero: ColumnFilter = { mode: "values", hidden: new Set(["0"]) };
+
+  it("keeps a value that was not on the list when the filter was built", () => {
+    // The reported bug. The filter was committed against a population that
+    // held 0 and -1; a later one also holds -2, for a SKU the reader never
+    // excluded. Under a kept-values snapshot that row disappeared.
+    const rows: Row[] = [
+      { sku: "A", back: 0 },
+      { sku: "B", back: -1 },
+      { sku: "C", back: -2 },
+    ];
+    expect(applyColumnFilters(rows, new Map([["back", hideZero]]), accessors).map((r) => r.sku))
+      .toEqual(["B", "C"]);
+  });
+
+  it("applies no constraint once nothing is hidden", () => {
+    const rows: Row[] = [{ sku: "A", back: 0 }, { sku: "B", back: -1 }];
+    const empty: ColumnFilter = { mode: "values", hidden: new Set<string>() };
+    expect(applyColumnFilters(rows, new Map([["back", empty]]), accessors)).toHaveLength(2);
+  });
+
+  it("hides blanks through the same token the value list uses", () => {
+    type Sparse = { sku: string; back: number | null };
+    const sparseAccessors = { back: (row: Sparse) => row.back };
+    const rows: Sparse[] = [{ sku: "A", back: null }, { sku: "B", back: -1 }];
+    const filter: ColumnFilter = { mode: "values", hidden: new Set([BLANK_TOKEN]) };
+    expect(applyColumnFilters(rows, new Map([["back", filter]]), sparseAccessors).map((r) => r.sku))
+      .toEqual(["B"]);
+  });
+
+  describe("migrateLegacyValueFilters", () => {
+    const rows: Row[] = [
+      { sku: "A", back: 0 },
+      { sku: "B", back: -1 },
+      { sku: "C", back: -2 },
+    ];
+
+    it("reads a stored pre-hidden filter without changing what it means", () => {
+      const restored = parseColumnFilters({ back: { mode: "values", values: ["0", "-1"] } });
+      const filter = restored.get("back");
+      expect(filter?.mode === "values" && filter.legacyKept?.has("0")).toBe(true);
+      // Still the old meaning until it is migrated: C is not on the list.
+      expect(applyColumnFilters(rows, restored, accessors).map((r) => r.sku)).toEqual(["A", "B"]);
+    });
+
+    it("inverts it against the unfiltered population", () => {
+      const restored = parseColumnFilters({ back: { mode: "values", values: ["-1", "-2"] } });
+      const migrated = migrateLegacyValueFilters(restored, rows, accessors);
+      expect(migrated.get("back")).toEqual({ mode: "values", hidden: new Set(["0"]) });
+      // And now a value the snapshot never saw survives.
+      const withNewValue = [...rows, { sku: "D", back: -3 }];
+      expect(applyColumnFilters(withNewValue, migrated, accessors).map((r) => r.sku))
+        .toEqual(["B", "C", "D"]);
+    });
+
+    it("returns the same Map when there is nothing to convert", () => {
+      const filters = new Map<"back", ColumnFilter>([["back", hideZero]]);
+      expect(migrateLegacyValueFilters(filters, rows, accessors)).toBe(filters);
+    });
+
+    it("leaves a column's value list alone — it lists values, not filters", () => {
+      const restored = parseColumnFilters({ back: { mode: "values", values: ["-1", "-2"] } });
+      const migrated = migrateLegacyValueFilters(restored, rows, accessors);
+      const listed = distinctColumnValuesExcluding(
+        rows, migrated, accessors, formatters, "back", "(Blank)",
+      );
+      expect(listed.map((v) => v.value)).toEqual(["-2", "-1", "0"]);
+    });
+  });
+});
+
 describe("serializeColumnFilters / parseColumnFilters", () => {
   it("round-trips every filter mode", () => {
     const filters = new Map<string, ColumnFilter>([
-      ["sku", { mode: "values", values: new Set(["A", "B"]) }],
+      ["sku", { mode: "values", hidden: new Set(["A", "B"]) }],
       ["back", { mode: "condition", condition: { operator: "between", value: "1", value2: "9" } }],
       ["CONT-2411::inb_qty", { mode: "color", colorType: "text", colors: new Set(["#fff"]) }],
     ]);
@@ -231,24 +309,24 @@ describe("serializeColumnFilters / parseColumnFilters", () => {
     const restored = parseColumnFilters(JSON.parse(JSON.stringify(serializeColumnFilters(filters))));
 
     expect([...restored.keys()].sort()).toEqual(["CONT-2411::inb_qty", "back", "sku"]);
-    expect(restored.get("sku")).toEqual({ mode: "values", values: new Set(["A", "B"]) });
+    expect(restored.get("sku")).toEqual({ mode: "values", hidden: new Set(["A", "B"]) });
     expect(restored.get("back")).toEqual({ mode: "condition", condition: { operator: "between", value: "1", value2: "9" } });
     expect(restored.get("CONT-2411::inb_qty")).toEqual({ mode: "color", colorType: "text", colors: new Set(["#fff"]) });
   });
 
   it("keeps a value filter usable — a Set, not the {} JSON would leave behind", () => {
     const stored = JSON.parse(JSON.stringify(serializeColumnFilters(
-      new Map<string, ColumnFilter>([["sku", { mode: "values", values: new Set(["A"]) }]]),
+      new Map<string, ColumnFilter>([["sku", { mode: "values", hidden: new Set(["A"]) }]]),
     )));
     const filter = parseColumnFilters(stored).get("sku");
-    expect(filter?.mode === "values" && filter.values.has("A")).toBe(true);
+    expect(filter?.mode === "values" && filter.hidden.has("A")).toBe(true);
   });
 
   it("drops entries it cannot read, and keeps the rest", () => {
     const restored = parseColumnFilters({
-      good: { mode: "values", values: ["A"] },
-      badMode: { mode: "nonsense", values: ["A"] },
-      badValues: { mode: "values", values: "A" },
+      good: { mode: "values", hidden: ["A"] },
+      badMode: { mode: "nonsense", hidden: ["A"] },
+      badValues: { mode: "values", hidden: 5 },
       badOperator: { mode: "condition", condition: { operator: "drop table" } },
       notAnObject: 5,
     });
@@ -263,7 +341,7 @@ describe("serializeColumnFilters / parseColumnFilters", () => {
 });
 
 describe("columnFilterEquals", () => {
-  const values = (...v: string[]): ColumnFilter => ({ mode: "values", values: new Set(v) });
+  const values = (...v: string[]): ColumnFilter => ({ mode: "values", hidden: new Set(v) });
 
   it("separates two values filters that differ by one value", () => {
     // The bug this replaced JSON.stringify for: Sets stringify to {}, so

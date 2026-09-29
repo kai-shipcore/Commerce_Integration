@@ -36,7 +36,9 @@ export function computeContainerChain(
   const dailyRate = row.total_avg_curr ?? 0;
 
   let prevCarryover = carryover;
-  let prevBackorder = sheetBaselineBackorderQty(row.sku, availQty, row.total_30d ?? 0);
+  let prevBackorder = sheetBaselineBackorderQty(
+    row.sku, availQty, row.total_30d ?? 0, Math.max(0, -(row.back ?? 0)),
+  );
   let prevSod: string | null = row.sod;
   let prevEta = todayStr;
   const baseline = cons[0];

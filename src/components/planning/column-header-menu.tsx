@@ -167,7 +167,14 @@ function ValuesFilterBody({
   // every keystroke of the search box below.
   const values = useMemo(() => getValues(), [getValues]);
   const [staged, setStaged] = useState<Set<string>>(
-    () => new Set(committed?.mode === "values" ? committed.values : values.map((v) => v.value)),
+    // Checked means visible; the committed filter records the hidden values.
+    () => new Set(
+      committed?.mode === "values"
+        ? values.map((v) => v.value).filter((value) => (
+          committed.legacyKept ? committed.legacyKept.has(value) : !committed.hidden.has(value)
+        ))
+        : values.map((v) => v.value),
+    ),
   );
   const [search, setSearch] = useState("");
   const shown = values.filter((v) => v.label.toLowerCase().includes(search.trim().toLowerCase()));
@@ -225,7 +232,8 @@ function ValuesFilterBody({
       <FilterFooter
         onCancel={onDone}
         onApply={() => {
-          onApply(staged.size === values.length ? null : { mode: "values", values: staged });
+          const hidden = new Set(values.map((v) => v.value).filter((value) => !staged.has(value)));
+          onApply(hidden.size === 0 ? null : { mode: "values", hidden });
           onDone();
         }}
       />

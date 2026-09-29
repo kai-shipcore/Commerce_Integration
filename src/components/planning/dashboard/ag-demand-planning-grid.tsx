@@ -81,7 +81,8 @@ import type { CategoryFilter, ContainerMeta, ContainerRowData, DemandRow } from 
 import { apiPath, withBasePath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import {
-  applyColumnFilters, columnFilterEquals, distinctColumnValuesExcluding, distinctColumnColorsExcluding, CONDITION_OPERATORS,
+  applyColumnFilters, columnFilterEquals, distinctColumnValuesExcluding, distinctColumnColorsExcluding,
+  migrateLegacyValueFilters, CONDITION_OPERATORS,
   type ColumnFilter, type ConditionFilter, type DistinctColor, type DistinctValue,
 } from "@/lib/planning/column-filter";
 import { conditionalFormatForCell } from "@/lib/planning/conditional-formatting";
@@ -771,9 +772,9 @@ function GridColumnMenu({
   const values = useMemo(() => (filterSection === "values" ? getValues() : []), [filterSection, getValues]);
   const fillColors = useMemo(() => (colorMenu !== null ? getFillColors() : []), [colorMenu, getFillColors]);
   const textColors = useMemo(() => (colorMenu !== null ? getTextColors() : []), [colorMenu, getTextColors]);
-  const [staged, setStaged] = useState<Set<string>>(
-    () => new Set(committed?.mode === "values" ? committed.values : []),
-  );
+  // `staged` is what stays CHECKED, i.e. visible. The committed filter stores
+  // the complement (what is hidden), so seeding inverts it against the list.
+  const [staged, setStaged] = useState<Set<string>>(() => new Set<string>());
   const [search, setSearch] = useState("");
   const [menuSize, setMenuSize] = useState(() => normalizeColumnFilterMenuSize(size));
   const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -834,7 +835,13 @@ function GridColumnMenu({
   useEffect(() => {
     if (filterSection !== "values") { seededValues.current = false; return; }
     if (seededValues.current || values.length === 0) return;
-    setStaged(new Set(committed?.mode === "values" ? committed.values : values.map((v) => v.value)));
+    setStaged(new Set(
+      committed?.mode === "values"
+        ? values.map((v) => v.value).filter((value) => (
+          committed.legacyKept ? committed.legacyKept.has(value) : !committed.hidden.has(value)
+        ))
+        : values.map((v) => v.value),
+    ));
     seededValues.current = true;
   }, [filterSection, values, committed]);
 
@@ -1053,7 +1060,8 @@ function GridColumnMenu({
                 if (filterSection === "condition") {
                   onApplyFilter(condition === null ? null : { mode: "condition", condition });
                 } else if (filterSection === "values") {
-                  onApplyFilter(staged.size === values.length ? null : { mode: "values", values: staged });
+                  const hidden = new Set(values.map((v) => v.value).filter((value) => !staged.has(value)));
+                  onApplyFilter(hidden.size === 0 ? null : { mode: "values", hidden });
                 }
                 onClose();
               }}
@@ -1225,7 +1233,9 @@ function computeContainerChain(
   const availableQty = effectiveTotal + (row.back ?? 0);
   const dailyRate = row.total_avg_curr ?? 0;
   let previousCarryover = Math.max(0, availableQty);
-  let previousBackorder = sheetBaselineBackorderQty(row.sku, availableQty, row.total_30d ?? 0);
+  let previousBackorder = sheetBaselineBackorderQty(
+    row.sku, availableQty, row.total_30d ?? 0, Math.max(0, -(row.back ?? 0)),
+  );
   let previousSod = row.sod;
   // Seed from the baseline column the server built, which already sits on the
   // As of date; falling back to the anchor only when there is no Base column.
@@ -4110,6 +4120,32 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     Object.fromEntries([...new Set(keys)].map((key) => [key, (row: DemandRow) => columnMenuValue(key, row)])),
   [columnMenuValue]);
 
+  /**
+   * Converts pre-`hidden` column filters, once there are rows to invert them
+   * against. Those filters stored the values to KEEP, which made them a
+   * snapshot of the population they were built over — the reason a backorder
+   * filter and a SKU filter together dropped rows neither one excluded.
+   *
+   * Inverting needs the unfiltered population (`data.rows`), and a container
+   * sub-column's value comes from the chain, so a filter on one has to wait
+   * for the details to load or it would freeze a grid full of zeroes.
+   */
+  useEffect(() => {
+    if (data.rows.length === 0) return;
+    const legacyKeys = [...storedColumnFilters]
+      .filter(([, filter]) => filter.mode === "values" && filter.legacyKept)
+      .map(([key]) => key);
+    if (legacyKeys.length === 0) return;
+    if (legacyKeys.some((key) => key.includes("::")) && !containerDetailsLoaded) return;
+
+    const migrated = migrateLegacyValueFilters(
+      storedColumnFilters,
+      data.rows,
+      columnMenuAccessors(storedColumnFilters.keys()),
+    );
+    if (migrated !== storedColumnFilters) onColumnFiltersChange?.(migrated);
+  }, [columnMenuAccessors, containerDetailsLoaded, data.rows, onColumnFiltersChange, storedColumnFilters]);
+
   const columnMenuLabel = useCallback((key: string, row: DemandRow): string => {
     const value = columnMenuValue(key, row);
     return value === null || value === undefined ? "" : String(value);
@@ -4158,7 +4194,13 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const query = search.toLowerCase();
     const filtered = data.rows.filter((row) => {
       if (!matchesCategorySelection(row, categoryFilter)) return false;
-      if (!showZeroSales && !urgencyFilter &&
+      // `urgencyFilter` became an array when the toolbar filters went
+      // multi-select, and an empty array is truthy — so `!urgencyFilter` was
+      // always false and this guard never ran. A row carrying a back order is
+      // kept regardless: it is unmet demand, and a SKU that has been out of
+      // stock long enough to accumulate one is exactly the SKU with no sales
+      // in any window.
+      if (!showZeroSales && urgencyFilter.length === 0 && (row.back ?? 0) >= 0 &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (!matchesSalesStatusSelection(row, salesStatusFilter)) return false;
@@ -6262,7 +6304,12 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       .filter((r) => {
         const cat = (r.category_code ?? "").toLowerCase();
         if (!checkedBaseCategories(categoryFilter).some((c) => c === cat)) return false;
-        if ((r.cbm_per_unit ?? 0) <= 0 || r.total_avg_curr <= 0) return false;
+        // CBM stays a hard gate — the server drops an item without one
+        // anyway. Velocity does not: a back order is demand already placed,
+        // and the SKUs carrying one are the ones whose sales went to zero
+        // because they were out of stock.
+        if ((r.cbm_per_unit ?? 0) <= 0) return false;
+        if (r.total_avg_curr <= 0 && (r.back ?? 0) >= 0) return false;
         const key = `${r.sku}::${container.name}`;
         const override = qtyOverrides.get(key);
         const existingQty = override !== undefined ? override.inbound_qty ?? 0 : r.containers?.[container.name]?.inbound_qty ?? 0;
@@ -6413,7 +6460,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const rows = rowsInDisplayOrder().filter((row) => {
       const cat = (row.category_code ?? "").toLowerCase();
       if (!checkedBaseCategories(categoryFilter).some((c) => c === cat)) return false;
-      if ((row.cbm_per_unit ?? 0) <= 0 || row.total_avg_curr <= 0) return false;
+      if ((row.cbm_per_unit ?? 0) <= 0) return false;
+      if (row.total_avg_curr <= 0 && (row.back ?? 0) >= 0) return false;
       return true;
     });
     const orders: TargetOrder[] = [];

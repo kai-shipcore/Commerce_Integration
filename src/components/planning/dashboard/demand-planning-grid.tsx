@@ -29,7 +29,7 @@ import {
 } from "./columns";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { GridSort } from "@/lib/planning/grid-sort";
-import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SalesStatus, SkuPartFilters, TextFormatSettings } from "./columns";
+import type { CellColorSettings, CellContent, CellTextFormatSettings, ColDef, ColumnColorSettings, ColumnFilterMenuSize, ColumnOrder, ColumnTextFormatSettings, ColumnVisibility, ColumnWidths, EditMenuActions, ResizableColumnId, RowHeights, SalesStatus, SkuPartFiltersByCategory, TextFormatSettings } from "./columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { computeContainerChain, type ChainDerived } from "@/lib/planning/chain-calc";
 import type { SeasonalFactors } from "@/lib/planning/seasonal-factors";
@@ -75,7 +75,7 @@ export interface DemandPlanningGridProps {
   /** Empty means every urgency band. */
   urgencyFilter: UrgencyFilter[];
   search: string;
-  skuPartFilters: SkuPartFilters;
+  skuPartFilters: SkuPartFiltersByCategory;
   onFilteredRowsChange: (rows: DemandRow[]) => void;
   loading: boolean;
   onLoadContainerDetails: () => void;
@@ -482,7 +482,9 @@ export function DemandPlanningGrid({
     const q = search.toLowerCase();
     return ROWS.filter((r) => {
       if (!matchesCategorySelection(r, categoryFilter)) return false;
-      if (!showZeroSales && !urgencyFilter &&
+      // See the AG Grid copy: `!urgencyFilter` on an array is always false, so
+      // this never ran, and a back order keeps a row visible either way.
+      if (!showZeroSales && urgencyFilter.length === 0 && (r.back ?? 0) >= 0 &&
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (!matchesSalesStatusSelection(r, salesStatusFilter)) return false;
