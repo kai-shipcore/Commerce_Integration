@@ -378,7 +378,7 @@ export function SkuMasterPage() {
 
   function updateRow(
     masterSku: string,
-    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status" | "salesStatus">>
+    patch: Partial<Pick<SkuMasterRow, "cbmPerUnit" | "moq" | "orderMultiple" | "caseQty" | "weightKg" | "status" | "salesStatus" | "originalOrCustom">>
   ) {
     setRows((current) => current.map((sku) => (sku.masterSku === masterSku ? { ...sku, ...patch } : sku)));
   }
@@ -427,6 +427,7 @@ export function SkuMasterPage() {
           weightKg: row.weightKg,
           status: row.status,
           salesStatus: row.salesStatus,
+          originalOrCustom: row.originalOrCustom,
         }),
       });
       const json = await res.json();
@@ -1149,7 +1150,11 @@ export function SkuMasterPage() {
               value={sku.salesStatus}
               onChange={(value) => updateRow(sku.masterSku, { salesStatus: value })}
             />
-            <OriginalOrCustomBadge value={sku.originalOrCustom} />
+            <EditableOriginalOrCustom
+              active={editingSku === sku.masterSku}
+              value={sku.originalOrCustom}
+              onChange={(value) => updateRow(sku.masterSku, { originalOrCustom: value })}
+            />
             <EditableNumber
               active={editingSku === sku.masterSku}
               value={sku.cbmPerUnit}
@@ -1380,6 +1385,33 @@ function OriginalOrCustomBadge({ value }: { value: OriginalOrCustom }) {
       <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${badge[value]}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function EditableOriginalOrCustom({
+  active,
+  value,
+  onChange,
+}: {
+  active: boolean;
+  value: OriginalOrCustom;
+  onChange: (value: "Original" | "Custom") => void;
+}) {
+  if (!active || value === "Part") return <OriginalOrCustomBadge value={value} />;
+
+  return (
+    <div className="px-4 py-3">
+      <select
+        aria-label="Original or Custom"
+        value={value}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => onChange(event.target.value as "Original" | "Custom")}
+        className="h-8 rounded-md border border-[#cccac4] bg-white px-2 text-xs outline-none focus:border-[#1a5cdb] focus:ring-2 focus:ring-[#1a5cdb]/20"
+      >
+        <option value="Original">Original</option>
+        <option value="Custom">Custom</option>
+      </select>
     </div>
   );
 }

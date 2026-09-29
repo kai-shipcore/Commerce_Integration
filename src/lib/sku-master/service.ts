@@ -30,10 +30,12 @@ export interface UpdateSkuMasterInput {
   weightKg: unknown;
   status: unknown;
   salesStatus: unknown;
+  originalOrCustom: unknown;
 }
 
 const VALID_TYPE_FILTERS = ["Hold", "Discontinued", "TBD"] as const;
 const VALID_SALES_STATUSES = ["Hold", "Discontinued", "TBD"] as const;
+const VALID_SALES_TYPES = ["Original", "Custom"] as const;
 const SALES_STATUS_BY_LOWERCASE = new Map(
   VALID_SALES_STATUSES.map((value) => [value.toLowerCase(), value] as const)
 );
@@ -132,11 +134,16 @@ export const SkuMasterService = {
     const statusValue = input.status == null ? null : String(input.status).trim().toLowerCase();
     const salesStatusRaw = input.salesStatus == null ? undefined : String(input.salesStatus).trim();
     const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
+    const salesTypeRaw = input.originalOrCustom == null ? undefined : String(input.originalOrCustom).trim();
+    const salesTypeOverride = salesTypeRaw === "" ? null : salesTypeRaw ?? undefined;
 
     // Original/Custom are derived from order data (see shapeProduct/originalOrCustomSql) and must
     // never be written manually; Part/SWC are auto-detected — only override statuses are settable here.
     if (salesStatusValue != null && !VALID_SALES_STATUSES.includes(salesStatusValue as (typeof VALID_SALES_STATUSES)[number])) {
       throw new ValidationError("Invalid salesStatus");
+    }
+    if (salesTypeOverride != null && !VALID_SALES_TYPES.includes(salesTypeOverride as (typeof VALID_SALES_TYPES)[number])) {
+      throw new ValidationError("Invalid originalOrCustom");
     }
 
     if (statusValue !== null && statusValue !== "active" && statusValue !== "inactive") {
@@ -151,6 +158,7 @@ export const SkuMasterService = {
       weightKg,
       status: statusValue as "active" | "inactive" | null,
       salesStatus: salesStatusValue,
+      salesTypeOverride: salesTypeOverride as "Original" | "Custom" | null | undefined,
     });
 
     if (!found) throw new NotFoundError("SKU not found");
@@ -165,7 +173,7 @@ export const SkuMasterService = {
       userEmail: session?.user?.email ?? null,
       action: statusValue === "inactive" ? "delete" : "update",
       after: Object.fromEntries(
-        Object.entries({ moq, orderMultiple, cbmPerUnit, caseQty, weightKg, status: statusValue, salesStatus: salesStatusValue })
+        Object.entries({ moq, orderMultiple, cbmPerUnit, caseQty, weightKg, status: statusValue, salesStatus: salesStatusValue, originalOrCustom: salesTypeOverride })
           .filter(([, v]) => v != null)
       ),
       ip,

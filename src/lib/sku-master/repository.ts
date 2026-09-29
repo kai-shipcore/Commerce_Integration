@@ -55,6 +55,7 @@ export interface UpdateProductFields {
   weightKg: number | null;
   status: "active" | "inactive" | null;
   salesStatus: string | null | undefined;
+  salesTypeOverride: "Original" | "Custom" | null | undefined;
 }
 
 type QueryClient = {
@@ -110,7 +111,7 @@ const overrideStatusSql = `(CASE WHEN p.sales_status IN ('Hold', 'Discontinued',
 // one (see partMasterSkuSql — the classification is derived from the SKU
 // itself, since nothing has written fc_products.sales_status = 'Part' since
 // fc_replacement_parts was dropped).
-const originalOrCustomSql = `CASE WHEN ${partMasterSkuSql("p.master_sku")} THEN 'Part' ELSE COALESCE((SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), 'Original') END`;
+const originalOrCustomSql = `CASE WHEN ${partMasterSkuSql("p.master_sku")} THEN 'Part' ELSE COALESCE(p.sales_type_override, (SELECT sales_status FROM shipcore.fc_stats WHERE master_sku = p.master_sku LIMIT 1), (SELECT sales_status FROM shipcore.fc_stats_custom WHERE master_sku = p.master_sku LIMIT 1), 'Original') END`;
 
 const PRODUCT_CATEGORY_MAP: Record<string, string> = { cc: "CC", fm: "FM", sc: "SC", ac: "AC", swc: "SWC" };
 
@@ -476,6 +477,7 @@ export const SkuMasterRepository = {
            weight_kg = COALESCE($6, weight_kg),
            status = COALESCE($7::shipcore.fc_product_status, status),
            sales_status = CASE WHEN $8::text IS NOT NULL THEN $8::text ELSE sales_status END,
+           sales_type_override = CASE WHEN $9::text IS NOT NULL THEN $9::text ELSE sales_type_override END,
            updated_at = NOW()
        WHERE master_sku = $1
        RETURNING master_sku`,
@@ -488,6 +490,7 @@ export const SkuMasterRepository = {
         fields.weightKg,
         fields.status,
         fields.salesStatus ?? null,
+        fields.salesTypeOverride ?? null,
       ]
     );
     return (result.rowCount ?? 0) > 0;

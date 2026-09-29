@@ -140,6 +140,26 @@ describe("SkuMasterService.updateProduct", () => {
     ).rejects.toThrow(ValidationError);
   });
 
+  it("rejects Part as a manual classification", async () => {
+    await expect(
+      SkuMasterService.updateProduct({ masterSku: "SKU-1", originalOrCustom: "Part" } as never, null)
+    ).rejects.toThrow("Invalid originalOrCustom");
+  });
+
+  it("passes an Original/Custom override to the repository", async () => {
+    repositoryMock.updateProduct.mockResolvedValue(true);
+
+    await SkuMasterService.updateProduct(
+      { masterSku: "SKU-1", originalOrCustom: "Custom" } as never,
+      null
+    );
+
+    expect(repositoryMock.updateProduct).toHaveBeenCalledWith(
+      "SKU-1",
+      expect.objectContaining({ salesTypeOverride: "Custom" })
+    );
+  });
+
   it("throws NotFoundError when the repository finds no matching row", async () => {
     repositoryMock.updateProduct.mockResolvedValue(false);
     await expect(SkuMasterService.updateProduct({ masterSku: "SKU-1" } as never, null)).rejects.toThrow(NotFoundError);

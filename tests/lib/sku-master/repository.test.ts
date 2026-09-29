@@ -118,7 +118,7 @@ describe("SkuMasterRepository.updateProduct", () => {
   it("returns false when no row was updated", async () => {
     poolQueryMock.mockResolvedValue({ rowCount: 0 });
     const found = await SkuMasterRepository.updateProduct("SKU-1", {
-      moq: null, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined,
+      moq: null, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, salesTypeOverride: undefined,
     });
     expect(found).toBe(false);
   });
@@ -126,9 +126,11 @@ describe("SkuMasterRepository.updateProduct", () => {
   it("returns true when a row was updated", async () => {
     poolQueryMock.mockResolvedValue({ rowCount: 1 });
     const found = await SkuMasterRepository.updateProduct("SKU-1", {
-      moq: 5, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined,
+      moq: 5, orderMultiple: null, cbmPerUnit: null, caseQty: null, weightKg: null, status: null, salesStatus: undefined, salesTypeOverride: "Custom",
     });
     expect(found).toBe(true);
+    expect(poolQueryMock.mock.calls[0][0]).toContain("sales_type_override");
+    expect(poolQueryMock.mock.calls[0][1][8]).toBe("Custom");
   });
 });
 
