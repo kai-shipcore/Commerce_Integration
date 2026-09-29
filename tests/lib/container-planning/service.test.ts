@@ -158,6 +158,23 @@ describe("ContainerPlanningService PATCH branches", () => {
     ).rejects.toThrow("Excel or CSV");
   });
 
+  it("lets a Stock-in completed container without a Packing List attach one, but not replace one", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "packing-list.xlsx");
+    repositoryMock.upsertPackingListFile.mockResolvedValue({ id: "9", originalName: "packing-list.xlsx" });
+
+    // Reverting complete → Shipped requires the file, and this is the only way to attach it.
+    repositoryMock.getContainer.mockResolvedValue({ ...existing, status: "complete", packingListFileId: null });
+    await expect(ContainerPlanningService.uploadPackingList("1", file, WHO)).resolves.toEqual({
+      id: "9",
+      originalName: "packing-list.xlsx",
+    });
+    expect(repositoryMock.upsertPackingListFile).toHaveBeenCalledTimes(1);
+
+    repositoryMock.getContainer.mockResolvedValue({ ...existing, status: "complete", packingListFileId: "8" });
+    await expect(ContainerPlanningService.uploadPackingList("1", file, WHO)).rejects.toThrow(ForbiddenError);
+    expect(repositoryMock.upsertPackingListFile).toHaveBeenCalledTimes(1);
+  });
+
   it("deletes a Packing List before shipment and blocks deletion after shipment", async () => {
     repositoryMock.getContainer.mockResolvedValue({ ...existing, packingListFileId: "9" });
     repositoryMock.deletePackingListFile.mockResolvedValue({ id: "9", originalName: "packing-list.xlsx" });

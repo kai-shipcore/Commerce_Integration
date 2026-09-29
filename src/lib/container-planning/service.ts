@@ -149,7 +149,14 @@ export const ContainerPlanningService = {
   async uploadPackingList(id: string, file: File, who: Who): Promise<{ id: string; originalName: string }> {
     const existing = await ContainerPlanningRepository.getContainer(id);
     if (!existing) throw new NotFoundError("Container not found");
-    this.assertNotComplete(existing);
+    // A Stock-in completed container is otherwise frozen, but one that reached
+    // that status without a Packing List (older data, or before the file became
+    // mandatory) could never be reverted to Shipped, because that transition
+    // requires the file and nothing could attach it. Allow attaching the missing
+    // file at that status; replacing an existing one stays locked.
+    if (existing.status === "complete" && existing.packingListFileId) {
+      throw new ForbiddenError("The Packing List of a Stock-in completed container cannot be replaced.");
+    }
 
     if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
       throw new ValidationError("Packing List must be an Excel or CSV file.");

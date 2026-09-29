@@ -4583,6 +4583,40 @@ function StatusBadge({ status }: { status: ContainerStatus }) {
   );
 }
 
+// "Current → Next" with each side labelled, so the direction of the change is
+// readable at a glance instead of being implied by the arrow alone.
+function StatusTransition({
+  from,
+  to,
+  fromLabel,
+  toLabel,
+  tone = "default",
+}: {
+  from: ContainerStatus;
+  to: ContainerStatus;
+  fromLabel: string;
+  toLabel: string;
+  tone?: "default" | "revert";
+}) {
+  const highlight = tone === "revert"
+    ? "border-amber-300 bg-amber-50 text-amber-700"
+    : "border-[#bcd0f5] bg-[#ebf0fd] text-[#1a4db0]";
+  const arrowColor = tone === "revert" ? "text-amber-500" : "text-muted-foreground";
+  return (
+    <div className="flex items-stretch justify-center gap-3">
+      <div className="flex w-36 flex-col items-center rounded-xl border border-[#e2dfd8] bg-[#fafaf7] px-3 py-3">
+        <span className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{fromLabel}</span>
+        <StatusBadge status={from} />
+      </div>
+      <span className={`self-center text-xl ${arrowColor}`} aria-hidden="true">→</span>
+      <div className={`flex w-36 flex-col items-center rounded-xl border px-3 py-3 ${highlight}`}>
+        <span className="mb-3 text-[11px] font-semibold uppercase tracking-wide">{toLabel}</span>
+        <StatusBadge status={to} />
+      </div>
+    </div>
+  );
+}
+
 function BulkStatusChangeModal({
   containers,
   saving,
@@ -4723,12 +4757,26 @@ function StatusChangeModal({
   const showRevert = canRevert && prevStatus !== undefined;
   const needsPackingList = nextStatus === "packing-list-received";
   const hasPackingList = Boolean(packingListFileId || packingListFile);
+  // Reverting Stock-in completed → Shipped needs the Packing List too. A
+  // container that reached Stock-in completed without one has no other way to
+  // attach it, so the revert step offers the upload itself.
+  const revertNeedsPackingList = prevStatus === "packing-list-received" && !packingListFileId;
 
   async function confirmNextStatus() {
     if (!nextStatus || savingStatus || (needsPackingList && !hasPackingList)) return;
     setSavingStatus(true);
     try {
       await onConfirm(nextStatus, packingListFile ?? undefined);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function confirmRevert() {
+    if (!prevStatus || savingStatus || (revertNeedsPackingList && !packingListFile)) return;
+    setSavingStatus(true);
+    try {
+      await onConfirm(prevStatus, revertNeedsPackingList ? packingListFile ?? undefined : undefined);
     } finally {
       setSavingStatus(false);
     }
@@ -4758,11 +4806,39 @@ function StatusChangeModal({
           <p className="mb-5 text-sm text-muted-foreground">
             {pick("이 작업은 신중하게 진행해주세요.", "Please proceed with caution.")}
           </p>
-          <div className="flex items-start justify-center gap-4 px-2">
-            <StatusBadge status={currentStatus} />
-            <span className="mt-1.5 text-lg text-amber-500">→</span>
-            <StatusBadge status={prevStatus} />
-          </div>
+          <StatusTransition
+            from={currentStatus}
+            to={prevStatus}
+            fromLabel={pick("현재 상태", "Current")}
+            toLabel={pick("되돌릴 상태", "Revert to")}
+            tone="revert"
+          />
+          {revertNeedsPackingList ? (
+            <div className="mt-5 rounded-xl border border-[#d8d6ce] bg-[#fafaf7] p-4">
+              <div className="mb-2 text-sm font-semibold">Packing List</div>
+              <p className="mb-3 text-xs text-muted-foreground">
+                {pick(
+                  "이 컨테이너에는 Packing List가 없습니다. Shipped 상태로 되돌리려면 원본 파일을 첨부해야 합니다.",
+                  "This container has no Packing List. Attach the original file to revert to Shipped.",
+                )}
+              </p>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[#9ca3af] bg-white px-4 py-3 text-xs font-semibold hover:bg-[#f0eee9]">
+                <Upload className="h-4 w-4" />
+                <span className="truncate">{packingListFile?.name ?? pick("Packing List 파일 선택", "Select Packing List")}</span>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={(event) => setPackingListFile(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              {!packingListFile ? (
+                <div className="mt-2 text-xs font-medium text-[#c42b2b]">
+                  {pick("Packing List 파일을 선택해야 되돌릴 수 있습니다.", "Select a Packing List file to revert.")}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
@@ -4773,10 +4849,11 @@ function StatusChangeModal({
             </button>
             <button
               type="button"
-              onClick={() => onConfirm(prevStatus)}
-              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
+              onClick={() => void confirmRevert()}
+              disabled={savingStatus || (revertNeedsPackingList && !packingListFile)}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {pick("되돌리기", "Revert")}
+              {savingStatus ? pick("저장 중...", "Saving...") : pick("되돌리기", "Revert")}
             </button>
           </div>
         </div>
@@ -4795,11 +4872,12 @@ function StatusChangeModal({
       >
         <h2 className="mb-5 text-base font-semibold">{pick("상태 변경", "Change Status")}</h2>
         {nextStatus ? (
-          <div className="flex items-start justify-center gap-4 px-2">
-            <StatusBadge status={currentStatus} />
-            <span className="mt-1.5 text-lg text-muted-foreground">→</span>
-            <StatusBadge status={nextStatus} />
-          </div>
+          <StatusTransition
+            from={currentStatus}
+            to={nextStatus}
+            fromLabel={pick("현재 상태", "Current")}
+            toLabel={pick("변경될 상태", "Changes to")}
+          />
         ) : (
           <p className="text-center text-sm text-muted-foreground">
             {pick("더 이상 변경할 상태가 없습니다.", "No further status changes available.")}
