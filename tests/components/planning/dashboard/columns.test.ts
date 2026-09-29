@@ -18,6 +18,11 @@ import {
   sameColumnOrder,
   viewStateSubset,
   matchesCategorySelection,
+  skuPartsForRow,
+  skuMatchesPartFilters,
+  hasAnySkuPartFilter,
+  baseCategoryForRow,
+  emptySkuPartFilters,
   matchesSalesStatusSelection,
   matchesUrgencySelection,
   parseUrgencyParam,
@@ -218,9 +223,36 @@ describe("normalizeDashboardFilters", () => {
     expect(filters.columnFilters.size).toBe(1);
     expect(filters.salesStatusFilter).toEqual(["Original", "Custom"]);
     expect(filters.urgencyFilter).toEqual(["crit", "warn"]);
-    expect(filters.skuPartFilters.seat).toEqual(["FRONT"]);
-    expect(filters.skuPartFilters.color).toEqual(["BK"]);
-    expect(filters.skuPartFilters.make).toEqual([]);
+    // A flat blob names no category. Its keys are Seat Cover's vocabulary,
+    // and `sc` is the first category that can account for all of them.
+    expect(filters.skuPartFilters.sc?.seat).toEqual(["FRONT"]);
+    expect(filters.skuPartFilters.sc?.color).toEqual(["BK"]);
+    expect(filters.skuPartFilters.sc?.make).toEqual([]);
+    expect(filters.skuPartFilters.cc).toBeUndefined();
+  });
+
+  it("reads a per-category blob back as it was written", () => {
+    const filters = normalizeDashboardFilters({
+      skuPartFilters: { cc: { fabric: ["15"] }, sc: { no: ["15"] } },
+    });
+    expect(filters.skuPartFilters.cc?.fabric).toEqual(["15"]);
+    expect(filters.skuPartFilters.sc?.no).toEqual(["15"]);
+    expect(filters.skuPartFilters.fm).toBeUndefined();
+  });
+
+  it("sends a flat Car Cover blob to Car Cover, not to the default category", () => {
+    const filters = normalizeDashboardFilters({ skuPartFilters: { fabric: ["15"] } });
+    expect(filters.skuPartFilters.cc?.fabric).toEqual(["15"]);
+    expect(filters.skuPartFilters.sc).toBeUndefined();
+  });
+
+  it("drops a flat blob no single category can account for", () => {
+    // `seat` is Seat Cover's, `fabric` is Car Cover's; assigning both to
+    // either one would filter that category on a key it has no values for.
+    const filters = normalizeDashboardFilters({
+      skuPartFilters: { seat: ["F"], fabric: ["15"] },
+    });
+    expect(filters.skuPartFilters).toEqual({});
   });
 
   it("restores a stored sort, and treats an unreadable one as none", () => {
@@ -253,8 +285,83 @@ describe("normalizeDashboardFilters", () => {
     });
     expect(filters.salesStatusFilter).toEqual(["Original"]);
     expect(filters.urgencyFilter).toEqual(["crit"]);
-    expect(filters.skuPartFilters.seat).toEqual([]);
-    expect("unknownKey" in filters.skuPartFilters).toBe(false);
+    // Nothing readable carried a value, so no category is claimed at all.
+    expect(filters.skuPartFilters).toEqual({});
+  });
+});
+
+describe("skuPartsForRow", () => {
+  it("splits a Car Cover into vehicle / fabric / size / color / color type", () => {
+    // Per the SKU FORMAT spec: CC-<vehicle&mirror>-<fabric>-<size>-<color>-<type>,
+    // so the 15 people call "size 15" is Pongee, the FABRIC.
+    expect(skuPartsForRow(row({ sku: "CC-CN-15-M-LGBK-STR", category_code: "CC" })))
+      .toMatchObject({ formula: "CN", fabric: "15", size: "M", color: "LGBK", type: "STR" });
+  });
+
+  it("reads a Custom Cover's model code as its size", () => {
+    // The second CC is "Custom Cover", not a repeated category.
+    expect(skuPartsForRow(row({ sku: "CC-CC-15-CHCM14-DGBK-STR", category_code: "CC" })))
+      .toMatchObject({ formula: "CC", fabric: "15", size: "CHCM14", color: "DGBK" });
+  });
+
+  it("falls back to the row's own parts when a Seat Cover SKU does not match the pattern", () => {
+    // ~360 CA/CL-SC SKUs carry no [F|B|R|E]+digits+color+tone run. They used to
+    // come back all-blank, which no SKU filter can ever match, so they vanished
+    // the moment one was set.
+    const parts = skuPartsForRow(row({
+      sku: "CA-SC-10-SOMETHING-ELSE-ENTIRELY",
+      category_code: "SC",
+      seat: "F", no: 15, color: "BK", tone: "1TO",
+    }));
+    expect(parts).toMatchObject({ seat: "F", no: "15", color: "BK", tone: "1TO" });
+  });
+});
+
+describe("skuMatchesPartFilters", () => {
+  const carCover = row({ sku: "CC-CC-15-CHCM14-DGBK-STR", category_code: "CC" });
+  const seatCover = row({ sku: "CA-SC-10-F-15-BK-1TO", category_code: "SC" });
+
+  it("does not judge a Car Cover by a Seat Cover's filter", () => {
+    // The reported bug: picking Seat Cover "Size" 15 (the `no` key) wiped out
+    // every Car Cover row, because a Car Cover has no `no` and "" matches
+    // nothing. Each category is now asked only about its own keys.
+    const filters = { sc: { ...emptySkuPartFilters(), no: ["15"] } };
+    expect(skuMatchesPartFilters(seatCover, filters)).toBe(true);
+    expect(skuMatchesPartFilters(carCover, filters)).toBe(true);
+  });
+
+  it("still narrows within the category the filter belongs to", () => {
+    const filters = { sc: { ...emptySkuPartFilters(), no: ["99"] } };
+    expect(skuMatchesPartFilters(seatCover, filters)).toBe(false);
+    expect(skuMatchesPartFilters(carCover, filters)).toBe(true);
+  });
+
+  it("filters Car Covers on their own fabric key", () => {
+    const filters = { cc: { ...emptySkuPartFilters(), fabric: ["15"] } };
+    expect(skuMatchesPartFilters(carCover, filters)).toBe(true);
+    expect(skuMatchesPartFilters(
+      row({ sku: "CC-CS-03-M-GR-1TO", category_code: "CC" }), filters,
+    )).toBe(false);
+  });
+
+  it("applies both categories' filters at once, each to its own rows", () => {
+    const filters = {
+      sc: { ...emptySkuPartFilters(), no: ["15"] },
+      cc: { ...emptySkuPartFilters(), fabric: ["3"] },
+    };
+    expect(skuMatchesPartFilters(seatCover, filters)).toBe(true);
+    expect(skuMatchesPartFilters(carCover, filters)).toBe(false);
+  });
+
+  it("passes everything when nothing is selected", () => {
+    expect(skuMatchesPartFilters(carCover, {})).toBe(true);
+    expect(hasAnySkuPartFilter({})).toBe(false);
+    expect(hasAnySkuPartFilter({ cc: { ...emptySkuPartFilters(), fabric: ["15"] } })).toBe(true);
+  });
+
+  it("routes SWC rows to the Car Cover filters they are built from", () => {
+    const swc = row({ sku: "CA-SWC-10-BK-1TO", category_code: "SWC" });
+    expect(baseCategoryForRow(swc)).toBe("cc");
   });
 });
 

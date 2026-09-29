@@ -25,7 +25,12 @@ export function calcOrderQty(
   nextGapDays: number,
 ): number {
   const { adj_daily, moq, order_multiple: step, remaining_at_arrival: rem, backorder_at_arrival: bo } = sku;
-  if (adj_daily <= 0) return 0;
+  // No velocity means no forecast to size an order against — but a back order
+  // is demand that already happened, so it is shipped rather than skipped.
+  // Without this a SKU that has been out of stock long enough to accumulate
+  // back orders is never reordered, because being out of stock is exactly what
+  // drove its recent sales to zero.
+  if (adj_daily <= 0) return bo > 0 ? Math.ceil(Math.max(bo, moq) / step) * step : 0;
   const target = baseTarget + sku.tier_bonus;
   const useGap = sku.use_gap_days !== false;
 

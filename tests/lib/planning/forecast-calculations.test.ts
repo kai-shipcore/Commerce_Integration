@@ -41,3 +41,23 @@ describe("Google Sheet sales formulas", () => {
     expect(sheetContainerEstimatedSales("CC-CN-15-P-GR-1TO", 10, 2, 1, 0, 0)).toBe(0);
   });
 });
+
+describe("a recorded back order outlives the no-recent-sales rule", () => {
+  it("keeps a back order fc_stats actually recorded, even at zero 30-day sales", () => {
+    // The rule exists to stop negative available stock being read as demand on
+    // a SKU nobody buys. A recorded back order is an order someone placed, and
+    // the SKUs carrying one are precisely the ones out of stock long enough for
+    // their 30-day sales to have fallen to zero.
+    expect(baselineBackorderQty(-2, 0, 2)).toBe(2);
+    expect(sheetBaselineBackorderQty("CC-CC-15-CHCM14-DGBK-STR", -1, 0, 1)).toBe(1);
+  });
+
+  it("changes nothing when there is no recorded back order", () => {
+    expect(baselineBackorderQty(-12, 0, 0)).toBe(0);
+    expect(baselineBackorderQty(-12, 1, 0)).toBe(12);
+  });
+
+  it("still suppresses the -03- Car Cover family", () => {
+    expect(sheetBaselineBackorderQty("CC-CN-03-P-GR-1TO", -12, 0, 12)).toBe(0);
+  });
+});

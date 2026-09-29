@@ -106,8 +106,24 @@ export function inventoryLifeDays(carryover: number, dailyRate: number, seasonal
   return adjustedDailyRate > 0 ? carryover / adjustedDailyRate : null;
 }
 
-/** Google Sheet BF (Base Back Order): no recent sales means no back order. */
-export function baselineBackorderQty(availableQty: number, total30d: number): number {
+/**
+ * Google Sheet BF (Base Back Order): no recent sales means no back order.
+ *
+ * That rule guards against a *derived* back order — negative available stock
+ * read as unmet demand on a SKU nobody is buying. It must not erase a back
+ * order that `fc_stats.back` actually records, which is an order someone
+ * placed. Without the override, a SKU out of stock long enough to accumulate
+ * back orders reports none, because being out of stock is what drove its
+ * 30-day sales to zero in the first place.
+ *
+ * `recordedBackorder` is in positive units, i.e. `-row.back`.
+ */
+export function baselineBackorderQty(
+  availableQty: number,
+  total30d: number,
+  recordedBackorder = 0,
+): number {
+  if (recordedBackorder > 0) return recordedBackorder;
   return total30d <= 0 ? 0 : Math.max(0, -availableQty);
 }
 
@@ -117,8 +133,13 @@ export function isCarCover03Sku(sku: string): boolean {
   return normalized.startsWith("CC-") && normalized.includes("-03-");
 }
 
-export function sheetBaselineBackorderQty(sku: string, availableQty: number, total30d: number): number {
-  return isCarCover03Sku(sku) ? 0 : baselineBackorderQty(availableQty, total30d);
+export function sheetBaselineBackorderQty(
+  sku: string,
+  availableQty: number,
+  total30d: number,
+  recordedBackorder = 0,
+): number {
+  return isCarCover03Sku(sku) ? 0 : baselineBackorderQty(availableQty, total30d, recordedBackorder);
 }
 
 /** Mirrors the sheet's Est. Sales formula for each container interval. */
