@@ -281,6 +281,37 @@ describe("values filters record what is hidden, not what is kept", () => {
         .toEqual(["B", "C", "D"]);
     });
 
+    it("does not freeze a back order that appeared after the filter was saved", () => {
+      // Saved when Back held 0, -1 and -2; by the first load after the
+      // migration shipped, one Size 15 Car Cover had reached -4. Inverting the
+      // kept list hid it, and the result was saved back over the original.
+      const restored = parseColumnFilters({ back: { mode: "values", values: ["-1", "-2"] } });
+      const drifted = [...rows, { sku: "CC-CC-15-CHCM11-DGBK-STR", back: -4 }];
+      const migrated = migrateLegacyValueFilters(restored, drifted, accessors);
+      expect(migrated.get("back")).toEqual({ mode: "values", hidden: new Set(["0"]) });
+      expect(applyColumnFilters(drifted, migrated, accessors).map((r) => r.sku))
+        .toEqual(["B", "C", "CC-CC-15-CHCM11-DGBK-STR"]);
+    });
+
+    it("still inverts a numeric keep list of zeros only", () => {
+      // "Only 0" is unambiguous: every non-zero value was meant to go.
+      const restored = parseColumnFilters({ back: { mode: "values", values: ["0"] } });
+      const migrated = migrateLegacyValueFilters(restored, rows, accessors);
+      expect(migrated.get("back")).toEqual({ mode: "values", hidden: new Set(["-1", "-2"]) });
+    });
+
+    it("still inverts a text column in full", () => {
+      type Status = { sku: string; status: string };
+      const statusRows: Status[] = [
+        { sku: "A", status: "Original" },
+        { sku: "B", status: "Custom" },
+        { sku: "C", status: "Discontinued" },
+      ];
+      const restored = parseColumnFilters({ status: { mode: "values", values: ["Original", "Custom"] } });
+      const migrated = migrateLegacyValueFilters(restored, statusRows, { status: (row: Status) => row.status });
+      expect(migrated.get("status")).toEqual({ mode: "values", hidden: new Set(["Discontinued"]) });
+    });
+
     it("returns the same Map when there is nothing to convert", () => {
       const filters = new Map<"back", ColumnFilter>([["back", hideZero]]);
       expect(migrateLegacyValueFilters(filters, rows, accessors)).toBe(filters);

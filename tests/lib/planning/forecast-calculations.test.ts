@@ -59,5 +59,19 @@ describe("a recorded back order outlives the no-recent-sales rule", () => {
 
   it("still suppresses the -03- Car Cover family", () => {
     expect(sheetBaselineBackorderQty("CC-CN-03-P-GR-1TO", -12, 0, 12)).toBe(0);
+    expect(sheetContainerBackorderQty("CC-CN-03-P-GR-1TO", 0, 0, -12)).toBe(0);
+  });
+
+  it("keeps an unpaid back order owed at the next container, even at zero 30-day sales", () => {
+    // Negative available stock at a container is only ever the carried-in
+    // back order less that container's quantity.
+    expect(sheetContainerBackorderQty("CC-CC-15-DOCA26-BKLG-STR", 0, 0, -2)).toBe(2);
+    expect(sheetContainerBackorderQty("CC-CC-15-DOCA26-BKLG-STR", 0, 0, 7)).toBe(0);
+  });
+
+  it("does not turn a forecast shortfall into a back order without recent sales", () => {
+    // The BF rule still holds for the derived part: estimated sales beyond
+    // stock are not demand anyone has placed.
+    expect(sheetContainerBackorderQty("CC-CC-15-DOCA26-BKLG-STR", 0, 10, 3)).toBe(0);
   });
 });

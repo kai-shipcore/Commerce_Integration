@@ -85,6 +85,30 @@ describe("a back order on a SKU with no recent sales", () => {
     expect(first?.backorder).toBe(0);
   });
 
+  it("carries it through a container that does not ship the SKU", () => {
+    // The second report: CC-CC-15-DOCA26-BKLG-STR read Back Order 0 from the
+    // first container on, so the auto-fill for any later container, which
+    // sizes against the previous container's back order, had nothing to ship.
+    const twoContainers: ContainerMeta[] = [
+      ...containers,
+      { col: 2, name: "121-CA", eta: "2026-09-10", cbm_cap: 80, status: "draft" },
+    ];
+    const stalled = { ...stalledRow("CC-CC-15-DOCA26-BKLG-STR", -2), containers: {} } as DemandRow;
+    const chain = computeContainerChain(
+      stalled, twoContainers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS,
+    );
+    expect(chain.get("112-CA")?.backorder).toBe(2);
+    expect(chain.get("121-CA")?.backorder).toBe(2);
+  });
+
+  it("carries only what a short container leaves unpaid", () => {
+    const stalled = { ...stalledRow("CC-CC-15-CHCM14-DGBK-STR", -4), containers: { "112-CA": { inbound_qty: 1 } } } as unknown as DemandRow;
+    const chain = computeContainerChain(
+      stalled, containers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS,
+    );
+    expect(chain.get("112-CA")?.backorder).toBe(3);
+  });
+
   it("leaves a SKU with no back order at zero", () => {
     const chain = computeContainerChain(
       stalledRow("CC-CC-15-CHCM14-DGBK-STR", 0), containers, new Map(),

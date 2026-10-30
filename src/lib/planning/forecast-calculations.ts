@@ -158,12 +158,20 @@ export function sheetContainerEstimatedSales(
   return sku.toUpperCase().startsWith("CC-") && availableQty === 0 ? 0 : projectedSales;
 }
 
+/**
+ * A container's back order. With no recent sales the forecast-derived
+ * shortfall is still suppressed (the BF rule), but a back order carried in
+ * from the previous container stays owed until a container covers it.
+ * Returning 0 there dropped a recorded back order at the first container
+ * after Base, so every later container's auto-fill saw nothing to ship.
+ */
 export function sheetContainerBackorderQty(
   sku: string,
   total30d: number,
   estimatedSales: number,
   availableQty: number,
 ): number {
-  if (isCarCover03Sku(sku) || total30d <= 0) return 0;
+  if (isCarCover03Sku(sku)) return 0;
+  if (total30d <= 0) return Math.max(0, -availableQty);
   return Math.max(0, estimatedSales - availableQty);
 }
