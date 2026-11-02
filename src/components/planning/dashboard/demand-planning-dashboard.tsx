@@ -1440,11 +1440,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       setSalesStatusFilter(filters.salesStatusFilter);
       setSkuPartFilters(filters.skuPartFilters);
       setGridSort(filters.sort);
-      // The URL wins for urgency: a link shared with ?status= is asking to
-      // be opened on that status, whatever the reader last looked at.
-      // Read from the address bar rather than the hook's value: this
-      // effect runs once, at load, and must not re-run on later URL edits.
-      if (!new URLSearchParams(window.location.search).get("status")) setUrgencyFilter(filters.urgencyFilter);
+      // The URL wins for urgency on the initial load: a link shared with
+      // ?status= is asking to be opened on that status, whatever the reader
+      // last looked at. Only on the load, though — this function is also how
+      // every later view change lands (commitView → applyViewStatePatch), and
+      // the guard used to apply to those too, so a page opened from a
+      // Command Center card (?status=warn) silently dropped Clear filters
+      // and every Status dropdown change for as long as the URL kept it.
+      // Read from the address bar rather than the hook's value so the load
+      // path does not re-run on later URL edits.
+      if (patchOnly || !new URLSearchParams(window.location.search).get("status")) setUrgencyFilter(filters.urgencyFilter);
     }
 
     const savedRowHeights = d[ROW_HEIGHTS_STORAGE_KEY];
@@ -3101,7 +3106,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     // Not recorded: a search is typed, and undoing it a character at a time
     // reads as the box fighting back.
     setSearch("");
-  }, [commitDashboardFilters]);
+    // The ?status= a Command Center card arrived with has been acted on;
+    // leaving it in the URL would re-apply the band on the next reload.
+    if (searchParams.get("status")) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("status");
+      const query = params.toString();
+      router.replace(query ? `?${query}` : window.location.pathname, { scroll: false });
+    }
+  }, [commitDashboardFilters, router, searchParams]);
 
   const handleEditMenuOpenChange = useCallback((open: boolean) => {
     setIsEditMenuOpen(open);
