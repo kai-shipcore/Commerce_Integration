@@ -1267,7 +1267,12 @@ function computeContainerChain(
   for (const container of containers.slice(1)) {
     const key = `${row.sku}::${container.name}`;
     const raw = row.containers?.[container.name];
-    const qty = overrides.get(key)?.inbound_qty ?? raw?.inbound_qty ?? 0;
+    // An override of 0 is stored as `inbound_qty: null`, so it must win over
+    // the server value outright: `override?.inbound_qty ?? raw?.inbound_qty`
+    // let a cleared cell fall back to the DB qty, and Avail / Carry Over /
+    // Inv. Life kept the old number until the page was reloaded.
+    const override = overrides.get(key);
+    const qty = override !== undefined ? override.inbound_qty ?? 0 : raw?.inbound_qty ?? 0;
     const eta = container.eta ?? getPlanningAnchor();
     const openOrders = previousCarryover > 0 ? 0 : (previousBackorder > qty ? -qty : -previousBackorder);
     const available = previousCarryover > 0 ? previousCarryover + qty : qty - previousBackorder;
@@ -5367,8 +5372,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
           const raw = row.containers?.[item.container_name];
           const previous = current.get(key);
           next.set(key, {
-            inbound_qty: previous?.inbound_qty ?? raw?.inbound_qty ?? null,
-            avail_qty: previous?.avail_qty ?? raw?.avail_qty ?? null,
+            // A cleared cell is an override of `null`, not a missing one.
+            inbound_qty: previous !== undefined ? previous.inbound_qty : raw?.inbound_qty ?? null,
+            avail_qty: previous !== undefined ? previous.avail_qty : raw?.avail_qty ?? null,
             cbm: item.total_cbm,
             cbm_unit: item.cbm_unit,
             item_id: previous?.item_id ?? raw?.item_id ?? item.item_id,
