@@ -4327,8 +4327,18 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           {loadError && (
             <span style={{ color: "#C42020", fontSize: 11 }}>Error: {loadError}</span>
           )}
-          <span suppressHydrationWarning style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}>
+          <span
+            suppressHydrationWarning
+            title={pick(
+              "Synced: 통계(fc_stats) 계산 시각 · Sales: 판매 스냅샷을 Supabase에서 마지막으로 받아온 시각. 두 시각이 다르면 판매 컬럼이 Sync 시점보다 오래된 주문 데이터로 계산된 것입니다.",
+              "Synced: when the stats were computed · Sales: when the sales snapshot was last pulled from Supabase. If they differ, the sales columns were computed from order data older than the Sync.",
+            )}
+            style={{ color: "#7A766F", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 11 }}
+          >
             {data.last_sync ? `Synced ${data.last_sync.slice(0, 16).replace("T", " ")}` : "—"}
+            {data.sales_synced_at && data.sales_synced_at.slice(0, 16) !== (data.last_sync ?? "").slice(0, 16)
+              ? ` · Sales ${data.sales_synced_at.slice(0, 16).replace("T", " ")}`
+              : ""}
           </span>
           <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <input

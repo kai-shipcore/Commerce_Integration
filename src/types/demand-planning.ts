@@ -147,6 +147,9 @@ export interface DemandPlanningData {
   rows: DemandRow[];
   pinned_rows?: DemandRow[];
   last_sync: string | null;
+  /** When the velocity snapshot behind the sales columns was last pulled
+   *  from Supabase (LA time). Trails last_sync only if that pull was skipped. */
+  sales_synced_at?: string | null;
   /** The date the figures are computed against — the As of date, or today. */
   as_of?: string;
   /** True when stock figures came from the inventory history rather than

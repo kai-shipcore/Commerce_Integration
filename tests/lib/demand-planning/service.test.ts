@@ -5,6 +5,7 @@ const repositoryMock = {
   getStatsRows: vi.fn(),
   getAvailableStockTotals: vi.fn(),
   getLastSync: vi.fn(),
+  getSalesSyncedAt: vi.fn(),
   getContainerCategories: vi.fn(),
   getCrossData: vi.fn(),
   getVelocitySnapshot: vi.fn(),
@@ -29,6 +30,16 @@ const cacheManagerDeleteMock = vi.fn();
 const cacheManagerDeletePatternMock = vi.fn();
 const syncAllTransitStatsMock = vi.fn();
 const insertMissingProductsMock = vi.fn();
+const runVelocitySyncMock = vi.fn();
+
+class SyncInProgressErrorMock extends Error {
+  holdSeconds: number | null;
+  constructor(holdSeconds: number | null = null) {
+    super("Sync already in progress");
+    this.name = "SyncInProgressError";
+    this.holdSeconds = holdSeconds;
+  }
+}
 
 vi.mock("@/lib/demand-planning/repository", () => ({ DemandPlanningRepository: repositoryMock }));
 vi.mock("@/lib/sku-master/repository", () => ({
@@ -45,6 +56,10 @@ vi.mock("@/lib/planning/dashboard-cache", () => ({
 vi.mock("@/lib/redis", () => ({
   CacheManager: { delete: cacheManagerDeleteMock, deletePattern: cacheManagerDeletePatternMock },
 }));
+vi.mock("@/lib/velocity/service", () => ({
+  VelocityService: { runSync: runVelocitySyncMock },
+  SyncInProgressError: SyncInProgressErrorMock,
+}));
 
 const { DemandPlanningService } = await import("@/lib/demand-planning/service");
 
@@ -54,6 +69,8 @@ beforeEach(() => {
   repositoryMock.getStatsRows.mockResolvedValue([]);
   repositoryMock.getAvailableStockTotals.mockResolvedValue([]);
   repositoryMock.getLastSync.mockResolvedValue(null);
+  repositoryMock.getSalesSyncedAt.mockResolvedValue(null);
+  runVelocitySyncMock.mockResolvedValue({ linkUpserted: 10, customUpserted: 5, linkDeleted: 0, customDeleted: 0 });
   repositoryMock.getContainerCategories.mockResolvedValue([]);
   repositoryMock.getCrossData.mockResolvedValue([]);
   repositoryMock.getVelocitySnapshot.mockResolvedValue([]);
@@ -420,7 +437,10 @@ describe("DemandPlanningService.refreshStats", () => {
 
     const result = await DemandPlanningService.refreshStats({});
 
-    expect(result).toEqual({ inventoryUpserted: 1, linkSalesUpserted: 1, customSalesUpserted: 0, productsBackfilled: 1 });
+    expect(result).toEqual({
+      inventoryUpserted: 1, linkSalesUpserted: 1, customSalesUpserted: 0, productsBackfilled: 1,
+      velocityLinkUpserted: 10, velocityCustomUpserted: 5, velocitySnapshotStale: false,
+    });
     expect(syncAllTransitStatsMock).toHaveBeenCalledTimes(1);
     expect(insertMissingProductsMock).toHaveBeenCalledWith(["SKU-1"]);
     expect(repositoryMock.upsertSwcProducts).toHaveBeenCalled();
@@ -641,5 +661,90 @@ describe("DemandPlanningService.getDashboardData - final SKU sales roll-up", () 
     const { data } = await DemandPlanningService.getDashboardData(baseQuery);
     expect(data.rows[0]).toMatchObject({ sku: "CA-SC-10-F-10-BK-1TO", west_90d: 1993, fba_90d_sales: 60 });
     expect(data.rows[0].rolled_up_from).toBeUndefined();
+  });
+});
+
+describe("DemandPlanningService.refreshStats — Step 0 velocity snapshot", () => {
+  function primeHappyPath() {
+    repositoryMock.getInventoryByWarehouse.mockResolvedValue([{ master_sku: "SKU-1" }]);
+    repositoryMock.getOosEpisodes.mockResolvedValue([]);
+    repositoryMock.getOosAgg.mockResolvedValue([]);
+    repositoryMock.getOosLostDemandRaw.mockResolvedValue([]);
+    repositoryMock.getCategoryChannelRatio.mockResolvedValue([]);
+    repositoryMock.getSalesVelocity.mockResolvedValue([]);
+    insertMissingProductsMock.mockResolvedValue({ inserted: 0 });
+  }
+
+  it("pulls the velocity snapshot (incremental) before aggregating sales from it", async () => {
+    primeHappyPath();
+
+    await DemandPlanningService.refreshStats({});
+
+    expect(runVelocitySyncMock).toHaveBeenCalledTimes(1);
+    expect(runVelocitySyncMock).toHaveBeenCalledWith(false);
+    // The snapshot must be current before getSalesVelocity reads it.
+    expect(runVelocitySyncMock.mock.invocationCallOrder[0]).toBeLessThan(
+      repositoryMock.getSalesVelocity.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("returns null without touching fc_stats when the lookup DB is unavailable", async () => {
+    const { ServiceUnavailableError } = await import("@/lib/errors");
+    runVelocitySyncMock.mockRejectedValue(new ServiceUnavailableError("Supabase lookup pool not available"));
+
+    const result = await DemandPlanningService.refreshStats({});
+
+    expect(result).toBeNull();
+    expect(repositoryMock.getInventoryByWarehouse).not.toHaveBeenCalled();
+    expect(repositoryMock.batchUpsert).not.toHaveBeenCalled();
+  });
+
+  it("waits for a concurrent Velocity-page sync to release the lock, then proceeds", async () => {
+    vi.useFakeTimers();
+    try {
+      primeHappyPath();
+      runVelocitySyncMock
+        .mockRejectedValueOnce(new SyncInProgressErrorMock(10))
+        .mockRejectedValueOnce(new SyncInProgressErrorMock(8))
+        .mockResolvedValueOnce({ linkUpserted: 0, customUpserted: 0, linkDeleted: 0, customDeleted: 0 });
+
+      const pending = DemandPlanningService.refreshStats({});
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await pending;
+
+      expect(runVelocitySyncMock).toHaveBeenCalledTimes(3);
+      expect(result?.velocitySnapshotStale).toBe(false);
+      expect(repositoryMock.getSalesVelocity).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up after the deadline, computes from the existing snapshot and flags it stale", async () => {
+    vi.useFakeTimers();
+    try {
+      primeHappyPath();
+      runVelocitySyncMock.mockRejectedValue(new SyncInProgressErrorMock(null));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const pending = DemandPlanningService.refreshStats({});
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+      const result = await pending;
+
+      expect(result?.velocitySnapshotStale).toBe(true);
+      expect(result?.velocityLinkUpserted).toBe(0);
+      expect(repositoryMock.getSalesVelocity).toHaveBeenCalled();
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rethrows any other velocity sync failure so the job is marked failed", async () => {
+    runVelocitySyncMock.mockRejectedValue(new Error("supabase timeout"));
+
+    await expect(DemandPlanningService.refreshStats({})).rejects.toThrow("supabase timeout");
+    expect(repositoryMock.batchUpsert).not.toHaveBeenCalled();
   });
 });

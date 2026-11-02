@@ -13,6 +13,11 @@ export type PlanningStatsRefreshResult = {
   linkSalesUpserted: number;
   customSalesUpserted: number;
   productsBackfilled: number;
+  // Added with the Step 0 velocity-snapshot sync; absent on jobs recorded
+  // before it, hence optional.
+  velocityLinkUpserted?: number;
+  velocityCustomUpserted?: number;
+  velocitySnapshotStale?: boolean;
 };
 
 export type PlanningStatsRefreshJob = {
