@@ -40,6 +40,15 @@ describe("Google Sheet sales formulas", () => {
     expect(sheetContainerEstimatedSales("CC-CN-03-P-GR-1TO", 10, 2, 1, 30, 5)).toBe(20);
     expect(sheetContainerEstimatedSales("CC-CN-15-P-GR-1TO", 10, 2, 1, 0, 0)).toBe(0);
   });
+
+  it("returns a whole number so Avail − Est. Sales = Carry over holds on screen", () => {
+    // 7 days × 0.0428/day = 0.2996 → 0, not a decimal that rounds one way in
+    // the Est. Sales cell and another once subtracted into Carry over.
+    expect(sheetContainerEstimatedSales("CC-CC-15-FOMU187-BKRD-STR", 7, 0.0428, 1, 16, 0)).toBe(0);
+    expect(sheetContainerEstimatedSales("CC-CN-15-P-GR-1TO", 7, 5.08, 1, 331, 0)).toBe(36);
+    expect(sheetContainerEstimatedSales("CC-CN-03-P-GR-1TO", 7, 5.08, 1, 20.4, 0)).toBe(20);
+    expect(sheetContainerEstimatedSales("CA-SC-10-F-10-BK-1TO", 7, 0.5, 1, 10, 0)).toBe(4);
+  });
 });
 
 describe("a recorded back order outlives the no-recent-sales rule", () => {
