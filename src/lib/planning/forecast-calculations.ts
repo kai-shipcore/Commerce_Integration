@@ -142,7 +142,16 @@ export function sheetBaselineBackorderQty(
   return isCarCover03Sku(sku) ? 0 : baselineBackorderQty(availableQty, total30d, recordedBackorder);
 }
 
-/** Mirrors the sheet's Est. Sales formula for each container interval. */
+/**
+ * Mirrors the sheet's Est. Sales formula for each container interval.
+ *
+ * The result is a whole number. The chain used to carry it as a decimal and
+ * round Avail Qty, Est. Sales and Carry over independently at display time,
+ * so the three cells did not add up: 15.6 / 0.3 / 15.3 drew as 16 / 0 / 15,
+ * a unit that seemed to vanish and then reappear a few containers later.
+ * Rounding here, once, means Carry over = Avail − Est. Sales holds on screen
+ * and the integer carries cleanly into the next container.
+ */
 export function sheetContainerEstimatedSales(
   sku: string,
   daysBetween: number,
@@ -153,9 +162,9 @@ export function sheetContainerEstimatedSales(
 ): number {
   const projectedSales = daysBetween * dailyRate * seasonalFactor;
   if (isCarCover03Sku(sku)) {
-    return Math.min(projectedSales, Math.max(availableQty - inboundQty, 0));
+    return Math.round(Math.min(projectedSales, Math.max(availableQty - inboundQty, 0)));
   }
-  return sku.toUpperCase().startsWith("CC-") && availableQty === 0 ? 0 : projectedSales;
+  return sku.toUpperCase().startsWith("CC-") && availableQty === 0 ? 0 : Math.round(projectedSales);
 }
 
 /**
