@@ -118,3 +118,19 @@ describe("a back order on a SKU with no recent sales", () => {
     expect(chain.get("112-CA")?.avail_qty).toBe(5);
   });
 });
+
+describe("cleared Con. Qty override", () => {
+  it("treats an override of null as zero rather than falling back to the server qty", () => {
+    const overrides = new Map([["CC-CN-15-P-GR-1TO::112-CA", { inbound_qty: null }]]);
+    const cleared = computeContainerChain(
+      row("CC-CN-15-P-GR-1TO"), containers, overrides, "2026-08-17", DEFAULT_SEASONAL_FACTORS,
+    ).get("112-CA");
+    const untouched = computeContainerChain(
+      row("CC-CN-15-P-GR-1TO"), containers, new Map(), "2026-08-17", DEFAULT_SEASONAL_FACTORS,
+    ).get("112-CA");
+
+    // Base carries 10 forward; with the 5-unit order erased only those 10 remain.
+    expect(cleared?.avail_qty).toBe(10);
+    expect(untouched?.avail_qty).toBe(15);
+  });
+});
