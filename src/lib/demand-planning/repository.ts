@@ -339,6 +339,16 @@ export const DemandPlanningRepository = {
     return result.rows[0]?.last_sync ?? null;
   },
 
+  /** When the velocity snapshot the sales columns were aggregated from was
+   *  last pulled from Supabase. Normally equals getLastSync() to the minute,
+   *  since refreshStats pulls it first; it trails when that pull was skipped. */
+  async getSalesSyncedAt(): Promise<string | null> {
+    const result = await primary().query<{ sales_synced_at: string | null }>(
+      `SELECT to_char(MAX(synced_at) AT TIME ZONE 'America/Los_Angeles', 'YYYY-MM-DD HH24:MI') AS sales_synced_at FROM shipcore.fc_velocity_link_snapshot`,
+    );
+    return result.rows[0]?.sales_synced_at ?? null;
+  },
+
   async getContainerCategories(containerIds: number[]): Promise<ContainerCategoryRow[]> {
     if (containerIds.length === 0) return [];
     const result = await primary().query<ContainerCategoryRow>(`

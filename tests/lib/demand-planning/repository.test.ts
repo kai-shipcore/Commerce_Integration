@@ -140,6 +140,22 @@ describe("DemandPlanningRepository.getStatsRows", () => {
   });
 });
 
+describe("DemandPlanningRepository.getSalesSyncedAt", () => {
+  it("reads the newest velocity snapshot pull, formatted like getLastSync", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [{ sales_synced_at: "2026-11-02 10:41" }] });
+    expect(await DemandPlanningRepository.getSalesSyncedAt()).toBe("2026-11-02 10:41");
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("MAX(synced_at)");
+    expect(sql).toContain("shipcore.fc_velocity_link_snapshot");
+    expect(sql).toContain("America/Los_Angeles");
+  });
+
+  it("returns null when the snapshot table is empty", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [{ sales_synced_at: null }] });
+    expect(await DemandPlanningRepository.getSalesSyncedAt()).toBeNull();
+  });
+});
+
 describe("DemandPlanningRepository.getVelocitySnapshot", () => {
   it("queries the link snapshot table with link columns", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });

@@ -43,6 +43,8 @@ import {
   type OosLostDemandWeights,
 } from "@/lib/planning/oos-lost-demand-weights";
 import { OosImpactService } from "@/lib/oos-impact/service";
+import { VelocityService, SyncInProgressError } from "@/lib/velocity/service";
+import { ServiceUnavailableError } from "@/lib/errors";
 import { DemandPlanningRepository, type DashboardCategoryCode, type VelRow, type InventorySnapshotRow } from "@/lib/demand-planning/repository";
 import { SkuMasterRepository } from "@/lib/sku-master/repository";
 import { TransitStockRepository } from "@/lib/transit-stock/repository";
@@ -189,11 +191,12 @@ export const DemandPlanningService = {
 
     const filters = { mode: query.mode, categoryCodes: query.categoryCodes, inboundStatuses };
 
-    const [containersResult, rowsResult, availStockResult, lastSync, invSnapshotRows, invCoverage, velocityMinDate] = await Promise.all([
+    const [containersResult, rowsResult, availStockResult, lastSync, salesSyncedAt, invSnapshotRows, invCoverage, velocityMinDate] = await Promise.all([
       DemandPlanningRepository.getContainerHeaders(query.categoryCodes),
       DemandPlanningRepository.getStatsRows(filters),
       DemandPlanningRepository.getAvailableStockTotals(query.categoryCodes),
       DemandPlanningRepository.getLastSync(),
+      DemandPlanningRepository.getSalesSyncedAt(),
       isToday
         ? Promise.resolve([] as InventorySnapshotRow[])
         : DemandPlanningRepository.getInventorySnapshotAsOf(todayStr),
@@ -659,6 +662,7 @@ export const DemandPlanningService = {
 
     const data: DemandPlanningData = {
       containers, rows, pinned_rows: [], last_sync: lastSync,
+      sales_synced_at: salesSyncedAt,
       as_of: todayStr,
       inventory_historical: invMap.size > 0,
       inventory_snapshot_date: inventorySnapshotDate,
@@ -677,13 +681,25 @@ export const DemandPlanningService = {
 
   // ─── Stats refresh ("Sync" pipeline) ────────────────────────────────
 
-  async refreshStats(rawWeights: { salesWindowWeights?: unknown; oosLostDemandWeights?: unknown }): Promise<{ inventoryUpserted: number; linkSalesUpserted: number; customSalesUpserted: number; productsBackfilled: number } | null> {
+  async refreshStats(rawWeights: { salesWindowWeights?: unknown; oosLostDemandWeights?: unknown }): Promise<RefreshStatsResult | null> {
     const salesWindowWeights: SalesWindowWeights = rawWeights.salesWindowWeights
       ? normalizeSalesWindowWeights(rawWeights.salesWindowWeights)
       : DEFAULT_SALES_WINDOW_WEIGHTS;
     const oosLostDemandWeights: OosLostDemandWeights = rawWeights.oosLostDemandWeights
       ? normalizeOosLostDemandWeights(rawWeights.oosLostDemandWeights)
       : DEFAULT_OOS_LOST_DEMAND_WEIGHTS;
+
+    // ── Step 0: Velocity snapshot ────────────────────────────────────
+    // Steps 2 and 5 read fc_velocity_*_snapshot, which until this step was
+    // refreshed only by the Velocity page's own Sync button. This job then
+    // aggregated whatever snapshot that page had last pulled — days old in
+    // practice — while the Velocity page re-aggregated a snapshot the user
+    // had just refreshed. Same SKU, same windows, different numbers
+    // (CC-CC-15-DGCH05-BKRD-STR on 11/02: West 7D 4 here vs 8 there, the
+    // snapshot here being from 10/28). Pull the snapshot first so both
+    // pages derive from the same rows.
+    const velocitySync = await syncVelocitySnapshot();
+    if (velocitySync === null) return null; // no lookup DB connection available
 
     // ── Step 1: Inventory ────────────────────────────────────────────
     const invRows = await DemandPlanningRepository.getInventoryByWarehouse();
@@ -959,6 +975,52 @@ export const DemandPlanningService = {
       linkSalesUpserted: linkRows.length,
       customSalesUpserted: customRows.length,
       productsBackfilled,
+      velocityLinkUpserted: velocitySync.linkUpserted,
+      velocityCustomUpserted: velocitySync.customUpserted,
+      velocitySnapshotStale: velocitySync.stale,
     };
   },
 };
+
+export type RefreshStatsResult = {
+  inventoryUpserted: number;
+  linkSalesUpserted: number;
+  customSalesUpserted: number;
+  productsBackfilled: number;
+  /** Rows written to fc_velocity_link_snapshot / fc_velocity_custom_snapshot by Step 0. */
+  velocityLinkUpserted: number;
+  velocityCustomUpserted: number;
+  /** True when Step 0 gave up waiting on a concurrent Velocity-page sync and
+   *  the stats were computed from the snapshot as it already stood. */
+  velocitySnapshotStale: boolean;
+};
+
+// How long Step 0 keeps retrying while someone else holds the velocity sync
+// lock (a Sync click on the Velocity page). The incremental sync itself takes
+// well under a minute, so three minutes covers a back-to-back full sync too.
+const VELOCITY_SYNC_WAIT_MS = 3 * 60 * 1000;
+const VELOCITY_SYNC_RETRY_MS = 2_500;
+
+async function syncVelocitySnapshot(): Promise<{ linkUpserted: number; customUpserted: number; stale: boolean } | null> {
+  const deadline = Date.now() + VELOCITY_SYNC_WAIT_MS;
+  for (;;) {
+    try {
+      const { linkUpserted, customUpserted } = await VelocityService.runSync(false);
+      return { linkUpserted, customUpserted, stale: false };
+    } catch (error) {
+      // Same contract as Step 1's `invRows === null`: no lookup DB, no refresh.
+      if (error instanceof ServiceUnavailableError) return null;
+      if (!(error instanceof SyncInProgressError)) throw error;
+      // Someone is syncing from the Velocity page right now. Their pull is as
+      // good as ours, so wait for the lock rather than failing the job; once
+      // it frees, our own (now near-empty) incremental sync confirms the
+      // snapshot is current. Past the deadline, compute from what is there
+      // and say so in the result.
+      if (Date.now() >= deadline) {
+        console.warn("[demand-planning/refreshStats] velocity sync still held by another request; computing stats from the existing snapshot");
+        return { linkUpserted: 0, customUpserted: 0, stale: true };
+      }
+      await new Promise((resolve) => setTimeout(resolve, VELOCITY_SYNC_RETRY_MS));
+    }
+  }
+}
