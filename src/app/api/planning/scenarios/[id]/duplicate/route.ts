@@ -12,6 +12,7 @@ import { PlanningScenarioService } from "@/lib/planning-scenarios/service";
 
 const BodySchema = z.object({
   name: z.string().trim().min(1).max(60),
+  view_state: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function POST(
@@ -33,6 +34,7 @@ export async function POST(
     const data = await PlanningScenarioService.duplicate(actor, {
       fromId: id,
       name: parsed.data.name,
+      viewState: parsed.data.view_state,
     });
     return apiSuccess({ data }, 201);
   } catch (error) {

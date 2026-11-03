@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { ClipboardPaste, Copy, FilterX, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2, WandSparkles } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
+import { FORMULA_IDS, FORMULAS_STORAGE_KEY, normalizeFormulaConfig, type FormulaConfig } from "@/lib/planning/custom-formulas";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { GridSort } from "@/lib/planning/grid-sort";
 import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder, PlanningViewHistoryRecorder, PlanningViewStatePatch } from "./demand-planning-grid";
@@ -626,12 +627,13 @@ const BASE_COLORABLE_COLUMNS = [
   })),
 ];
 
+type ColumnVisibilityGroup = ColumnGroupKey | "custom-formulas";
 type ColumnVisibilityItem = {
   id: string;
   label: string;
-  group: ColumnGroupKey;
+  group: ColumnVisibilityGroup;
   compact: boolean;
-  kind: "base" | "container";
+  kind: "base" | "container" | "formula";
 };
 
 const COLUMN_VISIBILITY_GROUP_KEYS: ColumnGroupKey[] = ["fix", ...ALL_GROUP_KEYS];
@@ -802,10 +804,10 @@ function resetContainerGroupsToEtaOrder(current: ColumnOrder, containers: Contai
   ];
 }
 
-function getColumnVisibilityForPreset(preset: "all" | "core" | "compact"): ColumnVisibility {
-  const coreGroups = new Set<ColumnGroupKey>(["fix", "stock", "s30", "tavg", "inb"]);
+function getColumnVisibilityForPreset(preset: "all" | "core" | "compact", items = COLUMN_VISIBILITY_ITEMS): ColumnVisibility {
+  const coreGroups = new Set<ColumnVisibilityGroup>(["fix", "stock", "s30", "tavg", "inb"]);
   return Object.fromEntries(
-    COLUMN_VISIBILITY_ITEMS.map((item) => {
+    items.map((item) => {
       const visible = preset === "all"
         ? true
         : preset === "core"
@@ -819,7 +821,7 @@ function getColumnVisibilityForPreset(preset: "all" | "core" | "compact"): Colum
 function getColumnVisibilityFromGroups(groupVis: Record<ColumnGroupKey, boolean>, compactMode: boolean): ColumnVisibility {
   return Object.fromEntries(
     COLUMN_VISIBILITY_ITEMS.map((item) => {
-      const groupVisible = item.group === "fix" || groupVis[item.group];
+      const groupVisible = item.group === "fix" || item.group === "custom-formulas" || groupVis[item.group];
       const compactVisible = !compactMode || (item.kind === "base" && item.compact);
       return [item.id, groupVisible && compactVisible];
     }),
@@ -842,12 +844,12 @@ function normalizeColumnVisibility(value: unknown): ColumnVisibility | undefined
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const stored = value as Record<string, unknown>;
   return Object.fromEntries(
-    COLUMN_VISIBILITY_ITEMS.map((item) => [item.id, typeof stored[item.id] === "boolean" ? stored[item.id] : true]),
+    [...COLUMN_VISIBILITY_ITEMS.map((item) => item.id), ...FORMULA_IDS].map((id) => [id, typeof stored[id] === "boolean" ? stored[id] : true]),
   ) as ColumnVisibility;
 }
 
-function columnVisibilityEquals(left: ColumnVisibility, right: ColumnVisibility): boolean {
-  return COLUMN_VISIBILITY_ITEMS.every((item) => left[item.id] !== false === (right[item.id] !== false));
+function columnVisibilityEquals(left: ColumnVisibility, right: ColumnVisibility, items = COLUMN_VISIBILITY_ITEMS): boolean {
+  return items.every((item) => left[item.id] !== false === (right[item.id] !== false));
 }
 
 function loadSavedColumnSettings(): Partial<ColumnSettings> {
@@ -1085,15 +1087,27 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [rowHeights, setRowHeights] = useState<RowHeights>(loadSavedRowHeights);
   const [headerHeight, setHeaderHeight] = useState<number>(loadSavedHeaderHeight);
   const [columnOrder, setColumnOrder] = useState<ColumnOrder>([]);
+  const [displayedColumnOrder, setDisplayedColumnOrder] = useState<ColumnOrder>([]);
+  const handleColumnDisplayOrderChange = useCallback((order: ColumnOrder) => {
+    setDisplayedColumnOrder((current) => sameColumnOrder(current, order) ? current : order);
+  }, []);
   const [containerOrderCustomized, setContainerOrderCustomized] = useState(false);
   const [containerEtaOverrides, setContainerEtaOverrides] = useState<Map<number, string>>(new Map());
   const containerEtaOverridesRef = useRef(containerEtaOverrides);
-  const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnGroupKey, boolean>>(DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN);
+  const [openColumnVisibilityGroups, setOpenColumnVisibilityGroups] = useState<Record<ColumnVisibilityGroup, boolean>>({ ...DEFAULT_COLUMN_VISIBILITY_GROUPS_OPEN, "custom-formulas": true });
   const [columnColors, setColumnColors] = useState<ColumnColorSettings>({});
   const [cellColors, setCellColors] = useState<CellColorSettings>({});
   const [columnTextFormats, setColumnTextFormats] = useState<ColumnTextFormatSettings>({});
   const [cellTextFormats, setCellTextFormats] = useState<CellTextFormatSettings>({});
   const [conditionalFormatRules, setConditionalFormatRules] = useState<ConditionalFormatRule[]>([]);
+  const [formulaConfig, setFormulaConfig] = useState<FormulaConfig>(() => normalizeFormulaConfig(null));
+  const columnVisibilityItems = useMemo<ColumnVisibilityItem[]>(() => [
+    ...COLUMN_VISIBILITY_ITEMS,
+    ...(gridMode === "ag-grid" ? formulaConfig.filter((column) => column.enabled).map((column): ColumnVisibilityItem => ({
+      id: column.id, label: column.name, group: "custom-formulas", compact: false, kind: "formula",
+    })) : []),
+  ], [formulaConfig, gridMode]);
+  const [formulaToolbarTarget, setFormulaToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [conditionalFormatPreviewRules, setConditionalFormatPreviewRules] = useState<ConditionalFormatRule[] | null>(null);
   const [isConditionalFormattingOpen, setIsConditionalFormattingOpen] = useState(false);
   const formatHistoryRecorderRef = useRef<PlanningFormatHistoryRecorder | null>(null);
@@ -1198,13 +1212,20 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   // tab, which is how one tab quietly overwrites another's layout.
   const latestPrefsRef = useRef<{ prefs: Record<string, unknown>; scenarioId: string | null } | null>(null);
   const putPrefs = useCallback((prefs: Record<string, unknown>, scenarioId: string | null, keepalive: boolean) => {
+    const checkSaved = async (response: Response) => {
+      if (!response.ok) throw new Error("Settings save failed");
+    };
+    const reportSaveFailure = () => toast.error(pick(
+      "탭 설정을 저장하지 못했습니다. 페이지를 닫지 말고 수식을 다시 적용하세요.",
+      "Could not save tab settings. Keep this page open and apply the formula again to retry.",
+    ));
     if (scenarioId === null) {
       fetch(apiPath("/api/user/preferences"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preferences: prefs }),
         keepalive,
-      }).catch(() => {});
+      }).then(checkSaved).catch(reportSaveFailure);
       return;
     }
     // A scenario tab's view belongs to the tab, not to the viewer, so it is
@@ -1217,8 +1238,8 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       },
       body: JSON.stringify({ view_state: prefs }),
       keepalive,
-    }).catch(() => {});
-  }, []);
+    }).then(checkSaved).catch(reportSaveFailure);
+  }, [pick]);
   const savePrefsToDb = useCallback((prefs: Record<string, unknown>, scenarioId: string | null) => {
     latestPrefsRef.current = { prefs, scenarioId };
     if (prefSaveTimerRef.current !== null) window.clearTimeout(prefSaveTimerRef.current);
@@ -1382,6 +1403,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     mirrorLocal: boolean,
     patchOnly = false,
   ) => {
+    // Missing formulas reset to empty on a tab switch; undo patches only touch named keys.
+    if (!patchOnly || Object.hasOwn(d, FORMULAS_STORAGE_KEY)) {
+      setFormulaConfig(normalizeFormulaConfig(d[FORMULAS_STORAGE_KEY]));
+    }
     const mirrorSet = (key: string, value: string) => {
       if (mirrorLocal) window.localStorage.setItem(key, value);
     };
@@ -1635,17 +1660,27 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     applyViewStatePatch(patch);
   }, [applyViewStatePatch]);
 
+  const handleFormulaConfigChange = useCallback((next: FormulaConfig) => {
+    if (canEditActiveTab && dbPrefsLoaded && !scenarioBusy) commitView({ [FORMULAS_STORAGE_KEY]: next });
+  }, [canEditActiveTab, commitView, dbPrefsLoaded, scenarioBusy]);
+
   // Load the Live tab's preferences from the DB on mount — overrides
   // localStorage if the DB has newer values.
   useEffect(() => {
+    let cancelled = false;
+    const requestId = tabHydrationRequestRef.current;
     fetch(apiPath("/api/user/preferences"))
       .then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>)
       .then((json) => {
-        if (!json.success || !json.data) return;
+        if (cancelled || tabHydrationRequestRef.current !== requestId) return;
+        if (!json.success || !json.data) throw new Error("Preferences unavailable");
         applyPreferenceBlob(json.data, true);
+        setDbPrefsLoaded(true);
       })
-      .catch(() => {})
-      .finally(() => setDbPrefsLoaded(true));
+      .catch(() => {
+        if (!cancelled && tabHydrationRequestRef.current === requestId) toast.error("Could not load tab settings. Reload before editing formulas.");
+      });
+    return () => { cancelled = true; };
   }, [applyPreferenceBlob]);
 
   // localStorage mirrors the Live tab only — see applyPreferenceBlob.
@@ -1676,6 +1711,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
    *  opens on the layout you were just looking at. */
   const buildPreferenceBlob = useCallback((): Record<string, unknown> => {
     return {
+      [FORMULAS_STORAGE_KEY]: formulaConfig,
       [COLUMN_SETTINGS_STORAGE_KEY]: { groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil },
       [COLUMN_WIDTHS_STORAGE_KEY]: columnWidths,
       [COLUMN_FILTER_MENU_SIZE_STORAGE_KEY]: columnFilterMenuSize,
@@ -1704,7 +1740,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       [GRADIENT_STORAGE_KEY]: gradient,
       [GRADIENT_SC_STORAGE_KEY]: gradientSC,
     };
-  }, [groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
+  }, [formulaConfig, groupVis, columnVis, compactMode, showMistake, showZeroSales, freezeUntil, columnWidths, columnFilterMenuSize, rowHeight, rowHeights, headerHeight, columnFilters, salesStatusFilter, urgencyFilter, skuPartFilters, gridSort, columnOrder, containerOrderCustomized, columnColors, columnHeaderNames, cellColors, columnTextFormats, cellTextFormats, conditionalFormatRules, hiddenContainers, hiddenBases, hiddenContainerColumns, seasonalFactors, salesWindowWeights, oosLostDemandWeights, gradient, gradientSC]);
 
   // Kept on refs so commitView can read the current view without being rebuilt
   // — and therefore re-registered — every time any of it changes.
@@ -1767,6 +1803,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     // Anything still sitting in the debounce belongs to the tab being left.
     flushPrefs(false);
     setDbPrefsLoaded(false);
+    setFormulaConfig(normalizeFormulaConfig(null));
     setScenarioBusy(true);
     // Prevent the incoming tab from rendering with the outgoing tab's data.
     setScenarioOverlay(null);
@@ -1775,12 +1812,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     columnOrderChangedRef.current = false;
     containerOrderCustomizedChangedRef.current = false;
 
+    let hydrated = false;
     try {
       if (id === null) {
         const response = await fetch(apiPath("/api/user/preferences"), { cache: "no-store" });
         const json = await response.json() as { success: boolean; data?: Record<string, unknown> };
         if (requestId !== tabHydrationRequestRef.current) return;
-        if (json.success && json.data) applyPreferenceBlob(json.data, true);
+        if (!response.ok || !json.success || !json.data) throw new Error("Preferences unavailable");
+        applyPreferenceBlob(json.data, true);
         setScenarioOverlay(null);
       } else {
         const [detail, overlay] = await Promise.all([
@@ -1794,13 +1833,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           scenario.id === id ? { ...scenario, ...detail } : scenario
         )));
       }
+      hydrated = true;
     } catch {
       if (requestId !== tabHydrationRequestRef.current) return;
       toast.error(pick("탭을 불러오지 못했습니다.", "Could not load that tab."));
     } finally {
       if (requestId === tabHydrationRequestRef.current) {
         setScenarioBusy(false);
-        setDbPrefsLoaded(true);
+        setDbPrefsLoaded(hydrated);
       }
     }
   }, [applyPreferenceBlob, flushPrefs, pick]);
@@ -1854,6 +1894,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       const created = await ScenarioApi.duplicate(
         id,
         pick(`${source?.name ?? "탭"} 복사본`, `Copy of ${source?.name ?? "tab"}`),
+        id === activeScenarioId ? buildPreferenceBlob() : undefined,
       );
       await refreshScenarios();
       handleSelectTab(created.id);
@@ -1862,7 +1903,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     } finally {
       setScenarioBusy(false);
     }
-  }, [handleCreateTab, handleSelectTab, pick, refreshScenarios, scenarios]);
+  }, [activeScenarioId, buildPreferenceBlob, handleCreateTab, handleSelectTab, pick, refreshScenarios, scenarios]);
 
   const handleRenameTab = useCallback(async (id: string, name: string) => {
     setScenarios((previous) => previous.map((s) => (s.id === id ? { ...s, name } : s)));
@@ -2732,7 +2773,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     });
   }, []);
 
-  const handleToggleColumnVisibilityGroupOpen = useCallback((group: ColumnGroupKey) => {
+  const handleToggleColumnVisibilityGroupOpen = useCallback((group: ColumnVisibilityGroup) => {
     setOpenColumnVisibilityGroups((current) => ({ ...current, [group]: !current[group] }));
   }, []);
 
@@ -2805,7 +2846,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     setSelectedAgCells([]);
   }, []);
 
-  const hiddenColumnCount = COLUMN_VISIBILITY_ITEMS.filter((item) => columnVis[item.id] === false).length;
+  const hiddenColumnCount = columnVisibilityItems.filter((item) => columnVis[item.id] === false).length;
 
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2913,7 +2954,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const handleDraftPreset = useCallback((preset: "all" | "core" | "compact") => {
     setColumnSettingsDraft((current) => {
       if (!current) return current;
-      const nextColumnVis = getColumnVisibilityForPreset(preset);
+      const nextColumnVis = getColumnVisibilityForPreset(preset, columnVisibilityItems);
       return {
         ...current,
         columnVis: nextColumnVis,
@@ -2921,7 +2962,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
         freezeUntil: preset === "compact" ? "sod" : freezeColumnForVisibility(nextColumnVis, current.freezeUntil),
       };
     });
-  }, []);
+  }, [columnVisibilityItems]);
 
   const handleDraftToggleContainerColumns = useCallback(() => {
     setColumnSettingsDraft((current) => {
@@ -2991,10 +3032,15 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const draftHiddenBases = columnSettingsDraft?.hiddenBases ?? hiddenBases;
   const draftHiddenContainerColumns = columnSettingsDraft?.hiddenContainerColumns ?? hiddenContainerColumns;
   const orderedColumnVisibilityItems = useMemo(() => {
-    const orderIndex = new Map(effectiveColumnOrder.map((columnId, index) => [columnId, index]));
-    const fallbackOffset = effectiveColumnOrder.length + 10_000;
+    // Reflect the rendered grid, including pinning/group layout. Saved order is
+    // only a fallback for columns absent from the current grid (e.g. hidden groups).
+    const order = gridMode === "ag-grid" && displayedColumnOrder.length
+      ? mergeMovedColumnOrder(effectiveColumnOrder, displayedColumnOrder)
+      : effectiveColumnOrder;
+    const orderIndex = new Map(order.map((columnId, index) => [columnId, index]));
+    const fallbackOffset = order.length + 10_000;
     const rank = (item: ColumnVisibilityItem, fallbackIndex: number) => {
-      if (item.kind === "base") return orderIndex.get(item.id) ?? fallbackOffset + fallbackIndex;
+      if (item.kind !== "container") return orderIndex.get(item.id) ?? fallbackOffset + fallbackIndex;
       // Every container can have a different leaf-column order in the grid.
       // The settings popup therefore keeps the shared container visibility
       // list in its canonical order instead of implying one container's order
@@ -3002,25 +3048,25 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       return fallbackOffset + fallbackIndex;
     };
 
-    return COLUMN_VISIBILITY_ITEMS
+    return columnVisibilityItems
       // A column the current category does not use is not in the grid, so it
       // has no business offering a checkbox here either.
       .filter((item) => item.kind !== "base" || columnAppliesToCategories(item.id, categoryFilter))
       .map((item, fallbackIndex) => ({
         ...item,
-        label: columnHeaderNames[item.id] ?? item.label,
+        label: item.kind === "formula" ? item.label : columnHeaderNames[item.id] ?? item.label,
         orderRank: rank(item, fallbackIndex),
         fallbackIndex,
       }))
       .sort((a, b) => a.orderRank - b.orderRank || a.fallbackIndex - b.fallbackIndex);
-  }, [categoryFilter, columnHeaderNames, effectiveColumnOrder]);
+  }, [categoryFilter, columnHeaderNames, columnVisibilityItems, displayedColumnOrder, effectiveColumnOrder, gridMode]);
   const orderedColumnVisibilityRuns = useMemo(() => {
     // A group can be split when a leaf column is dragged across a group
     // boundary. Preserve those runs instead of regrouping every item by its
     // original semantic group, which would destroy the visible grid order.
     return orderedColumnVisibilityItems.reduce<Array<{
       key: string;
-      group: ColumnGroupKey;
+      group: ColumnVisibilityGroup;
       items: typeof orderedColumnVisibilityItems;
     }>>((runs, item) => {
       const previous = runs.at(-1);
@@ -3045,9 +3091,9 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     return next;
   }, [activeSkuFilterCategories, activeSkuFilterKeysByCategory, draftSkuPartFilters]);
   const draftHasSkuPartFilters = hasAnySkuPartFilter(draftActiveSkuPartFilters);
-  const draftAllPresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("all"));
-  const draftCorePresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("core"));
-  const draftCompactPresetActive = draftCompactMode && columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("compact"));
+  const draftAllPresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("all", columnVisibilityItems), columnVisibilityItems);
+  const draftCorePresetActive = columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("core", columnVisibilityItems), columnVisibilityItems);
+  const draftCompactPresetActive = draftCompactMode && columnVisibilityEquals(draftColumnVis, getColumnVisibilityForPreset("compact", columnVisibilityItems), columnVisibilityItems);
   const draftAllContainerColumnsVisible = orderedColumnVisibilityItems
     .filter((item) => item.group === "con")
     .every((item) => draftColumnVis[item.id] !== false);
@@ -3992,7 +4038,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingRight: 4 }}>
                   {orderedColumnVisibilityRuns.map((run) => {
                     const { group, items: groupItems } = run;
-                    const groupLabel = columnHeaderNames[`group:${group}`]
+                    const groupLabel = group === "custom-formulas" ? pick("사용자 계산", "Custom calculations") : columnHeaderNames[`group:${group}`]
                       ?? GROUP_LABELS[group]
                       ?? GROUP_BTN_LABELS[group]
                       ?? group;
@@ -4034,6 +4080,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         </div>
                         {isOpen ? (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 1, padding: "0 0 4px 28px" }}>
+                            {group === "custom-formulas" && <p style={{ gridColumn: "1 / -1", margin: "2px 5px", fontSize: 11, color: "#64748B" }}>{pick("선택한 컬럼은 ‘계산 컬럼’을 열면 표시됩니다.", "Selected columns appear when Formula columns is open.")}</p>}
                             {groupItems.map((item) => {
                               const checked = draftColumnVis[item.id] !== false;
                               return (
@@ -4335,6 +4382,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onGradientChange={handleGradientChange}
           onGradientSCChange={handleGradientSCChange}
         />
+        {gridMode === "ag-grid" && <div ref={setFormulaToolbarTarget} className="flex shrink-0 items-center" />}
 
         <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 10 }}>
           {loadError && (
@@ -4581,6 +4629,10 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           </div>
         ) : null}
         {gridMode === "ag-grid" ? <AgDemandPlanningGrid
+          formulaToolbarTarget={formulaToolbarTarget}
+          formulaConfig={formulaConfig}
+          onFormulaConfigChange={handleFormulaConfigChange}
+          formulaEditingEnabled={canEditActiveTab && dbPrefsLoaded && !scenarioBusy}
           data={gridData}
           loading={loading}
           categoryFilter={categoryFilter}
@@ -4615,6 +4667,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
           onColumnFilterMenuSizeChange={handleColumnFilterMenuSizeChange}
           columnOrder={effectiveColumnOrder}
           onColumnOrderChange={handleColumnOrderChange}
+          onColumnDisplayOrderChange={handleColumnDisplayOrderChange}
           onContainerEtaChange={handleContainerEtaChange}
           seasonalFactors={seasonalFactors}
           gradient={gradient}

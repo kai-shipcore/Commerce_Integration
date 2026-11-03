@@ -88,11 +88,11 @@ export const ScenarioApi = {
     });
   },
 
-  duplicate(id: string, name: string): Promise<ScenarioDetail> {
+  duplicate(id: string, name: string, viewState?: Record<string, unknown>): Promise<ScenarioDetail> {
     return request<ScenarioDetail>(`/api/planning/scenarios/${id}/duplicate`, {
       method: "POST",
       headers: PLANNING_HEADERS,
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, ...(viewState ? { view_state: viewState } : {}) }),
     });
   },
 

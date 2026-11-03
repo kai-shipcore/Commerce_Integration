@@ -190,6 +190,16 @@ describe("duplicate", () => {
     }));
     expect(repositoryMock.copyOverlay).toHaveBeenCalledWith(5, 7);
   });
+
+  it("copies pending formula settings supplied by the active tab without changing its source", async () => {
+    repositoryMock.getById.mockResolvedValue(scenario());
+    repositoryMock.insert.mockResolvedValue(scenario({ id: "7" }));
+    const viewState = { "planning-custom-formulas-v1": [{ id: "custom_formula_1", enabled: true, formula: "=[tavg_c]*30%", overrides: { A: "=20" } }] };
+    await PlanningScenarioService.duplicate(OWNER, { fromId: "5", name: "Copy", viewState });
+    expect(repositoryMock.insert).toHaveBeenCalledWith(expect.objectContaining({ viewState }));
+    expect(repositoryMock.update).not.toHaveBeenCalled();
+    expect(repositoryMock.copyOverlay).toHaveBeenCalledWith(5, 7);
+  });
 });
 
 describe("reorder", () => {

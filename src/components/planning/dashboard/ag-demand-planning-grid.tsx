@@ -3,7 +3,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { AgGridProvider, AgGridReact } from "ag-grid-react";
+import { AgGridProvider, AgGridReact, type CustomCellEditorProps } from "ag-grid-react";
 import { ArrowUpDown, CalendarDays, ChartColumn, ChevronLeft, ChevronRight, ClipboardPaste, Copy, ExternalLink, Scissors, Search } from "lucide-react";
 import {
   AllCommunityModule,
@@ -86,6 +86,10 @@ import {
   type ColumnFilter, type ConditionFilter, type DistinctColor, type DistinctValue,
 } from "@/lib/planning/column-filter";
 import { conditionalFormatForCell } from "@/lib/planning/conditional-formatting";
+import { FormulaBar, type FormulaBarHandle } from "./formula-bar";
+import { displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } from "@/lib/planning/formula-addresses";
+import { formulaBaseValue, isFormulaBaseField } from "@/lib/planning/custom-formula-fields";
+import { cellReference, createFormulaEvaluator, fillDownFormulas, isFormulaId, formulaForCell, materializeDefaultFormulas, type FormulaConfig, type FormulaId, type FormulaValue } from "@/lib/planning/custom-formulas";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -1338,6 +1342,129 @@ function excelDateSerial(value: unknown): number | null {
   const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
   return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000 + 25569;
+}
+
+type FormulaReference = { sku: string; field: string };
+type FormulaReferenceDirection = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight";
+const FORMULA_REFERENCE_KEYS: readonly string[] = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+type ActiveFormulaEditor = {
+  insertReference: (target: FormulaReference) => boolean;
+  changeText: (text: string) => void;
+};
+let activeFormulaEditor: ActiveFormulaEditor | null = null;
+
+type FormulaCellEditorProps = CustomCellEditorProps<DemandRow, CellContent> & {
+  formulaFor: (sku: string) => string;
+  pendingKey: () => string | null;
+  clearPendingKey: () => void;
+  columnId: string;
+  moveReference: (from: FormulaReference, direction: FormulaReferenceDirection) => FormulaReference | null;
+  onReferenceChange: (target: FormulaReference | null) => void;
+  addressFor: (sku: string, field: string) => string | null;
+  onDraftChange: (sku: string, field: string, text: string) => void;
+};
+
+// A formula cell edits the SKU's expression, not the result it shows. A double
+// click or F2 keeps the text with the caret at the end; a typed character
+// replaces it, as in a spreadsheet. While a formula is being typed, the arrow
+// keys insert a reference to the neighbouring cell, and a further arrow moves
+// that reference in place, as in Google Sheets.
+function FormulaCellEditor({ data, formulaFor, pendingKey, clearPendingKey, columnId, moveReference, onReferenceChange, onValueChange: reportValue, onDraftChange, addressFor, onKeyDown }: FormulaCellEditorProps) {
+  const onValueChange = useCallback((value: string) => {
+    reportValue(value);
+    if (data) onDraftChange(data.sku, columnId, value);
+  }, [reportValue, data, onDraftChange, columnId]);
+  const [typedKey] = useState(() => pendingKey());
+  const [initialText] = useState(() => typedKey ?? (data ? formulaFor(data.sku) : ""));
+  const [text, setText] = useState(initialText);
+  const input = useRef<HTMLInputElement>(null);
+  // The last reference inserted by an arrow key, and where it sits in the text.
+  const lastReference = useRef<{ start: number; end: number; target: FormulaReference } | null>(null);
+  const pendingCaret = useRef<number | null>(null);
+  useEffect(() => {
+    // Report the expression once, so the grid reads it as the edited value.
+    onValueChange(initialText);
+    clearPendingKey();
+    input.current?.focus();
+    if (typedKey) input.current?.setSelectionRange(typedKey.length, typedKey.length);
+    else input.current?.select();
+    // Runs once on open; re-running would reset what the user has typed.
+    // Closing the editor clears the reference highlight.
+    return () => onReferenceChange(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (pendingCaret.current === null) return;
+    input.current?.setSelectionRange(pendingCaret.current, pendingCaret.current);
+    pendingCaret.current = null;
+  });
+
+  const handleReferenceArrow = (element: HTMLInputElement, direction: FormulaReferenceDirection): boolean => {
+    if (!data || !text.trimStart().startsWith("=")) return false;
+    const previous = lastReference.current;
+    const continuing = previous !== null && element.selectionStart === previous.end && element.selectionEnd === previous.end;
+    const origin = continuing ? previous.target : { sku: data.sku, field: columnId };
+    const target = moveReference(origin, direction);
+    if (!target) return true;
+    const reference = addressFor(target.sku, target.field) ?? cellReference(target.sku, target.field);
+    const start = continuing ? previous.start : element.selectionStart ?? text.length;
+    const end = continuing ? previous.end : element.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + reference + text.slice(end);
+    setText(next);
+    onValueChange(next);
+    lastReference.current = { start, end: start + reference.length, target };
+    pendingCaret.current = start + reference.length;
+    onReferenceChange(target);
+    return true;
+  };
+
+  const insertClickedReference = useCallback((target: FormulaReference): boolean => {
+    const element = input.current;
+    if (!data || !element || !element.value.trimStart().startsWith("=")) return false;
+    const reference = addressFor(target.sku, target.field) ?? cellReference(target.sku, target.field);
+    const start = element.selectionStart ?? element.value.length;
+    const end = element.selectionEnd ?? element.value.length;
+    const next = element.value.slice(0, start) + reference + element.value.slice(end);
+    setText(next);
+    onValueChange(next);
+    lastReference.current = { start, end: start + reference.length, target };
+    onReferenceChange(target);
+    requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelectionRange(start + reference.length, start + reference.length);
+    });
+    return true;
+  }, [data, onReferenceChange, onValueChange, addressFor]);
+
+  useEffect(() => {
+    const registration: ActiveFormulaEditor = { insertReference: insertClickedReference, changeText: (value) => { setText(value); onValueChange(value); } };
+    activeFormulaEditor = registration;
+    return () => {
+      if (activeFormulaEditor === registration) activeFormulaEditor = null;
+    };
+  }, [insertClickedReference, onValueChange]);
+
+  return <input
+    ref={input}
+    aria-label="Formula"
+    value={text}
+    onChange={(event) => {
+      lastReference.current = null;
+      setText(event.target.value);
+      onValueChange(event.target.value);
+    }}
+    onKeyDown={(event) => {
+      if (FORMULA_REFERENCE_KEYS.includes(event.key) && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+        if (handleReferenceArrow(event.currentTarget, event.key as FormulaReferenceDirection)) {
+          event.preventDefault();
+          return;
+        }
+      }
+      // Enter and Escape must reach the grid, which commits or cancels the edit.
+      onKeyDown(event.nativeEvent);
+    }}
+    className="h-full w-full min-w-0 bg-white px-2 font-mono text-sm text-foreground outline-none"
+  />;
 }
 
 function CellRenderer({ value }: ICellRendererParams<DemandRow, CellContent>) {
@@ -3739,6 +3866,10 @@ function ContainerGroupHeader(
 }
 
 export function AgDemandPlanningGrid({
+  formulaToolbarTarget,
+  formulaConfig: storedFormulaConfig,
+  onFormulaConfigChange,
+  formulaEditingEnabled,
   data,
   loading,
   categoryFilter,
@@ -3770,6 +3901,7 @@ export function AgDemandPlanningGrid({
   onColumnFilterCountChange,
   columnOrder = [],
   onColumnOrderChange,
+  onColumnDisplayOrderChange,
   onContainerEtaChange,
   seasonalFactors,
   columnColors = {},
@@ -3812,8 +3944,24 @@ export function AgDemandPlanningGrid({
   onToggleContainerColumns,
   scenario = null,
   scenarioOverlay = null,
-}: DemandPlanningGridProps) {
+}: DemandPlanningGridProps & {
+  formulaToolbarTarget?: HTMLElement | null;
+  formulaConfig: FormulaConfig;
+  onFormulaConfigChange: (config: FormulaConfig) => void;
+  formulaEditingEnabled: boolean;
+  onColumnDisplayOrderChange?: (order: string[]) => void;
+}) {
   const { pick } = useI18n();
+  // Every cell holds its own formula. Configs saved before that kept one formula
+  // per column; those are copied into the cells once and the change is saved.
+  const formulaSkus = useMemo(() => data.rows.map((row) => row.sku), [data.rows]);
+  const formulaConfig = useMemo(() => materializeDefaultFormulas(storedFormulaConfig, formulaSkus), [storedFormulaConfig, formulaSkus]);
+  useEffect(() => {
+    if (formulaEditingEnabled && formulaConfig !== storedFormulaConfig) onFormulaConfigChange(formulaConfig);
+  }, [formulaConfig, storedFormulaConfig, formulaEditingEnabled, onFormulaConfigChange]);
+  const formulaBarRef = useRef<FormulaBarHandle>(null);
+  const [formulaPanelOpen, setFormulaPanelOpen] = useState(false);
+  const formulaReferenceClickRef = useRef(false);
   const gridRef = useRef<AgGridReact<DemandRow>>(null);
   const conditionalFormatRulesRef = useRef(conditionalFormatRules);
   conditionalFormatRulesRef.current = conditionalFormatRules;
@@ -3875,7 +4023,20 @@ export function AgDemandPlanningGrid({
   const dragSelectionFrameRef = useRef<number | null>(null);
   const pendingDragSelectionRef = useRef<SelectedAgCell[] | null>(null);
   const columnDragAutoScrollRef = useRef({ active: false, clientX: 0, clientY: 0, frame: null as number | null });
+  // Mouseup stops auto-scroll in window capture, before AG finishes its drop.
+  // Keep the column drag transaction alive until AG's dragStopped event.
+  const columnDragRef = useRef({ active: false, movedContainers: false });
   const columnDragAutoScrollTickRef = useRef<() => void>(() => {});
+  const publishColumnDisplayOrder = useCallback((api: GridApi<DemandRow>) => {
+    if (!onColumnDisplayOrderChange) return;
+    const displayed = api.getAllDisplayedColumns().map((column) => column.getColId());
+    const visible = new Set(displayed);
+    let index = 0;
+    onColumnDisplayOrderChange(api.getAllGridColumns().map((column) => {
+      const id = column.getColId();
+      return visible.has(id) ? displayed[index++] : id;
+    }));
+  }, [onColumnDisplayOrderChange]);
   const appliedColumnStructureRef = useRef<string | null>(null);
   const columnWidthsRef = useRef(columnWidths);
   const columnTextFormatsRef = useRef(columnTextFormats);
@@ -4047,10 +4208,11 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   // ignored rather than dropped — switching back brings them with it — but a
   // filter nobody can see must not be quietly narrowing the grid.
   const columnKeyIsInView = useCallback((key: string) => {
+    if (isFormulaId(key)) return formulaConfig.some((c) => c.id === key && c.enabled);
     const separator = key.indexOf("::");
     if (separator >= 0) return containers.some((container) => container.name === key.slice(0, separator));
     return ALL_COLS.some((column) => column.id === key && columnAppliesToCategories(column.id, categoryFilter));
-  }, [categoryFilter, containers]);
+  }, [categoryFilter, containers, formulaConfig]);
 
   const sort = useMemo(
     () => (storedSort && columnKeyIsInView(storedSort.key) ? storedSort : null),
@@ -4063,6 +4225,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const baseColumnIds = new Set(ALL_COLS
       .filter((column) => columnAppliesToCategories(column.id, categoryFilter))
       .map((column) => column.id));
+    for (const column of formulaConfig) if (column.enabled) baseColumnIds.add(column.id);
     const active = new Map<string, ColumnFilter>();
     for (const [key, filter] of storedColumnFilters) {
       const separator = key.indexOf("::");
@@ -4072,7 +4235,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (usable) active.set(key, filter);
     }
     return active;
-  }, [categoryFilter, containers, storedColumnFilters]);
+  }, [categoryFilter, containers, formulaConfig, storedColumnFilters]);
 
   const preserveEditedRowUnderFilter = useCallback((rowId: string, columnId: string) => {
     if (!columnFilters.has(columnId)) return;
@@ -4116,10 +4279,45 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     }
   }, [chainMap, qtyOverrides]);
 
+  const formulaRows = useMemo(() => new Map(data.rows.map((row): [string, DemandRow] => [row.sku, {
+    ...row,
+    ...(rowOverrides.get(row.sku) ?? {}),
+    ...(cbmOverrides.has(row.sku) ? { cbm_per_unit: cbmOverrides.get(row.sku) } : {}),
+    workflow_note: skuWorkNotes[row.sku] ?? row.workflow_note,
+    workflow_note_2: skuWorkNotes2[row.sku] ?? row.workflow_note_2,
+    workflow_note_3: skuWorkNotes3[row.sku] ?? row.workflow_note_3,
+  }])), [cbmOverrides, data.rows, rowOverrides, skuWorkNotes, skuWorkNotes2, skuWorkNotes3]);
+  const formulaFields = useMemo(() => [
+    ...ALL_COLS.filter((c) => isFormulaBaseField(c.id)).map((c) => ({ id: c.id, label: c.label.replace(/\n/g, " ") })),
+    ...formulaConfig.filter((c) => c.enabled).map((c) => ({ id: c.id, label: c.name })),
+    ...data.containers.flatMap((container) => CON_SUBCOLS.map((c) => ({ id: `${container.name}::${c.id}`, label: `${container.name} / ${c.label.replace(/\n/g, " ")}` }))),
+  ], [data.containers, formulaConfig]);
+  const readFormulaValue = useCallback((sku: string, field: string): FormulaValue | undefined => {
+    const row = formulaRows.get(sku);
+    if (!row) return undefined;
+    const separator = field.indexOf("::");
+    if (separator >= 0) {
+      const name = field.slice(0, separator), sub = field.slice(separator + 2);
+      if (!data.containers.some((c) => c.name === name) || !CON_SUBCOLS.some((c) => c.id === sub)) return undefined;
+      if (!containerDetailsLoaded) return null;
+      return containerSubColumnValue(name, sub, row) as FormulaValue;
+    }
+    return formulaBaseValue(row, field);
+  }, [containerDetailsLoaded, containerSubColumnValue, data.containers, formulaRows]);
+  const formulaEvaluator = useMemo(() => createFormulaEvaluator(formulaConfig, formulaRows.keys(), readFormulaValue), [formulaConfig, formulaRows, readFormulaValue]);
+  const formulaPreview = useCallback((sku: string, id: FormulaId, formula: string) => {
+    const config = formulaConfig.map((c) => c.id === id ? { ...c, overrides: { ...c.overrides, [sku]: formula } } : c);
+    return createFormulaEvaluator(config, formulaRows.keys(), readFormulaValue).evaluate(sku, id);
+  }, [formulaConfig, formulaRows, readFormulaValue]);
+
   const columnMenuValue = useCallback((key: string, row: DemandRow): unknown => {
+    if (isFormulaId(key)) {
+      const result = formulaEvaluator.evaluate(row.sku, key);
+      return result.error ?? result.value;
+    }
     const parsed = parseColumnMenuKey(key);
     return parsed.kind === "base" ? baseColumnValue(parsed.id, row) : containerSubColumnValue(parsed.container, parsed.sub, row);
-  }, [containerSubColumnValue]);
+  }, [containerSubColumnValue, formulaEvaluator]);
 
   const columnMenuAccessors = useCallback((keys: Iterable<string>): Record<string, (row: DemandRow) => unknown> =>
     Object.fromEntries([...new Set(keys)].map((key) => [key, (row: DemandRow) => columnMenuValue(key, row)])),
@@ -5802,6 +6000,37 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     return results;
   }, [applyValueToTarget, onApplyFormatHistoryChanges, pushHistoryEntry]);
 
+  // Formula cells selected in the grid, grouped by formula column. A row only
+  // counts when it is in the formula scope, the same rule as the mousedown hook.
+  const collectSelectedFormulaRows = useCallback((): Map<FormulaId, string[]> => {
+    const rowsByColumn = new Map<FormulaId, string[]>();
+    for (const selectedKey of selectedCellsRef.current) {
+      const separator = selectedKey.indexOf("::");
+      if (separator < 0) continue;
+      const sku = selectedKey.slice(0, separator);
+      const field = selectedKey.slice(separator + 2);
+      if (!isFormulaId(field) || !formulaRows.has(sku)) continue;
+      rowsByColumn.set(field, [...(rowsByColumn.get(field) ?? []), sku]);
+    }
+    return rowsByColumn;
+  }, [formulaRows]);
+
+  // Delete on a formula cell blanks its SKU expression, as clearing a sheet
+  // cell does. Without this the cell keeps its old result, often 0.
+  const clearSelectedFormulaCells = useCallback((): boolean => {
+    if (!formulaEditingEnabled) return false;
+    const rowsByColumn = collectSelectedFormulaRows();
+    if (!rowsByColumn.size) return false;
+    onFormulaConfigChange(formulaConfig.map((column) => {
+      const rows = rowsByColumn.get(column.id);
+      if (!rows) return column;
+      const overrides = { ...column.overrides };
+      for (const sku of rows) overrides[sku] = "";
+      return { ...column, overrides };
+    }));
+    return true;
+  }, [collectSelectedFormulaRows, formulaConfig, formulaEditingEnabled, onFormulaConfigChange]);
+
   // Delete/Backspace clears Con. Qty, notes, and a T. Avg manual override.
   // CBM remains protected from accidental bulk deletion.
   const collectDeletableTargets = useCallback((): EditableCellTarget[] => {
@@ -5821,16 +6050,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   // Shared by the Delete/Backspace shortcut below and the Edit menu's Delete
   // item — same action, two triggers.
   const performDelete = useCallback((): boolean => {
-    if (!canEditPlanning || clearingSelectedEditableCellsRef.current) return false;
+    const clearedFormulas = clearSelectedFormulaCells();
+    if (!canEditPlanning || clearingSelectedEditableCellsRef.current) return clearedFormulas;
     const targets = collectDeletableTargets();
-    if (!targets.length) return false;
+    if (!targets.length) return clearedFormulas;
     clearingSelectedEditableCellsRef.current = true;
     void applyClipboardOperation(targets.map((target) => ({ target, value: "" })))
       .finally(() => {
         clearingSelectedEditableCellsRef.current = false;
       });
     return true;
-  }, [applyClipboardOperation, canEditPlanning, collectDeletableTargets]);
+  }, [applyClipboardOperation, canEditPlanning, clearSelectedFormulaCells, collectDeletableTargets]);
 
   useEffect(() => {
     const handleSelectedEditableCellDelete = (event: KeyboardEvent) => {
@@ -5914,6 +6144,90 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     window.addEventListener("keydown", handleSheetSelectionKeyboard, true);
     return () => window.removeEventListener("keydown", handleSheetSelectionKeyboard, true);
   }, [canEditPlanning, extendSheetCellSelection, getActiveCellEditor, navigateActiveBaseEditorCell, navigateActiveGridCell, navigateActiveQtyCell]);
+
+  // F2 and a typed character start editing the selected formula cell. The grid
+  // does not keep a focused cell after a click, so ag-grid's own key handling
+  // would miss these keys.
+  const pendingFormulaKeyRef = useRef<string | null>(null);
+  // Arrow-key references follow the grid's displayed order, as in a spreadsheet.
+  // Rows step through the displayed rows; columns step through the columns that
+  // can be referenced. Returns null at the edge of the grid.
+  const formulaFieldIdsRef = useRef<Set<string>>(new Set());
+  formulaFieldIdsRef.current = new Set(formulaFields.map((field) => field.id));
+  const formulaAddress = useCallback((sku: string, field: string): string | null => {
+    const api = gridRef.current?.api;
+    const row = api?.getRowNode(sku)?.rowIndex;
+    const col = api?.getAllDisplayedColumns().findIndex((c) => c.getColId() === field) ?? -1;
+    return row != null && col >= 0 ? `${spreadsheetColumnName(col)}${row + 1}` : null;
+  }, []);
+  const resolveAddresses = useCallback((text: string) => resolveFormulaAddresses(text, (address) => {
+    const match = /^([A-Z]+)(\d+)$/.exec(address)!;
+    const index = [...match[1]].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1;
+    const api = gridRef.current?.api;
+    const field = api?.getAllDisplayedColumns()[index]?.getColId();
+    const sku = api?.getDisplayedRowAtIndex(Number(match[2]) - 1)?.data?.sku;
+    return field && sku && formulaFieldIdsRef.current.has(field) ? cellReference(sku, field) : null;
+  }), []);
+  const displayAddresses = useCallback((text: string, sku: string) => displayFormulaAddresses(text, sku, formulaAddress), [formulaAddress]);
+  const moveFormulaReference = (from: FormulaReference, direction: FormulaReferenceDirection): FormulaReference | null => {
+    const api = gridRef.current?.api;
+    if (!api) return null;
+    if (direction === "ArrowLeft" || direction === "ArrowRight") {
+      const columns = api.getAllDisplayedColumns().map((column) => column.getColId()).filter((id) => formulaFieldIdsRef.current.has(id));
+      const index = columns.indexOf(from.field);
+      const nextIndex = index + (direction === "ArrowLeft" ? -1 : 1);
+      return nextIndex >= 0 && nextIndex < columns.length ? { sku: from.sku, field: columns[nextIndex] } : null;
+    }
+    const rowIndex = api.getRowNode(from.sku)?.rowIndex;
+    if (rowIndex === null || rowIndex === undefined) return null;
+    const sku = api.getDisplayedRowAtIndex(rowIndex + (direction === "ArrowUp" ? -1 : 1))?.data?.sku;
+    return sku ? { sku, field: from.field } : null;
+  };
+  // Shows the referenced cell as a spreadsheet address (e.g. C6) and outlines it.
+  // Cell elements are marked directly: the highlight covers base and formula
+  // columns alike, and the cell style of a base column is not ours to change.
+  const [formulaReferenceAddress, setFormulaReferenceAddress] = useState<string | null>(null);
+  const paintFormulaReference = (target: FormulaReference | null) => {
+    const api = gridRef.current?.api;
+    const host = gridHostRef.current;
+    if (!api || !host) return;
+    host.querySelectorAll(".planning-reference-highlight").forEach((element) => element.classList.remove("planning-reference-highlight"));
+    if (!target) { setFormulaReferenceAddress(null); return; }
+    const rowIndex = api.getRowNode(target.sku)?.rowIndex;
+    const columnIndex = api.getAllDisplayedColumns().findIndex((column) => column.getColId() === target.field);
+    if (rowIndex === null || rowIndex === undefined || columnIndex < 0) { setFormulaReferenceAddress(null); return; }
+    api.ensureIndexVisible(rowIndex);
+    api.ensureColumnVisible(target.field);
+    setFormulaReferenceAddress(`${spreadsheetColumnName(columnIndex)}${rowIndex + 1}`);
+    requestAnimationFrame(() => {
+      host.querySelector(`.ag-row[row-id="${CSS.escape(target.sku)}"] [col-id="${CSS.escape(target.field)}"]`)?.classList.add("planning-reference-highlight");
+    });
+  };
+  useEffect(() => {
+    const handleFormulaCellStart = (event: KeyboardEvent) => {
+      if (!formulaEditingEnabled || event.altKey || event.ctrlKey || event.metaKey) return;
+      const focusEl = event.target as HTMLElement | null;
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
+      const focusedCell = focusEl?.closest(".ag-cell[col-id]");
+      const focusedSku = focusedCell?.closest(".ag-row[row-id]")?.getAttribute("row-id");
+      const focusedField = focusedCell?.getAttribute("col-id");
+      const active = focusedSku && focusedField ? { rowId: focusedSku, columnId: focusedField } : activeSelectedCellRef.current;
+      if (!active || !isFormulaId(active.columnId) || !formulaRows.has(active.rowId)) return;
+      const api = gridRef.current?.api;
+      if (!api || api.getEditingCells().length) return;
+      const typed = event.key.length === 1 ? event.key : null;
+      if (event.key !== "F2" && !typed) return;
+      const rowIndex = api.getRowNode(active.rowId)?.rowIndex;
+      if (rowIndex === null || rowIndex === undefined) return;
+      const config = formulaConfig.find((column) => column.id === active.columnId);
+      const draft = typed ?? (config ? displayAddresses(formulaForCell(config, active.rowId), active.rowId) : "");
+      formulaBarRef.current?.beginDraft(active.rowId, active.columnId, draft);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener("keydown", handleFormulaCellStart, true);
+    return () => window.removeEventListener("keydown", handleFormulaCellStart, true);
+  }, [formulaEditingEnabled, formulaRows, formulaConfig, displayAddresses]);
 
   /** What a copy acts on. Clicking a column's spreadsheet letter selects the
    *  column without selecting any cell — nothing to copy, as far as the cell
@@ -6113,10 +6427,25 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     await applyClipboardOperation(operations, buildCellFormatChanges(formatTargets));
   }, [applyClipboardOperation, buildCellFormatChanges, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
 
+  const fillDownFormulaSelection = useCallback((columnId?: FormulaId) => {
+    if (!formulaEditingEnabled) return 0;
+    const bounds = getSelectionBoundsOrdered();
+    if (!bounds) return 0;
+    const displayedRows: string[] = [];
+    gridRef.current?.api.forEachNodeAfterFilterAndSort((node) => {
+      if (node.data && !node.rowPinned) displayedRows.push(node.data.sku);
+    });
+    const result = fillDownFormulas(formulaConfig, bounds.rowIds, columnId ? [columnId] : bounds.columnIds, selectedCellsRef.current,
+      (formula, source, target) => shiftFormulaRows(formula, source, target, displayedRows));
+    if (result.count) onFormulaConfigChange(result.config);
+    return result.count;
+  }, [formulaEditingEnabled, formulaConfig, getSelectionBoundsOrdered, onFormulaConfigChange]);
+
   const performFillDown = useCallback(() => {
     if (!canEditPlanning) return false;
     const bounds = getSelectionBoundsOrdered();
     if (!bounds || bounds.rowIds.length < 2) return false;
+    const filledFormulas = fillDownFormulaSelection();
 
     const operations: Array<{ target: EditableCellTarget; value: string }> = [];
     for (const columnId of bounds.columnIds) {
@@ -6134,10 +6463,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         if (target) operations.push({ target, value: sourceValue });
       }
     }
-    if (!operations.length) return false;
-    void applyClipboardOperation(operations);
-    return true;
-  }, [applyClipboardOperation, canEditPlanning, getCellCopyValue, getSelectionBoundsOrdered, resolveEditableTarget]);
+    if (operations.length) void applyClipboardOperation(operations);
+    return operations.length > 0 || filledFormulas > 0;
+  }, [applyClipboardOperation, canEditPlanning, fillDownFormulaSelection, getCellCopyValue, getSelectionBoundsOrdered, resolveEditableTarget]);
 
   useEffect(() => {
     const handleCopy = (event: KeyboardEvent) => {
@@ -6708,7 +7036,18 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   }, [baseCandidates, columnVis]);
 
   const pinnedBaseColumnLayout = useMemo(() => {
-    const visibleBaseColumns = baseCandidates.filter((column) => columnVis[column.id] !== false);
+    // Freeze a prefix of the saved display order, not of ALL_COLS. Formula
+    // columns must participate too: otherwise dragging Y into the frozen M
+    // position is immediately undone when applyColumnState unpins it again.
+    const candidates: Array<{ id: string; w: number }> = [
+      ...baseCandidates,
+      ...formulaConfig.filter((column) => column.enabled && formulaPanelOpen).map((column) => ({ id: column.id, w: 140 })),
+    ];
+    const rank = new Map(columnOrder.map((id, index) => [id, index]));
+    const visibleBaseColumns = candidates
+      .filter((column) => columnVis[column.id] !== false)
+      .map((column, index) => ({ ...column, rank: rank.get(column.id) ?? columnOrder.length + index }))
+      .sort((a, b) => a.rank - b.rank);
     const freezeIndex = visibleBaseColumns.findIndex((column) => column.id === freezeUntil);
     if (freezeIndex < 0) return { ids: [] as string[], widths: {} as Record<string, number>, width: 0 };
 
@@ -6726,7 +7065,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       widths: desiredWidths,
       width: desiredPinnedWidth,
     };
-  }, [baseCandidates, columnVis, columnWidths, freezeUntil]);
+  }, [baseCandidates, columnOrder, columnVis, columnWidths, formulaConfig, formulaPanelOpen, freezeUntil]);
 
   // Restore-arrow anchors: rather than reserving a column of its own, a
   // hidden run's restore arrow rides on the header of the real column right
@@ -6770,7 +7109,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           : column.id === "tavg_c"
             ? "T. Avg 현재"
             : column.label.replace("\n", " ");
-      const headerName = columnHeaderNames[column.id] ?? defaultHeaderName;
+      const headerName = isFormulaId(column.id) ? column.label : columnHeaderNames[column.id] ?? defaultHeaderName;
       return {
         colId: column.id,
         headerName,
@@ -6872,7 +7211,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           onSelect: handleColumnHeaderSelectFast,
           isFullColumnSelected: () => selectedFullColumnIdsRef.current.has(column.id),
           onFullColumnSelect: handleFullColumnSelectFast,
-          onRename: onColumnHeaderRename ?? (() => {}),
+          onRename: isFormulaId(column.id)
+            ? (id: string, name: string) => { if (formulaEditingEnabled) onFormulaConfigChange(formulaConfig.map((c) => c.id === id ? { ...c, name: name.trim().slice(0, 60) || c.name } : c)); }
+            : onColumnHeaderRename ?? (() => {}),
           getHeaderHeight: () => headerHeightRef.current,
           onHeaderHeightCommit: (height: number) => onHeaderHeightChangeRef.current?.(height),
           headerResizeLabel: pick("드래그하여 헤더 높이 조절", "Drag to resize the header row"),
@@ -6983,6 +7324,44 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       currentGroupChildren.push(buildRealBaseColDef(column));
     }
     flushGroup();
+
+    const formulaColumns = formulaConfig.filter((c) => c.enabled).map((c): AgColDef<DemandRow> => {
+      const base = buildRealBaseColDef({
+        id: c.id, label: c.name, grp: "fix", w: 140, align: "num", tint: "", gh: "gh-fix",
+        val: (row) => { if (row.pinned) return ""; const result = formulaEvaluator.evaluate(row.sku, c.id); return result.error ?? (typeof result.value === "boolean" ? String(result.value).toUpperCase() : result.value ?? ""); },
+      });
+      return {
+        ...base,
+        hide: !formulaPanelOpen || columnVis[c.id] === false,
+        // F2, Enter, double-click and typing all start this editor, as in a sheet.
+        editable: (params) => formulaEditingEnabled && !params.data?.pinned,
+        cellEditor: FormulaCellEditor,
+        cellEditorParams: {
+          formulaFor: (sku: string) => displayAddresses(formulaForCell(c, sku), sku),
+          addressFor: formulaAddress,
+          onDraftChange: (sku: string, field: string, text: string) => formulaBarRef.current?.syncDraft(sku, field, text),
+          pendingKey: () => pendingFormulaKeyRef.current,
+          clearPendingKey: () => { pendingFormulaKeyRef.current = null; },
+          columnId: c.id,
+          moveReference: moveFormulaReference,
+          onReferenceChange: paintFormulaReference,
+        } as Partial<FormulaCellEditorProps>,
+        valueSetter: (params) => {
+          if (!formulaEditingEnabled || !params.data) return false;
+          const sku = params.data.sku;
+          const text = resolveAddresses(String(params.newValue ?? ""));
+          onFormulaConfigChange(formulaConfig.map((column) => column.id === c.id
+            ? { ...column, overrides: { ...column.overrides, [sku]: text } }
+            : column));
+          // The grid reads the new expression on the next render, so refresh after it.
+          const { api, node } = params;
+          if (node) requestAnimationFrame(() => api.refreshCells({ rowNodes: [node], columns: [c.id], force: true }));
+          return true;
+        },
+        tooltipValueGetter: (params) => params.data && !params.data.pinned ? `${formulaForCell(c, params.data.sku)}${formulaEvaluator.evaluate(params.data.sku, c.id).error ? ` — ${formulaEvaluator.evaluate(params.data.sku, c.id).error}` : ""}` : "",
+      };
+    });
+    if (formulaColumns.length) groups.push({ groupId: "custom-formulas", headerName: pick("사용자 계산", "Custom calculations"), headerClass: "planning-formula-group-header", children: formulaColumns });
 
     if (groupVis.con) {
       // Render order: baseline first, then all real containers.
@@ -7308,7 +7687,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [pushViewHistory, baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canCreatePlanning, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+  }, [formulaPanelOpen, formulaConfig, formulaEditingEnabled, formulaEvaluator, onFormulaConfigChange, pushViewHistory, baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canCreatePlanning, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     conditionalFormatRulesRef.current = conditionalFormatRules;
@@ -7319,6 +7698,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
     const api = gridRef.current?.api;
     if (!api) return;
 
+    if (columnDragRef.current.active) return;
     const columnStructure = columnDefs.map((definition) => {
       if (!("children" in definition)) return definition.colId ?? definition.field ?? "";
       return `${definition.groupId ?? ""}[${definition.children.map((child) => (
@@ -7375,6 +7755,12 @@ autoFilling3: autoFillingContainers3.has(container.name),
       applyOrder: true,
     });
   }, [columnDefs, columnOrder, pinnedBaseColumnLayout]);
+
+  // AG also receives definitions through React, independently of the effect
+  // above. Keep that prop stable during a drag so a data/editor rerender cannot
+  // rebuild grouped headers underneath the pointer and restore their old order.
+  const renderedColumnDefsRef = useRef(columnDefs);
+  if (!columnDragRef.current.active) renderedColumnDefsRef.current = columnDefs;
 
   const exportCurrentView = useCallback(async () => {
     const api = gridRef.current?.api;
@@ -7470,9 +7856,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
       ),
       canCopy: hasCopyableSelection,
       canPaste: canEditPlanning && hasSelection,
-      canDelete: canEditPlanning && collectDeletableTargets().length > 0,
+      canDelete: (canEditPlanning && collectDeletableTargets().length > 0) || (formulaEditingEnabled && collectSelectedFormulaRows().size > 0),
     };
-  }, [canEditPlanning, collectDeletableTargets, resolveEditableTarget, selectionHasCuttableFormat]);
+  }, [canEditPlanning, collectDeletableTargets, collectSelectedFormulaRows, formulaEditingEnabled, resolveEditableTarget, selectionHasCuttableFormat]);
 
   useEffect(() => {
     if (!onEditActionsReady) return;
@@ -7492,9 +7878,47 @@ autoFilling3: autoFillingContainers3.has(container.name),
 
   return (
     <>
+    <div className="flex h-full min-h-0 w-full flex-col">
+    <FormulaBar key={scenario?.id ?? "live"} ref={formulaBarRef} toolbarTarget={formulaToolbarTarget} open={formulaPanelOpen} onOpenChange={setFormulaPanelOpen} config={formulaConfig} onChange={onFormulaConfigChange}
+      canEdit={formulaEditingEnabled} fields={formulaFields} evaluate={formulaPreview}
+      getSelectedSkus={() => getSelectionBoundsOrdered()?.rowIds ?? []}
+      onFillDown={fillDownFormulaSelection}
+      referenceAddress={formulaReferenceAddress}
+      addressFor={formulaAddress} displayFormula={displayAddresses} resolveFormula={resolveAddresses}
+      onEditorChange={(text) => activeFormulaEditor?.changeText(text)}
+      onEditorCommit={() => { if (!activeFormulaEditor) return false; gridRef.current?.api.stopEditing(); return true; }}
+      onEditorCancel={() => { gridRef.current?.api.stopEditing(true); paintFormulaReference(null); }}
+      onReferenceChange={paintFormulaReference}
+      onReveal={(id) => { if (columnVis[id] === false) onHideColumn?.(id); requestAnimationFrame(() => gridRef.current?.api.ensureColumnVisible(id)); }} />
     <div
       ref={gridHostRef}
-      className="planning-ag-grid h-full min-h-0 w-full overflow-x-auto overflow-y-hidden bg-white"
+      className="planning-ag-grid min-h-0 w-full flex-1 overflow-x-auto overflow-y-hidden bg-white"
+      onMouseDownCapture={(event) => {
+        formulaReferenceClickRef.current = false;
+        if (event.button !== 0 || !(event.target instanceof Element)) return;
+        const cell = event.target.closest(".ag-cell[col-id]");
+        const field = cell?.getAttribute("col-id");
+        const sku = cell?.closest(".ag-row[row-id]")?.getAttribute("row-id");
+        if (!field || !sku || !formulaRows.has(sku)) return;
+        if (event.target.closest("input, textarea")) return;
+        if (activeFormulaEditor && !formulaFieldIdsRef.current.has(field)) { event.preventDefault(); event.stopPropagation(); return; }
+        if (!formulaBarRef.current?.isPicking() && activeFormulaEditor?.insertReference({ sku, field })) {
+          formulaReferenceClickRef.current = true;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        // AG dispatches cell-click events asynchronously. Capture here before a
+        // subsequent keystroke can turn a target selection into a reference pick.
+        if (formulaBarRef.current?.selectCell(sku, field, event.shiftKey || event.ctrlKey || event.metaKey)) {
+          formulaReferenceClickRef.current = true;
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onClickCapture={(event) => {
+        if (formulaReferenceClickRef.current) { event.preventDefault(); event.stopPropagation(); }
+      }}
       // Only taller-than-default rows wrap their text columns: at the default
       // height the attribute is absent and the grid renders exactly as before.
       data-row-wrap={rowHeight > DEFAULT_ROW_HEIGHT || Object.keys(rowHeights).length > 0 ? "on" : undefined}
@@ -7502,6 +7926,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
     >
       <style>{`
         @keyframes planning-spin { to { transform: rotate(360deg); } }
+        .planning-ag-grid .planning-formula-group-header .ag-header-group-cell-label { box-sizing: border-box; height: 100%; padding-top: 22px; align-items: center; justify-content: center; }
+        .planning-ag-grid .ag-cell.planning-reference-highlight { outline: 2px solid #1A73E8; outline-offset: -2px; background-color: #DCE9FC !important; }
         .planning-ag-grid .ag-row-selected {
           outline: 1px solid #7aa7e8;
           outline-offset: -1px;
@@ -7679,7 +8105,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
             loading={loading}
             rowData={sortedRows}
             pinnedTopRowData={data.pinned_rows}
-            columnDefs={columnDefs}
+            columnDefs={renderedColumnDefsRef.current}
             defaultColDef={{
               autoHeaderHeight: false,
               resizable: true,
@@ -7692,7 +8118,10 @@ autoFilling3: autoFillingContainers3.has(container.name),
               checkboxes: false,
               enableClickSelection: true,
             }}
+            enterNavigatesVertically={true}
+            enterNavigatesVerticallyAfterEdit={true}
             onCellMouseDown={(event) => {
+              if (formulaBarRef.current?.isPicking()) return;
               if (!event.data || event.rowIndex === null || event.node.rowPinned) return;
               const nativeEvt = event.event as MouseEvent | undefined;
               if (nativeEvt && nativeEvt.button !== 0) return;
@@ -7728,6 +8157,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               scheduleDragSelectionNotification(cells);
             }}
             onCellClicked={(event) => {
+              if (formulaReferenceClickRef.current) { formulaReferenceClickRef.current = false; return; }
               event.node.setSelected(true, true);
               if (!event.data) return;
               if (dragMovedRef.current) {
@@ -7805,6 +8235,15 @@ autoFilling3: autoFillingContainers3.has(container.name),
             animateRows={false}
             suppressCellFocus
             maintainColumnOrder
+            onDisplayedColumnsChanged={(event) => {
+              // Publishing intermediate positions rerenders the parent, which
+              // reapplies saved column order and interrupts AG's active drag.
+              if (columnDragRef.current.active) return;
+              // Displayed order includes pinning and AG's grouped-header layout,
+              // which can differ from the requested/saved column state. Preserve
+              // hidden columns in their slots while using the actual visible order.
+              publishColumnDisplayOrder(event.api);
+            }}
             suppressDragLeaveHidesColumns
             onDragStarted={(event) => {
               const target = event.target instanceof Element ? event.target : null;
@@ -7815,6 +8254,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
               const header = target?.closest(".ag-header-cell, .ag-header-group-cell")
                 ?? pointerTarget?.closest(".ag-header-cell, .ag-header-group-cell");
               if (!header || pointerTarget?.closest(".ag-header-cell-resize")) return;
+              columnDragRef.current = { active: true, movedContainers: false };
               const dragState = columnDragAutoScrollRef.current;
               dragState.active = true;
               if (dragState.frame === null) {
@@ -7823,7 +8263,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
             }}
             onDragStopped={(event) => {
               const dragState = columnDragAutoScrollRef.current;
-              const wasColumnDrag = dragState.active;
+              const { active: wasColumnDrag, movedContainers } = columnDragRef.current;
+              columnDragRef.current = { active: false, movedContainers: false };
               dragState.active = false;
               if (dragState.frame !== null) window.cancelAnimationFrame(dragState.frame);
               dragState.frame = null;
@@ -7833,10 +8274,13 @@ autoFilling3: autoFillingContainers3.has(container.name),
               if (wasColumnDrag) {
                 onColumnOrderChange?.(
                   event.api.getAllDisplayedColumns().map((column) => column.getColId()),
+                  movedContainers ? { containerOrderCustomized: true } : undefined,
                 );
+                publishColumnDisplayOrder(event.api);
               }
             }}
             onDragCancelled={() => {
+              columnDragRef.current = { active: false, movedContainers: false };
               const dragState = columnDragAutoScrollRef.current;
               dragState.active = false;
               if (dragState.frame !== null) window.cancelAnimationFrame(dragState.frame);
@@ -7849,6 +8293,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 for (const sibling of column.getParent()?.getDisplayedLeafColumns() ?? []) affectedColumns.add(sibling);
               }
               const movedContainerColumns = [...affectedColumns].some((column) => column.getColId().includes("::"));
+              if (columnDragRef.current.active && movedContainerColumns) columnDragRef.current.movedContainers = true;
               if (movedContainerColumns) {
                 // Container groups may be reordered among themselves, but the
                 // whole planning block must stay after the fixed/base columns
@@ -7867,6 +8312,9 @@ autoFilling3: autoFillingContainers3.has(container.name),
               }
               event.api.refreshHeader();
               if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });
+              // Save once, after the drop settles. Intermediate React updates
+              // can otherwise reapply the pre-drag column order.
+              if (columnDragRef.current.active) return;
               onColumnOrderChange?.(
                 event.api.getAllDisplayedColumns().map((column) => column.getColId()),
                 movedContainerColumns ? { containerOrderCustomized: true } : undefined,
@@ -7890,6 +8338,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
             overlayLoadingTemplate={containerDetailsLoading ? "Loading container details..." : "Loading..."}
           />
         </AgGridProvider>
+      </div>
       </div>
 
       {/* Column header right-click menu: Sort A→Z, Sort Z→A, Filter, Hide. */}
