@@ -70,7 +70,7 @@ function parseSku(sku: string): { seat: string; no: number; color: string; tone:
 function inferCategoryCode(sku: string): "SC" | "CC" | "FM" | "AC" | "SWC" {
   const normalized = sku.toUpperCase();
   if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CC-") || normalized.startsWith("CA-CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";

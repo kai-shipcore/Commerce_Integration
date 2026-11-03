@@ -27,7 +27,7 @@ function inferCategory(sku: string): string | null {
   // Strip ICC- prefix for pattern matching
   const normalized = upper.startsWith("ICC-") ? upper.slice(4) : upper;
   const parts = normalized.split("-");
-  if (parts[0] === "CC") return "Car Cover";
+  if (parts[0] === "CC" || parts[1] === "CC") return "Car Cover";
   if (parts[0] === "FM" || parts[1] === "FM") return "Floor Mat";
   if (parts[0] === "SC" || parts[1] === "SC") return "Seat Cover";
   return null;
