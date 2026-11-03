@@ -32,6 +32,9 @@ describe("inferProduct", () => {
   it("classifies car covers", () => {
     expect(inferProduct("CC-CP-03-M-GR-1TO").productKey).toBe("cc");
     expect(inferProduct("C-SJ-GR-7").productKey).toBe("cc");
+    // CA-CC-… car covers used to fall through to Accessories.
+    expect(inferProduct("CA-CC-15-TC-K-DGBK-STR").productKey).toBe("cc");
+    expect(inferProduct("CA-CC-03-TC-K-BK-1TO").categoryCode).toBe("CC");
   });
 
   it("classifies seat covers", () => {

@@ -151,7 +151,10 @@ export function inferProduct(masterSku: string): {
     return { productKey: "swc", category: "SWC", categoryCode: "SWC", moq: 1, cbmPerUnit: 0.078, caseQty: 1, weightKg: 2.8 };
   }
 
-  if (sku.startsWith("CC-") || sku === "C-SJ-GR-7") {
+  // A handful of car covers were keyed CA-CC-… (the accessories prefix on a
+  // car-cover body, e.g. CA-CC-15-TC-K-DGBK-STR). They are car covers; without
+  // this they fall through to Accessories and plan with its MOQ/CBM.
+  if (sku.startsWith("CC-") || sku.startsWith("CA-CC-") || sku === "C-SJ-GR-7") {
     return { productKey: "cc", category: "Car Cover", categoryCode: "CC", moq: 3, cbmPerUnit: 0.078, caseQty: 3, weightKg: 2.8 };
   }
 

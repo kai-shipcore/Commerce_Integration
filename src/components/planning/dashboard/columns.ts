@@ -422,7 +422,7 @@ export function categoryCodeForRow(row: DemandRow): "SC" | "CC" | "FM" | "AC" | 
   if (row.category_code) return row.category_code;
   const normalized = row.sku.toUpperCase();
   if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CC-") || normalized.startsWith("CA-CC-")) return "CC";
   if (normalized.startsWith("CA-FM-") || normalized.split("-").includes("FM")) return "FM";
   if (normalized.startsWith("CA-SC-") || normalized.startsWith("CL-SC-")) return "SC";
   return "AC";
@@ -955,7 +955,7 @@ function inferCategoryCodeFromSku(sku: string): "SC" | "CC" | "FM" | "AC" | "SWC
   const normalized = String(sku ?? "").trim().toUpperCase();
   if (!normalized) return null;
   if (normalized.includes("SWC")) return "SWC";
-  if (normalized.startsWith("CC-")) return "CC";
+  if (normalized.startsWith("CC-") || normalized.startsWith("CA-CC-")) return "CC";
   const parts = normalized.split("-");
   if (parts[1] === "SC") return "SC";
   if (parts[1] === "FM" || parts.includes("FM")) return "FM";

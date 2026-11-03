@@ -112,7 +112,7 @@ function categoryParamsFor(categoryCodes: DashboardFilters["categoryCodes"]): st
 // are matched by their stored code alone.
 const CATEGORY_PATTERN_FALLBACK: Partial<Record<DashboardCategoryCode, string>> = {
   SC: `(UPPER(s.master_sku) LIKE 'CA-SC-%' OR UPPER(s.master_sku) LIKE 'CL-SC-%')`,
-  CC: `UPPER(s.master_sku) LIKE 'CC-%'`,
+  CC: `(UPPER(s.master_sku) LIKE 'CC-%' OR UPPER(s.master_sku) LIKE 'CA-CC-%')`,
   FM: `(UPPER(s.master_sku) LIKE 'CA-FM-%' OR 'FM' = ANY(string_to_array(UPPER(s.master_sku), '-')))`,
 };
 
