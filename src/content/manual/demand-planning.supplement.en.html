@@ -69,3 +69,126 @@
     <span class="callout-icon">💡</span>
     <div><b>If the columns are hidden:</b> Open <span class="btn-label">⊞ Columns ▾</span>, enable <strong>OOS Period</strong> and <strong>OOS Lost Demand</strong> under <strong>Column Visibility → OOS (90D)</strong>, then click <span class="btn-label">Apply</span> at the bottom.</div>
   </div>
+
+  <h3 id="dp-formula-columns">⑬ Formula Columns — Your Own Formulas per Cell</h3>
+  <p><span class="btn-label">Formula columns</span> are columns where you enter a formula in each cell. Put a formula in each cell and fill it down to apply the same calculation to many SKUs. Results are calculated <strong>only in this tab</strong>; order quantities, stock, and purchasing data are not changed.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:180px">Task</th><th>How</th></tr>
+    <tr>
+      <td class="label">Open formula columns</td>
+      <td>Click <span class="btn-label">Formula columns</span> in the top toolbar to open the formula editor. Click <span class="btn-label">+ Add formula column</span> to create a new column. It starts empty, and values appear only in cells where you enter a formula.</td>
+    </tr>
+    <tr>
+      <td class="label">Rename a column</td>
+      <td>Edit <strong>Formula column name</strong> under <strong>Column settings</strong> in the formula editor. The name is saved when you leave the field.</td>
+    </tr>
+    <tr>
+      <td class="label">Enter a formula</td>
+      <td>Click a cell in the formula column, type a formula starting with <code>=</code> in the formula field, then click <span class="btn-label">Apply</span> or press Enter. If you select several cells first, the same formula goes into all of them.</td>
+    </tr>
+    <tr>
+      <td class="label">Type directly in a cell</td>
+      <td>Double-click a cell, or select it and press <kbd>F2</kbd>, to edit the formula inside the cell. Enter applies the change and moves to the cell below; <kbd>Esc</kbd> cancels.</td>
+    </tr>
+    <tr>
+      <td class="label">Fill down</td>
+      <td>Select two or more rows in the same formula column, then click <span class="btn-label">Fill down</span> or press <kbd>Ctrl+D</kbd>. The formula in the top cell is copied to the cells below. <code>[columnID]</code> refers to the row of each copied cell.</td>
+    </tr>
+    <tr>
+      <td class="label">Reference another cell</td>
+      <td>While editing a formula, click <span class="btn-label">Pick cell</span> and then click a cell in the grid to insert it as a reference. The address of the referenced cell (for example, <code>C6</code>) appears to the left of the formula field. To use another column in the same row, pick it from the <span class="btn-label">Insert column from this row…</span> list.</td>
+    </tr>
+    <tr>
+      <td class="label">Clear cells</td>
+      <td>Use <span class="btn-label">Clear selected cells</span> to erase formulas in the selected cells. The <span class="btn-label">✕</span> next to the formula field only resets the formula you are typing.</td>
+    </tr>
+  </table>
+
+  <h3 class="sub">Formula Rules</h3>
+  <table class="feat-table">
+    <tr><th style="width:180px">Item</th><th>Rule</th></tr>
+    <tr>
+      <td class="label">Same-SKU value</td>
+      <td><code>[columnID]</code> — refers to a value in the same row (the same SKU).</td>
+    </tr>
+    <tr>
+      <td class="label">Specific-SKU value</td>
+      <td><code>SKU("SKU", "columnID")</code> — refers to a value in the row of the specified SKU.</td>
+    </tr>
+    <tr>
+      <td class="label">Operators</td>
+      <td><code>+ - * / ^</code>, percentage <code>30%</code>, comparisons <code>= &lt;&gt; &lt; &gt; &lt;= &gt;=</code></td>
+    </tr>
+    <tr>
+      <td class="label">Functions</td>
+      <td><code>IF</code>, <code>IFERROR</code>, <code>MIN</code>, <code>MAX</code>, <code>SUM</code>, <code>ABS</code>, <code>ROUND</code>, <code>ROUNDUP</code>, <code>ROUNDDOWN</code></td>
+    </tr>
+    <tr>
+      <td class="label">Length</td>
+      <td>A formula can be up to 2000 characters.</td>
+    </tr>
+  </table>
+
+  <p>Examples</p>
+  <table class="feat-table">
+    <tr><th style="width:320px">Formula</th><th>Meaning</th></tr>
+    <tr><td><code>=[tavg_c]*30%</code></td><td>30% of the current T. Avg value in the same row</td></tr>
+    <tr><td><code>=ROUNDUP(MAX(0,[total]*60-100),0)</code></td><td>Limits the result to 0 or more, then rounds up</td></tr>
+    <tr><td><code>=[tavg_c]*2+SKU("CA-SC-10-F-10-GR-1TO","tavg_c")</code></td><td>Adds another SKU's value to the same-row value</td></tr>
+  </table>
+
+  <h3 class="sub">Error Indicators</h3>
+  <table class="feat-table">
+    <tr><th style="width:140px">Display</th><th>Meaning</th></tr>
+    <tr><td><code>#REF!</code></td><td>A referenced cell or SKU cannot be found</td></tr>
+    <tr><td><code>#CYCLE!</code></td><td>Formulas reference each other in a loop</td></tr>
+    <tr><td><code>#N/A</code></td><td>The referenced value does not exist. Cells with no stock history show <code>#N/A</code> instead of 0</td></tr>
+    <tr><td><code>#DIV/0!</code></td><td>Division by zero</td></tr>
+    <tr><td><code>#VALUE!</code></td><td>A calculation used a non-numeric value</td></tr>
+    <tr><td><code>#NAME?</code></td><td>Unknown function name</td></tr>
+    <tr><td><code>#ARGS!</code></td><td>Wrong number of function arguments</td></tr>
+    <tr><td><code>#NUM!</code></td><td>Number outside the allowed range</td></tr>
+    <tr><td><code>#SYNTAX!</code></td><td>Syntax error. Check parentheses, quotes, and operators</td></tr>
+    <tr><td><code>#LIMIT!</code></td><td>Formula is too long or references are nested too deeply</td></tr>
+  </table>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div><b>Saved per tab.</b> Formula columns are saved for each tab, so a formula column created on a scenario tab appears only in that scenario. When Sync changes the data, the results are recalculated from the new data.</div>
+  </div>
+
+  <h3 id="dp-as-of">⑭ As Of Date — Replaying a Past Date</h3>
+  <p>The date input at the top is the <strong>reference date</strong>. When you choose a past date, sales and stock are recalculated as of that date. S.O.D. and inventory life are also recalculated from that date. Use it to check which SKUs were at risk last week, or why a stock decision looked the way it did at that time.</p>
+
+  <table class="feat-table">
+    <tr><th style="width:200px">Item</th><th>On a past reference date</th></tr>
+    <tr>
+      <td class="label">Sales (90/60/30/15/7-day, averages)</td>
+      <td>Re-aggregated for the chosen date.</td>
+    </tr>
+    <tr>
+      <td class="label">Total Stock, Back</td>
+      <td>Restored from stock history to that day's state.</td>
+    </tr>
+    <tr>
+      <td class="label">Warehouse stock (Fullerton, Canary, TTM, West, East)</td>
+      <td>Shown as <code>—</code>. Stock history keeps only SKU totals, so it cannot be split by warehouse.</td>
+    </tr>
+    <tr>
+      <td class="label">Transit, Remaining / Mistake, container list, ETA, and quantities</td>
+      <td>No history is kept, so the <strong>current values</strong> are used.</td>
+    </tr>
+  </table>
+
+  <p>In other words, a past reference date shows <strong>"that day's sales and stock × the current transit and container plan"</strong>. The note next to the date shows the stock reference date and which items are current. Hover over it for the full explanation.</p>
+
+  <div class="callout info">
+    <span class="callout-icon">📅</span>
+    <div><b>Selectable date range:</b> You can only choose dates that the sales and inventory history can fully answer. Earlier dates are blocked in the date picker, and hovering over the input shows the earliest selectable date. Use the <span class="btn-label">Today</span> button to return to today.</div>
+  </div>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div><strong>A past reference date is not a full snapshot of that time.</strong> Transit stock and the container plan are current values, so to reconstruct a past decision, check the container status from the time of the order separately.</div>
+  </div>
