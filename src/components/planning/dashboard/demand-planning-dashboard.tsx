@@ -2060,7 +2060,13 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     columnOrderChangedRef.current = true;
     const next = mergeMovedColumnOrder(columnOrder, movedOrder);
     const orderUnchanged = sameColumnOrder(next, columnOrder);
-    const pinsContainerOrder = options?.containerOrderCustomized === true && !containerOrderCustomized;
+    // A formula dropped into the container block is also a custom layout.
+    // Otherwise ETA normalization treats it as a base column and moves it back.
+    const firstContainerIndex = movedOrder.findIndex((id) => id.includes("::"));
+    const formulaInContainerBlock = firstContainerIndex >= 0 && movedOrder.some(
+      (id, index) => index > firstContainerIndex && FORMULA_IDS.some((formulaId) => formulaId === id),
+    );
+    const pinsContainerOrder = (options?.containerOrderCustomized === true || formulaInContainerBlock) && !containerOrderCustomized;
     if (orderUnchanged && !pinsContainerOrder) return;
 
     if (pinsContainerOrder) containerOrderCustomizedChangedRef.current = true;
@@ -4080,7 +4086,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
                         </div>
                         {isOpen ? (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 1, padding: "0 0 4px 28px" }}>
-                            {group === "custom-formulas" && <p style={{ gridColumn: "1 / -1", margin: "2px 5px", fontSize: 11, color: "#64748B" }}>{pick("선택한 컬럼은 ‘계산 컬럼’을 열면 표시됩니다.", "Selected columns appear when Formula columns is open.")}</p>}
+                            {group === "custom-formulas" && <p style={{ gridColumn: "1 / -1", margin: "2px 5px", fontSize: 11, color: "#64748B" }}>{pick("계산 컬럼의 표시 여부는 여기에서 설정합니다. 수식 편집기를 닫아도 컬럼은 유지됩니다.", "Control calculation column visibility here. Columns remain visible when the formula editor is closed.")}</p>}
                             {groupItems.map((item) => {
                               const checked = draftColumnVis[item.id] !== false;
                               return (
