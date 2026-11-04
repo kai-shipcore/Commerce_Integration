@@ -1092,6 +1092,8 @@ export function DemandPlanningGrid({
                           setCbmSavingSku(null);
                         }
                       };
+                      // Min Sales floor replaced the calculated T.Avg current.
+                      const isMinApplied = col.id === "tavg_c" && Boolean(displayRow.total_avg_curr_min_applied);
                       return (
                         <td
                           key={col.id}
@@ -1103,9 +1105,10 @@ export function DemandPlanningGrid({
                             setCbmEditingVal(initial);
                             setCbmEditingSku(r.sku);
                           } : undefined}
+                          title={isMinApplied ? `Minimum applied: calculated ${displayRow.total_avg_curr_auto ?? 0} → min ${displayRow.total_avg_curr_min ?? displayRow.total_avg_curr}` : undefined}
                           style={{
                             ...cellStyle(col),
-                            background: isCbmEditing ? "#FFFDE7" : TINT_COLORS[col.tint] || undefined,
+                            background: isCbmEditing ? "#FFFDE7" : isMinApplied ? "#fde68a" : TINT_COLORS[col.tint] || undefined,
                             ...(tdFrozen ? { position: "sticky" as const, left: leftOffsets[colIdx], zIndex: 35 } : {}),
                             ...(isCbm && !isCbmEditing ? { cursor: "pointer", borderBottom: "1px dashed #90B8E0", color: "#1A4FC0" } : {}),
                             ...(isCbmSaving ? { color: undefined } : {}),

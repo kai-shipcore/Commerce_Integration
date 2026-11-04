@@ -28,6 +28,7 @@ import {
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
 import { toFinalMasterSku } from "@/lib/planning/master-sku";
+import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import {
   DEFAULT_SALES_WINDOW_WEIGHTS,
@@ -509,7 +510,13 @@ export const DemandPlanningService = {
       const total_avg_curr_override = r.total_avg_curr_override == null
         ? null
         : Number(r.total_avg_curr_override);
-      const total_avg_curr = total_avg_curr_override ?? total_avg_curr_auto;
+      // Min Sales page floor: replaces a calculated value below the registered
+      // minimum. A manual override still wins over both, so the floor is only
+      // reported as applied when no override is set.
+      const total_avg_curr_min = r.total_avg_curr_min == null ? null : Number(r.total_avg_curr_min);
+      const floored = applyMinTotalAvgCurr(total_avg_curr_auto, total_avg_curr_min);
+      const total_avg_curr = total_avg_curr_override ?? floored.value;
+      const total_avg_curr_min_applied = total_avg_curr_override === null && floored.applied;
 
       const availQty = totalStock + back;
       const carryover = availQty >= 0 ? availQty : 0;
@@ -645,6 +652,8 @@ export const DemandPlanningService = {
         total_avg_curr: isCarCover ? total_avg_curr : Math.round(total_avg_curr * 100) / 100,
         total_avg_curr_auto: isCarCover ? total_avg_curr_auto : Math.round(total_avg_curr_auto * 100) / 100,
         total_avg_curr_override,
+        total_avg_curr_min,
+        total_avg_curr_min_applied,
         total_avg_prev_override,
         total_avg_real_override,
         total_avg_prev_auto: isCarCover ? total_avg_prev_auto : Math.round(total_avg_prev_auto * 100) / 100,

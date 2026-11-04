@@ -207,6 +207,56 @@ describe("DemandPlanningService.getDashboardData", () => {
     });
   });
 
+  describe("Min Sales floor on T.Avg current", () => {
+    const statsRow = (overrides: Record<string, unknown>) => ({
+      sku: "SKU-1", total_inbound_qty: 0, containers_list: null, next_eta: null, cbm_unit: null,
+      latest_container: null, latest_eta: null, latest_qty: null,
+      sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
+      back: 0, west_stock: 5, east_stock: 5, west_available_stock: 5, east_available_stock: 5, transit_stock: 0,
+      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0,
+      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0,
+      total_stock: 10, west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
+      east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
+      avg_daily_prev: 1, avg_daily_real: 1, avg_daily_curr: 1, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
+      fba_avg_prev: 0, fba_avg_real: 0, fba_avg_curr: 0,
+      fba_90d_sales: 0, fba_60d_sales: 0, fba_30d_sales: 0, fba_15d_sales: 0, fba_7d_sales: 0, fba_30d_pre: 0,
+      fba_30d: 0, total_avg_prev: 1, total_avg_real: 1, total_avg_curr: 1, total_avg_curr_override: null,
+      total_avg_curr_min: null,
+      oos_days_90d: 0, oos_lost_demand_90d: 0,
+      ...overrides,
+    });
+
+    it("shows the minimum and flags it when the calculated value is below it", async () => {
+      repositoryMock.getStatsRows.mockResolvedValue([statsRow({ total_avg_curr_min: 3 })]);
+      const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+      expect(data.rows[0]).toMatchObject({
+        total_avg_curr: 3, total_avg_curr_auto: 0.33, total_avg_curr_min: 3, total_avg_curr_min_applied: true,
+      });
+    });
+
+    it("keeps the calculated value when it is already above the minimum", async () => {
+      repositoryMock.getStatsRows.mockResolvedValue([statsRow({ total_avg_curr_min: 0.2 })]);
+      const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+      expect(data.rows[0]).toMatchObject({ total_avg_curr: 0.33, total_avg_curr_min_applied: false });
+    });
+
+    it("lets a manual override win over the minimum", async () => {
+      repositoryMock.getStatsRows.mockResolvedValue([statsRow({ total_avg_curr_min: 3, total_avg_curr_override: 2 })]);
+      const { data } = await DemandPlanningService.getDashboardData(baseQuery);
+      expect(data.rows[0]).toMatchObject({ total_avg_curr: 2, total_avg_curr_min_applied: false });
+    });
+
+    it("plans the baseline inventory life on the floored rate", async () => {
+      const query = { ...baseQuery, includeContainers: true };
+      repositoryMock.getStatsRows.mockResolvedValue([statsRow({})]);
+      const before = (await DemandPlanningService.getDashboardData(query)).data.rows[0];
+      getCacheMock.mockResolvedValue(null);
+      repositoryMock.getStatsRows.mockResolvedValue([statsRow({ total_avg_curr_min: 5 })]);
+      const after = (await DemandPlanningService.getDashboardData(query)).data.rows[0];
+      expect(after.containers.Base.inv_life as number).toBeLessThan(before.containers.Base.inv_life as number);
+    });
+  });
+
   it("skips the historical velocity snapshot lookups when asOf is today or absent", async () => {
     await DemandPlanningService.getDashboardData(baseQuery);
     expect(repositoryMock.getVelocitySnapshot).not.toHaveBeenCalled();
