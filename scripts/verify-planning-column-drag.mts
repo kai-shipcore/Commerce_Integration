@@ -130,6 +130,11 @@ try {
     return Boolean(order[index - 1]?.startsWith("DRAFT-TEST::") && order[index + 1]?.startsWith("DRAFT-TEST::"));
   };
   await expect.poll(insideDraft).toBe(true);
+  await expect(page.getByRole("button", { name: "Open DRAFT-TEST details", exact: true })).toBeVisible();
+  await expect(page.locator('button[aria-label="Open DRAFT-TEST details"]:visible')).toHaveCount(1);
+  const draftSummaries = page.locator('[data-summary-column-id^="DRAFT-TEST::"]');
+  const summaryIds = await draftSummaries.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-summary-column-id")));
+  expect(new Set(summaryIds).size).toBe(summaryIds.length);
   await expect.poll(() => page.locator('.planning-formula-group-header').allTextContents()).toEqual(["", ""]);
   await expect(page.locator('.ag-header-cell[col-id="custom_formula_1"]')).toContainText("Calc 1");
   await expect.poll(() => {

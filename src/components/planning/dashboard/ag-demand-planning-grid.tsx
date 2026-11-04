@@ -2777,7 +2777,7 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
       role="button"
       tabIndex={0}
       aria-label={`Rename ${params.displayName} group header`}
-      title="Right-click to hide this group. Double-click to rename."
+      title={`${params.displayName}\nRight-click to hide this group. Double-click to rename.`}
       onContextMenu={params.onRightClick ? (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2797,7 +2797,7 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
       }}
       style={{ alignItems: "center", boxSizing: "border-box", cursor: "text", display: "flex", flexDirection: "column", fontWeight: 700, height: "100%", justifyContent: "center", marginLeft: -8, marginRight: -8, overflow: "hidden", paddingTop: 22, textAlign: "center", width: "calc(100% + 16px)" }}
     >
-      <span style={{ alignItems: "center", display: "flex", flex: "1 1 auto", minHeight: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <span style={{ alignContent: "center", boxSizing: "border-box", flex: "1 1 auto", minHeight: 26, width: "100%", paddingInline: 4, lineHeight: "13px", overflowWrap: "anywhere", whiteSpace: "normal" }}>
         {params.displayName}
       </span>
       {orderedTotalColumns.length ? (
@@ -3605,6 +3605,7 @@ function ContainerGroupHeader(
   const [nameEditorAnchor, setNameEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
   const [liveColumnWidths, setLiveColumnWidths] = useState<Record<string, number>>({});
   const [liveColumnOrder, setLiveColumnOrder] = useState<string[]>(() => props.totalColumns.map((column) => column.columnId));
+  const [showContainerControls, setShowContainerControls] = useState(true);
   const [, setSelectionVersion] = useState(0);
   const subscribeSelection = props.subscribeSelection;
   useEffect(
@@ -3632,14 +3633,20 @@ function ContainerGroupHeader(
         }
         return next;
       });
-      const displayedOrder = props.api.getAllDisplayedColumns()
+      // A formula column can split one container into multiple displayed groups.
+      // Keep controls on the widest fragment and totals local to each fragment.
+      const fragments = new Map<object, number>();
+      for (const column of props.api.getAllDisplayedColumns()) {
+        if (!columnIds.has(column.getColId())) continue;
+        const group = column.getParent();
+        if (group) fragments.set(group, (fragments.get(group) ?? 0) + column.getActualWidth());
+      }
+      const primaryGroup = [...fragments].sort((a, b) => b[1] - a[1])[0]?.[0];
+      setShowContainerControls(!primaryGroup || primaryGroup === props.columnGroup);
+      const displayedOrder = props.columnGroup.getDisplayedLeafColumns()
         .map((column) => column.getColId())
         .filter((columnId) => columnIds.has(columnId));
-      const displayedSet = new Set(displayedOrder);
-      const nextOrder = [
-        ...displayedOrder,
-        ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !displayedSet.has(columnId)),
-      ];
+      const nextOrder = displayedOrder;
       setLiveColumnOrder((current) => (
         current.length === nextOrder.length && current.every((columnId, index) => columnId === nextOrder[index])
           ? current
@@ -3660,11 +3667,10 @@ function ContainerGroupHeader(
       props.api.removeEventListener("columnMoved", syncLayout);
       props.api.removeEventListener("displayedColumnsChanged", syncLayout);
     };
-  }, [props.api, props.totalColumns]);
+  }, [props.api, props.columnGroup, props.totalColumns]);
   const orderedTotalColumns = useMemo(() => {
     const byId = new Map(props.totalColumns.map((column) => [column.columnId, column]));
-    const liveSet = new Set(liveColumnOrder);
-    return [...liveColumnOrder, ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !liveSet.has(columnId))]
+    return liveColumnOrder
       .map((columnId) => byId.get(columnId))
       .filter((column): column is ContainerTotalColumn => Boolean(column));
   }, [liveColumnOrder, props.totalColumns]);
@@ -3723,7 +3729,7 @@ function ContainerGroupHeader(
       } : undefined}
     >
       <div
-        className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1"
+        className={`flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1 ${showContainerControls ? "" : "invisible"}`}
         onClick={(event) => {
           props.onSelect(props.selectionId, {
             toggle: event.ctrlKey || event.metaKey,
