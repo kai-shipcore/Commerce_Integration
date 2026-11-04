@@ -404,6 +404,10 @@ export const DemandPlanningRepository = {
     return result.rows;
   },
 
+  // West/FBA windows count pre-orders as sales (sales + preorder) and East counts TTM pre-orders (ttm + ttm_preorder);
+  // the *_30d_pre columns remain as a breakdown of the 30D column, not an
+  // extra bucket. Keep this in step with getSalesVelocity below and with
+  // VelocityRepository.querySnapshotByRanges, which the Velocity page reads.
   async getVelocitySnapshot(source: "link" | "custom", asOfDate: string): Promise<VelRow[]> {
     const table = source === "link" ? "shipcore.fc_velocity_link_snapshot" : "shipcore.fc_velocity_custom_snapshot";
     const skuCol = source === "link" ? "link_master_sku" : "custom_master_sku";
@@ -411,29 +415,29 @@ export const DemandPlanningRepository = {
     const result = await primary().query<VelRow>(`
       SELECT
         ${skuCol} AS master_sku,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 89 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_90d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 59 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_60d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 29 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_30d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 14 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_15d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 6  AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_7d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 89 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_90d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 59 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_60d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 29 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_30d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 14 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_15d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 6  AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_7d,
         SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= $1::date - 29 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS west_30d_pre,
-        SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 89 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_90d,
-        SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 59 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_60d,
-        SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 29 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_30d,
-        SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 14 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_15d,
-        SUM(CASE WHEN order_type = 'ttm' AND order_date >= $1::date - 6  AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_7d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 89 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_90d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 59 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_60d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 29 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_30d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 14 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_15d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 6  AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_7d,
         SUM(CASE WHEN order_type = 'ttm_preorder' AND order_date >= $1::date - 29 AND order_date <= $1::date THEN ${qtyCol} ELSE 0 END)::float8 AS east_30d_pre,
-        (SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS avg_daily_real,
-        (SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='sales' AND channel!='Amazon FBA' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15+SUM(CASE WHEN order_type='preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10)::float8 AS avg_daily_prev,
-        GREATEST(0.01, SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm_preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_real,
-        GREATEST(0.01, SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type='ttm_preorder' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.10+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type='ttm' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_prev,
-        GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS fba_avg_real,
-        GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS fba_avg_prev,
-        SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_90d,
-        SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_60d,
-        SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_30d,
-        SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_15d,
-        SUM(CASE WHEN channel='Amazon FBA' AND order_type='sales' AND order_date>=$1::date-6  AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_7d,
+        (SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS avg_daily_real,
+        (SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type IN ('sales','preorder') AND channel!='Amazon FBA' AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS avg_daily_prev,
+        GREATEST(0.01, SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_real,
+        GREATEST(0.01, SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.10+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.15+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN order_type IN ('ttm','ttm_preorder') AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS east_avg_prev,
+        GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/90*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/60*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-6 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS fba_avg_real,
+        GREATEST(0.01, SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-96 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/90*0.15+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-66 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/60*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-36 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/30*0.30+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-21 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/15*0.20+SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-13 AND order_date<=$1::date-7 THEN ${qtyCol} ELSE 0 END)::numeric/7*0.15)::float8 AS fba_avg_prev,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-89 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_90d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-59 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_60d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_30d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-14 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_15d,
+        SUM(CASE WHEN channel='Amazon FBA' AND order_type IN ('sales','preorder') AND order_date>=$1::date-6  AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_7d,
         SUM(CASE WHEN channel='Amazon FBA' AND order_type='preorder' AND order_date>=$1::date-29 AND order_date<=$1::date THEN ${qtyCol} ELSE 0 END)::int AS fba_30d_pre
       FROM ${table}
       WHERE ${skuCol} IS NOT NULL AND order_date >= $1::date - 96
@@ -730,6 +734,7 @@ export const DemandPlanningRepository = {
     ]);
   },
 
+  // Same order_type convention as getVelocitySnapshot above: West/FBA = sales + preorder, East = ttm + ttm_preorder.
   async getSalesVelocity(source: "link" | "custom", planningDate: string) {
     const table = source === "link" ? "shipcore.fc_velocity_link_snapshot" : "shipcore.fc_velocity_custom_snapshot";
     const alias = source === "link" ? "vls" : "vcs";
@@ -739,69 +744,65 @@ export const DemandPlanningRepository = {
       SELECT
         ${alias}.${skuCol} AS master_sku,
         CASE WHEN MAX(${alias}.is_custom) = 'Y' THEN 'Custom' ELSE 'Original' END AS sales_status,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_90d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_60d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_30d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_15d,
-        SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_7d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_90d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_60d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_30d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_15d,
+        SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_7d,
         SUM(CASE WHEN order_type = 'preorder' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS west_30d_pre,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_90d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_60d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_30d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_15d,
-        SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_7d,
-        0::numeric AS east_30d_pre,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_90d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_60d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_30d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_15d,
+        SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_7d,
+        SUM(CASE WHEN order_type = 'ttm_preorder' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric AS east_30d_pre,
         GREATEST(0.01, (
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
         )) AS avg_daily_real,
         GREATEST(0.01, (
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 98 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 68 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 23 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' AND order_date >= $1::date - 15 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder'                           AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 98 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 68 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 23 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' AND order_date >= $1::date - 15 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
         )) AS avg_daily_prev,
         GREATEST(0.01, (
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
         )) AS east_avg_real,
         GREATEST(0.01, (
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 98 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 68 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 23 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN order_type = 'ttm'      AND order_date >= $1::date - 15 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15 +
-          SUM(CASE WHEN order_type = 'preorder' AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.10
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 98 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.10 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 68 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.15 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 23 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') AND order_date >= $1::date - 15 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
         )) AS east_avg_prev,
         GREATEST(0.01, (
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.15 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.20 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.15 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
         )) AS fba_avg_real,
         GREATEST(0.01, (
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 98 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.15 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 68 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.20 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 23 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
-          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 15 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 98 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 90 * 0.15 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 68 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 60 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 38 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 30 * 0.30 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 23 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 15 * 0.20 +
+          SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 15 AND order_date <= $1::date - 9 THEN ${qtyCol} ELSE 0 END)::numeric / 7  * 0.15
         )) AS fba_avg_prev,
-        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_90d,
-        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_60d,
-        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_30d,
-        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_15d,
-        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'sales' AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_7d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 91 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_90d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 61 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_60d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_30d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 16 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_15d,
+        SUM(CASE WHEN channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder') AND order_date >= $1::date - 8  AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_7d,
         SUM(CASE WHEN channel = 'Amazon FBA' AND order_type = 'preorder' AND order_date >= $1::date - 31 AND order_date <= $1::date - 2 THEN ${qtyCol} ELSE 0 END)::int AS fba_30d_pre
       FROM ${table} ${alias}
       WHERE ${alias}.${skuCol} IS NOT NULL

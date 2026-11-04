@@ -111,6 +111,12 @@ async function getPreOrderOrderNumbers(pool: Pool): Promise<string[]> {
   return _preOrderOrderNumbersInFlight;
 }
 
+/** Snapshot `order_type` values each Velocity mode aggregates (see querySnapshotByRanges). */
+export const SNAPSHOT_ORDER_TYPES: Record<"sales" | "ttm", string[]> = {
+  sales: ["sales", "preorder"],
+  ttm: ["ttm", "ttm_preorder"],
+};
+
 /**
  * Pure data access for the Velocity feature: sales-velocity rollups sourced
  * from the legacy Supabase lookup DB (`ecommerce_data.*` views) and the
@@ -934,6 +940,10 @@ export const VelocityRepository = {
     ranges: { from: string; to: string }[];
   }): Promise<Array<{ master_sku: string } & Record<string, unknown>>> {
     const pool = getPrimaryPool();
+    // Sales counts pre-orders as sales: a pre-order is a unit sold, just taken
+    // while the SKU was out of stock. TTM likewise counts TTM pre-orders. The Pre-Order mode
+    // still reads order_type = 'preorder' on its own via querySnapshotPreorder.
+    const orderTypes = SNAPSHOT_ORDER_TYPES[opts.orderType];
     const cols = opts.ranges
       .map(
         ({ from, to }, i) =>
@@ -944,10 +954,10 @@ export const VelocityRepository = {
     const result = await pool.query(
       `SELECT ${opts.skuColumn} AS master_sku, ${cols}
        FROM shipcore.${opts.table}
-       WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = $3
+       WHERE item_category = ANY($1) AND channel = ANY($2) AND order_type = ANY($3)
        GROUP BY ${opts.skuColumn}
        ORDER BY qty_0 DESC`,
-      [opts.items, opts.channels, opts.orderType]
+      [opts.items, opts.channels, orderTypes]
     );
     return result.rows;
   },
