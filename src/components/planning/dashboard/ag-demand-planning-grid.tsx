@@ -4445,8 +4445,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       // always false and this guard never ran. A row carrying a back order is
       // kept regardless: it is unmet demand, and a SKU that has been out of
       // stock long enough to accumulate one is exactly the SKU with no sales
-      // in any window.
-      if (!showZeroSales && urgencyFilter.length === 0 && (row.back ?? 0) >= 0 &&
+      // in any window. A row planned at its Min Sales floor is kept too: the
+      // floor is usually registered precisely because the SKU has no sales,
+      // and hiding it would hide a SKU that is being planned for.
+      if (!showZeroSales && urgencyFilter.length === 0 && (row.back ?? 0) >= 0 && !row.total_avg_curr_min_applied &&
         !row.west_90d && !row.west_60d && !row.west_30d && !row.west_15d && !row.west_7d &&
         !row.east_90d && !row.east_60d && !row.east_30d && !row.east_15d && !row.east_7d) return false;
       if (!matchesSalesStatusSelection(row, salesStatusFilter)) return false;

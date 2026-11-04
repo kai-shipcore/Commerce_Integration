@@ -483,8 +483,8 @@ export function DemandPlanningGrid({
     return ROWS.filter((r) => {
       if (!matchesCategorySelection(r, categoryFilter)) return false;
       // See the AG Grid copy: `!urgencyFilter` on an array is always false, so
-      // this never ran, and a back order keeps a row visible either way.
-      if (!showZeroSales && urgencyFilter.length === 0 && (r.back ?? 0) >= 0 &&
+      // this never ran, and a back order or a Min Sales floor keeps a row visible either way.
+      if (!showZeroSales && urgencyFilter.length === 0 && (r.back ?? 0) >= 0 && !r.total_avg_curr_min_applied &&
         !r.west_90d && !r.west_60d && !r.west_30d && !r.west_15d && !r.west_7d &&
         !r.east_90d && !r.east_60d && !r.east_30d && !r.east_15d && !r.east_7d) return false;
       if (!matchesSalesStatusSelection(r, salesStatusFilter)) return false;
