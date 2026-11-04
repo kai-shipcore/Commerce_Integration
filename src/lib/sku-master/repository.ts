@@ -304,6 +304,14 @@ export const SkuMasterRepository = {
     }
   },
 
+  /**
+   * Sync Inventory on the SKU Master page. New master SKUs are inserted as
+   * `active`; rows that already exist only get blank product_name / category
+   * filled in. Status is deliberately NOT touched on conflict: this used to
+   * force `status = 'active'`, which reverted every manual Inactive the moment
+   * someone clicked Sync (CC-03-CLSS-J-GR-1TO, 2026-11). Deactivation is a
+   * user decision and survives a sync; reactivation is done via Edit.
+   */
   async upsertProductsFromSync(masterSkus: string[]): Promise<{ upserted: number }> {
     const primary = getPrimaryPool();
     const client = await primary.connect();
@@ -369,7 +377,6 @@ export const SkuMasterRepository = {
           product_name = COALESCE(NULLIF(shipcore.fc_products.product_name, ''), EXCLUDED.product_name),
           category = COALESCE(shipcore.fc_products.category, EXCLUDED.category),
           category_code = COALESCE(shipcore.fc_products.category_code, EXCLUDED.category_code),
-          status = 'active',
           updated_at = NOW()
       `);
 
