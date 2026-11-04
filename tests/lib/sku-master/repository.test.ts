@@ -170,6 +170,20 @@ describe("SkuMasterRepository.upsertProductsFromSync", () => {
     expect(clientReleaseMock).toHaveBeenCalled();
   });
 
+  it("inserts new SKUs as active but never overwrites status on an existing row", async () => {
+    clientQueryMock.mockResolvedValue({ rowCount: 0 });
+
+    await SkuMasterRepository.upsertProductsFromSync(["SKU-1"]);
+
+    const upsertCall = clientQueryMock.mock.calls.find(([sql]) =>
+      typeof sql === "string" && sql.includes("INSERT INTO shipcore.fc_products"));
+    const sql = upsertCall?.[0] as string;
+    const [insertPart, updatePart] = sql.split("ON CONFLICT (master_sku) DO UPDATE SET");
+    expect(insertPart).toContain("'active'");
+    // A manual Inactive must survive Sync Inventory (it used to be reset to 'active' here).
+    expect(updatePart).not.toMatch(/status\s*=/);
+  });
+
   it("rolls back and rethrows on failure", async () => {
     clientQueryMock
       .mockResolvedValueOnce(undefined) // BEGIN
