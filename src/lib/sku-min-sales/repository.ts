@@ -55,6 +55,19 @@ export interface SkuMinSalesWrite {
   note: string | null;
 }
 
+export interface SkuOption {
+  masterSku: string;
+  productName: string | null;
+  calculatedTotalAvgCurr: number | null;
+  /** Minimum already registered for this SKU, or null. */
+  registeredMin: number | null;
+}
+
+/** Escapes LIKE wildcards so a typed "_" or "%" matches literally. */
+function likePattern(search: string): string {
+  return `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+}
+
 export interface ExistingSkuMinSales {
   masterSku: string;
   minTotalAvgCurr: number;
@@ -96,6 +109,37 @@ export const SkuMinSalesRepository = {
        ORDER BY m.master_sku`,
     );
     return result.rows.map(mapRow);
+  },
+
+  /** Active SKU Master rows matching a SKU or product-name substring, capped at `limit`. */
+  async searchSkuOptions(search: string, limit: number): Promise<{ options: SkuOption[]; total: number }> {
+    const result = await pool().query(
+      `SELECT
+         p.master_sku,
+         p.product_name,
+         (CASE WHEN p.category_code IN ('CC', 'FM', 'SWC')
+               THEN sc.total_avg_curr ELSE s.total_avg_curr END)::float8 AS calculated_total_avg_curr,
+         m.min_total_avg_curr::float8                                 AS registered_min,
+         COUNT(*) OVER ()::int                                        AS total
+       FROM shipcore.fc_products p
+       LEFT JOIN shipcore.fc_stats s ON s.master_sku = p.master_sku
+       LEFT JOIN shipcore.fc_stats_custom sc ON sc.master_sku = p.master_sku
+       LEFT JOIN shipcore.fc_sku_min_sales m ON m.master_sku = p.master_sku
+       WHERE p.status = 'active'
+         AND ($1 = '' OR p.master_sku ILIKE $2 OR p.product_name ILIKE $2)
+       ORDER BY p.master_sku
+       LIMIT $3`,
+      [search, likePattern(search), limit],
+    );
+    return {
+      options: result.rows.map((row) => ({
+        masterSku: row.master_sku as string,
+        productName: (row.product_name as string | null) ?? null,
+        calculatedTotalAvgCurr: row.calculated_total_avg_curr == null ? null : Number(row.calculated_total_avg_curr),
+        registeredMin: row.registered_min == null ? null : Number(row.registered_min),
+      })),
+      total: Number(result.rows[0]?.total ?? 0),
+    };
   },
 
   async findExistingProductSkus(skus: string[], executor: SqlExecutor = pool()): Promise<Set<string>> {

@@ -40,6 +40,13 @@ export const SkuMinSalesService = {
     return SkuMinSalesRepository.list();
   },
 
+  /** Picker options for the register form: active SKU Master rows, capped rather than paged. */
+  async searchSkuOptions(search: string, limit: number) {
+    const capped = Math.min(200, Math.max(1, Math.trunc(limit) || 50));
+    const { options, total } = await SkuMinSalesRepository.searchSkuOptions(search.trim(), capped);
+    return { data: options, total };
+  },
+
   /**
    * Registers or updates one or more SKUs in a single transaction. Used by the
    * form (one row) and the Excel import (many). A SKU already registered is

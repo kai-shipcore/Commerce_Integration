@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { apiPath } from "@/lib/api-path";
 import { useI18n } from "@/lib/i18n/i18n-provider";
 import { usePermissions } from "@/lib/hooks/use-permissions";
+import { SkuOptionPicker, type SkuOption } from "./sku-option-picker";
 
 type MinSalesRow = {
   masterSku: string;
@@ -117,8 +118,8 @@ export function MinSalesPage() {
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<MinSalesStatus | "all">("all");
-  const [form, setForm] = useState({ masterSku: "", minimum: "", note: "" });
-  const [formProductName, setFormProductName] = useState<string | null>(null);
+  const [form, setForm] = useState({ minimum: "", note: "" });
+  const [selectedSku, setSelectedSku] = useState<SkuOption | null>(null);
   const [editingSku, setEditingSku] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ minimum: "", note: "" });
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -195,47 +196,28 @@ export function MinSalesPage() {
     return json.data as { inserted: number; updated: number };
   }
 
-  async function lookupSku() {
-    const sku = form.masterSku.trim().toUpperCase();
-    setFormProductName(null);
-    if (!sku) return;
-    setForm((f) => ({ ...f, masterSku: sku }));
-    try {
-      const response = await fetch(apiPath(`/api/planning/sku-master?masterSku=${encodeURIComponent(sku)}`), { cache: "no-store" });
-      // Without SKU Master access the lookup is skipped; the save still validates the SKU.
-      if (response.status === 403) return;
-      const json = await response.json();
-      if (!response.ok || !json.success) {
-        setMessage(pick(`SKU 마스터에서 SKU를 찾을 수 없습니다: ${sku}`, `SKU not found in SKU Master: ${sku}`));
-        return;
-      }
-      setFormProductName((json.data?.productName as string | null) ?? null);
-      const existing = rows.find((row) => row.masterSku === sku);
-      setMessage(existing
-        ? pick(
-            `${sku}는 이미 등록되어 있습니다 (최소 ${formatAvg(existing.minTotalAvgCurr)}). 등록하면 값을 덮어씁니다.`,
-            `${sku} is already registered (min ${formatAvg(existing.minTotalAvgCurr)}). Registering overwrites it.`,
-          )
-        : "");
-    } catch {
-      // Lookup is a convenience only.
-    }
+  function selectSku(option: SkuOption | null) {
+    setSelectedSku(option);
+    setMessage("");
+    // Editing an existing registration starts from its current values.
+    const existing = option ? rows.find((row) => row.masterSku === option.masterSku) : undefined;
+    if (existing) setForm({ minimum: String(existing.minTotalAvgCurr), note: existing.note ?? "" });
   }
 
   async function register() {
     if (!canEdit) { toast.error(noPermission); return; }
-    const masterSku = form.masterSku.trim().toUpperCase();
+    const masterSku = selectedSku?.masterSku ?? "";
     const minimum = parseMinimum(form.minimum);
     if (!masterSku || minimum === null) {
-      setMessage(pick("SKU와 0 이상의 최소값을 입력하세요.", "Enter a SKU and a minimum of 0 or more."));
+      setMessage(pick("SKU를 선택하고 0 이상의 최소값을 입력하세요.", "Select a SKU and enter a minimum of 0 or more."));
       return;
     }
     setSaving(true);
     setMessage("");
     try {
       await postRows([{ masterSku, minTotalAvgCurr: minimum, note: form.note.trim() || null }]);
-      setForm({ masterSku: "", minimum: "", note: "" });
-      setFormProductName(null);
+      setForm({ minimum: "", note: "" });
+      setSelectedSku(null);
       toast.success(pick(`${masterSku} 최소값을 저장했습니다.`, `Saved minimum for ${masterSku}.`));
       await loadRows();
     } catch (error) {
@@ -423,14 +405,18 @@ export function MinSalesPage() {
           </div>
           <div className="grid gap-2 md:grid-cols-[minmax(200px,1fr)_130px_minmax(160px,1fr)_auto]">
             <div>
-              <input
-                className="form-input h-8 w-full bg-white font-mono text-xs"
-                placeholder={pick("마스터 SKU", "Master SKU")}
-                value={form.masterSku}
-                onChange={(event) => setForm((f) => ({ ...f, masterSku: event.target.value }))}
-                onBlur={() => void lookupSku()}
-              />
-              {formProductName ? <div className="mt-1 truncate text-[11px] text-muted-foreground">{formProductName}</div> : null}
+              <SkuOptionPicker value={selectedSku} onChange={selectSku} disabled={saving} />
+              {selectedSku ? (
+                <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+                  {selectedSku.productName ? <span className="truncate">{selectedSku.productName}</span> : null}
+                  <span>{pick("계산값", "Calculated")} {formatAvg(selectedSku.calculatedTotalAvgCurr)}</span>
+                  {selectedSku.registeredMin !== null ? (
+                    <span className="font-semibold text-[#b45309]">
+                      {pick(`이미 등록됨 (최소 ${formatAvg(selectedSku.registeredMin)}), 저장하면 덮어씁니다`, `Already registered (min ${formatAvg(selectedSku.registeredMin)}), saving overwrites it`)}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <input
               className="form-input h-8 w-full bg-white text-xs"
