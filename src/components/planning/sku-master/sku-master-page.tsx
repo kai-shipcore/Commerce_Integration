@@ -427,7 +427,10 @@ export function SkuMasterPage() {
           weightKg: row.weightKg,
           status: row.status,
           salesStatus: row.salesStatus,
-          originalOrCustom: row.originalOrCustom,
+          // "Part" is derived from the SKU code on the server, never a stored override.
+          // Sending it back tripped the Original/Custom validation and blocked every
+          // edit (status, CBM, MOQ, ...) on part SKUs.
+          originalOrCustom: row.originalOrCustom === "Part" ? undefined : row.originalOrCustom,
         }),
       });
       const json = await res.json();

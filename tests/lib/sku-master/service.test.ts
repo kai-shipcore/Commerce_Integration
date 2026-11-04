@@ -140,9 +140,23 @@ describe("SkuMasterService.updateProduct", () => {
     ).rejects.toThrow(ValidationError);
   });
 
-  it("rejects Part as a manual classification", async () => {
+  it("treats an echoed Part classification as no override change and still saves other fields", async () => {
+    repositoryMock.updateProduct.mockResolvedValue(true);
+
+    await SkuMasterService.updateProduct(
+      { masterSku: "CA-SC-PART-BB-F-DB", originalOrCustom: "Part", status: "inactive" } as never,
+      null
+    );
+
+    expect(repositoryMock.updateProduct).toHaveBeenCalledWith(
+      "CA-SC-PART-BB-F-DB",
+      expect.objectContaining({ status: "inactive", salesTypeOverride: undefined })
+    );
+  });
+
+  it("still rejects an unknown classification", async () => {
     await expect(
-      SkuMasterService.updateProduct({ masterSku: "SKU-1", originalOrCustom: "Part" } as never, null)
+      SkuMasterService.updateProduct({ masterSku: "SKU-1", originalOrCustom: "Bogus" } as never, null)
     ).rejects.toThrow("Invalid originalOrCustom");
   });
 

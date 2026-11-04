@@ -135,7 +135,10 @@ export const SkuMasterService = {
     const salesStatusRaw = input.salesStatus == null ? undefined : String(input.salesStatus).trim();
     const salesStatusValue = salesStatusRaw === "" ? null : salesStatusRaw ?? undefined;
     const salesTypeRaw = input.originalOrCustom == null ? undefined : String(input.originalOrCustom).trim();
-    const salesTypeOverride = salesTypeRaw === "" ? null : salesTypeRaw ?? undefined;
+    // "Part" is derived from the SKU code (see originalOrCustomSql) and is what the UI
+    // displays for part SKUs; a client echoing it back means "no override change", not
+    // a request to store it. Rejecting it blocked every edit on part SKUs.
+    const salesTypeOverride = salesTypeRaw === "" ? null : salesTypeRaw === "Part" ? undefined : salesTypeRaw ?? undefined;
 
     // Original/Custom are derived from order data (see shapeProduct/originalOrCustomSql) and must
     // never be written manually; Part/SWC are auto-detected — only override statuses are settable here.
