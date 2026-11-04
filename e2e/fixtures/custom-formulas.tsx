@@ -21,6 +21,10 @@ const data: DemandPlanningData = { rows, containers: [], last_sync: null };
 const wideLayout = new URLSearchParams(window.location.search).get("layout") === "wide";
 const wideColumns = ["row_num", "cbm", "back", "status", "sku", "fullerton", "canary", "ttm", "ttm_jeff", "west", "east", "total", "transit", "wfbm30", "efbm30", "fba30", "tot30", "tavg_p", "tavg_r", "tavg_c", "inb_qty", "inb_lst", "next_eta", "sod"];
 const groupVis = Object.fromEntries(["fix", ...ALL_GROUP_KEYS].map((key) => [key, (wideLayout ? ["fix", "stock", "tavg", "s30", "inb"] : ["fix", "stock", "tavg"]).includes(key)])) as Record<ColumnGroupKey, boolean>;
+if (new URLSearchParams(window.location.search).has("containers")) {
+  data.containers = [{ col: 1, name: "TEST-CON", eta: "2026-12-01", cbm_cap: 60, status: "draft" }];
+  groupVis.con = true;
+}
 const initialVisibility = Object.fromEntries(ALL_COLS.map((col) => [col.id, (wideLayout ? wideColumns : ["sku", "total", "tavg_c"]).includes(col.id)]));
 const noop = () => {};
 const emptySet = new Set<string>();

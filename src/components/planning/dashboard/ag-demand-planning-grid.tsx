@@ -2667,6 +2667,31 @@ function WideHeaderNameEditor({
   );
 }
 
+function FormulaGroupHeader(params: IHeaderGroupParams) {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const update = () => refresh((value) => value + 1);
+    params.api.addEventListener("displayedColumnsChanged", update);
+    params.api.addEventListener("columnResized", update);
+    return () => {
+      if (params.api.isDestroyed()) return;
+      params.api.removeEventListener("displayedColumnsChanged", update);
+      params.api.removeEventListener("columnResized", update);
+    };
+  }, [params.api]);
+  const leaves = params.columnGroup.getDisplayedLeafColumns();
+  const displayed = params.api.getAllDisplayedColumns();
+  const first = displayed.indexOf(leaves[0]);
+  const last = displayed.indexOf(leaves[leaves.length - 1]);
+  const besideContainer = displayed[first - 1]?.getColId().includes("::") || displayed[last + 1]?.getColId().includes("::");
+  const withinContainers = displayed.slice(0, Math.max(0, first)).some((column) => column.getColId().includes("::"));
+  const width = leaves.reduce((total, column) => total + column.getActualWidth(), 0);
+  const showLabel = !besideContainer && !withinContainers && width >= 140;
+  return <div className="flex h-full w-full items-center justify-center overflow-hidden pt-[22px] text-center font-bold" title={params.displayName}>
+    {showLabel && <span className="truncate">{params.displayName}</span>}
+  </div>;
+}
+
 function EditableGroupHeader(params: IHeaderGroupParams & {
   selectionId: string;
   onRename: (columnId: string, name: string) => void;
@@ -7041,7 +7066,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     // position is immediately undone when applyColumnState unpins it again.
     const candidates: Array<{ id: string; w: number }> = [
       ...baseCandidates,
-      ...formulaConfig.filter((column) => column.enabled && formulaPanelOpen).map((column) => ({ id: column.id, w: 140 })),
+      ...formulaConfig.filter((column) => column.enabled).map((column) => ({ id: column.id, w: 140 })),
     ];
     const rank = new Map(columnOrder.map((id, index) => [id, index]));
     const visibleBaseColumns = candidates
@@ -7065,7 +7090,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       widths: desiredWidths,
       width: desiredPinnedWidth,
     };
-  }, [baseCandidates, columnOrder, columnVis, columnWidths, formulaConfig, formulaPanelOpen, freezeUntil]);
+  }, [baseCandidates, columnOrder, columnVis, columnWidths, formulaConfig, freezeUntil]);
 
   // Restore-arrow anchors: rather than reserving a column of its own, a
   // hidden run's restore arrow rides on the header of the real column right
@@ -7332,7 +7357,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       });
       return {
         ...base,
-        hide: !formulaPanelOpen || columnVis[c.id] === false,
+        hide: columnVis[c.id] === false,
         // F2, Enter, double-click and typing all start this editor, as in a sheet.
         editable: (params) => formulaEditingEnabled && !params.data?.pinned,
         cellEditor: FormulaCellEditor,
@@ -7361,7 +7386,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         tooltipValueGetter: (params) => params.data && !params.data.pinned ? `${formulaForCell(c, params.data.sku)}${formulaEvaluator.evaluate(params.data.sku, c.id).error ? ` — ${formulaEvaluator.evaluate(params.data.sku, c.id).error}` : ""}` : "",
       };
     });
-    if (formulaColumns.length) groups.push({ groupId: "custom-formulas", headerName: pick("사용자 계산", "Custom calculations"), headerClass: "planning-formula-group-header", children: formulaColumns });
+    if (formulaColumns.length) groups.push({ groupId: "custom-formulas", headerName: pick("사용자 계산", "Custom calculations"), headerGroupComponent: FormulaGroupHeader, headerClass: "planning-formula-group-header", children: formulaColumns });
 
     if (groupVis.con) {
       // Render order: baseline first, then all real containers.
@@ -7614,7 +7639,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           // A container is one planning block. Moving its group header must
           // keep all 11 planning columns together, and individual column moves
           // must not split the block or insert another column inside it.
-          marryChildren: true,
+          // Allow calculation columns to be dropped between container columns.
+          marryChildren: false,
           headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
           headerStyle: () => headerStyleForColor(columnColors[`container:${container.name}`]?.header, columnTextFormatsRef.current[`container:${container.name}`]?.header),
           headerClass: () => columnTextFormatsRef.current[`container:${container.name}`]?.header?.color ? "planning-user-header-text-color" : "",
@@ -8300,13 +8326,15 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 // (the Inbound / Container / SOD boundary).
                 const currentState = event.api.getColumnState();
                 const baseColumnIds = currentState
-                  .filter((state) => !state.colId.includes("::"))
+                  .filter((state) => !state.colId.includes("::") && !isFormulaId(state.colId))
                   .map((state) => state.colId);
                 const containerColumnIds = currentState
                   .filter((state) => state.colId.includes("::"))
                   .map((state) => state.colId);
+                const orderedNonFormulaIds = [...baseColumnIds, ...containerColumnIds];
+                let nonFormulaIndex = 0;
                 event.api.applyColumnState({
-                  state: [...baseColumnIds, ...containerColumnIds].map((colId) => ({ colId })),
+                  state: currentState.map((state) => ({ colId: isFormulaId(state.colId) ? state.colId : orderedNonFormulaIds[nonFormulaIndex++] })),
                   applyOrder: true,
                 });
               }

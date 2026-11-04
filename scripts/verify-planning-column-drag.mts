@@ -15,6 +15,7 @@ let preferences: Record<string, unknown> = {
     freezeUntil: "sod", compactMode: false, showZeroSales: true,
   },
 };
+let includeDraftContainer = false;
 const mockModules: Record<string, string> = {
   "next/navigation": `const router={push(){},replace(){},refresh(){}}; const params=new URLSearchParams('product=sc'); export const useRouter=()=>router; export const useSearchParams=()=>params;`,
   "next/dynamic": `import {lazy,createElement,Suspense} from 'react'; export default function dynamic(load){ const Component=lazy(()=>load().then(defaultExport=>({default:defaultExport}))); return props=>createElement(Suspense,{fallback:null},createElement(Component,props)); }`,
@@ -49,7 +50,7 @@ try {
       data = preferences;
     } else if (path.endsWith("/planning/scenarios")) data = [];
     else if (path.endsWith("/planning/dashboard")) data = {
-      containers: [], last_sync: null,
+      containers: includeDraftContainer ? [{ col: 1, name: "DRAFT-TEST", container_id: 100, eta: "2026-12-01", status: "draft", cbm_cap: 60 }] : [], last_sync: null,
       rows: ["CA-SC-10-F-10-BK-1TO", "CA-SC-10-F-10-GR-1TO"].map((sku, i) => ({ sku, category_code: "SC", sales_status: "Original", back: 0, cbm: 0.1, total_stock: 100, total_avg_curr: i ? 30 : 10, total_avg_real: 10, total_avg_prev: 12, total_30d: 300, containers: {}, container_info: "", containers_list: "", total_inbound_qty: 0, next_eta: null, sod: null })),
     };
     await route.fulfill({ json: { success: true, data } });
@@ -111,6 +112,34 @@ try {
   await page.keyboard.press("Control+y");
   await expect(secondFormula).toHaveText("60");
   expect(errors).toEqual([]);
+  includeDraftContainer = true;
+  await page.reload();
+  const draftHeaders = page.locator('.ag-header-cell[col-id^="DRAFT-TEST::"]');
+  await expect(draftHeaders.first()).toBeVisible();
+  const formulaDrag = await page.locator('.ag-header-cell[col-id="custom_formula_1"]').boundingBox();
+  const draftTarget = await draftHeaders.nth(2).boundingBox();
+  if (!formulaDrag || !draftTarget) throw new Error("Missing draft headers");
+  await page.mouse.move(formulaDrag.x + formulaDrag.width / 2, formulaDrag.y + formulaDrag.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(draftTarget.x + formulaDrag.width / 2, draftTarget.y + draftTarget.height / 2, { steps: 50 });
+  await page.waitForTimeout(250);
+  await page.mouse.up();
+  const insideDraft = async () => {
+    const order = await headerOrder();
+    const index = order.indexOf("custom_formula_1");
+    return Boolean(order[index - 1]?.startsWith("DRAFT-TEST::") && order[index + 1]?.startsWith("DRAFT-TEST::"));
+  };
+  await expect.poll(insideDraft).toBe(true);
+  await expect.poll(() => page.locator('.planning-formula-group-header').allTextContents()).toEqual(["", ""]);
+  await expect(page.locator('.ag-header-cell[col-id="custom_formula_1"]')).toContainText("Calc 1");
+  await expect.poll(() => {
+    const order = preferences[COLUMN_ORDER_STORAGE_KEY] as string[];
+    const index = order.indexOf("custom_formula_1");
+    return order[index - 1]?.startsWith("DRAFT-TEST::");
+  }).toBe(true);
+  await page.reload();
+  await expect.poll(insideDraft).toBe(true);
+  console.log("PASS: full dashboard draft container insertion, saved preferences and reload.");
   console.log("PASS: full dashboard formula fill-down, preference save, undo and redo.");
   console.log("PASS: real dashboard, blank formula Y -> M across frozen SOD boundary, collapse/reopen, letter drag back out, preference API save and reload.");
 } finally { await browser.close(); await server.close(); }
