@@ -92,6 +92,7 @@ import { displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } fr
 import { formulaBaseValue, isFormulaBaseField } from "@/lib/planning/custom-formula-fields";
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { cellReference, createFormulaEvaluator, fillDownFormulas, isFormulaId, formulaForCell, materializeDefaultFormulas, type FormulaConfig, type FormulaId, type FormulaValue } from "@/lib/planning/custom-formulas";
+import { keepContainerColumnsTogether } from "@/lib/planning/container-column-order";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -2777,7 +2778,7 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
       role="button"
       tabIndex={0}
       aria-label={`Rename ${params.displayName} group header`}
-      title="Right-click to hide this group. Double-click to rename."
+      title={`${params.displayName}\nRight-click to hide this group. Double-click to rename.`}
       onContextMenu={params.onRightClick ? (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -2797,7 +2798,7 @@ function EditableGroupHeader(params: IHeaderGroupParams & {
       }}
       style={{ alignItems: "center", boxSizing: "border-box", cursor: "text", display: "flex", flexDirection: "column", fontWeight: 700, height: "100%", justifyContent: "center", marginLeft: -8, marginRight: -8, overflow: "hidden", paddingTop: 22, textAlign: "center", width: "calc(100% + 16px)" }}
     >
-      <span style={{ alignItems: "center", display: "flex", flex: "1 1 auto", minHeight: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <span style={{ alignContent: "center", boxSizing: "border-box", flex: "1 1 auto", minHeight: 26, width: "100%", paddingInline: 4, lineHeight: "13px", overflowWrap: "anywhere", whiteSpace: "normal" }}>
         {params.displayName}
       </span>
       {orderedTotalColumns.length ? (
@@ -3605,6 +3606,7 @@ function ContainerGroupHeader(
   const [nameEditorAnchor, setNameEditorAnchor] = useState<HeaderEditorAnchor | null>(null);
   const [liveColumnWidths, setLiveColumnWidths] = useState<Record<string, number>>({});
   const [liveColumnOrder, setLiveColumnOrder] = useState<string[]>(() => props.totalColumns.map((column) => column.columnId));
+  const [showContainerControls, setShowContainerControls] = useState(true);
   const [, setSelectionVersion] = useState(0);
   const subscribeSelection = props.subscribeSelection;
   useEffect(
@@ -3632,14 +3634,20 @@ function ContainerGroupHeader(
         }
         return next;
       });
-      const displayedOrder = props.api.getAllDisplayedColumns()
+      // A formula column can split one container into multiple displayed groups.
+      // Keep controls on the widest fragment and totals local to each fragment.
+      const fragments = new Map<object, number>();
+      for (const column of props.api.getAllDisplayedColumns()) {
+        if (!columnIds.has(column.getColId())) continue;
+        const group = column.getParent();
+        if (group) fragments.set(group, (fragments.get(group) ?? 0) + column.getActualWidth());
+      }
+      const primaryGroup = [...fragments].sort((a, b) => b[1] - a[1])[0]?.[0];
+      setShowContainerControls(!primaryGroup || primaryGroup === props.columnGroup);
+      const displayedOrder = props.columnGroup.getDisplayedLeafColumns()
         .map((column) => column.getColId())
         .filter((columnId) => columnIds.has(columnId));
-      const displayedSet = new Set(displayedOrder);
-      const nextOrder = [
-        ...displayedOrder,
-        ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !displayedSet.has(columnId)),
-      ];
+      const nextOrder = displayedOrder;
       setLiveColumnOrder((current) => (
         current.length === nextOrder.length && current.every((columnId, index) => columnId === nextOrder[index])
           ? current
@@ -3660,11 +3668,10 @@ function ContainerGroupHeader(
       props.api.removeEventListener("columnMoved", syncLayout);
       props.api.removeEventListener("displayedColumnsChanged", syncLayout);
     };
-  }, [props.api, props.totalColumns]);
+  }, [props.api, props.columnGroup, props.totalColumns]);
   const orderedTotalColumns = useMemo(() => {
     const byId = new Map(props.totalColumns.map((column) => [column.columnId, column]));
-    const liveSet = new Set(liveColumnOrder);
-    return [...liveColumnOrder, ...props.totalColumns.map((column) => column.columnId).filter((columnId) => !liveSet.has(columnId))]
+    return liveColumnOrder
       .map((columnId) => byId.get(columnId))
       .filter((column): column is ContainerTotalColumn => Boolean(column));
   }, [liveColumnOrder, props.totalColumns]);
@@ -3723,7 +3730,7 @@ function ContainerGroupHeader(
       } : undefined}
     >
       <div
-        className="flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1"
+        className={`flex min-h-[26px] flex-none items-center justify-center gap-1 overflow-hidden px-1 ${showContainerControls ? "" : "invisible"}`}
         onClick={(event) => {
           props.onSelect(props.selectionId, {
             toggle: event.ctrlKey || event.metaKey,
@@ -7676,10 +7683,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
         groups.push({
           groupId: `container-${container.name}`,
-          // A container is one planning block. Moving its group header must
-          // keep all 11 planning columns together, and individual column moves
-          // must not split the block or insert another column inside it.
-          // Allow calculation columns to be dropped between container columns.
+          // Native columns are kept in their container by the move handler.
+          // Keep the AG group open so custom/formula columns can be placed at
+          // any position inside the container.
           marryChildren: false,
           headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
           headerStyle: () => headerStyleForColor(columnColors[`container:${container.name}`]?.header, columnTextFormatsRef.current[`container:${container.name}`]?.header),
@@ -7808,11 +7814,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
     if (widthState.length) api.applyColumnState({ state: widthState, applyOrder: false });
     const availableIds = new Set((api.getColumns() ?? []).map((column) => column.getColId()));
     const requestedOrder = columnOrder.length ? columnOrder : defaultOrder;
-    const desiredOrder = [
+    const desiredOrder = keepContainerColumnsTogether([
       ...requestedOrder.filter((id) => availableIds.has(id)),
       ...defaultOrder.filter((id) => availableIds.has(id) && !requestedOrder.includes(id)),
       ...Array.from(availableIds).filter((id) => !requestedOrder.includes(id) && !defaultOrder.includes(id)),
-    ];
+    ]);
     api.applyColumnState({
       state: desiredOrder.map((columnId) => ({
         colId: columnId,
@@ -8365,6 +8371,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 // whole planning block must stay after the fixed/base columns
                 // (the Inbound / Container / SOD boundary).
                 const currentState = event.api.getColumnState();
+                const proposedOrder = currentState.map((state) => state.colId);
                 const baseColumnIds = currentState
                   .filter((state) => !state.colId.includes("::") && !isFormulaId(state.colId))
                   .map((state) => state.colId);
@@ -8373,10 +8380,19 @@ autoFilling3: autoFillingContainers3.has(container.name),
                   .map((state) => state.colId);
                 const orderedNonFormulaIds = [...baseColumnIds, ...containerColumnIds];
                 let nonFormulaIndex = 0;
+                const boundarySafeOrder = keepContainerColumnsTogether(
+                  currentState.map((state) => (isFormulaId(state.colId) ? state.colId : orderedNonFormulaIds[nonFormulaIndex++])),
+                );
                 event.api.applyColumnState({
-                  state: currentState.map((state) => ({ colId: isFormulaId(state.colId) ? state.colId : orderedNonFormulaIds[nonFormulaIndex++] })),
+                  state: boundarySafeOrder.map((colId) => ({ colId })),
                   applyOrder: true,
                 });
+                if (proposedOrder.some((colId, index) => boundarySafeOrder[index] !== colId)) {
+                  toast.warning(pick(
+                    "컨테이너 기본 컬럼은 다른 컨테이너 영역과 섞을 수 없습니다. 원래 그룹 안으로 이동했습니다.",
+                    "Container columns cannot be mixed with another container. The column was moved back into its group.",
+                  ), { id: "container-column-move-restricted" });
+                }
               }
               event.api.refreshHeader();
               if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });

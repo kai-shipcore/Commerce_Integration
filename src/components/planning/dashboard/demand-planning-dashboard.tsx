@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ClipboardPaste, Copy, FilterX, PaintBucket, Pipette, Redo2, RotateCcw, Scissors, Search, Trash2, Undo2, WandSparkles } from "lucide-react";
 import { DemandPlanningGrid } from "./demand-planning-grid";
 import { FORMULA_IDS, FORMULAS_STORAGE_KEY, normalizeFormulaConfig, type FormulaConfig } from "@/lib/planning/custom-formulas";
+import { resetContainerSubcolumnOrder } from "@/lib/planning/container-column-order";
 import type { ColumnFilter } from "@/lib/planning/column-filter";
 import type { GridSort } from "@/lib/planning/grid-sort";
 import type { PlanningFormatHistoryChange, PlanningFormatHistoryRecorder, PlanningViewHistoryRecorder, PlanningViewStatePatch } from "./demand-planning-grid";
@@ -788,13 +789,11 @@ function resetContainerGroupsToEtaOrder(current: ColumnOrder, containers: Contai
   const sortedNameSet = new Set(sortedNames);
   const idsForContainer = (containerName: string) => {
     const existing = existingIdsByContainer.get(containerName) ?? [];
-    const existingSet = new Set(existing);
-    return [
-      ...existing,
-      ...CON_SUBCOLS
-        .map((column) => `${containerName}::${column.id}`)
-        .filter((columnId) => !existingSet.has(columnId)),
-    ];
+    return resetContainerSubcolumnOrder(
+      containerName,
+      existing,
+      CON_SUBCOLS.map((column) => column.id),
+    );
   };
 
   return [
@@ -1101,6 +1100,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   const [cellTextFormats, setCellTextFormats] = useState<CellTextFormatSettings>({});
   const [conditionalFormatRules, setConditionalFormatRules] = useState<ConditionalFormatRule[]>([]);
   const [formulaConfig, setFormulaConfig] = useState<FormulaConfig>(() => normalizeFormulaConfig(null));
+  const liveFormulaSaveVersionRef = useRef(0);
   const columnVisibilityItems = useMemo<ColumnVisibilityItem[]>(() => [
     ...COLUMN_VISIBILITY_ITEMS,
     ...(gridMode === "ag-grid" ? formulaConfig.filter((column) => column.enabled).map((column): ColumnVisibilityItem => ({
@@ -1220,10 +1220,14 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       "Could not save tab settings. Keep this page open and apply the formula again to retry.",
     ));
     if (scenarioId === null) {
+      const livePreferences = { ...prefs };
+      // Live formulas are shared globally through their own permission-guarded
+      // endpoint; never leave a per-user copy that can mask the shared value.
+      delete livePreferences[FORMULAS_STORAGE_KEY];
       fetch(apiPath("/api/user/preferences"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preferences: prefs }),
+        body: JSON.stringify({ preferences: livePreferences }),
         keepalive,
       }).then(checkSaved).catch(reportSaveFailure);
       return;
@@ -1404,7 +1408,7 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     patchOnly = false,
   ) => {
     // Missing formulas reset to empty on a tab switch; undo patches only touch named keys.
-    if (!patchOnly || Object.hasOwn(d, FORMULAS_STORAGE_KEY)) {
+    if ((!mirrorLocal || patchOnly) && (!patchOnly || Object.hasOwn(d, FORMULAS_STORAGE_KEY))) {
       setFormulaConfig(normalizeFormulaConfig(d[FORMULAS_STORAGE_KEY]));
     }
     const mirrorSet = (key: string, value: string) => {
@@ -1661,20 +1665,47 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
   }, [applyViewStatePatch]);
 
   const handleFormulaConfigChange = useCallback((next: FormulaConfig) => {
-    if (canEditActiveTab && dbPrefsLoaded && !scenarioBusy) commitView({ [FORMULAS_STORAGE_KEY]: next });
-  }, [canEditActiveTab, commitView, dbPrefsLoaded, scenarioBusy]);
+    if (!canEditActiveTab || !dbPrefsLoaded || scenarioBusy) return;
+    if (activeScenarioId !== null) {
+      commitView({ [FORMULAS_STORAGE_KEY]: next });
+      return;
+    }
+
+    const previous = formulaConfig;
+    const saveVersion = ++liveFormulaSaveVersionRef.current;
+    setFormulaConfig(next);
+    fetch(apiPath("/api/planning/custom-formulas"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ formulas: next }),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("Shared formula save failed");
+      const json = await response.json() as { data?: unknown };
+      if (saveVersion === liveFormulaSaveVersionRef.current && json.data) {
+        setFormulaConfig(normalizeFormulaConfig(json.data));
+      }
+    }).catch(() => {
+      if (saveVersion === liveFormulaSaveVersionRef.current) setFormulaConfig(previous);
+      toast.error(pick(
+        "공용 사용자 정의 컬럼을 저장하지 못했습니다.",
+        "Could not save the shared custom columns.",
+      ));
+    });
+  }, [activeScenarioId, canEditActiveTab, commitView, dbPrefsLoaded, formulaConfig, pick, scenarioBusy]);
 
   // Load the Live tab's preferences from the DB on mount — overrides
   // localStorage if the DB has newer values.
   useEffect(() => {
     let cancelled = false;
     const requestId = tabHydrationRequestRef.current;
-    fetch(apiPath("/api/user/preferences"))
-      .then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>)
-      .then((json) => {
+    Promise.all([
+      fetch(apiPath("/api/user/preferences")).then((r) => r.json() as Promise<{ success: boolean; data?: Record<string, unknown> }>),
+      fetch(apiPath("/api/planning/custom-formulas"), { cache: "no-store" }).then((r) => r.json() as Promise<{ success: boolean; data?: unknown }>),
+    ]).then(([json, sharedFormulas]) => {
         if (cancelled || tabHydrationRequestRef.current !== requestId) return;
-        if (!json.success || !json.data) throw new Error("Preferences unavailable");
+        if (!json.success || !json.data || !sharedFormulas.success) throw new Error("Preferences unavailable");
         applyPreferenceBlob(json.data, true);
+        setFormulaConfig(normalizeFormulaConfig(sharedFormulas.data));
         setDbPrefsLoaded(true);
       })
       .catch(() => {
@@ -1815,11 +1846,16 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
     let hydrated = false;
     try {
       if (id === null) {
-        const response = await fetch(apiPath("/api/user/preferences"), { cache: "no-store" });
+        const [response, formulaResponse] = await Promise.all([
+          fetch(apiPath("/api/user/preferences"), { cache: "no-store" }),
+          fetch(apiPath("/api/planning/custom-formulas"), { cache: "no-store" }),
+        ]);
         const json = await response.json() as { success: boolean; data?: Record<string, unknown> };
+        const sharedFormulas = await formulaResponse.json() as { success: boolean; data?: unknown };
         if (requestId !== tabHydrationRequestRef.current) return;
-        if (!response.ok || !json.success || !json.data) throw new Error("Preferences unavailable");
+        if (!response.ok || !json.success || !json.data || !formulaResponse.ok || !sharedFormulas.success) throw new Error("Preferences unavailable");
         applyPreferenceBlob(json.data, true);
+        setFormulaConfig(normalizeFormulaConfig(sharedFormulas.data));
         setScenarioOverlay(null);
       } else {
         const [detail, overlay] = await Promise.all([
