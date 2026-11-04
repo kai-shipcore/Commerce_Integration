@@ -12,6 +12,7 @@ export type AuditEntityType =
   | "container_import"
   | "transit_record"
   | "available_stock"
+  | "sku_min_sales"
   | "integration"
   | "production_part"
   | "production_code"
