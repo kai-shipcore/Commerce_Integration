@@ -28,6 +28,7 @@ import {
   weightedDailyAverage,
 } from "@/lib/planning/forecast-calculations";
 import { toFinalMasterSku } from "@/lib/planning/master-sku";
+import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { DEFAULT_SEASONAL_FACTORS, seasonalFactorForEta } from "@/lib/planning/seasonal-factors";
 import {
   DEFAULT_SALES_WINDOW_WEIGHTS,
@@ -480,13 +481,15 @@ export const DemandPlanningService = {
         : r.fba_30d as number;
       const oos_days_90d = (r.oos_days_90d as number | null) ?? null;
       const oos_lost_demand_90d = (r.oos_lost_demand_90d as number | null) ?? null;
-      const west_fbm_30d = fivePeriodThirtyDayAverage(west_90d, west_60d, west_30d, west_30d_pre, west_15d, west_7d);
-      const east_fbm_30d = fivePeriodThirtyDayAverage(east_90d, east_60d, east_30d, east_30d_pre, east_15d, east_7d);
+      // The 90/60/30/15/7 windows already count pre-orders as sales (West: preorder,
+      // East: ttm_preorder), so the *_30d_pre breakdown columns must not be added again.
+      const west_fbm_30d = fivePeriodThirtyDayAverage(west_90d, west_60d, west_30d, 0, west_15d, west_7d);
+      const east_fbm_30d = fivePeriodThirtyDayAverage(east_90d, east_60d, east_30d, 0, east_15d, east_7d);
       const fbm_30d = fivePeriodThirtyDayAverage(
         west_90d + east_90d,
         west_60d + east_60d,
         west_30d + east_30d,
-        west_30d_pre + east_30d_pre,
+        0,
         west_15d + east_15d,
         west_7d + east_7d,
       );
@@ -507,7 +510,13 @@ export const DemandPlanningService = {
       const total_avg_curr_override = r.total_avg_curr_override == null
         ? null
         : Number(r.total_avg_curr_override);
-      const total_avg_curr = total_avg_curr_override ?? total_avg_curr_auto;
+      // Min Sales page floor: replaces a calculated value below the registered
+      // minimum. A manual override still wins over both, so the floor is only
+      // reported as applied when no override is set.
+      const total_avg_curr_min = r.total_avg_curr_min == null ? null : Number(r.total_avg_curr_min);
+      const floored = applyMinTotalAvgCurr(total_avg_curr_auto, total_avg_curr_min);
+      const total_avg_curr = total_avg_curr_override ?? floored.value;
+      const total_avg_curr_min_applied = total_avg_curr_override === null && floored.applied;
 
       const availQty = totalStock + back;
       const carryover = availQty >= 0 ? availQty : 0;
@@ -643,6 +652,8 @@ export const DemandPlanningService = {
         total_avg_curr: isCarCover ? total_avg_curr : Math.round(total_avg_curr * 100) / 100,
         total_avg_curr_auto: isCarCover ? total_avg_curr_auto : Math.round(total_avg_curr_auto * 100) / 100,
         total_avg_curr_override,
+        total_avg_curr_min,
+        total_avg_curr_min_applied,
         total_avg_prev_override,
         total_avg_real_override,
         total_avg_prev_auto: isCarCover ? total_avg_prev_auto : Math.round(total_avg_prev_auto * 100) / 100,
@@ -924,13 +935,15 @@ export const DemandPlanningService = {
       r.fba_30d_pre = Number(r.fba_30d_pre ?? 0);
 
       const w90 = Number(r.west_90d), w60 = Number(r.west_60d), w30 = Number(r.west_30d);
-      const wPre = Number(r.west_30d_pre), w15 = Number(r.west_15d), w7 = Number(r.west_7d);
+      const w15 = Number(r.west_15d), w7 = Number(r.west_7d);
       const e90 = Number(r.east_90d), e60 = Number(r.east_60d), e30 = Number(r.east_30d);
-      const ePre = Number(r.east_30d_pre), e15 = Number(r.east_15d), e7 = Number(r.east_7d);
-      r.west_fbm_30d = fivePeriodThirtyDayAverage(w90, w60, w30, wPre, w15, w7);
-      r.east_fbm_30d = fivePeriodThirtyDayAverage(e90, e60, e30, ePre, e15, e7);
+      const e15 = Number(r.east_15d), e7 = Number(r.east_7d);
+      // The 30d windows already include pre-orders (the *_30d_pre columns are a
+      // breakdown of them), so nothing is added on top here.
+      r.west_fbm_30d = fivePeriodThirtyDayAverage(w90, w60, w30, 0, w15, w7);
+      r.east_fbm_30d = fivePeriodThirtyDayAverage(e90, e60, e30, 0, e15, e7);
       const fbm30d = fivePeriodThirtyDayAverage(
-        w90 + e90, w60 + e60, w30 + e30, wPre + ePre, w15 + e15, w7 + e7,
+        w90 + e90, w60 + e60, w30 + e30, 0, w15 + e15, w7 + e7,
       );
       r.fba_30d = fivePeriodThirtyDayAverage(
         Number(r.fba_90d ?? 0), Number(r.fba_60d ?? 0), Number(r.fba_30d ?? 0), 0,

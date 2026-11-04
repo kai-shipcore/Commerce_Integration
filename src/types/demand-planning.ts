@@ -122,6 +122,10 @@ export interface DemandRow {
   total_avg_real_override?: number | null;
   total_avg_curr_auto?: number;
   total_avg_curr_override?: number | null;
+  /** Registered floor from the Min Sales page, or null when the SKU is not registered. */
+  total_avg_curr_min?: number | null;
+  /** True when total_avg_curr shows the minimum because the calculated value was below it (and no manual override is set). */
+  total_avg_curr_min_applied?: boolean;
   oos_days_90d: number | null;
   oos_lost_demand_90d: number | null;
   cbm_per_unit?: number;

@@ -16,6 +16,7 @@ import {
   type ColumnResizedEvent,
   type GridApi,
   type ICellRendererParams,
+  type ITooltipParams,
   type IHeaderGroupParams,
   type IHeaderParams,
 } from "ag-grid-community";
@@ -89,6 +90,7 @@ import { conditionalFormatForCell } from "@/lib/planning/conditional-formatting"
 import { FormulaBar, type FormulaBarHandle } from "./formula-bar";
 import { displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } from "@/lib/planning/formula-addresses";
 import { formulaBaseValue, isFormulaBaseField } from "@/lib/planning/custom-formula-fields";
+import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { cellReference, createFormulaEvaluator, fillDownFormulas, isFormulaId, formulaForCell, materializeDefaultFormulas, type FormulaConfig, type FormulaId, type FormulaValue } from "@/lib/planning/custom-formulas";
 
 const modules = [AllCommunityModule];
@@ -2319,6 +2321,18 @@ function CbmCellRenderer({
 const totalAvgField = (columnId: string) => columnId === "tavg_p" ? "total_avg_prev" as const : columnId === "tavg_r" ? "total_avg_real" as const : "total_avg_curr" as const;
 const isTotalAvgColumn = (columnId: string) => ["tavg_p", "tavg_r", "tavg_c"].includes(columnId);
 
+/** Fill for a T.Avg current cell showing the Min Sales floor instead of the calculated value. */
+const MIN_SALES_APPLIED_FILL = "#fde68a";
+
+function minSalesAppliedTitle(row: DemandRow, pick: (ko: string, en: string) => string): string {
+  const calculated = row.total_avg_curr_auto ?? 0;
+  const minimum = row.total_avg_curr_min ?? row.total_avg_curr;
+  return pick(
+    `최소값 적용: 계산값 ${calculated} → 최소 ${minimum} (Min Sales 페이지에서 등록)`,
+    `Minimum applied: calculated ${calculated} → min ${minimum} (registered on the Min Sales page)`,
+  );
+}
+
 function TotalAvgCurrentCellRenderer({
   value,
   data,
@@ -2332,6 +2346,7 @@ function TotalAvgCurrentCellRenderer({
   onRequestEdit: () => boolean;
   onSelectCell: (rowIndex: number, columnId: string) => void;
 }) {
+  const { pick } = useI18n();
   const displayValue = value === null || value === undefined || value === "" ? "" : String(value);
   const field = totalAvgField(column?.getColId() ?? "");
   const override = data?.[`${field}_override`] ?? null;
@@ -2456,9 +2471,12 @@ function TotalAvgCurrentCellRenderer({
     <button
       type="button"
       disabled={saving}
-      title={override === null
-        ? "Double-click or press F2 to set a manual T. Avg current value"
-        : `Manual value (auto: ${autoValue}). Clear the cell to restore auto.`}
+      title={override !== null
+        ? `Manual value (auto: ${autoValue}). Clear the cell to restore auto.`
+        : field === "total_avg_curr" && data?.total_avg_curr_min_applied
+          ? `${minSalesAppliedTitle(data, pick)}
+Double-click or press F2 to set a manual value.`
+          : "Double-click or press F2 to set a manual T. Avg current value"}
       onClick={(event) => {
         if (event.detail < 2) return;
         event.preventDefault();
@@ -5640,11 +5658,21 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       }]);
     }
 
-    const effectiveValue = normalizedOverride ?? row[`${field}_auto`] ?? row[field];
+    const autoValue = row[`${field}_auto`] ?? row[field];
+    // Clearing a T.Avg current override falls back to the auto value with the
+    // Min Sales floor applied, the same order the server uses.
+    const floored = field === "total_avg_curr"
+      ? applyMinTotalAvgCurr(autoValue, row.total_avg_curr_min)
+      : { value: autoValue, applied: false };
+    const effectiveValue = normalizedOverride ?? floored.value;
+    const minFields = field === "total_avg_curr"
+      ? { total_avg_curr_min_applied: normalizedOverride === null && floored.applied }
+      : {};
     const updatedRow = {
       ...row,
       [field]: effectiveValue,
       [overrideField]: normalizedOverride,
+      ...minFields,
     };
     setRowOverrides((current) => {
       const next = new Map(current);
@@ -5652,6 +5680,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
         ...(current.get(row.sku) ?? {}),
         [field]: effectiveValue,
         [overrideField]: normalizedOverride,
+        ...minFields,
       });
       return next;
     });
@@ -7157,6 +7186,13 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
         // Marked on every row height; the CSS rule that acts on it is gated by
         // the wrapper's data-row-wrap, so nothing changes at the default height.
         ...(isWrappingColumn ? { wrapText: true, cellClass: "planning-wrap-cell" } : {}),
+        // The editable T.Avg renderer carries its own title; read-only users
+        // get the same explanation through the grid tooltip.
+        ...(column.id === "tavg_c" && !canCreatePlanning
+          ? { tooltipValueGetter: (params: ITooltipParams<DemandRow>) => params.data?.total_avg_curr_min_applied
+              ? minSalesAppliedTitle(params.data, pick)
+              : undefined }
+          : {}),
         valueGetter: (params) => {
           if (!params.data) return "";
           if (column.id === "cbm") {
@@ -7284,6 +7320,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
                 ? conditionalFormat.fillColor
               : isTotalAvgColumn(column.id) && params.data?.[`${totalAvgField(column.id)}_override`] != null
                 ? "#fecaca"
+              : column.id === "tavg_c" && params.data?.total_avg_curr_min_applied
+                ? MIN_SALES_APPLIED_FILL
                 : cellColors[key] ?? columnColors[column.id]?.cell ?? TINT_COLORS[column.tint] ?? "#fff",
             color: conditionalFormat?.textColor ?? textFormat.color ?? "#000000",
             fontSize: conditionalFormat?.fontSize ?? textFormat.fontSize ?? 11,

@@ -173,6 +173,23 @@ describe("DemandPlanningRepository.getVelocitySnapshot", () => {
     expect(sql).toContain("shipcore.fc_velocity_custom_snapshot");
     expect(sql).toContain("custom_master_sku AS master_sku");
   });
+
+  it("counts pre-orders inside the West and FBA windows (As-of replay matches the live sync)", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    await DemandPlanningRepository.getVelocitySnapshot("link", "2026-01-01");
+    const [sql] = primaryQueryMock.mock.calls[0];
+    expect(sql).toContain("order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA'");
+    expect(sql).toContain("channel='Amazon FBA' AND order_type IN ('sales','preorder')");
+    expect(sql).not.toMatch(/order_type ?= ?'sales'/);
+    expect(sql).toContain("order_type IN ('ttm', 'ttm_preorder') AND order_date");
+    expect(sql).not.toMatch(/order_type ?= ?'ttm' /);
+    expect(sql).toContain("AS west_30d_pre");
+    expect(sql).toContain("AS east_30d_pre");
+    expect(sql).toContain("AS fba_30d_pre");
+    const avgSql = sql.slice(sql.indexOf("AS east_30d_pre"), sql.indexOf("AS fba_90d"));
+    expect(avgSql).not.toContain("order_type='preorder'");
+    expect(avgSql).not.toContain("order_type='ttm_preorder'");
+  });
 });
 
 describe("raw container detail scope", () => {
@@ -242,13 +259,24 @@ describe("DemandPlanningRepository.getSalesVelocity", () => {
     expect(params).toEqual(["2026-03-01"]);
   });
 
-  it("keeps FBA sales and preorder in separate windows", async () => {
+  it("counts pre-orders inside the West and FBA sales windows, with the pre column as a breakdown", async () => {
     primaryQueryMock.mockResolvedValue({ rows: [] });
     await DemandPlanningRepository.getSalesVelocity("custom", "2026-03-01");
     const [sql] = primaryQueryMock.mock.calls[0];
-    expect(sql).toContain("channel = 'Amazon FBA' AND order_type = 'sales'");
+    expect(sql).toContain("channel = 'Amazon FBA' AND order_type IN ('sales', 'preorder')");
+    expect(sql).toContain("order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA'");
+    expect(sql).not.toContain("order_type = 'sales'");
     expect(sql).toContain("order_type = 'preorder'");
+    expect(sql).toContain("order_type IN ('ttm', 'ttm_preorder') AND order_date");
+    expect(sql).not.toMatch(/order_type = 'ttm' /);
+    expect(sql).toContain("AS west_30d_pre");
+    expect(sql).toContain("order_type = 'ttm_preorder'");
+    expect(sql).toContain("AS east_30d_pre");
     expect(sql).toContain("AS fba_30d_pre");
+    // The averages must not add the pre-order buckets on top of windows that already hold them.
+    const avgSql = sql.slice(sql.indexOf("AS east_30d_pre"), sql.indexOf("AS fba_90d"));
+    expect(avgSql).not.toContain("order_type = 'preorder'");
+    expect(avgSql).not.toContain("order_type = 'ttm_preorder'");
     expect(sql).toContain("/ 90 * 0.15");
     expect(sql).toContain("/ 60 * 0.20");
     expect(sql).not.toContain("channel = 'Amazon FBA' AND order_date");

@@ -168,13 +168,13 @@ export const SkuForecastsRepository = {
         WITH bucketed AS (
           SELECT
             ${bucketSql} AS bucket_date,
-            SUM(CASE WHEN order_type = 'sales' AND channel != 'Amazon FBA' THEN ${qtyColumn} ELSE 0 END)::int AS west,
-            SUM(CASE WHEN order_type = 'ttm' THEN ${qtyColumn} ELSE 0 END)::int AS east
+            SUM(CASE WHEN order_type IN ('sales', 'preorder') AND channel != 'Amazon FBA' THEN ${qtyColumn} ELSE 0 END)::int AS west,
+            SUM(CASE WHEN order_type IN ('ttm', 'ttm_preorder') THEN ${qtyColumn} ELSE 0 END)::int AS east
           FROM ${table}
           WHERE ${skuColumn} = $1
             AND order_date >= $2::date
             AND order_date <= $3::date
-            AND order_type IN ('sales', 'ttm')
+            AND order_type IN ('sales', 'preorder', 'ttm', 'ttm_preorder')
           GROUP BY bucket_date
         )
         SELECT

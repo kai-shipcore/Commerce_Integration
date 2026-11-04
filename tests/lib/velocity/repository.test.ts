@@ -214,6 +214,24 @@ describe("VelocityRepository sync helpers", () => {
     expect(sql).not.toContain("order_date_la");
   });
 
+  it("querySnapshotByRanges counts pre-orders as sales and TTM pre-orders as TTM", async () => {
+    primaryQueryMock.mockResolvedValue({ rows: [] });
+    const base = {
+      table: "fc_velocity_link_snapshot" as const, skuColumn: "link_master_sku" as const, qtyColumn: "link_qty" as const,
+      items: ["Seat Cover"], channels: ["Amazon FBA"],
+      ranges: [{ from: "2026-08-24", to: "2026-08-30" }],
+    };
+
+    await VelocityRepository.querySnapshotByRanges({ ...base, orderType: "sales" });
+    const [salesSql, salesParams] = primaryQueryMock.mock.calls[0];
+    expect(salesSql).toContain("order_type = ANY($3)");
+    expect(salesParams[2]).toEqual(["sales", "preorder"]);
+
+    await VelocityRepository.querySnapshotByRanges({ ...base, orderType: "ttm" });
+    const [, ttmParams] = primaryQueryMock.mock.calls[1];
+    expect(ttmParams[2]).toEqual(["ttm", "ttm_preorder"]);
+  });
+
   it("deleteStaleSnapshots uses the full-wipe clause when full=true", async () => {
     primaryQueryMock.mockResolvedValue({ rowCount: 0 });
     await VelocityRepository.deleteStaleSnapshots(new Date(), true);

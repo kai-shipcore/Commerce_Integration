@@ -144,8 +144,10 @@ Rules:
 Uses rows with:
 
 ```text
-order_type = 'sales'
+order_type IN ('sales', 'preorder')
 ```
+
+Pre-orders count as sales here: a pre-order is a unit sold while the SKU was out of stock. The `Pre Order` mode still shows them on their own.
 
 The table shows demand over each selected date window.
 
@@ -154,8 +156,10 @@ The table shows demand over each selected date window.
 Uses rows with:
 
 ```text
-order_type = 'ttm'
+order_type IN ('ttm', 'ttm_preorder')
 ```
+
+TTM pre-orders count as TTM sales, the same way regular pre-orders count in Sales mode.
 
 The table structure is similar to Sales mode, but column group labels change from `Sales` to `TTM`.
 
