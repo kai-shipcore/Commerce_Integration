@@ -92,6 +92,7 @@ import { displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } fr
 import { formulaBaseValue, isFormulaBaseField } from "@/lib/planning/custom-formula-fields";
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { cellReference, createFormulaEvaluator, fillDownFormulas, isFormulaId, formulaForCell, materializeDefaultFormulas, type FormulaConfig, type FormulaId, type FormulaValue } from "@/lib/planning/custom-formulas";
+import { keepContainerColumnsTogether } from "@/lib/planning/container-column-order";
 
 const modules = [AllCommunityModule];
 const MIN_SCROLLABLE_CENTER_WIDTH = 240;
@@ -7682,10 +7683,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
         groups.push({
           groupId: `container-${container.name}`,
-          // A container is one planning block. Moving its group header must
-          // keep all 11 planning columns together, and individual column moves
-          // must not split the block or insert another column inside it.
-          // Allow calculation columns to be dropped between container columns.
+          // Native columns are kept in their container by the move handler.
+          // Keep the AG group open so custom/formula columns can be placed at
+          // any position inside the container.
           marryChildren: false,
           headerName: columnHeaderNames[`container:${container.name}`] ?? container.name,
           headerStyle: () => headerStyleForColor(columnColors[`container:${container.name}`]?.header, columnTextFormatsRef.current[`container:${container.name}`]?.header),
@@ -7814,11 +7814,11 @@ autoFilling3: autoFillingContainers3.has(container.name),
     if (widthState.length) api.applyColumnState({ state: widthState, applyOrder: false });
     const availableIds = new Set((api.getColumns() ?? []).map((column) => column.getColId()));
     const requestedOrder = columnOrder.length ? columnOrder : defaultOrder;
-    const desiredOrder = [
+    const desiredOrder = keepContainerColumnsTogether([
       ...requestedOrder.filter((id) => availableIds.has(id)),
       ...defaultOrder.filter((id) => availableIds.has(id) && !requestedOrder.includes(id)),
       ...Array.from(availableIds).filter((id) => !requestedOrder.includes(id) && !defaultOrder.includes(id)),
-    ];
+    ]);
     api.applyColumnState({
       state: desiredOrder.map((columnId) => ({
         colId: columnId,
@@ -8371,6 +8371,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
                 // whole planning block must stay after the fixed/base columns
                 // (the Inbound / Container / SOD boundary).
                 const currentState = event.api.getColumnState();
+                const proposedOrder = currentState.map((state) => state.colId);
                 const baseColumnIds = currentState
                   .filter((state) => !state.colId.includes("::") && !isFormulaId(state.colId))
                   .map((state) => state.colId);
@@ -8379,10 +8380,19 @@ autoFilling3: autoFillingContainers3.has(container.name),
                   .map((state) => state.colId);
                 const orderedNonFormulaIds = [...baseColumnIds, ...containerColumnIds];
                 let nonFormulaIndex = 0;
+                const boundarySafeOrder = keepContainerColumnsTogether(
+                  currentState.map((state) => (isFormulaId(state.colId) ? state.colId : orderedNonFormulaIds[nonFormulaIndex++])),
+                );
                 event.api.applyColumnState({
-                  state: currentState.map((state) => ({ colId: isFormulaId(state.colId) ? state.colId : orderedNonFormulaIds[nonFormulaIndex++] })),
+                  state: boundarySafeOrder.map((colId) => ({ colId })),
                   applyOrder: true,
                 });
+                if (proposedOrder.some((colId, index) => boundarySafeOrder[index] !== colId)) {
+                  toast.warning(pick(
+                    "컨테이너 기본 컬럼은 다른 컨테이너 영역과 섞을 수 없습니다. 원래 그룹 안으로 이동했습니다.",
+                    "Container columns cannot be mixed with another container. The column was moved back into its group.",
+                  ), { id: "container-column-move-restricted" });
+                }
               }
               event.api.refreshHeader();
               if (affectedColumns.size) event.api.refreshCells({ columns: [...affectedColumns], force: true });
