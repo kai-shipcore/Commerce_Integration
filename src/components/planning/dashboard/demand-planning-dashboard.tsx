@@ -3103,22 +3103,27 @@ export function DemandPlanningDashboard({ gridMode = "native" }: { gridMode?: "n
       .sort((a, b) => a.orderRank - b.orderRank || a.fallbackIndex - b.fallbackIndex);
   }, [categoryFilter, columnHeaderNames, columnVisibilityItems, displayedColumnOrder, effectiveColumnOrder, gridMode]);
   const orderedColumnVisibilityRuns = useMemo(() => {
-    // A group can be split when a leaf column is dragged across a group
-    // boundary. Preserve those runs instead of regrouping every item by its
-    // original semantic group, which would destroy the visible grid order.
-    return orderedColumnVisibilityItems.reduce<Array<{
+    // A leaf column dragged across a group boundary used to split its group
+    // into two runs here, so the picker showed two "Inventory" sections with
+    // different contents and a column added later looked missing. One section
+    // per group: items keep the grid's order within it, and sections follow
+    // the grid position of their first column.
+    const runs: Array<{
       key: string;
       group: ColumnVisibilityGroup;
       items: typeof orderedColumnVisibilityItems;
-    }>>((runs, item) => {
-      const previous = runs.at(-1);
-      if (previous?.group === item.group) {
-        previous.items.push(item);
-      } else {
-        runs.push({ key: `${item.group}:${runs.length}`, group: item.group, items: [item] });
+    }> = [];
+    const byGroup = new Map<ColumnVisibilityGroup, (typeof runs)[number]>();
+    for (const item of orderedColumnVisibilityItems) {
+      let run = byGroup.get(item.group);
+      if (!run) {
+        run = { key: item.group, group: item.group, items: [] };
+        byGroup.set(item.group, run);
+        runs.push(run);
       }
-      return runs;
-    }, []);
+      run.items.push(item);
+    }
+    return runs;
   }, [orderedColumnVisibilityItems]);
   const draftActiveSkuPartFilters = useMemo(() => {
     const next: SkuPartFiltersByCategory = {};
