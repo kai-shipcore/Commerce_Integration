@@ -78,10 +78,14 @@ export interface DemandRow {
   canary_stock?: number | null;
   ttm_stock?: number | null;
   ttm_jeff_stock?: number | null;
+  dream_trans_stock?: number | null;
+  linkone_stock?: number | null;
   fullerton_available_stock?: number | null;
   canary_available_stock?: number | null;
   ttm_available_stock?: number | null;
   ttm_jeff_available_stock?: number | null;
+  dream_trans_available_stock?: number | null;
+  linkone_available_stock?: number | null;
   total_stock: number;
   stock_mode?: 'onhand' | 'available';
   west_90d: number;

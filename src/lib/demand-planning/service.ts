@@ -95,8 +95,9 @@ type SalesWindows = Record<(typeof SALES_WINDOW_KEYS)[number], number>;
  *  are demand, and demand is already covered by the sales roll-up. */
 const STOCK_ROLLUP_KEYS = [
   "west_stock", "east_stock", "west_available_stock", "east_available_stock", "transit_stock",
-  "fullerton_stock", "canary_stock", "ttm_stock", "ttm_jeff_stock",
+  "fullerton_stock", "canary_stock", "ttm_stock", "ttm_jeff_stock", "dream_trans_stock", "linkone_stock",
   "fullerton_available_stock", "canary_available_stock", "ttm_available_stock", "ttm_jeff_available_stock",
+  "dream_trans_available_stock", "linkone_available_stock",
   "total_stock",
 ] as const;
 
@@ -665,10 +666,14 @@ export const DemandPlanningService = {
         canary_stock: warehouseStock(stock.canary_stock),
         ttm_stock: warehouseStock(stock.ttm_stock),
         ttm_jeff_stock: warehouseStock(stock.ttm_jeff_stock),
+        dream_trans_stock: warehouseStock(stock.dream_trans_stock),
+        linkone_stock: warehouseStock(stock.linkone_stock),
         fullerton_available_stock: warehouseStock(stock.fullerton_available_stock),
         canary_available_stock: warehouseStock(stock.canary_available_stock),
         ttm_available_stock: warehouseStock(stock.ttm_available_stock),
         ttm_jeff_available_stock: warehouseStock(stock.ttm_jeff_available_stock),
+        dream_trans_available_stock: warehouseStock(stock.dream_trans_available_stock),
+        linkone_available_stock: warehouseStock(stock.linkone_available_stock),
         total_stock: totalStock,
         stock_mode: "available",
         west_90d, west_60d, west_30d, west_15d, west_7d, west_30d_pre,
@@ -753,7 +758,7 @@ export const DemandPlanningService = {
     const invRows = await DemandPlanningRepository.getInventoryByWarehouse();
     if (invRows === null) return null; // no lookup DB connection available
 
-    const invCols = ["master_sku", "west_stock", "east_stock", "total_stock", "back", "west_available_stock", "east_available_stock", "fullerton_stock", "canary_stock", "ttm_stock", "ttm_jeff_stock", "fullerton_available_stock", "canary_available_stock", "ttm_available_stock", "ttm_jeff_available_stock"];
+    const invCols = ["master_sku", "west_stock", "east_stock", "total_stock", "back", "west_available_stock", "east_available_stock", "fullerton_stock", "canary_stock", "ttm_stock", "ttm_jeff_stock", "dream_trans_stock", "linkone_stock", "fullerton_available_stock", "canary_available_stock", "ttm_available_stock", "ttm_jeff_available_stock", "dream_trans_available_stock", "linkone_available_stock"];
     const invUpdate = `west_stock                    = EXCLUDED.west_stock,
        east_stock                    = EXCLUDED.east_stock,
        total_stock                   = EXCLUDED.total_stock,
@@ -764,10 +769,14 @@ export const DemandPlanningService = {
        canary_stock                  = EXCLUDED.canary_stock,
        ttm_stock                     = EXCLUDED.ttm_stock,
        ttm_jeff_stock                = EXCLUDED.ttm_jeff_stock,
+       dream_trans_stock             = EXCLUDED.dream_trans_stock,
+       linkone_stock                 = EXCLUDED.linkone_stock,
        fullerton_available_stock     = EXCLUDED.fullerton_available_stock,
        canary_available_stock        = EXCLUDED.canary_available_stock,
        ttm_available_stock           = EXCLUDED.ttm_available_stock,
        ttm_jeff_available_stock      = EXCLUDED.ttm_jeff_available_stock,
+       dream_trans_available_stock   = EXCLUDED.dream_trans_available_stock,
+       linkone_available_stock       = EXCLUDED.linkone_available_stock,
        calculated_at                 = NOW(),
        updated_at                    = NOW()`;
     await Promise.all([

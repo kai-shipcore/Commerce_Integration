@@ -49,6 +49,18 @@ describe("FBA sales columns", () => {
       "sku", "e90", "epre", "f90", "f60", "f30", "f15", "f7", "fpre", "wavg_p",
     ]);
   });
+
+  it("inserts the Dream Trans and Linkone columns after the last original warehouse column", () => {
+    const migrated = ensureAdditionalNotesInColumnOrder(["sku", "fullerton", "canary", "ttm", "ttm_jeff", "west", "east"]);
+    expect(migrated).toEqual([
+      "sku", "fullerton", "canary", "ttm", "ttm_jeff", "dream_trans", "linkone", "west", "east",
+    ]);
+  });
+
+  it("leaves an order that already places the new warehouse columns alone", () => {
+    const order = ["sku", "dream_trans", "fullerton", "linkone", "ttm_jeff"];
+    expect(ensureAdditionalNotesInColumnOrder(order)).toEqual(order);
+  });
 });
 
 describe("Sales Status column", () => {

@@ -228,10 +228,14 @@ export const DemandPlanningRepository = {
       COALESCE(s.canary_stock,             0)::int            AS canary_stock,
       COALESCE(s.ttm_stock,                0)::int            AS ttm_stock,
       COALESCE(s.ttm_jeff_stock,           0)::int            AS ttm_jeff_stock,
+      COALESCE(s.dream_trans_stock,        0)::int            AS dream_trans_stock,
+      COALESCE(s.linkone_stock,            0)::int            AS linkone_stock,
       COALESCE(s.fullerton_available_stock, 0)::int           AS fullerton_available_stock,
       COALESCE(s.canary_available_stock,    0)::int           AS canary_available_stock,
       COALESCE(s.ttm_available_stock,       0)::int           AS ttm_available_stock,
       COALESCE(s.ttm_jeff_available_stock,  0)::int           AS ttm_jeff_available_stock,
+      COALESCE(s.dream_trans_available_stock, 0)::int         AS dream_trans_available_stock,
+      COALESCE(s.linkone_available_stock,   0)::int           AS linkone_available_stock,
       (COALESCE(s.west_available_stock, 0) + COALESCE(s.east_available_stock, 0) + COALESCE(s.transit_stock, 0))::int AS total_stock,
       'available'                                           AS stock_mode,
       COALESCE(s.west_90d,       0)::float8                AS west_90d,
@@ -564,20 +568,24 @@ export const DemandPlanningRepository = {
       )
       SELECT
         master_sku,
-        SUM(CASE WHEN warehouse IN ('Fullerton','Canary')                 THEN COALESCE(on_hand,   0) ELSE 0 END)::int  AS west_stock,
+        SUM(CASE WHEN warehouse IN ('Fullerton','Canary','Dream Trans','Linkone') THEN COALESCE(on_hand,   0) ELSE 0 END)::int  AS west_stock,
         SUM(CASE WHEN warehouse IN ('TTM Group','TTM Group Jefferson')    THEN COALESCE(on_hand,   0) ELSE 0 END)::int  AS east_stock,
         SUM(COALESCE(on_hand,   0))::int                                                                                AS total_stock,
         -SUM(COALESCE(backorder, 0))::int                                                                               AS back,
-        SUM(CASE WHEN warehouse IN ('Fullerton','Canary')                 THEN COALESCE(available, 0) ELSE 0 END)::int  AS west_available_stock,
+        SUM(CASE WHEN warehouse IN ('Fullerton','Canary','Dream Trans','Linkone') THEN COALESCE(available, 0) ELSE 0 END)::int  AS west_available_stock,
         SUM(CASE WHEN warehouse IN ('TTM Group','TTM Group Jefferson')    THEN COALESCE(available, 0) ELSE 0 END)::int  AS east_available_stock,
         SUM(CASE WHEN warehouse = 'Fullerton'           THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS fullerton_stock,
         SUM(CASE WHEN warehouse = 'Canary'              THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS canary_stock,
         SUM(CASE WHEN warehouse = 'TTM Group'           THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS ttm_stock,
         SUM(CASE WHEN warehouse = 'TTM Group Jefferson' THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS ttm_jeff_stock,
+        SUM(CASE WHEN warehouse = 'Dream Trans'         THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS dream_trans_stock,
+        SUM(CASE WHEN warehouse = 'Linkone'             THEN COALESCE(on_hand,   0) ELSE 0 END)::int                   AS linkone_stock,
         SUM(CASE WHEN warehouse = 'Fullerton'           THEN COALESCE(available, 0) ELSE 0 END)::int                   AS fullerton_available_stock,
         SUM(CASE WHEN warehouse = 'Canary'              THEN COALESCE(available, 0) ELSE 0 END)::int                   AS canary_available_stock,
         SUM(CASE WHEN warehouse = 'TTM Group'           THEN COALESCE(available, 0) ELSE 0 END)::int                   AS ttm_available_stock,
-        SUM(CASE WHEN warehouse = 'TTM Group Jefferson' THEN COALESCE(available, 0) ELSE 0 END)::int                   AS ttm_jeff_available_stock
+        SUM(CASE WHEN warehouse = 'TTM Group Jefferson' THEN COALESCE(available, 0) ELSE 0 END)::int                   AS ttm_jeff_available_stock,
+        SUM(CASE WHEN warehouse = 'Dream Trans'         THEN COALESCE(available, 0) ELSE 0 END)::int                   AS dream_trans_available_stock,
+        SUM(CASE WHEN warehouse = 'Linkone'             THEN COALESCE(available, 0) ELSE 0 END)::int                   AS linkone_available_stock
       FROM normalized_inventory
       GROUP BY master_sku
     `);

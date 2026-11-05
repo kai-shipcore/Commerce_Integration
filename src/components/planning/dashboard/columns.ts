@@ -196,6 +196,8 @@ export const ALL_COLS: ColDef[] = [
   { id: "canary",    grp: "stock", label: "Canary\nStock",    w: 58,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.canary_available_stock) },
   { id: "ttm",       grp: "stock", label: "TTM\nStock",       w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_available_stock) },
   { id: "ttm_jeff",  grp: "stock", label: "TTM Jeff\nStock",  w: 68,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.ttm_jeff_available_stock) },
+  { id: "dream_trans", grp: "stock", label: "Dream Trans\nStock", w: 76, align: "num", tint: "t-stock", gh: "gh-stock", val: (r) => warehouseCell(r.dream_trans_available_stock) },
+  { id: "linkone",   grp: "stock", label: "Linkone\nStock",   w: 60,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.linkone_available_stock) },
   { id: "west",      grp: "stock", label: "West\nStock",      w: 52,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.west_available_stock) },
   { id: "east",      grp: "stock", label: "East\nStock",      w: 46,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => warehouseCell(r.east_available_stock) },
   { id: "total",     grp: "stock", label: "Total\nStock",     w: 50,  align: "num",  tint: "t-stock", gh: "gh-stock",  val: (r) => r.total_stock ?? 0, bold: true },
@@ -870,6 +872,23 @@ export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOr
   if (eastAnchor >= 0) {
     let insertAt = eastAnchor + 1;
     for (const columnId of ["f90", "f60", "f30", "f15", "f7", "fpre"]) {
+      const existingIndex = next.indexOf(columnId);
+      if (existingIndex >= 0) {
+        insertAt = Math.max(insertAt, existingIndex + 1);
+        continue;
+      }
+      next.splice(insertAt, 0, columnId);
+      insertAt += 1;
+    }
+  }
+  // Warehouses added after the order was saved (Dream Trans, Linkone) would
+  // otherwise land at the far right of the grid and in a second "Inventory"
+  // run at the bottom of the column picker. Slot them after the last of the
+  // original four warehouse columns instead.
+  const warehouseAnchor = Math.max(...["fullerton", "canary", "ttm", "ttm_jeff"].map((id) => next.indexOf(id)));
+  if (warehouseAnchor >= 0) {
+    let insertAt = warehouseAnchor + 1;
+    for (const columnId of ["dream_trans", "linkone"]) {
       const existingIndex = next.indexOf(columnId);
       if (existingIndex >= 0) {
         insertAt = Math.max(insertAt, existingIndex + 1);

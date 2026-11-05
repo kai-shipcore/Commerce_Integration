@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } from "@/lib/planning/formula-addresses";
+import { collectFormulaCellReferences, displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } from "@/lib/planning/formula-addresses";
 
 describe("formula address editing boundary", () => {
   it("fills relative references using actual displayed row distances", () => {
@@ -22,5 +22,14 @@ describe("formula address editing boundary", () => {
   it("preserves references that are hidden from the displayed grid", () => {
     expect(displayFormulaAddresses('=[tavg_c]+SKU("Q1", "total")', "ITEM-A", () => null))
       .toBe('=[tavg_c]+SKU("Q1", "total")');
+  });
+  it("collects unique local and cross-row references in expression order", () => {
+    expect(collectFormulaCellReferences(
+      '=[tavg_c]+SKU("ITEM-A", "total")+[tavg_c]+"SKU(ignored)"',
+      "ITEM-B",
+    )).toEqual([
+      { sku: "ITEM-B", field: "tavg_c" },
+      { sku: "ITEM-A", field: "total" },
+    ]);
   });
 });

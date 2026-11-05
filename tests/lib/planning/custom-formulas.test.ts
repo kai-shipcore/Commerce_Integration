@@ -40,6 +40,8 @@ describe("custom spreadsheet formulas", () => {
     ["=1+2*3", 7], ["=(1+2)*3", 9], ["=2^3^2", 512], ["=-2^2", -4],
     ["=[sales]*30%", 3], ['=SKU("B", "sales") * 30%', 9],
     ['=IF([color]="BK", 100, 200)', 100], ["=IF([sales]>=10, 7, 1/0)", 7],
+    ['=IFCONTAINS([color], "b")', true], ['=IFCONTAINS([color], "bk", "match", "miss")', "match"],
+    ['=IFCONTAINS([color], "red", 1/0, 9)', 9], ['=IFCONTAINS([color], "red", 7)', false],
     ["=IFERROR(1/0, 4)", 4], ["=IFERROR([missing], 4)", 4],
     ["=MIN(10, 3, 20)+MAX(1, 2)", 5], ["=SUM(1, 2, ABS(-3))", 6],
     ["=ROUNDUP(-1.21, 1)", -1.3], ["=ROUNDDOWN(-1.29, 1)", -1.2],
@@ -54,6 +56,7 @@ describe("custom spreadsheet formulas", () => {
     ['=SKU("deleted", "sales")', "#REF!"], ['="hello"*3', "#VALUE!"],
     ["=NOPE(1)", "#NAME?"], ["=ROUND(2,100)", "#NUM!"], ["=1e999", "#NUM!"],
     ["=IF(1,2)", "#ARGS!"], ["=1+", "#SYNTAX!"], ["=globalThis.process.exit()", "#SYNTAX!"],
+    ['=IFCONTAINS([color])', "#ARGS!"], ['=IFCONTAINS([stock], "x")', "#N/A"],
     ["=constructor(1)", "#NAME?"], ["=SUM(...[sales])", "#SYNTAX!"],
   ])("reports %s", (formula, error) => expect(evaluate(formula).error).toBe(error));
 
