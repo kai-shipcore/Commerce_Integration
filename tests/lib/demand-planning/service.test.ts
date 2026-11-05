@@ -177,8 +177,8 @@ describe("DemandPlanningService.getDashboardData", () => {
       latest_container: "190-CA-SEAT", latest_eta: "2026-08-10", latest_qty: 700,
       sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
       back: 0, west_stock: 5, east_stock: 5, west_available_stock: 5, east_available_stock: 5, transit_stock: 0,
-      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0,
-      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0,
+      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0, dream_trans_stock: 0, linkone_stock: 0,
+      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0, dream_trans_available_stock: 0, linkone_available_stock: 0,
       total_stock: 10, west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
       east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
       avg_daily_prev: 1, avg_daily_real: 1, avg_daily_curr: 1, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
@@ -213,8 +213,8 @@ describe("DemandPlanningService.getDashboardData", () => {
       latest_container: null, latest_eta: null, latest_qty: null,
       sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
       back: 0, west_stock: 5, east_stock: 5, west_available_stock: 5, east_available_stock: 5, transit_stock: 0,
-      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0,
-      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0,
+      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0, dream_trans_stock: 0, linkone_stock: 0,
+      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0, dream_trans_available_stock: 0, linkone_available_stock: 0,
       total_stock: 10, west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
       east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
       avg_daily_prev: 1, avg_daily_real: 1, avg_daily_curr: 1, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
@@ -268,8 +268,8 @@ describe("DemandPlanningService.getDashboardData", () => {
       latest_container: null, latest_eta: null, latest_qty: null,
       sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
       back: 0, west_stock: 100, east_stock: 0, west_available_stock: 100, east_available_stock: 0, transit_stock: 0,
-      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0,
-      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0,
+      fullerton_stock: 0, canary_stock: 0, ttm_stock: 0, ttm_jeff_stock: 0, dream_trans_stock: 0, linkone_stock: 0,
+      fullerton_available_stock: 0, canary_available_stock: 0, ttm_available_stock: 0, ttm_jeff_available_stock: 0, dream_trans_available_stock: 0, linkone_available_stock: 0,
       total_stock: 100, west_90d: 900, west_60d: 600, west_30d: 300, west_15d: 150, west_7d: 70, west_30d_pre: 999,
       east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
       avg_daily_prev: 20, avg_daily_real: 99, avg_daily_curr: 99, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
@@ -305,8 +305,8 @@ describe("DemandPlanningService.getDashboardData — historical inventory", () =
       latest_container: null, latest_eta: null, latest_qty: null,
       sales_status: "Original", category_code: "SC", cbm_per_unit: 0, memo: null, case_qty: 1, moq: 1, order_multiple: 1,
       back: -3, west_stock: 30, east_stock: 10, west_available_stock: 30, east_available_stock: 10, transit_stock: 5,
-      fullerton_stock: 20, canary_stock: 10, ttm_stock: 6, ttm_jeff_stock: 4,
-      fullerton_available_stock: 20, canary_available_stock: 10, ttm_available_stock: 6, ttm_jeff_available_stock: 4,
+      fullerton_stock: 20, canary_stock: 10, ttm_stock: 6, ttm_jeff_stock: 4, dream_trans_stock: 3, linkone_stock: 2,
+      fullerton_available_stock: 20, canary_available_stock: 10, ttm_available_stock: 6, ttm_jeff_available_stock: 4, dream_trans_available_stock: 3, linkone_available_stock: 2,
       total_stock: 45, west_90d: 0, west_60d: 0, west_30d: 0, west_15d: 0, west_7d: 0, west_30d_pre: 0,
       east_90d: 0, east_60d: 0, east_30d: 0, east_15d: 0, east_7d: 0, east_30d_pre: 0,
       avg_daily_prev: 1, avg_daily_real: 1, avg_daily_curr: 1, east_avg_prev: 0, east_avg_real: 0, east_avg_curr: 0,
@@ -364,6 +364,8 @@ describe("DemandPlanningService.getDashboardData — historical inventory", () =
     expect(row.canary_available_stock).toBeNull();
     expect(row.ttm_available_stock).toBeNull();
     expect(row.ttm_jeff_available_stock).toBeNull();
+    expect(row.dream_trans_available_stock).toBeNull();
+    expect(row.linkone_available_stock).toBeNull();
   });
 
   it("flips the sign on back orders, which the history stores positive", async () => {

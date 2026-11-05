@@ -7,7 +7,7 @@ const fields = new Map<string, keyof DemandRow>(Object.entries({
   workflow_note: "workflow_note", workflow_note_2: "workflow_note_2", workflow_note_3: "workflow_note_3",
   back: "back", status: "sales_status", sku: "sku",
   fullerton: "fullerton_available_stock", canary: "canary_available_stock", ttm: "ttm_available_stock",
-  ttm_jeff: "ttm_jeff_available_stock", west: "west_available_stock", east: "east_available_stock",
+  ttm_jeff: "ttm_jeff_available_stock", dream_trans: "dream_trans_available_stock", linkone: "linkone_available_stock", west: "west_available_stock", east: "east_available_stock",
   total: "total_stock", transit: "transit_stock",
   w90: "west_90d", w60: "west_60d", w30: "west_30d", w15: "west_15d", w7: "west_7d", wpre: "west_30d_pre",
   e90: "east_90d", e60: "east_60d", e30: "east_30d", e15: "east_15d", e7: "east_7d", epre: "east_30d_pre",

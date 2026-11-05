@@ -72,19 +72,19 @@ function applyCurrentManualCorrections(sectionId: string, html: string): string 
   return html
     .replace(
       "모드 · 서부 재고 · 동부 재고 · 운송 중 재고 · 전체 재고",
-      "Fullerton · Canary · TTM · TTM Jeff · 서부 재고 · 동부 재고 · 운송 중 재고 · 전체 재고",
+      "Fullerton · Canary · TTM · TTM Jeff · Dream Trans · Linkone · 서부 재고 · 동부 재고 · 운송 중 재고 · 전체 재고",
     )
     .replace(
       "재고 현황. <strong>모드</strong>: 재고 계산 기준을 전환합니다. <strong>현재고</strong>: 실물 재고 수량 기준. <strong>가용 재고</strong>: 가용 재고 관리에서 배정된 수량을 차감한 기준.",
-      "창고별 가용 재고 현황입니다. <strong>서부 재고</strong>는 Fullerton + Canary, <strong>동부 재고</strong>는 TTM + TTM Jeff이며, <strong>전체 재고</strong>는 서부 가용재고 + 동부 가용재고 + 운송 중 재고입니다.",
+      "창고별 가용 재고 현황입니다. <strong>서부 재고</strong>는 Fullerton + Canary + Dream Trans + Linkone, <strong>동부 재고</strong>는 TTM + TTM Jeff이며, <strong>전체 재고</strong>는 서부 가용재고 + 동부 가용재고 + 운송 중 재고입니다.",
     )
     .replace(
       "Mode · West Stock · East Stock · Transit Stock · Total Stock",
-      "Fullerton · Canary · TTM · TTM Jeff · West Stock · East Stock · Transit Stock · Total Stock",
+      "Fullerton · Canary · TTM · TTM Jeff · Dream Trans · Linkone · West Stock · East Stock · Transit Stock · Total Stock",
     )
     .replace(
       "Inventory figures. <strong>Mode</strong> switches the calculation basis: <strong>Onhand</strong> = raw warehouse stock count; <strong>Available</strong> = on-hand minus quantities allocated from Available Stock.",
-      "Available inventory by warehouse. <strong>West Stock</strong> is Fullerton + Canary, <strong>East Stock</strong> is TTM + TTM Jeff, and <strong>Total Stock</strong> is West available + East available + Transit Stock.",
+      "Available inventory by warehouse. <strong>West Stock</strong> is Fullerton + Canary + Dream Trans + Linkone, <strong>East Stock</strong> is TTM + TTM Jeff, and <strong>Total Stock</strong> is West available + East available + Transit Stock.",
     );
 }
 
