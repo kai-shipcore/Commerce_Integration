@@ -596,11 +596,11 @@ describe("DemandPlanningService.refreshStats", () => {
   });
 });
 
-// ─── Final-SKU sales roll-up (TN→TNS, BKGR→BKLG) ─────────────────────────
+// ─── Final-SKU roll-up (TN→TNS, BKGR→BKLG) ───────────────────────────────
 //
 // The factory only orders the final SKU now, so its row has to carry the
-// legacy SKU's demand — but the legacy SKU still holds stock that has to be
-// sold down, so its own row must stay untouched.
+// legacy SKU's demand and the legacy units still in the warehouse (they ship
+// against the final SKU). The legacy SKU's own row must stay untouched.
 
 function ccStatsRow(sku: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -664,16 +664,65 @@ describe("DemandPlanningService.getDashboardData - final SKU sales roll-up", () 
     expect(final.rolled_up_from).toEqual(["CC-TN-15-K-BKGR-STR", "CC-TN-15-K-BKLG-STR"]);
   });
 
-  it("does not move stock or back orders onto the final SKU", async () => {
+  it("adds the legacy SKU's available stock (West, East, Transit) to the final SKU, but not its back orders", async () => {
     repositoryMock.getStatsRows.mockResolvedValue([
-      ccStatsRow("CC-SS-15-K-BKGR-STR", { west_90d: 90, total_stock: 38, west_stock: 38, west_available_stock: 38, back: -7 }),
-      ccStatsRow("CC-SS-15-K-BKLG-STR", { total_stock: 2, west_stock: 2, west_available_stock: 2 }),
+      ccStatsRow("CC-CC-15-VWNB12-BKGR-STR", {
+        total_stock: 38, west_stock: 32, west_available_stock: 32, fullerton_available_stock: 32,
+        east_stock: 4, east_available_stock: 4, ttm_available_stock: 4, transit_stock: 2, back: -7,
+      }),
+      ccStatsRow("CC-CC-15-VWNB12-BKLG-STR", {
+        total_stock: 25, west_stock: 21, west_available_stock: 21, fullerton_available_stock: 21,
+        east_stock: 1, east_available_stock: 1, ttm_available_stock: 1, transit_stock: 3, back: -1,
+      }),
     ]);
 
     const { data } = await DemandPlanningService.getDashboardData(baseQuery);
-    expect(rowBySku(data.rows, "CC-SS-15-K-BKLG-STR")).toMatchObject({
-      total_stock: 2, west_stock: 2, west_available_stock: 2, back: 0,
+    expect(rowBySku(data.rows, "CC-CC-15-VWNB12-BKLG-STR")).toMatchObject({
+      west_stock: 53, west_available_stock: 53, fullerton_available_stock: 53,
+      east_stock: 5, east_available_stock: 5, ttm_available_stock: 5,
+      transit_stock: 5, total_stock: 63, back: -1,
     });
+    expect(rowBySku(data.rows, "CC-CC-15-VWNB12-BKGR-STR")).toMatchObject({
+      west_available_stock: 32, east_available_stock: 4, transit_stock: 2, total_stock: 38, back: -7,
+    });
+  });
+
+  it("plans the final SKU's inventory life and S.O.D against the combined stock", async () => {
+    const sales = { west_90d: 90, west_60d: 60, west_30d: 30, west_15d: 15, west_7d: 7 };
+    const finalOnly = ccStatsRow("CC-SS-15-K-BKLG-STR", { ...sales, total_stock: 10, west_available_stock: 10, total_avg_real: 1 });
+    const withContainers = { ...baseQuery, includeContainers: true };
+    repositoryMock.getStatsRows.mockResolvedValue([finalOnly]);
+    const before = rowBySku((await DemandPlanningService.getDashboardData(withContainers)).data.rows, "CC-SS-15-K-BKLG-STR");
+
+    repositoryMock.getStatsRows.mockResolvedValue([
+      finalOnly,
+      ccStatsRow("CC-SS-15-K-BKGR-STR", { total_stock: 100, west_available_stock: 100 }),
+    ]);
+    const after = rowBySku((await DemandPlanningService.getDashboardData(withContainers)).data.rows, "CC-SS-15-K-BKLG-STR");
+
+    expect(after.total_stock).toBe(110);
+    expect(after.sod! > before.sod!).toBe(true);
+    expect(after.containers.Base.avail_qty).toBe(110);
+    expect(after.containers.Base.inv_life!).toBeGreaterThan(before.containers.Base.inv_life!);
+  });
+
+  it("rolls the legacy SKU's historical stock total onto the final SKU on an As-of view", async () => {
+    repositoryMock.getStatsRows.mockResolvedValue([
+      ccStatsRow("CC-SS-15-K-BKGR-STR", { total_stock: 99, west_available_stock: 99, transit_stock: 2 }),
+      ccStatsRow("CC-SS-15-K-BKLG-STR", { total_stock: 99, west_available_stock: 99, transit_stock: 3 }),
+    ]);
+    repositoryMock.getInventoryHistoryCoverage.mockResolvedValue({ min_date: "2026-03-28", max_date: "2026-10-01" });
+    repositoryMock.getInventorySnapshotAsOf.mockResolvedValue([
+      { master_sku: "CC-SS-15-K-BKGR-STR", snapshot_date: "2026-09-30", available_stock: 32, backorder: 0 },
+      { master_sku: "CC-SS-15-K-BKLG-STR", snapshot_date: "2026-10-01", available_stock: 21, backorder: 0 },
+    ]);
+
+    const { data } = await DemandPlanningService.getDashboardData({ ...baseQuery, asOf: "2026-10-01" });
+    const final = rowBySku(data.rows, "CC-SS-15-K-BKLG-STR");
+    // 21 + 32 historical available, plus both SKUs' current transit (3 + 2).
+    expect(final.total_stock).toBe(58);
+    expect(final.west_available_stock).toBeNull();
+    expect(rowBySku(data.rows, "CC-SS-15-K-BKGR-STR").total_stock).toBe(34);
   });
 
   it("raises the final SKU's daily average and pulls its S.O.D forward", async () => {
