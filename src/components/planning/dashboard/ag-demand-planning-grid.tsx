@@ -88,7 +88,7 @@ import {
 } from "@/lib/planning/column-filter";
 import { conditionalFormatForCell } from "@/lib/planning/conditional-formatting";
 import { FormulaBar, type FormulaBarHandle } from "./formula-bar";
-import { displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } from "@/lib/planning/formula-addresses";
+import { collectFormulaCellReferences, displayFormulaAddresses, resolveFormulaAddresses, shiftFormulaRows } from "@/lib/planning/formula-addresses";
 import { formulaBaseValue, isFormulaBaseField } from "@/lib/planning/custom-formula-fields";
 import { applyMinTotalAvgCurr } from "@/lib/planning/min-sales";
 import { cellReference, createFormulaEvaluator, fillDownFormulas, isFormulaId, formulaForCell, materializeDefaultFormulas, type FormulaConfig, type FormulaId, type FormulaValue } from "@/lib/planning/custom-formulas";
@@ -1183,6 +1183,14 @@ function selectionEdgeStyle(
     ...(hasLeft ? {} : { borderLeft: SELECTED_BORDER }),
     ...(hasRight ? {} : { borderRight: SELECTED_BORDER }),
   };
+}
+
+const FORMULA_REFERENCE_COLORS = ["#1A73E8", "#E8710A", "#A142F4", "#188038", "#D93025", "#007B83"] as const;
+
+function formulaReferenceEdgeStyle(index: number | undefined): CSSProperties {
+  if (index === undefined) return {};
+  const color = FORMULA_REFERENCE_COLORS[index % FORMULA_REFERENCE_COLORS.length];
+  return { boxShadow: `inset 0 0 0 2px ${color}`, position: "relative", zIndex: 3 };
 }
 
 function cssEscapeAttr(value: string): string {
@@ -4063,6 +4071,7 @@ export function AgDemandPlanningGrid({
   const dragCellAnchorRef = useRef<DragCellAnchor | null>(null);
   const dragMovedRef = useRef(false);
   const selectedCellsRef = useRef<Set<string>>(new Set());
+  const formulaDependencyRefs = useRef<Map<string, number>>(new Map());
   const activeSelectedCellRef = useRef<{ rowId: string; columnId: string } | null>(null);
   const cellSelectionAnchorRef = useRef<DragCellAnchor | null>(null);
   const lastHeaderSelectionRef = useRef<string | null>(null);
@@ -4359,6 +4368,40 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const config = formulaConfig.map((c) => c.id === id ? { ...c, overrides: { ...c.overrides, [sku]: formula } } : c);
     return createFormulaEvaluator(config, formulaRows.keys(), readFormulaValue).evaluate(sku, id);
   }, [formulaConfig, formulaRows, readFormulaValue]);
+
+  const showFormulaDependencies = useCallback((sku: string | null, columnId: string | null) => {
+    const previous = formulaDependencyRefs.current;
+    const next = new Map<string, number>();
+    if (sku && columnId && isFormulaId(columnId)) {
+      const column = formulaConfig.find((candidate) => candidate.id === columnId);
+      if (column) {
+        collectFormulaCellReferences(formulaForCell(column, sku), sku).forEach((reference, index) => {
+          if (formulaRows.has(reference.sku) && formulaFieldIdsRef.current.has(reference.field)) {
+            next.set(`${reference.sku}::${reference.field}`, index);
+          }
+        });
+      }
+    }
+    formulaDependencyRefs.current = next;
+    if (previous.size === 0 && next.size === 0) return;
+    const api = gridRef.current?.api;
+    if (!api || api.isDestroyed()) return;
+    const affected = new Set([...previous.keys(), ...next.keys()]);
+    const columnIds = new Set<string>();
+    for (const key of affected) {
+      const separator = key.indexOf("::");
+      if (separator < 0) continue;
+      columnIds.add(key.slice(separator + 2));
+    }
+    api.refreshCells({
+      columns: [...columnIds],
+      force: true,
+    });
+  }, [formulaConfig, formulaRows]);
+  useEffect(() => {
+    const active = selectedCellsRef.current.size === 1 ? activeSelectedCellRef.current : null;
+    showFormulaDependencies(active?.rowId ?? null, active?.columnId ?? null);
+  }, [showFormulaDependencies]);
 
   const columnMenuValue = useCallback((key: string, row: DemandRow): unknown => {
     if (isFormulaId(key)) {
@@ -4966,6 +5009,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const cleared = selectedCellsRef.current;
     if (cleared.size === 0) return;
     selectedCellsRef.current = new Set();
+    showFormulaDependencies(null, null);
     cellSelectionAnchorRef.current = null;
     const api = gridRef.current?.api;
     if (api) {
@@ -4978,7 +5022,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
       if (columns.length) api.refreshCells({ columns, force: true });
     }
     startTransition(() => onCellSelectionChange?.([]));
-  }, [onCellSelectionChange]);
+  }, [onCellSelectionChange, showFormulaDependencies]);
 
   const subscribeSelection = useCallback((listener: () => void) => {
     selectionListenersRef.current.add(listener);
@@ -7341,6 +7385,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
             ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
             ...(selected
               ? selectionEdgeStyle(params.api, params.node.rowIndex, params.data?.sku, column.id, selectedCellsRef.current)
+              : formulaDependencyRefs.current.has(key)
+                ? formulaReferenceEdgeStyle(formulaDependencyRefs.current.get(key))
               : fullColumnSelected
                 ? { boxShadow: "inset 1px 0 #2563EB, inset -1px 0 #2563EB" }
                 : {}),
@@ -7430,7 +7476,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           if (node) requestAnimationFrame(() => api.refreshCells({ rowNodes: [node], columns: [c.id], force: true }));
           return true;
         },
-        tooltipValueGetter: (params) => params.data && !params.data.pinned ? `${formulaForCell(c, params.data.sku)}${formulaEvaluator.evaluate(params.data.sku, c.id).error ? ` — ${formulaEvaluator.evaluate(params.data.sku, c.id).error}` : ""}` : "",
+        tooltipValueGetter: (params) => params.data && !params.data.pinned ? `${displayAddresses(formulaForCell(c, params.data.sku), params.data.sku)}${formulaEvaluator.evaluate(params.data.sku, c.id).error ? ` — ${formulaEvaluator.evaluate(params.data.sku, c.id).error}` : ""}` : "",
       };
     });
     if (formulaColumns.length) groups.push({ groupId: "custom-formulas", headerName: pick("사용자 계산", "Custom calculations"), headerGroupComponent: FormulaGroupHeader, headerClass: "planning-formula-group-header", children: formulaColumns });
@@ -7643,6 +7689,8 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
               ...(column.align === "num" ? { fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" } : {}),
               ...(selected
                 ? selectionEdgeStyle(params.api, params.node.rowIndex, params.data?.sku, columnId, selectedCellsRef.current)
+                : formulaDependencyRefs.current.has(key)
+                  ? formulaReferenceEdgeStyle(formulaDependencyRefs.current.get(key))
                 : fullColumnSelected
                   ? { boxShadow: "inset 1px 0 #2563EB, inset -1px 0 #2563EB", position: "relative", zIndex: 1 }
                   : {}),
@@ -7759,7 +7807,7 @@ autoFilling3: autoFillingContainers3.has(container.name),
       }
     }
     return groups;
-  }, [formulaPanelOpen, formulaConfig, formulaEditingEnabled, formulaEvaluator, onFormulaConfigChange, pushViewHistory, baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canCreatePlanning, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
+  }, [formulaPanelOpen, formulaConfig, formulaEditingEnabled, formulaEvaluator, displayAddresses, onFormulaConfigChange, pushViewHistory, baseCandidates, baseRestoreMarkers, buildContainerSaveSummary, canCreatePlanning, canEditPlanning, canEditSkuNotes, cellColors, chainMap, columnColors, columnFilters, columnHeaderNames, columnVis, columnWidths, conCandidates, conRestoreMarkers, containerColumnTotals, containers, groupVis, handleColumnHeaderSelectFast, handleFullColumnSelectFast, handleQtyEditRequest, hiddenBases, hiddenContainerColumns, inventoryColumnTotals, onColumnHeaderRename, onHideColumn, onSkuCellNoteChange, onToggleContainerColumns, performCopy, pick, pinnedBaseColumnLayout, qtyOverrides, salesWindowWeights, saveCbm, saveMemo, saveQty, saveTotalAvgCurrent, saveWorkNote, selectSingleGridCell, selectedRowResizeTargets, shouldPreserveContextSelection, skuCellNotes, subscribeSelection, updateEta]);
 
   useEffect(() => {
     conditionalFormatRulesRef.current = conditionalFormatRules;
@@ -8273,6 +8321,8 @@ autoFilling3: autoFillingContainers3.has(container.name),
                   ? { rowId: firstKey.slice(0, separator), columnId: firstKey.slice(separator + 2) }
                   : null;
               }
+              const dependencySource = next.size === 1 ? activeSelectedCellRef.current : null;
+              showFormulaDependencies(dependencySource?.rowId ?? null, dependencySource?.columnId ?? null);
               refreshChangedCells(previous, next);
               const selection = {
                 rowId: event.data.sku,

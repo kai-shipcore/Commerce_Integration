@@ -211,6 +211,15 @@ export function createFormulaEvaluator(
       try { const value = run(args[0], sku); if (typeof value === "number") numeric(value); return value; }
       catch (e) { if (!(e instanceof FormulaError) || e.message === "#LIMIT!" || e.message === "#CYCLE!") throw e; return run(args[1], sku); }
     }
+    if (name === "IFCONTAINS") {
+      count(2, 4);
+      const value = run(args[0], sku), search = run(args[1], sku);
+      if (value === null || search === null) return fail("#N/A");
+      const contains = String(value).toLocaleLowerCase().includes(String(search).toLocaleLowerCase());
+      if (args.length === 2) return contains;
+      if (contains) return run(args[2], sku);
+      return args.length === 4 ? run(args[3], sku) : false;
+    }
     if (name === "SKU") {
       count(2);
       const target = run(args[0], sku), field = run(args[1], sku);

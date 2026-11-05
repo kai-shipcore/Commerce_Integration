@@ -269,7 +269,7 @@ export const FormulaBar = forwardRef<FormulaBarHandle, Props>(function FormulaBa
           <span role="status" className={`ml-auto break-words text-[11px] font-medium ${visibleError ? "text-destructive" : "text-[#555149]"}`}>{message || visibleError || (preview?.value != null ? `${pick("미리보기", "Preview")}: ${String(preview.value)}` : "")}</span>
         </div>
         </div>
-        <p id="planning-formula-help" className="rounded-md bg-[#F7F6F2] px-3 py-2 text-[10px] leading-4 text-[#6C685F]">{pick("‘=’로 시작하세요. [컬럼ID]는 같은 SKU, SKU(\"SKU\", \"컬럼ID\")는 특정 SKU를 참조합니다. 지원 함수: IF, IFERROR, MIN, MAX, SUM, ABS, ROUND, ROUNDUP, ROUNDDOWN", "Start with ‘=’. [columnID] references this SKU; SKU(\"SKU\", \"columnID\") references a specific SKU. Functions: IF, IFERROR, MIN, MAX, SUM, ABS, ROUND, ROUNDUP, ROUNDDOWN")}</p>
+        <p id="planning-formula-help" className="rounded-md bg-[#F7F6F2] px-3 py-2 text-[10px] leading-4 text-[#6C685F]">{pick("‘=’로 시작하세요. [컬럼ID]는 같은 SKU, SKU(\"SKU\", \"컬럼ID\")는 특정 SKU를 참조합니다. 지원 함수: IF, IFERROR, IFCONTAINS, MIN, MAX, SUM, ABS, ROUND, ROUNDUP, ROUNDDOWN", "Start with ‘=’. [columnID] references this SKU; SKU(\"SKU\", \"columnID\") references a specific SKU. Functions: IF, IFERROR, IFCONTAINS, MIN, MAX, SUM, ABS, ROUND, ROUNDUP, ROUNDDOWN")}</p>
         {visibleError && <p role="alert" className="rounded-md bg-[#FFF0EE] px-3 py-2 text-[11px] text-[#8B3028]">{pick(`수식을 확인하세요 (${visibleError}). 수식을 수정한 뒤 Enter를 누르세요.`, `Check your formula (${visibleError}). Edit it, then press Enter.`)}</p>}
         </div>
         </div>
