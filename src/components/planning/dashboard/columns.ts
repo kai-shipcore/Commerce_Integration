@@ -140,7 +140,7 @@ function avgOrBlank(value: number | null | undefined): string {
 function rollupMark(row: DemandRow): string {
   const sources = row.rolled_up_from;
   if (!sources?.length) return "";
-  return `<span class="rollup-mark" title="Sales include ${sources.join(", ")}">+</span>`;
+  return `<span class="rollup-mark" title="Sales and stock include ${sources.join(", ")}">+</span>`;
 }
 
 export type CellContent =

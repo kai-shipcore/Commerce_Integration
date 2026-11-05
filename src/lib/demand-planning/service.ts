@@ -90,6 +90,18 @@ const SALES_WINDOW_KEYS = [
 
 type SalesWindows = Record<(typeof SALES_WINDOW_KEYS)[number], number>;
 
+/** Stock quantities that roll up from a legacy SKU onto its final SKU, on top
+ *  of the sales windows above. `back` is deliberately not here: back orders
+ *  are demand, and demand is already covered by the sales roll-up. */
+const STOCK_ROLLUP_KEYS = [
+  "west_stock", "east_stock", "west_available_stock", "east_available_stock", "transit_stock",
+  "fullerton_stock", "canary_stock", "ttm_stock", "ttm_jeff_stock",
+  "fullerton_available_stock", "canary_available_stock", "ttm_available_stock", "ttm_jeff_available_stock",
+  "total_stock",
+] as const;
+
+type StockBuckets = Record<(typeof STOCK_ROLLUP_KEYS)[number], number>;
+
 /** How far getVelocitySnapshot reaches behind its as-of date to fill the
  *  "previous period" windows. */
 const VELOCITY_WINDOW_LOOKBACK_DAYS = 96;
@@ -355,19 +367,37 @@ export const DemandPlanningService = {
 
     const { containers, crossMap } = mapContainerDetails(containersResult, categoriesResult, crossResult, todayStr);
 
-    // ── Final-SKU sales roll-up (TN→TNS, BKGR→BKLG) ────────────────────
+    // Stock the same way: current fc_stats columns, or the inventory history's
+    // SKU total (plus current transit) when asOf != today.
+    function effectiveStock(r: Record<string, unknown>, inv: InventorySnapshotRow | undefined): StockBuckets {
+      const stock = Object.fromEntries(
+        STOCK_ROLLUP_KEYS.map((key) => [key, Number(r[key] ?? 0)]),
+      ) as StockBuckets;
+      // fc_stats.total_stock is west_available + east_available + transit; the
+      // historical equivalent is the view's SKU-total available plus that same
+      // (current) transit figure.
+      if (inv) stock.total_stock = inv.available_stock + stock.transit_stock;
+      return stock;
+    }
+
+    // ── Final-SKU roll-up (TN→TNS, BKGR→BKLG) ──────────────────────────
     //
     // The factory no longer produces the legacy line/colour, so demand has to
-    // sit on the SKU that actually gets ordered. Stock does not move: the
-    // legacy SKU still holds real inventory that has to be sold down, so its
-    // row stays exactly as it is (own sales included) and only the final row
-    // gains the legacy row's sales on top of its own.
+    // sit on the SKU that actually gets ordered, and the legacy units still in
+    // the warehouse are sold as the final SKU — a BKGR cover ships against a
+    // BKLG order. So both sales and available stock (West, East, Transit) roll
+    // up: the legacy row stays exactly as it is (own sales and own stock
+    // included) and only the final row gains the legacy row's figures on top
+    // of its own. The final SKU's inventory life, S.O.D. and container chain
+    // are then planned against the combined stock.
+    //
+    // Back orders do not roll up: they are demand, and the sales roll-up
+    // already carries the legacy demand.
     //
     // Consequence, accepted deliberately: the same units appear on both rows,
-    // so column totals and any cross-row sum count them twice. Stock, back
-    // orders, SOD and the container chain are untouched — the final SKU is
-    // planned against its own inventory only.
+    // so column totals and any cross-row sum count them twice.
     const rollupWindows = new Map<string, SalesWindows>();
+    const rollupStock = new Map<string, StockBuckets>();
     const rollupSources = new Map<string, string[]>();
     for (const r of rowsResult) {
       const sku = r.sku as string;
@@ -375,14 +405,18 @@ export const DemandPlanningService = {
       const finalSku = toFinalMasterSku(sku);
       if (finalSku === sku) continue;
       const windows = effectiveSalesWindows(r, velEntryFor(r, sku));
+      const stock = effectiveStock(r, invMap.get(sku));
       const accumulated = rollupWindows.get(finalSku);
       if (accumulated) {
         // Both remaps can fire independently, so more than one legacy SKU can
         // feed the same final SKU. Accumulate rather than overwrite.
         for (const key of SALES_WINDOW_KEYS) accumulated[key] += windows[key];
+        const accumulatedStock = rollupStock.get(finalSku)!;
+        for (const key of STOCK_ROLLUP_KEYS) accumulatedStock[key] += stock[key];
         rollupSources.get(finalSku)!.push(sku);
       } else {
         rollupWindows.set(finalSku, windows);
+        rollupStock.set(finalSku, stock);
         rollupSources.set(finalSku, [sku]);
       }
     }
@@ -398,11 +432,15 @@ export const DemandPlanningService = {
         : "";
 
       const inv = invMap.get(masterSku);
-      const transitStock = Number(r.transit_stock ?? 0);
-      // fc_stats.total_stock is west_available + east_available + transit; the
-      // historical equivalent is the view's SKU-total available plus that same
-      // (current) transit figure.
-      const totalStock = inv ? inv.available_stock + transitStock : (r.total_stock as number);
+      const rolledUpFrom = rollupSources.get(masterSku);
+      const ownStock = effectiveStock(r, inv);
+      const contributedStock = rollupStock.get(masterSku);
+      const stock: StockBuckets = contributedStock
+        ? (Object.fromEntries(
+            STOCK_ROLLUP_KEYS.map((key) => [key, ownStock[key] + contributedStock[key]]),
+          ) as StockBuckets)
+        : ownStock;
+      const totalStock = stock.total_stock;
       // fc_stats stores back orders negated; the history view stores them positive.
       const back = inv ? -inv.backorder : (r.back as number);
       // Blanked rather than zeroed for a historical date - see the note above.
@@ -416,7 +454,6 @@ export const DemandPlanningService = {
 
       const vel = velEntryFor(r, masterSku);
       const own = effectiveSalesWindows(r, vel);
-      const rolledUpFrom = rollupSources.get(masterSku);
       const contributed = rollupWindows.get(masterSku);
       const sales: SalesWindows = contributed
         ? (Object.fromEntries(
@@ -619,19 +656,19 @@ export const DemandPlanningService = {
         category_code: categoryCode,
         sku: rowSku,
         ...(rolledUpFrom ? { rolled_up_from: rolledUpFrom } : {}),
-        west_stock: warehouseStock(r.west_stock),
-        east_stock: warehouseStock(r.east_stock),
-        west_available_stock: warehouseStock(r.west_available_stock),
-        east_available_stock: warehouseStock(r.east_available_stock),
-        transit_stock: r.transit_stock,
-        fullerton_stock: warehouseStock(r.fullerton_stock),
-        canary_stock: warehouseStock(r.canary_stock),
-        ttm_stock: warehouseStock(r.ttm_stock),
-        ttm_jeff_stock: warehouseStock(r.ttm_jeff_stock),
-        fullerton_available_stock: warehouseStock(r.fullerton_available_stock),
-        canary_available_stock: warehouseStock(r.canary_available_stock),
-        ttm_available_stock: warehouseStock(r.ttm_available_stock),
-        ttm_jeff_available_stock: warehouseStock(r.ttm_jeff_available_stock),
+        west_stock: warehouseStock(stock.west_stock),
+        east_stock: warehouseStock(stock.east_stock),
+        west_available_stock: warehouseStock(stock.west_available_stock),
+        east_available_stock: warehouseStock(stock.east_available_stock),
+        transit_stock: stock.transit_stock,
+        fullerton_stock: warehouseStock(stock.fullerton_stock),
+        canary_stock: warehouseStock(stock.canary_stock),
+        ttm_stock: warehouseStock(stock.ttm_stock),
+        ttm_jeff_stock: warehouseStock(stock.ttm_jeff_stock),
+        fullerton_available_stock: warehouseStock(stock.fullerton_available_stock),
+        canary_available_stock: warehouseStock(stock.canary_available_stock),
+        ttm_available_stock: warehouseStock(stock.ttm_available_stock),
+        ttm_jeff_available_stock: warehouseStock(stock.ttm_jeff_available_stock),
         total_stock: totalStock,
         stock_mode: "available",
         west_90d, west_60d, west_30d, west_15d, west_7d, west_30d_pre,
