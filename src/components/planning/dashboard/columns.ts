@@ -881,6 +881,23 @@ export function ensureAdditionalNotesInColumnOrder(order: ColumnOrder): ColumnOr
       insertAt += 1;
     }
   }
+  // Warehouses added after the order was saved (Dream Trans, Linkone) would
+  // otherwise land at the far right of the grid and in a second "Inventory"
+  // run at the bottom of the column picker. Slot them after the last of the
+  // original four warehouse columns instead.
+  const warehouseAnchor = Math.max(...["fullerton", "canary", "ttm", "ttm_jeff"].map((id) => next.indexOf(id)));
+  if (warehouseAnchor >= 0) {
+    let insertAt = warehouseAnchor + 1;
+    for (const columnId of ["dream_trans", "linkone"]) {
+      const existingIndex = next.indexOf(columnId);
+      if (existingIndex >= 0) {
+        insertAt = Math.max(insertAt, existingIndex + 1);
+        continue;
+      }
+      next.splice(insertAt, 0, columnId);
+      insertAt += 1;
+    }
+  }
   return next;
 }
 
