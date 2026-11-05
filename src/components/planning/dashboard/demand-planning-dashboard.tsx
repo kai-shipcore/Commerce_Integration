@@ -638,10 +638,6 @@ type ColumnVisibilityItem = {
 };
 
 const COLUMN_VISIBILITY_GROUP_KEYS: ColumnGroupKey[] = ["fix", ...ALL_GROUP_KEYS];
-const CONTAINER_VISIBILITY_SUBCOLUMNS = [
-  ...CON_SUBCOLS.filter((column) => column.id === "ccbm"),
-  ...CON_SUBCOLS.filter((column) => column.id !== "ccbm"),
-];
 
 const COLUMN_VISIBILITY_ITEMS: ColumnVisibilityItem[] = [
   ...ALL_COLS.map((column) => ({
@@ -651,7 +647,7 @@ const COLUMN_VISIBILITY_ITEMS: ColumnVisibilityItem[] = [
     compact: COMPACT_COLUMN_IDS.has(column.id),
     kind: "base" as const,
   })),
-  ...CONTAINER_VISIBILITY_SUBCOLUMNS.map((column) => ({
+  ...CON_SUBCOLS.map((column) => ({
     id: `con:${column.id}`,
     label: column.id === "remaining" ? "Rem. Qty" : column.label.replace("\n", " "),
     group: "con" as const,

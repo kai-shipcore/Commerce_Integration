@@ -4718,17 +4718,9 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     return () => window.cancelAnimationFrame(frame);
   }, [groupVis.con, onLoadContainerDetails]);
 
-  // CON_SUBCOLS reordered with "ccbm" moved to the front — the same reorder
-  // `subColumns` used to apply only after filtering. Doing it unconditionally
-  // here keeps hidden-run detection consistent regardless of whether "ccbm"
-  // itself happens to be hidden: its canonical rendered position is always
-  // the front of whatever's visible, so that's also where its gap belongs
-  // when it's the one hidden.
-  const conCandidates = useMemo(() => {
-    const ccbm = CON_SUBCOLS.find((column) => column.id === "ccbm");
-    const rest = CON_SUBCOLS.filter((column) => column.id !== "ccbm");
-    return ccbm ? [ccbm, ...rest] : rest;
-  }, []);
+  // CON_SUBCOLS is already in rendered order (CBM first), so hidden-run
+  // detection below can index straight into it.
+  const conCandidates = CON_SUBCOLS;
 
   // Sub-column visibility (`con:<id>`) has no per-container override, so this
   // is computed once and reused identically inside every container's own

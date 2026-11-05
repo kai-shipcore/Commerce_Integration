@@ -783,7 +783,29 @@ export function DemandPlanningGrid({
                 const nameSpan = isBaseline ? visSubCols.length : visSubCols.length - 1;
                 const bg = isBaseline ? "#0F2218" : isDraft ? "#1E1D1A" : "#2A2825";
                 const rightBorder = isLast ? "1px solid #3a3835" : "2px solid #1A4060";
+                // Total CBM sits over the per-row CBM column, which is the first
+                // sub-column of every container block.
                 return [
+                  ...(!isBaseline ? [
+                    <th
+                      key={`${c.name}-cbm`}
+                      colSpan={1}
+                      style={{
+                        background: bg,
+                        color: "#7EB880",
+                        fontSize: 9,
+                        fontWeight: 700,
+                        padding: "2px 4px",
+                        borderRight: "none",
+                        borderBottom: "1px solid #555",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                        height: 20,
+                      }}
+                    >
+                      {totalCbm > 0 ? totalCbm.toFixed(1) : ""}
+                    </th>,
+                  ] : []),
                   <th
                     key={`${c.name}-hdr`}
                     colSpan={nameSpan}
@@ -793,7 +815,7 @@ export function DemandPlanningGrid({
                       fontSize: 10,
                       fontWeight: 800,
                       padding: "2px 4px",
-                      borderRight: isBaseline ? rightBorder : "none",
+                      borderRight: rightBorder,
                       borderBottom: "1px solid #555",
                       textAlign: "center",
                       whiteSpace: "nowrap",
@@ -846,26 +868,6 @@ export function DemandPlanningGrid({
                       </>
                     )}
                   </th>,
-                  ...(!isBaseline ? [
-                    <th
-                      key={`${c.name}-cbm`}
-                      colSpan={1}
-                      style={{
-                        background: bg,
-                        color: "#7EB880",
-                        fontSize: 9,
-                        fontWeight: 700,
-                        padding: "2px 4px",
-                        borderRight: rightBorder,
-                        borderBottom: "1px solid #555",
-                        textAlign: "center",
-                        whiteSpace: "nowrap",
-                        height: 20,
-                      }}
-                    >
-                      {totalCbm > 0 ? totalCbm.toFixed(1) : ""}
-                    </th>,
-                  ] : []),
                 ];
               })}
               {showContainerLoadingColumn ? (

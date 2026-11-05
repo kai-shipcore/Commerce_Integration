@@ -1089,6 +1089,11 @@ export function loadSavedCellColors(): CellColorSettings {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const CON_SUBCOLS: ConSubColDef[] = [
+  { id: "ccbm",  label: "CBM",          w: 58, align: "num", tint: "t-cn",      val: (cd, _c, row) => {
+    const qty = cd.inbound_qty ?? 0;
+    const cbmUnit = row?.cbm_per_unit ?? 0;
+    return qty && cbmUnit ? (Math.round(qty * cbmUnit * 100) / 100).toFixed(2) : "";
+  } },
   { id: "inb_qty", label: "Con.\nQty",   w: 48, align: "num", tint: "t-cn", val: (cd) => cd.inbound_qty !== null && cd.inbound_qty !== undefined ? cd.inbound_qty : "" },
   { id: "remaining", label: "Rem. Qty",    w: 54, align: "num", tint: "t-cn",      val: (_cd, _c, row) => {
     const total = (row.remaining ?? 0) + (row.mistake ?? 0);
@@ -1114,9 +1119,4 @@ export const CON_SUBCOLS: ConSubColDef[] = [
     return { html: `<span class="${cls}">${cd.est_sod}</span>` };
   }},
   { id: "psod",  label: "Plan\nSOD",    w: 92, align: "ctr", tint: "t-cn-sod", fontSize: 10, val: (cd) => cd.plan_sod ? { html: `<span style="color:#9A9790">${cd.plan_sod}</span>` } : "" },
-  { id: "ccbm",  label: "CBM",          w: 58, align: "num", tint: "t-cn",      val: (cd, _c, row) => {
-    const qty = cd.inbound_qty ?? 0;
-    const cbmUnit = row?.cbm_per_unit ?? 0;
-    return qty && cbmUnit ? (Math.round(qty * cbmUnit * 100) / 100).toFixed(2) : "";
-  } },
 ];
