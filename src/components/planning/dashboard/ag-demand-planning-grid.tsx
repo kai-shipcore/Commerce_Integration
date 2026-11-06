@@ -5421,8 +5421,16 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const row = api?.getRowNode(rowId)?.data;
     if (row) {
       if (isFormulaId(columnId)) {
-        const column = formulaConfig.find((candidate) => candidate.id === columnId);
-        return column ? formulaForCell(column, rowId) : "";
+        // The system clipboard should contain what the calculation cell shows,
+        // so it can be pasted into numeric fields such as Con. Qty. The
+        // expression itself is carried separately in SheetClipboardPayload and
+        // is only used when the destination is another formula cell.
+        const result = formulaEvaluator.evaluate(rowId, columnId);
+        return String(result.error ?? (
+          typeof result.value === "boolean"
+            ? String(result.value).toUpperCase()
+            : result.value ?? ""
+        ));
       }
       if (columnId === "sku") return row.sku;
       if (columnId === "cbm") return row.cbm_per_unit ? row.cbm_per_unit.toFixed(6) : "";
@@ -5457,7 +5465,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const rowEl = host.querySelector<HTMLElement>(`[row-id="${cssEscapeAttr(rowId)}"]`);
     const cellEl = rowEl?.querySelector<HTMLElement>(`[col-id="${cssEscapeAttr(columnId)}"]`);
     return cellEl?.textContent?.trim() ?? "";
-  }, [formulaConfig]);
+  }, [formulaEvaluator]);
 
 
   const hideColumnsFromMenu = useCallback((menuColumnKey: string) => {
