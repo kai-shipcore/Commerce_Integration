@@ -217,7 +217,12 @@ type SheetHistoryEntry = {
   viewChanges: SheetViewHistoryChange[];
 };
 type SheetClipboardFormat = { background: string | null; textColor: string | null };
-type SheetClipboardPayload = { text: string; formats: Array<Array<SheetClipboardFormat | null>> };
+type SheetClipboardFormula = { formula: string; sourceSku: string };
+type SheetClipboardPayload = {
+  text: string;
+  formats: Array<Array<SheetClipboardFormat | null>>;
+  formulas: Array<Array<SheetClipboardFormula | null>>;
+};
 type SelectionModifiers = { toggle: boolean; range: boolean; replace?: boolean };
 type SalesTargetTier = { minSales: number; targetDays: number };
 type CapacityMode = "fit" | "unlimited";
@@ -1190,7 +1195,11 @@ const FORMULA_REFERENCE_COLORS = ["#1A73E8", "#E8710A", "#A142F4", "#188038", "#
 function formulaReferenceEdgeStyle(index: number | undefined): CSSProperties {
   if (index === undefined) return {};
   const color = FORMULA_REFERENCE_COLORS[index % FORMULA_REFERENCE_COLORS.length];
-  return { boxShadow: `inset 0 0 0 2px ${color}`, position: "relative", zIndex: 3 };
+  // AG Grid positions every cell absolutely. Overriding that with `relative`
+  // moves the referenced cell out of the grid's calculated column position and
+  // makes it overlap its neighbours. The cell is already positioned, so a
+  // z-index is sufficient to keep the inset reference outline visible.
+  return { boxShadow: `inset 0 0 0 2px ${color}`, zIndex: 3 };
 }
 
 function cssEscapeAttr(value: string): string {
@@ -5411,6 +5420,10 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const api = gridRef.current?.api;
     const row = api?.getRowNode(rowId)?.data;
     if (row) {
+      if (isFormulaId(columnId)) {
+        const column = formulaConfig.find((candidate) => candidate.id === columnId);
+        return column ? formulaForCell(column, rowId) : "";
+      }
       if (columnId === "sku") return row.sku;
       if (columnId === "cbm") return row.cbm_per_unit ? row.cbm_per_unit.toFixed(6) : "";
       if (isTotalAvgColumn(columnId)) return String(row[totalAvgField(columnId)] ?? "");
@@ -5444,7 +5457,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
     const rowEl = host.querySelector<HTMLElement>(`[row-id="${cssEscapeAttr(rowId)}"]`);
     const cellEl = rowEl?.querySelector<HTMLElement>(`[col-id="${cssEscapeAttr(columnId)}"]`);
     return cellEl?.textContent?.trim() ?? "";
-  }, []);
+  }, [formulaConfig]);
 
 
   const hideColumnsFromMenu = useCallback((menuColumnKey: string) => {
@@ -6179,16 +6192,25 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const handleSheetSelectionKeyboard = (event: KeyboardEvent) => {
       if (event.altKey || activeQtyEditorKey) return;
       const focusEl = event.target as HTMLElement | null;
-      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
       const active = activeSelectedCellRef.current;
       if (!active || !selectedCellsRef.current.has(`${active.rowId}::${active.columnId}`)) return;
 
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === "ArrowDown") {
+        // Formula editing leaves focus in an input. This shortcut means "extend
+        // the sheet selection", so leave reference-picking/editing mode before
+        // handling it instead of letting the input swallow the key.
+        if (focusEl?.closest("input[aria-label='Formula'], input[aria-label='수식']")) {
+          gridRef.current?.api.stopEditing();
+          focusEl.blur();
+        } else if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) {
+          return;
+        }
         if (!extendSheetCellSelection("ArrowDown", true)) return;
         event.preventDefault();
         event.stopPropagation();
         return;
       }
+      if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (event.ctrlKey || event.metaKey) return;
 
       if (event.shiftKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
@@ -6391,8 +6413,13 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           };
         });
       }),
+      formulas: selection.rowIds.map((rowId) => selection.columnIds.map((columnId) => {
+        if (!selection.includes(`${rowId}::${columnId}`) || !isFormulaId(columnId)) return null;
+        const column = formulaConfig.find((candidate) => candidate.id === columnId);
+        return column ? { formula: formulaForCell(column, rowId), sourceSku: rowId } : null;
+      })),
     };
-  }, [columnMenuFillColor, columnMenuTextColor, getClipboardSelection, getSelectedCellsTsv]);
+  }, [columnMenuFillColor, columnMenuTextColor, formulaConfig, getClipboardSelection, getSelectedCellsTsv]);
 
   const buildCellFormatChanges = useCallback((targets: Array<{
     rowId: string;
@@ -6440,13 +6467,14 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     if (!payload) return;
     await copyText(payload.text)
       .then(() => { sheetClipboardRef.current = payload; })
-      .catch(() => {});
-  }, [getSelectedClipboardPayload]);
+      .catch(() => toast.error(pick("클립보드에 복사하지 못했습니다.", "Could not copy to the clipboard.")));
+  }, [getSelectedClipboardPayload, pick]);
 
   const performCut = useCallback(async () => {
-    if (!canEditPlanning) return;
+    if (!canEditPlanning && !formulaEditingEnabled) return;
     const payload = getSelectedClipboardPayload();
     if (!payload) return;
+    const hasFormulaTargets = formulaEditingEnabled && collectSelectedFormulaRows().size > 0;
     const operations: Array<{ target: EditableCellTarget; value: string }> = [];
     const formatTargets: Array<{ rowId: string; columnId: string; format: SheetClipboardFormat }> = [];
     for (const key of selectedCellsRef.current) {
@@ -6459,27 +6487,31 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       formatTargets.push({ rowId, columnId, format: { background: null, textColor: null } });
     }
     const formatChanges = buildCellFormatChanges(formatTargets);
-    if (!operations.length && !hasEffectiveFormatChanges(formatChanges)) return;
+    if (!operations.length && !hasEffectiveFormatChanges(formatChanges) && !hasFormulaTargets) return;
     await copyText(payload.text)
       .then(() => {
         sheetClipboardRef.current = payload;
+        if (hasFormulaTargets) clearSelectedFormulaCells();
         return applyClipboardOperation(operations, formatChanges);
       })
-      .catch(() => {});
-  }, [applyClipboardOperation, buildCellFormatChanges, canEditPlanning, getSelectedClipboardPayload, hasEffectiveFormatChanges, resolveEditableTarget]);
+      .catch(() => toast.error(pick("클립보드에 복사하지 못했습니다.", "Could not copy to the clipboard.")));
+  }, [applyClipboardOperation, buildCellFormatChanges, canEditPlanning, clearSelectedFormulaCells, collectSelectedFormulaRows, formulaEditingEnabled, getSelectedClipboardPayload, hasEffectiveFormatChanges, pick, resolveEditableTarget]);
 
-  const performPaste = useCallback(async () => {
-    if (!canEditPlanning) return;
+  const performPaste = useCallback(async (clipboardText?: string) => {
+    if (!canEditPlanning && !formulaEditingEnabled) return;
     const bounds = getSelectionBoundsOrdered();
     if (!bounds) return;
     const api = gridRef.current?.api;
     if (!api) return;
 
-    let text: string;
-    try {
-      text = await navigator.clipboard.readText();
-    } catch {
-      return;
+    let text = clipboardText;
+    if (text === undefined) {
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {
+        toast.error(pick("클립보드 내용을 읽지 못했습니다.", "Could not read the clipboard."));
+        return;
+      }
     }
     const copiedPayload = sheetClipboardRef.current?.text === text ? sheetClipboardRef.current : null;
     if (!text && !copiedPayload) return;
@@ -6488,19 +6520,44 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const grid = lines.map((line) => line.split("\t"));
     const isSingleValue = grid.length === 1 && grid[0].length === 1;
     const copiedFormats = copiedPayload?.formats ?? null;
+    const copiedFormulas = copiedPayload?.formulas ?? null;
 
     const operations: Array<{ target: EditableCellTarget; value: string }> = [];
     const formatTargets: Array<{ rowId: string; columnId: string; format: SheetClipboardFormat }> = [];
+    const displayedRows: string[] = [];
+    api.forEachNodeAfterFilterAndSort((node) => {
+      if (node.data && !node.rowPinned) displayedRows.push(node.data.sku);
+    });
+    const formulaOverrides = new Map<FormulaId, Record<string, string>>();
+    const pasteValue = (
+      rowId: string,
+      columnId: string,
+      value: string,
+      copiedFormula: SheetClipboardFormula | null,
+    ) => {
+      if (isFormulaId(columnId)) {
+        const column = formulaConfig.find((candidate) => candidate.id === columnId);
+        if (!formulaEditingEnabled || !column?.enabled || !formulaRows.has(rowId)) return;
+        const overrides = formulaOverrides.get(columnId) ?? { ...column.overrides };
+        overrides[rowId] = copiedFormula
+          ? shiftFormulaRows(copiedFormula.formula, copiedFormula.sourceSku, rowId, displayedRows)
+          : resolveAddresses(value);
+        formulaOverrides.set(columnId, overrides);
+        return;
+      }
+      const editTarget = resolveEditableTarget(rowId, columnId);
+      if (editTarget) operations.push({ target: editTarget, value });
+    };
     if (isSingleValue) {
       const value = grid[0][0];
       const copiedFormat = copiedFormats?.[0]?.[0] ?? null;
+      const copiedFormula = copiedFormulas?.[0]?.[0] ?? null;
       for (const key of selectedCellsRef.current) {
         const separator = key.indexOf("::");
         if (separator < 0) continue;
         const rowId = key.slice(0, separator);
         const columnId = key.slice(separator + 2);
-        const editTarget = resolveEditableTarget(rowId, columnId);
-        if (editTarget) operations.push({ target: editTarget, value });
+        pasteValue(rowId, columnId, value, copiedFormula);
         if (copiedFormat) formatTargets.push({ rowId, columnId, format: copiedFormat });
       }
     } else {
@@ -6516,15 +6573,20 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           const column = displayedColumns[startColIndex + colOffset];
           if (!column) return;
           const columnId = column.getColId();
-          const editTarget = resolveEditableTarget(rowId, columnId);
-          if (editTarget) operations.push({ target: editTarget, value });
+          pasteValue(rowId, columnId, value, copiedFormulas?.[rowOffset]?.[colOffset] ?? null);
           const copiedFormat = copiedFormats?.[rowOffset]?.[colOffset] ?? null;
           if (copiedFormat) formatTargets.push({ rowId, columnId, format: copiedFormat });
         });
       });
     }
+    if (formulaOverrides.size) {
+      onFormulaConfigChange(formulaConfig.map((column) => {
+        const overrides = formulaOverrides.get(column.id);
+        return overrides ? { ...column, overrides } : column;
+      }));
+    }
     await applyClipboardOperation(operations, buildCellFormatChanges(formatTargets));
-  }, [applyClipboardOperation, buildCellFormatChanges, canEditPlanning, getSelectionBoundsOrdered, resolveEditableTarget]);
+  }, [applyClipboardOperation, buildCellFormatChanges, canEditPlanning, formulaConfig, formulaEditingEnabled, formulaRows, getSelectionBoundsOrdered, onFormulaConfigChange, pick, resolveAddresses, resolveEditableTarget]);
 
   const fillDownFormulaSelection = useCallback((columnId?: FormulaId) => {
     if (!formulaEditingEnabled) return 0;
@@ -6585,7 +6647,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "x") return;
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (!canEditPlanning) return;
+      if (!canEditPlanning && !formulaEditingEnabled) return;
       let hasEditableTarget = false;
       for (const key of selectedCellsRef.current) {
         const separator = key.indexOf("::");
@@ -6595,29 +6657,35 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           break;
         }
       }
-      if (!hasEditableTarget && !selectionHasCuttableFormat()) return;
+      const hasFormulaTarget = formulaEditingEnabled && collectSelectedFormulaRows().size > 0;
+      if (!hasEditableTarget && !hasFormulaTarget && !selectionHasCuttableFormat()) return;
       event.preventDefault();
       event.stopPropagation();
       void performCut();
     };
     window.addEventListener("keydown", handleCut, true);
     return () => window.removeEventListener("keydown", handleCut, true);
-  }, [canEditPlanning, performCut, resolveEditableTarget, selectionHasCuttableFormat]);
+  }, [canEditPlanning, collectSelectedFormulaRows, formulaEditingEnabled, performCut, resolveEditableTarget, selectionHasCuttableFormat]);
 
   useEffect(() => {
-    const handlePaste = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "v") return;
+    const handlePaste = (event: ClipboardEvent) => {
       const focusEl = event.target as HTMLElement | null;
       if (focusEl?.closest("input, textarea, select, [contenteditable='true']")) return;
-      if (!canEditPlanning) return;
+      if (!canEditPlanning && !formulaEditingEnabled) return;
       const bounds = getSelectionBoundsOrdered();
       if (!bounds) return;
+      const text = event.clipboardData?.getData("text/plain");
+      if (text === undefined) return;
       event.preventDefault();
-      void performPaste();
+      void performPaste(text);
     };
-    window.addEventListener("keydown", handlePaste, true);
-    return () => window.removeEventListener("keydown", handlePaste, true);
-  }, [canEditPlanning, getSelectionBoundsOrdered, performPaste]);
+    // ClipboardEvent carries the pasted text directly. This avoids the
+    // permission-sensitive navigator.clipboard.readText() path used by the
+    // toolbar/context-menu action and makes Ctrl/Cmd+V reliable on a selected
+    // grid cell without entering edit mode first.
+    window.addEventListener("paste", handlePaste, true);
+    return () => window.removeEventListener("paste", handlePaste, true);
+  }, [canEditPlanning, formulaEditingEnabled, getSelectionBoundsOrdered, performPaste]);
 
   useEffect(() => {
     const handleFillDown = (event: KeyboardEvent) => {
@@ -7960,11 +8028,14 @@ autoFilling3: autoFillingContainers3.has(container.name),
       canRedo: !sheetHistoryBusyRef.current && Boolean(redoEntry) && (
         canEditPlanning || (redoEntry?.valueChanges.length === 0 && redoEntry.formatChanges.length === 0)
       ),
-      canCut: canEditPlanning && hasSelection && (
+      canCut: hasSelection && (
         [...selectedCellsRef.current].some((key) => {
           const separator = key.indexOf("::");
-          return separator >= 0 && resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2)) !== null;
-        }) || selectionHasCuttableFormat()
+          return separator >= 0 && (
+            resolveEditableTarget(key.slice(0, separator), key.slice(separator + 2)) !== null
+            || (formulaEditingEnabled && isFormulaId(key.slice(separator + 2)))
+          );
+        }) || (canEditPlanning && selectionHasCuttableFormat())
       ),
       canCopy: hasCopyableSelection,
       canPaste: canEditPlanning && hasSelection,
@@ -8008,28 +8079,31 @@ autoFilling3: autoFillingContainers3.has(container.name),
       onMouseDownCapture={(event) => {
         formulaReferenceClickRef.current = false;
         if (event.button !== 0 || !(event.target instanceof Element)) return;
+        // Reference insertion is decided on click, after we know this gesture
+        // was not a drag. Let AG Grid receive mousedown so range dragging can
+        // start even when the formula bar still has reference-picking focus.
+      }}
+      onClickCapture={(event) => {
+        if (!(event.target instanceof Element) || dragMovedRef.current) return;
+        // Shift/Ctrl/Cmd explicitly means range/toggle selection and must win
+        // over formula reference picking.
+        if (event.shiftKey || event.ctrlKey || event.metaKey) return;
         const cell = event.target.closest(".ag-cell[col-id]");
         const field = cell?.getAttribute("col-id");
         const sku = cell?.closest(".ag-row[row-id]")?.getAttribute("row-id");
         if (!field || !sku || !formulaRows.has(sku)) return;
         if (event.target.closest("input, textarea")) return;
-        if (activeFormulaEditor && !formulaFieldIdsRef.current.has(field)) { event.preventDefault(); event.stopPropagation(); return; }
-        if (!formulaBarRef.current?.isPicking() && activeFormulaEditor?.insertReference({ sku, field })) {
+        if (activeFormulaEditor && !formulaFieldIdsRef.current.has(field)) {
           formulaReferenceClickRef.current = true;
-          event.preventDefault();
-          event.stopPropagation();
-          return;
+        } else if (!formulaBarRef.current?.isPicking() && activeFormulaEditor?.insertReference({ sku, field })) {
+          formulaReferenceClickRef.current = true;
+        } else if (formulaBarRef.current?.selectCell(sku, field, false)) {
+          formulaReferenceClickRef.current = true;
         }
-        // AG dispatches cell-click events asynchronously. Capture here before a
-        // subsequent keystroke can turn a target selection into a reference pick.
-        if (formulaBarRef.current?.selectCell(sku, field, event.shiftKey || event.ctrlKey || event.metaKey)) {
-          formulaReferenceClickRef.current = true;
+        if (formulaReferenceClickRef.current) {
           event.preventDefault();
           event.stopPropagation();
         }
-      }}
-      onClickCapture={(event) => {
-        if (formulaReferenceClickRef.current) { event.preventDefault(); event.stopPropagation(); }
       }}
       // Only taller-than-default rows wrap their text columns: at the default
       // height the attribute is absent and the grid renders exactly as before.
@@ -8233,7 +8307,6 @@ autoFilling3: autoFillingContainers3.has(container.name),
             enterNavigatesVertically={true}
             enterNavigatesVerticallyAfterEdit={true}
             onCellMouseDown={(event) => {
-              if (formulaBarRef.current?.isPicking()) return;
               if (!event.data || event.rowIndex === null || event.node.rowPinned) return;
               const nativeEvt = event.event as MouseEvent | undefined;
               if (nativeEvt && nativeEvt.button !== 0) return;
