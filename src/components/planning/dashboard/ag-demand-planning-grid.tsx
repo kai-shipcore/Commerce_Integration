@@ -234,6 +234,10 @@ type TargetOrderPreview = {
   totalCbm: number;
   capacityCbm: number;
   excessCbm: number;
+  /** What the target days call for before any CBM cap (equals the totals in "unlimited" mode). */
+  requiredSkuCount: number;
+  requiredQty: number;
+  requiredCbm: number;
 };
 
 type QtyNavigationKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter";
@@ -263,6 +267,46 @@ const DEFAULT_BACKFILL3_TIERS: SalesTargetTier[] = [
   { minSales: 3, targetDays: 70 },
   { minSales: 0, targetDays: 60 },
 ];
+
+// Target-day tiers are configured separately per product group: Seat Cover
+// Original vs Custom (by sales_status), Car Cover fabric 03 (PVC) vs 15
+// (Pongee). Everything else (other fabrics, SWC, floor mats, accessories)
+// shares the "other" tiers.
+const TARGET_TIER_GROUPS = ["sc_original", "sc_custom", "cc_03", "cc_15", "other"] as const;
+type TargetTierGroup = (typeof TARGET_TIER_GROUPS)[number];
+type TargetTierSettings = Record<TargetTierGroup, SalesTargetTier[]>;
+
+const DEFAULT_TARGET_TIER_SETTINGS: TargetTierSettings = {
+  sc_original: DEFAULT_BACKFILL3_TIERS,
+  sc_custom: DEFAULT_BACKFILL3_TIERS,
+  cc_03: DEFAULT_BACKFILL3_TIERS,
+  cc_15: DEFAULT_BACKFILL3_TIERS,
+  other: DEFAULT_BACKFILL3_TIERS,
+};
+
+function targetTierGroupForRow(row: Pick<DemandRow, "sku" | "category_code" | "sales_status">): TargetTierGroup {
+  const category = (row.category_code ?? "").toUpperCase();
+  if (category === "SC") return row.sales_status === "Custom" ? "sc_custom" : "sc_original";
+  if (category === "CC") {
+    // CC-<vehicle>-<fabric>-... ; legacy SKUs without a vehicle segment are CC-<fabric>-...
+    const parts = String(row.sku ?? "").trim().toUpperCase().split("-");
+    const fabric = /^\d+$/.test(parts[1] ?? "") ? parts[1] : parts[2];
+    const fabricNumber = /^\d+$/.test(fabric ?? "") ? Number.parseInt(fabric, 10) : null;
+    if (fabricNumber === 3) return "cc_03";
+    if (fabricNumber === 15) return "cc_15";
+  }
+  return "other";
+}
+
+function targetTierGroupLabel(group: TargetTierGroup, pick: (ko: string, en: string) => string): string {
+  switch (group) {
+    case "sc_original": return pick("시트커버 · Original", "Seat Cover · Original");
+    case "sc_custom": return pick("시트커버 · Custom", "Seat Cover · Custom");
+    case "cc_03": return pick("카커버 · 03", "Car Cover · 03");
+    case "cc_15": return pick("카커버 · 15", "Car Cover · 15");
+    default: return pick("기타", "Other");
+  }
+}
 
 function readableTextColor(backgroundColor: string) {
   const match = backgroundColor.match(/^#([0-9a-fA-F]{6})$/);
@@ -3142,6 +3186,24 @@ function HideGapRestoreMarker({ side, info }: { side: "left" | "right"; info: Hi
   );
 }
 
+/** Original index of the tier that applies to avgSales, or -1 when none does. */
+function tierIndexForAverage(avgSales: number, tiers: SalesTargetTier[]): number {
+  let bestIndex = -1;
+  tiers.forEach((tier, index) => {
+    if (!Number.isFinite(tier.minSales) || !Number.isFinite(tier.targetDays) || tier.targetDays <= 0) return;
+    if (avgSales < tier.minSales) return;
+    if (bestIndex === -1 || tier.minSales > tiers[bestIndex].minSales) bestIndex = index;
+  });
+  return bestIndex;
+}
+
+type TargetBreakdownCell = { skuCount: number; orderedSkuCount: number; qty: number; cbm: number };
+type TargetGroupBreakdown = { total: TargetBreakdownCell; tiers: TargetBreakdownCell[] };
+
+function emptyBreakdownCell(): TargetBreakdownCell {
+  return { skuCount: 0, orderedSkuCount: 0, qty: 0, cbm: 0 };
+}
+
 function targetDaysForAverage(avgSales: number, tiers: SalesTargetTier[]): number {
   const sorted = [...tiers]
     .filter((tier) => Number.isFinite(tier.minSales) && Number.isFinite(tier.targetDays) && tier.targetDays > 0)
@@ -3241,6 +3303,11 @@ function CapacityModePanel({
 }) {
   const { pick } = useI18n();
   const overCapacity = preview.excessCbm > 0.000001;
+  // In Fit mode the totals stop at the container's capacity, so target-day
+  // edits often leave them unchanged. Show what the target days actually
+  // call for next to them.
+  const showRequired = mode === "fit";
+  const trimmedCbm = Math.max(0, preview.requiredCbm - preview.totalCbm);
 
   return (
     <div className="space-y-3 rounded-lg border border-[#D8D6CE] bg-[#FAFAF7] p-3">
@@ -3262,15 +3329,35 @@ function CapacityModePanel({
         </label>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <MetricPreview label={pick("계산 SKU", "SKUs calculated")} value={preview.skuCount.toLocaleString()} />
-        <MetricPreview label={pick("총 수량", "Total quantity")} value={preview.totalQty.toLocaleString()} />
-        <MetricPreview label={pick("예상 CBM", "Estimated CBM")} value={`${preview.totalCbm.toFixed(2)} / ${preview.capacityCbm.toFixed(2)}`} />
+        <MetricPreview
+          label={pick("계산 SKU", "SKUs calculated")}
+          value={preview.skuCount.toLocaleString()}
+          sub={showRequired ? pick(`필요 ${preview.requiredSkuCount.toLocaleString()}`, `Needed ${preview.requiredSkuCount.toLocaleString()}`) : undefined}
+        />
+        <MetricPreview
+          label={pick("총 수량", "Total quantity")}
+          value={preview.totalQty.toLocaleString()}
+          sub={showRequired ? pick(`필요 ${preview.requiredQty.toLocaleString()}`, `Needed ${preview.requiredQty.toLocaleString()}`) : undefined}
+        />
+        <MetricPreview
+          label={pick("예상 CBM", "Estimated CBM")}
+          value={`${preview.totalCbm.toFixed(2)} / ${preview.capacityCbm.toFixed(2)}`}
+          sub={showRequired ? pick(`필요 ${preview.requiredCbm.toFixed(2)}`, `Needed ${preview.requiredCbm.toFixed(2)}`) : undefined}
+        />
         <MetricPreview
           label={pick("초과 CBM", "Excess CBM")}
           value={overCapacity ? `+${preview.excessCbm.toFixed(2)}` : "0.00"}
           warning={overCapacity}
         />
       </div>
+      {showRequired && trimmedCbm > 0.005 ? (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          {pick(
+            `목표일수 기준 필요량은 ${preview.requiredCbm.toFixed(2)} CBM입니다. 용량에 맞추느라 ${trimmedCbm.toFixed(2)} CBM은 채우지 않습니다. 필요량을 용량 안으로 줄이려면 목표일수를 낮추세요.`,
+            `The target days call for ${preview.requiredCbm.toFixed(2)} CBM. ${trimmedCbm.toFixed(2)} CBM is left out to fit the container. Lower target days to bring the need within capacity.`,
+          )}
+        </div>
+      ) : null}
       {overCapacity ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
           {pick(
@@ -3283,11 +3370,12 @@ function CapacityModePanel({
   );
 }
 
-function MetricPreview({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
+function MetricPreview({ label, value, sub, warning = false }: { label: string; value: string; sub?: string; warning?: boolean }) {
   return (
     <div className="rounded-md border border-[#E2DFD8] bg-white px-2.5 py-2">
       <div className="text-[10px] font-semibold uppercase tracking-wide text-[#7A766F]">{label}</div>
       <div className={`mt-1 font-mono text-sm font-bold ${warning ? "text-amber-700" : "text-[#1A1917]"}`}>{value}</div>
+      {sub ? <div className="mt-0.5 font-mono text-[11px] text-[#7A766F]">{sub}</div> : null}
     </div>
   );
 }
@@ -3341,7 +3429,9 @@ function FixedTargetDialog({
 function Backfill3Dialog({
   open,
   containerName,
-  tiers,
+  groups,
+  breakdown,
+  tiersByGroup,
   onTierChange,
   onAddTier,
   onRemoveTier,
@@ -3353,10 +3443,12 @@ function Backfill3Dialog({
 }: {
   open: boolean;
   containerName: string;
-  tiers: SalesTargetTier[];
-  onTierChange: (index: number, patch: Partial<SalesTargetTier>) => void;
-  onAddTier: () => void;
-  onRemoveTier: (index: number) => void;
+  groups: Array<{ group: TargetTierGroup; skuCount: number }>;
+  breakdown: Partial<Record<TargetTierGroup, TargetGroupBreakdown>>;
+  tiersByGroup: TargetTierSettings;
+  onTierChange: (group: TargetTierGroup, index: number, patch: Partial<SalesTargetTier>) => void;
+  onAddTier: (group: TargetTierGroup) => void;
+  onRemoveTier: (group: TargetTierGroup, index: number) => void;
   capacityMode: CapacityMode;
   preview: TargetOrderPreview;
   onCapacityModeChange: (mode: CapacityMode) => void;
@@ -3365,15 +3457,24 @@ function Backfill3Dialog({
 }) {
   const { pick } = useI18n();
   const [validationMessage, setValidationMessage] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<TargetTierGroup | null>(null);
+  const activeGroup: TargetTierGroup = groups.some((item) => item.group === selectedGroup)
+    ? (selectedGroup as TargetTierGroup)
+    : groups[0]?.group ?? "other";
+  const tiers = tiersByGroup[activeGroup];
+  const groupBreakdown = breakdown[activeGroup];
   const sortedTiers = tiers
     .map((tier, originalIndex) => ({ ...tier, originalIndex }))
     .sort((a, b) => b.minSales - a.minSales);
 
   function handleApply() {
-    const error = validateSalesTargetTiers(tiers, pick);
-    if (error) {
-      setValidationMessage(error);
-      return;
+    for (const { group } of groups) {
+      const error = validateSalesTargetTiers(tiersByGroup[group], pick);
+      if (error) {
+        setSelectedGroup(group);
+        setValidationMessage(`[${targetTierGroupLabel(group, pick)}] ${error}`);
+        return;
+      }
     }
 
     setValidationMessage("");
@@ -3398,18 +3499,67 @@ function Backfill3Dialog({
             {pick("일평균 판매량 구간별 목표 재고일수를 설정합니다.", "Set target inventory days by average daily sales range.")}
           </div>
           <CapacityModePanel mode={capacityMode} onChange={onCapacityModeChange} preview={preview} />
-          <div style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
+          {groups.length > 1 ? (
+            <div role="tablist" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {groups.map(({ group, skuCount }) => {
+                const active = group === activeGroup;
+                return (
+                  <button
+                    key={group}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      setValidationMessage("");
+                      setSelectedGroup(group);
+                    }}
+                    style={{
+                      height: 30,
+                      border: `1px solid ${active ? "#1A1917" : "#D8D6CE"}`,
+                      borderRadius: 999,
+                      background: active ? "#1A1917" : "#fff",
+                      color: active ? "#fff" : "#2A2825",
+                      padding: "0 12px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {targetTierGroupLabel(group, pick)}
+                    <span style={{ marginLeft: 6, fontWeight: 500, opacity: 0.7 }}>{skuCount.toLocaleString()}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {groupBreakdown ? (
+            <div style={{ fontSize: 12, color: "#5A5750" }}>
+              <strong style={{ color: "#1A1917" }}>{targetTierGroupLabel(activeGroup, pick)}</strong>
+              {" · "}
+              {pick(
+                `대상 ${groupBreakdown.total.skuCount.toLocaleString()} SKU 중 ${groupBreakdown.total.orderedSkuCount.toLocaleString()} SKU 발주`,
+                `${groupBreakdown.total.orderedSkuCount.toLocaleString()} of ${groupBreakdown.total.skuCount.toLocaleString()} SKUs ordered`,
+              )}
+              {" · "}
+              {pick(`수량 ${groupBreakdown.total.qty.toLocaleString()}`, `Qty ${groupBreakdown.total.qty.toLocaleString()}`)}
+              {" · "}
+              <strong style={{ color: "#1A1917" }}>{groupBreakdown.total.cbm.toFixed(2)} CBM</strong>
+            </div>
+          ) : null}
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 84px 84px 132px 32px", gap: 8, fontSize: 12, fontWeight: 700, color: "#5A5750" }}>
             <span>{pick("판매량 구간", "Sales range")}</span>
             <span>{pick("최소 판매량", "Minimum sales")}</span>
             <span>{pick("목표일수", "Target days")}</span>
+            <span>{pick("SKU / CBM", "SKUs / CBM")}</span>
             <span />
           </div>
           {sortedTiers.map((tier, index) => {
             const upperSales = index === 0 ? null : sortedTiers[index - 1].minSales;
             const rangeLabel = salesRangeLabel(tier.minSales, upperSales, pick);
+            const tierStats = groupBreakdown?.tiers[tier.originalIndex] ?? emptyBreakdownCell();
 
             return (
-            <div key={tier.originalIndex} style={{ display: "grid", gridTemplateColumns: "1.3fr 96px 112px 32px", gap: 8, alignItems: "center" }}>
+            <div key={tier.originalIndex} style={{ display: "grid", gridTemplateColumns: "1.2fr 84px 84px 132px 32px", gap: 8, alignItems: "center" }}>
               <div
                 style={{
                   minHeight: 32,
@@ -3433,7 +3583,7 @@ function Backfill3Dialog({
                 value={tier.minSales}
                 onChange={(event) => {
                   setValidationMessage("");
-                  onTierChange(tier.originalIndex, { minSales: Math.max(0, Number(event.target.value) || 0) });
+                  onTierChange(activeGroup, tier.originalIndex, { minSales: Math.max(0, Number(event.target.value) || 0) });
                 }}
                 style={{ height: 32, border: "1px solid #D8D6CE", borderRadius: 4, padding: "4px 8px", fontSize: 13 }}
               />
@@ -3444,15 +3594,36 @@ function Backfill3Dialog({
                 value={tier.targetDays}
                 onChange={(event) => {
                   setValidationMessage("");
-                  onTierChange(tier.originalIndex, { targetDays: Math.max(1, Number(event.target.value) || 1) });
+                  onTierChange(activeGroup, tier.originalIndex, { targetDays: Math.max(1, Number(event.target.value) || 1) });
                 }}
                 style={{ height: 32, border: "1px solid #D8D6CE", borderRadius: 4, padding: "4px 8px", fontSize: 13 }}
               />
+              <div
+                title={pick(
+                  `이 구간 SKU ${tierStats.skuCount}개 중 ${tierStats.orderedSkuCount}개 발주, 수량 ${tierStats.qty.toLocaleString()}`,
+                  `${tierStats.orderedSkuCount} of ${tierStats.skuCount} SKUs in this range ordered, qty ${tierStats.qty.toLocaleString()}`,
+                )}
+                style={{
+                  fontSize: 12,
+                  lineHeight: 1.3,
+                  color: tierStats.skuCount === 0 ? "#A8A49E" : "#2A2825",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {tierStats.skuCount === 0
+                    ? pick("해당 SKU 없음", "No SKUs")
+                    : pick(`${tierStats.skuCount.toLocaleString()} SKU`, `${tierStats.skuCount.toLocaleString()} SKUs`)}
+                </div>
+                {tierStats.skuCount > 0 ? (
+                  <div style={{ color: "#7A766F" }}>{tierStats.cbm.toFixed(2)} CBM</div>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   setValidationMessage("");
-                  onRemoveTier(tier.originalIndex);
+                  onRemoveTier(activeGroup, tier.originalIndex);
                 }}
                 disabled={tiers.length <= 1}
                 title={pick("구간 삭제", "Remove range")}
@@ -3478,7 +3649,7 @@ function Backfill3Dialog({
               size="sm"
               onClick={() => {
                 setValidationMessage("");
-                onAddTier();
+                onAddTier(activeGroup);
               }}
             >
               {pick("구간 추가", "Add range")}
@@ -4171,7 +4342,7 @@ const [autoFillingContainers3, setAutoFillingContainers3] = useState<Set<string>
   } | null>(null);
   const [fixedTargetCapacityMode, setFixedTargetCapacityMode] = useState<CapacityMode>("fit");
   const [backfill3Dialog, setBackfill3Dialog] = useState<{ container: ContainerMeta; containerIndex: number } | null>(null);
-  const [backfill3Tiers, setBackfill3Tiers] = useState<SalesTargetTier[]>(DEFAULT_BACKFILL3_TIERS);
+  const [backfill3Tiers, setBackfill3Tiers] = useState<TargetTierSettings>(DEFAULT_TARGET_TIER_SETTINGS);
   const [backfill3CapacityMode, setBackfill3CapacityMode] = useState<CapacityMode>("fit");
 
   useEffect(() => {
@@ -6950,6 +7121,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     });
   }, [canEditPlanning, categoryFilter, containers, chainMap, visibleRows, gradient, gradientSC, qtyOverrides, scenario, seasonalFactors]);
 
+  const targetCandidateRows = useCallback((): DemandRow[] => {
+    const checked = checkedBaseCategories(categoryFilter);
+    return rowsInDisplayOrder().filter((row) => {
+      const cat = (row.category_code ?? "").toLowerCase();
+      if (!checked.some((c) => c === cat)) return false;
+      if ((row.cbm_per_unit ?? 0) <= 0) return false;
+      if (row.total_avg_curr <= 0 && (row.back ?? 0) >= 0) return false;
+      return true;
+    });
+  }, [categoryFilter, rowsInDisplayOrder]);
+
   const calculateTargetOrders = useCallback((
     container: ContainerMeta,
     containerIndex: number,
@@ -6959,22 +7141,19 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     const prevContainer = containers[containerIndex - 1];
     const capacityCbm = Number(container.cbm_cap) || 0;
     if (!prevContainer) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm, excessCbm: 0 };
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0 };
     }
 
     const seasonFactor = seasonalFactorForEta(container.eta, seasonalFactors);
     const gapBeforeDays = Math.round(
       (new Date(container.eta).getTime() - new Date(prevContainer.eta).getTime()) / 86400000
     );
-    const rows = rowsInDisplayOrder().filter((row) => {
-      const cat = (row.category_code ?? "").toLowerCase();
-      if (!checkedBaseCategories(categoryFilter).some((c) => c === cat)) return false;
-      if ((row.cbm_per_unit ?? 0) <= 0) return false;
-      if (row.total_avg_curr <= 0 && (row.back ?? 0) >= 0) return false;
-      return true;
-    });
+    const rows = targetCandidateRows();
     const orders: TargetOrder[] = [];
     let usedCbm = 0;
+    let requiredSkuCount = 0;
+    let requiredQty = 0;
+    let requiredCbm = 0;
 
     for (const row of rows) {
       const targetDays = resolveTargetDays(row);
@@ -6991,10 +7170,17 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       if (need <= 0) continue;
 
       const cbmUnit = row.cbm_per_unit ?? 0;
+      const fullQty = Math.ceil(Math.max(need, moq) / step) * step;
+      if (fullQty > 0) {
+        requiredSkuCount += 1;
+        requiredQty += fullQty;
+        requiredCbm += fullQty * cbmUnit;
+      }
+
       const remainingCbm = capacityMode === "fit" ? capacityCbm - usedCbm : Number.POSITIVE_INFINITY;
       if (remainingCbm <= 0) continue;
 
-      let qty = Math.ceil(Math.max(need, moq) / step) * step;
+      let qty = fullQty;
       if (capacityMode === "fit" && qty * cbmUnit > remainingCbm) {
         const maxQty = Math.floor(remainingCbm / cbmUnit / step) * step;
         if (maxQty < moq) continue;
@@ -7015,8 +7201,11 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       totalCbm,
       capacityCbm,
       excessCbm: Math.max(0, totalCbm - capacityCbm),
+      requiredSkuCount,
+      requiredQty,
+      requiredCbm,
     };
-  }, [categoryFilter, chainMap, containers, rowsInDisplayOrder, seasonalFactors]);
+  }, [chainMap, containers, seasonalFactors, targetCandidateRows]);
 
   const applyTargetOrders = useCallback((container: ContainerMeta, preview: TargetOrderPreview): void => {
     if (!canEditPlanning) return;
@@ -7052,7 +7241,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
   const autoFill3 = useCallback((
     container: ContainerMeta,
     containerIndex: number,
-    tiers: SalesTargetTier[],
+    tiers: TargetTierSettings,
     capacityMode: CapacityMode,
   ): void => {
     applyTargetOrders(
@@ -7060,7 +7249,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
       calculateTargetOrders(
         container,
         containerIndex,
-        (row) => targetDaysForAverage(row.total_avg_curr ?? 0, tiers),
+        (row) => targetDaysForAverage(row.total_avg_curr ?? 0, tiers[targetTierGroupForRow(row)]),
         capacityMode,
       ),
     );
@@ -7068,7 +7257,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const fixedTargetPreview = useMemo<TargetOrderPreview>(() => {
     if (!fixedTargetDialog) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0 };
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0 };
     }
     return calculateTargetOrders(
       fixedTargetDialog.container,
@@ -7080,15 +7269,57 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
 
   const backfill3Preview = useMemo<TargetOrderPreview>(() => {
     if (!backfill3Dialog) {
-      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0 };
+      return { orders: [], skuCount: 0, totalQty: 0, totalCbm: 0, capacityCbm: 0, excessCbm: 0, requiredSkuCount: 0, requiredQty: 0, requiredCbm: 0 };
     }
     return calculateTargetOrders(
       backfill3Dialog.container,
       backfill3Dialog.containerIndex,
-      (row) => targetDaysForAverage(row.total_avg_curr ?? 0, backfill3Tiers),
+      (row) => targetDaysForAverage(row.total_avg_curr ?? 0, backfill3Tiers[targetTierGroupForRow(row)]),
       backfill3CapacityMode,
     );
   }, [backfill3CapacityMode, backfill3Dialog, backfill3Tiers, calculateTargetOrders]);
+
+  const backfill3Groups = useMemo<Array<{ group: TargetTierGroup; skuCount: number }>>(() => {
+    if (!backfill3Dialog) return [];
+    const counts = new Map<TargetTierGroup, number>();
+    for (const row of targetCandidateRows()) {
+      const group = targetTierGroupForRow(row);
+      counts.set(group, (counts.get(group) ?? 0) + 1);
+    }
+    const groups = TARGET_TIER_GROUPS
+      .filter((group) => counts.has(group))
+      .map((group) => ({ group, skuCount: counts.get(group) ?? 0 }));
+    return groups.length > 0 ? groups : [{ group: "other", skuCount: 0 }];
+  }, [backfill3Dialog, targetCandidateRows]);
+
+  // Per group and per sales range: how many SKUs fall in it and how much of
+  // the preview's quantity / CBM it accounts for, so editing a range shows
+  // whether it actually moves the estimate.
+  const backfill3Breakdown = useMemo<Partial<Record<TargetTierGroup, TargetGroupBreakdown>>>(() => {
+    if (!backfill3Dialog) return {};
+    const result: Partial<Record<TargetTierGroup, TargetGroupBreakdown>> = {};
+    const cellFor = (row: DemandRow) => {
+      const group = targetTierGroupForRow(row);
+      const tiers = backfill3Tiers[group];
+      const entry = result[group] ??= { total: emptyBreakdownCell(), tiers: tiers.map(emptyBreakdownCell) };
+      const tierIndex = tierIndexForAverage(row.total_avg_curr ?? 0, tiers);
+      return { entry, tierCell: tierIndex >= 0 ? entry.tiers[tierIndex] : null };
+    };
+    for (const row of targetCandidateRows()) {
+      const { entry, tierCell } = cellFor(row);
+      entry.total.skuCount += 1;
+      if (tierCell) tierCell.skuCount += 1;
+    }
+    for (const { row, qty, cbmUnit } of backfill3Preview.orders) {
+      const { entry, tierCell } = cellFor(row);
+      for (const cell of tierCell ? [entry.total, tierCell] : [entry.total]) {
+        cell.orderedSkuCount += 1;
+        cell.qty += qty;
+        cell.cbm += qty * cbmUnit;
+      }
+    }
+    return result;
+  }, [backfill3Dialog, backfill3Preview, backfill3Tiers, targetCandidateRows]);
 
 
   const buildContainerSaveSummary = useCallback((container: ContainerMeta): string => {
@@ -8653,18 +8884,25 @@ autoFilling3: autoFillingContainers3.has(container.name),
     <Backfill3Dialog
       open={backfill3Dialog !== null}
       containerName={backfill3Dialog?.container.name ?? ""}
-      tiers={backfill3Tiers}
+      groups={backfill3Groups}
+      breakdown={backfill3Breakdown}
+      tiersByGroup={backfill3Tiers}
       capacityMode={backfill3CapacityMode}
       preview={backfill3Preview}
       onCapacityModeChange={setBackfill3CapacityMode}
-      onTierChange={(index, patch) => {
-        setBackfill3Tiers((current) => current.map((tier, i) => i === index ? { ...tier, ...patch } : tier));
+      onTierChange={(group, index, patch) => {
+        setBackfill3Tiers((current) => ({
+          ...current,
+          [group]: current[group].map((tier, i) => i === index ? { ...tier, ...patch } : tier),
+        }));
       }}
-      onAddTier={() => {
-        setBackfill3Tiers((current) => [...current, { minSales: 0, targetDays: 60 }]);
+      onAddTier={(group) => {
+        setBackfill3Tiers((current) => ({ ...current, [group]: [...current[group], { minSales: 0, targetDays: 60 }] }));
       }}
-      onRemoveTier={(index) => {
-        setBackfill3Tiers((current) => current.length <= 1 ? current : current.filter((_, i) => i !== index));
+      onRemoveTier={(group, index) => {
+        setBackfill3Tiers((current) => current[group].length <= 1
+          ? current
+          : { ...current, [group]: current[group].filter((_, i) => i !== index) });
       }}
       onOpenChange={(open) => {
         if (!open) setBackfill3Dialog(null);
