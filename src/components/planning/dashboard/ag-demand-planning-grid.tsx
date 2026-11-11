@@ -284,6 +284,15 @@ const DEFAULT_TARGET_TIER_SETTINGS: TargetTierSettings = {
   other: DEFAULT_BACKFILL3_TIERS,
 };
 
+/**
+ * Automatic order calculations (all three auto-fill buttons) only give a
+ * quantity to SKUs whose Sales Status is Original or Custom. Part, SWC, Hold,
+ * Discontinued, TBD and blank are left for manual entry.
+ */
+function isAutoOrderSalesStatus(row: Pick<DemandRow, "sales_status">): boolean {
+  return row.sales_status === "Original" || row.sales_status === "Custom";
+}
+
 function targetTierGroupForRow(row: Pick<DemandRow, "sku" | "category_code" | "sales_status">): TargetTierGroup {
   const category = (row.category_code ?? "").toUpperCase();
   if (category === "SC") return row.sales_status === "Custom" ? "sc_custom" : "sc_original";
@@ -7001,7 +7010,9 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
           usedCbm += existingQty * cbmUnit;
           return false; // skip — already has Con Qty
         }
-        return true;
+        // Checked after the Con Qty branch so a manually entered quantity on
+        // any status still counts against the container's CBM.
+        return isAutoOrderSalesStatus(r);
       })
       .map((row) => {
         const isSC = row.category_code === "SC";
@@ -7126,6 +7137,7 @@ const saveMemo = useCallback(async (row: DemandRow, memo: string): Promise<void>
     return rowsInDisplayOrder().filter((row) => {
       const cat = (row.category_code ?? "").toLowerCase();
       if (!checked.some((c) => c === cat)) return false;
+      if (!isAutoOrderSalesStatus(row)) return false;
       if ((row.cbm_per_unit ?? 0) <= 0) return false;
       if (row.total_avg_curr <= 0 && (row.back ?? 0) >= 0) return false;
       return true;
